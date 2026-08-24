@@ -66,17 +66,20 @@ def test_g3_compatibility_repair_facade_delegates_to_canonical_owner(monkeypatch
     assert kwargs["policy"] is policy
     assert kwargs["workers"] == 1
     assert callable(kwargs["progress_callback"])
-    kwargs["progress_callback"]("status=rung; selected_prefix_state_mode=selected_prefix_forward_replay")
-    assert progress == [
-        "status=rung; selected_prefix_state_mode=selected_prefix_forward_replay; "
-        "mvstate2_restore_count=0"
-    ]
+    checkpoint_provider = kwargs["checkpoint_state_provider"]
+    assert callable(checkpoint_provider)
+    assert checkpoint_provider("target", 128) is not None
+    assert checkpoint_provider("target", 256) is None
+    kwargs["progress_callback"]("status=rung; selected_prefix_state_mode=mvstate2")
+    assert progress == ["status=rung; selected_prefix_state_mode=mvstate2"]
 
 
-def test_g3_production_repair_path_does_not_discover_selector_checkpoints() -> None:
+def test_g3_production_repair_path_uses_lazy_authenticated_selector_checkpoints() -> None:
     source = Path(runtime.__file__).read_text(encoding="utf-8")
     ensure_source = source.split("def _ensure_target_multi_view_repair_v2", 1)[1]
     ensure_source = ensure_source.split("def install_campaign_hardening", 1)[0]
     assert "_all_valid_rung_states(" not in ensure_source
-    assert "checkpoint_states" not in ensure_source
+    assert "_repair_checkpoint_state_provider(" in ensure_source
+    assert "checkpoint_state_provider=checkpoint_state_provider" in ensure_source
+    assert "repair_checkpoint_reuse=true" in ensure_source
     assert "build_target_multi_view_repair_plan_v2(" in ensure_source

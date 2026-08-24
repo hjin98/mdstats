@@ -13,6 +13,8 @@ import mmap
 import os
 from pathlib import Path
 import pickle
+from dataclasses import fields, is_dataclass
+from collections.abc import Mapping
 from typing import Any, BinaryIO
 
 import numpy as np
@@ -136,6 +138,49 @@ class _ArrayReferenceUnpickler(pickle.Unpickler):
             return array
         raise pickle.UnpicklingError(f"Unsupported array reference kind: {kind!r}")
 
+
+
+def estimate_array_reference_spill_bytes(
+    value: Any, *, externalize_bytes: int = _DEFAULT_EXTERNALIZE_BYTES
+) -> int:
+    """Estimate NPY bytes that ``dump_with_array_references`` will externalize.
+
+    Direct mmap views contribute no new disk bytes.  Large in-memory arrays are
+    counted once by object identity with a small NPY-header allowance.  The
+    traversal intentionally covers the immutable dataclass/container graph used
+    by DATA8 worker contexts without invoking arbitrary properties.
+    """
+
+    threshold = max(0, int(externalize_bytes))
+    seen: set[int] = set()
+
+    def visit(obj: Any) -> int:
+        if isinstance(obj, np.ndarray):
+            key = id(obj)
+            if key in seen:
+                return 0
+            seen.add(key)
+            if _root_memmap(obj) is not None and _order(obj) is not None:
+                return 0
+            return int(obj.nbytes) + 4096 if int(obj.nbytes) >= threshold else 0
+        if isinstance(obj, (str, bytes, bytearray, int, float, bool, type(None), Path)):
+            return 0
+        key = id(obj)
+        if key in seen:
+            return 0
+        seen.add(key)
+        if isinstance(obj, Mapping):
+            return sum(visit(k) + visit(v) for k, v in obj.items())
+        if isinstance(obj, (tuple, list, set, frozenset)):
+            return sum(visit(item) for item in obj)
+        if is_dataclass(obj) and not isinstance(obj, type):
+            return sum(visit(getattr(obj, field.name)) for field in fields(obj))
+        state = getattr(obj, "__dict__", None)
+        if isinstance(state, dict):
+            return visit(state)
+        return 0
+
+    return visit(value)
 
 def dump_with_array_references(
     value: Any,

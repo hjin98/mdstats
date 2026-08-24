@@ -229,7 +229,7 @@ def test_cpu_runner_executes_independent_jobs_concurrently(monkeypatch) -> None:
     from mdstats.training_data import campaign_cli
 
     resources = _resources(cpu=8, ram_gib=64)
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: resources)
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: resources)
 
     class Probe:
         def __init__(self, **kwargs):
@@ -238,8 +238,8 @@ def test_cpu_runner_executes_independent_jobs_concurrently(monkeypatch) -> None:
         def sample(self, **kwargs):
             return CpuTelemetrySample(time.monotonic(), 0.0)
 
-    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", Probe)
-    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
 
     lock = threading.Lock()
     active = 0
@@ -499,7 +499,7 @@ def test_campaign_runner_polls_cuda_telemetry_from_task_launch(monkeypatch) -> N
     )
 
     resources = _resources(cpu=8, ram_gib=64)
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: resources)
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: resources)
 
     heavy_workload = threading.Event()
     telemetry_states: list[bool] = []
@@ -508,7 +508,7 @@ def test_campaign_runner_polls_cuda_telemetry_from_task_launch(monkeypatch) -> N
         telemetry_states.append(heavy_workload.is_set())
         return _gpu_sample(time.monotonic(), 2.0, 20.0)
 
-    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", fake_gpu_telemetry)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", fake_gpu_telemetry)
 
     class Probe:
         def __init__(self, **kwargs):
@@ -517,7 +517,7 @@ def test_campaign_runner_polls_cuda_telemetry_from_task_launch(monkeypatch) -> N
         def sample(self, **kwargs):
             return CpuTelemetrySample(time.monotonic(), 1.0)
 
-    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", Probe)
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", Probe)
 
     def work(value: int) -> int:
         report_inference_worker_phase("checking lightweight inputs")
@@ -582,7 +582,7 @@ def test_campaign_runner_reports_evaluation_stage_transitions(monkeypatch, capsy
     )
 
     resources = _resources(cpu=4, ram_gib=32)
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: resources)
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: resources)
 
     class Probe:
         def __init__(self, **kwargs):
@@ -594,8 +594,8 @@ def test_campaign_runner_reports_evaluation_stage_transitions(monkeypatch, capsy
         def reset(self):
             pass
 
-    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", Probe)
-    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
 
     def work() -> int:
         report_inference_worker_phase("checking checkpoint paths")
@@ -855,7 +855,7 @@ def test_campaign_runner_refills_slot_before_parent_result_finalization(monkeypa
     from mdstats.training_data import campaign_cli
 
     resources = _resources(cpu=8, ram_gib=64)
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: resources)
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: resources)
 
     class Probe:
         def __init__(self, **kwargs):
@@ -867,8 +867,8 @@ def test_campaign_runner_refills_slot_before_parent_result_finalization(monkeypa
         def reset(self):
             pass
 
-    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", Probe)
-    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
 
     replacement_started = threading.Event()
     callback_observed_replacement: list[bool] = []
@@ -932,7 +932,7 @@ def test_success_callback_can_publish_artifact_before_other_jobs_finish(tmp_path
     from mdstats.training_data import campaign_cli
 
     resources = _resources(cpu=8, ram_gib=64)
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: resources)
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: resources)
 
     class Probe:
         def __init__(self, **kwargs):
@@ -944,8 +944,8 @@ def test_success_callback_can_publish_artifact_before_other_jobs_finish(tmp_path
         def reset(self):
             pass
 
-    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", Probe)
-    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
 
     long_job_done = threading.Event()
     published_while_sibling_active: list[bool] = []

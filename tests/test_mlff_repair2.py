@@ -5,6 +5,15 @@ import pytest
 import mdstats
 from mdstats.training_data.target_coverage_sparse_forward_view import target_coverage_sparse_forward_view
 
+from mdstats.training_data.target_multi_view_selector import (
+    TargetMultiViewSelectorPolicy as LegacySelectorPolicy,
+    build_target_multi_view_selection_plan as build_legacy_selection_plan,
+)
+from mdstats.training_data.target_multi_view_repair import (
+    TargetMultiViewRepairPolicy as LegacyRepairPolicy,
+    build_target_multi_view_repair_plan as build_legacy_repair_plan,
+)
+
 from mdstats.training_data.target_multi_view_repair_v2 import (
     TargetMultiViewRepairPolicyV2,
     TargetMultiViewRepairPlanV2,
@@ -18,7 +27,7 @@ from mdstats.training_data.target_multi_view_selector_v2 import (
     build_target_multi_view_selection_plan_v2,
 )
 from tests.test_mlff_mvsel2_forward import _forward_fixture
-from tests.test_mlff_target_data2c_repair1 import _redundant_selection
+from tests._mlff_multiview_legacy_fixtures import _redundant_selection
 
 
 def _trace(plan, domain_id="target"):
@@ -61,7 +70,7 @@ def _policy_payload_without_authority(policy):
 
 
 def test_repair2_default_policy_is_exact_repair1_semantic_mirror() -> None:
-    legacy = mdstats.TargetMultiViewRepairPolicy()
+    legacy = LegacyRepairPolicy()
     forward = TargetMultiViewRepairPolicyV2()
     assert _policy_payload_without_authority(forward) == _policy_payload_without_authority(legacy)
 
@@ -89,7 +98,7 @@ def test_repair2_policy_validation_matches_repair1_fail_closed_contract(field: s
     legacy_kwargs = {field: invalid}
     forward_kwargs = {field: invalid}
     with pytest.raises(mdstats.TrainingDataInputError):
-        mdstats.TargetMultiViewRepairPolicy(**legacy_kwargs)
+        LegacyRepairPolicy(**legacy_kwargs)
     with pytest.raises(mdstats.TrainingDataInputError):
         TargetMultiViewRepairPolicyV2(**forward_kwargs)
 
@@ -97,12 +106,12 @@ def test_repair2_policy_validation_matches_repair1_fail_closed_contract(field: s
 def test_repair2_matches_legacy_trace_and_is_schedule_invariant() -> None:
     reference, index, forward = _forward_fixture()
     sizes = (4, 8, 12, 16)
-    legacy_selection = mdstats.build_target_multi_view_selection_plan(
-        reference, index, policy=mdstats.TargetMultiViewSelectorPolicy(target_sizes=sizes)
+    legacy_selection = build_legacy_selection_plan(
+        reference, index, policy=LegacySelectorPolicy(target_sizes=sizes)
     )
-    legacy = mdstats.build_target_multi_view_repair_plan(
+    legacy = build_legacy_repair_plan(
         reference, index, legacy_selection,
-        policy=mdstats.TargetMultiViewRepairPolicy(max_passes_per_shell=2, max_swaps_per_shell=8),
+        policy=LegacyRepairPolicy(max_passes_per_shell=2, max_swaps_per_shell=8),
         execution_mode="reference",
     )
     selection = build_target_multi_view_selection_plan_v2(
@@ -154,11 +163,11 @@ def test_repair2_reproduces_nonempty_legacy_repair_trace_under_default_policy() 
             phase_a_completed_at=legacy_domain.phase_a_completed_at,
         ),),
     )
-    legacy = mdstats.build_target_multi_view_repair_plan(
+    legacy = build_legacy_repair_plan(
         reference,
         index,
         legacy_selection,
-        policy=mdstats.TargetMultiViewRepairPolicy(),
+        policy=LegacyRepairPolicy(),
         execution_mode="reference",
     )
     repaired = build_target_multi_view_repair_plan_v2(

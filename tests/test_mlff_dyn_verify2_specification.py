@@ -8,14 +8,10 @@ from mdstats.training_data import campaign_cli
 
 
 def test_dyn_verify2_is_public_and_versioned() -> None:
-    assert mdstats.__version__ == "0.20.180a0"
+    assert mdstats.__version__ == "0.20.242a0"
     assert hasattr(mdstats, "DynVerifyPolicy")
     assert hasattr(mdstats, "DynVerifyCampaignRecord")
     assert "dyn-verify2.2026-08.v1" in mdstats.DYN_VERIFY_IMPLEMENTATION_VERSION
-    root = Path(__file__).resolve().parents[1]
-    text = (root / "docs" / "arch_manuals" / "mlff_training_data_architecture.md").read_text(encoding="utf-8")
-    assert "DYN-VERIFY2 is implemented in `mdstats 0.20.175a0`" in text
-    assert "Implementation status (`0.20.175a0`): complete" in text
 
 
 def test_relax_hands_passing_candidates_to_deployed_dyn_gate() -> None:
@@ -27,12 +23,16 @@ def test_relax_hands_passing_candidates_to_deployed_dyn_gate() -> None:
     assert "expected_executable_sha256" in dyn_source
 
 
-def test_dyn_stage_c_binds_physical_evidence_back_to_target_size_funnel() -> None:
-    source = inspect.getsource(campaign_cli._finalize_train2_dyn) + inspect.getsource(campaign_cli._dyn_stage_c_training_evidence)
-    assert "with_stage_c_evidence" in source
-    assert "physical_qualification_passed" in source
-    assert "physical_qualification_digest" in source
-    assert "_ensure_target_production_corpus_decision" in source
+def test_dyn_is_post_selection_only_and_cannot_mutate_target_size() -> None:
+    finalize = inspect.getsource(campaign_cli._finalize_train2_dyn)
+    dyn_source = inspect.getsource(campaign_cli._command_verify_train2_dyn)
+    assert "post-selection production verification only" in finalize
+    assert "_load_verified_target_size_study_authority" in finalize
+    assert "_command_verify_train2_select2" in finalize
+    combined = finalize + dyn_source
+    assert "with_stage_c_evidence" not in combined
+    assert "_ensure_target_production_corpus_decision" not in combined
+    assert "attach_epoch_" not in combined
 
 
 def test_generated_default_contains_frozen_dyn_protocol() -> None:

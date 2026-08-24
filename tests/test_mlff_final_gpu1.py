@@ -25,7 +25,7 @@ def test_final_gpu1_preflight_fails_closed_without_locked_models(tmp_path: Path)
     mh1.write_bytes(b"not-the-locked-model")
     mpa0.write_bytes(b"not-the-locked-model")
     payload = module.build_preflight(mh1, mpa0)
-    assert payload["schema"] == "mdstats.mlff-final-gpu1.preflight.2026-08.v10"
+    assert payload["schema"] == "mdstats.mlff-final-gpu1.preflight.target-size-v5.2026-08.v11"
     assert payload["qualification_state"] == "deferred_not_executed"
     assert "locked_foundation_model_identities" in payload["blocking_requirements"]
     assert not any(item["identity_passed"] for item in payload["foundation_models"])
@@ -57,8 +57,8 @@ def test_final_gpu1_locked_scope_contains_science_and_performance_gates() -> Non
     assert module.LOCKED_MODELS["mace_mh_1"]["sha256"] == "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde"
     assert module.LOCKED_MODELS["mace_mpa_0"]["sha256"] == "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
     assert "SIZE_FIDELITY1_EXHAUSTIVE_CALIBRATION" in module.DEFERRED_GPU_GATES
-    assert "SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION" in module.DEFERRED_GPU_GATES
-    assert "TARGET_DATA2C_MVMIGRATE1_LEARNING_CONTROLS" in module.DEFERRED_GPU_GATES
+    assert "SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION" not in module.DEFERRED_GPU_GATES
+    assert "TARGET_DATA2C_MVMIGRATE1_LEARNING_CONTROLS" not in module.DEFERRED_GPU_GATES
     assert "PERF_P2R_WHOLE_FUNNEL_GPU_PERFORMANCE" in module.DEFERRED_GPU_GATES
     assert "CUEQ_DEP1_RUNTIME_FREEZE" in module.DEFERRED_GPU_GATES
     assert "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION" in module.DEFERRED_GPU_GATES

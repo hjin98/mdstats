@@ -282,6 +282,10 @@ def write_target_coverage_native_record(
                     "label_domain_id": domain.label_domain_id,
                     "frame_uids": list(domain.frame_uids),
                     "frame_domain_digest": domain.frame_domain_digest,
+                    "source_label_domain_id": domain.source_label_domain_id,
+                    "training_domain_kind": domain.training_domain_kind,
+                    "training_domain_fold_index": domain.training_domain_fold_index,
+                    "training_domain_digest": domain.training_domain_digest,
                     "strata": [item.to_dict() for item in domain.strata],
                     "families": family_rows,
                     "content_digest": domain.content_digest,
@@ -432,6 +436,24 @@ def read_target_coverage_native_record(
                 for item in domain_meta.get("strata", ())
             ),
             frame_domain_digest=str(domain_meta["frame_domain_digest"]),
+            source_label_domain_id=(
+                None
+                if domain_meta.get("source_label_domain_id") is None
+                else str(domain_meta["source_label_domain_id"])
+            ),
+            training_domain_kind=str(
+                domain_meta.get("training_domain_kind", "final_development")
+            ),
+            training_domain_fold_index=(
+                None
+                if domain_meta.get("training_domain_fold_index") is None
+                else int(domain_meta["training_domain_fold_index"])
+            ),
+            training_domain_digest=(
+                None
+                if domain_meta.get("training_domain_digest") is None
+                else str(domain_meta["training_domain_digest"])
+            ),
         )
         if domain.content_digest != str(domain_meta["content_digest"]):
             raise TargetCoverageNativeStoreError("TARGET-DATA2B native domain digest mismatch.")

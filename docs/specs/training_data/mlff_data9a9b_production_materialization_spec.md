@@ -1,8 +1,8 @@
 ---
 title: "MLFF-DATA9A9b Production DATA6-DATA8 Materialization"
 author: "mdstats project"
-date: "2026-07-30"
-version: "0.20.55a0"
+date: "2026-08-23"
+version: "0.20.132a0"
 geometry: margin=0.8in
 fontsize: 10pt
 header-includes:
@@ -74,10 +74,18 @@ when the replay plan is unresolved, when the completed DATA6 sweep differs from
 the DATA6 bundle, or when the DATA8 foundation checkpoint differs from the
 checkpoint used for DATA6 predictions.
 
+The current plan schema is `mdstats.production-materialization-plan.v10`.
+Current TRAIN2 target-size-prefix authority is independent of foundation-head
+topology: a genuinely single-head foundation carries no selected-head
+qualification, while an inspected multi-head foundation still requires the
+qualified EXTRACT1 selected-head training realization. Legacy v9 plans remain
+readable and retain their historical requirement for selected-head
+qualification.
+
 # 4. Restart semantics
 
 Each DATA7 domain is written independently to
-`data7/<domain_digest>.json`. `ProductionData7ArtifactRecord` binds:
+`data7/<domain_digest>.data7.zip`. `ProductionData7ArtifactRecord` binds:
 
 - domain digest;
 - DATA7 bundle digest;
@@ -85,22 +93,44 @@ Each DATA7 domain is written independently to
 - file SHA-256.
 
 `ProductionMaterializationCheckpoint` is atomically replaced after every newly
-completed domain. A bounded run may stop after `max_new_data7_domains`; a later
-run verifies and reuses all valid records.
+committed canonical domain. A bounded run may stop after
+`max_new_data7_domains`; shared-cache hits count toward that limit because the
+limit governs checkpoint advancement, not expensive-computation count. A later
+run verifies and reuses all valid records. Parallel domain completion may be
+out of order, but checkpoint mutation remains in canonical plan order.
 
 The production implementation SHALL avoid hidden repeated whole-corpus work:
 
 - build the frame-array index once and reuse it across DATA7 domains;
-- cache checkpoint-bound descriptor summaries across overlapping final/fold
-  domains while keeping each domain's fitted scaler/PCA independent;
-- hash each newly streamed DATA7 JSON during the atomic write instead of
-  rereading it immediately;
-- retain a DATA7 bundle already parsed for verification or construction when
-  the same invocation immediately assembles DATA8;
-- release descriptor-summary caches before loading all DATA7 bundles for DATA8
-  to prevent swap-induced wall-time growth;
+- use authenticated columnar/shard-batched raw descriptor sources where
+  available while keeping every domain's fitted scaler/PCA/E0/weight state
+  independent;
+- admit independent final/fold domain fits through the runtime resource queue
+  using the campaign CPU budget, a conservative peak incremental-memory
+  estimate, inner native widths of one, and no GPU jobs;
+- keep mutable extraction caches task-local under concurrent fitting;
+- have workers publish immutable authenticated DATA7 cache generations and
+  return compact receipts while the coordinator alone mutates production
+  records/checkpoints;
 - reuse lineage-identical DATA7 artifacts across seeds and modes through the
-  shared recipe cache.
+  shared recipe cache; current cache writes use atomic content-addressed
+  generations while legacy flat generations remain read-compatible;
+- verify and return each promoted DATA7 bundle in one load path rather than
+  hashing/parsing it twice;
+- derive canonical final/CV feature-fit domains inside the materialization-plan
+  builder and reject duplicate topology keys, missing final-development domains,
+  or CV topology that differs from the authenticated CV plans;
+- resolve target-size prefixes lazily by canonical training-domain digest while
+  confining synthetic coverage-authority IDs to REPAIR2 lookup; derive each
+  pre-selection evaluation cohort from the authenticated final coverage domain
+  minus the maximum-qualified prefix;
+- authenticate shared fitted-core results separately from their execution recipe,
+  publish fitted-core indices create-once/validate-winner, and reject divergent
+  full-DATA7 or fitted-core results for one recipe;
+- treat stale reconstructible fitted-core indices as cache misses and fall back to
+  a fresh fit after exact lineage/foundation-input validation;
+- admit authenticated fitted-core reuse with a conservative reuse-path memory
+  estimate rather than the full feature-fit peak.
 
 These rules make post-DATA6 orchestration linear in frame count for fixed fold
 count, feature dimension, and largest selection ladder, apart from bounded
@@ -131,7 +161,7 @@ provenance, counts, species, and replay policy must remain unchanged.
 
 # 6. DATA8 promotion
 
-DATA8 construction begins only when every planned DATA7 domain is valid. It is built in hidden staging, verified, moved into a content-addressed generation directory, and exposed by an atomic `data8` symlink switch. The output tree contains:
+DATA8 construction begins only when every planned DATA7 domain is valid. Immutable fixed-file recipes are enumerated and deduplicated before production-tree mutation. Cache misses may be populated by balanced fresh CPU-only interpreter batches using compact recipe/path descriptors and mmap/file-backed read-only context when the estimated output volume is sufficient to amortize fresh-interpreter startup; smaller batches use the serial producer. CPU, RAM, task count, the measured/estimated worker-context spill, and the configured free-disk reserve bound this execution-only concurrency. If the transient context cannot coexist with the required immutable outputs and reserve, DATA8 falls back to the serial producer before launching subprocesses. Workers publish only authenticated fixed-file cache generations; the parent then assembles the production tree canonically in hidden staging, verifies it, moves it into a content-addressed generation directory, and exposes it by an atomic `data8` symlink switch. The output tree contains:
 
 - one final-development job;
 - one job per cross-validation fold;
@@ -142,9 +172,11 @@ DATA8 construction begins only when every planned DATA7 domain is valid. It is b
 - sealed locked-test metadata without materialized locked-test labels.
 
 A DATA8 artifact record binds the native DATA8 bundle digest and a deterministic
-relative-path/file-SHA tree manifest. Completion is promoted only after the
-whole tree and bundle can be reloaded and verified. Failed construction removes
-an unpromoted partial DATA8 directory and records failure evidence.
+relative-path/file-SHA tree manifest. Fixed-file cache population is
+reconstructible execution state and never replaces this promoted authority.
+Externally owned foundation, selected-head, and replay sources are authenticated before crossing an inode-independent copy boundary into mdstats-owned content-addressed snapshots. Variant trees may hardlink-or-copy only from those owned immutable snapshots/caches, so later external in-place mutation cannot change an existing materialization. Repeated weighted-replay byte realizations and MLCV TRUE_DFT replay-light monitor realizations may be reused from exact recipe-bound execution caches. Completion is promoted only after the whole staged tree is hashed and its bundle is valid. Restored records perform
+independent tree verification. Failed construction removes an unpromoted
+partial DATA8 directory and records failure evidence.
 
 # 7. Atomic-reference modes
 
@@ -209,6 +241,13 @@ The release gate must cover:
 12. descriptor-summary reuse across overlapping DATA7 domains;
 13. shared DATA7 reuse across training variants and process restarts;
 14. no duplicate parse/hash pass when verified DATA7 immediately feeds DATA8.
+15. target-size candidate-prefix planning scales with unique domain/size pairs rather than development-frame count times optimizer variants;
+16. target-size size changes reuse an authenticated selection-invariant DATA7 fitted core while producing the exact same size-specific DATA7 bundle digest as a clean refit;
+17. current DATA7 shared-cache recipe identity excludes DATA8-only evaluation membership and target-study outcome state, with legacy v1 recipe reads preserved;
+18. the real campaign preparation bridge reaches DATA7 for folds=0 screening, canonical selected CV, and per-seed selected CV without synthetic-ID namespace leakage;
+19. malformed plan topology (missing final domain, duplicate topology key, or wrong CV fold membership) fails before DATA7 execution;
+20. same-recipe divergent full DATA7 and fitted-core results fail closed, including concurrent fitted-core publishers;
+21. stale fitted-core carriers fall back to fresh fitting and reuse-path RAM admission is evaluated independently from full-fit RAM.
 
 # 11. Scope of the current implementation
 

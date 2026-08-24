@@ -29,7 +29,11 @@ from scipy.sparse import csr_matrix
 
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
 from ._sparse_vector_kernels import csr_gather_rows
-from .target_coverage import _coverage_array_reference, _validate_array_reference
+from .target_coverage import (
+    _coverage_array_reference,
+    _validate_array_reference,
+    target_coverage_role_domain_view,
+)
 from .target_coverage_exact_neighborhood import (
     TargetCoverageExactNeighborhoodFamily,
     TargetCoverageExactNeighborhoodStore,
@@ -52,7 +56,8 @@ TARGET_COVERAGE_HARD_OBLIGATION_SCHEMA = "mdstats.target-coverage-hard-obligatio
 TARGET_COVERAGE_SPARSE_DOMAIN_SCHEMA = "mdstats.target-coverage-sparse-domain-index.v1"
 TARGET_COVERAGE_SPARSE_INDEX_SCHEMA = "mdstats.target-coverage-sparse-index.v1"
 TARGET_COVERAGE_SPARSE_INDEX_VERSION = "mdstats.target-data2c-mvidx1.coverage-index.2026-08.v1"
-TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION = "mdstats.target-data2c-mvidx1.native-persistence.2026-08.v1"
+TARGET_COVERAGE_SPARSE_INDEX_LEGACY_PERSISTENCE_VERSION = "mdstats.target-data2c-mvidx1.native-persistence.2026-08.v1"
+TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION = "mdstats.target-data2c-mvidx1.native-persistence.2026-08.v2"
 
 _UINT32_MAX = int(np.iinfo(np.uint32).max)
 _INT32_MAX = int(np.iinfo(np.int32).max)
@@ -1354,7 +1359,7 @@ def build_target_coverage_sparse_index(
 
     domains: list[TargetCoverageSparseDomainIndex] = []
     for domain in target_coverage_reference.domains:
-        role_domain = target_data_role_freeze.domain(domain.label_domain_id)
+        role_domain = target_coverage_role_domain_view(target_data_role_freeze, domain)
         if set(domain.frame_uids) != set(role_domain.size_development_frame_uids):
             raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 coverage/role frame-domain mismatch.")
         required = tuple(sorted((item for item in domain.families if item.required), key=lambda item: item.family_id))
@@ -1473,7 +1478,9 @@ def validate_target_coverage_sparse_index_authority(
 
     for domain_index in index.domains:
         reference_domain = target_coverage_reference.domain(domain_index.label_domain_id)
-        role_domain = target_data_role_freeze.domain(domain_index.label_domain_id)
+        role_domain = target_coverage_role_domain_view(
+            target_data_role_freeze, reference_domain
+        )
         if domain_index.frame_domain_digest != reference_domain.frame_domain_digest:
             raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 frame-domain digest mismatch.")
         required = tuple(sorted((item for item in reference_domain.families if item.required), key=lambda item: item.family_id))

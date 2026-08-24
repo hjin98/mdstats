@@ -22,6 +22,7 @@ from ase.stress import full_3x3_to_voigt_6_stress
 
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
 from .train2_policy import CheckpointAdmissibilityPolicy, CheckpointSelectionPolicy
+from .target_size_study import materialize_candidate_prefix
 
 EVAL2_TRAJECTORY_POINT_SCHEMA = "mdstats.eval2-trajectory-point.v1"
 EVAL2_TARGET_BLOCK_METRIC_SCHEMA = "mdstats.eval2-target-block-metric.v1"
@@ -30,7 +31,41 @@ EVAL2_CHECKPOINT_RECORD_SCHEMA = "mdstats.eval2-checkpoint-record.v1"
 EVAL2_BOOTSTRAP_COMPARISON_SCHEMA = "mdstats.eval2-bootstrap-comparison.v1"
 EVAL2_RUN_RECORD_SCHEMA = "mdstats.eval2-run-record.v1"
 EVAL2_EVALUATION_PLAN_SCHEMA = "mdstats.eval2-evaluation-plan.v1"
-EVAL2_TARGET_ROLE_SCHEMA = "mdstats.eval2-target-role.v1"
+EVAL2_TARGET_ROLE_SCHEMA = "mdstats.eval2-target-role.v2"
+EVAL2_NUMERICAL_FAILURE_SCHEMA = "mdstats.eval2-numerical-failure.v1"
+EVAL2_NUMERICAL_FAILURE_CODES = frozenset({
+    "eval_nonfinite_energy_prediction",
+    "eval_nonfinite_force_prediction",
+    "eval_nonfinite_stress_prediction",
+    "eval_nonfinite_target_metric",
+})
+
+
+class Eval2NumericalEvaluationError(RuntimeError):
+    """Positive non-finite scientific failure during target-only EVAL2.
+
+    Shape, schema, lineage, missing-artifact, and programming defects remain
+    ordinary errors and are never converted to target-size scientific evidence.
+    """
+
+    def __init__(
+        self, failure_code: str, reason: str, *, target_role_digest: str, prediction_digest: str
+    ) -> None:
+        code = str(failure_code)
+        if code not in EVAL2_NUMERICAL_FAILURE_CODES:
+            raise ValueError(f"Unsupported EVAL2 numerical failure code: {code!r}")
+        self.failure_code = code
+        self.reason = str(reason)
+        self.target_role_digest = validate_digest(target_role_digest, name="target_role_digest")
+        self.prediction_digest = validate_digest(prediction_digest, name="prediction_digest")
+        self.content_digest = digest({
+            "schema": EVAL2_NUMERICAL_FAILURE_SCHEMA,
+            "failure_code": self.failure_code,
+            "reason": self.reason,
+            "target_role_digest": self.target_role_digest,
+            "prediction_digest": self.prediction_digest,
+        })
+        super().__init__(f"{self.failure_code}: {self.reason}")
 
 
 # AUDIT-EVAL-PERF1 execution-only cache.  The authoritative target-role and
@@ -177,7 +212,7 @@ class Eval2TargetRole:
     label_domain_id: str
     role_kind: str
     target_data_role_freeze_digest: str
-    target_data_ladder_digest: str | None
+    target_size_study_digest: str | None
     evaluation_frame_uids: tuple[str, ...]
     correlation_block_ids: tuple[str, ...]
     excluded_training_frame_uids: tuple[str, ...] = ()
@@ -192,8 +227,8 @@ class Eval2TargetRole:
         if self.role_kind not in {"size_development_complement", "size_development_coarse", "cv_checkpoint_monitor"}:
             raise TrainingDataInputError("Unsupported EVAL2 target role kind.")
         object.__setattr__(self, "target_data_role_freeze_digest", validate_digest(self.target_data_role_freeze_digest, name="target_data_role_freeze_digest"))
-        if self.target_data_ladder_digest is not None:
-            object.__setattr__(self, "target_data_ladder_digest", validate_digest(self.target_data_ladder_digest, name="target_data_ladder_digest"))
+        if self.target_size_study_digest is not None:
+            object.__setattr__(self, "target_size_study_digest", validate_digest(self.target_size_study_digest, name="target_size_study_digest"))
         frames = tuple(validate_digest(v, name="frame_uid") for v in self.evaluation_frame_uids)
         blocks = tuple(validate_digest(v, name="correlation_block_id") for v in self.correlation_block_ids)
         excluded = tuple(validate_digest(v, name="frame_uid") for v in self.excluded_training_frame_uids)
@@ -204,11 +239,11 @@ class Eval2TargetRole:
         if self.role_kind == "cv_checkpoint_monitor":
             if self.fold_index is None or int(self.fold_index) < 0 or excluded:
                 raise TrainingDataInputError("EVAL2 CV target role requires a fold index and no training-complement exclusion.")
-            if self.target_data_ladder_digest is not None:
-                raise TrainingDataInputError("EVAL2 CV target role is independent of the target-size ladder.")
+            if self.target_size_study_digest is not None:
+                raise TrainingDataInputError("EVAL2 CV target role is independent of target-size study authority.")
         else:
-            if self.fold_index is not None or self.target_data_ladder_digest is None or not excluded:
-                raise TrainingDataInputError("EVAL2 size-study/final-development role requires ladder identity and excluded training membership.")
+            if self.fold_index is not None or self.target_size_study_digest is None or not excluded:
+                raise TrainingDataInputError("EVAL2 size-study/final-development role requires target-size-study identity and excluded training membership.")
         object.__setattr__(self, "evaluation_frame_uids", frames)
         object.__setattr__(self, "correlation_block_ids", blocks)
         object.__setattr__(self, "excluded_training_frame_uids", excluded)
@@ -220,7 +255,7 @@ class Eval2TargetRole:
             "label_domain_id": self.label_domain_id,
             "role_kind": self.role_kind,
             "target_data_role_freeze_digest": self.target_data_role_freeze_digest,
-            "target_data_ladder_digest": self.target_data_ladder_digest,
+            "target_size_study_digest": self.target_size_study_digest,
             "evaluation_frame_uids": list(self.evaluation_frame_uids),
             "correlation_block_ids": list(self.correlation_block_ids),
             "excluded_training_frame_uids": list(self.excluded_training_frame_uids),
@@ -242,7 +277,7 @@ class Eval2TargetRole:
             label_domain_id=str(payload["label_domain_id"]),
             role_kind=str(payload["role_kind"]),
             target_data_role_freeze_digest=str(payload["target_data_role_freeze_digest"]),
-            target_data_ladder_digest=None if payload.get("target_data_ladder_digest") is None else str(payload["target_data_ladder_digest"]),
+            target_size_study_digest=None if payload.get("target_size_study_digest") is None else str(payload["target_size_study_digest"]),
             evaluation_frame_uids=tuple(str(v) for v in payload["evaluation_frame_uids"]),
             correlation_block_ids=tuple(str(v) for v in payload["correlation_block_ids"]),
             excluded_training_frame_uids=tuple(str(v) for v in payload.get("excluded_training_frame_uids", ())),
@@ -264,31 +299,37 @@ def _development_frame_to_block(role_domain: Any) -> dict[str, str]:
 
 def build_eval2_size_study_target_role(
     role_freeze: Any,
-    ladder: Any,
+    repair2: Any,
+    target_size_study: Any,
     *,
     label_domain_id: str,
     maximum_training_size: int,
 ) -> Eval2TargetRole:
-    """Freeze one target-size evaluation role entirely inside development.
+    """Freeze one leakage-safe development-complement role for target-size v5.
 
-    The role is the TARGET-DATA2A development pool minus the largest rung that
-    can be trained in the current size comparison. Because TARGET-DATA2C rungs
-    are nested, this is disjoint from every smaller candidate too.
+    REPAIR2 owns candidate membership.  Excluding its largest candidate prefix
+    yields one common target-only evaluation cohort disjoint from every smaller
+    nested candidate; no TARGET-DATA2C ladder authority is involved.
     """
 
     domain = role_freeze.domain(label_domain_id)
-    ladder_domain = ladder.domain(label_domain_id)
-    matches = [r for r in ladder_domain.rungs if r.materializable and r.target_size == int(maximum_training_size)]
-    if len(matches) != 1:
-        raise TrainingDataInputError("EVAL2 size-study role cannot resolve the largest training rung.")
-    excluded = tuple(matches[0].frame_uids)
-    role_freeze.require_size_selection_frames(excluded, label_domain_id=label_domain_id, context="EVAL2 excluded target-size training rung")
+    excluded = tuple(
+        materialize_candidate_prefix(
+            target_size_study,
+            repair2=repair2,
+            label_domain_id=label_domain_id,
+            target_size=int(maximum_training_size),
+        )
+    )
+    role_freeze.require_size_selection_frames(
+        excluded, label_domain_id=label_domain_id,
+        context="EVAL2 excluded target-size v5 REPAIR2 prefix",
+    )
     excluded_set = set(excluded)
     evaluation = tuple(uid for uid in domain.size_development_frame_uids if uid not in excluded_set)
     if not evaluation:
         raise TrainingDataInputError(
-            "EVAL2 leakage-safe size-study target role is empty because the largest training rung consumes the entire development pool. "
-            "Reserve an independent development evaluation cohort before rerunning the size study."
+            "EVAL2 leakage-safe size-study target role is empty because the largest REPAIR2 prefix consumes the entire development pool."
         )
     frame_to_block = _development_frame_to_block(domain)
     blocks = tuple(frame_to_block[uid] for uid in evaluation)
@@ -296,7 +337,7 @@ def build_eval2_size_study_target_role(
         label_domain_id=label_domain_id,
         role_kind="size_development_complement",
         target_data_role_freeze_digest=role_freeze.content_digest,
-        target_data_ladder_digest=ladder.content_digest,
+        target_size_study_digest=target_size_study.candidate_authority_digest,
         evaluation_frame_uids=evaluation,
         correlation_block_ids=blocks,
         excluded_training_frame_uids=excluded,
@@ -305,15 +346,18 @@ def build_eval2_size_study_target_role(
 
 def build_eval2_coarse_size_study_target_role(
     role_freeze: Any,
-    ladder: Any,
+    repair2: Any,
+    target_size_study: Any,
     *,
     label_domain_id: str,
     maximum_training_size: int,
     maximum_configurations: int = 256,
 ) -> Eval2TargetRole:
-    """Freeze one small common target-only monitor for the epoch-3 screen.
+    """Legacy/pre-v5 bounded target-only monitor helper.
 
-    The monitor is sampled from the same leakage-safe development complement
+    Current Target Size v5 orchestration does not call this helper; it is retained
+    only for public compatibility with pre-v5 callers.  The monitor is sampled
+    from the same leakage-safe development complement
     used by the full size-study role.  Sampling is deterministic and balanced
     across correlation blocks: quotas are assigned round-robin in development
     block order and each block contributes systematic interior positions.
@@ -326,7 +370,8 @@ def build_eval2_coarse_size_study_target_role(
         raise TrainingDataInputError("EVAL2 coarse size-study monitor size must be positive.")
     full = build_eval2_size_study_target_role(
         role_freeze,
-        ladder,
+        repair2,
+        target_size_study,
         label_domain_id=label_domain_id,
         maximum_training_size=maximum_training_size,
     )
@@ -384,7 +429,7 @@ def build_eval2_coarse_size_study_target_role(
         label_domain_id=full.label_domain_id,
         role_kind="size_development_coarse",
         target_data_role_freeze_digest=full.target_data_role_freeze_digest,
-        target_data_ladder_digest=full.target_data_ladder_digest,
+        target_size_study_digest=full.target_size_study_digest,
         evaluation_frame_uids=selected_uids,
         correlation_block_ids=selected_blocks,
         excluded_training_frame_uids=full.excluded_training_frame_uids,
@@ -416,7 +461,7 @@ def build_eval2_cv_target_role(
         label_domain_id=label_domain_id,
         role_kind="cv_checkpoint_monitor",
         target_data_role_freeze_digest=role_freeze.content_digest,
-        target_data_ladder_digest=None,
+        target_size_study_digest=None,
         evaluation_frame_uids=tuple(frames),
         correlation_block_ids=tuple(blocks),
         fold_index=int(fold_index),
@@ -1106,15 +1151,27 @@ def eval2_target_metrics_from_prediction_view(
         stop = int(view.force_offsets[index + 1])
         pred_e = float(prediction.energy_ev)
         if not math.isfinite(pred_e):
-            raise TrainingDataInputError("EVAL2 predicted energy is non-finite.")
+            raise Eval2NumericalEvaluationError(
+                "eval_nonfinite_energy_prediction",
+                f"EVAL2 predicted energy is non-finite for target frame index {index}.",
+                target_role_digest=target_role_digest,
+                prediction_digest=prediction_digest,
+            )
         signed_energy_error_per_atom = (pred_e - float(view.reference_energies[index])) / natoms
         energy_abs_per_atom[index] = abs(signed_energy_error_per_atom)
         composition_key = metadata.composition_keys[index]
         energy_signed_per_atom_by_composition.setdefault(composition_key, []).append(signed_energy_error_per_atom)
 
         pred_f = np.asarray(prediction.forces_ev_per_angstrom, dtype=np.float64)
-        if pred_f.shape != (natoms, 3) or np.any(~np.isfinite(pred_f)):
-            raise TrainingDataInputError("EVAL2 predicted force shape/value is invalid.")
+        if pred_f.shape != (natoms, 3):
+            raise TrainingDataInputError("EVAL2 predicted force shape is invalid.")
+        if np.any(~np.isfinite(pred_f)):
+            raise Eval2NumericalEvaluationError(
+                "eval_nonfinite_force_prediction",
+                f"EVAL2 predicted forces are non-finite for target frame index {index}.",
+                target_role_digest=target_role_digest,
+                prediction_digest=prediction_digest,
+            )
         delta = pred_f - view.reference_forces[start:stop]
         sse = float(np.sum(delta * delta, dtype=np.float64))
         components = int(delta.size)
@@ -1150,8 +1207,15 @@ def eval2_target_metrics_from_prediction_view(
             if prediction.stress_ev_per_angstrom3 is None:
                 raise TrainingDataInputError("EVAL2 target has stress labels but prediction omitted stress.")
             predicted_stress = full_3x3_to_voigt_6_stress(np.asarray(prediction.stress_ev_per_angstrom3, dtype=np.float64)).reshape(-1)
-            if predicted_stress.shape != (6,) or np.any(~np.isfinite(predicted_stress)):
-                raise TrainingDataInputError("EVAL2 predicted stress is invalid.")
+            if predicted_stress.shape != (6,):
+                raise TrainingDataInputError("EVAL2 predicted stress shape is invalid.")
+            if np.any(~np.isfinite(predicted_stress)):
+                raise Eval2NumericalEvaluationError(
+                    "eval_nonfinite_stress_prediction",
+                    f"EVAL2 predicted stress is non-finite for target frame index {index}.",
+                    target_role_digest=target_role_digest,
+                    prediction_digest=prediction_digest,
+                )
             delta_stress = predicted_stress - view.reference_stresses[index]
             stress_sse += float(np.sum(delta_stress * delta_stress, dtype=np.float64))
             stress_count += int(delta_stress.size)
@@ -1200,20 +1264,41 @@ def eval2_target_metrics_from_prediction_view(
         )
         for code, block in enumerate(metadata.block_labels)
     )
+    energy_mae = float(np.mean(energy_abs_per_atom))
+    force_rmse = math.sqrt(force_sse / force_count)
+    p90 = float(np.quantile(vector, 0.90))
+    p95 = float(np.quantile(vector, 0.95))
+    p99 = float(np.quantile(vector, 0.99))
+    stress_rmse = None if stress_count == 0 else math.sqrt(stress_sse / stress_count)
+    numerical_metrics = [
+        energy_mae, force_rmse, species_macro, p90, p95, p99,
+        *(value for _, value in species),
+        *(value for _, value in strata),
+    ]
+    for optional in (relative_energy_rmse, worst, stress_rmse):
+        if optional is not None:
+            numerical_metrics.append(float(optional))
+    if any(not math.isfinite(float(value)) for value in numerical_metrics):
+        raise Eval2NumericalEvaluationError(
+            "eval_nonfinite_target_metric",
+            "EVAL2 target-only reduction produced a non-finite scientific metric.",
+            target_role_digest=target_role_digest,
+            prediction_digest=prediction_digest,
+        )
     return Eval2TargetMetricRecord(
         configuration_count=count,
         atom_count=int(view.total_atom_count),
-        energy_mae_ev_per_atom=float(np.mean(energy_abs_per_atom)),
+        energy_mae_ev_per_atom=energy_mae,
         relative_energy_rmse_ev_per_atom=relative_energy_rmse,
-        force_component_rmse_ev_per_angstrom=math.sqrt(force_sse / force_count),
+        force_component_rmse_ev_per_angstrom=force_rmse,
         species_macro_force_rmse_ev_per_angstrom=species_macro,
         species_force_rmse_ev_per_angstrom=species,
-        force_error_p90_ev_per_angstrom=float(np.quantile(vector, 0.90)),
-        force_error_p95_ev_per_angstrom=float(np.quantile(vector, 0.95)),
-        force_error_p99_ev_per_angstrom=float(np.quantile(vector, 0.99)),
+        force_error_p90_ev_per_angstrom=p90,
+        force_error_p95_ev_per_angstrom=p95,
+        force_error_p99_ev_per_angstrom=p99,
         worst_stratum_force_rmse_ev_per_angstrom=worst,
         stratum_force_rmse_ev_per_angstrom=strata,
-        stress_rmse_ev_per_angstrom3=None if stress_count == 0 else math.sqrt(stress_sse / stress_count),
+        stress_rmse_ev_per_angstrom3=stress_rmse,
         block_metrics=block_metrics,
         target_role_digest=target_role_digest,
         prediction_digest=prediction_digest,

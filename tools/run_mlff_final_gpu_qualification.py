@@ -26,7 +26,7 @@ from typing import Any, Mapping
 
 import mdstats
 
-SCHEMA = "mdstats.mlff-final-gpu1.preflight.2026-08.v10"
+SCHEMA = "mdstats.mlff-final-gpu1.preflight.target-size-v5.2026-08.v11"
 LOCKED_MODELS = {
     "mace_mh_1": {
         "label": "MACE-MH-1",
@@ -46,8 +46,6 @@ DEFERRED_GPU_GATES = (
     "MH1_TRAIN1_CUEQ_TRAINING_REALIZATION",
     "MH1_CERT1_GENERATED_DEFAULT_CUEQ_MATRIX",
     "SIZE_FIDELITY1_EXHAUSTIVE_CALIBRATION",
-    "SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION",
-    "TARGET_DATA2C_MVMIGRATE1_LEARNING_CONTROLS",
     "REPLAY_UNIFY1_GPU_PSEUDOLABEL_EXECUTION",
     "PERF_P2R_WHOLE_FUNNEL_GPU_PERFORMANCE",
     "CUEQ_DEP1_RUNTIME_FREEZE",
@@ -280,8 +278,6 @@ def build_preflight(mh1_model: Path, mpa0_model: Path, release_archive: Path | N
             "cueq_phase1_qualification": "mdstats.cueq-phase1-qualification.v1",
             "cueq_phase2_qualification": "mdstats.cueq-phase2-qualification.v1",
             "perf_cert1_qualification": mdstats.PERF_CERT1_QUALIFICATION_SCHEMA,
-            "size_fidelity2_qualification": mdstats.SIZE_FIDELITY2_REPORT_SCHEMA,
-            "target_mv_learning_control": mdstats.TARGET_MV_LEARNING_CONTROL_REPORT_SCHEMA,
             "final_gpu1_qualification": mdstats.FINAL_GPU1_QUALIFICATION_SCHEMA,
         },
         "executables": {"lmp": shutil.which("lmp"), "python": sys.executable},
@@ -348,7 +344,7 @@ def initialize_handoff(root: Path, mh1_model: Path, mpa0_model: Path, release_ar
         raise ValueError("Release archive is required and must be readable for FINAL-GPU1 handoff initialization.")
     policy = mdstats.FinalGpu1Policy()
     manifest = {
-        "schema": "mdstats.mlff-final-gpu1.handoff.2026-08.v1",
+        "schema": "mdstats.mlff-final-gpu1.handoff.target-size-v5.2026-08.v2",
         "preflight_schema": SCHEMA,
         "final_qualification_schema": mdstats.FINAL_GPU1_QUALIFICATION_SCHEMA,
         "release_archive": str(release_archive.resolve()),
@@ -371,7 +367,7 @@ def initialize_handoff(root: Path, mh1_model: Path, mpa0_model: Path, release_ar
         "qualification_output": "FINAL_GPU1_QUALIFICATION.json",
         "instructions": {
             "evidence_registration": "Register each GPU result with the record subcommand; never edit record JSON by hand.",
-            "reduction": "Run reduce with the positive CUEQ-DEP1 runtime, PERF-CERT1, SIZE-FIDELITY2, and MVMIGRATE1 learning-control records after all required evidence is registered.",
+            "reduction": "Run reduce with the positive CUEQ-DEP1 runtime and PERF-CERT1 records after all required current-v5 evidence is registered.",
             "source_edits_allowed": False,
             "generated_default_change_authorized": False,
         },
@@ -661,8 +657,6 @@ def reduce_handoff(
     root: Path,
     runtime_path: Path,
     perf_cert1_path: Path,
-    size_fidelity2_path: Path,
-    mv_learning_control_path: Path,
     output: Path | None = None,
 ) -> dict[str, Any]:
     import mdstats
@@ -673,8 +667,6 @@ def reduce_handoff(
     integrity_failures = list(integrity["failures"])
     runtime = mdstats.CueqDep1RuntimeRecord.from_dict(_json_read(runtime_path))
     perf = mdstats.PerfCert1QualificationRecord.from_dict(_json_read(perf_cert1_path))
-    size_fidelity2 = mdstats.SizeFidelity2QualificationReport.from_dict(_json_read(size_fidelity2_path))
-    mv_learning_control = mdstats.TargetMultiViewLearningControlReport.from_dict(_json_read(mv_learning_control_path))
     records = []
     for path in sorted((root / "records").glob("*.json")):
         try:
@@ -689,8 +681,6 @@ def reduce_handoff(
         foundation_model_sha256=foundations,
         cueq_dep1_runtime=runtime,
         perf_cert1=perf,
-        size_fidelity2=size_fidelity2,
-        target_mv_learning_control=mv_learning_control,
         evidence=records,
         policy=mdstats.FinalGpu1Policy.from_dict(manifest["policy"]),
         handoff_integrity_failures=tuple(dict.fromkeys(integrity_failures)),
@@ -752,8 +742,6 @@ def _build_parser() -> argparse.ArgumentParser:
     red.add_argument("--root", type=Path, required=True)
     red.add_argument("--runtime", type=Path, required=True)
     red.add_argument("--perf-cert1", type=Path, required=True)
-    red.add_argument("--size-fidelity2", type=Path, required=True)
-    red.add_argument("--mv-learning-control", type=Path, required=True)
     red.add_argument("--output", type=Path)
 
     stat = sub.add_parser("status", help="Summarize the handoff matrix and final reduction state.")
@@ -795,10 +783,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
     if args.command == "reduce":
-        payload = reduce_handoff(
-            args.root, args.runtime, args.perf_cert1, args.size_fidelity2,
-            args.mv_learning_control, args.output,
-        )
+        payload = reduce_handoff(args.root, args.runtime, args.perf_cert1, args.output)
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload["passed"] else 3
     if args.command == "verify":

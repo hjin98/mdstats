@@ -135,7 +135,7 @@ def test_covref_par1_campaign_parallelism_uses_full_configured_budget(monkeypatc
         cpu_threads_budget = 7
         cpu_threads_available = 8
 
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _Resources())
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _Resources())
     workers, resources = campaign_cli._target_coverage_reference_parallelism(
         {"performance": {"target_coverage_workers": 0}}
     )

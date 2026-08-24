@@ -9,7 +9,7 @@ import pytest
 
 from mdstats.training_data import mvidx1_forward_receipt_runtime as runtime
 from mdstats.training_data import target_coverage_sparse_index_store as store
-from tests.test_mlff_target_data2c_repair1 import _index
+from tests._mlff_multiview_legacy_fixtures import _index
 
 forward_types = importlib.import_module(
     "mdstats.training_data.target_coverage_sparse_forward_view"
@@ -112,19 +112,19 @@ def test_forward_receipt_hit_is_exact_and_skips_family_value_rescans(
         "read_validation_receipt",
         lambda namespace, identity: pointer["content_digest"],
     )
-    original_read_npy = store._read_npy
-    read_calls = []
+    original_packed_slice = store._packed_slice
+    packed_slice_calls = []
 
-    def observed_read_npy(*args, **kwargs):
-        read_calls.append(
+    def observed_packed_slice(*args, **kwargs):
+        packed_slice_calls.append(
             (
                 kwargs.get("label"),
                 kwargs.get("validate_array_reference", True),
             )
         )
-        return original_read_npy(*args, **kwargs)
+        return original_packed_slice(*args, **kwargs)
 
-    monkeypatch.setattr(store, "_read_npy", observed_read_npy)
+    monkeypatch.setattr(store, "_packed_slice", observed_packed_slice)
     original_sorted_rows = forward_types._validate_sorted_unique_rows
     sorted_row_names = []
 
@@ -143,7 +143,7 @@ def test_forward_receipt_hit_is_exact_and_skips_family_value_rescans(
 
     family_calls = [
         (label, validate)
-        for label, validate in read_calls
+        for label, validate in packed_slice_calls
         if label in {"candidate_offsets", "candidate_witnesses"}
     ]
     assert family_calls

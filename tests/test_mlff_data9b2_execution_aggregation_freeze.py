@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -152,6 +153,8 @@ def test_supervised_execution_retries_and_inventories(tmp_path: Path) -> None:
     assert record.state is mdstats.TrainingRunState.SUCCEEDED
     assert len(record.attempts) == 2
     assert record.attempts[0].state is mdstats.TrainingRunState.FAILED
+    assert record.attempts[0].scientific_failure_code is None
+    assert record.attempts[0].scientific_failure_evidence_digest is None
     assert "--restart_latest" not in record.attempts[1].command
     assert Path(record.attempts[0].working_directory) == (tmp_path / "job").resolve()
     assert "--model_dir" in record.attempts[0].command
@@ -161,6 +164,117 @@ def test_supervised_execution_retries_and_inventories(tmp_path: Path) -> None:
     assert record.checkpoint_catalog.checkpoints[0].epoch == 1
     assert mdstats.TrainingRunExecutionRecord.from_dict(record.to_dict()) == record
     assert (output / "training_execution.json").is_file()
+
+def _train2_runtime_plan(*, limit: int = 3) -> mdstats.Train2RuntimePlan:
+    return mdstats.Train2RuntimePlan(
+        training_protocol_digest=_h("train2-protocol"),
+        optimizer_policy_digest=_h("train2-optimizer"),
+        budget_policy=mdstats.TrainingBudgetPolicy(planned_epochs=30),
+        learning_rate_policy=mdstats.LearningRateSchedulePolicy(),
+        structures_per_epoch=17,
+        execution_epoch_limit=limit,
+    )
+
+
+def _write_train2_numerical_failure(
+    checkpoints: Path, plan: mdstats.Train2RuntimePlan, *, plan_digest: str | None = None
+) -> mdstats.Train2NumericalFailureRecord:
+    checkpoints.mkdir(parents=True, exist_ok=True)
+    raw = checkpoints / "raw-numerical-state.bin"
+    raw.write_bytes(b"nonfinite-train2-state")
+    record = mdstats.Train2NumericalFailureRecord(
+        failure_code="train_nonfinite_model_state",
+        reason="controlled non-finite model state",
+        failed_epoch=2,
+        completed_updates=20,
+        planned_updates=300,
+        execution_epoch_limit=int(plan.execution_epoch_limit),
+        plan_digest=plan.content_digest if plan_digest is None else plan_digest,
+        training_protocol_digest=plan.training_protocol_digest,
+        optimizer_policy_digest=plan.optimizer_policy_digest,
+        budget_policy_digest=plan.budget_policy.policy_digest,
+        lr_policy_digest=plan.learning_rate_policy.policy_digest,
+        raw_checkpoint_name=raw.name,
+        raw_checkpoint_sha256=hashlib.sha256(raw.read_bytes()).hexdigest(),
+    )
+    (checkpoints / mdstats.TRAIN2_NUMERICAL_FAILURE_FILENAME).write_text(
+        json.dumps(record.to_dict(), sort_keys=True), encoding="utf-8"
+    )
+    return record
+
+
+def test_train2_explicit_numerical_failure_is_authenticated_and_nonretryable(tmp_path: Path) -> None:
+    job, run, _ = _job(tmp_path)
+    wrapper = tmp_path / "mdstats-mace-train"
+    wrapper.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    wrapper.chmod(0o755)
+    checkpoints = tmp_path / "checkpoints"
+    runtime_plan = _train2_runtime_plan(limit=3)
+    failure = _write_train2_numerical_failure(checkpoints, runtime_plan)
+    record = mdstats.execute_training_run(
+        run,
+        job,
+        data8_root=tmp_path,
+        execution_root=tmp_path / "execution",
+        checkpoint_directory=checkpoints,
+        policy=mdstats.TrainingExecutionPolicy(max_attempts=2),
+        environment={
+            mdstats.TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE: json.dumps(runtime_plan.to_dict())
+        },
+        wrapper_path=wrapper,
+    )
+    assert record.state is mdstats.TrainingRunState.FAILED
+    assert len(record.attempts) == 1
+    attempt = record.attempts[0]
+    assert attempt.scientific_failure_code == "train_nonfinite_model_state"
+    assert attempt.scientific_failure_evidence_digest == failure.content_digest
+    assert attempt.failure_reason == "scientific_failure:train_nonfinite_model_state:nonzero_exit:3"
+    assert mdstats.TrainingRunExecutionRecord.from_dict(record.to_dict()) == record
+
+
+def test_train2_foreign_numerical_failure_sidecar_is_lineage_error(tmp_path: Path) -> None:
+    job, run, _ = _job(tmp_path)
+    wrapper = tmp_path / "mdstats-mace-train"
+    wrapper.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    wrapper.chmod(0o755)
+    checkpoints = tmp_path / "checkpoints"
+    runtime_plan = _train2_runtime_plan(limit=3)
+    _write_train2_numerical_failure(checkpoints, runtime_plan, plan_digest=_h("foreign-plan"))
+    with pytest.raises(mdstats.TrainingDataInputError, match="different runtime plan"):
+        mdstats.execute_training_run(
+            run,
+            job,
+            data8_root=tmp_path,
+            execution_root=tmp_path / "execution",
+            checkpoint_directory=checkpoints,
+            policy=mdstats.TrainingExecutionPolicy(max_attempts=1),
+            environment={
+                mdstats.TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE: json.dumps(runtime_plan.to_dict())
+            },
+            wrapper_path=wrapper,
+        )
+
+
+def test_stderr_oom_text_is_not_scientific_target_size_failure(tmp_path: Path) -> None:
+    job, run, _ = _job(tmp_path)
+    wrapper = tmp_path / "mdstats-mace-train"
+    wrapper.write_text(
+        "#!/bin/sh\necho 'CUDA out of memory' >&2\nexit 137\n", encoding="utf-8"
+    )
+    wrapper.chmod(0o755)
+    record = mdstats.execute_training_run(
+        run,
+        job,
+        data8_root=tmp_path,
+        execution_root=tmp_path / "execution",
+        checkpoint_directory=tmp_path / "checkpoints",
+        policy=mdstats.TrainingExecutionPolicy(max_attempts=1),
+        wrapper_path=wrapper,
+    )
+    assert record.state is mdstats.TrainingRunState.FAILED
+    assert record.attempts[0].scientific_failure_code is None
+    assert record.attempts[0].scientific_failure_evidence_digest is None
+
 
 def test_supervised_execution_restarts_only_when_checkpoint_exists(tmp_path: Path) -> None:
     job, run, _ = _job(tmp_path)
@@ -230,6 +344,8 @@ def test_interruption_preserves_checkpoint_and_does_not_consume_retry_budget(tmp
     )
     assert interrupted.state is mdstats.TrainingRunState.INTERRUPTED
     assert len(interrupted.attempts) == 1
+    assert interrupted.attempts[0].scientific_failure_code is None
+    assert interrupted.attempts[0].scientific_failure_evidence_digest is None
     assert (checkpoints / "model_epoch-0.pt").is_file()
     assert not (output / "active_process.json").exists()
 
@@ -504,6 +620,8 @@ def test_supervised_execution_timeout_persists_fail_closed_record(tmp_path: Path
     )
     assert record.state is mdstats.TrainingRunState.TIMED_OUT
     assert record.attempts[0].failure_reason == "timeout"
+    assert record.attempts[0].scientific_failure_code is None
+    assert record.attempts[0].scientific_failure_evidence_digest is None
     persisted = mdstats.TrainingRunExecutionRecord.from_dict(
         __import__("json").loads((output / "training_execution.json").read_text(encoding="utf-8"))
     )

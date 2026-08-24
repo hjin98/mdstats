@@ -25,7 +25,7 @@ def _evidence() -> dict[str, object]:
 
 
 def test_perf_p1_version_and_normative_documents_are_synchronized() -> None:
-    assert mdstats.__version__ == "0.20.185a0"
+    assert mdstats.__version__ == "0.20.242a0"
     root = _root()
     manual = (root / "docs/arch_manuals/mlff_training_data_architecture.md").read_text(
         encoding="utf-8"
@@ -36,9 +36,10 @@ def test_perf_p1_version_and_normative_documents_are_synchronized() -> None:
     revision = (root / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV46.md").read_text(encoding="utf-8")
     release = (root / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.180a0.md").read_text(encoding="utf-8")
 
-    assert "PERF-P1 implementation record - 2026-08-15" in manual
-    assert "Implementation status (`0.20.180a0`): complete" in manual
-    assert "Historical `PERF-P2` remains archived at `0.20.181a0`" in manual
+    # The current architecture no longer carries release chronology as live
+    # authority. PERF-P1 remains release-pinned historical evidence.
+    assert "MVQUAL is the sole hard target-size eligibility authority" in manual
+    assert "PERF-P1 implementation record - 2026-08-15" not in manual
     assert "Release:** `mdstats 0.20.180a0`" in spec
     assert "Next gate:** `PERF-P2`" in spec
     assert "PERF-P1 shared exact selection" in revision
@@ -81,18 +82,18 @@ def test_perf_p1_dependency_graph_and_release_indexes_are_current() -> None:
         )
     )
     nodes = {node["id"]: node for node in graph["nodes"]}
-    assert graph["schema_version"] == 34
-    assert graph["architecture_revision"] == 52
-    assert nodes["PERF_P1_EXACT_SELECTION_WORKSPACE"]["implementation_status"] == "implemented"
-    assert nodes["PERF_P1_PROGRESSIVE_COVERAGE_STATE"]["implemented_version"] == "0.20.180a0"
-    assert nodes["PERF_P1_DATA7_LINEAR_NEIGHBOR_STATE"]["implemented_version"] == "0.20.180a0"
-    assert nodes["PERF_P1_QUALIFICATION_EVIDENCE"]["implementation_status"] == "implemented"
-    assert nodes["PERF_P2_LAZY_TARGET_LADDER_V2"]["implementation_status"] == "implemented"
-    assert nodes["PERF_P2_LAZY_TARGET_LADDER_V2"]["implemented_version"] == "0.20.181a0"
+    assert graph["schema_version"] == 2
+    assert graph["authority_model"] == "single_generation_current_dependency_architecture"
+    # PERF-P1 remains valid historical execution evidence, but the current
+    # dependency graph intentionally contains only live campaign authorities.
+    assert not any(node_id.startswith("PERF_P1_") for node_id in nodes)
+    assert "QUALIFIED_TARGET_SIZE_POPULATION" in nodes
+    assert nodes["QUALIFIED_TARGET_SIZE_POPULATION"]["owner"] == "MVQUAL2 + TargetSizeStudyPolicy"
+    assert "TARGET_SIZE_DECISION" in nodes
 
     changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
     readme = (root / "README.md").read_text(encoding="utf-8")
-    assert changelog.startswith("## 0.20.185a0 - 2026-08-15")
+    assert "## 0.20.180a0 - 2026-08-15" in changelog
     assert "`mdstats 0.20.180a0` completes bounded **PERF-P1**" in readme
 
 

@@ -317,7 +317,7 @@ def test_vram1_live_vram_reclamp_is_stricter_than_calibrated_cap(monkeypatch) ->
             reason="",
         ),
     )
-    monkeypatch.setattr(campaign_cli, "_performance_resources", lambda cfg: resources)
+    monkeypatch.setattr(campaign_cli._core, "_performance_resources", lambda cfg: resources)
     monkeypatch.setattr(torch.cuda, "mem_get_info", lambda device=None: (5 * gib, 16 * gib))
     monkeypatch.setattr(torch.cuda, "memory_reserved", lambda device=None: 3 * gib)
 
@@ -374,7 +374,7 @@ def test_perf_p4_host_queue_residency_clamps_batch(monkeypatch) -> None:
             reason="cpu fixture",
         ),
     )
-    monkeypatch.setattr(campaign_cli, "_performance_resources", lambda cfg: resources)
+    monkeypatch.setattr(campaign_cli._core, "_performance_resources", lambda cfg: resources)
     calibration = mdstats.MaceBatchCapacityCalibration(
         descriptor_signature_digest="a" * 64,
         checkpoint_identity_digest="b" * 64,

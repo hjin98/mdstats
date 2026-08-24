@@ -185,3 +185,30 @@ def test_mvidx_implicit_scope_is_not_bound_to_transient_host_free_ram(monkeypatc
         query_block_size=3,
     )
     assert index.domains
+
+
+def test_try_reserve_memory_backpressures_transient_contention_but_rejects_intrinsic_oversize() -> None:
+    scope = _scope(workers=1, ram=100)
+    with mdstats.DeterministicWorkQueue(scope, max_ready_tasks=1) as queue:
+        queue.reserve_memory("primary", 80)
+        assert not queue.try_reserve_memory("secondary", 30)
+        blocked = queue.snapshot()
+        assert blocked.reserved_memory_bytes == 80
+        assert blocked.memory_backpressure_events >= 1
+        queue.release_memory("primary")
+        assert queue.try_reserve_memory("secondary", 30)
+        queue.release_memory("secondary")
+        with pytest.raises(mdstats.DeterministicWorkQueueMemoryError, match="intrinsically requires 101 bytes"):
+            queue.try_reserve_memory("impossible", 101)
+
+
+def test_reservation_failure_reports_live_memory_breakdown() -> None:
+    scope = _scope(workers=1, ram=100)
+    with mdstats.DeterministicWorkQueue(scope, max_ready_tasks=1) as queue:
+        queue.reserve_memory("primary", 80)
+        with pytest.raises(mdstats.DeterministicWorkQueueMemoryError) as captured:
+            queue.reserve_memory("secondary", 30)
+        message = str(captured.value)
+        assert "available=20" in message
+        assert "reserved=80" in message
+        assert "stage-budget=100" in message

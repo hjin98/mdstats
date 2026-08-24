@@ -1421,6 +1421,56 @@ class MaceCalculatorProvider:
     def checkpoint_identity(self) -> ModelCheckpointIdentity:
         return self._checkpoint_identity
 
+    @property
+    def closed(self) -> bool:
+        """Whether the provider has released its calculator ownership."""
+
+        return self._calculator is None
+
+    def close(self, *, release_cuda_memory: bool = True) -> None:
+        """Release calculator/model ownership at an explicit stage boundary.
+
+        DATA6 may construct a CUDA-backed MACE calculator whose model remains
+        resident as long as this provider is referenced.  DATA7/DATA8 are
+        CPU/I/O stages, so production callers close the provider after the
+        final DATA6 consumer instead of relying on function-scope garbage
+        collection.  The method is deliberately idempotent.
+        """
+
+        calculator = self._calculator
+        if calculator is None:
+            return
+        torch_module = None
+        if release_cuda_memory:
+            try:
+                import torch as torch_module
+            except ModuleNotFoundError:  # pragma: no cover - optional dependency
+                torch_module = None
+            if torch_module is not None:
+                try:
+                    if torch_module.cuda.is_available():
+                        # Finish pending device work while the model/calculator is
+                        # still live, then drop all Python owners before asking the
+                        # allocator to release unused blocks.
+                        torch_module.cuda.synchronize()
+                except Exception:
+                    # Cleanup must remain best-effort during exception unwinding.
+                    pass
+        self._descriptor_adapter_cache = None
+        self._calculator = None
+        clear_mace_graph_batch_cache()
+        del calculator
+        gc.collect()
+        if torch_module is None:
+            return
+        try:
+            if torch_module.cuda.is_available():
+                torch_module.cuda.empty_cache()
+                torch_module.cuda.synchronize()
+        except Exception:
+            # The live model references were already released above.
+            return
+
     def _descriptor_adapter(self) -> _MaceDescriptorAdapter:
         cached = self._descriptor_adapter_cache
         if cached is None:

@@ -9,7 +9,7 @@ This specification owns the scientific target-training cardinality used by the c
 
 It does not own target-monitor cardinality, replay-monitor cardinality, minibatch size, worker count, descriptor-block size, or arbitrary pool cardinality. Numeric equality between one of those quantities and a target-size rung has no semantic effect.
 
-The policy record is `TargetSizeStudyPolicy`. The terminal record is `TargetSizeDecision`.
+The policy record is `TargetSizeStudyPolicy`. The derived study/terminal authority is `TargetSizeStudyPlan`.
 
 ## 2. Required inputs and evidence roles
 
@@ -19,7 +19,7 @@ The study consumes only:
 - one current REPAIR2 repaired master order per required training domain;
 - independent MVQUAL evidence for candidate prefixes;
 - the common target online monitor defined by `OnlineTargetMonitorPolicy`;
-- the replay monitor defined by `ReplayMonitorPolicy` when replay is part of the protocol;
+- replay semantics/monitor identity when replay is part of the frozen training protocol; replay metric values are diagnostic only and are not consumed by size ranking;
 - the frozen foundation, replay, objective, optimizer/LR, exposure, precision/backend, and seed policy used for the size experiment.
 
 The following evidence is forbidden from controlling the target-size decision:
@@ -42,7 +42,7 @@ The fixed nominal scientific population is exactly
 and is represented by
 
 ```text
-TargetSizeStudyPolicy.nominal_sizes
+TargetSizeStudyPolicy.candidate_sizes
 ```
 
 in strictly increasing order.
@@ -57,7 +57,7 @@ The common materializable population is
 
 ```text
 N_materializable = {
-  N in nominal_sizes :
+  N in candidate_sizes :
   N <= min_d N_available[d]
 }
 ```
@@ -91,7 +91,7 @@ A pass/fail/pass pattern is an invariant violation. Preparation SHALL fail close
 
 At least three qualified sizes are required to execute the production fidelity funnel. Otherwise the terminal outcome is `insufficient_qualified_sizes`.
 
-When fewer than three nominal sizes are materializable before hard qualification, the terminal outcome is `insufficient_materializable_sizes`.
+Materializability is part of membership in `Q`; there is no separate materializability terminal class. Any case with fewer than three materializable-and-MVQUAL-qualified sizes terminates as `insufficient_qualified_sizes`.
 
 ## 5. Protocol-controlled fidelity trajectory
 
@@ -116,7 +116,7 @@ foundation -> epoch 3 -> epoch 10 -> epoch 30
 
 Epoch 10 SHALL continue the exact epoch-3 model, optimizer, RNG, and protocol state. Epoch 30 SHALL continue the exact epoch-10 state. Restart or persistence may change storage realization but not parentage.
 
-Ordinary target-success early stopping is disabled during the target-size study. Candidates must reach the common fidelity boundary to remain comparable. Hard numerical/scientific failures remain admissible rejection events.
+Ordinary target-success early stopping is disabled during the target-size study. Candidates must reach the common fidelity boundary to remain comparable. A successful endpoint is represented only by strict finite `TargetSizeTrainingEvidence`; positively identified candidate-specific TRAIN2/EVAL2 numerical invalidity is represented separately by authenticated `TargetSizeTrajectoryFailureEvidence`. Generic execution, resource, input, schema, lineage, timeout, interruption, launch, and programming failures remain campaign errors rather than scientific size evidence.
 
 ## 6. Production successive-fidelity funnel
 
@@ -135,21 +135,25 @@ No eliminated candidate is trained to a later fidelity in ordinary production.
 
 ### 6.1 Paired-seed aggregation
 
-Every size candidate is evaluated using the same ordered seed set. Screening comparisons SHALL aggregate seed evidence by the policy-defined paired aggregation, preserving the size-to-size pairing by seed.
+Every size candidate is evaluated using the same ordered seed set. The current seed authority is the ordered `seeds` field of the **sole enabled training method** in the campaign training protocol. Current generated campaigns default that owning field to `[1, 2]`; the target-size subsystem does not define a second seed list. If multiple training methods are enabled, target-size study construction fails closed rather than choosing one implicitly.
 
-A comparison SHALL NOT substitute unrelated seeds merely because the number of runs is the same.
+`TargetSizeStudyPolicy.screening_optimizer_seeds` authenticates that ordered owning-method seed set. Screening comparisons SHALL aggregate seed evidence by the policy-defined paired aggregation, preserving the size-to-size pairing by seed. The current aggregation is the arithmetic mean of the complete paired seed population for each size.
+
+Every persisted TRAIN2 endpoint evidence item also authenticates the complete target-size-study policy digest. Therefore evidence generated under one seed set, equivalence width, ranking policy, or other study-policy identity cannot be rebound to a different target-size study merely by recomputing the outer plan digest.
+
+A comparison SHALL NOT substitute unrelated seeds merely because the number of runs is the same. Missing seeds, duplicates, seed reordering, or candidate-specific seed populations invalidate the comparison/restart state.
 
 ### 6.2 Epoch-3 and epoch-10 screens
 
 The primary screening metric is the current target-force metric identified by `TargetSizeStudyPolicy.primary_screen_metric` and evaluated on the common authorized target monitor.
 
-The practical-equivalence width is exactly
+The default coarse practical-equivalence width is
 
 ```text
 1 meV/Angstrom
 ```
 
-for the epoch-3 and epoch-10 size screens.
+for the epoch-3 and epoch-10 size screens. It is a configurable positive finite `TargetSizeStudyPolicy.coarse_practical_equivalence_mev_per_a` field, not a schema constant. A non-default configured value changes policy identity and therefore invalidates reuse of target-size evidence produced under another value.
 
 When two candidates are within this width under the policy-defined paired aggregate, the smaller target size is preferred.
 
@@ -161,31 +165,21 @@ Tie resolution after the practical-equivalence rule SHALL be deterministic and s
 
 ### 6.3 Epoch-30 final comparison
 
-The two finalists continue to epoch 30. A winner is eligible only if it satisfies the complete frozen final admissibility policy, including all applicable:
+The two finalists continue to epoch 30 on their authenticated trajectories. MVQUAL is the sole hard target-size eligibility authority. The epoch-30 comparison SHALL NOT re-apply target-threshold, replay-retention, energy/stress, structural/physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates as a second size qualification stage.
 
-- global target metrics;
-- focus-group/species metrics;
-- energy/stress constraints;
-- replay-retention constraints;
-- structural/physical-integrity checks;
-- relaxation/deployment-integrity checks;
-- other current mandatory checkpoint/model constraints.
+Each expected `(size, seed)` contributes exactly one stage outcome: a strict successful endpoint or authenticated candidate-specific trajectory-failure evidence. Only candidates with complete paired successful seeds are rankable. Among complete finalists, the winner is determined by the policy-defined target-size metric and practical-equivalence/smaller-size rule serialized in `TargetSizeStudyPolicy`. Replay scores and other model-quality metrics may be recorded as diagnostics only; they cannot qualify, reject, rank, or tie-break target sizes.
 
-Replay retention, physical integrity, and deployment integrity are hard constraints. They are not positive score bonuses unless a future explicit architecture/specification revision changes that rule.
+The final practical-equivalence width defaults to `1 meV/Angstrom` and is independently configurable through `TargetSizeStudyPolicy.practical_equivalence_mev_per_a`. Like the coarse width, it is positive, finite, serialized, and part of the policy digest. It controls the epoch-30 smaller-size equivalence rule and the fixed-ceiling material-superiority test.
 
-If exactly one finalist is admissible, it wins. If both are admissible, the policy applies its current primary comparison and practical-equivalence/smaller-size preference as serialized in `TargetSizeStudyPolicy`. If neither is admissible, the outcome is `no_admissible_finalist` unless a more specific hard-scientific-failure outcome applies.
+If authenticated numerical/scientific trajectory failures leave too few complete paired-seed candidates to perform a required epoch-3, epoch-10, or epoch-30 comparison, the study terminates as `insufficient_comparable_candidates`. The terminal state records the failed fidelity stage and authenticated `(candidate size, seed)` failure reasons. Ordinary input, programming, or lineage errors remain exceptions rather than being absorbed into this scientific terminal class.
+
+After `selected_target_size` is frozen, ordinary production/CV model acceptance, replay-retention, held-out evaluation, and physical/deployment verification may accept or reject the resulting model/protocol but SHALL NOT change the selected target size.
 
 ## 7. Ceiling and non-convergence semantics
 
 The fixed scientific ceiling is 16,384. The workflow SHALL NOT generate an intermediate or larger rescue size to avoid a non-convergence result.
 
-When the available corpus does not materialize 16,384 and the largest materializable/qualified candidate remains materially superior at the final authorized comparison boundary, the terminal outcome is:
-
-```text
-nonconverged_at_available_ceiling
-```
-
-When 16,384 is materializable/qualified and remains materially superior such that the policy cannot establish a converged smaller target size, the terminal outcome is:
+When 16,384 reaches the final comparison and remains materially superior to every smaller complete finalist by more than the configured final practical-equivalence width, the terminal outcome is:
 
 ```text
 nonconverged_at_fixed_ceiling
@@ -195,19 +189,16 @@ A non-convergence result is scientifically meaningful and SHALL be preserved rat
 
 ## 8. Terminal result schema
 
-`TargetSizeDecision` is a tagged result with at least these terminal states:
+`TargetSizeStudyPlan.outcome` is a tagged derived result with at least these terminal states:
 
 ```text
 selected(N)
-insufficient_materializable_sizes
 insufficient_qualified_sizes
-no_admissible_finalist
-nonconverged_at_available_ceiling
+insufficient_comparable_candidates
 nonconverged_at_fixed_ceiling
-hard_scientific_failure
 ```
 
-A `selected(N)` result SHALL bind:
+A selected `TargetSizeStudyPlan` SHALL bind:
 
 - `TargetSizeStudyPolicy` digest;
 - nominal/materializable/qualified populations;
@@ -220,13 +211,15 @@ A `selected(N)` result SHALL bind:
 - survivor decisions and deterministic comparison evidence;
 - selected `N`.
 
-Typed failure results SHALL preserve enough upstream and comparison evidence to explain why no selected size was produced.
+Typed failure results SHALL preserve enough upstream and comparison evidence to explain why no selected size was produced. No generated or intermediate rescue size is permitted.
 
 ## 9. Relationship to cross-validation and final training
 
 Once `selected(N)` is frozen, `N` becomes part of `TrainingProtocolIdentity`.
 
 Every required cross-validation/final training domain uses its own local repaired order prefix of length `N`; membership need not be identical across domains.
+
+For target-size-controlled final-development and CV-training materialization, DATA7 consumes the authenticated prescribed prefix `R_d[:N]`. It SHALL NOT invoke its independent quota/FPS membership selector to choose a different target set. DATA7 may still construct the fitted preparation/materialization records required by training; the REPAIR2 prefix remains the sole membership authority.
 
 Held-out cross-validation then evaluates the complete protocol. Any later change to `N`, target-membership policy, replay, objective, stopping/LR policy, precision/backend, or another protocol-defining field creates a different protocol and invalidates the previous protocol-matched validation claim.
 
@@ -259,6 +252,7 @@ The study fails closed when, among other conditions:
 - required MVQUAL evidence is missing, stale, or non-monotone;
 - a held-out/calibration/locked role enters size selection;
 - candidate sizes use different seeds or protocol-defining training semantics;
+- a seed population is missing, duplicated, reordered, or candidate-specific;
 - epoch continuation parentage cannot be authenticated;
 - ordinary success early stopping truncates a required fidelity comparison;
 - an implementation invents a non-nominal rescue size;

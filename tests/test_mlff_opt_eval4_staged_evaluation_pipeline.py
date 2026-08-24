@@ -209,9 +209,9 @@ def _pipeline_cfg() -> dict:
 def test_staged_runner_overlaps_prepare_and_finalize_with_single_inference_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _resources())
-    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", _Probe)
-    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
 
     lock = threading.Lock()
     spans: dict[str, list[float]] = {}
@@ -271,9 +271,9 @@ def test_staged_runner_overlaps_prepare_and_finalize_with_single_inference_slot(
 def test_cache_only_staged_task_bypasses_inference_pool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _resources())
-    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", _Probe)
-    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
     execution_threads: list[str] = []
 
     task = campaign_cli._StagedEvaluationTask(
@@ -301,9 +301,9 @@ def test_cache_only_staged_task_bypasses_inference_pool(
 def test_staged_runner_rejects_negative_cpu_stage_worker_counts(
     key: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _resources())
-    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", _Probe)
-    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
     cfg = _pipeline_cfg()
     cfg["execution"][key] = -1
     task = campaign_cli._StagedEvaluationTask(
@@ -326,9 +326,9 @@ def test_staged_runner_rejects_negative_cpu_stage_worker_counts(
 def test_staged_runner_stage_failure_stops_new_work_without_deadlock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _resources())
-    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", _Probe)
-    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
     cfg = _pipeline_cfg()
     cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 1
     executed: list[str] = []

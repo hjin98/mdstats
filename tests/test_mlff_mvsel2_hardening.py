@@ -12,6 +12,7 @@ from mdstats.training_data.mvsel2_hardening_runtime import (
     _all_valid_rung_states,
     _build_repair_from_checkpoints,
     _highest_valid_resume_states,
+    _repair_checkpoint_state_provider,
 )
 from mdstats.training_data.target_coverage_sparse_forward_view import (
     target_coverage_sparse_forward_view,
@@ -35,7 +36,7 @@ from mdstats.training_data.target_multi_view_selector_v2_resume import (
 )
 from tests.test_mlff_mvsel2_forward import _forward_fixture
 from tests.test_mlff_repair2 import _trace
-from tests.test_mlff_target_data2c_repair1 import _redundant_selection
+from tests._mlff_multiview_legacy_fixtures import _redundant_selection
 
 
 def _state_for_prefix(reference_domain, forward_domain, entries):
@@ -72,25 +73,29 @@ def test_native_forward_reader_never_opens_inverse_arrays(tmp_path, monkeypatch)
         index, records_root
     )
     opened: list[str] = []
+    packed_opened: list[str] = []
     original = mvidx_store._read_npy
+    original_packed = mvidx_store._read_packed_npy
 
     def guarded(*args, label, **kwargs):
         opened.append(label)
-        assert label not in {
-            "witness_offsets",
-            "witness_candidates",
-            "obligation_offsets",
-            "obligation_candidates",
-        }
+        assert label not in {"obligation_offsets", "obligation_candidates"}
         return original(*args, label=label, **kwargs)
 
+    def guarded_packed(*args, label, **kwargs):
+        packed_opened.append(label)
+        assert "witness_offsets" not in label
+        assert "witness_candidates" not in label
+        return original_packed(*args, label=label, **kwargs)
+
     monkeypatch.setattr(mvidx_store, "_read_npy", guarded)
+    monkeypatch.setattr(mvidx_store, "_read_packed_npy", guarded_packed)
     restored = mvidx_store.read_target_coverage_sparse_index_forward_view_native_record(
         pointer, records_root.parent, mmap_threshold_bytes=0
     )
     assert restored.mvidx1_content_digest == index.content_digest
-    assert "candidate_offsets" in opened
-    assert "candidate_witnesses" in opened
+    assert "packed family candidate_offsets" in packed_opened
+    assert "packed family candidate_witnesses" in packed_opened
 
 
 def test_resumed_selector_reconstructs_exact_cold_authority() -> None:
@@ -143,6 +148,32 @@ def test_checkpoint_discovery_falls_back_from_corrupt_newest(tmp_path) -> None:
             reference, forward, policy=policy, resume_states=states
         )
         assert resumed.content_digest == cold.content_digest
+    finally:
+        store.close()
+
+
+def test_repair_checkpoint_provider_falls_back_on_corrupt_state(tmp_path) -> None:
+    reference, _index, forward = _forward_fixture()
+    policy = TargetMultiViewSelectorPolicyV2(target_sizes=(4, 8, 12, 16))
+    selection = build_target_multi_view_selection_plan_v2(
+        reference, forward, policy=policy
+    )
+    state = _state_for_prefix(
+        reference.domain("target"),
+        forward.domain("target"),
+        selection.domain("target").master_order[:4],
+    )
+    store = CampaignStore(tmp_path / "campaign.sqlite3")
+    try:
+        pointer = _write_checkpoint(store, reference, forward, policy, 4, state)
+        corrupt = dict(pointer)
+        corrupt["sha256"] = "0" * 64
+        store.put_record("target_multi_view_selection_state_v2:target:4", corrupt)
+        provider = _repair_checkpoint_state_provider(
+            store, reference, forward, policy
+        )
+        assert provider("target", 4) is None
+        assert provider("target", 8) is None
     finally:
         store.close()
 
@@ -207,14 +238,78 @@ def test_repair_checkpoint_reuse_stops_after_first_divergence(tmp_path) -> None:
     finally:
         store.close()
 
+    assert resumed.content_digest == baseline.content_digest
     assert _trace(resumed) == _trace(baseline)
     assert resumed.domain("target").repaired_master_order == baseline.domain("target").repaired_master_order
     first_divergent = next(i for i, text in enumerate(progress) if "swaps=0" not in text)
-    assert any("mvstate2_restore_count=" in text for text in progress[: first_divergent + 1])
+    assert any(
+        "rung_entry_state_mode=mvstate2" in text
+        for text in progress[: first_divergent + 1]
+    )
+
+    def restore_count(message: str) -> int:
+        field = next(
+            item for item in message.split("; ")
+            if item.startswith("mvstate2_restore_count=")
+        )
+        return int(field.split("=", 1)[1])
+
+    divergent_restore_count = restore_count(progress[first_divergent])
+    assert divergent_restore_count > 0
+    assert all(
+        restore_count(text) == divergent_restore_count
+        for text in progress[first_divergent:]
+    )
     assert all(
         "selected_prefix_state_mode=post_divergence_carried_state" in text
         for text in progress[first_divergent:]
     )
+
+
+def test_repair_checkpoint_reuse_avoids_selector_prefix_rescoring(monkeypatch) -> None:
+    reference, _index, forward, selection = _v2_redundant_selection()
+    policy = repair_v2.TargetMultiViewRepairPolicyV2()
+    checkpoint_states: dict[int, object] = {}
+    for rung in selection.domain("target").rungs:
+        if not rung.materializable:
+            continue
+        checkpoint_states[rung.target_size] = _state_for_prefix(
+            reference.domain("target"),
+            forward.domain("target"),
+            selection.domain("target").master_order[: rung.target_size],
+        )
+
+    original_score = repair_v2.score_target_multi_view_candidate_v2
+
+    def run(provider):
+        score_calls = 0
+
+        def counted_score(*args, **kwargs):
+            nonlocal score_calls
+            score_calls += 1
+            return original_score(*args, **kwargs)
+
+        monkeypatch.setattr(
+            repair_v2, "score_target_multi_view_candidate_v2", counted_score
+        )
+        plan = repair_v2.build_target_multi_view_repair_plan_v2(
+            reference,
+            forward,
+            selection,
+            policy=policy,
+            checkpoint_state_provider=provider,
+        )
+        monkeypatch.setattr(
+            repair_v2, "score_target_multi_view_candidate_v2", original_score
+        )
+        return plan, score_calls
+
+    cold, cold_score_calls = run(None)
+    resumed, resumed_score_calls = run(
+        lambda domain_id, size: checkpoint_states.get(size)
+    )
+    assert resumed.content_digest == cold.content_digest
+    assert resumed_score_calls < cold_score_calls
 
 
 def test_repair2_rejected_proposals_do_not_mutate_or_clone_state(monkeypatch) -> None:

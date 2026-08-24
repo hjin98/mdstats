@@ -54,6 +54,15 @@ def test_supplied_ase_version() -> None:
     assert ase.__version__ == "3.29.0"
 
 
+def test_mace_provider_close_is_idempotent() -> None:
+    provider = _provider()
+    assert not provider.closed
+    provider.close(release_cuda_memory=False)
+    assert provider.closed
+    provider.close(release_cuda_memory=False)
+    assert provider.closed
+
+
 def test_lta_selection_descriptors_are_species_resolved_and_deterministic(tmp_path: Path) -> None:
     sources, frames, frame_data, site_policy = _site_catalogs(tmp_path)
     data4 = mdstats.build_data4_feature_bundle(

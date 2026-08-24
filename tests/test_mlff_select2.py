@@ -95,7 +95,7 @@ def _candidate(seed: int, rmse: float, secondary: float, *, physical: bool = Tru
 def _select(*candidates: mdstats.Select2CandidateRecord) -> mdstats.Select2SelectionRecord:
     return mdstats.build_select2_selection(
         campaign_plan_digest=D1,
-        target_production_corpus_decision_digest=D2,
+        target_size_study_digest=D2,
         dyn_verify_campaign_digest=D3,
         selection_policy=mdstats.CheckpointSelectionPolicy(),
         candidates=candidates,

@@ -191,12 +191,12 @@ def test_prepare_sweep_reuses_matching_complete_checkpoint_without_provider(
     restored = SimpleNamespace(complete=True, checkpoint=checkpoint)
 
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "_load_prepared",
         lambda store, include_data4=False: (sources, frames, None, data5),
     )
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "_model_checkpoint_identity",
         lambda cfg, paths: SimpleNamespace(content_digest="i" * 64),
     )
@@ -211,7 +211,7 @@ def test_prepare_sweep_reuses_matching_complete_checkpoint_without_provider(
         lambda *args, **kwargs: restored,
     )
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "_provider",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("provider must not load")),
     )
@@ -248,12 +248,12 @@ def test_prepare_sweep_recovery_calibration_uses_numpy_linspace(
     expected_plan = SimpleNamespace(content_digest="p" * 64, requested_frame_uids=requested)
 
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "_load_prepared",
         lambda store, include_data4=False: (sources, frames, None, data5),
     )
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "_model_checkpoint_identity",
         lambda cfg, paths: SimpleNamespace(content_digest="i" * 64, device="cuda"),
     )
@@ -268,12 +268,12 @@ def test_prepare_sweep_recovery_calibration_uses_numpy_linspace(
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("checkpoint absent")),
     )
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "_load_or_rebuild_frame_data",
         lambda *args, **kwargs: {"run": object()},
     )
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "build_frame_array_index",
         lambda *args, **kwargs: {
             uid: (SimpleNamespace(frame_uid=uid), object(), index)
@@ -281,7 +281,7 @@ def test_prepare_sweep_recovery_calibration_uses_numpy_linspace(
         },
     )
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "ase_atoms_for_frame",
         lambda record, frame_values, local_index: record.frame_uid,
     )
@@ -301,9 +301,9 @@ def test_prepare_sweep_recovery_calibration_uses_numpy_linspace(
             )
             raise ExpectedStop("reached DATA6 recovery calibration")
 
-    monkeypatch.setattr(campaign_cli, "_provider", lambda *args, **kwargs: (Provider(), None))
+    monkeypatch.setattr(campaign_cli._core, "_provider", lambda *args, **kwargs: (Provider(), None))
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "_performance_resources",
         lambda cfg: SimpleNamespace(gpu=SimpleNamespace(budget_bytes=2**30)),
     )
@@ -479,16 +479,16 @@ def test_completed_prepare_receipt_is_true_noop(
         def record_digest(self, key):
             return digests[key]
 
-    monkeypatch.setattr(campaign_cli, "_sha256", lambda path: "cfg")
+    monkeypatch.setattr(campaign_cli._core, "_sha256", lambda path: "cfg")
     monkeypatch.setattr(
-        campaign_cli, "_prepare_contract_signature", lambda: {"contract": "current"}
+        campaign_cli._core, "_prepare_contract_signature", lambda: {"contract": "current"}
     )
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "_prepare_input_identities",
         lambda cfg, paths, sources: [{"path": "inputs", "size": 1}],
     )
-    monkeypatch.setattr(campaign_cli, "_current_data8_entries", lambda store: [entry])
+    monkeypatch.setattr(campaign_cli._core, "_current_data8_entries", lambda store: [entry])
     cfg = {
         "training": {"modes": ["multihead_replay"], "seeds": [2]},
         "selection": {"sizes": [512]},

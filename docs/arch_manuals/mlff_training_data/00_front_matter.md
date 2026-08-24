@@ -2,7 +2,7 @@
 geometry: "margin=0.75in"
 architecture_revision: 105
 status: "current normative architecture"
-last_updated: "2026-08-21"
+last_updated: "2026-08-22"
 ---
 
 # MLFF Training-Data and Fine-Tuning Architecture

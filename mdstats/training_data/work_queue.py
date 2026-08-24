@@ -354,7 +354,7 @@ class DeterministicWorkQueue(AbstractContextManager["DeterministicWorkQueue"]):
             inflight + completed + reserved,
         )
 
-    def reserve_memory(self, reservation_id: str, bytes_count: int) -> None:
+    def _validate_reservation_request(self, reservation_id: str, bytes_count: int) -> tuple[str, int]:
         reservation_id = str(reservation_id)
         amount = int(bytes_count)
         if not reservation_id:
@@ -364,12 +364,50 @@ class DeterministicWorkQueue(AbstractContextManager["DeterministicWorkQueue"]):
         if reservation_id in self._reservations:
             raise ValueError(f"duplicate memory reservation {reservation_id!r}")
         budget = self._memory_budget()
+        if budget is not None and amount > budget:
+            raise DeterministicWorkQueueMemoryError(
+                f"PARCORE1 reservation {reservation_id!r} intrinsically requires {amount} bytes, "
+                f"which exceeds the stage RAM budget of {budget} bytes."
+            )
+        return reservation_id, amount
+
+    def try_reserve_memory(self, reservation_id: str, bytes_count: int) -> bool:
+        """Attempt one persistent reservation without failing on transient pressure.
+
+        A reservation larger than the complete stage budget is intrinsically
+        impossible and still raises.  Otherwise, live in-flight/completed work
+        may temporarily consume the required headroom; in that case this method
+        records a memory-backpressure event and returns ``False``.
+        """
+
+        reservation_id, amount = self._validate_reservation_request(
+            reservation_id, bytes_count
+        )
+        budget = self._memory_budget()
         if budget is not None:
             _, inflight, completed, reserved = self._memory_totals()
             if amount + inflight + completed + reserved > budget:
+                self._memory_backpressure += 1
+                return False
+        self._reservations[reservation_id] = amount
+        self._reserved_memory_bytes += amount
+        self._update_peak_memory()
+        return True
+
+    def reserve_memory(self, reservation_id: str, bytes_count: int) -> None:
+        reservation_id, amount = self._validate_reservation_request(
+            reservation_id, bytes_count
+        )
+        budget = self._memory_budget()
+        if budget is not None:
+            _, inflight, completed, reserved = self._memory_totals()
+            accounted = inflight + completed + reserved
+            available = max(0, budget - accounted)
+            if amount > available:
                 raise DeterministicWorkQueueMemoryError(
-                    f"PARCORE1 reservation {reservation_id!r} requires {amount} bytes but "
-                    f"the stage RAM budget is {budget} bytes."
+                    f"PARCORE1 reservation {reservation_id!r} requires {amount} bytes; "
+                    f"available={available}, in-flight={inflight}, completed={completed}, "
+                    f"reserved={reserved}, stage-budget={budget} bytes."
                 )
         self._reservations[reservation_id] = amount
         self._reserved_memory_bytes += amount

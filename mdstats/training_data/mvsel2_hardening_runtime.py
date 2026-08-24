@@ -161,6 +161,66 @@ def _highest_valid_resume_states(
     return states, pointers
 
 
+def _repair_checkpoint_state_provider(
+    store: Any,
+    coverage_reference: Any,
+    forward: Any,
+    policy: TargetMultiViewSelectorPolicyV2,
+):
+    """Return a lazy authenticated MVSTATE2 provider for canonical REPAIR2.
+
+    Only checkpoint pointers are indexed eagerly. Full forward state is restored
+    on demand for the current repair rung, so production does not retain several
+    large MVSTATE2 states simultaneously. Invalid records fail closed to exact
+    selected-prefix replay.
+    """
+
+    pointers_by_domain: dict[str, dict[int, Mapping[str, Any]]] = {}
+    allowed_sizes = set(policy.target_sizes)
+    for reference_domain in coverage_reference.domains:
+        domain_id = reference_domain.label_domain_id
+        forward_domain = forward.domain(domain_id)
+        pointers_by_domain[domain_id] = {
+            size: pointer
+            for size, pointer in _checkpoint_rows(store, domain_id)
+            if size in allowed_sizes and size <= forward_domain.candidate_count
+        }
+
+    def restore(domain_id: str, size: int):
+        pointer = pointers_by_domain.get(str(domain_id), {}).get(int(size))
+        if pointer is None:
+            return None
+        reference_domain = coverage_reference.domain(str(domain_id))
+        forward_domain = forward.domain(str(domain_id))
+        try:
+            state = _restore_checkpoint(
+                pointer,
+                store=store,
+                reference_domain=reference_domain,
+                forward_domain=forward_domain,
+                dataset_id=coverage_reference.dataset_id,
+                selector_policy=policy,
+            )
+        except Exception as exc:
+            print(
+                f"[TARGET-DATA2C-REPAIR2 restart] MVSTATE2 checkpoint "
+                f"{domain_id}:{size} is unusable ({exc}); replaying the selector prefix",
+                flush=True,
+            )
+            return None
+        if state.selected_count != int(size):
+            print(
+                f"[TARGET-DATA2C-REPAIR2 restart] MVSTATE2 checkpoint "
+                f"{domain_id}:{size} has inconsistent selected cardinality; "
+                "replaying the selector prefix",
+                flush=True,
+            )
+            return None
+        return state
+
+    return restore
+
+
 def _all_valid_rung_states(
     store: Any,
     coverage_reference: Any,
@@ -209,21 +269,15 @@ def _build_repair_from_checkpoints(
 ) -> _repair.TargetMultiViewRepairPlanV2:
     """Compatibility facade delegating all repair science to the canonical owner.
 
-    The former implementation contained a second complete REPAIR2 loop.  G3
-    removes that authority.  Selector checkpoints are intentionally ignored at
-    this compatibility seam because the current canonical continuation hook
-    cannot consume a pure-selector rung without skipping that rung's active
-    shell.  Rank-zero forward replay is exact and fail-closed; checkpoint reuse
-    can be reintroduced only inside the canonical owner after an equivalence
-    proof.
+    The former implementation contained a second complete REPAIR2 loop. G3
+    removed that authority. This compatibility seam now supplies rung states to
+    the canonical owner's execution-only checkpoint hook; candidate scoring,
+    shell repair, mutation, and divergence handling remain owned exclusively by
+    :mod:`target_multi_view_repair_v2`.
     """
 
-    del checkpoint_states
-
-    wrapped_progress = None
-    if progress_callback is not None:
-        def wrapped_progress(message: str) -> None:
-            progress_callback(f"{message}; mvstate2_restore_count=0")
+    def checkpoint_state_provider(domain_id: str, size: int):
+        return checkpoint_states.get(domain_id, {}).get(int(size))
 
     return _repair.build_target_multi_view_repair_plan_v2(
         coverage_reference,
@@ -231,7 +285,8 @@ def _build_repair_from_checkpoints(
         selection_plan,
         policy=policy,
         workers=1,
-        progress_callback=wrapped_progress,
+        checkpoint_state_provider=checkpoint_state_provider,
+        progress_callback=progress_callback,
     )
 
 
@@ -291,6 +346,9 @@ def _ensure_target_multi_view_repair_v2(
         tree_workers=1,
         blas_threads=1,
     )
+    checkpoint_state_provider = _repair_checkpoint_state_provider(
+        store, coverage_reference, forward, selection_plan.policy
+    )
     started = time.monotonic()
     with core.stage_resource_scope(scope):
         plan = _repair.build_target_multi_view_repair_plan_v2(
@@ -299,6 +357,7 @@ def _ensure_target_multi_view_repair_v2(
             selection_plan,
             policy=policy,
             workers=max(1, int(repair_workers)),
+            checkpoint_state_provider=checkpoint_state_provider,
             resource_scope=scope,
             progress_callback=lambda message: print(
                 f"[TARGET-DATA2C-REPAIR2] {message}", flush=True
@@ -316,7 +375,7 @@ def _ensure_target_multi_view_repair_v2(
         f"elapsed={format_progress_time(time.monotonic() - started)}; "
         "native-forward-runtime=true; proposal_full_state_copies=0; "
         "repair_science_owner=target_multi_view_repair_v2; "
-        "repair_checkpoint_reuse=false"
+        "repair_checkpoint_reuse=true; lazy_mvstate2_restore=true"
     )
     return plan
 

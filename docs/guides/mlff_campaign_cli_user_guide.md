@@ -199,10 +199,8 @@ After source or tolerance changes, refresh the proposals before approval:
 python tools/mdstats-mlff-campaign.py --config campaign.toml prepare --refresh-inferences
 ```
 
-`prepare` is restartable. It performs the correlation-aware split, evaluates the
-foundation model on authorized frames, selects diverse training frames, fits
-fold-local energy references, writes MACE data/configurations, and requires the
-production data gate to pass. VASP sources are decoded once into a checksummed
+`prepare` is restartable. For current TRAIN2 campaigns it performs the correlation-aware split, evaluates the
+foundation model on authorized frames, selects/fits the target-size screening inputs, writes the complete qualified-size x screening-seed DATA8 candidate matrix, and requires the screening DATA9A gate to pass. It does not train the 3/10/30 target-size trajectories and does not create the later selected-size CV production matrix. VASP sources are decoded once into a checksummed
 normalized frame cache, and subsequent stages reuse that cache. DATA4 is stored
 as checksummed content-addressed shards rather than a giant SQLite JSON value.
 Use `status` after an interruption; rerun the same command to resume.
@@ -230,8 +228,8 @@ Success signs:
 - replay qualification passes with the expected label mode and foundation hash;
 - the DATA5 leakage audit passes;
 - all requested foundation frames finish;
-- every fold/final variant materializes;
-- the production gate reports `passed` with no blockers.
+- every qualified target-size/screening-seed variant materializes;
+- the screening DATA9A gate reports `passed` with no blockers.
 
 ## 4. Run the bounded preflight
 
@@ -239,9 +237,9 @@ Success signs:
 python tools/mdstats-mlff-campaign.py --config campaign.toml preflight
 ```
 
-The command verifies all generated MACE job bytes and performs one real one-epoch
+The command verifies the exact currently materialized DATA8 matrix and performs one real one-epoch
 MACE run under the same binary learned-model dtype and invariant FP64 scientific
-arithmetic policy used by the production campaign, then reloads the target head and checks finite predictions. When CuEq
+arithmetic policy used by the campaign, then reloads the target head and checks finite predictions. Preflight is operational evidence only: it never ranks target sizes or chooses checkpoints. The first TRAIN2 preflight binds the complete screening matrix and remains valid through the unchanged 3 -> 10 -> 30 funnel. After selected-size production materialization changes the DATA8 matrix, run the same `preflight` command again for that new matrix. When CuEq
 is selected, every generated YAML must contain `enable_cueq: true`, evaluation
 uses the same backend, and the training log must show MACE converting the model
 to CuEq. Use
@@ -249,16 +247,33 @@ to CuEq. Use
 gate waiting and cannot authorize training. Run the full preflight before
 committing the RTX 3090 to a long campaign.
 
-## 5. Inspect, run, and resume training
+## 5. Select the target data size
+
+```bash
+python tools/mdstats-mlff-campaign.py --config campaign.toml select-target-size
+```
+
+For current TRAIN2 campaigns this single restartable command owns the complete target-size experiment. It trains the qualified candidate sizes to the exact epoch-3 boundary, evaluates only those exact epoch-3 checkpoints and halves the population, continues the survivors to exact epoch 10 and halves again, then continues the finalists to exact epoch 30 and freezes one `N*`. Epoch is a controlled variable here: an earlier checkpoint cannot substitute for the prescribed 3/10/30 endpoint even when it scores better. Rerunning the command after interruption resumes from the authenticated current boundary; no additional `prepare` or `preflight` is required while the screening DATA8 matrix is unchanged.
+
+A successful final decision prints `Target data size selected and frozen: n=<N>` and directs the next operation to `materialize`. A typed scientific terminal outcome such as insufficient comparable candidates or nonconvergence at the fixed ceiling preserves its evidence and exposes no production next step.
+
+## 6. Materialize the selected production/CV workload
+
+```bash
+python tools/mdstats-mlff-campaign.py --config campaign.toml materialize
+python tools/mdstats-mlff-campaign.py --config campaign.toml preflight
+```
+
+`materialize` is valid only after `N*` is frozen. It reuses the existing preparation machinery to realize exactly the selected-size final-development and configured CV DATA7/DATA8 topology. It does not rerun target-size selection and cannot change `N*`. Because this creates a different active DATA8 matrix, the screening preflight no longer authorizes training; run `preflight` once for the selected production/CV matrix. An unchanged `materialize` rerun is idempotent and does not reopen completed production training/evaluation receipts.
+
+## 7. Inspect, run, and resume production training
 
 ```bash
 python tools/mdstats-mlff-campaign.py --config campaign.toml train --dry-run
 python tools/mdstats-mlff-campaign.py --config campaign.toml train
 ```
 
-The dry run lists exact fold/final jobs. The real command supervises them,
-preserves logs and every checkpoint, and resumes failed or interrupted attempts
-with the qualified binary model-precision policy.
+For TRAIN2, public `train` is now production-only: it requires frozen `N*`, the selected-size final/CV DATA8 matrix, and a preflight receipt bound to that exact matrix. Target-size screening cannot be driven through public `train`; it is owned by `select-target-size`. The dry run lists exact fold/final jobs. The real command supervises them, preserves logs and every checkpoint, and resumes failed or interrupted attempts with the qualified binary model-precision policy.
 
 CUDA training uses adaptive process-level concurrency by default. The scheduler
 checks the active CPU affinity/cgroup quota, available host RAM, and aggregate
@@ -344,13 +359,15 @@ For campaigns with more than one method or selection size, specify `--training-m
 
 `train` also accepts `--training-mode`, `--seed`, and `--selection-size` filters, which is how the extension scheduler isolates the newly appended jobs.
 
-## 6. Fully evaluate the campaign finalists
+## 8. Evaluate the selected production trajectories
 
 ```bash
 python tools/mdstats-mlff-campaign.py --config campaign.toml evaluate
 ```
 
-For new MLCV campaigns, `evaluate` executes MLCV-SELECT1, then MLCV-AGG1, then MLCV-FINAL1 once the full campaign is complete. Each run first fully evaluates all retained top-five candidates on its correct complete checkpoint-selection domains and freezes one representative or an explicit failure. AGG1 then evaluates each frozen fold representative exactly once on its untouched outer CV target fold. The outer result can pass or fail that fold but cannot choose another epoch. Per-seed target/replay/combined CV statistics are written separately; all configured folds must survive, while cross-fold dispersion remains diagnostic-only. FINAL1 then compares only qualified full-development representatives, freezes one best seed as the production verification candidate, and exports all qualified final seeds as the active-learning committee. It does not publish the verified production model. Historical pre-MLCV adaptive campaigns retain their original ADAPT-EVAL1 behavior and `bounded`, `exhaustive`, and `multi_fidelity` remain available for compatible old campaigns.
+For current TRAIN2 campaigns, public `evaluate` is available only after selected-size production training. Unlike the target-size study, checkpoint epoch is now selectable: an earlier admissible checkpoint may win over epoch 30 according to the frozen production checkpoint-selection policy. Production evaluation cannot modify the frozen target-size authority.
+
+For historical conventional MLCV campaigns, `evaluate` executes MLCV-SELECT1, then MLCV-AGG1, then MLCV-FINAL1 once the full campaign is complete. Each run first fully evaluates all retained top-five candidates on its correct complete checkpoint-selection domains and freezes one representative or an explicit failure. AGG1 then evaluates each frozen fold representative exactly once on its untouched outer CV target fold. The outer result can pass or fail that fold but cannot choose another epoch. Per-seed target/replay/combined CV statistics are written separately; all configured folds must survive, while cross-fold dispersion remains diagnostic-only. FINAL1 then compares only qualified full-development representatives, freezes one best seed as the production verification candidate, and exports all qualified final seeds as the active-learning committee. It does not publish the verified production model. Historical pre-MLCV adaptive campaigns retain their original ADAPT-EVAL1 behavior and `bounded`, `exhaustive`, and `multi_fidelity` remain available for compatible old campaigns.
 
 The 256-frame target and 512-frame replay monitors remain lightweight training evidence; they are
 not relabeled as full evaluation. Naive fine-tuning still receives no replay gradients, but during
@@ -424,7 +441,7 @@ the frozen EVAL1 authority and do not create a second selection history. `storag
 freeze authority and preserved historical evaluator evidence read-only, while STOR cleanup/deletion
 boundaries are unchanged.
 
-## 7. Verify bounded MD stability
+## 9. Verify bounded MD stability
 
 Add equilibrated verification structures to `[verification].structures`, then:
 

@@ -923,6 +923,66 @@ def build_training_selection_plan(
     )
 
 
+def build_prescribed_training_selection_plan(
+    data4_bundle: Any,
+    data6_bundle: Any,
+    metric: FittedFeatureMetric,
+    *,
+    policy: SelectionBudgetPolicy,
+    frame_uids: Sequence[str],
+    authority_reason: str = "upstream_authenticated_prefix",
+) -> TrainingSelectionPlan:
+    """Build DATA7 selection from an authenticated upstream master prefix.
+
+    This is intentionally narrower than :func:`build_training_selection_plan`: it
+    performs no second ranking or qualification.  The caller owns the upstream
+    order (REPAIR2 in the target-size v5 workflow), and DATA7 only authenticates
+    that every requested ladder level is a strict prefix of that order and lies
+    inside the supplied gradient-training domain (final-development or CV-training).
+    """
+
+    domain = metric.domain
+    ordered = tuple(str(uid) for uid in frame_uids)
+    if not authority_reason.strip():
+        raise TrainingDataInputError("Prescribed selection authority reason must be non-empty.")
+    if len(ordered) != len(set(ordered)):
+        raise TrainingDataInputError("Prescribed selection prefix contains duplicate frames.")
+    required = int(policy.target_sizes[-1])
+    if len(ordered) != required:
+        raise TrainingDataInputError(
+            "Prescribed selection prefix must contain exactly the largest requested target size."
+        )
+    domain_frames = set(domain.frame_uids)
+    unknown = tuple(uid for uid in ordered if uid not in domain_frames)
+    if unknown:
+        raise TrainingDataInputError(
+            "Prescribed selection prefix contains frames outside the DATA7 domain: "
+            + ", ".join(unknown[:4])
+        )
+    order = tuple(
+        SelectionMasterEntry(
+            rank=index,
+            frame_uid=uid,
+            primary_reason=authority_reason,
+            reason_codes=(authority_reason,),
+        )
+        for index, uid in enumerate(ordered)
+    )
+    levels = tuple(
+        SelectionLadderLevel(size, ordered[:size]) for size in policy.target_sizes
+    )
+    return TrainingSelectionPlan(
+        domain=domain,
+        metric_digest=metric.content_digest,
+        data4_bundle_digest=data4_bundle.content_digest,
+        data6_bundle_digest=data6_bundle.content_digest,
+        policy=policy,
+        mandatory_anchor_count=0,
+        master_order=order,
+        ladder_levels=levels,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SelectionCoverageLevel:
     target_size: int

@@ -497,7 +497,12 @@ def test_data8_perf_p2r_fixed_file_cache_rejects_corruption(tmp_path: Path) -> N
         shared_fixed_file_cache_directory=cache,
     )
     mdstats.build_data8_preparation_bundle(**kwargs)
-    generation = next(cache.rglob("cache.json")).parent
+    generation = next(
+        metadata.parent
+        for metadata in cache.rglob("cache.json")
+        if json.loads(metadata.read_text(encoding="utf-8")).get("schema")
+        == "mdstats.perf-p2r-data8-fixed-file-cache.v1"
+    )
     artifact = generation / "artifact.xyz"
     artifact.write_bytes(artifact.read_bytes() + b"\n# corrupted\n")
     shutil.rmtree(output)

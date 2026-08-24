@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Mapping, MutableMapping
+from typing import Any, Callable, Mapping, MutableMapping, Sequence
 
 import numpy as np
 
@@ -15,13 +15,15 @@ from .objectives import (
     TrainingWeightCatalog, build_training_weight_catalog,
 )
 from .reference_fit import (
+    AtomicReferenceFitMode,
     AtomicReferenceFitPolicy,
     AtomicReferenceFitRecord,
     fit_atomic_reference_energies,
 )
 from .selection import (
     SelectionBudgetPolicy, SelectionCoverageReport, TrainingSelectionPlan,
-    build_selection_coverage_report, build_training_selection_plan,
+    build_prescribed_training_selection_plan, build_selection_coverage_report,
+    build_training_selection_plan,
 )
 
 DATA7_PREPARATION_BUNDLE_SCHEMA = "mdstats.data7-preparation-bundle.v1"
@@ -160,6 +162,120 @@ class Data7PreparationBundle:
         return result
 
 
+
+def validate_data7_fitted_component_reuse(
+    carrier: Data7PreparationBundle,
+    source_catalog: Any,
+    frame_catalog: Any,
+    data4_bundle: Any,
+    data5_bundle: Any,
+    data6_bundle: Any,
+    domain: FeatureFitDomain,
+    *,
+    feature_metric_policy: FeatureMetricPolicyTemplate,
+    atomic_reference_policy: AtomicReferenceFitPolicy,
+    objective_policy: TrainingObjectivePolicy,
+    configuration_weight_policy: ConfigurationWeightPolicy,
+    checkpoint_metric_policy: CheckpointMetricPolicy,
+    foundation_prediction_energy_by_frame: Mapping[str, float] | None = None,
+    foundation_reference_energies: Mapping[int, float] | None = None,
+    foundation_checkpoint_digest: str | None = None,
+    foundation_identity_digest: str | None = None,
+) -> None:
+    """Validate the exact execution contract for DATA7 fitted-component reuse.
+
+    The reusable carrier is an execution cache only.  This validator binds the
+    carrier to the same lineage, policies, residual-foundation identity, exact
+    per-frame foundation prediction vector, and reference-E0 mapping that a
+    fresh fit would consume.  Callers may catch :class:`TrainingDataInputError`
+    and rebuild a stale reconstructible cache, while explicit API misuse keeps
+    the historical fail-closed behavior.
+    """
+
+    if (
+        carrier.dataset_id != frame_catalog.dataset_id
+        or carrier.source_catalog_digest != source_catalog.content_digest
+        or carrier.frame_catalog_digest != frame_catalog.content_digest
+        or carrier.data4_bundle_digest != data4_bundle.content_digest
+        or carrier.data5_bundle_digest != data5_bundle.content_digest
+        or carrier.data6_bundle_digest != data6_bundle.content_digest
+        or carrier.domain.content_digest != domain.content_digest
+        or carrier.fitted_metric.policy.policy_digest
+        != feature_metric_policy.policy_digest
+        or carrier.atomic_reference_fit.policy.policy_digest
+        != atomic_reference_policy.policy_digest
+        or carrier.training_weights.objective_policy.policy_digest
+        != objective_policy.policy_digest
+        or carrier.training_weights.configuration_policy.policy_digest
+        != configuration_weight_policy.policy_digest
+        or carrier.checkpoint_metric_policy.policy_digest
+        != checkpoint_metric_policy.policy_digest
+    ):
+        raise TrainingDataInputError(
+            "DATA7 fitted-component reuse carrier does not match the requested domain/lineage/policies."
+        )
+
+    carrier_e0 = carrier.atomic_reference_fit
+    if atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL:
+        if foundation_prediction_energy_by_frame is None or foundation_reference_energies is None:
+            raise TrainingDataInputError(
+                "DATA7 fitted-component reuse requires the same foundation predictions and E0 mapping as a fresh residual fit."
+            )
+        missing_predictions = tuple(
+            uid for uid in domain.frame_uids
+            if uid not in foundation_prediction_energy_by_frame
+        )
+        missing_references = tuple(
+            int(z) for z in carrier_e0.element_order
+            if int(z) not in foundation_reference_energies
+        )
+        if missing_predictions or missing_references:
+            raise TrainingDataInputError(
+                "DATA7 fitted-component reuse is missing foundation inputs required by the fit domain."
+            )
+        expected_predictions = tuple(
+            float(foundation_prediction_energy_by_frame[uid])
+            for uid in domain.frame_uids
+        )
+        expected_references = tuple(sorted(
+            (int(z), float(foundation_reference_energies[int(z)]))
+            for z in carrier_e0.element_order
+        ))
+        if (
+            carrier_e0.foundation_prediction_energies_ev != expected_predictions
+            or carrier_e0.foundation_reference_energies_ev != expected_references
+            or (
+                foundation_identity_digest is not None
+                and carrier_e0.foundation_identity_digest
+                != validate_digest(
+                    foundation_identity_digest, name="foundation_identity_digest"
+                )
+            )
+            or (
+                foundation_identity_digest is None
+                and foundation_checkpoint_digest is not None
+                and carrier_e0.foundation_checkpoint_digest
+                != validate_digest(
+                    foundation_checkpoint_digest, name="foundation_checkpoint_digest"
+                )
+            )
+        ):
+            raise TrainingDataInputError(
+                "DATA7 fitted-component reuse carrier does not match the requested foundation-fit inputs."
+            )
+    elif any(
+        value is not None
+        for value in (
+            foundation_prediction_energy_by_frame,
+            foundation_reference_energies,
+            foundation_checkpoint_digest,
+            foundation_identity_digest,
+        )
+    ):
+        raise TrainingDataInputError(
+            "Foundation inputs cannot accompany a from-scratch DATA7 fitted-component reuse."
+        )
+
 def build_data7_preparation_bundle(
     source_catalog: Any, frame_catalog: Any, frame_data_by_run: Mapping[str, Any], data4_bundle: Any, data5_bundle: Any, data6_bundle: Any,
     domain: FeatureFitDomain, *, feature_metric_policy: FeatureMetricPolicyTemplate | None = None,
@@ -182,6 +298,9 @@ def build_data7_preparation_bundle(
     frame_record_by_uid: Mapping[str, Any] | None = None,
     event_anchor_frame_uids: set[str] | frozenset[str] | None = None,
     protected_event_frame_uids: set[str] | frozenset[str] | None = None,
+    prescribed_selection_frame_uids: Sequence[str] | None = None,
+    prescribed_selection_role: str | None = None,
+    reuse_fitted_components_from: Data7PreparationBundle | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> Data7PreparationBundle:
     canonical = (
@@ -193,47 +312,96 @@ def build_data7_preparation_bundle(
         raise TrainingDataInputError("DATA7 requires a canonical DATA5 training domain.")
     if data6_bundle.data5_bundle_digest != data5_bundle.content_digest or data6_bundle.data4_bundle_digest != data4_bundle.content_digest:
         raise TrainingDataInputError("DATA7 input lineage mismatch.")
-    if progress_callback is not None:
-        progress_callback("status=phase; phase=fitting-domain-local-feature-metric")
-    metric = fit_feature_metric(
-        frame_catalog, frame_data_by_run, data4_bundle, data5_bundle, data6_bundle, domain,
-        policy=feature_metric_policy,
-        mace_descriptor_root=mace_descriptor_root,
-        frame_array_index=frame_array_index,
-        mace_summary_cache=mace_summary_cache,
-        canonical_domain_digests=canonical,
-        progress_callback=progress_callback,
-    )
-    if progress_callback is not None:
-        progress_callback("status=phase; phase=fitting-atomic-reference-energies")
-    e0 = fit_atomic_reference_energies(
-        frame_catalog,
-        frame_data_by_run,
-        data5_bundle,
-        domain,
-        policy=atomic_reference_policy,
-        foundation_prediction_energy_by_frame=foundation_prediction_energy_by_frame,
-        foundation_reference_energies=foundation_reference_energies,
-        foundation_checkpoint_digest=foundation_checkpoint_digest,
-        foundation_identity_digest=foundation_identity_digest,
-        frame_array_index=frame_array_index,
-        composition_count_cache=composition_count_cache,
-        canonical_domain_digests=canonical,
-    )
-    if progress_callback is not None:
-        progress_callback("status=phase; phase=building-training-objective-weights")
-    weights = build_training_weight_catalog(
-        frame_catalog, data4_bundle, data5_bundle, domain,
-        objective_policy=objective_policy, configuration_policy=configuration_weight_policy,
-        canonical_domain_digests=canonical,
-        frame_record_by_uid=frame_record_by_uid,
-        event_anchor_frame_uids=event_anchor_frame_uids,
-        protected_event_frame_uids=protected_event_frame_uids,
-    )
+    active_metric_policy = FeatureMetricPolicyTemplate() if feature_metric_policy is None else feature_metric_policy
+    active_atomic_policy = AtomicReferenceFitPolicy() if atomic_reference_policy is None else atomic_reference_policy
+    active_objective_policy = TrainingObjectivePolicy() if objective_policy is None else objective_policy
+    active_configuration_policy = ConfigurationWeightPolicy() if configuration_weight_policy is None else configuration_weight_policy
     checkpoint = CheckpointMetricPolicy() if checkpoint_metric_policy is None else checkpoint_metric_policy
+    if reuse_fitted_components_from is None:
+        if progress_callback is not None:
+            progress_callback("status=phase; phase=fitting-domain-local-feature-metric")
+        metric = fit_feature_metric(
+            frame_catalog, frame_data_by_run, data4_bundle, data5_bundle, data6_bundle, domain,
+            policy=active_metric_policy,
+            mace_descriptor_root=mace_descriptor_root,
+            frame_array_index=frame_array_index,
+            mace_summary_cache=mace_summary_cache,
+            canonical_domain_digests=canonical,
+            progress_callback=progress_callback,
+        )
+        if progress_callback is not None:
+            progress_callback("status=phase; phase=fitting-atomic-reference-energies")
+        e0 = fit_atomic_reference_energies(
+            frame_catalog,
+            frame_data_by_run,
+            data5_bundle,
+            domain,
+            policy=active_atomic_policy,
+            foundation_prediction_energy_by_frame=foundation_prediction_energy_by_frame,
+            foundation_reference_energies=foundation_reference_energies,
+            foundation_checkpoint_digest=foundation_checkpoint_digest,
+            foundation_identity_digest=foundation_identity_digest,
+            frame_array_index=frame_array_index,
+            composition_count_cache=composition_count_cache,
+            canonical_domain_digests=canonical,
+        )
+        if progress_callback is not None:
+            progress_callback("status=phase; phase=building-training-objective-weights")
+        weights = build_training_weight_catalog(
+            frame_catalog, data4_bundle, data5_bundle, domain,
+            objective_policy=active_objective_policy, configuration_policy=active_configuration_policy,
+            canonical_domain_digests=canonical,
+            frame_record_by_uid=frame_record_by_uid,
+            event_anchor_frame_uids=event_anchor_frame_uids,
+            protected_event_frame_uids=protected_event_frame_uids,
+        )
+    else:
+        carrier = reuse_fitted_components_from
+        validate_data7_fitted_component_reuse(
+            carrier,
+            source_catalog,
+            frame_catalog,
+            data4_bundle,
+            data5_bundle,
+            data6_bundle,
+            domain,
+            feature_metric_policy=active_metric_policy,
+            atomic_reference_policy=active_atomic_policy,
+            objective_policy=active_objective_policy,
+            configuration_weight_policy=active_configuration_policy,
+            checkpoint_metric_policy=checkpoint,
+            foundation_prediction_energy_by_frame=foundation_prediction_energy_by_frame,
+            foundation_reference_energies=foundation_reference_energies,
+            foundation_checkpoint_digest=foundation_checkpoint_digest,
+            foundation_identity_digest=foundation_identity_digest,
+        )
+        if progress_callback is not None:
+            progress_callback(
+                "status=phase; phase=reusing-authenticated-domain-fitted-core"
+            )
+        metric = carrier.fitted_metric
+        e0 = carrier.atomic_reference_fit
+        weights = carrier.training_weights
     if progress_callback is not None:
         progress_callback("status=phase; phase=building-bounded-selection-ladder")
-    selection = build_training_selection_plan(data4_bundle, data5_bundle, data6_bundle, metric, policy=selection_budget_policy)
+    if prescribed_selection_frame_uids is None:
+        if prescribed_selection_role is not None:
+            raise TrainingDataInputError(
+                "DATA7 prescribed selection role requires prescribed frame UIDs."
+            )
+        selection = build_training_selection_plan(
+            data4_bundle, data5_bundle, data6_bundle, metric, policy=selection_budget_policy
+        )
+    else:
+        role = str(prescribed_selection_role or "upstream_authenticated_prefix")
+        selection = build_prescribed_training_selection_plan(
+            data4_bundle,
+            data6_bundle,
+            metric,
+            policy=selection_budget_policy,
+            frame_uids=prescribed_selection_frame_uids,
+            authority_reason=role,
+        )
     if progress_callback is not None:
         progress_callback("status=phase; phase=computing-vectorized-selection-coverage")
     coverage = build_selection_coverage_report(data4_bundle, data5_bundle, data6_bundle, metric, selection)
@@ -246,5 +414,6 @@ def build_data7_preparation_bundle(
         notes=(
             "DATA7 fitted products and selections are local to one canonical training domain; held-out evidence remains untouched.",
             "Coverage reports are descriptive and require DATA9 learning-curve validation.",
+            ("DATA7 selection is domain-local." if prescribed_selection_frame_uids is None else f"DATA7 training-domain selection is the authenticated {str(prescribed_selection_role or 'upstream_authenticated_prefix')} upstream prefix; no second ranking is performed."),
         ),
     )

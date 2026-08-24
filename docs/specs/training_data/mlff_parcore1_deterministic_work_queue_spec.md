@@ -21,7 +21,7 @@ Every work item SHALL have a deterministic `task_id`, canonical-order key, task 
 
 ## 4. Memory/backpressure contract
 
-The queue SHALL account admitted in-flight/completed task estimates plus explicit persistent reservations against the stage RAM budget. Tasks that cannot be admitted SHALL remain ready and increment memory-backpressure telemetry rather than violating the budget. Queue-capacity pressure SHALL be separately visible. Persistent reservations SHALL be releasable when the caller finalizes the owning state.
+The queue SHALL account admitted in-flight/completed task estimates plus explicit persistent reservations against the stage RAM budget. Tasks that cannot be admitted SHALL remain ready and increment memory-backpressure telemetry rather than violating the budget. Queue-capacity pressure SHALL be separately visible. Persistent reservations SHALL be releasable when the caller finalizes the owning state. A caller that can defer a reservation MAY use non-throwing reservation admission: a request that fits the stage budget in isolation but is blocked by current live work is memory backpressure and SHALL return unavailable, while a reservation larger than the complete stage budget is intrinsically impossible and SHALL fail immediately. Reservation failures SHALL report the live accounted-memory breakdown needed to diagnose the constraint.
 
 ## 5. Telemetry/locality contract
 

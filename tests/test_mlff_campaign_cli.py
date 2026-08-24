@@ -7,14 +7,18 @@ import pytest
 
 import mdstats
 from mdstats.training_data import campaign_cli
+from mdstats.training_data import _campaign_cli_core as campaign_core
 
 
 def test_parser_exposes_small_unix_style_surface() -> None:
     parser = campaign_cli.build_parser()
     choices = parser._subparsers._group_actions[0].choices
     assert tuple(choices) == (
-        "init", "doctor", "prepare", "preflight", "train", "extend-seed", "evaluate", "verify", "storage", "status", "advance", "guide"
+        "init", "doctor", "prepare", "preflight", "select-target-size", "materialize",
+        "train", "extend-seed", "evaluate", "verify", "storage", "status", "advance", "guide"
     )
+    assert parser.parse_args(["select-target-size"]).func is campaign_cli.command_select_target_size
+    assert parser.parse_args(["materialize"]).func is campaign_cli.command_materialize
     storage = choices["storage"]
     storage_choices = storage._subparsers._group_actions[0].choices
     assert tuple(storage_choices) == ("report", "cleanup", "deduplicate", "archive")
@@ -245,8 +249,8 @@ def test_preflight_payload_uses_plain_json_boolean(monkeypatch: pytest.MonkeyPat
             prediction.write_text("stub", encoding="utf-8")
         return next(calls)
 
-    monkeypatch.setattr(campaign_cli, "_run_bounded_process", fake_run)
-    monkeypatch.setattr(campaign_cli, "_ensure_local_wrappers", lambda paths: {
+    monkeypatch.setattr(campaign_core, "_run_bounded_process", fake_run)
+    monkeypatch.setattr(campaign_core, "_ensure_local_wrappers", lambda paths: {
         "mdstats-mace-train": Path("mdstats-mace-train"),
         "mdstats-mace-select-head": Path("mdstats-mace-select-head"),
         "mdstats-mace-eval": Path("mdstats-mace-eval"),
@@ -325,7 +329,9 @@ def test_stage_completion_is_bound_to_current_configuration(tmp_path: Path) -> N
     assert "campaign.toml changed" in message
 
 
-def test_train_refuses_to_skip_real_preflight(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_train_cannot_bypass_target_size_selection_with_legacy_preflight_receipt(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     config = tmp_path / "campaign.toml"
     config.write_text(campaign_cli._config_template(
         workspace="work", training_root="training", foundation_model="foundation.model",
@@ -336,7 +342,8 @@ def test_train_refuses_to_skip_real_preflight(tmp_path: Path, capsys: pytest.Cap
     campaign_cli._mark_stage(store, paths, "preflight", campaign_cli.StageState.COMPLETE, "legacy config-only preflight")
     result = campaign_cli.main(["--config", str(config), "train", "--dry-run"])
     assert result == 2
-    assert "one-epoch MACE preflight" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "target_multi_view_repair_v2" in error or "select-target-size" in error
 
 
 def test_real_flat_lta_archive_discovery_when_available(tmp_path: Path) -> None:
@@ -856,11 +863,11 @@ def test_same_fold_extension_rejects_changed_role_catalog(monkeypatch: pytest.Mo
         )
 
     monkeypatch.setattr(
-        campaign_cli, "_current_data8_entries",
+        campaign_core, "_current_data8_entries",
         lambda store: [entry(1, "a" * 64), entry(2, "a" * 64), entry(4, "b" * 64)],
     )
     with pytest.raises(campaign_cli.CampaignCliError, match="same-fold requirement"):
-        campaign_cli._assert_seed_extension_same_folds(
+        campaign_core._assert_seed_extension_same_folds(
             object(), mode="multihead_replay", selection_size=512, seed=4, parent_seeds=(1, 2)
         )
 
@@ -874,8 +881,8 @@ def test_same_fold_extension_accepts_identical_role_catalog(monkeypatch: pytest.
             bundle=SimpleNamespace(mlcv_role_catalog=SimpleNamespace(content_digest="a" * 64)),
         )
 
-    monkeypatch.setattr(campaign_cli, "_current_data8_entries", lambda store: [entry(1), entry(2), entry(4)])
-    campaign_cli._assert_seed_extension_same_folds(
+    monkeypatch.setattr(campaign_core, "_current_data8_entries", lambda store: [entry(1), entry(2), entry(4)])
+    campaign_core._assert_seed_extension_same_folds(
         object(), mode="multihead_replay", selection_size=512, seed=4, parent_seeds=(1, 2)
     )
 
@@ -967,12 +974,12 @@ def test_extend_seed_orchestrates_only_new_seed_and_rebuilds_final1(
             self.meta[key] = value
 
     store = FakeStore()
-    monkeypatch.setattr(campaign_cli, "CampaignStore", lambda path: store)
-    monkeypatch.setattr(campaign_cli, "_reopen_mlcv_authority_for_seed_extension", lambda *a, **k: None)
-    monkeypatch.setattr(campaign_cli, "_assert_seed_extension_same_folds", lambda *a, **k: None)
-    monkeypatch.setattr(campaign_cli, "command_doctor", lambda args: 0)
-    monkeypatch.setattr(campaign_cli, "command_prepare", lambda args: 0)
-    monkeypatch.setattr(campaign_cli, "command_preflight", lambda args: 0)
+    monkeypatch.setattr(campaign_core, "CampaignStore", lambda path: store)
+    monkeypatch.setattr(campaign_core, "_reopen_mlcv_authority_for_seed_extension", lambda *a, **k: None)
+    monkeypatch.setattr(campaign_core, "_assert_seed_extension_same_folds", lambda *a, **k: None)
+    monkeypatch.setattr(campaign_core, "command_doctor", lambda args: 0)
+    monkeypatch.setattr(campaign_core, "command_prepare", lambda args: 0)
+    monkeypatch.setattr(campaign_core, "command_preflight", lambda args: 0)
 
     captured = {}
 
@@ -1002,10 +1009,10 @@ def test_extend_seed_orchestrates_only_new_seed_and_rebuilds_final1(
         )
         return 0
 
-    monkeypatch.setattr(campaign_cli, "command_train", fake_train)
-    monkeypatch.setattr(campaign_cli, "command_evaluate", fake_evaluate)
+    monkeypatch.setattr(campaign_core, "command_train", fake_train)
+    monkeypatch.setattr(campaign_core, "command_evaluate", fake_evaluate)
 
-    result = campaign_cli.command_extend_seed(SimpleNamespace(
+    result = campaign_core.command_extend_seed(SimpleNamespace(
         config=str(config), seed=3, training_mode=None, selection_size=None, dry_run=False
     ))
     assert result == 0

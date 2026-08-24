@@ -26,23 +26,23 @@ def _metric(seed: int, size: int, epoch: int, score: float, *, monitor: int | No
 
 
 def _matrix(*, epoch3_bad: bool = False):
-    sizes = (2, 4, 8, 16, 32)
+    sizes = (1024, 2048, 4096, 8192, 16384)
     seeds = (1, 2, 3)
     metrics = []
     for seed in seeds:
         # Eventual target finalists are n16 then n32 for every seed.
-        final = {2: 9.0, 4: 8.0, 8: 7.0, 16: 4.0, 32: 4.4}
-        short = {2: 8.0, 4: 7.5, 8: 7.0, 16: 4.4, 32: 4.6}
-        coarse3 = {2: 6.0, 4: 6.1, 8: 6.2, 16: 4.8, 32: (20.0 if epoch3_bad else 5.0)}
-        coarse4 = {2: 6.0, 4: 6.1, 8: 6.2, 16: 4.6, 32: 4.8}
-        coarse5 = {2: 6.0, 4: 6.2, 8: 6.4, 16: 4.5, 32: 4.7}
+        final = {1024: 9.0, 2048: 8.0, 4096: 7.0, 8192: 4.0, 16384: 4.4}
+        short = {1024: 8.0, 2048: 7.5, 4096: 7.0, 8192: 4.4, 16384: 4.6}
+        coarse3 = {1024: 6.0, 2048: 6.1, 4096: 6.2, 8192: 4.8, 16384: (20.0 if epoch3_bad else 5.0)}
+        coarse4 = {1024: 6.0, 2048: 6.1, 4096: 6.2, 8192: 4.6, 16384: 4.8}
+        coarse5 = {1024: 6.0, 2048: 6.2, 4096: 6.4, 8192: 4.5, 16384: 4.7}
         by_epoch = {3: coarse3, 4: coarse4, 5: coarse5}
         for size in sizes:
             for epoch in (3, 4, 5):
                 base = by_epoch[epoch][size]
                 metrics.append(_metric(seed, size, epoch, base, monitor=None))
                 # 128 is deliberately non-equivalent: it makes n16 look bad.
-                score128 = base + (10.0 if size == 16 else 0.0)
+                score128 = base + (10.0 if size == 8192 else 0.0)
                 metrics.append(_metric(seed, size, epoch, score128, monitor=128))
                 # 256+ preserve the full-role promotion decision.
                 metrics.append(_metric(seed, size, epoch, base + 0.01, monitor=256))
@@ -54,14 +54,14 @@ def _matrix(*, epoch3_bad: bool = False):
 
 
 def _policy():
-    return mdstats.TargetSizeConvergencePolicy()
+    return mdstats.TargetSizeStudyPolicy()
 
 
 def test_size_fidelity1_recommends_earliest_faithful_endpoint_and_smallest_equivalent_monitor():
     sizes, metrics = _matrix()
     report = mdstats.build_size_fidelity_qualification(
         dataset_id="synthetic",
-        target_data_ladder_digest=digest({"ladder": 1}),
+        target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
         target_size_policy=_policy(),
         target_sizes=sizes,
         metrics=metrics,
@@ -84,7 +84,7 @@ def test_size_fidelity1_can_recommend_later_coarse_endpoint_when_epoch3_drops_a_
     sizes, metrics = _matrix(epoch3_bad=True)
     report = mdstats.build_size_fidelity_qualification(
         dataset_id="synthetic",
-        target_data_ladder_digest=digest({"ladder": 1}),
+        target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
         target_size_policy=_policy(),
         target_sizes=sizes,
         metrics=metrics,
@@ -100,7 +100,7 @@ def test_size_fidelity1_requires_complete_exhaustive_matrix():
     try:
         mdstats.build_size_fidelity_qualification(
             dataset_id="synthetic",
-            target_data_ladder_digest=digest({"ladder": 1}),
+            target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
             target_size_policy=_policy(),
             target_sizes=sizes,
             metrics=metrics[:-1],
@@ -115,7 +115,7 @@ def test_size_fidelity1_round_trip_and_recompute_validation():
     sizes, metrics = _matrix()
     report = mdstats.build_size_fidelity_qualification(
         dataset_id="synthetic",
-        target_data_ladder_digest=digest({"ladder": 1}),
+        target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
         target_size_policy=_policy(),
         target_sizes=sizes,
         metrics=metrics,
@@ -137,9 +137,9 @@ def test_size_fidelity1_policy_is_bound_to_current_production_defaults():
 def test_size_fidelity1_execution_plan_freezes_exhaustive_matrix_and_reuses_full_predictions():
     plan = mdstats.build_size_fidelity_execution_plan(
         dataset_id="synthetic",
-        target_data_ladder_digest=digest({"ladder": 1}),
+        target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
         target_size_policy=_policy(),
-        target_sizes=(2, 4, 8, 16, 32),
+        target_sizes=(1024, 2048, 4096, 8192, 16384),
     )
     assert plan.expected_training_run_count == 15
     assert plan.required_checkpoint_epochs == (3, 4, 5, 10, 30)
@@ -151,10 +151,10 @@ def test_size_fidelity1_execution_plan_freezes_exhaustive_matrix_and_reuses_full
 
 def test_size_fidelity1_rejects_extra_unversioned_metric_grid_entries():
     sizes, metrics = _matrix()
-    extra = _metric(1, 2, 6, 5.0, monitor=None)
+    extra = _metric(1, 1024, 6, 5.0, monitor=None)
     try:
         mdstats.build_size_fidelity_qualification(
-            dataset_id="synthetic", target_data_ladder_digest=digest({"ladder": 1}),
+            dataset_id="synthetic", target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
             target_size_policy=_policy(), target_sizes=sizes, metrics=metrics + (extra,),
         )
     except mdstats.TrainingDataInputError as exc:
@@ -172,7 +172,7 @@ def test_size_fidelity1_rejects_role_identity_drift_across_candidates():
     items[0] = mdstats.SizeFidelityMetric.from_dict(payload)
     try:
         mdstats.build_size_fidelity_qualification(
-            dataset_id="synthetic", target_data_ladder_digest=digest({"ladder": 1}),
+            dataset_id="synthetic", target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
             target_size_policy=_policy(), target_sizes=sizes, metrics=tuple(items),
         )
     except mdstats.TrainingDataInputError as exc:

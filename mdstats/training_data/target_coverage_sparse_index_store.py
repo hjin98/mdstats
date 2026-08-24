@@ -28,6 +28,7 @@ from .target_coverage import (
     _validate_array_reference,
 )
 from .target_coverage_sparse_index import (
+    TARGET_COVERAGE_SPARSE_INDEX_LEGACY_PERSISTENCE_VERSION,
     TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION,
     TargetCoverageHardObligation,
     TargetCoverageSparseDomainIndex,
@@ -41,7 +42,8 @@ from .target_coverage_sparse_forward_view import (
     TargetCoverageSparseForwardIndexView,
 )
 
-TARGET_COVERAGE_SPARSE_INDEX_NATIVE_MANIFEST_SCHEMA = "mdstats.target-coverage-sparse-index-native-manifest.v1"
+TARGET_COVERAGE_SPARSE_INDEX_LEGACY_NATIVE_MANIFEST_SCHEMA = "mdstats.target-coverage-sparse-index-native-manifest.v1"
+TARGET_COVERAGE_SPARSE_INDEX_NATIVE_MANIFEST_SCHEMA = "mdstats.target-coverage-sparse-index-native-manifest.v2"
 TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA = "mdstats.mlff-campaign-target-coverage-sparse-index-native-pointer.v1"
 _MVIDX_VALIDATION_RECEIPT_NAMESPACE = "target-data2c-mvidx1-native-v1"
 _MVIDX_VALIDATION_CHUNK_EDGES = 8 * 1024 * 1024
@@ -166,6 +168,173 @@ def _write_npy(path: Path, array: np.ndarray) -> dict[str, Any]:
         "array_reference": _coverage_array_reference(contiguous),
     }
 
+
+
+
+def _family_sequence(index: TargetCoverageSparseIndex) -> tuple[TargetCoverageSparseFamilyIndex, ...]:
+    return tuple(family for domain in index.domains for family in domain.families)
+
+
+def _shared_packed_root(
+    families: tuple[TargetCoverageSparseFamilyIndex, ...],
+    attribute: str,
+) -> np.memmap | None:
+    root: np.memmap | None = None
+    cursor = 0
+    for family in families:
+        array = np.asarray(getattr(family, attribute))
+        candidate = _root_memmap(array)
+        if candidate is None or candidate.ndim != 1 or not array.flags.c_contiguous:
+            return None
+        if root is None:
+            root = candidate
+        elif candidate is not root:
+            return None
+        byte_offset = int(array.ctypes.data) - int(candidate.ctypes.data)
+        if byte_offset != cursor * array.dtype.itemsize:
+            return None
+        cursor += int(array.size)
+    if root is None or cursor != int(root.size):
+        return None
+    return root
+
+
+def _packed_storage_descriptor(path: Path, array: np.ndarray) -> dict[str, Any]:
+    return {
+        "relative_path": path.name,
+        "sha256": _sha256_file(path),
+        "size_bytes": path.stat().st_size,
+        "dtype": array.dtype.str,
+        "shape": [int(value) for value in array.shape],
+        "byte_count": int(array.nbytes),
+    }
+
+
+def _packed_slice_descriptor(
+    family: TargetCoverageSparseFamilyIndex,
+    attribute: str,
+    start: int,
+    stop: int,
+) -> dict[str, Any]:
+    return {
+        "start": int(start),
+        "stop": int(stop),
+        "array_reference": dict(family.array_references[attribute]),
+    }
+
+
+def _write_packed_family_array(
+    path: Path,
+    families: tuple[TargetCoverageSparseFamilyIndex, ...],
+    *,
+    attribute: str,
+    dtype: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    target_dtype = np.dtype(dtype).newbyteorder("<")
+    slices: list[dict[str, Any]] = []
+    cursor = 0
+    for family in families:
+        array = np.asarray(getattr(family, attribute))
+        stop = cursor + int(array.size)
+        slices.append(_packed_slice_descriptor(family, attribute, cursor, stop))
+        cursor = stop
+
+    root = _shared_packed_root(families, attribute)
+    source = None if root is None or root.dtype != target_dtype else _whole_npy_memmap_source(root)
+    if source is not None:
+        try:
+            os.link(source, path)
+        except OSError:
+            source = None
+        else:
+            return _packed_storage_descriptor(path, root), slices
+
+    packed = np.lib.format.open_memmap(path, mode="w+", dtype=target_dtype, shape=(cursor,))
+    try:
+        cursor = 0
+        for family in families:
+            array = np.asarray(getattr(family, attribute), dtype=target_dtype)
+            stop = cursor + int(array.size)
+            packed[cursor:stop] = array
+            cursor = stop
+        packed.flush()
+        descriptor = _packed_storage_descriptor(path, packed)
+        return descriptor, slices
+    finally:
+        mapping = getattr(packed, "_mmap", None)
+        if mapping is not None and not mapping.closed:
+            mapping.close()
+
+
+def _read_packed_npy(
+    root: Path,
+    descriptor: Mapping[str, Any],
+    *,
+    label: str,
+) -> np.memmap:
+    path = _safe_path(root, descriptor, label=label)
+    try:
+        array = np.load(path, mmap_mode="r", allow_pickle=False)
+    except (OSError, ValueError) as exc:
+        raise TargetCoverageSparseIndexNativeStoreError(
+            f"Cannot restore {label} packed array: {path}"
+        ) from exc
+    expected_shape = tuple(int(value) for value in descriptor.get("shape", ()))
+    expected_dtype = str(descriptor.get("dtype", ""))
+    expected_bytes = int(descriptor.get("byte_count", -1))
+    if (
+        array.ndim != 1
+        or tuple(array.shape) != expected_shape
+        or array.dtype.str != expected_dtype
+        or int(array.nbytes) != expected_bytes
+    ):
+        mapping = getattr(array, "_mmap", None)
+        if mapping is not None and not mapping.closed:
+            mapping.close()
+        raise TargetCoverageSparseIndexNativeStoreError(
+            f"TARGET-DATA2C-MVIDX1 {label} packed-array metadata mismatch."
+        )
+    array.setflags(write=False)
+    return array
+
+
+def _packed_slice(
+    packed: np.ndarray,
+    descriptor: Mapping[str, Any],
+    *,
+    label: str,
+    validate_array_reference: bool,
+) -> np.ndarray:
+    start = int(descriptor.get("start", -1))
+    stop = int(descriptor.get("stop", -1))
+    if start < 0 or stop < start or stop > int(packed.size):
+        raise TargetCoverageSparseIndexNativeStoreError(
+            f"Invalid {label} packed-array slice."
+        )
+    array = packed[start:stop]
+    reference = descriptor.get("array_reference")
+    if not isinstance(reference, Mapping):
+        raise TargetCoverageSparseIndexNativeStoreError(
+            f"Missing {label} packed-slice identity."
+        )
+    try:
+        if validate_array_reference:
+            _validate_array_reference(reference, array, name=label)
+        else:
+            _validate_reference_metadata(reference, array, label=label)
+    except Exception as exc:
+        raise TargetCoverageSparseIndexNativeStoreError(str(exc)) from exc
+    array.setflags(write=False)
+    return array
+
+
+def _close_memmap(array: np.ndarray | None) -> None:
+    if array is None:
+        return
+    root = _root_memmap(array)
+    mapping = None if root is None else getattr(root, "_mmap", None)
+    if mapping is not None and not mapping.closed:
+        mapping.close()
 
 def _safe_path_stat(root: Path, descriptor: Mapping[str, Any], *, label: str) -> tuple[Path, os.stat_result]:
     relative = Path(str(descriptor.get("relative_path", "")))
@@ -300,23 +469,42 @@ def _read_npy(
 
 def _manifest_array_descriptors(manifest: Mapping[str, Any]) -> list[tuple[str, Mapping[str, Any]]]:
     result: list[tuple[str, Mapping[str, Any]]] = []
+    packed = manifest.get("packed_family_arrays")
+    if isinstance(packed, Mapping):
+        for name, descriptor in sorted(packed.items()):
+            if not isinstance(descriptor, Mapping):
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    "TARGET-DATA2C-MVIDX1 packed family array descriptor is invalid."
+                )
+            result.append((f"packed family {name}", descriptor))
+    else:
+        for domain in manifest.get("domains", ()):
+            domain_id = str(domain.get("label_domain_id", ""))
+            for family in domain.get("families", ()):
+                family_id = str(family.get("family_id", ""))
+                arrays = family.get("arrays")
+                if not isinstance(arrays, Mapping):
+                    raise TargetCoverageSparseIndexNativeStoreError(
+                        "TARGET-DATA2C-MVIDX1 family array manifest is missing."
+                    )
+                for name, descriptor in sorted(arrays.items()):
+                    if not isinstance(descriptor, Mapping):
+                        raise TargetCoverageSparseIndexNativeStoreError(
+                            "TARGET-DATA2C-MVIDX1 family array descriptor is invalid."
+                        )
+                    result.append((f"domain {domain_id} family {family_id} {name}", descriptor))
     for domain in manifest.get("domains", ()):
         domain_id = str(domain.get("label_domain_id", ""))
-        for family in domain.get("families", ()):
-            family_id = str(family.get("family_id", ""))
-            arrays = family.get("arrays")
-            if not isinstance(arrays, Mapping):
-                raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 family array manifest is missing.")
-            for name, descriptor in sorted(arrays.items()):
-                if not isinstance(descriptor, Mapping):
-                    raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 family array descriptor is invalid.")
-                result.append((f"domain {domain_id} family {family_id} {name}", descriptor))
         arrays = domain.get("arrays")
         if not isinstance(arrays, Mapping):
-            raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 domain array manifest is missing.")
+            raise TargetCoverageSparseIndexNativeStoreError(
+                "TARGET-DATA2C-MVIDX1 domain array manifest is missing."
+            )
         for name, descriptor in sorted(arrays.items()):
             if not isinstance(descriptor, Mapping):
-                raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 domain array descriptor is invalid.")
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    "TARGET-DATA2C-MVIDX1 domain array descriptor is invalid."
+                )
             result.append((f"domain {domain_id} {name}", descriptor))
     return result
 
@@ -330,9 +518,15 @@ def _restore_identity(
     for label, descriptor in _manifest_array_descriptors(manifest):
         path, stat = _safe_path_stat(data_root, descriptor, label=label)
         reference = descriptor.get("array_reference")
-        if not isinstance(reference, Mapping):
-            raise TargetCoverageSparseIndexNativeStoreError(f"Missing {label} array identity.")
-        logical_bytes += max(0, int(reference.get("byte_count", 0)))
+        if isinstance(reference, Mapping):
+            logical_bytes += max(0, int(reference.get("byte_count", 0)))
+        else:
+            byte_count = int(descriptor.get("byte_count", -1))
+            if byte_count < 0:
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    f"Missing {label} packed-array byte count."
+                )
+            logical_bytes += byte_count
         files.append(
             {
                 "path": str(path),
@@ -391,10 +585,14 @@ def _manifest_payload(index: TargetCoverageSparseIndex, record_key: str) -> dict
 
 
 def _validate_existing_manifest(root: Path, manifest: Mapping[str, Any]) -> None:
+    packed = manifest.get("packed_family_arrays")
+    if not isinstance(packed, Mapping):
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 native v2 manifest is missing packed family arrays."
+        )
+    for name, descriptor in packed.items():
+        _safe_path(root, descriptor, label=f"packed family {name}")
     for domain in manifest.get("domains", ()):
-        for family in domain.get("families", ()):
-            for name, descriptor in family.get("arrays", {}).items():
-                _safe_path(root, descriptor, label=f"family {family.get('family_id')} {name}")
         for name, descriptor in domain.get("arrays", {}).items():
             _safe_path(root, descriptor, label=f"domain {domain.get('label_domain_id')} {name}")
 
@@ -439,20 +637,42 @@ def write_target_coverage_sparse_index_native_record(
 
     temporary = Path(tempfile.mkdtemp(prefix="target-coverage-sparse-index-write-", dir=root))
     try:
+        families = _family_sequence(index)
+        packed_family_arrays: dict[str, dict[str, Any]] = {}
+        packed_slices: dict[str, list[dict[str, Any]]] = {}
+        for attribute, dtype in (
+            ("witness_offsets", "<u8"),
+            ("witness_candidates", "<u4"),
+            ("candidate_offsets", "<u8"),
+            ("candidate_witnesses", "<u4"),
+        ):
+            descriptor, slices = _write_packed_family_array(
+                temporary / f"packed-{attribute.replace('_', '-')}.npy",
+                families,
+                attribute=attribute,
+                dtype=dtype,
+            )
+            packed_family_arrays[attribute] = descriptor
+            packed_slices[attribute] = slices
+
         domains: list[dict[str, Any]] = []
+        family_cursor = 0
         for domain_position, domain in enumerate(index.domains):
             family_rows: list[dict[str, Any]] = []
-            for family_position, family in enumerate(domain.families):
-                prefix = f"domain-{domain_position:03d}-family-{family_position:04d}"
+            for family in domain.families:
                 family_rows.append({
                     **_family_metadata(family),
-                    "arrays": {
-                        "witness_offsets": _write_npy(temporary / f"{prefix}-witness-offsets.npy", family.witness_offsets),
-                        "witness_candidates": _write_npy(temporary / f"{prefix}-witness-candidates.npy", family.witness_candidates),
-                        "candidate_offsets": _write_npy(temporary / f"{prefix}-candidate-offsets.npy", family.candidate_offsets),
-                        "candidate_witnesses": _write_npy(temporary / f"{prefix}-candidate-witnesses.npy", family.candidate_witnesses),
+                    "array_slices": {
+                        name: packed_slices[name][family_cursor]
+                        for name in (
+                            "witness_offsets",
+                            "witness_candidates",
+                            "candidate_offsets",
+                            "candidate_witnesses",
+                        )
                     },
                 })
+                family_cursor += 1
             prefix = f"domain-{domain_position:03d}"
             domains.append({
                 "label_domain_id": domain.label_domain_id,
@@ -471,7 +691,15 @@ def write_target_coverage_sparse_index_native_record(
                 },
                 "content_digest": domain.content_digest,
             })
-        manifest = {**_manifest_payload(index, record_key), "domains": domains}
+        if family_cursor != len(families):
+            raise TargetCoverageSparseIndexNativeStoreError(
+                "TARGET-DATA2C-MVIDX1 packed family manifest cardinality mismatch."
+            )
+        manifest = {
+            **_manifest_payload(index, record_key),
+            "packed_family_arrays": packed_family_arrays,
+            "domains": domains,
+        }
         manifest = {**manifest, "manifest_digest": digest(manifest)}
         _write_json_atomic(temporary / "manifest.json", manifest)
         if destination.exists():
@@ -503,35 +731,68 @@ def read_target_coverage_sparse_index_native_record(
 ) -> TargetCoverageSparseIndex:
     started = time.monotonic()
     if pointer.get("schema") != TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA:
-        raise TargetCoverageSparseIndexNativeStoreError("Unsupported TARGET-DATA2C-MVIDX1 native pointer schema.")
-    if pointer.get("persistence_version") != TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION:
-        raise TargetCoverageSparseIndexNativeStoreError("Unsupported TARGET-DATA2C-MVIDX1 persistence version.")
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Unsupported TARGET-DATA2C-MVIDX1 native pointer schema."
+        )
+    pointer_version = pointer.get("persistence_version")
+    if pointer_version == TARGET_COVERAGE_SPARSE_INDEX_LEGACY_PERSISTENCE_VERSION:
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 legacy per-family native persistence is not "
+            "file-descriptor bounded; rebuild the reconstructible MVIDX1 cache "
+            "from the persisted NEIGHBOR1 authority."
+        )
+    if pointer_version != TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION:
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Unsupported TARGET-DATA2C-MVIDX1 persistence version."
+        )
     relative = Path(str(pointer.get("relative_path", "")))
     if relative.is_absolute() or ".." in relative.parts or relative in {Path(""), Path(".")}:
-        raise TargetCoverageSparseIndexNativeStoreError("Invalid TARGET-DATA2C-MVIDX1 manifest path.")
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Invalid TARGET-DATA2C-MVIDX1 manifest path."
+        )
     root = Path(state_root).resolve()
     manifest_path = (root / relative).resolve()
     if root not in manifest_path.parents or not manifest_path.is_file():
-        raise TargetCoverageSparseIndexNativeStoreError("Missing TARGET-DATA2C-MVIDX1 native manifest.")
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Missing TARGET-DATA2C-MVIDX1 native manifest."
+        )
     expected_sha = str(pointer.get("sha256", ""))
     if not expected_sha or _sha256_file(manifest_path) != expected_sha:
-        raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 manifest checksum mismatch.")
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 manifest checksum mismatch."
+        )
     supplied_pointer_digest = pointer.get("pointer_digest")
     pointer_payload = {key: value for key, value in pointer.items() if key != "pointer_digest"}
     if supplied_pointer_digest not in (None, digest(pointer_payload)):
-        raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 pointer digest mismatch.")
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 pointer digest mismatch."
+        )
     with manifest_path.open("r", encoding="utf-8") as handle:
         manifest = json.load(handle)
-    if not isinstance(manifest, Mapping) or manifest.get("schema") != TARGET_COVERAGE_SPARSE_INDEX_NATIVE_MANIFEST_SCHEMA:
-        raise TargetCoverageSparseIndexNativeStoreError("Invalid TARGET-DATA2C-MVIDX1 native manifest.")
+    if (
+        not isinstance(manifest, Mapping)
+        or manifest.get("schema") != TARGET_COVERAGE_SPARSE_INDEX_NATIVE_MANIFEST_SCHEMA
+    ):
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Invalid TARGET-DATA2C-MVIDX1 native manifest."
+        )
     if manifest.get("persistence_version") != TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION:
-        raise TargetCoverageSparseIndexNativeStoreError("Unsupported TARGET-DATA2C-MVIDX1 native manifest version.")
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Unsupported TARGET-DATA2C-MVIDX1 native manifest version."
+        )
     supplied_manifest_digest = manifest.get("manifest_digest")
-    expected_manifest_digest = digest({key: value for key, value in manifest.items() if key != "manifest_digest"})
+    expected_manifest_digest = digest(
+        {key: value for key, value in manifest.items() if key != "manifest_digest"}
+    )
     if supplied_manifest_digest != expected_manifest_digest:
-        raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 native manifest digest mismatch.")
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 native manifest digest mismatch."
+        )
     if pointer.get("content_digest") != manifest.get("index_content_digest"):
-        raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 pointer/manifest content digest mismatch.")
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 pointer/manifest content digest mismatch."
+        )
+
     data_root = manifest_path.parent
     restore_identity, logical_bytes = _restore_identity(data_root, manifest)
     expected_index_digest = str(manifest.get("index_content_digest", ""))
@@ -541,154 +802,258 @@ def read_target_coverage_sparse_index_native_record(
     )
     validation_mode = "receipt-hit" if receipt_hit else "full"
     cache_policy = _resolved_cache_policy(mmap_cache_policy, logical_bytes)
-    family_total = sum(len(domain.get("families", ())) for domain in manifest.get("domains", ()))
+    family_total = sum(
+        len(domain.get("families", ())) for domain in manifest.get("domains", ())
+    )
     family_completed = 0
     completed_bytes = 0
     last_progress = started
     if progress_callback is not None:
         progress_callback(
             f"restore; status=start; validation={validation_mode}; cache_policy={cache_policy}; "
-            f"families=0/{family_total}; bytes=0/{logical_bytes}"
+            f"layout=packed-v2; families=0/{family_total}; bytes=0/{logical_bytes}"
         )
-    domains: list[TargetCoverageSparseDomainIndex] = []
-    for domain_payload in manifest.get("domains", ()):
-        family_indices: list[TargetCoverageSparseFamilyIndex] = []
-        for family_payload in domain_payload.get("families", ()):
-            arrays = family_payload.get("arrays")
-            if not isinstance(arrays, Mapping):
-                raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 family array manifest is missing.")
-            witness_offsets = _read_npy(
-                data_root,
-                arrays["witness_offsets"],
-                label="witness_offsets",
-                mmap_threshold_bytes=mmap_threshold_bytes,
-                validate_array_reference=not receipt_hit,
-            )
-            witness_candidates = _read_npy(
-                data_root,
-                arrays["witness_candidates"],
-                label="witness_candidates",
-                mmap_threshold_bytes=mmap_threshold_bytes,
-                validate_array_reference=False,
-            )
-            candidate_offsets = _read_npy(
-                data_root,
-                arrays["candidate_offsets"],
-                label="candidate_offsets",
-                mmap_threshold_bytes=mmap_threshold_bytes,
-                validate_array_reference=not receipt_hit,
-            )
-            candidate_witnesses = _read_npy(
-                data_root,
-                arrays["candidate_witnesses"],
-                label="candidate_witnesses",
-                mmap_threshold_bytes=mmap_threshold_bytes,
-                validate_array_reference=False,
-            )
-            if not receipt_hit:
-                if hasattr(mmap, "MADV_SEQUENTIAL"):
-                    _madvise_array(witness_candidates, mmap.MADV_SEQUENTIAL)
-                    _madvise_array(candidate_witnesses, mmap.MADV_SEQUENTIAL)
-                _validate_native_index_array(
-                    arrays["witness_candidates"]["array_reference"],
-                    witness_candidates,
-                    witness_offsets,
-                    upper_bound=int(family_payload["candidate_count"]),
-                    label="witness-to-candidate",
-                )
-                if cache_policy == "discard" and hasattr(mmap, "MADV_DONTNEED"):
-                    _madvise_array(witness_candidates, mmap.MADV_DONTNEED)
-                _validate_native_index_array(
-                    arrays["candidate_witnesses"]["array_reference"],
-                    candidate_witnesses,
-                    candidate_offsets,
-                    upper_bound=int(family_payload["witness_count"]),
-                    label="candidate-to-witness",
-                )
-                if cache_policy == "discard" and hasattr(mmap, "MADV_DONTNEED"):
-                    _madvise_array(candidate_witnesses, mmap.MADV_DONTNEED)
-            family = TargetCoverageSparseFamilyIndex._from_validated_native(
-                array_references={
-                    name: descriptor["array_reference"]
-                    for name, descriptor in arrays.items()
-                },
-                family_id=str(family_payload["family_id"]),
-                family_digest=str(family_payload["family_digest"]),
-                candidate_count=int(family_payload["candidate_count"]),
-                witness_count=int(family_payload["witness_count"]),
-                witness_offsets=witness_offsets,
-                witness_candidates=witness_candidates,
-                candidate_offsets=candidate_offsets,
-                candidate_witnesses=candidate_witnesses,
-            )
-            if int(family_payload.get("edge_count", family.edge_count)) != family.edge_count or family_payload.get("content_digest") != family.content_digest:
-                raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 family manifest identity mismatch.")
-            family_indices.append(family)
-            family_completed += 1
-            completed_bytes += sum(
-                int(descriptor["array_reference"].get("byte_count", 0))
-                for descriptor in arrays.values()
-            )
-            now = time.monotonic()
-            if progress_callback is not None and (
-                family_completed == family_total
-                or now - last_progress >= max(0.1, float(progress_interval_seconds))
-            ):
-                elapsed = max(0.0, now - started)
-                eta = 0.0 if completed_bytes <= 0 else elapsed * max(0, logical_bytes - completed_bytes) / completed_bytes
-                progress_callback(
-                    f"restore; status=progress; validation={validation_mode}; cache_policy={cache_policy}; "
-                    f"families={family_completed}/{family_total}; bytes={completed_bytes}/{logical_bytes}; "
-                    f"elapsed_s={elapsed:.1f}; eta_s={eta:.1f}"
-                )
-                last_progress = now
-        arrays = domain_payload.get("arrays")
-        if not isinstance(arrays, Mapping):
-            raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 domain array manifest is missing.")
-        domain = TargetCoverageSparseDomainIndex(
-            label_domain_id=str(domain_payload["label_domain_id"]),
-            frame_domain_digest=str(domain_payload["frame_domain_digest"]),
-            candidate_count=int(domain_payload["candidate_count"]),
-            families=tuple(family_indices),
-            obligations=tuple(TargetCoverageHardObligation.from_dict(item) for item in domain_payload["obligations"]),
-            obligation_offsets=_read_npy(data_root, arrays["obligation_offsets"], label="obligation_offsets", mmap_threshold_bytes=mmap_threshold_bytes),
-            obligation_candidates=_read_npy(data_root, arrays["obligation_candidates"], label="obligation_candidates", mmap_threshold_bytes=mmap_threshold_bytes),
-            candidate_obligation_offsets=_read_npy(data_root, arrays["candidate_obligation_offsets"], label="candidate_obligation_offsets", mmap_threshold_bytes=mmap_threshold_bytes),
-            candidate_obligations=_read_npy(data_root, arrays["candidate_obligations"], label="candidate_obligations", mmap_threshold_bytes=mmap_threshold_bytes),
-            correlation_unit_ids=tuple(str(item) for item in domain_payload["correlation_unit_ids"]),
-            candidate_correlation_unit_codes=_read_npy(data_root, arrays["candidate_correlation_unit_codes"], label="candidate_correlation_unit_codes", mmap_threshold_bytes=mmap_threshold_bytes),
-        )
-        if int(domain_payload.get("obligation_edge_count", domain.obligation_edge_count)) != domain.obligation_edge_count or domain_payload.get("content_digest") != domain.content_digest:
-            raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 domain manifest identity mismatch.")
-        domains.append(domain)
-    result = TargetCoverageSparseIndex(
-        dataset_id=str(manifest["dataset_id"]),
-        target_coverage_reference_digest=str(manifest["target_coverage_reference_digest"]),
-        target_data_role_freeze_digest=str(manifest["target_data_role_freeze_digest"]),
-        target_coverage_feasibility_digest=str(manifest["target_coverage_feasibility_digest"]),
-        policy=TargetCoverageSparseIndexPolicy.from_dict(manifest["policy"]),
-        domains=tuple(domains),
-        authority_version=str(manifest["authority_version"]),
-    )
-    if result.content_digest != manifest.get("index_content_digest") or result.content_digest != pointer.get("content_digest"):
-        raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 restored content digest mismatch.")
-    final_identity, _ = _restore_identity(data_root, manifest)
-    if final_identity != restore_identity:
-        raise TargetCoverageSparseIndexNativeStoreError("TARGET-DATA2C-MVIDX1 sidecar identity changed during restore.")
-    if not receipt_hit:
-        write_validation_receipt(
-            _MVIDX_VALIDATION_RECEIPT_NAMESPACE,
-            restore_identity,
-            result.content_digest,
-        )
-    if progress_callback is not None:
-        progress_callback(
-            f"restore; status=complete; validation={validation_mode}; cache_policy={cache_policy}; "
-            f"families={family_completed}/{family_total}; bytes={logical_bytes}/{logical_bytes}; "
-            f"elapsed_s={time.monotonic() - started:.1f}"
-        )
-    return result
 
+    packed_payload = manifest.get("packed_family_arrays")
+    if not isinstance(packed_payload, Mapping):
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 native v2 manifest is missing packed family arrays."
+        )
+    packed_roots: dict[str, np.memmap] = {}
+    try:
+        for name in (
+            "witness_offsets",
+            "witness_candidates",
+            "candidate_offsets",
+            "candidate_witnesses",
+        ):
+            descriptor = packed_payload.get(name)
+            if not isinstance(descriptor, Mapping):
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    f"TARGET-DATA2C-MVIDX1 packed {name} descriptor is missing."
+                )
+            packed_roots[name] = _read_packed_npy(
+                data_root, descriptor, label=f"packed family {name}"
+            )
+
+        packed_cursors = {name: 0 for name in packed_roots}
+        domains: list[TargetCoverageSparseDomainIndex] = []
+        for domain_payload in manifest.get("domains", ()):
+            family_indices: list[TargetCoverageSparseFamilyIndex] = []
+            for family_payload in domain_payload.get("families", ()):
+                slices = family_payload.get("array_slices")
+                if not isinstance(slices, Mapping):
+                    raise TargetCoverageSparseIndexNativeStoreError(
+                        "TARGET-DATA2C-MVIDX1 family packed-slice manifest is missing."
+                    )
+                family_arrays: dict[str, np.ndarray] = {}
+                for name in (
+                    "witness_offsets",
+                    "witness_candidates",
+                    "candidate_offsets",
+                    "candidate_witnesses",
+                ):
+                    descriptor = slices.get(name)
+                    if not isinstance(descriptor, Mapping):
+                        raise TargetCoverageSparseIndexNativeStoreError(
+                            f"TARGET-DATA2C-MVIDX1 family {name} packed slice is missing."
+                        )
+                    if int(descriptor.get("start", -1)) != packed_cursors[name]:
+                        raise TargetCoverageSparseIndexNativeStoreError(
+                            f"TARGET-DATA2C-MVIDX1 packed {name} slices are not canonical."
+                        )
+                    family_arrays[name] = _packed_slice(
+                        packed_roots[name],
+                        descriptor,
+                        label=name,
+                        validate_array_reference=(
+                            not receipt_hit and name in {"witness_offsets", "candidate_offsets"}
+                        ),
+                    )
+                    packed_cursors[name] = int(descriptor["stop"])
+
+                witness_offsets = family_arrays["witness_offsets"]
+                witness_candidates = family_arrays["witness_candidates"]
+                candidate_offsets = family_arrays["candidate_offsets"]
+                candidate_witnesses = family_arrays["candidate_witnesses"]
+                if not receipt_hit:
+                    if hasattr(mmap, "MADV_SEQUENTIAL"):
+                        _madvise_array(witness_candidates, mmap.MADV_SEQUENTIAL)
+                        _madvise_array(candidate_witnesses, mmap.MADV_SEQUENTIAL)
+                    _validate_native_index_array(
+                        slices["witness_candidates"]["array_reference"],
+                        witness_candidates,
+                        witness_offsets,
+                        upper_bound=int(family_payload["candidate_count"]),
+                        label="witness-to-candidate",
+                    )
+                    if cache_policy == "discard" and hasattr(mmap, "MADV_DONTNEED"):
+                        _madvise_array(witness_candidates, mmap.MADV_DONTNEED)
+                    _validate_native_index_array(
+                        slices["candidate_witnesses"]["array_reference"],
+                        candidate_witnesses,
+                        candidate_offsets,
+                        upper_bound=int(family_payload["witness_count"]),
+                        label="candidate-to-witness",
+                    )
+                    if cache_policy == "discard" and hasattr(mmap, "MADV_DONTNEED"):
+                        _madvise_array(candidate_witnesses, mmap.MADV_DONTNEED)
+                family = TargetCoverageSparseFamilyIndex._from_validated_native(
+                    array_references={
+                        name: dict(slices[name]["array_reference"])
+                        for name in (
+                            "witness_offsets",
+                            "witness_candidates",
+                            "candidate_offsets",
+                            "candidate_witnesses",
+                        )
+                    },
+                    family_id=str(family_payload["family_id"]),
+                    family_digest=str(family_payload["family_digest"]),
+                    candidate_count=int(family_payload["candidate_count"]),
+                    witness_count=int(family_payload["witness_count"]),
+                    witness_offsets=witness_offsets,
+                    witness_candidates=witness_candidates,
+                    candidate_offsets=candidate_offsets,
+                    candidate_witnesses=candidate_witnesses,
+                )
+                if (
+                    int(family_payload.get("edge_count", family.edge_count)) != family.edge_count
+                    or family_payload.get("content_digest") != family.content_digest
+                ):
+                    raise TargetCoverageSparseIndexNativeStoreError(
+                        "TARGET-DATA2C-MVIDX1 family manifest identity mismatch."
+                    )
+                family_indices.append(family)
+                family_completed += 1
+                completed_bytes += sum(
+                    int(slices[name]["array_reference"].get("byte_count", 0))
+                    for name in (
+                        "witness_offsets",
+                        "witness_candidates",
+                        "candidate_offsets",
+                        "candidate_witnesses",
+                    )
+                )
+                now = time.monotonic()
+                if progress_callback is not None and (
+                    family_completed == family_total
+                    or now - last_progress >= max(0.1, float(progress_interval_seconds))
+                ):
+                    elapsed = max(0.0, now - started)
+                    eta = (
+                        0.0
+                        if completed_bytes <= 0
+                        else elapsed * max(0, logical_bytes - completed_bytes) / completed_bytes
+                    )
+                    progress_callback(
+                        f"restore; status=progress; validation={validation_mode}; cache_policy={cache_policy}; "
+                        f"layout=packed-v2; families={family_completed}/{family_total}; "
+                        f"bytes={completed_bytes}/{logical_bytes}; elapsed_s={elapsed:.1f}; eta_s={eta:.1f}"
+                    )
+                    last_progress = now
+            arrays = domain_payload.get("arrays")
+            if not isinstance(arrays, Mapping):
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    "TARGET-DATA2C-MVIDX1 domain array manifest is missing."
+                )
+            domain = TargetCoverageSparseDomainIndex(
+                label_domain_id=str(domain_payload["label_domain_id"]),
+                frame_domain_digest=str(domain_payload["frame_domain_digest"]),
+                candidate_count=int(domain_payload["candidate_count"]),
+                families=tuple(family_indices),
+                obligations=tuple(
+                    TargetCoverageHardObligation.from_dict(item)
+                    for item in domain_payload["obligations"]
+                ),
+                obligation_offsets=_read_npy(
+                    data_root,
+                    arrays["obligation_offsets"],
+                    label="obligation_offsets",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                ),
+                obligation_candidates=_read_npy(
+                    data_root,
+                    arrays["obligation_candidates"],
+                    label="obligation_candidates",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                ),
+                candidate_obligation_offsets=_read_npy(
+                    data_root,
+                    arrays["candidate_obligation_offsets"],
+                    label="candidate_obligation_offsets",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                ),
+                candidate_obligations=_read_npy(
+                    data_root,
+                    arrays["candidate_obligations"],
+                    label="candidate_obligations",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                ),
+                correlation_unit_ids=tuple(
+                    str(item) for item in domain_payload["correlation_unit_ids"]
+                ),
+                candidate_correlation_unit_codes=_read_npy(
+                    data_root,
+                    arrays["candidate_correlation_unit_codes"],
+                    label="candidate_correlation_unit_codes",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                ),
+            )
+            if (
+                int(domain_payload.get("obligation_edge_count", domain.obligation_edge_count))
+                != domain.obligation_edge_count
+                or domain_payload.get("content_digest") != domain.content_digest
+            ):
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    "TARGET-DATA2C-MVIDX1 domain manifest identity mismatch."
+                )
+            domains.append(domain)
+
+        for name, root_array in packed_roots.items():
+            if packed_cursors[name] != int(root_array.size):
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    f"TARGET-DATA2C-MVIDX1 packed {name} contains unreferenced trailing data."
+                )
+
+        result = TargetCoverageSparseIndex(
+            dataset_id=str(manifest["dataset_id"]),
+            target_coverage_reference_digest=str(manifest["target_coverage_reference_digest"]),
+            target_data_role_freeze_digest=str(manifest["target_data_role_freeze_digest"]),
+            target_coverage_feasibility_digest=str(manifest["target_coverage_feasibility_digest"]),
+            policy=TargetCoverageSparseIndexPolicy.from_dict(manifest["policy"]),
+            domains=tuple(domains),
+            authority_version=str(manifest["authority_version"]),
+        )
+        if (
+            result.content_digest != manifest.get("index_content_digest")
+            or result.content_digest != pointer.get("content_digest")
+        ):
+            raise TargetCoverageSparseIndexNativeStoreError(
+                "TARGET-DATA2C-MVIDX1 restored content digest mismatch."
+            )
+        final_identity, _ = _restore_identity(data_root, manifest)
+        if final_identity != restore_identity:
+            raise TargetCoverageSparseIndexNativeStoreError(
+                "TARGET-DATA2C-MVIDX1 sidecar identity changed during restore."
+            )
+        if not receipt_hit:
+            write_validation_receipt(
+                _MVIDX_VALIDATION_RECEIPT_NAMESPACE,
+                restore_identity,
+                result.content_digest,
+            )
+        if progress_callback is not None:
+            progress_callback(
+                f"restore; status=complete; validation={validation_mode}; cache_policy={cache_policy}; "
+                f"layout=packed-v2; families={family_completed}/{family_total}; "
+                f"bytes={logical_bytes}/{logical_bytes}; elapsed_s={time.monotonic() - started:.1f}"
+            )
+        return result
+    except Exception:
+        for array in packed_roots.values():
+            _close_memmap(array)
+        raise
 
 def read_target_coverage_sparse_index_forward_view_native_record(
     pointer: Mapping[str, Any],
@@ -696,18 +1061,19 @@ def read_target_coverage_sparse_index_forward_view_native_record(
     *,
     mmap_threshold_bytes: int = 8 * 1024 * 1024,
 ) -> TargetCoverageSparseForwardIndexView:
-    """Restore only MVIDX1 arrays required by MVSEL2/REPAIR2.
-
-    The pointer and manifest retain the complete MVIDX1 scientific identity,
-    while inverse witness-to-candidate and obligation-to-candidate arrays are
-    neither opened nor mapped by this runtime view.
-    """
+    """Restore only MVIDX1 arrays required by MVSEL2/REPAIR2."""
 
     if pointer.get("schema") != TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA:
         raise TargetCoverageSparseIndexNativeStoreError(
             "Unsupported TARGET-DATA2C-MVIDX1 native pointer schema."
         )
-    if pointer.get("persistence_version") != TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION:
+    pointer_version = pointer.get("persistence_version")
+    if pointer_version == TARGET_COVERAGE_SPARSE_INDEX_LEGACY_PERSISTENCE_VERSION:
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 legacy per-family native persistence is not "
+            "file-descriptor bounded; rebuild the reconstructible MVIDX1 cache."
+        )
+    if pointer_version != TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION:
         raise TargetCoverageSparseIndexNativeStoreError(
             "Unsupported TARGET-DATA2C-MVIDX1 persistence version."
         )
@@ -755,89 +1121,122 @@ def read_target_coverage_sparse_index_forward_view_native_record(
         )
 
     data_root = manifest_path.parent
-    domains: list[TargetCoverageSparseForwardDomainView] = []
-    for domain_payload in manifest.get("domains", ()):
-        families: list[TargetCoverageSparseForwardFamilyView] = []
-        for family_payload in domain_payload.get("families", ()):
-            arrays = family_payload.get("arrays")
+    packed_payload = manifest.get("packed_family_arrays")
+    if not isinstance(packed_payload, Mapping):
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 native v2 manifest is missing packed family arrays."
+        )
+    packed_roots: dict[str, np.memmap] = {}
+    try:
+        for name in ("candidate_offsets", "candidate_witnesses"):
+            descriptor = packed_payload.get(name)
+            if not isinstance(descriptor, Mapping):
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    f"TARGET-DATA2C-MVIDX1 packed {name} descriptor is missing."
+                )
+            packed_roots[name] = _read_packed_npy(
+                data_root, descriptor, label=f"packed family {name}"
+            )
+
+        packed_cursors = {name: 0 for name in packed_roots}
+        domains: list[TargetCoverageSparseForwardDomainView] = []
+        for domain_payload in manifest.get("domains", ()):
+            families: list[TargetCoverageSparseForwardFamilyView] = []
+            for family_payload in domain_payload.get("families", ()):
+                slices = family_payload.get("array_slices")
+                if not isinstance(slices, Mapping):
+                    raise TargetCoverageSparseIndexNativeStoreError(
+                        "TARGET-DATA2C-MVIDX1 family packed-slice manifest is missing."
+                    )
+                family_arrays: dict[str, np.ndarray] = {}
+                for name in ("candidate_offsets", "candidate_witnesses"):
+                    descriptor = slices.get(name)
+                    if not isinstance(descriptor, Mapping):
+                        raise TargetCoverageSparseIndexNativeStoreError(
+                            f"TARGET-DATA2C-MVIDX1 family {name} packed slice is missing."
+                        )
+                    if int(descriptor.get("start", -1)) != packed_cursors[name]:
+                        raise TargetCoverageSparseIndexNativeStoreError(
+                            f"TARGET-DATA2C-MVIDX1 packed {name} slices are not canonical."
+                        )
+                    family_arrays[name] = _packed_slice(
+                        packed_roots[name],
+                        descriptor,
+                        label=name,
+                        validate_array_reference=True,
+                    )
+                    packed_cursors[name] = int(descriptor["stop"])
+                family = TargetCoverageSparseForwardFamilyView(
+                    family_id=str(family_payload["family_id"]),
+                    family_digest=str(family_payload["family_digest"]),
+                    mvidx1_family_digest=str(family_payload["content_digest"]),
+                    candidate_count=int(family_payload["candidate_count"]),
+                    witness_count=int(family_payload["witness_count"]),
+                    candidate_offsets=family_arrays["candidate_offsets"],
+                    candidate_witnesses=family_arrays["candidate_witnesses"],
+                    _array_references={
+                        name: dict(slices[name]["array_reference"])
+                        for name in ("candidate_offsets", "candidate_witnesses")
+                    },
+                )
+                if int(family_payload.get("edge_count", family.edge_count)) != family.edge_count:
+                    raise TargetCoverageSparseIndexNativeStoreError(
+                        "TARGET-DATA2C-MVIDX1 forward family edge count mismatch."
+                    )
+                families.append(family)
+            arrays = domain_payload.get("arrays")
             if not isinstance(arrays, Mapping):
                 raise TargetCoverageSparseIndexNativeStoreError(
-                    "TARGET-DATA2C-MVIDX1 family array manifest is missing."
+                    "TARGET-DATA2C-MVIDX1 domain array manifest is missing."
                 )
-            candidate_offsets = _read_npy(
-                data_root,
-                arrays["candidate_offsets"],
-                label="candidate_offsets",
-                mmap_threshold_bytes=mmap_threshold_bytes,
+            domains.append(
+                TargetCoverageSparseForwardDomainView(
+                    label_domain_id=str(domain_payload["label_domain_id"]),
+                    frame_domain_digest=str(domain_payload["frame_domain_digest"]),
+                    mvidx1_domain_digest=str(domain_payload["content_digest"]),
+                    candidate_count=int(domain_payload["candidate_count"]),
+                    families=tuple(families),
+                    obligations=tuple(
+                        TargetCoverageHardObligation.from_dict(item)
+                        for item in domain_payload["obligations"]
+                    ),
+                    candidate_obligation_offsets=_read_npy(
+                        data_root,
+                        arrays["candidate_obligation_offsets"],
+                        label="candidate_obligation_offsets",
+                        mmap_threshold_bytes=mmap_threshold_bytes,
+                    ),
+                    candidate_obligations=_read_npy(
+                        data_root,
+                        arrays["candidate_obligations"],
+                        label="candidate_obligations",
+                        mmap_threshold_bytes=mmap_threshold_bytes,
+                    ),
+                    correlation_unit_ids=tuple(
+                        str(item) for item in domain_payload["correlation_unit_ids"]
+                    ),
+                    candidate_correlation_unit_codes=_read_npy(
+                        data_root,
+                        arrays["candidate_correlation_unit_codes"],
+                        label="candidate_correlation_unit_codes",
+                        mmap_threshold_bytes=mmap_threshold_bytes,
+                    ),
+                )
             )
-            candidate_witnesses = _read_npy(
-                data_root,
-                arrays["candidate_witnesses"],
-                label="candidate_witnesses",
-                mmap_threshold_bytes=mmap_threshold_bytes,
-            )
-            family = TargetCoverageSparseForwardFamilyView(
-                family_id=str(family_payload["family_id"]),
-                family_digest=str(family_payload["family_digest"]),
-                mvidx1_family_digest=str(family_payload["content_digest"]),
-                candidate_count=int(family_payload["candidate_count"]),
-                witness_count=int(family_payload["witness_count"]),
-                candidate_offsets=candidate_offsets,
-                candidate_witnesses=candidate_witnesses,
-                _array_references={
-                    name: arrays[name]["array_reference"]
-                    for name in ("candidate_offsets", "candidate_witnesses")
-                },
-            )
-            if int(family_payload.get("edge_count", family.edge_count)) != family.edge_count:
+        for name, root_array in packed_roots.items():
+            if packed_cursors[name] != int(root_array.size):
                 raise TargetCoverageSparseIndexNativeStoreError(
-                    "TARGET-DATA2C-MVIDX1 forward family edge count mismatch."
+                    f"TARGET-DATA2C-MVIDX1 packed {name} contains unreferenced trailing data."
                 )
-            families.append(family)
-        arrays = domain_payload.get("arrays")
-        if not isinstance(arrays, Mapping):
-            raise TargetCoverageSparseIndexNativeStoreError(
-                "TARGET-DATA2C-MVIDX1 domain array manifest is missing."
-            )
-        domains.append(
-            TargetCoverageSparseForwardDomainView(
-                label_domain_id=str(domain_payload["label_domain_id"]),
-                frame_domain_digest=str(domain_payload["frame_domain_digest"]),
-                mvidx1_domain_digest=str(domain_payload["content_digest"]),
-                candidate_count=int(domain_payload["candidate_count"]),
-                families=tuple(families),
-                obligations=tuple(
-                    TargetCoverageHardObligation.from_dict(item)
-                    for item in domain_payload["obligations"]
-                ),
-                candidate_obligation_offsets=_read_npy(
-                    data_root,
-                    arrays["candidate_obligation_offsets"],
-                    label="candidate_obligation_offsets",
-                    mmap_threshold_bytes=mmap_threshold_bytes,
-                ),
-                candidate_obligations=_read_npy(
-                    data_root,
-                    arrays["candidate_obligations"],
-                    label="candidate_obligations",
-                    mmap_threshold_bytes=mmap_threshold_bytes,
-                ),
-                correlation_unit_ids=tuple(
-                    str(item) for item in domain_payload["correlation_unit_ids"]
-                ),
-                candidate_correlation_unit_codes=_read_npy(
-                    data_root,
-                    arrays["candidate_correlation_unit_codes"],
-                    label="candidate_correlation_unit_codes",
-                    mmap_threshold_bytes=mmap_threshold_bytes,
-                ),
-            )
+        return TargetCoverageSparseForwardIndexView(
+            dataset_id=str(manifest["dataset_id"]),
+            mvidx1_content_digest=str(manifest["index_content_digest"]),
+            target_coverage_reference_digest=str(manifest["target_coverage_reference_digest"]),
+            target_data_role_freeze_digest=str(manifest["target_data_role_freeze_digest"]),
+            target_coverage_feasibility_digest=str(manifest["target_coverage_feasibility_digest"]),
+            domains=tuple(domains),
         )
-    return TargetCoverageSparseForwardIndexView(
-        dataset_id=str(manifest["dataset_id"]),
-        mvidx1_content_digest=str(manifest["index_content_digest"]),
-        target_coverage_reference_digest=str(manifest["target_coverage_reference_digest"]),
-        target_data_role_freeze_digest=str(manifest["target_data_role_freeze_digest"]),
-        target_coverage_feasibility_digest=str(manifest["target_coverage_feasibility_digest"]),
-        domains=tuple(domains),
-    )
+    except Exception:
+        for array in packed_roots.values():
+            _close_memmap(array)
+        raise

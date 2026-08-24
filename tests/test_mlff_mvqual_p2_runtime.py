@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 from mdstats.training_data import mvqual_p2_runtime as runtime
-from mdstats.training_data import target_multi_view_qualification as mvqual
+from mdstats.training_data import _target_multi_view_scoring as mvqual
+from mdstats.training_data import target_multi_view_qualification_v2 as mvqual_v2
 
 
 @dataclass(frozen=True)
@@ -200,8 +201,8 @@ def test_p2_rejects_nonnested_progression() -> None:
         runtime._added_rows_by_rung(values)
 
 
-def test_p2_installer_does_not_replace_direct_scientific_builder() -> None:
-    canonical = mvqual.build_target_multi_view_qualification_plan
+def test_p2_installer_wraps_v5_builder_without_replacing_scoring_kernel() -> None:
+    canonical_scoring = mvqual._selector_telemetry_indices_bounded
     sentinel = object()
 
     def fake_builder(
@@ -209,16 +210,12 @@ def test_p2_installer_does_not_replace_direct_scientific_builder() -> None:
         target_coverage_sparse_index: object,
         target_coverage_feasibility: object,
         target_data_role_freeze: object,
-        legacy_target_data_ladder: object,
         target_multi_view_repair: object,
         *,
         policy: object = None,
         coverage_query_workers: int = 1,
         scoring_workers: int = 1,
         sparse_max_edges: int = 8,
-        resource_scope: object = None,
-        execution_telemetry_callback: object = None,
-        job_telemetry_callback: object = None,
         progress_callback: object = None,
     ) -> object:
         del (
@@ -226,31 +223,23 @@ def test_p2_installer_does_not_replace_direct_scientific_builder() -> None:
             target_coverage_sparse_index,
             target_coverage_feasibility,
             target_data_role_freeze,
-            legacy_target_data_ladder,
             target_multi_view_repair,
             policy,
             coverage_query_workers,
             scoring_workers,
             sparse_max_edges,
-            resource_scope,
-            execution_telemetry_callback,
-            job_telemetry_callback,
             progress_callback,
         )
         return sentinel
 
-    fake_mdstats = SimpleNamespace(build_target_multi_view_qualification_plan=fake_builder)
+    fake_mdstats = SimpleNamespace(build_target_multi_view_qualification_plan_v2=fake_builder)
     runtime.install_mvqual_p2_runtime(fake_mdstats)
     partial_reference = SimpleNamespace(domains=(SimpleNamespace(),))
-    result = fake_mdstats.build_target_multi_view_qualification_plan(
-        partial_reference,
-        object(),
-        object(),
-        object(),
-        object(),
-        object(),
+    result = fake_mdstats.build_target_multi_view_qualification_plan_v2(
+        partial_reference, object(), object(), object(), object()
     )
 
     assert result is sentinel
-    assert mvqual.build_target_multi_view_qualification_plan is canonical
+    assert mvqual._selector_telemetry_indices_bounded is canonical_scoring
     assert runtime.last_mvqual_p2_execution_telemetry() is None
+    assert mvqual_v2.build_target_multi_view_qualification_plan_v2 is not fake_mdstats.build_target_multi_view_qualification_plan_v2

@@ -21,7 +21,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from ._sparse_vector_kernels import csr_row_lengths, iter_csr_edge_batches
-from . import target_multi_view_qualification as _mvqual
+from . import _target_multi_view_scoring as _mvqual
 from .progress_timing import format_progress_time
 from .resources import stage_resource_scope
 
@@ -394,38 +394,24 @@ def _progressive_sparse_results_for_group(
 
 
 def _qualification_groups(
-    reference: Any, legacy_ladder: Any, repair_plan: Any
+    reference: Any, repair_plan: Any
 ) -> tuple[_SparseGroup, ...]:
+    """Build one exact nested REPAIR2 prefix group per qualification domain."""
+
+    from .target_size_study import FIXED_TARGET_SIZES
+
     groups: list[_SparseGroup] = []
     for reference_domain in reference.domains:
         label = str(reference_domain.label_domain_id)
-        legacy = {
-            int(rung.target_size): rung
-            for rung in legacy_ladder.domain(label).rungs
-            if bool(rung.materializable)
-        }
-        mv = {
-            int(rung.target_size): rung
-            for rung in repair_plan.domain(label).rungs
-            if bool(rung.materializable)
-        }
-        common = tuple(sorted(set(legacy) & set(mv)))
-        if not common:
-            continue
-        groups.append(
-            _SparseGroup(
-                label,
-                "legacy",
-                tuple(tuple(str(uid) for uid in legacy[size].frame_uids) for size in common),
-            )
+        repair_domain = repair_plan.domain(label)
+        master = tuple(str(uid) for uid in repair_domain.repaired_master_order)
+        selected = tuple(
+            master[:size]
+            for size in FIXED_TARGET_SIZES
+            if len(master) >= int(size)
         )
-        groups.append(
-            _SparseGroup(
-                label,
-                "mv",
-                tuple(tuple(str(uid) for uid in mv[size].frame_uids) for size in sorted(mv)),
-            )
-        )
+        if selected:
+            groups.append(_SparseGroup(label, "mv", selected))
     return tuple(groups)
 
 
@@ -433,7 +419,6 @@ def _progressive_sparse_cache(
     reference: Any,
     sparse_index: Any,
     role_freeze: Any,
-    legacy_ladder: Any,
     repair_plan: Any,
     *,
     sparse_max_edges: int,
@@ -443,7 +428,7 @@ def _progressive_sparse_cache(
     dict[tuple[int, int, tuple[int, ...]], _mvqual._MvqualSparseTelemetryResult],
     MvqualP2ExecutionTelemetry,
 ]:
-    groups = _qualification_groups(reference, legacy_ladder, repair_plan)
+    groups = _qualification_groups(reference, repair_plan)
     requested = max(1, int(scoring_workers))
     effective = requested
     if resource_scope is not None:
@@ -463,7 +448,9 @@ def _progressive_sparse_cache(
     for group in groups:
         reference_domain = reference.domain(group.label_domain_id)
         sparse_domain = sparse_index.domain(group.label_domain_id)
-        role_domain = role_freeze.domain(group.label_domain_id)
+        from .target_coverage import target_coverage_role_domain_view
+
+        role_domain = target_coverage_role_domain_view(role_freeze, reference_domain)
         uid_to_index, run_codes, condition_codes = _mvqual._qualification_provenance_codes(
             reference_domain, role_domain
         )
@@ -517,7 +504,6 @@ def _progressive_sparse_cache(
     )
     return cache, telemetry
 
-
 def _supports_p2_authority(reference: Any) -> bool:
     return (
         hasattr(reference, "domain")
@@ -530,9 +516,10 @@ def _supports_p2_authority(reference: Any) -> bool:
 
 
 def install_mvqual_p2_runtime(mdstats_module: Any) -> None:
-    """Wrap only the public campaign-facing builder; direct scientific imports stay unchanged."""
-    current = mdstats_module.build_target_multi_view_qualification_plan
-    if bool(getattr(current, "_mdstats_mvqual_p2_installed", False)):
+    """Wrap the v5 MVQUAL2 builder with exact nested-prefix sparse reuse."""
+
+    current = getattr(mdstats_module, "build_target_multi_view_qualification_plan_v2", None)
+    if current is None or bool(getattr(current, "_mdstats_mvqual_p2_installed", False)):
         return
     original_builder = current
     signature = inspect.signature(original_builder)
@@ -554,11 +541,9 @@ def install_mvqual_p2_runtime(mdstats_module: Any) -> None:
                 reference,
                 values["target_coverage_sparse_index"],
                 values["target_data_role_freeze"],
-                values["legacy_target_data_ladder"],
                 values["target_multi_view_repair"],
                 sparse_max_edges=int(values["sparse_max_edges"]),
                 scoring_workers=int(values["scoring_workers"]),
-                resource_scope=values.get("resource_scope"),
             )
             _LAST_TELEMETRY = telemetry
             progress = values.get("progress_callback")
@@ -609,4 +594,4 @@ def install_mvqual_p2_runtime(mdstats_module: Any) -> None:
 
     wrapped._mdstats_mvqual_p2_installed = True  # type: ignore[attr-defined]
     wrapped._mdstats_mvqual_p2_original = original_builder  # type: ignore[attr-defined]
-    mdstats_module.build_target_multi_view_qualification_plan = wrapped
+    mdstats_module.build_target_multi_view_qualification_plan_v2 = wrapped

@@ -15,13 +15,13 @@ NEIGHBOR1 defines one exact TARGET-DATA2B/C neighborhood implementation and a re
 
 ## 3. FEAS1 streaming contract
 
-FEAS1 SHALL reduce support/capacity evidence in the same historical canonical witness-block order. At that same commit boundary it SHALL append the exact witness->candidate relation to a disk-backed CSR stream and release the ragged temporary neighbor object. The final cache SHALL use `uint64` witness offsets and `uint32` candidate indices. The exact final array allocation SHALL be admitted against the stage RAM budget before materialization from the stream.
+FEAS1 SHALL reduce support/capacity evidence in the same historical canonical witness-block order. At that same commit boundary it SHALL append the exact witness->candidate relation to a disk-backed CSR stream and release the ragged temporary neighbor object. The final cache SHALL use `uint64` witness offsets and `uint32` candidate indices. Final forward-CSR arrays SHALL remain file-backed for campaign execution; aggregate completed CSR payload bytes are storage, not anonymous execution RAM. Only bounded finalization/copy scratch is admitted against the stage RAM budget. When that bounded scratch is temporarily unavailable, finalization SHALL backpressure while already admitted work drains rather than fail merely because other live work occupies the budget.
 
 ## 4. Cache identity and persistence
 
 The cache is reconstructible execution state, not scientific authority. Family identity SHALL bind label-domain identity, frame-domain/candidate ordering digest, TARGET-DATA2B family digest, candidate/witness cardinality, frozen metric/tolerance semantics, and cache-format version. Worker count, tree-worker count, query-block size, queue depth, timing, progress cadence, and host topology MUST NOT enter cache identity.
 
-Native persistence SHALL authenticate a manifest and every NumPy array by checksum and scientific array reference. Campaign storage SHALL retain the cache as its own content-addressed record. A stale, corrupt, or missing cache SHALL be rejected/rebuilt rather than trusted.
+Native persistence SHALL authenticate a manifest and every NumPy array by checksum and scientific array reference. Persistence v2 SHALL pack all family offsets into one read-only NumPy mapping and all family candidate indices into a second mapping; per-family arrays are canonical slices of those two roots. Open mapped-file descriptor use therefore SHALL be O(1) in family count. The reader SHALL retain compatibility with v1 per-family native manifests, but a v1 record SHALL not be reused as a v2 write target. Campaign storage SHALL retain the cache as its own content-addressed record. A stale, corrupt, or missing cache SHALL be rejected/rebuilt rather than trusted.
 
 ## 5. MVIDX adoption contract
 
@@ -36,7 +36,7 @@ NEIGHBOR1 passes only if:
 3. cached and rebuilt MVIDX1 outputs are identical;
 4. a cache-hit test can disable the geometric query method entirely without affecting MVIDX construction;
 5. native persistence round trip and tamper rejection pass;
-6. bounded scheduling and pre-materialization CSR RAM admission are exercised; and
+6. bounded scheduling, finalization-scratch RAM admission/backpressure, file-backed aggregate CSR larger than the stage RAM budget, O(1)-in-family-count mapped-file descriptors under a constrained `RLIMIT_NOFILE`, and packed native mmap persistence are exercised; and
 7. same-host end-to-end FEAS1->MVIDX1 timing shows a material improvement versus untouched 0.20.226a0 without changing scientific digests.
 
 The revision-94 PERFBASE1 workload digests are:

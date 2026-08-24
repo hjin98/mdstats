@@ -1,3 +1,11 @@
+---
+kind: implementation-workplan
+workplan_id: DOC-MLFF-TARGET-SIZE-AUTHORITY-BRIDGE-FIX1
+protocol_version: 5.2.0
+status: DONE
+completed_date: 2026-08-22
+---
+
 # DOC-MLFF-TARGET-SIZE-AUTHORITY-BRIDGE-FIX1
 
 ## Objective
@@ -164,3 +172,20 @@ Fix MLFF target-size authority bridge
 ```
 
 Keep changes limited to control-plane authority wiring.
+
+## Closeout
+
+Status: **DONE**.
+
+The accepted implementation keeps terminal materialization authority singular: `selected_target_size` is the only TARGET-DATA2D value allowed to authorize TRAIN2 DATA7/DATA8 materialization. The same validated one-element target-size tuple is passed to variant construction and `SelectionBudgetPolicy`, and the selected rung must exist in the active TARGET-DATA2C materialized ladder. Intermediate `stage_a_survivor_sizes` remain evidence only and terminal failure cannot fall back to them.
+
+Closeout validation on the supplied source snapshot and dependency bundle:
+
+- `tests/test_mlff_target_size_authority_bridge.py`: **7 passed**;
+- target-size/DATA7/DATA8/MVSEL2 integration slice: **53 passed**;
+- the production-bug regression freezes the legacy candidate `13568`, active ladder `[512]`, selected target size `512`, and proves that DATA8 receives only `512`;
+- no MVSEL2, MVQUAL, DATA7 selection algorithm, DATA8 format, or training/evaluation scientific policy was changed by this closeout.
+
+A broader campaign-CLI baseline slice also exposed four pre-existing failures outside this workplan (one preflight fixture and three legacy MLCV seed-extension test-plumbing failures). They are not on the target-size authority path and are intentionally not folded into this narrowly scoped control-plane fix.
+
+With the scoped acceptance criteria satisfied, this workplan is archived and is no longer an active source of engineering coordination.

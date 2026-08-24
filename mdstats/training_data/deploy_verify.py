@@ -38,7 +38,7 @@ DEPLOY_VERIFY_RUN_SCHEMA_V2 = "mdstats.deploy-verify-run.v2"
 DEPLOY_VERIFY_RUN_SCHEMA = DEPLOY_VERIFY_RUN_SCHEMA_V2
 TARGET_HEAD_DEPLOYMENT_IDENTITY_SCHEMA = "mdstats.target-head-deployment-identity.v1"
 MLIAP_EXPORT_RUNTIME_CAPABILITY_SCHEMA = "mdstats.mliap-export-runtime-capability.v1"
-DEPLOY_VERIFY_CAMPAIGN_SCHEMA = "mdstats.deploy-verify-campaign.v1"
+DEPLOY_VERIFY_CAMPAIGN_SCHEMA = "mdstats.deploy-verify-campaign.v2"
 DEPLOY_VERIFY_IMPLEMENTATION_VERSION = "mdstats.deploy-verify1.2026-08.v1"
 
 
@@ -1120,7 +1120,7 @@ class DeployVerifyRunRecord:
 @dataclass(frozen=True, slots=True)
 class DeployVerifyCampaignRecord:
     campaign_plan_digest: str
-    target_size_convergence_digest: str
+    target_size_study_digest: str
     run_records: tuple[DeployVerifyRunRecord, ...]
     stage_context: str
     serialization_schema: str = field(default=DEPLOY_VERIFY_CAMPAIGN_SCHEMA, repr=False, compare=False)
@@ -1128,22 +1128,22 @@ class DeployVerifyCampaignRecord:
     def __post_init__(self) -> None:
         if self.serialization_schema != DEPLOY_VERIFY_CAMPAIGN_SCHEMA:
             raise TrainingDataInputError("Unsupported DEPLOY-VERIFY1 campaign schema.")
-        for name in ("campaign_plan_digest", "target_size_convergence_digest"):
+        for name in ("campaign_plan_digest", "target_size_study_digest"):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
         records = tuple(sorted(self.run_records, key=lambda v: (v.run_plan_digest, v.selected_checkpoint_sha256)))
         if not records or len({v.run_plan_digest for v in records}) != len(records):
             raise TrainingDataInputError("DEPLOY-VERIFY1 campaign record requires unique run evidence.")
         if not all(v.passed for v in records):
             raise TrainingDataInputError("DEPLOY-VERIFY1 campaign record cannot contain failed runs.")
-        if self.stage_context not in {"target_size_stage_c", "production"}:
-            raise TrainingDataInputError("Unsupported DEPLOY-VERIFY1 campaign stage context.")
+        if self.stage_context != "production":
+            raise TrainingDataInputError("DEPLOY-VERIFY1 is post-selection production verification only.")
         object.__setattr__(self, "run_records", records)
 
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": self.serialization_schema,
             "campaign_plan_digest": self.campaign_plan_digest,
-            "target_size_convergence_digest": self.target_size_convergence_digest,
+            "target_size_study_digest": self.target_size_study_digest,
             "run_records": [v.to_dict() for v in self.run_records],
             "stage_context": self.stage_context,
         }
@@ -1161,7 +1161,7 @@ class DeployVerifyCampaignRecord:
             raise TrainingDataSerializationError("Unsupported DEPLOY-VERIFY1 campaign schema.")
         result = cls(
             campaign_plan_digest=str(payload["campaign_plan_digest"]),
-            target_size_convergence_digest=str(payload["target_size_convergence_digest"]),
+            target_size_study_digest=str(payload["target_size_study_digest"]),
             run_records=tuple(DeployVerifyRunRecord.from_dict(v) for v in payload["run_records"]),
             stage_context=str(payload["stage_context"]),
         )

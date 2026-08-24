@@ -25,7 +25,7 @@ from .train2_policy import CheckpointSelectionPolicy
 
 SELECT2_VERSION = "0.20.176a0"
 SELECT2_CANDIDATE_SCHEMA = "mdstats.select2-candidate.v1"
-SELECT2_SELECTION_SCHEMA = "mdstats.select2-selection.v1"
+SELECT2_SELECTION_SCHEMA = "mdstats.select2-selection.v2"
 SELECT2_FROZEN_CANDIDATE_SCHEMA = "mdstats.select2-frozen-candidate.v1"
 
 
@@ -170,7 +170,7 @@ class Select2SelectionRecord:
     """Immutable target-first decision across physically qualified production seeds."""
 
     campaign_plan_digest: str
-    target_production_corpus_decision_digest: str
+    target_size_study_digest: str
     dyn_verify_campaign_digest: str
     selection_policy: CheckpointSelectionPolicy
     candidates: tuple[Select2CandidateRecord, ...]
@@ -186,7 +186,7 @@ class Select2SelectionRecord:
     def __post_init__(self) -> None:
         if self.serialization_schema != SELECT2_SELECTION_SCHEMA:
             raise TrainingDataInputError("Unsupported SELECT2 selection schema.")
-        for name in ("campaign_plan_digest", "target_production_corpus_decision_digest", "dyn_verify_campaign_digest"):
+        for name in ("campaign_plan_digest", "target_size_study_digest", "dyn_verify_campaign_digest"):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
         candidates = tuple(sorted(self.candidates, key=lambda v: (v.optimizer_seed, v.run_id, v.run_plan_digest)))
         if not candidates or len({v.run_plan_digest for v in candidates}) != len(candidates):
@@ -228,7 +228,7 @@ class Select2SelectionRecord:
         return {
             "schema": self.serialization_schema,
             "campaign_plan_digest": self.campaign_plan_digest,
-            "target_production_corpus_decision_digest": self.target_production_corpus_decision_digest,
+            "target_size_study_digest": self.target_size_study_digest,
             "dyn_verify_campaign_digest": self.dyn_verify_campaign_digest,
             "selection_policy": self.selection_policy.to_dict(),
             "candidates": [v.to_dict() for v in self.candidates],
@@ -254,7 +254,7 @@ class Select2SelectionRecord:
             raise TrainingDataSerializationError("Unsupported SELECT2 selection schema.")
         result = cls(
             campaign_plan_digest=str(payload["campaign_plan_digest"]),
-            target_production_corpus_decision_digest=str(payload["target_production_corpus_decision_digest"]),
+            target_size_study_digest=str(payload["target_size_study_digest"]),
             dyn_verify_campaign_digest=str(payload["dyn_verify_campaign_digest"]),
             selection_policy=CheckpointSelectionPolicy.from_dict(payload["selection_policy"]),
             candidates=tuple(Select2CandidateRecord.from_dict(v) for v in payload["candidates"]),
@@ -362,7 +362,7 @@ class Select2FrozenCandidateRecord:
 def build_select2_selection(
     *,
     campaign_plan_digest: str,
-    target_production_corpus_decision_digest: str,
+    target_size_study_digest: str,
     dyn_verify_campaign_digest: str,
     selection_policy: CheckpointSelectionPolicy,
     candidates: Sequence[Select2CandidateRecord],
@@ -390,7 +390,7 @@ def build_select2_selection(
         seed_material_digest=digest({
             "schema": "mdstats.select2-bootstrap-seed-material.v1",
             "campaign_plan_digest": campaign_plan_digest,
-            "target_production_corpus_decision_digest": target_production_corpus_decision_digest,
+            "target_size_study_digest": target_size_study_digest,
             "dyn_verify_campaign_digest": dyn_verify_campaign_digest,
             "selection_policy_digest": selection_policy.policy_digest,
         }),
@@ -404,7 +404,7 @@ def build_select2_selection(
     if not qualified_order:
         return Select2SelectionRecord(
             campaign_plan_digest=campaign_plan_digest,
-            target_production_corpus_decision_digest=target_production_corpus_decision_digest,
+            target_size_study_digest=target_size_study_digest,
             dyn_verify_campaign_digest=dyn_verify_campaign_digest,
             selection_policy=selection_policy,
             candidates=items,
@@ -425,7 +425,7 @@ def build_select2_selection(
     )
     return Select2SelectionRecord(
         campaign_plan_digest=campaign_plan_digest,
-        target_production_corpus_decision_digest=target_production_corpus_decision_digest,
+        target_size_study_digest=target_size_study_digest,
         dyn_verify_campaign_digest=dyn_verify_campaign_digest,
         selection_policy=selection_policy,
         candidates=items,

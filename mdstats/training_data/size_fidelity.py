@@ -20,14 +20,14 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
-from .target_size_convergence import TargetSizeConvergencePolicy, _equivalence_aware_target_order
+from .target_size_study import TargetSizeStudyPolicy, _equivalence_aware_target_order
 
-SIZE_FIDELITY_POLICY_SCHEMA = "mdstats.size-fidelity1-policy.v1"
-SIZE_FIDELITY_EXECUTION_PLAN_SCHEMA = "mdstats.size-fidelity1-execution-plan.v1"
+SIZE_FIDELITY_POLICY_SCHEMA = "mdstats.size-fidelity1-policy.target-size-v5.v2"
+SIZE_FIDELITY_EXECUTION_PLAN_SCHEMA = "mdstats.size-fidelity1-execution-plan.target-size-v5.v2"
 SIZE_FIDELITY_METRIC_SCHEMA = "mdstats.size-fidelity1-metric.v1"
 SIZE_FIDELITY_CANDIDATE_SCHEMA = "mdstats.size-fidelity1-candidate-assessment.v1"
-SIZE_FIDELITY_REPORT_SCHEMA = "mdstats.size-fidelity1-qualification-report.v1"
-SIZE_FIDELITY_VERSION = "mdstats.size-fidelity1.coarse-screen-calibration.2026-08.v1"
+SIZE_FIDELITY_REPORT_SCHEMA = "mdstats.size-fidelity1-qualification-report.target-size-v5.v2"
+SIZE_FIDELITY_VERSION = "mdstats.size-fidelity1.coarse-screen-calibration.target-size-v5.2026-08.v2"
 
 _FULL_ROLE = "full_development"
 
@@ -97,19 +97,19 @@ class SizeFidelityCalibrationPolicy:
         object.__setattr__(self, "coarse_equivalence_candidates_mev_per_a", epsilons)
         object.__setattr__(self, "minimum_calibration_seeds", minimum)
 
-    def validate_against_target_size_policy(self, policy: TargetSizeConvergencePolicy) -> None:
-        if self.coarse_epoch_candidates[0] != int(policy.coarse_training_epochs):
+    def validate_against_target_size_policy(self, policy: TargetSizeStudyPolicy) -> None:
+        if self.coarse_epoch_candidates[0] != int(policy.fidelity_epochs[0]):
             raise TrainingDataInputError(
-                "SIZE-FIDELITY1 first coarse endpoint must equal the current TARGET-DATA2D production endpoint."
+                "SIZE-FIDELITY1 first coarse endpoint must equal the current target-size v5 production endpoint."
             )
-        if any(epoch >= int(policy.short_training_epochs) for epoch in self.coarse_epoch_candidates):
+        if any(epoch >= int(policy.fidelity_epochs[1]) for epoch in self.coarse_epoch_candidates):
             raise TrainingDataInputError("SIZE-FIDELITY1 coarse endpoint candidates must precede the 10-epoch screen.")
         if abs(self.coarse_equivalence_candidates_mev_per_a[0] - float(policy.coarse_practical_equivalence_mev_per_a)) > 1.0e-12:
             raise TrainingDataInputError(
-                "SIZE-FIDELITY1 first coarse equivalence width must equal the current TARGET-DATA2D production width."
+                "SIZE-FIDELITY1 first coarse equivalence width must equal the current target-size v5 production width."
             )
-        if int(policy.max_coarse_training_candidates) < int(policy.max_short_training_candidates):
-            raise TrainingDataInputError("TARGET-DATA2D survivor counts are inconsistent with SIZE-FIDELITY1.")
+        if int(policy.epoch3_survivor_limit) < int(policy.epoch10_finalist_count):
+            raise TrainingDataInputError("target-size v5 survivor counts are inconsistent with SIZE-FIDELITY1.")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -157,7 +157,7 @@ class SizeFidelityExecutionPlan:
     """Exact exhaustive run/evaluation matrix required to execute SIZE-FIDELITY1."""
 
     dataset_id: str
-    target_data_ladder_digest: str
+    target_size_candidate_authority_digest: str
     target_size_policy_digest: str
     calibration_policy: SizeFidelityCalibrationPolicy
     target_sizes: tuple[int, ...]
@@ -189,7 +189,7 @@ class SizeFidelityExecutionPlan:
         if self.authority_version != SIZE_FIDELITY_VERSION:
             raise TrainingDataInputError("Unsupported SIZE-FIDELITY1 execution-plan authority version.")
         object.__setattr__(self, "dataset_id", dataset_id)
-        object.__setattr__(self, "target_data_ladder_digest", validate_digest(self.target_data_ladder_digest, name="target_data_ladder_digest"))
+        object.__setattr__(self, "target_size_candidate_authority_digest", validate_digest(self.target_size_candidate_authority_digest, name="target_size_candidate_authority_digest"))
         object.__setattr__(self, "target_size_policy_digest", validate_digest(self.target_size_policy_digest, name="target_size_policy_digest"))
         object.__setattr__(self, "target_sizes", sizes)
         object.__setattr__(self, "required_training_runs", runs)
@@ -214,7 +214,7 @@ class SizeFidelityExecutionPlan:
             "schema": SIZE_FIDELITY_EXECUTION_PLAN_SCHEMA,
             "authority_version": self.authority_version,
             "dataset_id": self.dataset_id,
-            "target_data_ladder_digest": self.target_data_ladder_digest,
+            "target_size_candidate_authority_digest": self.target_size_candidate_authority_digest,
             "target_size_policy_digest": self.target_size_policy_digest,
             "calibration_policy": self.calibration_policy.to_dict(),
             "target_sizes": list(self.target_sizes),
@@ -238,7 +238,7 @@ class SizeFidelityExecutionPlan:
             raise TrainingDataSerializationError("Unsupported SIZE-FIDELITY1 execution-plan schema.")
         result = cls(
             dataset_id=str(payload["dataset_id"]),
-            target_data_ladder_digest=str(payload["target_data_ladder_digest"]),
+            target_size_candidate_authority_digest=str(payload["target_size_candidate_authority_digest"]),
             target_size_policy_digest=str(payload["target_size_policy_digest"]),
             calibration_policy=SizeFidelityCalibrationPolicy.from_dict(payload["calibration_policy"]),
             target_sizes=tuple(int(v) for v in payload["target_sizes"]),
@@ -257,28 +257,28 @@ class SizeFidelityExecutionPlan:
 def build_size_fidelity_execution_plan(
     *,
     dataset_id: str,
-    target_data_ladder_digest: str,
-    target_size_policy: TargetSizeConvergencePolicy,
+    target_size_candidate_authority_digest: str,
+    target_size_policy: TargetSizeStudyPolicy,
     target_sizes: Sequence[int],
     calibration_policy: SizeFidelityCalibrationPolicy | None = None,
 ) -> SizeFidelityExecutionPlan:
     policy = calibration_policy or SizeFidelityCalibrationPolicy()
     policy.validate_against_target_size_policy(target_size_policy)
     sizes = _sorted_unique_ints(target_sizes, name="SIZE-FIDELITY1 target_sizes", minimum=1)
-    if len(sizes) < target_size_policy.min_coverage_qualifiers:
-        raise TrainingDataInputError("SIZE-FIDELITY1 execution plan requires at least the TARGET-DATA2D minimum coverage qualifiers.")
+    if len(sizes) < target_size_policy.minimum_qualified_sizes:
+        raise TrainingDataInputError("SIZE-FIDELITY1 execution plan requires at least the target-size v5 minimum coverage qualifiers.")
     runs = tuple((seed, size) for seed in policy.screening_seeds for size in sizes)
-    checkpoints = tuple(sorted(set(policy.coarse_epoch_candidates + (target_size_policy.short_training_epochs, target_size_policy.final_training_epochs))))
+    checkpoints = tuple(sorted(set(policy.coarse_epoch_candidates + (target_size_policy.fidelity_epochs[1], target_size_policy.fidelity_epochs[2]))))
     return SizeFidelityExecutionPlan(
         dataset_id=dataset_id,
-        target_data_ladder_digest=target_data_ladder_digest,
+        target_size_candidate_authority_digest=target_size_candidate_authority_digest,
         target_size_policy_digest=target_size_policy.policy_digest,
         calibration_policy=policy,
         target_sizes=sizes,
         required_training_runs=runs,
         required_checkpoint_epochs=checkpoints,
-        short_training_epoch=int(target_size_policy.short_training_epochs),
-        final_training_epoch=int(target_size_policy.final_training_epochs),
+        short_training_epoch=int(target_size_policy.fidelity_epochs[1]),
+        final_training_epoch=int(target_size_policy.fidelity_epochs[2]),
     )
 
 
@@ -412,7 +412,11 @@ def _screen_order(
     if not admissible:
         return ()
     # _equivalence_aware_target_order reads only target_size and target_force_score_mev_per_a.
-    return _equivalence_aware_target_order(admissible, epsilon=float(epsilon), boundary_preserve_size=boundary_size)
+    # ``boundary_size`` remains in this calibration helper's call surface for
+    # historical result compatibility, but current target-size v5 deliberately
+    # gives the fixed ceiling no ordering priority inside an equivalence band.
+    del boundary_size
+    return _equivalence_aware_target_order(admissible, epsilon=float(epsilon))
 
 
 @dataclass(frozen=True, slots=True)
@@ -507,7 +511,7 @@ class SizeFidelityCandidateAssessment:
 @dataclass(frozen=True, slots=True)
 class SizeFidelityQualificationReport:
     dataset_id: str
-    target_data_ladder_digest: str
+    target_size_candidate_authority_digest: str
     target_size_policy_digest: str
     calibration_policy: SizeFidelityCalibrationPolicy
     target_sizes: tuple[int, ...]
@@ -547,7 +551,7 @@ class SizeFidelityQualificationReport:
             ):
                 raise TrainingDataInputError("SIZE-FIDELITY1 recommendation does not reference a passing candidate assessment.")
         object.__setattr__(self, "dataset_id", dataset_id)
-        object.__setattr__(self, "target_data_ladder_digest", validate_digest(self.target_data_ladder_digest, name="target_data_ladder_digest"))
+        object.__setattr__(self, "target_size_candidate_authority_digest", validate_digest(self.target_size_candidate_authority_digest, name="target_size_candidate_authority_digest"))
         object.__setattr__(self, "target_size_policy_digest", validate_digest(self.target_size_policy_digest, name="target_size_policy_digest"))
         object.__setattr__(self, "target_sizes", sizes)
         object.__setattr__(self, "metrics", metrics)
@@ -559,7 +563,7 @@ class SizeFidelityQualificationReport:
             "schema": SIZE_FIDELITY_REPORT_SCHEMA,
             "authority_version": self.authority_version,
             "dataset_id": self.dataset_id,
-            "target_data_ladder_digest": self.target_data_ladder_digest,
+            "target_size_candidate_authority_digest": self.target_size_candidate_authority_digest,
             "target_size_policy_digest": self.target_size_policy_digest,
             "calibration_policy": self.calibration_policy.to_dict(),
             "target_sizes": list(self.target_sizes),
@@ -590,7 +594,7 @@ class SizeFidelityQualificationReport:
             raise TrainingDataSerializationError("Unsupported SIZE-FIDELITY1 qualification-report schema.")
         result = cls(
             dataset_id=str(payload["dataset_id"]),
-            target_data_ladder_digest=str(payload["target_data_ladder_digest"]),
+            target_size_candidate_authority_digest=str(payload["target_size_candidate_authority_digest"]),
             target_size_policy_digest=str(payload["target_size_policy_digest"]),
             calibration_policy=SizeFidelityCalibrationPolicy.from_dict(payload["calibration_policy"]),
             target_sizes=tuple(int(v) for v in payload["target_sizes"]),
@@ -611,8 +615,8 @@ class SizeFidelityQualificationReport:
 def build_size_fidelity_qualification(
     *,
     dataset_id: str,
-    target_data_ladder_digest: str,
-    target_size_policy: TargetSizeConvergencePolicy,
+    target_size_candidate_authority_digest: str,
+    target_size_policy: TargetSizeStudyPolicy,
     target_sizes: Sequence[int],
     metrics: Sequence[SizeFidelityMetric],
     calibration_policy: SizeFidelityCalibrationPolicy | None = None,
@@ -628,8 +632,8 @@ def build_size_fidelity_qualification(
     policy = calibration_policy or SizeFidelityCalibrationPolicy()
     policy.validate_against_target_size_policy(target_size_policy)
     sizes = _sorted_unique_ints(target_sizes, name="SIZE-FIDELITY1 target_sizes", minimum=1)
-    if len(sizes) < target_size_policy.min_coverage_qualifiers:
-        raise TrainingDataInputError("SIZE-FIDELITY1 target sizes do not satisfy TARGET-DATA2D coverage-qualifier minimum.")
+    if len(sizes) < target_size_policy.minimum_qualified_sizes:
+        raise TrainingDataInputError("SIZE-FIDELITY1 target sizes do not satisfy target-size v5 coverage-qualifier minimum.")
     metric_tuple = tuple(sorted(metrics, key=_metric_key))
     metric_map = {_metric_key(v): v for v in metric_tuple}
     if len(metric_map) != len(metric_tuple):
@@ -652,8 +656,8 @@ def build_size_fidelity_qualification(
                 required_keys.append((seed, size, epoch, _FULL_ROLE, None))
                 for monitor in policy.coarse_monitor_configuration_candidates:
                     required_keys.append((seed, size, epoch, "coarse_monitor", monitor))
-            required_keys.append((seed, size, int(target_size_policy.short_training_epochs), _FULL_ROLE, None))
-            required_keys.append((seed, size, int(target_size_policy.final_training_epochs), _FULL_ROLE, None))
+            required_keys.append((seed, size, int(target_size_policy.fidelity_epochs[1]), _FULL_ROLE, None))
+            required_keys.append((seed, size, int(target_size_policy.fidelity_epochs[2]), _FULL_ROLE, None))
     expected_key_set = set(required_keys)
     actual_key_set = set(metric_map)
     missing = tuple(sorted(expected_key_set - actual_key_set))
@@ -692,8 +696,8 @@ def build_size_fidelity_qualification(
     assessments: list[SizeFidelityCandidateAssessment] = []
     boundary_size = max(sizes)
     final_epsilon = float(target_size_policy.practical_equivalence_mev_per_a)
-    short_count = int(target_size_policy.max_short_training_candidates)
-    coarse_count = int(target_size_policy.max_coarse_training_candidates)
+    short_count = int(target_size_policy.epoch10_finalist_count)
+    coarse_count = int(target_size_policy.epoch3_survivor_limit)
 
     for coarse_epoch in policy.coarse_epoch_candidates:
         for monitor_size in policy.coarse_monitor_configuration_candidates:
@@ -710,7 +714,7 @@ def build_size_fidelity_qualification(
                 final_sets: list[tuple[int, tuple[int, ...]]] = []
 
                 for seed in policy.screening_seeds:
-                    final_metrics = [metric_map[(seed, size, int(target_size_policy.final_training_epochs), _FULL_ROLE, None)] for size in sizes]
+                    final_metrics = [metric_map[(seed, size, int(target_size_policy.fidelity_epochs[2]), _FULL_ROLE, None)] for size in sizes]
                     final_order = _screen_order(final_metrics, epsilon=final_epsilon, boundary_size=None)
                     if len(final_order) < short_count:
                         raise TrainingDataInputError(f"SIZE-FIDELITY1 seed {seed} has fewer than {short_count} valid 30-epoch target candidates.")
@@ -728,7 +732,7 @@ def build_size_fidelity_qualification(
                     if set(full_survivors) == set(coarse_survivors):
                         monitor_matches += 1
 
-                    short_metrics = [metric_map[(seed, size, int(target_size_policy.short_training_epochs), _FULL_ROLE, None)] for size in coarse_survivors]
+                    short_metrics = [metric_map[(seed, size, int(target_size_policy.fidelity_epochs[1]), _FULL_ROLE, None)] for size in coarse_survivors]
                     short_order = _screen_order(short_metrics, epsilon=final_epsilon, boundary_size=boundary_size)
                     if len(short_order) < short_count:
                         raise TrainingDataInputError(f"SIZE-FIDELITY1 seed {seed} has insufficient valid 10-epoch survivors.")
@@ -749,7 +753,7 @@ def build_size_fidelity_qualification(
 
                     coarse_score_by_size = {v.target_size: v.target_force_score_mev_per_a for v in coarse_full}
                     final_score_by_size = {v.target_size: v.target_force_score_mev_per_a for v in final_metrics}
-                    common = [size for size in sizes if metric_map[(seed, size, coarse_epoch, _FULL_ROLE, None)].admissible and metric_map[(seed, size, int(target_size_policy.final_training_epochs), _FULL_ROLE, None)].admissible]
+                    common = [size for size in sizes if metric_map[(seed, size, coarse_epoch, _FULL_ROLE, None)].admissible and metric_map[(seed, size, int(target_size_policy.fidelity_epochs[2]), _FULL_ROLE, None)].admissible]
                     if len(common) >= 2:
                         rho = _spearman_rho([coarse_score_by_size[s] for s in common], [final_score_by_size[s] for s in common])
                         if math.isfinite(rho):
@@ -815,7 +819,7 @@ def build_size_fidelity_qualification(
     )
     return SizeFidelityQualificationReport(
         dataset_id=dataset_id,
-        target_data_ladder_digest=target_data_ladder_digest,
+        target_size_candidate_authority_digest=target_size_candidate_authority_digest,
         target_size_policy_digest=target_size_policy.policy_digest,
         calibration_policy=policy,
         target_sizes=sizes,
@@ -832,16 +836,16 @@ def build_size_fidelity_qualification(
 def validate_size_fidelity_qualification(
     report: SizeFidelityQualificationReport,
     *,
-    target_size_policy: TargetSizeConvergencePolicy,
+    target_size_policy: TargetSizeStudyPolicy,
 ) -> None:
     """Fail closed when a persisted SIZE-FIDELITY1 report no longer matches policy."""
 
     report.calibration_policy.validate_against_target_size_policy(target_size_policy)
     if report.target_size_policy_digest != target_size_policy.policy_digest:
-        raise TrainingDataInputError("SIZE-FIDELITY1 report references a different TARGET-DATA2D policy.")
+        raise TrainingDataInputError("SIZE-FIDELITY1 report references a different target-size v5 policy.")
     rebuilt = build_size_fidelity_qualification(
         dataset_id=report.dataset_id,
-        target_data_ladder_digest=report.target_data_ladder_digest,
+        target_size_candidate_authority_digest=report.target_size_candidate_authority_digest,
         target_size_policy=target_size_policy,
         target_sizes=report.target_sizes,
         metrics=report.metrics,

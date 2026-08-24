@@ -271,7 +271,7 @@ def test_eval1_pes_campaign_v2_round_trip():
         campaign_plan_digest=_d("campaign"), deploy_verify_campaign_digest=_d("deploy-campaign"),
         foundation_audit_digest=_d("foundation-audit"), foundation_model_sha256=foundation_sha,
         policy=pes_policy, probe_set=probe_set, probe_request=request, reference_artifact=ref_artifact,
-        foundation_qualification=foundation, run_records=(run,), stage_context="target_size_stage_c",
+        foundation_qualification=foundation, run_records=(run,), stage_context="production",
         foundation_head_name="omat_pbe", foundation_potential_identity=potential, foundation_inference_identity=inference,
     )
     payload = campaign.to_dict()
