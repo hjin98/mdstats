@@ -3894,8 +3894,12 @@ def _ensure_foundation_target_audit(
 
 
 
-def _load_verified_target_coverage_reference_authority(store: CampaignStore) -> Any:
-    """Restore and authenticate the frozen TARGET-DATA2B coverage authority."""
+def _load_verified_target_coverage_reference_authority(
+    store: CampaignStore,
+    *,
+    cfg: Mapping[str, Any],
+) -> Any:
+    """Restore and authenticate TARGET-DATA2B against its canonical training domains."""
 
     import mdstats
 
@@ -3909,6 +3913,7 @@ def _load_verified_target_coverage_reference_authority(store: CampaignStore) -> 
     reference = store.get_record(
         "target_coverage_reference", mdstats.TargetCoverageReference
     )
+    training_domains = _target_size_required_feature_fit_domains(cfg, data5)
     mdstats.validate_target_coverage_reference_authority(
         reference,
         data4_bundle=data4,
@@ -3916,6 +3921,7 @@ def _load_verified_target_coverage_reference_authority(store: CampaignStore) -> 
         data6_bundle=data6,
         target_data_role_freeze=role_freeze,
         foundation_target_audit=audit,
+        training_domains=training_domains,
     )
     return reference
 
@@ -10991,7 +10997,9 @@ def command_preflight(args: argparse.Namespace) -> int:
         f"{foundation_audit.content_digest[:12]}..."
     )
     try:
-        coverage_reference = _load_verified_target_coverage_reference_authority(store)
+        coverage_reference = _load_verified_target_coverage_reference_authority(
+            store, cfg=cfg
+        )
     except Exception as exc:
         raise CampaignCliError(
             "TARGET-DATA2B is missing or stale; rerun `prepare` before preflight: "
@@ -13152,7 +13160,9 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             f"rerun `prepare` and `preflight`: {exc}"
         ) from exc
     try:
-        coverage_reference = _load_verified_target_coverage_reference_authority(store)
+        coverage_reference = _load_verified_target_coverage_reference_authority(
+            store, cfg=cfg
+        )
     except Exception as exc:
         raise CampaignCliError(
             "Training refused because TARGET-DATA2B authority is missing or stale; "

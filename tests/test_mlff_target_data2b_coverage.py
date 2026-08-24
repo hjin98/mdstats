@@ -262,6 +262,63 @@ def test_target_data2b_covers_every_required_final_and_cv_training_domain(tmp_pa
     }
 
 
+def test_campaign_loader_validates_target_data2b_against_canonical_final_and_cv_domains(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as campaign_cli_core
+
+    _, _, _, data4, data5, data6, freeze, audit = _build_coverage_inputs(
+        tmp_path / "inputs"
+    )
+    training_domains = campaign_cli_core._target_size_required_feature_fit_domains(
+        {}, data5
+    )
+    assert {domain.kind for domain in training_domains} == {
+        mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT,
+        mdstats.FeatureFitDomainKind.CROSS_VALIDATION_TRAINING,
+    }
+    reference = mdstats.build_target_coverage_reference(
+        data4,
+        data5,
+        data6,
+        freeze,
+        audit,
+        training_domains=training_domains,
+    )
+
+    # This is the historical preflight failure: omitting the canonical training
+    # domains reconstructs only the legacy final-development topology and must
+    # reject an otherwise-current final+CV authority.
+    with pytest.raises(
+        mdstats.TrainingDataInputError,
+        match="frozen gradient-training domains changed",
+    ):
+        mdstats.validate_target_coverage_reference_authority(
+            reference,
+            data4_bundle=data4,
+            data5_bundle=data5,
+            data6_bundle=data6,
+            target_data_role_freeze=freeze,
+            foundation_target_audit=audit,
+        )
+
+    store = campaign_cli_core.CampaignStore(tmp_path / "campaign.sqlite")
+    store.put_record("target_data_role_freeze", freeze)
+    store.put_record("data6", data6)
+    store.put_record("foundation_target_audit", audit)
+    store.put_record("target_coverage_reference", reference)
+    monkeypatch.setattr(
+        campaign_cli_core,
+        "_load_prepared",
+        lambda store, include_data4=False: (None, None, data4, data5),
+    )
+
+    restored = campaign_cli_core._load_verified_target_coverage_reference_authority(
+        store, cfg={}
+    )
+    assert restored.content_digest == reference.content_digest
+
+
 def test_target_data2b_authority_fails_closed_if_data6_changes(tmp_path: Path) -> None:
     _, _, _, data4, data5, data6, freeze, audit = _build_coverage_inputs(tmp_path)
     reference = mdstats.build_target_coverage_reference(data4, data5, data6, freeze, audit)
