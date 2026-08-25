@@ -43,6 +43,8 @@ Implementation must preserve the repository's established engineering hierarchy 
 - preparation scientific identity is a positive semantic projection: it includes true DATA2-DATA8 scientific dependencies and excludes downstream TRAIN2, execution/cache, persistence, resource, and presentation policy;
 - historical compatibility is limited to the authenticated immediate fixed-fidelity predecessor and fails closed outside that narrow boundary;
 - historical target-size evidence is never relabeled as current flexible-fidelity evidence;
+- DATA7/DATA8 candidate-prefix authority is a function of authenticated upstream REPAIR2/MVQUAL/candidate-prefix state, not of later fidelity boundaries or TRAIN2 horizon;
+- a supported predecessor compatibility path may re-authenticate unchanged immutable DATA7/DATA8 products, but must not silently reinterpret an unrecognized authority digest or turn historical screen/TRAIN2 evidence into current evidence;
 - full production/GPU qualification remains deferred and is not required to close this bounded functional repair.
 
 ## 3. Current-state diagnosis at `45c3cfb...`
@@ -78,6 +80,26 @@ The full-schedule graph defect is fixed. Architecture regression restoration rem
 
 No fresh same-candidate closeout record proves the complete affected regression plus genuine A/B/C/D1/D2/D3 after the still-required acceptance changes. The old completion count cannot be reused as final authority.
 
+### 3.6 Newly reproduced DATA8 predecessor-authority bridge defect
+
+A real resumed campaign now reaches the target-size command and fails before screening with:
+
+```text
+mdstats-mlff-campaign: DATA8 bundle multihead_replay-n512-seed1 is bound to a different target-size authority.
+```
+
+The earliest violated invariant is the historical-to-current DATA8 authority handoff, not DATA8 scientific content or TRAIN2 execution:
+
+1. During active screening `_validate_train2_data8_matrix(...)` requires each candidate DATA8 materialization to bind to the current `study.candidate_authority_digest`.
+2. The flexible-fidelity revision intentionally made current candidate materialization authority independent of `(n1,n2,n3)`/`n`, because immutable candidate prefixes depend on authenticated REPAIR2/MVQUAL/candidate membership rather than later screening geometry.
+3. The immediately preceding fixed-fidelity generation persisted DATA8 against its then-current target-size authority identity. The supported historical study/config path can authenticate and preserve the old immutable preparation products, but there is no complete real-owner bridge that re-authenticates that predecessor DATA8 binding against the new policy-independent candidate authority.
+4. Strict equality therefore rejects byte-identical, scientifically valid predecessor DATA8 at the first candidate. Deleting/rebuilding DATA8 would hide the compatibility defect and violate the accepted preservation frontier.
+5. Existing D1/D2 acceptance failed to reveal this because `_current_data8_entries`, `_target_size_materialization_variants`, `_ensure_target_size_study`, `_validate_train2_data8_matrix`, and related semantic owners were monkeypatched/bypassed in the historical-upgrade fixture.
+
+A second identity-design concern is exposed by this failure: candidate-authority digest semantics changed while the persisted candidate-authority schema token remained insufficiently explicit about the generation/formula distinction. The corrected product must make predecessor/current authority semantics unambiguous enough to support fail-closed compatibility rather than comparing two semantically different digest generations as though they were the same identity definition.
+
+This is a **bounded compatibility/identity handoff deficiency under the existing design**, not a reason to restore fidelity/horizon into DATA8 scientific identity and not a reason to rebuild unchanged DATA7/DATA8 by default.
+
 No current finding fires a scientific redesign trigger. The remaining work is implementation/test-contract nonconformance under the same frozen design.
 
 ## 4. Protocol 5.6 proxy-proof acceptance overlay
@@ -96,7 +118,8 @@ For a claim to close, the production owner/path whose behavior constitutes the c
 - `_current_data8_entries`;
 - `_target_size_materialization_variants`;
 - `_ensure_target_size_study`;
-- target-size serialization, validation, evidence persistence, reduction, and selection freeze;
+- target-size serialization, validation, evidence persistence, reduction, candidate-authority derivation, and selection freeze;
+- predecessor/current DATA8 authority compatibility/re-authentication owner and any persisted compatibility evidence it writes;
 - `_validate_train2_data8_matrix` and the real TRAIN2 schedule/materialization/continuation identity owners;
 - `_stage_config_digest` and stored stage metadata;
 - `_require_train2_preflight_authorization` or its real successor;
@@ -115,7 +138,7 @@ Test doubles may replace only dependencies below/outside the claimed owner bound
 - GPU/accelerator execution;
 - reduced/synthetic data volume and reduced bounded workloads that preserve the same semantic contract.
 
-The real product must still decide **what** work is authorized, **whether** persisted state is current/reusable, **which** candidate advances, **which** checkpoint/schedule is valid, and **what** operation comes next.
+The real product must still decide **what** work is authorized, **whether** persisted state is current/reusable, **whether a predecessor DATA8 binding is provably equivalent and admissible**, **which** candidate advances, **which** checkpoint/schedule is valid, and **what** operation comes next.
 
 ### 4.3 Forbidden substitutions
 
@@ -125,9 +148,11 @@ The following cannot close the corresponding owner claim:
 - directly calling `_invalidate_train2_downstream_state` as proof that normal restart/reconciliation detects and invalidates the right frontier;
 - seeding post-decision/post-transition state and skipping the production transition that is the acceptance claim;
 - replacing `CampaignStore` with a custom/minimal/in-memory store when persistence/restart/recovery behavior is the claim;
-- reimplementing historical compatibility, identity, schedule validation, authorization, or orchestration logic in the fixture;
+- reimplementing historical compatibility, candidate-authority equivalence, identity, schedule validation, authorization, or orchestration logic in the fixture;
 - asserting a helper plan/result as proof that the assembled production consumer uses it correctly;
-- calling a downstream helper directly when the caller/orchestrator/restart/authorization decision is the claim.
+- calling a downstream helper directly when the caller/orchestrator/restart/authorization decision is the claim;
+- deleting or regenerating otherwise valid predecessor DATA7/DATA8 solely to make the authority mismatch disappear;
+- accepting arbitrary authority-digest mismatch without authenticating the exact supported predecessor generation and all upstream semantic inputs.
 
 An explicitly frozen real-owner/test-double boundary in this workplan is an acceptance decision, not a suggested fixture structure, and **must not be weakened as local reconciliation**.
 
@@ -141,7 +166,7 @@ If yes, that test cannot close the claim. If the required real boundary cannot e
 
 ### 4.5 Targeted anti-bypass guardrail
 
-The final candidate must include a cheap structural/negative guard that protects the identifiable Rework 3 real-owner acceptance set from recurrence of the exact bypass pattern. The guard must, at minimum, fail if the A/B/C/D/frontier acceptance tests monkeypatch/stub the named semantic owners they are intended to accept, or if the frontier acceptance directly substitutes `_invalidate_train2_downstream_state` for the normal restart/reconciliation path.
+The final candidate must include a cheap structural/negative guard that protects the identifiable Rework 3 real-owner acceptance set from recurrence of the exact bypass pattern. The guard must, at minimum, fail if the A/B/C/D/frontier/authority-bridge acceptance tests monkeypatch/stub the named semantic owners they are intended to accept, or if the frontier acceptance directly substitutes `_invalidate_train2_downstream_state` for the normal restart/reconciliation path.
 
 This is **not** a repository-wide monkeypatch ban. Existing unit tests may mock semantic owners when they are testing a different layer. Exact AST/source technique and whether the assembled acceptance lives in a dedicated test module are delegated, provided the protected acceptance set is unambiguous and the guard is robust rather than prose-only.
 
@@ -269,17 +294,88 @@ Assert:
 
 #### D1 - Immediate historical fixed predecessor -> default `(1,3,10)/30`
 
-Use real `CampaignStore` and an authenticated bounded immediate-predecessor representation. Real historical prepare/preflight compatibility, stage digest, DATA8 discovery, target-study construction, matrix/schedule validation, and restart ownership must execute.
+Use real `CampaignStore` and an authenticated bounded immediate-predecessor representation. Real historical prepare/preflight compatibility, stage digest, DATA8 discovery, target-study construction, **predecessor DATA8 authority re-authentication**, matrix/schedule validation, and restart ownership must execute.
 
-Assert unchanged upstream prepare/preflight/DATA7/DATA8 science is reused; historical target-size evidence is rejected as current and never relabeled; fresh current study starts epoch 1; stale live TRAIN2 state is invalidated/forensically retained by the real owner; restart/status points to correct work.
+The fixture must reproduce the actual predecessor binding shape that previously caused `multihead_replay-n512-seed1` to fail strict current-authority comparison. Assert unchanged upstream prepare/preflight/DATA7/DATA8 science is reused **without rewriting DATA8 scientific bytes**; the predecessor binding is accepted only through the supported authenticated bridge; historical target-size evidence is rejected as current and never relabeled; fresh current study starts epoch 1; stale live TRAIN2 state is invalidated/forensically retained by the real owner; restart/status points to correct work.
 
 #### D2 - Immediate historical fixed predecessor -> `(2,5,12)/40`
 
-Same real-owner constraints as D1. Unchanged upstream science survives; any execution schedule realization embedding 30 may regenerate only at its own owner; real full-40 schedule identity is established; old 30 schedule/checkpoint is rejected by the real validator; fresh current study starts epoch 2; no historical target evidence is relabeled.
+Same real-owner and authority-bridge constraints as D1. Unchanged upstream science survives; any execution schedule realization embedding 30 may regenerate only at its own owner; real full-40 schedule identity is established; old 30 schedule/checkpoint is rejected by the real validator; fresh current study starts epoch 2; no historical target evidence is relabeled.
 
 #### D3 - Historical/config preparation-scientific change
 
 Use real `CampaignStore`, real preparation digest/signature/receipt compatibility, and real restart/reuse consumer. Assert fail-closed reopening at the narrowest correct preparation boundary and that stale downstream preflight/DATA7/DATA8/target-size/TRAIN2 state does not remain current authority.
+
+### O24R - Repair and prove the immediate-predecessor DATA8 candidate-authority bridge
+
+**Protected concern:** the flexible-fidelity cut intentionally preserves scientifically identical candidate-prefix DATA7/DATA8 across downstream policy changes, but the current restart path rejects an authenticated immediate-predecessor DATA8 binding because old and current candidate-authority digest generations are compared as though they had one unchanged identity formula. The repair must preserve valid expensive preparation without weakening stale-state rejection.
+
+**Required end state:**
+
+1. Keep current candidate-prefix authority independent of `fidelity_epochs` and TRAIN2 horizon. Do **not** restore `(3,10,30)`, `(1,3,10)`, or `n` into DATA7/DATA8 scientific identity merely to make legacy digests compare equal.
+2. Support exactly the already accepted immediate fixed-fidelity predecessor through an explicit fail-closed compatibility/re-authentication path. A raw digest mismatch is not itself admissible evidence.
+3. Re-authentication must prove semantic equivalence from authoritative predecessor/current inputs sufficient to establish unchanged DATA8 meaning, including at minimum dataset identity, REPAIR2 authority, MVQUAL authority, admitted candidate content/prefix digests, qualified-size set, expected candidate variant/topology/selection role, and intact materialization/bundle integrity.
+4. Historical target-size screen evidence, schedule/checkpoint state, and downstream TRAIN2 state remain subject to the existing invalidation rules. Re-authenticating DATA8 must never relabel those records as current flexible-fidelity evidence.
+5. Unchanged DATA8 scientific files/trees must not be deleted, regenerated, or rewritten as the normal compatibility action. If current durable metadata needs a new binding/compatibility record, publication must be idempotent, integrity-checked, and restart-safe.
+6. Current-generation DATA8 remains strict: a current authority mismatch is an error unless the record is explicitly recognized and authenticated as the supported predecessor transition.
+7. Unknown older generations, malformed or ambiguous predecessor metadata, changed REPAIR2/MVQUAL/candidate content/qualified sizes/topology, corrupted materialization, or insufficient evidence must fail closed. No wildcard legacy acceptance is permitted.
+8. Persisted candidate-authority generation semantics must become unambiguous. Because the digest formula/meaning changed across the transition, the final product must distinguish current versus predecessor authority derivation by an explicit versioned schema/generation/compatibility identity. The exact representation is delegated; retaining one indistinguishable schema token for materially different digest definitions is not accepted.
+9. Keep one owning compatibility mechanism. Do not add per-variant exceptions for `n512`, special-case the observed job ID, or create a second parallel source of target-size authority.
+
+**Required real owner/path:**
+
+```text
+authenticated predecessor CampaignStore/prepare/preflight
+ -> real current DATA8 discovery/materialization metadata
+ -> real predecessor/current candidate-authority compatibility owner
+ -> real target-size study construction
+ -> real _validate_train2_data8_matrix (or successor)
+ -> real preflight/next-operation authorization
+ -> configured n1 screening work
+```
+
+**Allowed doubles:** heavyweight source reconstruction, MACE training/evaluation, and GPU work below the validated authority/authorization boundary.
+
+**Forbidden substitutes:** patching `_validate_train2_data8_matrix`; manually editing the test database to the expected new digest before validation; deleting/rebuilding DATA8 as the primary repair; accepting every legacy mismatch; comparing only filenames/variant IDs; or deriving equivalence from fidelity-policy coincidence instead of authenticated upstream candidate state.
+
+#### O24R-G1 - Authority-definition and compatibility-classification gate
+
+Before dependent restart logic changes proceed, establish one explicit current candidate-authority definition and one bounded predecessor compatibility definition. Prove structurally that current candidate authority excludes fidelity/horizon while still includes all scientific candidate-prefix inputs. Prove the predecessor generation can be identified without guessing from a digest alone.
+
+**Pass condition:** authority ownership, version distinction, compatibility inputs, and reject cases are explicit; there is no ambiguous same-schema/two-formula interpretation left for implementation-local invention.
+
+#### O24R-G2 - Positive real-owner predecessor re-authentication gate
+
+Run the exact D1-shaped persisted predecessor through the real owners without semantic-owner monkeypatching. At minimum include `multihead_replay-n512-seed1` plus the complete expected candidate matrix so the first bundle is not a one-off success.
+
+**Pass condition:** `_validate_train2_data8_matrix`/successor accepts the authenticated predecessor matrix, DATA8 scientific/tree digests remain byte-identical, fresh flexible-fidelity study/evidence is created, first authorized screen is configured `n1`, and no historical screen/TRAIN2 evidence becomes current.
+
+#### O24R-G3 - Fail-closed negative compatibility gate
+
+Independently perturb representative material inputs and prove the same real path rejects reuse. Required negative rows include at least:
+
+- REPAIR2 authority mismatch;
+- MVQUAL authority mismatch;
+- candidate/prefix content mismatch;
+- qualified-size-set mismatch;
+- variant/topology/selection-role mismatch;
+- unsupported predecessor schema/generation;
+- missing/ambiguous compatibility evidence;
+- corrupted or integrity-mismatched DATA8 materialization metadata/tree.
+
+**Pass condition:** every semantically material mismatch fails closed at the compatibility/validation boundary and cannot be converted into current authority by restart/status/advance.
+
+#### O24R-G4 - Persistence, idempotence, and current-generation strictness gate
+
+Close/reopen the store after a successful supported re-authentication and execute validation/restart again. Also exercise a fresh current-generation DATA8 matrix.
+
+**Pass condition:** repeated restart is deterministic and does not rewrite immutable scientific DATA8; any compatibility metadata is durably and atomically reusable; current-generation strict mismatches still fail; no compatibility path accumulates duplicate authority records or requires repeated migration work.
+
+#### O24R-G5 - Stage-local regression and proxy-proof gate
+
+Run focused authority-bridge tests plus stage-local affected regression over target-size persistence, production materialization/DATA8 identity, prepare/preflight reuse, historical migration, campaign restart/status/advance, and TRAIN2 matrix validation. Extend O23R so the O24 acceptance tests cannot patch the authority bridge or matrix validator they claim to prove.
+
+**Pass condition:** focused + affected regression are green on the same candidate and the anti-bypass guard proves a broken real authority owner would fail acceptance.
 
 ### O19R - Complete current authority and independent architecture regression protection
 
@@ -301,7 +397,8 @@ Finish the pre-Rework-3 versus current regression classification and preserve/re
 - held-out/locked validation cannot retroactively alter target-size/training/checkpoint selection;
 - current checkpoint fail-closed policy plus retained evaluation-checkpoint semantics where still normative;
 - core current manual/spec publication artifacts and version agreement where normative;
-- revision-106 history/index synchronization and narrow immediate-predecessor migration/fail-closed language.
+- revision-106 history/index synchronization and narrow immediate-predecessor migration/fail-closed language;
+- current candidate-prefix authority remains downstream-policy-independent while the immediate predecessor compatibility boundary is explicit and fail-closed.
 
 Prefer structural graph/schema assertions over weak sentence-presence checks when the invariant is structural. Do not increase test count by restoring obsolete representation details.
 
@@ -309,7 +406,7 @@ Prefer structural graph/schema assertions over weak sentence-presence checks whe
 
 Add structural/negative regression protection for the assembled Rework 3 acceptance set so the exact failure mode cannot silently recur.
 
-The guard must identify the frontier and A/B/C/D acceptance tests and fail when those tests replace the semantic owner they claim to accept. At minimum protect against acceptance-side monkeypatch/stub replacement of:
+The guard must identify the frontier and A/B/C/D/O24 acceptance tests and fail when those tests replace the semantic owner they claim to accept. At minimum protect against acceptance-side monkeypatch/stub replacement of:
 
 - `_require_train2_preflight_authorization`;
 - `_historical_prepare_inputs_match_current`;
@@ -317,6 +414,7 @@ The guard must identify the frontier and A/B/C/D acceptance tests and fail when 
 - `_current_data8_entries`;
 - `_target_size_materialization_variants`;
 - `_ensure_target_size_study`;
+- candidate-authority derivation/compatibility/re-authentication owner;
 - `_validate_train2_data8_matrix` / real schedule-validation owner;
 - `_stage_config_digest`;
 - real restart/next-operation/status owner;
@@ -332,22 +430,23 @@ After all executable/test-contract changes are complete:
 
 1. reconcile every still-current parent/Rework1/Rework2/Rework3 obligation against the assembled candidate;
 2. re-derive the complete affected surface from the final diff and callers/consumers;
-3. run focused O18R/O20R/O21R/O19R/O23R checks;
+3. run focused O18R/O20R/O21R/O24R/O19R/O23R checks;
 4. run the complete affected-surface regression on the same commit;
-5. run genuine A/B/C/D1/D2/D3 on that same commit;
+5. run genuine A/B/C/D1/D2/D3, including the real predecessor DATA8 authority bridge, on that same commit;
 6. run repository-required checks and the broader/full suite when final impact cannot be bounded confidently;
 7. record exact commands and result counts in this workplan completion record or existing repository-standard closeout location;
 8. record every unavailable/skipped required check by exact identity and reason; an unexecuted required check is not passed.
 
-Failures touching revision 106, flexible fidelity, preparation identity, historical compatibility, restart/reuse, DATA7/DATA8, target-size persistence, TRAIN2 schedule/continuation, SIZE-FIDELITY, PERF-P2R, progress/status, or architecture protection changed here are affected until the failure itself proves otherwise.
+Failures touching revision 106, flexible fidelity, preparation identity, historical compatibility, candidate-authority versioning/re-authentication, restart/reuse, DATA7/DATA8, target-size persistence, TRAIN2 schedule/continuation, SIZE-FIDELITY, PERF-P2R, progress/status, or architecture protection changed here are affected until the failure itself proves otherwise.
 
 Minimum affected suites include current equivalents of:
 
 - `tests/test_mlff_flexible_fidelity.py` and any dedicated real-owner acceptance module;
 - campaign CLI/store/config/status/advance/restart suites;
 - prepare/preflight/materialization reuse suites;
-- target-size topology/persistence suites;
-- TRAIN2 runtime/continuation/schedule identity suites;
+- target-size topology/persistence/candidate-authority suites;
+- production materialization/DATA8 identity and integrity suites;
+- TRAIN2 runtime/continuation/schedule/matrix identity suites;
 - SIZE-FIDELITY and PERF-P2R suites;
 - historical migration/reuse suites;
 - progress-format suites;
@@ -368,10 +467,11 @@ Old `200 passed, 1 skipped` or other pre-reopen counts cannot be copied forward 
 | A | real fresh config/store/preflight/target-size/restart/production consumers | actual training/eval | fake preflight authorization | 1/3/10; elimination no-later-work; durable selection; production 30 |
 | B | same | actual training/eval | helper policy plan | 2/5/12 on full 40; endpoint/horizon separated; elimination no-later-work; production 40 |
 | C | persisted target-size authority -> real SIZE-FIDELITY consumer | physical train/eval | helper-only execution plan | two semantic roles; one reusable physical epoch-30 endpoint |
-| D1 | real historical store/receipt/stage/DATA8/study/schedule/restart owners | expensive compute | fake historical match/DATA8/study/stage digest | upstream reused; historical evidence rejected; fresh epoch 1 |
-| D2 | same + real horizon validator | expensive compute | fake schedule validation | upstream reused; old 30 rejected; fresh epoch 2 on 40 |
+| D1 | real historical store/receipt/stage/DATA8/predecessor-authority/study/schedule/restart owners | expensive compute | fake historical match/DATA8/study/authority bridge/stage digest | upstream reused byte-identically; predecessor binding re-authenticated; historical evidence rejected; fresh epoch 1 |
+| D2 | same + real horizon validator | expensive compute | fake authority/schedule validation | upstream reused; predecessor DATA8 accepted only by bounded bridge; old 30 rejected; fresh epoch 2 on 40 |
 | D3 | real preparation digest/signature/receipt/restart | expensive compute | custom store or monkeypatched digest/contract | scientific change fails closed at correct prepare boundary |
-| O19 architecture | canonical graph/manual/spec + structural tests | none needed | sentence-presence proxy for structural invariant | current independent invariants remain protected; obsolete numeric/current-authority nodes absent |
+| O24 predecessor DATA8 bridge | predecessor store/DATA8 -> real candidate-authority compatibility -> real matrix validator -> next-operation authorization | heavy reconstruction/train/eval | DATA8 rebuild, DB rewrite, wildcard legacy accept, patched validator | unchanged predecessor DATA8 bytes survive; exact supported binding becomes current-compatible; changed/unknown authority fails closed |
+| O19 architecture | canonical graph/manual/spec + structural tests | none needed | sentence-presence proxy for structural invariant | current independent invariants remain protected; obsolete numeric/current-authority nodes absent; authority-generation boundary explicit |
 | O23 anti-bypass | identifiable assembled acceptance set + structural negative guard | permitted external-compute mocks | owner replacement/direct invalidation helper in claimed acceptance | guard fails on forbidden bypass and permits below-owner fakes |
 
 For every row, apply the counterfactual: if the required owner can break while the test remains green, the row is **not accepted**.
@@ -385,7 +485,10 @@ Production qualification: **deferred**. Do not run long real-data/GPU production
 - all scientific/product design in Section 2;
 - the real-owner/test-double boundaries in Sections 4-6;
 - exact same-trajectory full-`n` continuation;
+- current candidate-prefix DATA7/DATA8 authority remains independent of downstream fidelity/horizon policy;
 - immediate-predecessor-only historical compatibility and no historical evidence relabeling;
+- predecessor DATA8 compatibility requires authenticated semantic equivalence and cannot be implemented as wildcard digest acceptance or default DATA8 rebuild;
+- persisted predecessor/current candidate-authority generation semantics must be explicitly distinguishable;
 - positive preparation-scientific identity and downstream/execution/presentation exclusion;
 - required stage-local/final affected regression and assembled integration;
 - production/GPU qualification separation.
@@ -396,6 +499,8 @@ Production qualification: **deferred**. Do not run long real-data/GPU production
 - whether the reusable genuine campaign fixture lives in the existing flexible-fidelity test module or a dedicated acceptance module;
 - exact AST/source mechanism for O23R;
 - exact bounded fake trainer/evaluator implementation;
+- exact durable representation of a successful predecessor DATA8 re-authentication, provided it has one owner, is integrity-bound/idempotent, and does not rewrite scientific DATA8;
+- whether authority-generation distinction is realized by a candidate-authority schema bump, an explicit versioned derivation token, or an equivalent unambiguous compatibility record;
 - minimal cache/materialization realization identity if a real owning cache requires it;
 - equivalent graph-test formulation that preserves the explicit semantic dependency.
 
@@ -407,7 +512,8 @@ Return to Software Design only if direct repository/assembled-integration eviden
 
 - `training_backend`, `only_cueq`, or `require_available` changes authoritative DATA2-DATA8 scientific products;
 - fidelity/horizon values are embedded in an authoritative preparation scientific product such that upstream scientific reuse is actually invalid;
-- the immediate predecessor lacks sufficient authentic information for the currently accepted narrow D1/D2 compatibility path;
+- the immediate predecessor lacks sufficient authentic information to prove DATA8 semantic equivalence for the currently accepted narrow D1/D2 compatibility path;
+- safe predecessor re-authentication would require guessing missing authority inputs, accepting an unknown generation, or mutating scientific DATA8 content rather than binding unchanged derived state;
 - genuine assembled integration exposes a scientific/state-machine defect that invalidates the frozen funnel or same-trajectory continuation premise;
 - the real acceptance boundary cannot be exercised without changing a frozen material product/acceptance decision.
 
@@ -418,6 +524,8 @@ A difficult fixture, inconvenient test seam, failing helper test, or desire to r
 Primary product/state surface:
 
 - `mdstats/training_data/_campaign_cli_core.py`;
+- target-size candidate-authority derivation/serialization/migration (`mdstats/training_data/target_size_study.py` or current owner);
+- production materialization/DATA8 authority metadata owner (`mdstats/training_data/production_materialization.py` and/or current DATA8 owner where evidence shows the binding lives);
 - preparation projection/digest/receipt and completed-prepare/preflight reuse;
 - historical compatibility/re-authentication;
 - DATA7/DATA8 current discovery, matrix/materialization/schedule identity;
@@ -433,6 +541,8 @@ Primary test surface:
 - `tests/test_mlff_flexible_fidelity.py`;
 - any dedicated real-owner flexible-fidelity acceptance/anti-bypass module;
 - campaign/store/restart/materialization suites discovered from real callers;
+- target-size candidate-authority serialization/migration tests;
+- production materialization/DATA8 identity/integrity suites;
 - TRAIN2 runtime/continuation suites;
 - SIZE-FIDELITY/PERF-P2R suites;
 - historical migration/preflight reuse suites;
@@ -453,10 +563,11 @@ This is provisional; O22R must re-derive the final affected surface from the ass
 
 - keep this same Rework 3 active;
 - preserve the product corrections already present at `45c3` unless contradicted by direct evidence;
-- classify every current frontier/A/B/C/D acceptance test by claim, real owner, allowed doubles, forbidden substitutions, and observable result;
-- identify current direct-helper/custom-store/owner-mock substitutions and remove their acceptance authority rather than merely renaming them.
+- classify every current frontier/A/B/C/D/O24 acceptance test by claim, real owner, allowed doubles, forbidden substitutions, and observable result;
+- identify current direct-helper/custom-store/owner-mock substitutions and remove their acceptance authority rather than merely renaming them;
+- classify predecessor/current candidate-authority definitions, persisted generation evidence, and exact supported compatibility boundary.
 
-**Gate:** no material acceptance claim has an unidentified semantic owner or ambiguous double boundary.
+**Gate:** no material acceptance claim has an unidentified semantic owner or ambiguous double boundary, and the predecessor authority mismatch has a defined fail-closed compatibility contract rather than an implementation-local guess.
 
 ### R3R-W1 - Complete O18R real reuse acceptance
 
@@ -464,27 +575,35 @@ Finish authenticated completed-prepare/preflight/DATA7/DATA8 reuse tests for eve
 
 **Gate:** O18R closes semantically and functionally through real owners; digest-only evidence is supplemental.
 
-### R3R-W2 - Replace proxy frontiers/integration with genuine persisted acceptance
+### R3R-W2A - Close O24R predecessor DATA8 authority bridge before broad historical integration
 
-Build one reusable genuine bounded campaign fixture and use it for O20R plus A/B/C/D1/D2/D3 where appropriate. Run real restart/reconciliation/preflight/historical/DATA8/schedule/SIZE-FIDELITY owners. Fake only external expensive compute. Install O23R targeted anti-bypass protection.
+Implement the single bounded predecessor/current candidate-authority compatibility mechanism and make persisted generation semantics explicit. Execute O24R-G1 through O24R-G5 in order. Do not proceed to broad D1/D2/frontier acceptance while the exact observed DATA8 authority mismatch remains unresolved.
+
+Run focused candidate-authority serialization/compatibility tests, the real persisted predecessor reproducer, negative mismatch matrix, close/reopen idempotence/current-generation strictness checks, and stage-local affected target-size/DATA8/materialization/restart regression.
+
+**Gate:** the exact `multihead_replay-n512-seed1` predecessor failure is closed through real owners without DATA8 scientific rebuild; complete predecessor candidate matrix re-authenticates only when semantically identical; every required negative row fails closed; current-generation strictness remains intact; authority-generation semantics are unambiguous; O23R protects this acceptance boundary.
+
+### R3R-W2B - Replace remaining proxy frontiers/integration with genuine persisted acceptance
+
+Build one reusable genuine bounded campaign fixture and use it for O20R plus A/B/C/D1/D2/D3 where appropriate. D1/D2 must consume the already accepted O24R bridge rather than a special fixture rewrite. Run real restart/reconciliation/preflight/historical/DATA8/schedule/SIZE-FIDELITY owners. Fake only external expensive compute. Complete O23R targeted anti-bypass protection.
 
 Run focused frontier and A/B/C/D tests, then stage-local affected campaign/restart/TRAIN2/SIZE-FIDELITY/PERF-P2R regression.
 
-**Gate:** all four frontiers and six assembled cases pass; the O23R guard confirms no claimed acceptance replaces its owner.
+**Gate:** all four frontiers and six assembled cases pass through real owners; D1/D2 demonstrate predecessor DATA8 preservation plus fresh current target-size evidence; the O23R guard confirms no claimed acceptance replaces its owner.
 
 ### R3R-W3 - Finish O19R current authority/regression protection
 
-Keep the corrected full-schedule graph edges, strengthen structural architecture assertions, and restore/map every still-current independent invariant lost in the earlier broad test reduction. Do not restore obsolete current-authority representation.
+Keep the corrected full-schedule graph edges, strengthen structural architecture assertions, and restore/map every still-current independent invariant lost in the earlier broad test reduction. Protect the clarified candidate-authority generation/compatibility boundary. Do not restore obsolete current-authority representation.
 
 Run current architecture/dependency/manual/spec tests plus any executable suite invalidated by these test-contract changes.
 
-**Gate:** current authority is semantically complete and no still-current independent invariant is protected only by a weak proxy.
+**Gate:** current authority is semantically complete, predecessor/current candidate-authority semantics are structurally unambiguous, and no still-current independent invariant is protected only by a weak proxy.
 
 ### R3R-W4 - O22R final assembled acceptance
 
-Perform final contract reconciliation and final affected-surface derivation. Run fresh same-commit focused checks, complete affected regression, genuine A/B/C/D1/D2/D3, anti-bypass guard, and repository/broader checks as required. Record exact commands/results.
+Perform final contract reconciliation and final affected-surface derivation. Run fresh same-commit focused checks, complete affected regression, genuine A/B/C/D1/D2/D3 including O24R bridge coverage, anti-bypass guard, and repository/broader checks as required. Record exact commands/results.
 
-**Gate:** no required check is failing/unexecuted; every material owner claim is proxy-proof under the counterfactual.
+**Gate:** no required check is failing/unexecuted; every material owner claim is proxy-proof under the counterfactual; no supported predecessor restart requires unnecessary DATA7/DATA8 scientific recomputation; no unsupported/mutated predecessor can reuse current authority.
 
 ### R3R-W5 - Closeout
 
@@ -499,9 +618,10 @@ Do not archive earlier.
 
 ### Current gate state at this reopening
 
-- R3R-W0: **reopened / acceptance classification required under Protocol 5.6**;
+- R3R-W0: **reopened; predecessor/current candidate-authority compatibility classification now explicitly required**;
 - R3R-W1: **partially implemented, not accepted**;
-- R3R-W2: **failed at `45c3` due proxy/bypass acceptance**;
+- R3R-W2A: **blocked by reproduced real DATA8 authority mismatch; not passed**;
+- R3R-W2B: **blocked on W2A and still failed at `45c3` due proxy/bypass acceptance**;
 - R3R-W3: **partially implemented**;
 - R3R-W4: **not passed**;
 - R3R-W5: **blocked**.
@@ -531,6 +651,16 @@ D1/D2 custom stores + owner mocks
     -> real CampaignStore + real historical/DATA8/study/schedule/restart ownership
     -> bounded authenticated migration result
 
+observed predecessor DATA8 authority mismatch
+    -> O24R explicit immediate-predecessor candidate-authority re-authentication
+    -> unchanged DATA8 bytes survive only after semantic-equivalence proof
+    -> changed/unknown/corrupt predecessor fails closed
+    -> current target-size evidence is fresh; historical evidence is never relabeled
+
+candidate-authority formula changed without sufficiently explicit generation distinction
+    -> explicit versioned schema/generation/compatibility identity
+    -> no ambiguous same-definition digest comparison across predecessor/current generations
+
 D3 mini store + digest mocks
     -> real prepare digest/signature/receipt/restart
     -> fail-closed preparation frontier
@@ -552,12 +682,14 @@ No material user requirement, frozen scientific decision, preservation constrain
 
 ## 11. Risks / redesign triggers
 
-Primary risk is another false-positive green suite caused by replacing the exact production decision/state owner under acceptance. Protocol 5.6 owner boundaries and O23R exist specifically to prevent that recurrence.
+Primary risk remains another false-positive green suite caused by replacing the exact production decision/state owner under acceptance. Protocol 5.6 owner boundaries and O23R exist specifically to prevent that recurrence.
 
-Secondary risks are over-broad fixture construction that becomes a parallel campaign implementation, and over-broad anti-mock checks that forbid legitimate external-compute doubles. Prefer one real reusable persisted fixture and one narrowly targeted structural guard.
+The newly demonstrated product risk is the opposite pair of authority failures: **over-strict generation-blind comparison** can force unnecessary expensive DATA7/DATA8 rebuild, while **over-permissive legacy re-binding** can admit scientifically stale candidate materialization. O24R therefore requires explicit generation identity, semantic-equivalence proof, fail-closed negatives, and idempotent persistence rather than a digest bypass.
+
+Secondary risks are over-broad fixture construction that becomes a parallel campaign implementation, per-variant compatibility special cases, destructive metadata migration that needlessly touches scientific DATA8, and over-broad anti-mock checks that forbid legitimate external-compute doubles. Prefer one real reusable persisted fixture, one owning compatibility mechanism, and one narrowly targeted structural guard.
 
 If a trigger in Section 7 fires, reopen only the affected design surface and preserve unrelated accepted product decisions/evidence.
 
 ## Frozen implementation principle
 
-> **Acceptance must execute the production semantic owner whose behavior constitutes the claim; test doubles may replace expensive or external dependencies only below or outside that boundary. Evidence that could remain green while the required owner is materially broken cannot close the claim. Preserve the frozen flexible-fidelity science and exact persistence/restart semantics while enforcing this boundary without production-scale/GPU cost.**
+> **Acceptance must execute the production semantic owner whose behavior constitutes the claim; test doubles may replace expensive or external dependencies only below or outside that boundary. Evidence that could remain green while the required owner is materially broken cannot close the claim. Preserve the frozen flexible-fidelity science and exact persistence/restart semantics while enforcing this boundary without production-scale/GPU cost. For the immediate predecessor, reuse immutable DATA7/DATA8 only after explicit semantic re-authentication; never solve the transition by restoring downstream policy into candidate authority, wildcard-accepting mismatched digests, relabeling historical TRAIN2 evidence, or blindly rebuilding scientifically unchanged preparation.**
