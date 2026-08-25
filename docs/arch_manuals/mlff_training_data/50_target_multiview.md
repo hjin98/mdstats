@@ -287,7 +287,7 @@ The architecture never creates an intermediate size merely to avoid reporting no
 
 Ordinary production executes the successive-fidelity funnel and stops training eliminated sizes.
 
-A release/algorithm qualification may retrospectively train the complete candidate population to 30 epochs to measure survivor recall or calibrate the screening policy. That exhaustive matrix is qualification evidence, not a permanent production requirement. If representative qualification shows that the early screens do not reliably retain eventual finalists, the screening policy must be revised explicitly rather than forcing every campaign to repay every eliminated candidate.
+A release/algorithm qualification may retrospectively train the complete candidate population to the configured full horizon `n` to measure survivor recall or calibrate the screening policy. That exhaustive matrix is qualification evidence, not a permanent production requirement. If representative qualification shows that the early screens do not reliably retain eventual finalists, the screening policy must be revised explicitly rather than forcing every campaign to repay every eliminated candidate.
 
 ## Bounded scientific materialization
 

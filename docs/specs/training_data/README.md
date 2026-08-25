@@ -29,8 +29,8 @@ The cross-cutting architecture is defined by the canonical chapters under `docs/
 - `mlff_mvidx_queue_backpressure_spec.md` — bounded MVIDX queue/admission behavior.
 - `mlff_target_data2c_mvsel2_forward_lazy_chain_spec.md` — current integrated FEAS1/MVIDX1/MVSEL2/REPAIR2/MVSTATE2/MVQUAL target-subset chain and exact forward/lazy semantics.
 - `mlff_target_data2c_mvqual1_same_n_qualification_spec.md` — narrow independent MVQUAL predicate/result details where not superseded by the integrated current contract.
-- `mlff_target_subset_size_study_spec.md` — sole exact `TargetSizeStudyPolicy` owner: fixed nominal sizes, materializable/qualified/selected semantics, 3/10/30 continuation, paired seeds, funnel, hard admissibility, typed non-convergence/failure.
-- `mlff_size_fidelity1_calibration_spec.md` — current target-size-v5 SIZE-FIDELITY1 v2 calibration authority: exhaustive 30-epoch trajectories, 3/4/5 coarse hypotheses, monitor/equivalence grid, hard eventual-finalist recall, and deferred FINAL-GPU1 accelerator/scientific qualification.
+- `mlff_target_subset_size_study_spec.md` — sole exact `TargetSizeStudyPolicy` owner: fixed nominal sizes, materializable/qualified/selected semantics, configurable `(n1,n2,n3)/n` continuation, paired seeds, funnel, hard admissibility, typed non-convergence/failure.
+- `mlff_size_fidelity1_calibration_spec.md` — current target-size-v5 SIZE-FIDELITY1 v2 calibration authority: exhaustive configured-full-horizon trajectories, 3/4/5 coarse hypotheses, monitor/equivalence grid, hard eventual-finalist recall, and deferred FINAL-GPU1 accelerator/scientific qualification.
 
 The following are **not** current target-subset authorities: MVSEL1, REPAIR1, MVSTATE-REUSE1, MVMIGRATE, generated/rescue ladders, or older size-halving/fidelity gate documents. A4 consolidates their useful rationale into history.
 

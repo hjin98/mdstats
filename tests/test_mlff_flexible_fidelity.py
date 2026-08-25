@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -35,19 +36,29 @@ class _Qual:
     content_digest = _h("qual")
 
 
-def _evidence(plan: object, *, stage: str, epoch: int, size: int, parent: object | None = None):
+def _evidence(
+    plan: object,
+    *,
+    stage: str,
+    epoch: int,
+    size: int,
+    planned_epochs: int = 40,
+    target_score: float | None = None,
+    parent: object | None = None,
+):
+    planned_epochs = int(planned_epochs)
     kwargs = {
         "stage": stage,
         "target_size": size,
         "optimizer_seed": 1,
         "completed_epochs": epoch,
-        "planned_epochs": 40,
+        "planned_epochs": planned_epochs,
         "optimizer_update_count": epoch * 10,
         "structures_presented": epoch * size,
-        "normalized_schedule_progress": epoch / 40,
+        "normalized_schedule_progress": epoch / planned_epochs,
         "instantaneous_learning_rate": 1.0e-3,
         "wall_time_seconds": float(epoch),
-        "target_force_score_mev_per_a": float(size),
+        "target_force_score_mev_per_a": float(size if target_score is None else target_score),
         "foundation_identity_digest": _h("foundation"),
         "evaluation_role_digest": _h("role"),
         "training_policy_digest": _h("policy"),
@@ -67,6 +78,141 @@ def _evidence(plan: object, *, stage: str, epoch: int, size: int, parent: object
             parent_rng_state_digest=parent.rng_state_digest,
         )
     return mdstats.TargetSizeStudyTrainingEvidence(**kwargs)
+
+
+def _complete_funnel(
+    *,
+    fidelity_epochs: tuple[int, int, int],
+    training_horizon: int,
+    qualified_sizes: tuple[int, ...] = (512, 1024, 2048),
+    coarse_scores: dict[int, float] | None = None,
+    short_scores: dict[int, float] | None = None,
+    final_scores: dict[int, float] | None = None,
+):
+    policy = mdstats.TargetSizeStudyPolicy(
+        fidelity_epochs=fidelity_epochs,
+        screening_optimizer_seeds=(1,),
+    )
+    repair = _Repair()
+    qualification = SimpleNamespace(
+        dataset_id=repair.dataset_id,
+        target_multi_view_repair_digest=repair.content_digest,
+        mv_qualified_sizes=qualified_sizes,
+        content_digest=_h(f"qual-{fidelity_epochs}-{qualified_sizes}"),
+    )
+    plan = mdstats.build_target_size_study(
+        repair,
+        qualification,
+        policy=policy,
+        training_horizon_epochs=training_horizon,
+    )
+    coarse_scores = coarse_scores or {size: float(size) for size in plan.qualified_sizes}
+    coarse = tuple(
+        _evidence(
+            plan,
+            stage=mdstats.STAGE_COARSE,
+            epoch=fidelity_epochs[0],
+            size=size,
+            planned_epochs=training_horizon,
+            target_score=coarse_scores[size],
+        )
+        for size in plan.qualified_sizes
+    )
+    plan = mdstats.attach_coarse_outcomes(plan, coarse)
+    short_scores = short_scores or {size: float(size) for size in plan.coarse_survivor_sizes}
+    short = tuple(
+        _evidence(
+            plan,
+            stage=mdstats.STAGE_SHORT,
+            epoch=fidelity_epochs[1],
+            size=size,
+            planned_epochs=training_horizon,
+            target_score=short_scores[size],
+            parent=next(item.success for item in plan.coarse_outcomes if item.key == (size, 1)),
+        )
+        for size in plan.coarse_survivor_sizes
+    )
+    plan = mdstats.attach_short_outcomes(plan, short)
+    final_scores = final_scores or {size: float(size) for size in plan.short_finalist_sizes}
+    final = tuple(
+        _evidence(
+            plan,
+            stage=mdstats.STAGE_FINAL_SCREEN,
+            epoch=fidelity_epochs[2],
+            size=size,
+            planned_epochs=training_horizon,
+            target_score=final_scores[size],
+            parent=next(item.success for item in plan.short_outcomes if item.key == (size, 1)),
+        )
+        for size in plan.short_finalist_sizes
+    )
+    return mdstats.attach_final_screen_outcomes(plan, final)
+
+
+def test_assembled_case_a_default_funnel_reaches_production_and_roundtrips_status() -> None:
+    plan = _complete_funnel(fidelity_epochs=(1, 3, 10), training_horizon=30)
+    assert plan.outcome == mdstats.OUTCOME_SELECTED
+    assert plan.policy.fidelity_epochs == (1, 3, 10)
+    assert mdstats.TargetSizeStudyPlan.from_dict(plan.to_dict()) == plan
+    production = mdstats.build_perf_p2r_stage_plan(plan)
+    assert (
+        production.stage,
+        production.target_epoch,
+        production.schedule_horizon_epoch,
+    ) == ("production", 30, 30)
+
+
+def test_assembled_case_b_nondefault_funnel_authenticates_full_horizon_and_denominators() -> None:
+    plan = _complete_funnel(
+        fidelity_epochs=(2, 5, 12),
+        training_horizon=40,
+        qualified_sizes=(512, 1024, 2048, 4096, 8192),
+        coarse_scores={512: 50.0, 1024: 40.0, 2048: 30.0, 4096: 20.0, 8192: 10.0},
+        short_scores={1024: 14.0, 2048: 12.0, 4096: 10.0, 8192: 8.0},
+        final_scores={4096: 6.0, 8192: 5.0},
+    )
+    assert plan.outcome == mdstats.OUTCOME_SELECTED
+    assert 512 not in plan.coarse_survivor_sizes
+    assert len(plan.short_finalist_sizes) == 2
+    production = mdstats.build_perf_p2r_stage_plan(plan)
+    assert (
+        production.target_epoch,
+        production.schedule_horizon_epoch,
+        production.candidate_sizes,
+    ) == (40, 40, (plan.selected_target_size,))
+    exposure = mdstats.build_perf_p2r_exposure(
+        plan.qualified_sizes,
+        plan.coarse_survivor_sizes,
+        plan.short_finalist_sizes,
+        coarse_screen_epoch=2,
+        short_screen_epoch=5,
+        final_screen_epoch=12,
+        reference_training_epoch=40,
+    )
+    assert exposure.exhaustive_structure_epochs == 40 * sum(plan.qualified_sizes)
+    assert exposure.total_structure_epochs < exposure.exhaustive_structure_epochs
+    assert plan.next_training_stage is None
+    assert mdstats.TargetSizeStudyPlan.from_dict(plan.to_dict()).selected_target_size == plan.selected_target_size
+
+
+def test_assembled_case_c_deduplicates_physical_final_reference_endpoint_but_keeps_roles() -> None:
+    policy = mdstats.TargetSizeStudyPolicy(
+        fidelity_epochs=(1, 3, 30),
+        screening_optimizer_seeds=(1,),
+    )
+    calibration = mdstats.SizeFidelityCalibrationPolicy(coarse_epoch_candidates=(1,))
+    execution = mdstats.build_size_fidelity_execution_plan(
+        dataset_id="case-c",
+        target_size_candidate_authority_digest=_h("case-c-authority"),
+        target_size_policy=policy,
+        target_sizes=(512, 1024, 2048),
+        calibration_policy=calibration,
+        training_horizon_epochs=30,
+    )
+    assert execution.final_screen_epoch == 30
+    assert execution.reference_training_epoch == 30
+    assert execution.required_checkpoint_epochs == (1, 3, 30)
+    assert execution.expected_checkpoint_count == execution.expected_training_run_count * 3
 
 
 def test_nondefault_tuple_uses_semantic_states_and_independent_horizon() -> None:
@@ -149,13 +295,20 @@ def test_preparation_config_identity_excludes_only_downstream_fidelity_controls(
 
     base = {
         "schema": "mdstats.mlff-campaign-cli.v2",
+        "campaign": {"id": "campaign-a", "workspace": "work-a", "profile": "lta"},
         "target_data": {"size_convergence": {
             "fidelity_epochs": [1, 3, 10],
             "coarse_practical_equivalence_mev_per_a": 1.0,
             "practical_equivalence_mev_per_a": 1.0,
             "coverage_threshold": 0.95,
         }},
-        "training": {"modes": ["multihead_replay"], "seeds": [1, 2]},
+        "training": {
+            "policy_generation": "train2",
+            "modes": ["multihead_replay"],
+            "seeds": [1, 2],
+            "max_num_epochs": 30,
+        },
+        "evaluation": {"finalist_count": 5},
     }
     changed_fidelity = {
         **base,
@@ -171,6 +324,540 @@ def test_preparation_config_identity_excludes_only_downstream_fidelity_controls(
     }
     assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed_fidelity)
     assert cli._preparation_config_digest(base) != cli._preparation_config_digest(changed_preparation)
+
+    changed_horizon = {
+        **base,
+        "training": {**base["training"], "max_num_epochs": 40},
+    }
+    changed_presentation = {
+        **base,
+        "campaign": {**base["campaign"], "id": "campaign-b", "workspace": "work-b"},
+        "evaluation": {"finalist_count": 99},
+    }
+    assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed_horizon)
+    assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed_presentation)
+
+
+def test_preflight_matrix_identity_excludes_generated_train2_schedule_files() -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    artifact = type(
+        "Artifact",
+        (),
+        {
+            "tree_entries": (
+                ("jobs/job/target_train.xyz", _h("target")),
+                ("jobs/job/target_valid.xyz", _h("valid")),
+                ("jobs/job/mace_config.yaml", _h("horizon-30")),
+                ("jobs/job/run_mace.sh", _h("command-30")),
+                ("data8_preparation_bundle.json", _h("bundle-30")),
+            )
+        },
+    )()
+    materialization = type(
+        "Materialization",
+        (),
+        {"checkpoint": type("Checkpoint", (), {"data8_artifact": artifact})()},
+    )()
+    first = type(
+        "Entry",
+        (),
+        {
+            "variant_id": "multihead_replay-n512-seed1",
+            "bundle": type("Bundle", (), {"content_digest": _h("bundle-30")})(),
+            "materialization": materialization,
+        },
+    )()
+    second_artifact = type(
+        "Artifact",
+        (),
+        {
+            "tree_entries": (
+                ("jobs/job/target_train.xyz", _h("target")),
+                ("jobs/job/target_valid.xyz", _h("valid")),
+                ("jobs/job/mace_config.yaml", _h("horizon-40")),
+                ("jobs/job/run_mace.sh", _h("command-40")),
+                ("data8_preparation_bundle.json", _h("bundle-40")),
+            )
+        },
+    )()
+    second = type(
+        "Entry",
+        (),
+        {
+            "variant_id": first.variant_id,
+            "bundle": type("Bundle", (), {"content_digest": _h("bundle-40")})(),
+            "materialization": type(
+                "Materialization",
+                (),
+                {"checkpoint": type("Checkpoint", (), {"data8_artifact": second_artifact})()},
+            )(),
+        },
+    )()
+    assert cli._data8_matrix_digest([first]) == cli._data8_matrix_digest([second])
+
+
+def test_validated_fidelity_upgrade_reauthenticates_historical_preflight(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    paths = SimpleNamespace(config=tmp_path / "campaign.toml")
+    entry = SimpleNamespace(variant_id="candidate")
+    smoke = {"passed": True, "data8_matrix_digest": _h("legacy-matrix")}
+
+    class Store:
+        def __init__(self) -> None:
+            self.meta: dict[str, object] = {}
+            self.records = {"preflight_smoke": smoke}
+
+        def stage(self, name):
+            assert name == "preflight"
+            return cli.StageState.COMPLETE, "historical smoke"
+
+        def get_payload_optional(self, key):
+            return self.records.get(key)
+
+        def put_record(self, key, payload):
+            self.records[key] = payload
+
+        def set_meta(self, key, value):
+            self.meta[key] = value
+
+    store = Store()
+    monkeypatch.setattr(cli, "_data8_matrix_digest", lambda _entries: _h("semantic-matrix"))
+    monkeypatch.setattr(cli, "_legacy_data8_matrix_digest", lambda _entries: _h("legacy-matrix"))
+    monkeypatch.setattr(cli, "_stage_config_digest", lambda _paths, name: f"current-{name}")
+
+    assert cli._reconcile_reused_preflight_identity(store, paths, [entry])
+    assert store.records["preflight_smoke"]["data8_matrix_digest"] == _h("semantic-matrix")
+    assert store.meta["stage_config_sha256:preflight"] == "current-preflight"
+
+
+def test_reused_preflight_identity_fails_closed_for_unvalidated_smoke(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    paths = SimpleNamespace(config=tmp_path / "campaign.toml")
+
+    class Store:
+        def stage(self, name):
+            assert name == "preflight"
+            return cli.StageState.COMPLETE, "historical smoke"
+
+        def get_payload_optional(self, key):
+            assert key == "preflight_smoke"
+            return {"passed": False, "data8_matrix_digest": _h("matrix")}
+
+    monkeypatch.setattr(cli, "_data8_matrix_digest", lambda _entries: _h("matrix"))
+    assert not cli._reconcile_reused_preflight_identity(store=Store(), paths=paths, entries=[])
+
+
+def test_train2_frontier_invalidation_preserves_forensic_state_and_resets_live_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    paths = SimpleNamespace(config=tmp_path / "campaign.toml")
+
+    class Store:
+        def __init__(self) -> None:
+            self.records = {
+                "execution:run": {"schema": "execution", "run": "old"},
+                "training_campaign": {"schema": "campaign", "run": "old"},
+                "unrelated": {"schema": "keep"},
+            }
+            self.stages: dict[str, tuple[cli.StageState, str]] = {}
+            self.meta: dict[str, object] = {}
+
+        def record_keys(self, prefix=""):
+            return tuple(sorted(key for key in self.records if key.startswith(prefix)))
+
+        def get_payload_optional(self, key):
+            return self.records.get(key)
+
+        def put_record(self, key, payload):
+            self.records[key] = payload
+
+        def record_digest(self, key):
+            return _h(f"record:{key}")
+
+        def delete_record(self, key):
+            self.records.pop(key, None)
+
+        def set_stage(self, name, state, message):
+            self.stages[name] = (state, message)
+
+        def set_meta(self, key, value):
+            self.meta[key] = value
+
+    store = Store()
+    monkeypatch.setattr(cli, "_stage_config_digest", lambda _paths, name: f"digest-{name}")
+    cli._invalidate_train2_downstream_state(
+        store,
+        paths,
+        reason="changed horizon",
+        preserve_preflight=True,
+    )
+
+    assert "execution:run" not in store.records
+    assert "training_campaign" not in store.records
+    assert "unrelated" in store.records
+    assert any(key.startswith("historical:train2-invalidation:execution:run:") for key in store.records)
+    assert store.stages == {
+        "train": (cli.StageState.WAITING, "changed horizon"),
+        "evaluate": (cli.StageState.WAITING, "changed horizon"),
+        "verify": (cli.StageState.WAITING, "changed horizon"),
+    }
+
+
+def test_train2_schedule_identity_rejects_cross_horizon_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    budget = type("Policy", (), {"policy_digest": _h("budget-40"), "planned_epochs": 40})()
+    lr = type("Policy", (), {"policy_digest": _h("lr")})()
+    admissibility = type("Policy", (), {"policy_digest": _h("admissibility")})()
+    selection = type("Policy", (), {"policy_digest": _h("selection")})()
+    monkeypatch.setattr(
+        cli,
+        "_train2_policy_set",
+        lambda _cfg, *, require_replay: (budget, lr, admissibility, selection),
+    )
+    protocol = type(
+        "Protocol",
+        (),
+        {
+            "training_mode": type("Mode", (), {"value": "multihead_replay"})(),
+            "optimizer_policy": type("Optimizer", (), {"max_num_epochs": 30})(),
+            "training_budget_policy": type("Policy", (), {"policy_digest": _h("budget-30")})(),
+            "learning_rate_schedule_policy": lr,
+            "checkpoint_admissibility_policy": admissibility,
+            "checkpoint_selection_policy": selection,
+        },
+    )()
+    entry = type(
+        "Entry",
+        (),
+        {"bundle": type("Bundle", (), {"jobs": (type("Job", (), {"protocol": protocol})(),)})()},
+    )()
+    assert not cli._train2_data8_schedule_matches_config(
+        {"training": {"policy_generation": "train2"}}, [entry]
+    )
+
+
+def _migration_cfg(fidelity_epochs: tuple[int, int, int], horizon: int) -> dict:
+    return {
+        "target_data": {"size_convergence": {"fidelity_epochs": list(fidelity_epochs)}},
+        "training": {
+            "policy_generation": "train2",
+            "modes": ["multihead_replay"],
+            "seeds": [1],
+            "device": "cpu",
+            "dtype": "float32",
+            "max_num_epochs": horizon,
+            "learning_rate": 1.0e-4,
+            "batch_size": 2,
+            "valid_batch_size": 2,
+            "num_workers": 0,
+        },
+        "model": {"dtype": "float32"},
+        "acceleration": {
+            "backend": "e3nn",
+            "training_backend": "e3nn",
+            "only_cueq": False,
+            "require_available": False,
+        },
+    }
+
+
+class _MigrationStore:
+    def __init__(self, *, receipt: dict, previous_study: object, entry: object, smoke: dict):
+        from mdstats.training_data import _campaign_cli_core as cli
+
+        self.receipt = receipt
+        self.previous_study = previous_study
+        self.entry = entry
+        self.payloads: dict[str, object] = {
+            "prepare_restart_receipt": receipt,
+            "model_sweep_checkpoint": receipt["model_sweep"],
+            "preflight_smoke": smoke,
+        }
+        self.records: dict[str, object] = {
+            key: {"record": key} for key in cli._PREPARE_REUSE_RECORD_KEYS
+        }
+        self.records.update({
+            "source_catalog": SimpleNamespace(sources=()),
+            "target_multi_view_repair_v2": SimpleNamespace(),
+            "target_multi_view_qualification_v2": SimpleNamespace(),
+            "production_qualification": SimpleNamespace(
+                status=SimpleNamespace(value="passed"), full_data9a_passed=True
+            ),
+            "execution:old": {"record": "old execution"},
+            "training_campaign": {"record": "old campaign"},
+        })
+        self.records["target_size_study"] = previous_study
+        self.digests = {
+            key: digest({"record": key})
+            for key in cli._PREPARE_REUSE_RECORD_KEYS
+        }
+        self.stages = {
+            "prepare": (cli.StageState.COMPLETE, "historical prepare"),
+            "preflight": (cli.StageState.COMPLETE, "historical preflight"),
+        }
+        self.meta: dict[str, object] = {}
+
+    def stage(self, name):
+        from mdstats.training_data import _campaign_cli_core as cli
+
+        return self.stages.get(name, (cli.StageState.NOT_STARTED, ""))
+
+    def set_stage(self, name, state, message):
+        self.stages[name] = (state, message)
+
+    def get_meta(self, key):
+        return self.meta.get(key)
+
+    def set_meta(self, key, value):
+        self.meta[key] = value
+
+    def has_record(self, key):
+        return key in self.records or key in self.payloads
+
+    def get_payload(self, key):
+        return self.payloads[key]
+
+    def get_payload_optional(self, key):
+        return self.payloads.get(key, self.records.get(key))
+
+    def get_record(self, key, _cls):
+        return self.records[key]
+
+    def get_record_optional(self, key, _cls):
+        return self.previous_study if key == "target_size_study" else None
+
+    def record_digest(self, key):
+        if key in self.digests:
+            return self.digests[key]
+        return digest(self.records[key])
+
+    def record_keys(self, prefix=""):
+        return tuple(sorted(key for key in self.records if key.startswith(prefix)))
+
+    def put_record(self, key, value):
+        if key == "preflight_smoke":
+            self.payloads[key] = value
+        elif key == "prepare_restart_receipt":
+            self.payloads[key] = value
+            self.records[key] = value
+        else:
+            self.records[key] = value
+
+    def delete_record(self, key):
+        self.records.pop(key, None)
+
+
+def _migration_entry(cli, cfg: dict, *, current: bool):
+    budget, learning_rate, admissibility, selection = cli._train2_policy_set(
+        cfg, require_replay=True
+    )
+    optimizer = cli._optimizer_policy(cfg, seed=1, num_workers=1)
+    if not current:
+        old_cfg = _migration_cfg((3, 10, 30), 30)
+        budget, learning_rate, admissibility, selection = cli._train2_policy_set(
+            old_cfg, require_replay=True
+        )
+        optimizer = cli._optimizer_policy(old_cfg, seed=1, num_workers=1)
+    protocol = SimpleNamespace(
+        training_mode=SimpleNamespace(value="multihead_replay"),
+        optimizer_policy=optimizer,
+        training_budget_policy=budget,
+        learning_rate_schedule_policy=learning_rate,
+        checkpoint_admissibility_policy=admissibility,
+        checkpoint_selection_policy=selection,
+    )
+    artifact = SimpleNamespace(
+        bundle_digest="b" * 64,
+        tree_digest="t" * 64,
+        tree_entries=(
+            ("jobs/job/target_train.xyz", _h("target")),
+            ("jobs/job/target_valid.xyz", _h("valid")),
+            ("jobs/job/mace_config.yaml", _h("schedule")),
+            ("jobs/job/run_mace.sh", _h("command")),
+            ("data8_preparation_bundle.json", _h("bundle")),
+        ),
+    )
+    materialization = SimpleNamespace(
+        checkpoint=SimpleNamespace(
+            plan=SimpleNamespace(content_digest="p" * 64),
+            data8_artifact=artifact,
+        )
+    )
+    bundle = SimpleNamespace(
+        content_digest="b" * 64,
+        jobs=(SimpleNamespace(protocol=protocol),),
+    )
+    return SimpleNamespace(
+        variant_id="multihead_replay-n512-seed1",
+        materialization=materialization,
+        bundle=bundle,
+    )
+
+
+@pytest.mark.parametrize(
+    ("fidelity_epochs", "horizon", "old_schedule", "expected_first_epoch"),
+    [
+        ((1, 3, 10), 30, False, 1),
+        ((2, 5, 12), 40, True, 2),
+    ],
+)
+def test_assembled_historical_upgrade_d1_d2_reuses_data_matrix_and_reopens_exact_frontier(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    fidelity_epochs: tuple[int, int, int],
+    horizon: int,
+    old_schedule: bool,
+    expected_first_epoch: int,
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    monkeypatch.setattr(cli, "_resolve_mace_loader_workers", lambda _cfg: (1, None, 0))
+    current_cfg = _migration_cfg(fidelity_epochs, horizon)
+    current_policy = mdstats.TargetSizeStudyPolicy(
+        fidelity_epochs=fidelity_epochs,
+        screening_optimizer_seeds=(1,),
+    )
+    previous_policy = mdstats.TargetSizeStudyPolicy(
+        fidelity_epochs=(3, 10, 30),
+        screening_optimizer_seeds=(1,),
+    )
+    previous_study = mdstats.build_target_size_study(
+        _Repair(), _Qual(), policy=previous_policy, training_horizon_epochs=30
+    )
+    new_study = mdstats.build_target_size_study(
+        _Repair(), _Qual(), policy=current_policy, training_horizon_epochs=horizon
+    )
+    assert previous_study.policy.policy_digest != new_study.policy.policy_digest
+    entry = _migration_entry(cli, current_cfg, current=not old_schedule)
+    paths = SimpleNamespace(
+        config=tmp_path / "campaign.toml",
+        manifest=tmp_path / "manifest.json",
+        config_dir=tmp_path,
+    )
+    paths.config.write_text("[campaign]\nprofile = 'lta'\n", encoding="utf-8")
+    paths.manifest.write_text("{}\n", encoding="utf-8")
+    matrix_before = cli._data8_matrix_digest([entry])
+    pointer = {
+        "checkpoint_digest": "c" * 64,
+        "plan_digest": "q" * 64,
+        "status": "complete",
+        "completed_frames": 1,
+        "requested_frames": 1,
+        "relative_directory": ".mdstats/model-sweep",
+    }
+    receipt = {
+        "schema": cli._HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
+        "contract": {"contract": "current"},
+        "config_sha256": "historical-config",
+        "input_identities": [],
+        "record_digests": {
+            key: digest({"record": key}) for key in cli._PREPARE_REUSE_RECORD_KEYS
+        },
+        "model_sweep": pointer,
+        "data8": [{
+            "variant_id": entry.variant_id,
+            "bundle_digest": entry.bundle.content_digest,
+            "plan_digest": entry.materialization.checkpoint.plan.content_digest,
+            "tree_digest": "t" * 64,
+        }],
+    }
+    smoke = {
+        "passed": True,
+        "data8_matrix_digest": cli._legacy_data8_matrix_digest([entry]),
+    }
+    store = _MigrationStore(
+        receipt=receipt,
+        previous_study=previous_study,
+        entry=entry,
+        smoke=smoke,
+    )
+    monkeypatch.setattr(cli, "_prepare_contract_signature", lambda: {"contract": "current"})
+    monkeypatch.setattr(cli, "_historical_prepare_inputs_match_current", lambda *_args: True)
+    monkeypatch.setattr(cli, "_current_data8_entries", lambda _store: [entry])
+    monkeypatch.setattr(cli, "_target_size_materialization_variants", lambda _cfg, *, study: (SimpleNamespace(variant_id=entry.variant_id),))
+    monkeypatch.setattr(cli, "_ensure_target_size_study", lambda *_args, **_kwargs: new_study)
+    monkeypatch.setattr(cli, "_validate_train2_data8_matrix", lambda *_args: None)
+    monkeypatch.setattr(cli, "_stage_config_digest", lambda _paths, name: f"current-{name}")
+
+    reused = cli._try_reuse_completed_prepare(current_cfg, paths, store)
+    if old_schedule:
+        assert reused is False
+        current_entry = _migration_entry(cli, current_cfg, current=True)
+        assert cli._train2_data8_schedule_matches_config(current_cfg, [current_entry])
+    else:
+        assert reused is True
+    assert cli._data8_matrix_digest([entry]) == matrix_before
+    assert new_study.next_training_epoch == expected_first_epoch
+    assert store.stage("preflight")[0] is cli.StageState.COMPLETE
+    assert "historical:train2-invalidation:training_campaign:" in "\n".join(store.records)
+    assert "training_campaign" not in store.records
+    assert store.payloads["preflight_smoke"]["data8_matrix_digest"] == matrix_before
+
+
+def test_assembled_case_d3_preparation_change_rejects_completed_reuse_before_data_access(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    receipt = {
+        "schema": cli.PREPARE_RESTART_RECEIPT_SCHEMA,
+        "contract": {"contract": "current"},
+        "config_sha256": "old-config",
+        "preparation_config_digest": "old-preparation",
+    }
+
+    class Store:
+        def stage(self, name):
+            return cli.StageState.COMPLETE, "done"
+
+        def has_record(self, key):
+            return key in {"prepare_restart_receipt", "source_catalog"}
+
+        def get_payload(self, key):
+            return receipt
+
+        def get_record(self, key, _cls):
+            return SimpleNamespace(sources=())
+
+    monkeypatch.setattr(cli, "_prepare_contract_signature", lambda: {"contract": "current"})
+    monkeypatch.setattr(cli, "_preparation_config_digest", lambda _cfg: "new-preparation")
+    monkeypatch.setattr(cli, "_sha256", lambda _path: "new-config")
+    paths = SimpleNamespace(config=tmp_path / "campaign.toml")
+    assert not cli._try_reuse_completed_prepare({}, paths, Store())
+
+
+@pytest.mark.parametrize(
+    ("index", "replacement"),
+    [(0, [2, 3, 10]), (1, [1, 5, 10]), (2, [1, 3, 12])],
+)
+def test_preparation_identity_excludes_each_independent_fidelity_boundary(
+    index: int, replacement: list[int]
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    base = {
+        "schema": "mdstats.mlff-campaign-cli.v2",
+        "target_data": {"size_convergence": {"fidelity_epochs": [1, 3, 10]}},
+        "training": {"policy_generation": "train2", "max_num_epochs": 30},
+    }
+    changed = {
+        **base,
+        "target_data": {"size_convergence": {"fidelity_epochs": replacement}},
+    }
+    assert replacement[index] != base["target_data"]["size_convergence"]["fidelity_epochs"][index]
+    assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed)
 
 
 def test_authenticated_fixed_generation_plan_migrates_without_new_default_substitution() -> None:

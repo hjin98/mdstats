@@ -2,6 +2,9 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-FLEXIBLE-FIDELITY-EPOCH-REWORK-V1
 protocol_version: 5.5.0
+status: completed
+completed_date: 2026-08-25
+archived_with: CODE-MLFF-FLEXIBLE-FIDELITY-EPOCH-REWORK-V1-REWORK2
 ---
 
 # MLFF Flexible-Fidelity Codebase Rework Workplan

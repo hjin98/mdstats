@@ -53,7 +53,7 @@ Generated defaults are `target_stop_fraction = 0.80` and `replay_stop_multiplier
 | target-success stop | 24 meV/A |
 | replay degradation budget | 30 meV/A |
 | replay-degradation exhaustion stop | 36 meV/A |
-| hard epoch ceiling | 30 epochs |
+| hard epoch ceiling | configured `max_num_epochs` (default 30 epochs) |
 
 The equivalent lightweight absolute replay exhaustion line is `R0_light + 36 meV/A`; it is **not** `1.20 * (R0_light + DeltaR_max)`.
 

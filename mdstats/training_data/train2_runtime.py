@@ -2,8 +2,8 @@
 
 This module is deliberately small and source-qualified around MACE 0.3.16.  It
 owns the per-optimizer-update LR trajectory and the latest-only continuation
-companion required for a 10-of-30 screening checkpoint to resume exactly onto
-its original 30-epoch trajectory.
+companion required for a screen-boundary checkpoint to resume exactly onto
+its original full-horizon trajectory.
 """
 
 from __future__ import annotations
@@ -587,9 +587,10 @@ class _Train2Runtime:
                 "TRAIN2 restart checkpoint exists without its exact-continuation runtime companion."
             )
         summary = Train2RuntimeSummary.from_dict(json.loads(self.summary_path.read_text(encoding="utf-8")))
-        # The execution_epoch_limit is a pause boundary, not part of the scientific
-        # 30-epoch trajectory.  A Stage-B 10-of-30 companion therefore has a
-        # different runtime-plan digest from its Stage-C 30-of-30 continuation.
+        # The execution_epoch_limit is a pause boundary, not part of the
+        # scientific full-horizon trajectory.  A screen-boundary companion
+        # therefore has a different runtime-plan digest from its full-horizon
+        # continuation.
         # Every schedule-defining authority must nevertheless remain byte-identical.
         if summary.training_protocol_digest != self.plan.training_protocol_digest:
             raise TrainingDataInputError("TRAIN2 restart companion belongs to a different training protocol.")

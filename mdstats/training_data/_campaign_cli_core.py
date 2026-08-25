@@ -1853,6 +1853,28 @@ def _stage_config_key(name: str) -> str:
     return f"stage_config_sha256:{name}"
 
 
+def _stage_config_digest(paths: CampaignPaths, name: str) -> str:
+    """Return the scoped completion identity for one lifecycle stage.
+
+    Prepare and preflight use semantic projections.  Other stages retain the
+    historical full-TOML binding because their authorities include downstream
+    runtime/evaluation configuration.  If a legacy test/migration has no
+    parseable TOML, the full hash is the conservative fallback.
+    """
+
+    if name not in {"prepare", "preflight"}:
+        return _sha256(paths.config)
+    try:
+        cfg, _ = _load_config(paths.config)
+    except Exception:
+        return _sha256(paths.config)
+    return (
+        _preparation_config_digest(cfg)
+        if name == "prepare"
+        else _preflight_config_digest(cfg)
+    )
+
+
 def _mark_stage(
     store: CampaignStore,
     paths: CampaignPaths,
@@ -1860,12 +1882,12 @@ def _mark_stage(
     state: StageState,
     message: str,
 ) -> None:
-    """Persist a stage transition and bind completion to the current TOML bytes."""
+    """Persist a stage transition and bind completion to its scoped identity."""
 
     store.set_stage(name, state, message)
     store.set_meta(
         _stage_config_key(name),
-        _sha256(paths.config) if state is StageState.COMPLETE else None,
+        _stage_config_digest(paths, name) if state is StageState.COMPLETE else None,
     )
 
 
@@ -1877,7 +1899,20 @@ def _effective_stage(
     state, message = store.stage(name)
     if state is StageState.COMPLETE:
         recorded = store.get_meta(_stage_config_key(name))
-        current = _sha256(paths.config)
+        current = _stage_config_digest(paths, name)
+        if recorded != current:
+            # A stage completed before semantic stage markers existed carries
+            # the full TOML SHA.  Migrate it only when the bytes are unchanged;
+            # a changed legacy config must pass through its owning command so
+            # historical authorities are re-authenticated before reuse.
+            if name in {"prepare", "preflight"} and recorded == _sha256(paths.config):
+                store.set_meta(_stage_config_key(name), current)
+                recorded = current
+            else:
+                return (
+                    StageState.WAITING,
+                    "campaign.toml changed after this stage completed; rerun the stage before continuing",
+                )
         if recorded != current:
             return (
                 StageState.WAITING,
@@ -1891,18 +1926,73 @@ def _effective_stage(
                 )
             smoke = store.get_payload("preflight_smoke")
             try:
-                current_matrix = _data8_matrix_digest(_current_data8_entries(store))
+                current_entries = _current_data8_entries(store)
+                current_matrix = _data8_matrix_digest(current_entries)
             except Exception as exc:
                 return (
                     StageState.WAITING,
                     f"prepared DATA8 identity cannot be restored ({exc}); rerun prepare then preflight",
                 )
             if smoke.get("data8_matrix_digest") != current_matrix:
+                # v1 smoke receipts authenticated the complete DATA8 bundle,
+                # including generated MACE configuration/command files.  Those
+                # files carry the TRAIN2 horizon, while the one-epoch smoke's
+                # scientific/data-loader identity does not.  Migrate an
+                # unchanged legacy tree to the schedule-independent matrix
+                # identity before deciding that preflight is stale.
+                legacy_matrix = _legacy_data8_matrix_digest(current_entries)
+                if smoke.get("data8_matrix_digest") == legacy_matrix and callable(getattr(store, "put_record", None)):
+                    migrated_smoke = dict(smoke)
+                    migrated_smoke["data8_matrix_digest"] = current_matrix
+                    store.put_record("preflight_smoke", migrated_smoke)
+                    smoke = migrated_smoke
+            if smoke.get("data8_matrix_digest") != current_matrix:
                 return (
                     StageState.WAITING,
                     "prepared DATA8 variants changed after preflight; rerun preflight before training",
                 )
     return state, message
+
+
+def _reconcile_reused_preflight_identity(
+    store: CampaignStore,
+    paths: CampaignPaths,
+    entries: Sequence[_Data8RuntimeEntry],
+) -> bool:
+    """Re-authenticate a validated preflight across a fidelity/horizon upgrade.
+
+    Historical preflight markers used the complete campaign TOML hash and
+    historical smoke receipts used the complete DATA8 bundle digest.  The
+    caller invokes this only after the prepare receipt and current DATA8
+    entries have passed their owning validation, and only for a fidelity or
+    full-horizon transition.  A changed training-control policy therefore does
+    not get an unconditional preflight exemption.
+    """
+
+    state, _ = store.stage("preflight")
+    if state is not StageState.COMPLETE:
+        return True
+    get_payload_optional = getattr(store, "get_payload_optional", None)
+    if not callable(get_payload_optional):
+        # Compact legacy test doubles do not model preflight persistence.  The
+        # real CampaignStore always exposes this method; leave such doubles on
+        # their existing reuse path rather than making them invent a receipt.
+        return True
+    smoke = get_payload_optional("preflight_smoke")
+    if not isinstance(smoke, Mapping) or not bool(smoke.get("passed", False)):
+        return False
+    current_matrix = _data8_matrix_digest(entries)
+    if smoke.get("data8_matrix_digest") != current_matrix:
+        if smoke.get("data8_matrix_digest") != _legacy_data8_matrix_digest(entries):
+            return False
+        migrated = dict(smoke)
+        migrated["data8_matrix_digest"] = current_matrix
+        put_record = getattr(store, "put_record", None)
+        if not callable(put_record):
+            return False
+        put_record("preflight_smoke", migrated)
+    store.set_meta(_stage_config_key("preflight"), _stage_config_digest(paths, "preflight"))
+    return True
 
 
 def _require_stage_complete(
@@ -4794,6 +4884,165 @@ def _ensure_target_size_study(
         f"Q={list(plan.qualified_sizes)}; outcome={plan.outcome}; digest={plan.content_digest[:12]}..."
     )
     return plan
+
+
+def _train2_data8_schedule_matches_config(
+    cfg: Mapping[str, Any], entries: Sequence[_Data8RuntimeEntry]
+) -> bool:
+    """Check downstream TRAIN2 schedule authorities without widening reuse.
+
+    DATA7 and the scientific DATA8 files are independent of the TRAIN2 full
+    horizon and its later schedule/evaluation controls.  The generated DATA8
+    job protocol is nevertheless the authority consumed by the runtime, so a
+    completed-prepare receipt may not silently reuse a protocol carrying an
+    old budget, LR, checkpoint, or selection policy.  A real DATA8 bundle
+    always exposes jobs; the missing-jobs branch keeps compact unit doubles
+    from pretending to authenticate a schedule they do not model.
+    """
+
+    if _training_policy_generation(cfg) != "train2":
+        return True
+    jobs: list[Any] = []
+    for entry in entries:
+        bundle_jobs = getattr(entry.bundle, "jobs", None)
+        if bundle_jobs is None:
+            return True
+        jobs.extend(tuple(bundle_jobs))
+    if not jobs:
+        return False
+
+    expected_cache: dict[bool, tuple[Any, Any, Any, Any]] = {}
+    try:
+        expected_loader_workers = _resolve_mace_loader_workers(cfg)[0]
+    except Exception:
+        # The runtime cannot safely certify a generated job protocol when the
+        # current resource/loader policy cannot be resolved.  Let the owning
+        # prepare path fail closed and rebuild at its narrowest boundary.
+        return False
+    for job in jobs:
+        protocol = getattr(job, "protocol", None)
+        optimizer = getattr(protocol, "optimizer_policy", None)
+        if protocol is None or optimizer is None:
+            return False
+        require_replay = str(getattr(protocol.training_mode, "value", protocol.training_mode)) == "multihead_replay"
+        expected = expected_cache.get(require_replay)
+        if expected is None:
+            expected = _train2_policy_set(cfg, require_replay=require_replay)
+            expected_cache[require_replay] = expected
+        expected_budget, expected_lr, expected_admissibility, expected_selection = expected
+        observed_budget = getattr(protocol, "training_budget_policy", None)
+        observed_lr = getattr(protocol, "learning_rate_schedule_policy", None)
+        observed_admissibility = getattr(protocol, "checkpoint_admissibility_policy", None)
+        observed_selection = getattr(protocol, "checkpoint_selection_policy", None)
+        if any(
+            value is None
+            for value in (
+                observed_budget,
+                observed_lr,
+                observed_admissibility,
+                observed_selection,
+            )
+        ):
+            return False
+        if (
+            observed_budget.policy_digest != expected_budget.policy_digest
+            or observed_lr.policy_digest != expected_lr.policy_digest
+            or observed_admissibility.policy_digest != expected_admissibility.policy_digest
+            or observed_selection.policy_digest != expected_selection.policy_digest
+            or int(optimizer.max_num_epochs) != int(expected_budget.planned_epochs)
+            or abs(float(optimizer.learning_rate) - float(expected_lr.base_learning_rate)) > 1.0e-18
+        ):
+            return False
+        expected_optimizer = _optimizer_policy(
+            cfg,
+            seed=int(getattr(optimizer, "seed", -1)),
+            num_workers=expected_loader_workers,
+        )
+        if optimizer.policy_digest != expected_optimizer.policy_digest:
+            return False
+    return True
+
+
+_TRAIN2_INVALIDATION_RECORD_PREFIXES = (
+    "execution:",
+    "train2_runtime:",
+    "adaptive_stop:",
+    "lightweight_rank:",
+    "checkpoint_catalog:",
+    "checkpoint_retention:",
+    "evaluation:",
+    "checkpoint_shortlist:",
+    "selection:",
+    "interim_member:",
+    "committee_member:",
+    "mlcv_run_selection:",
+    "mlcv_physical_attempt:",
+)
+
+_TRAIN2_INVALIDATION_RECORD_KEYS = (
+    "training_campaign",
+    "interim_evaluation",
+    "available_model_verification_set",
+    "mlcv_lifecycle_authority",
+    "mlcv_campaign_cv",
+    "mlcv_final_selection",
+    "mlcv_final_committee",
+    "mlcv_verification_policy",
+    "mlcv_verification",
+    "mlcv_locked_test_evaluation",
+    "mlcv_locked_test",
+    "mlcv_production_model",
+    "mlcv_protocol_freeze",
+    "mlcv_migration",
+)
+
+
+def _preserve_and_delete_train2_record(store: CampaignStore, key: str) -> None:
+    """Retain an invalidated compact record as read-only forensic history."""
+
+    get_payload = getattr(store, "get_payload_optional", None)
+    put_record = getattr(store, "put_record", None)
+    record_digest = getattr(store, "record_digest", None)
+    if callable(get_payload) and callable(put_record):
+        try:
+            payload = get_payload(key)
+            if payload is not None:
+                old_digest = (
+                    str(record_digest(key))
+                    if callable(record_digest)
+                    else digest(payload)
+                )
+                put_record(f"historical:train2-invalidation:{key}:{old_digest}", payload)
+        except Exception:
+            # Invalidation must still remove the live alias if a legacy record
+            # cannot be copied into the compact forensic namespace.
+            pass
+    delete_record = getattr(store, "delete_record", None)
+    if callable(delete_record):
+        delete_record(key)
+
+
+def _invalidate_train2_downstream_state(
+    store: CampaignStore,
+    paths: CampaignPaths,
+    *,
+    reason: str,
+    preserve_preflight: bool,
+) -> None:
+    """Reset only state whose meaning includes the changed TRAIN2 boundary."""
+
+    keys: set[str] = set(_TRAIN2_INVALIDATION_RECORD_KEYS)
+    record_keys = getattr(store, "record_keys", None)
+    if callable(record_keys):
+        for prefix in _TRAIN2_INVALIDATION_RECORD_PREFIXES:
+            keys.update(record_keys(prefix))
+    for key in sorted(keys):
+        _preserve_and_delete_train2_record(store, key)
+
+    for stage in ("train", "evaluate", "verify"):
+        _mark_stage(store, paths, stage, StageState.WAITING, reason)
+    if not preserve_preflight:
+        _mark_stage(store, paths, "preflight", StageState.WAITING, reason)
 
 
 def _ensure_target_multi_view_qualification_v2(
@@ -8645,8 +8894,213 @@ _PREPARE_REUSE_RECORD_KEYS = tuple(
 )
 
 
+_PREPARATION_CONFIG_PROJECTION_FIELDS: dict[str, tuple[str, ...]] = {
+    # These are the configuration authorities that can change DATA2-DATA8
+    # scientific inputs, identities, or required preparation topology.  Keep
+    # this list positive and explicit: a new downstream section must not become
+    # an upstream invalidation merely because it was added to campaign.toml.
+    "campaign": ("profile", "precision_profile"),
+    "foundation": ("family", "head", "legacy_normalized"),
+    "paths": (
+        "training_root",
+        "foundation_model",
+        "replay_set",
+        "replay_train",
+        "replay_monitor",
+        "replay_true_labels",
+    ),
+    "data": ("dataset_id", "manifest", "discovery_pattern"),
+    "manifest_inference": (
+        "fixed_cell_relative_tolerance",
+        "reference_cell_relative_tolerance",
+        "strain_matrix_absolute_tolerance",
+        "strain_volume_ratio_tolerance",
+        "maximum_rotation_radians",
+        "conventional_axis_orthogonality_tolerance",
+        "temperature_equality_tolerance_kelvin",
+        "filename_values_at_or_above_one_are_percent",
+    ),
+    "profile": (
+        "profile_id",
+        "framework_atomic_numbers",
+        "mobile_atomic_numbers",
+        "all_atomic_numbers",
+    ),
+    "partition": (
+        "minimum_block_frames",
+        "purge_units_between_roles",
+        "cross_validation_folds",
+        "cross_validation_seed",
+    ),
+    "random": (
+        "feature_projection_seed",
+        "online_monitor_seed",
+        "fold_partition_seed",
+    ),
+    # Device/dtype/backend are part of DATA6 foundation-feature identity.  The
+    # remaining model controls are calibration, persistence, or progress
+    # policy and therefore do not belong to preparation identity.
+    "model": (
+        "device",
+        "dtype",
+        "max_new_frames",
+        "inference_batch_size",
+        "maximum_inference_batch_size",
+        "estimated_inference_memory_mib_per_frame",
+        "batch_calibration_stress_structures",
+        "vram_max_device_fraction",
+        "vram_reserve_gib",
+        "batch_throughput_tolerance_fraction",
+        "pipeline_enabled",
+        "persistence_queue_depth",
+        "checkpoint_interval",
+        "artifact_shard_size",
+    ),
+    "acceleration": ("backend", "training_backend", "only_cueq", "require_available"),
+    "selection": ("sizes",),
+    "objective": ("energy_weight", "forces_weight", "stress_weight"),
+    "acceptance": ("maximum_replay_degradation_fraction",),
+    "runtime": ("mace_version",),
+    # Replay source qualification and split/materialization policy affect
+    # DATA8 inputs.  Historical split-file aliases are intentionally included.
+    "replay": (
+        "mode",
+        "label_mode",
+        "seed",
+        "split_ratio",
+        "split_seed",
+        "maximum_force_ev_per_angstrom",
+        "force_component_rms_ev_per_angstrom",
+        "maximum_abs_stress_ev_per_angstrom3",
+        "require_stress",
+        "prediction_batch_size",
+        "prediction_shard_size",
+        "minimum_train_configurations",
+        "minimum_monitor_configurations",
+        "require_target_elements",
+        "allow_small_corpus",
+        "allow_unspecified_label_provenance",
+    ),
+}
+
+_PREPARATION_TARGET_COVERAGE_FIELDS = (
+    "coverage_metric",
+    "coverage_threshold",
+    "coverage_resolution_mass",
+    "coverage_leave_one_out",
+    "extent_quantile_alpha",
+    "extent_default_tolerance",
+)
+
+_PREPARATION_TRAINING_FIELDS = (
+    # Policy generation, method topology, and fixed monitor inputs affect the
+    # required DATA8 population/materialization.  LR, horizon, checkpoint, and
+    # stopping authorities are deliberately downstream TRAIN2 identities.
+    "policy_generation",
+    "modes",
+    "seeds",
+    "online_target_monitor_configurations",
+    "online_replay_monitor_configurations",
+    "training_diagnostic_monitor_configurations",
+)
+
+_PREPARATION_TRAINING_METHOD_FIELDS = (
+    "enabled",
+    "seed_mode",
+    "seeds",
+    "cross_validation_folds",
+    "fold_partition_seed",
+)
+
+_PREFLIGHT_CONFIG_FIELDS = (
+    "timeout_seconds",
+    "num_threads",
+    "target_train_configurations",
+    "target_valid_configurations",
+    "replay_train_configurations",
+    "replay_valid_configurations",
+)
+
+
+def _json_copy(value: Any) -> Any:
+    """Copy one TOML value into the deterministic digest representation."""
+
+    return json.loads(json.dumps(value, sort_keys=True, default=str))
+
+
+def _preparation_config_projection(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the positive configuration projection owned by preparation.
+
+    This function is intentionally the sole preparation-config ownership
+    authority.  It selects known preparation inputs instead of hashing the
+    campaign wholesale and trying to remember every downstream field to omit.
+    """
+
+    projection: dict[str, Any] = {}
+    for section, fields in _PREPARATION_CONFIG_PROJECTION_FIELDS.items():
+        table = cfg.get(section)
+        if not isinstance(table, Mapping):
+            continue
+        values = {
+            key: _json_copy(table[key])
+            for key in fields
+            if key in table
+        }
+        if values:
+            projection[section] = values
+
+    # Historical campaigns may carry device/dtype only under [training].
+    # Preparation resolves those values as DATA6 foundation-inference inputs
+    # when [model] does not override them, so preserve the resolved identity
+    # without making a training-only edit to an explicit [model] value an
+    # upstream invalidation.
+    model = cfg.get("model")
+    if not isinstance(model, Mapping) or "device" not in model:
+        projection.setdefault("model", {})["device"] = _json_copy(
+            _cfg(cfg, "training", "device", "cuda")
+        )
+    if not isinstance(model, Mapping) or "dtype" not in model:
+        projection.setdefault("model", {})["dtype"] = _json_copy(
+            _cfg(cfg, "training", "dtype", "float32")
+        )
+
+    target_data = cfg.get("target_data")
+    if isinstance(target_data, Mapping):
+        convergence = target_data.get("size_convergence")
+        if isinstance(convergence, Mapping):
+            coverage = {
+                key: _json_copy(convergence[key])
+                for key in _PREPARATION_TARGET_COVERAGE_FIELDS
+                if key in convergence
+            }
+            if coverage:
+                projection["target_data"] = {"size_convergence": coverage}
+
+    training = cfg.get("training")
+    if isinstance(training, Mapping):
+        values = {
+            key: _json_copy(training[key])
+            for key in _PREPARATION_TRAINING_FIELDS
+            if key in training
+        }
+        for method_name in ("naive_fine_tuning", "multihead_replay"):
+            method = training.get(method_name)
+            if not isinstance(method, Mapping):
+                continue
+            method_values = {
+                key: _json_copy(method[key])
+                for key in _PREPARATION_TRAINING_METHOD_FIELDS
+                if key in method
+            }
+            if method_values:
+                values[method_name] = method_values
+        if values:
+            projection["training"] = values
+    return projection
+
+
 def _preparation_config_digest(cfg: Mapping[str, Any]) -> str:
-    """Fingerprint only configuration that can change prepared artifacts.
+    """Fingerprint the explicit preparation-owned configuration projection.
 
     A fidelity tuple and target-size ranking tolerances govern downstream
     TRAIN2 selection; they do not change the admitted REPAIR2 prefixes or the
@@ -8654,22 +9108,26 @@ def _preparation_config_digest(cfg: Mapping[str, Any]) -> str:
     use this dependency-scoped identity for completed-prepare reuse.
     """
 
-    normalized = json.loads(json.dumps(cfg, sort_keys=True, default=str))
-    normalized.pop("schema", None)
-    target_data = normalized.get("target_data")
-    if isinstance(target_data, dict):
-        convergence = target_data.get("size_convergence")
-        if isinstance(convergence, dict):
-            for key in (
-                "fidelity_epochs",
-                "coarse_training_epochs",
-                "short_training_epochs",
-                "final_training_epochs",
-                "coarse_practical_equivalence_mev_per_a",
-                "practical_equivalence_mev_per_a",
-            ):
-                convergence.pop(key, None)
-    return digest({"schema": "mdstats.mlff-prepare-semantic-config.v1", "config": normalized})
+    return digest({
+        "schema": "mdstats.mlff-prepare-semantic-config.v2",
+        "config": _preparation_config_projection(cfg),
+    })
+
+
+def _preflight_config_digest(cfg: Mapping[str, Any]) -> str:
+    """Bind the screening smoke to preparation plus its explicit smoke policy."""
+
+    preflight = cfg.get("preflight")
+    smoke_projection = {
+        key: _json_copy(preflight[key])
+        for key in _PREFLIGHT_CONFIG_FIELDS
+        if isinstance(preflight, Mapping) and key in preflight
+    }
+    return digest({
+        "schema": "mdstats.mlff-preflight-semantic-config.v1",
+        "preparation": _preparation_config_digest(cfg),
+        "preflight": smoke_projection,
+    })
 
 
 def _file_stat_identity(path: Path) -> dict[str, Any]:
@@ -8854,9 +9312,16 @@ def _try_reuse_completed_prepare(
         import mdstats
 
         sources = store.get_record("source_catalog", mdstats.TrainingDataSourceCatalog)
+        refresh_receipt = False
         if receipt_schema == PREPARE_RESTART_RECEIPT_SCHEMA:
             if receipt.get("preparation_config_digest") != _preparation_config_digest(cfg):
-                return False
+                # A v3 receipt written before the positive projection repair
+                # has no safe way to classify a changed TOML.  Reuse it only
+                # when the complete bytes are unchanged, then re-authenticate
+                # and rewrite the receipt with the repaired semantic digest.
+                if receipt.get("config_sha256") != _sha256(paths.config):
+                    return False
+                refresh_receipt = True
             inputs_current = receipt.get("input_identities") == _prepare_input_identities(
                 cfg, paths, sources
             )
@@ -8882,10 +9347,15 @@ def _try_reuse_completed_prepare(
             if observed != receipt.get("model_sweep"):
                 return False
         entries = _current_data8_entries(store)
+        previous_study = None
+        historical_generation_upgrade = receipt_schema != PREPARE_RESTART_RECEIPT_SCHEMA
         if _training_policy_generation(cfg) == "train2":
             # Validate the historical receipt before replacing downstream
             # target-size state. The old plan is not evidence for the new
             # flexible boundaries; `_ensure` rebuilds it from REPAIR2/MVQUAL2.
+            get_optional = getattr(store, "get_record_optional", None)
+            if callable(get_optional):
+                previous_study = get_optional("target_size_study", mdstats.TargetSizeStudyPlan)
             repair2 = store.get_record(
                 "target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2
             )
@@ -8895,6 +9365,38 @@ def _try_reuse_completed_prepare(
             study = _ensure_target_size_study(
                 store, cfg=cfg, repair2=repair2, mvqual2=mvqual2
             )
+            fidelity_changed = bool(
+                previous_study is not None
+                and previous_study.policy.policy_digest != study.policy.policy_digest
+            )
+            horizon_changed = bool(
+                previous_study is not None
+                and int(previous_study.training_horizon_epochs)
+                != int(study.training_horizon_epochs)
+            )
+            if fidelity_changed or horizon_changed:
+                screening_phase = getattr(study, "outcome", None) != mdstats.OUTCOME_SELECTED
+                _invalidate_train2_downstream_state(
+                    store,
+                    paths,
+                    reason=(
+                        "TRAIN2 fidelity boundaries changed; target-size evidence and dependent "
+                        "training/evaluation state were reset"
+                        if fidelity_changed
+                        else "TRAIN2 full-horizon schedule changed; dependent training/checkpoint/evaluation state was reset"
+                    ),
+                    preserve_preflight=screening_phase,
+                )
+            if (
+                getattr(study, "outcome", None) != mdstats.OUTCOME_SELECTED
+                and (fidelity_changed or horizon_changed or historical_generation_upgrade)
+            ):
+                # The receipt and DATA8 entries have passed their historical or
+                # current preparation validation.  Re-authenticate the old
+                # screening smoke before a horizon change causes a new DATA8
+                # schedule tree to be assembled.
+                if not _reconcile_reused_preflight_identity(store, paths, entries):
+                    return False
             expected_variants = _target_size_materialization_variants(cfg, study=study)
         else:
             expected_variants = _variant_specs(cfg)
@@ -8903,6 +9405,15 @@ def _try_reuse_completed_prepare(
             return False
         if _training_policy_generation(cfg) == "train2":
             _validate_train2_data8_matrix(cfg, store, study)
+            if not _train2_data8_schedule_matches_config(cfg, entries):
+                screening_phase = getattr(study, "outcome", None) != mdstats.OUTCOME_SELECTED
+                _invalidate_train2_downstream_state(
+                    store,
+                    paths,
+                    reason="TRAIN2 materialization carries an incompatible full-horizon/schedule identity; downstream state was reset",
+                    preserve_preflight=screening_phase,
+                )
+                return False
         observed_data8 = []
         for entry in sorted(entries, key=lambda item: item.variant_id):
             materialization = entry.materialization
@@ -8937,8 +9448,8 @@ def _try_reuse_completed_prepare(
     # presentation/config marker so downstream lifecycle checks do not demand
     # a pointless rerun; the immutable receipt still retains the historical
     # full-file hash as provenance.
-    store.set_meta(_stage_config_key("prepare"), _sha256(paths.config))
-    if receipt_schema != PREPARE_RESTART_RECEIPT_SCHEMA:
+    store.set_meta(_stage_config_key("prepare"), _stage_config_digest(paths, "prepare"))
+    if receipt_schema != PREPARE_RESTART_RECEIPT_SCHEMA or refresh_receipt:
         by_variant = {entry.variant_id: entry for entry in entries}
         ordered_entries = [by_variant[variant.variant_id] for variant in expected_variants]
         _write_prepare_restart_receipt(
@@ -10071,8 +10582,8 @@ def _validate_data8_variant_identity(variant_id: str, bundle: Any) -> None:
         )
 
 
-def _data8_matrix_digest(entries: Sequence[_Data8RuntimeEntry]) -> str:
-    """Digest the immutable DATA8 variant matrix authorized by preflight."""
+def _legacy_data8_matrix_digest(entries: Sequence[_Data8RuntimeEntry]) -> str:
+    """Return the pre-flexible-fidelity complete-bundle matrix identity."""
 
     return digest(
         {
@@ -10081,6 +10592,58 @@ def _data8_matrix_digest(entries: Sequence[_Data8RuntimeEntry]) -> str:
                 {
                     "variant_id": entry.variant_id,
                     "bundle_digest": entry.bundle.content_digest,
+                }
+                for entry in sorted(entries, key=lambda item: item.variant_id)
+            ],
+        }
+    )
+
+
+def _data8_matrix_data_identity(entry: _Data8RuntimeEntry) -> str:
+    """Digest DATA8 files/topology while excluding generated schedule metadata."""
+
+    materialization = entry.materialization
+    artifact = (
+        None
+        if materialization is None
+        else getattr(materialization.checkpoint, "data8_artifact", None)
+    )
+    if artifact is None:
+        # Compact test doubles and pre-v3 records cannot expose the split tree;
+        # retain their complete bundle identity rather than guessing.
+        return entry.bundle.content_digest
+    tree_entries = getattr(artifact, "tree_entries", None)
+    if tree_entries is None:
+        return entry.bundle.content_digest
+    schedule_files = {
+        "mace_config.yaml",
+        "run_mace.sh",
+        "data8_preparation_bundle.json",
+    }
+    data_entries = [
+        [path, sha]
+        for path, sha in tree_entries
+        if Path(path).name not in schedule_files
+    ]
+    return digest(
+        {
+            "schema": "mdstats.campaign-data8-data-identity.v1",
+            "variant_id": entry.variant_id,
+            "tree_entries": data_entries,
+        }
+    )
+
+
+def _data8_matrix_digest(entries: Sequence[_Data8RuntimeEntry]) -> str:
+    """Digest the DATA8 matrix authorized by preflight, not its TRAIN2 schedule."""
+
+    return digest(
+        {
+            "schema": "mdstats.campaign-data8-matrix.v2",
+            "variants": [
+                {
+                    "variant_id": entry.variant_id,
+                    "data_identity": _data8_matrix_data_identity(entry),
                 }
                 for entry in sorted(entries, key=lambda item: item.variant_id)
             ],
@@ -14136,8 +14699,9 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                             f"{train2_execution_epoch_limit}."
                         )
                     previous = recovered
-                    # Stage-B success is a durable continuation point, not completion of
-                    # the Stage-C 30-of-30 trajectory.  Fall through and enqueue restart.
+                    # A screen-boundary success is a durable continuation point,
+                    # not completion of the full-horizon trajectory.  Fall
+                    # through and enqueue restart.
                 else:
                     completed_progress += 1
                     training_progress.item_done(
@@ -18924,7 +19488,13 @@ def _command_evaluate_train2(
                 + ", ".join(f"n={v}" for v in updated.coarse_survivor_sizes)
             )
             _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size coarse screen complete")
-            _mark_stage(store, paths, "train", StageState.WAITING, "continue target-size survivors to epoch 10")
+            _mark_stage(
+                store,
+                paths,
+                "train",
+                StageState.WAITING,
+                f"continue target-size survivors to configured short boundary epoch {study.policy.fidelity_epochs[1]}",
+            )
             if not bool(getattr(args, "_target_size_orchestrated", False)):
                 print("\nTarget-size coarse screen complete. Continue with `select-target-size`.")
             return 0
@@ -18934,7 +19504,13 @@ def _command_evaluate_train2(
                 + ", ".join(f"n={v}" for v in updated.short_finalist_sizes)
             )
             _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size short screen complete")
-            _mark_stage(store, paths, "train", StageState.WAITING, "continue target-size finalists to epoch 30")
+            _mark_stage(
+                store,
+                paths,
+                "train",
+                StageState.WAITING,
+                f"continue target-size finalists to configured final-screen boundary epoch {study.policy.fidelity_epochs[2]}",
+            )
             if not bool(getattr(args, "_target_size_orchestrated", False)):
                 print("\nTarget-size short screen complete. Continue with `select-target-size`.")
             return 0
@@ -26615,7 +27191,7 @@ TRAIN2 has one stable public lifecycle:
 6. materialize         Realize the selected N* final-development and held-out CV production matrix.
 7. preflight           Re-run the same operational smoke contract for the changed production matrix.
 8. train               Train/resume only the frozen selected-size production/CV workload.
-9. evaluate            Evaluate production trajectories and select admissible checkpoints; an earlier epoch may beat epoch 30.
+9. evaluate            Evaluate production trajectories and select admissible checkpoints; an earlier epoch may beat the configured full horizon.
 10. verify             Run the existing physical/deployment/locked verification sequence.
 
 During `select-target-size`, epoch is a controlled variable: only exact configured
@@ -26689,7 +27265,7 @@ reduction; it never substitutes a better earlier checkpoint. After N* is frozen,
 public `train` uses the same TRAIN2B fixed-budget runtime for the selected production/CV
 matrix and public `evaluate` uses EVAL2 production checkpoint selection, where an
 earlier admissible epoch may legitimately win. LR advances once per optimizer update
-on the frozen 30-epoch horizon and continuation preserves authenticated live/EMA/
+on the configured full horizon and continuation preserves authenticated live/EMA/
 optimizer/RNG state without renormalizing the schedule. `verify` executes DEPLOY-VERIFY1, then PES-VERIFY1 with a common fixed-geometry DFT probe request, then RELAX-VERIFY1 with matched fixed-cell DFT zero-K relaxations, and finally DYN-VERIFY2 with common deployed finite-temperature NVT->NVE structural rollouts; SELECT2 freezes the first physically qualified seed in the pre-ranked target-only order; LOCKED-TEST2 then evaluates that exact frozen candidate once on sealed locked E and either publishes the exact frozen MACE/ML-IAP bytes or fails the campaign without fallback. Historical configs without `policy_generation` retain their
 original authority.
 

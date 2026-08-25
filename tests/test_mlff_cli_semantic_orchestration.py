@@ -15,6 +15,9 @@ ACTIVE = (
     mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
 )
 
+DEFAULT_FIDELITY = (1, 3, 10)
+DEFAULT_HORIZON = 30
+
 
 def _cfg() -> dict:
     return {"training": {"policy_generation": "train2"}}
@@ -26,9 +29,9 @@ def _paths() -> SimpleNamespace:
 
 def _study(outcome: str, *, selected: int | None = None) -> SimpleNamespace:
     boundary = {
-        mdstats.OUTCOME_AWAITING_COARSE_SCREEN: (3, (512, 1024, 2048, 4096)),
-        mdstats.OUTCOME_AWAITING_SHORT_SCREEN: (10, (1024, 2048)),
-        mdstats.OUTCOME_AWAITING_FINAL_SCREEN: (30, (2048,)),
+        mdstats.OUTCOME_AWAITING_COARSE_SCREEN: (DEFAULT_FIDELITY[0], (512, 1024, 2048, 4096)),
+        mdstats.OUTCOME_AWAITING_SHORT_SCREEN: (DEFAULT_FIDELITY[1], (1024, 2048)),
+        mdstats.OUTCOME_AWAITING_FINAL_SCREEN: (DEFAULT_FIDELITY[2], (2048,)),
     }.get(outcome, (None, ()))
     return SimpleNamespace(
         outcome=outcome,
@@ -133,9 +136,9 @@ def test_prepare_rejects_post_selection_semantic_reuse(monkeypatch: pytest.Monke
 @pytest.mark.parametrize(
     ("initial_outcome", "expected_boundaries"),
     [
-        (mdstats.OUTCOME_AWAITING_COARSE_SCREEN, [3, 10, 30]),
-        (mdstats.OUTCOME_AWAITING_SHORT_SCREEN, [10, 30]),
-        (mdstats.OUTCOME_AWAITING_FINAL_SCREEN, [30]),
+        (mdstats.OUTCOME_AWAITING_COARSE_SCREEN, list(DEFAULT_FIDELITY)),
+        (mdstats.OUTCOME_AWAITING_SHORT_SCREEN, list(DEFAULT_FIDELITY[1:])),
+        (mdstats.OUTCOME_AWAITING_FINAL_SCREEN, [DEFAULT_FIDELITY[2]]),
     ],
 )
 def test_select_target_size_owns_complete_restartable_funnel(

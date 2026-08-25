@@ -57,7 +57,7 @@ For `q` qualified sizes and `s` calibration seeds, the execution plan therefore 
 N_train = q * s
 ```
 
-uninterrupted training trajectories. The required checkpoint set is the union of the configured coarse candidates with epochs 10 and 30.
+uninterrupted training trajectories. The required checkpoint set is the union of the configured coarse candidates, the configured short and final-screen boundaries `n2` and `n3`, and the configured full-reference endpoint `n`.
 
 ## 3. One inference authority, multiple monitor views
 

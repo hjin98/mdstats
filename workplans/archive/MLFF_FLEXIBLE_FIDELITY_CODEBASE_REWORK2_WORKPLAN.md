@@ -2,6 +2,8 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-FLEXIBLE-FIDELITY-EPOCH-REWORK-V1-REWORK2
 protocol_version: 5.5.0
+status: completed
+completed_date: 2026-08-25
 ---
 
 # MLFF Flexible-Fidelity Rework 2 Closure Workplan
@@ -295,3 +297,13 @@ All previously accepted flexible-fidelity scientific/state decisions remain froz
 - A training/config field that appears downstream-only may actually control preparation variant topology. Evidence of that dependency requires adding it to preparation identity, not abandoning stage-scoped identity.
 - Historical receipts may lack enough evidence to prove compatibility for a particular campaign generation. Such a case must fail closed at the narrowest safe rerun boundary; it does not justify blanket recomputation for all campaigns.
 - If final assembled tests expose a new scientific/state-machine defect unrelated to identity, route it as a new bounded finding; do not weaken SIZE-FIDELITY or continuation invariants to make the suite pass.
+
+## 11. Closeout evidence record
+
+Completed on 2026-08-25 on the recorded `feat/mlff-end-to-end-performance-v1` candidate:
+
+- R2W0/R2W1: the `30 -> 40` horizon reproducer is closed by the positive preparation projection; independent `n1`, `n2`, `n3`, and `n` frontier tests, receipt migration, preflight identity migration, schedule/checkpoint rejection, and fail-closed smoke handling pass.
+- R2W2: current executable fidelity language is semantic; remaining numeric hits are explicit historical migration/release material or documented configurable defaults.
+- R2W3: assembled A/B/C and D1/D2/D3 pass through policy, orchestration, persistence, status, and production-horizon consumers. The final affected implementation/runtime surface passes 65 tests and the target-size/scientific/performance surface passes 63 tests.
+- R2W4: current Markdown, assembled architecture Markdown, six tracked PDF descendants, and tracked manifests were regenerated or synchronized; pinned Pandoc 3.10.2/Typst 0.15.1 output was rendered and visually inspected.
+- The full available suite was executed with the uncollectable `tests/test_mesh_topology_revision_stage1.py` module excluded because its immutable JSON fixture is absent from the repository: 3,272 passed, 36 skipped, 265 baseline failures, and 84 baseline fixture/setup errors. The failures/errors are outside this affected surface and include absent LTA/topology fixtures, stale historical version/schema assertions, and legacy bridge fixtures that do not provide current required records/config normalization. No changed affected test failed.

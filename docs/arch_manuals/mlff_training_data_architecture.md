@@ -747,7 +747,7 @@ A target bundle contains one compatible target `LabelDomain` and, when replay is
 
 The target-size experiment is a special protocol-comparison control described in Part V. It uses authenticated `n1 -> n2 -> n3` continuation on a frozen full TRAIN2 horizon `n`, with a common seed set, and disables ordinary target-success early stopping so candidate sizes reach comparable fidelity boundaries. Hard numerical/scientific failure remains a valid rejection.
 
-Epoch has deliberately different semantics in the two phases. During target-size selection, epoch is a **controlled variable**: the configured coarse, short, and final screens consume only exact `n1`, `n2`, and `n3` checkpoints. The independent `n` is the full frozen TRAIN2 schedule horizon. An earlier checkpoint is inadmissible even when it scores better, because substituting it would confound target-data size with achieved training fidelity. The public `select-target-size` operation owns this complete restartable `n1 -> n2 -> n3` experiment; generated campaigns default to `1 -> 3 -> 10` on a 30-epoch schedule.
+Epoch has deliberately different semantics in the two phases. During target-size selection, epoch is a **controlled variable**: the configured coarse, short, and final screens consume only exact `n1`, `n2`, and `n3` checkpoints. The independent `n` is the full frozen TRAIN2 schedule horizon. An earlier checkpoint is inadmissible even when it scores better, because substituting it would confound target-data size with achieved training fidelity. The public `select-target-size` operation owns this complete restartable `n1 -> n2 -> n3` experiment; generated campaigns default to `(n1,n2,n3)/n = (1,3,10)/30`.
 
 After `N_selected` is frozen, ordinary production/CV training resumes under the frozen protocol. Production checkpoint epoch is then a **selectable model variable**: production `evaluate` may choose an earlier admissible checkpoint when it is better under the frozen checkpoint-selection policy, even though the configured training horizon remains `n` epochs. Its target-oriented stopping and LR-refinement semantics are part of `TrainingProtocolIdentity`; changing them after protocol comparison invalidates the comparison.
 
@@ -1137,7 +1137,7 @@ The architecture never creates an intermediate size merely to avoid reporting no
 
 Ordinary production executes the successive-fidelity funnel and stops training eliminated sizes.
 
-A release/algorithm qualification may retrospectively train the complete candidate population to 30 epochs to measure survivor recall or calibrate the screening policy. That exhaustive matrix is qualification evidence, not a permanent production requirement. If representative qualification shows that the early screens do not reliably retain eventual finalists, the screening policy must be revised explicitly rather than forcing every campaign to repay every eliminated candidate.
+A release/algorithm qualification may retrospectively train the complete candidate population to the configured full horizon `n` to measure survivor recall or calibrate the screening policy. That exhaustive matrix is qualification evidence, not a permanent production requirement. If representative qualification shows that the early screens do not reliably retain eventual finalists, the screening policy must be revised explicitly rather than forcing every campaign to repay every eliminated candidate.
 
 ## Bounded scientific materialization
 

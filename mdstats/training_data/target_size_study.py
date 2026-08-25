@@ -1418,7 +1418,7 @@ def _validate_target_size_study_semantics(plan: TargetSizeStudyPlan) -> None:
         if (plan.outcome != OUTCOME_AWAITING_COARSE_SCREEN or plan.coarse_survivor_sizes or plan.short_outcomes or
             plan.short_finalist_sizes or plan.final_screen_outcomes or plan.selected_target_size is not None or
             plan.comparison_failure_stage is not None or plan.comparison_failures):
-            raise TrainingDataInputError("Epoch-3 wait state is inconsistent.")
+            raise TrainingDataInputError("Coarse-screen wait state is inconsistent.")
         return
     e3 = _validate_outcome_batch(plan, plan.coarse_outcomes, qualified, STAGE_COARSE)
     scores3 = _paired_candidate_scores(plan, e3, qualified)
@@ -1429,15 +1429,15 @@ def _validate_target_size_study_semantics(plan: TargetSizeStudyPlan) -> None:
             plan.comparison_failure_stage != STAGE_COARSE or plan.comparison_failures != expected_failures or
             plan.coarse_survivor_sizes or plan.short_outcomes or plan.short_finalist_sizes or plan.final_screen_outcomes or
             plan.selected_target_size is not None):
-            raise TrainingDataInputError("Epoch-3 insufficient-comparable terminal state is inconsistent.")
+            raise TrainingDataInputError("Coarse-screen insufficient-comparable terminal state is inconsistent.")
         return
     expected_s3 = _equivalence_aware_score_order(scores3, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a)[:required3]
     if plan.coarse_survivor_sizes != expected_s3:
-        raise TrainingDataInputError("Epoch-3 survivor decision does not match paired aggregate/equivalence policy.")
+        raise TrainingDataInputError("Coarse-screen survivor decision does not match paired aggregate/equivalence policy.")
     if not plan.short_outcomes:
         if (plan.outcome != OUTCOME_AWAITING_SHORT_SCREEN or plan.short_finalist_sizes or plan.final_screen_outcomes or
             plan.selected_target_size is not None or plan.comparison_failure_stage is not None or plan.comparison_failures):
-            raise TrainingDataInputError("Epoch-10 wait state is inconsistent.")
+            raise TrainingDataInputError("Short-screen wait state is inconsistent.")
         return
     e10 = _validate_outcome_batch(plan, plan.short_outcomes, plan.coarse_survivor_sizes, STAGE_SHORT)
     for key, child in e10.items():
@@ -1448,15 +1448,15 @@ def _validate_target_size_study_semantics(plan: TargetSizeStudyPlan) -> None:
         if (plan.outcome != OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES or
             plan.comparison_failure_stage != STAGE_SHORT or plan.comparison_failures != expected_failures or
             plan.short_finalist_sizes or plan.final_screen_outcomes or plan.selected_target_size is not None):
-            raise TrainingDataInputError("Epoch-10 insufficient-comparable terminal state is inconsistent.")
+            raise TrainingDataInputError("Short-screen insufficient-comparable terminal state is inconsistent.")
         return
     expected_s10 = _equivalence_aware_score_order(scores10, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a)[: plan.policy.short_finalist_count]
     if plan.short_finalist_sizes != expected_s10:
-        raise TrainingDataInputError("Epoch-10 finalist decision does not match paired aggregate/equivalence policy.")
+        raise TrainingDataInputError("Short-screen finalist decision does not match paired aggregate/equivalence policy.")
     if not plan.final_screen_outcomes:
         if (plan.outcome != OUTCOME_AWAITING_FINAL_SCREEN or plan.selected_target_size is not None or
             plan.comparison_failure_stage is not None or plan.comparison_failures):
-            raise TrainingDataInputError("Epoch-30 wait state is inconsistent.")
+            raise TrainingDataInputError("Final-screen wait state is inconsistent.")
         return
     e30 = _validate_outcome_batch(plan, plan.final_screen_outcomes, plan.short_finalist_sizes, STAGE_FINAL_SCREEN)
     for key, child in e30.items():
@@ -1467,7 +1467,7 @@ def _validate_target_size_study_semantics(plan: TargetSizeStudyPlan) -> None:
         if (plan.outcome != OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES or
             plan.comparison_failure_stage != STAGE_FINAL_SCREEN or plan.comparison_failures != expected_failures or
             plan.selected_target_size is not None):
-            raise TrainingDataInputError("Epoch-30 insufficient-comparable terminal state is inconsistent.")
+            raise TrainingDataInputError("Final-screen insufficient-comparable terminal state is inconsistent.")
         return
     ranking = _equivalence_aware_score_order(scores30, epsilon=plan.policy.practical_equivalence_mev_per_a)
     winner = ranking[0]

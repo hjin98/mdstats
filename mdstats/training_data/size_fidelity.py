@@ -2,9 +2,10 @@
 
 The production target-size policy uses hard coverage followed by a coarse
 training screen.  This module does not train models itself.  It authenticates
-an exhaustive calibration matrix collected from uninterrupted 30-epoch TRAIN2
-trajectories and asks whether a proposed low-fidelity screen would have kept
-both eventual 30-epoch target finalists for every frozen calibration seed.
+an exhaustive calibration matrix collected from uninterrupted full-horizon
+TRAIN2 trajectories and asks whether a proposed low-fidelity screen would have
+kept both eventual full-horizon target finalists for every frozen calibration
+seed.
 
 The hard qualification requirements are intentionally recall based.  Rank
 correlation is recorded only as a diagnostic because a high global correlation
@@ -52,8 +53,8 @@ class SizeFidelityCalibrationPolicy:
 
     The first coarse epoch and first equivalence width are the current
     production defaults.  Later coarse epochs and wider equivalence bands are
-    fallback hypotheses to test in the *same* exhaustive 30-epoch campaign if
-    the production 3-epoch rule is not sufficiently faithful.
+    fallback hypotheses to test in the same exhaustive full-horizon campaign if
+    the configured production coarse boundary is not sufficiently faithful.
     """
 
     screening_seeds: tuple[int, ...] = (1, 2, 3)
@@ -103,7 +104,9 @@ class SizeFidelityCalibrationPolicy:
                 "SIZE-FIDELITY1 first coarse endpoint must equal the current target-size v5 production endpoint."
             )
         if any(epoch >= int(policy.fidelity_epochs[1]) for epoch in self.coarse_epoch_candidates):
-            raise TrainingDataInputError("SIZE-FIDELITY1 coarse endpoint candidates must precede the 10-epoch screen.")
+            raise TrainingDataInputError(
+                "SIZE-FIDELITY1 coarse endpoint candidates must precede the configured short screen."
+            )
         if abs(self.coarse_equivalence_candidates_mev_per_a[0] - float(policy.coarse_practical_equivalence_mev_per_a)) > 1.0e-12:
             raise TrainingDataInputError(
                 "SIZE-FIDELITY1 first coarse equivalence width must equal the current target-size v5 production width."
@@ -295,7 +298,7 @@ def build_size_fidelity_execution_plan(
 
 @dataclass(frozen=True, slots=True)
 class SizeFidelityMetric:
-    """One target-only endpoint measurement from an uninterrupted 30-epoch run."""
+    """One target-only endpoint measurement from an uninterrupted full-horizon run."""
 
     optimizer_seed: int
     target_size: int
@@ -766,7 +769,9 @@ def build_size_fidelity_qualification(
                     short_metrics = [metric_map[(seed, size, int(target_size_policy.fidelity_epochs[1]), _FULL_ROLE, None)] for size in coarse_survivors]
                     short_order = _screen_order(short_metrics, epsilon=coarse_epsilon, boundary_size=boundary_size)
                     if len(short_order) < short_count:
-                        raise TrainingDataInputError(f"SIZE-FIDELITY1 seed {seed} has insufficient valid 10-epoch survivors.")
+                        raise TrainingDataInputError(
+                            f"SIZE-FIDELITY1 seed {seed} has insufficient valid short-screen survivors."
+                        )
                     short_finalists = tuple(short_order[:short_count])
 
                     final_screen_metrics = [
