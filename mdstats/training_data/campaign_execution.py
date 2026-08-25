@@ -2161,6 +2161,8 @@ class InferenceExecutionPlan:
     cpu_fraction: float = 0.90
     ram_fraction: float = 0.80
     gpu_memory_fraction: float = 0.90
+    provider_residency_ram_bytes: int | None = None
+    provider_residency_vram_bytes: int | None = None
     graph_cache_enabled: bool = True
     monitor_cache_enabled: bool = True
     prediction_cache_enabled: bool = True
@@ -2206,6 +2208,8 @@ class InferenceExecutionPlan:
             "cpu_fraction": self.cpu_fraction,
             "ram_fraction": self.ram_fraction,
             "gpu_memory_fraction": self.gpu_memory_fraction,
+            "provider_residency_ram_bytes": self.provider_residency_ram_bytes,
+            "provider_residency_vram_bytes": self.provider_residency_vram_bytes,
             "graph_cache_enabled": bool(self.graph_cache_enabled),
             "monitor_cache_enabled": bool(self.monitor_cache_enabled),
             "prediction_cache_enabled": bool(self.prediction_cache_enabled),
@@ -2279,6 +2283,14 @@ class InferenceExecutionPlan:
             cpu_fraction=float(payload.get("cpu_fraction", 0.90)),
             ram_fraction=float(payload.get("ram_fraction", 0.80)),
             gpu_memory_fraction=float(payload.get("gpu_memory_fraction", 0.90)),
+            provider_residency_ram_bytes=(
+                None if payload.get("provider_residency_ram_bytes") is None
+                else int(payload["provider_residency_ram_bytes"])
+            ),
+            provider_residency_vram_bytes=(
+                None if payload.get("provider_residency_vram_bytes") is None
+                else int(payload["provider_residency_vram_bytes"])
+            ),
             graph_cache_enabled=bool(payload.get("graph_cache_enabled", True)),
             monitor_cache_enabled=bool(payload.get("monitor_cache_enabled", True)),
             prediction_cache_enabled=bool(payload.get("prediction_cache_enabled", True)),
@@ -2573,19 +2585,16 @@ def _predict_model_on_atoms(
             ),
             ram_policy_fraction=float(active_execution.ram_fraction),
             vram_policy_fraction=float(active_execution.gpu_memory_fraction),
-            estimated_provider_resident_ram_bytes=max(
-                1,
-                int(resources.ram_budget_bytes)
-                // max(1, int(active_execution.selected_concurrent_model_jobs)),
+            # This consumer has no per-model estimate distinct from its global
+            # budget. The authority must therefore retain safe J=1 operation
+            # rather than treating a budget partition as model residency.
+            estimated_provider_resident_ram_bytes=(
+                None if active_execution.provider_residency_ram_bytes is None
+                else int(active_execution.provider_residency_ram_bytes)
             ),
             estimated_provider_resident_vram_bytes=(
-                None
-                if not uses_cuda or resources.gpu.budget_bytes is None
-                else max(
-                    1,
-                    int(resources.gpu.budget_bytes)
-                    // max(1, int(active_execution.selected_concurrent_model_jobs)),
-                )
+                None if active_execution.provider_residency_vram_bytes is None
+                else int(active_execution.provider_residency_vram_bytes)
             ),
             cold_start_batch_size=int(active_execution.selected_batch_size),
             compatible_profile=compatible_profile,

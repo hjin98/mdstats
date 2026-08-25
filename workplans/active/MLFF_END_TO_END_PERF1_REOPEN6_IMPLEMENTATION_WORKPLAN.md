@@ -1,6 +1,6 @@
 # MLFF-END-TO-END-PERF1 Sixth-Reopen Final-Closeout Implementation Workplan
 
-Status: **ACTIVE — FINAL CLOSEOUT CORRECTIONS REQUIRED**  
+Status: **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-WORKSTATION GPU QUALIFICATION DEFERRED**  
 Branch: `feat/mlff-end-to-end-performance-v1`  
 Reviewed implementation tip: `73073530b48c580b40a2d1555785e625f12901a6`  
 Parent archived plan: `workplans/archive/MLFF_END_TO_END_PERF1_REOPEN5_IMPLEMENTATION_WORKPLAN.md`  
@@ -568,3 +568,13 @@ only when all of the following are true on the same final candidate:
 - full target-workstation RTX 3090/data-heavy qualification remains deferred to the final release handoff.
 
 No unavailable functional integration requirement may be converted into acceptance by documentation alone.
+
+## 14. Final implementation record — 2026-08-24
+
+FINAL-A/B/C/D are accepted on this candidate. Focused static/resource coverage:
+**29 passed**; staged/DEPLOY/command integration coverage: **61 passed**;
+fresh affected campaign/resource regression: **106 passed, 1 externally-rooted
+skip**; bounded assembled production-interface integration:
+**1 passed**. The full suite remains collection-blocked by the pre-existing
+missing `tests/data/mesh_topology_revision_stage1_cases.json` fixture and is
+not counted as a pass. RTX 3090/data-heavy qualification remains deferred.

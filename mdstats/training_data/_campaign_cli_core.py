@@ -12546,6 +12546,8 @@ def _run_staged_evaluation_tasks(
                     ),
                     rationale=tuple(active_execution_plan.rationale)
                     + ("canonical_joint_runtime_authority_owns_model_jobs",),
+                    provider_residency_ram_bytes=int(plan.estimated_ram_bytes_per_job),
+                    provider_residency_vram_bytes=plan.estimated_gpu_bytes_per_job,
                 )
             with inference_start_signal(
                 status.mark_workload_started,

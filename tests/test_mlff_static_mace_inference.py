@@ -102,6 +102,8 @@ def _authority(*, profile=None, ram=20_000, vram=20_000, compatibility=None):
         maximum_concurrent_model_jobs=2,
         live_ram_budget_bytes=ram,
         live_vram_budget_bytes=vram,
+        estimated_provider_resident_ram_bytes=1,
+        estimated_provider_resident_vram_bytes=None if vram is None else 1,
         compatible_profile=profile,
     )
 
@@ -142,7 +144,14 @@ def test_joint_runtime_authority_selects_best_safe_near_equivalent_point() -> No
 
 def test_executor_auto_search_exercises_geometric_batches_above_eight() -> None:
     provider = _Provider()
-    authority = _authority(ram=1 << 30, vram=None)
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "live-growth-block"}),
+        maximum_batch_size=32,
+        maximum_concurrent_model_jobs=2,
+        live_ram_budget_bytes=1 << 30,
+        live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=100,
+    )
     executor = StaticMaceInferenceExecutor(
         provider,
         batch_size=32,
@@ -339,6 +348,7 @@ def test_resource_limited_private_pool_growth_retains_lower_safe_point() -> None
         maximum_concurrent_model_jobs=4,
         live_ram_budget_bytes=1 << 30,
         live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=1,
     )
     executor = StaticMaceInferenceExecutor(
         Provider(), batch_size=32, runtime_authority=authority, provider_factory=factory,
@@ -388,7 +398,14 @@ def test_joint_resource_evidence_covers_all_private_model_residency(
             return 10 + 100 * ResidencyProvider.live_clones, None
 
     monkeypatch.setattr(model_features, "_StaticInferenceResourceMonitor", ResidencyMonitor)
-    authority = _authority(ram=1 << 30, vram=None)
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "live-growth"}),
+        maximum_batch_size=32,
+        maximum_concurrent_model_jobs=2,
+        live_ram_budget_bytes=1 << 30,
+        live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=100,
+    )
     executor = StaticMaceInferenceExecutor(
         ResidencyProvider(),
         batch_size=32,
@@ -418,7 +435,14 @@ def test_joint_resource_evidence_covers_all_private_model_residency(
 def test_live_resource_shrink_blocks_private_pool_growth_before_factory(monkeypatch) -> None:
     from mdstats.training_data import resources
 
-    authority = _authority(ram=1 << 30, vram=None)
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "live-growth-block"}),
+        maximum_batch_size=32,
+        maximum_concurrent_model_jobs=2,
+        live_ram_budget_bytes=1 << 30,
+        live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=100,
+    )
     for batch in authority.candidate_batch_sizes:
         authority.record(_measured_point(batch, 1, 1.0, 100, None))
     created = 0
@@ -562,6 +586,85 @@ def test_v3_runtime_profile_is_rejected_for_pre_marginal_pool_semantics(tmp_path
     assert StaticInferenceRuntimeProfile.load_compatible(
         path, compatibility_digest=digest({"fixture": "joint-static"})
     ) is None
+
+
+def test_v4_runtime_profile_is_rejected_for_pre_reproducible_residency(tmp_path) -> None:
+    path = tmp_path / "v4-profile.json"
+    path.write_text(
+        '{"schema":"mdstats.static-inference-runtime-profile.v4"}',
+        encoding="utf-8",
+    )
+    assert StaticInferenceRuntimeProfile.load_compatible(
+        path, compatibility_digest=digest({"fixture": "joint-static"})
+    ) is None
+
+
+def test_provider_requirement_never_collapses_to_zero_allocator_delta(monkeypatch) -> None:
+    from mdstats.training_data import model_features
+
+    class ZeroMonitor:
+        def __init__(self, device): pass
+        def start(self): pass
+        def finish(self): return 0, None
+
+    monkeypatch.setattr(model_features, "_StaticInferenceResourceMonitor", ZeroMonitor)
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "required-floor"}),
+        maximum_batch_size=8,
+        maximum_concurrent_model_jobs=2,
+        live_ram_budget_bytes=100,
+        live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=5,
+    )
+    executor = StaticMaceInferenceExecutor(
+        _Provider(), batch_size=8, runtime_authority=authority,
+        provider_factory=_Provider,
+    )
+    executor._ensure_provider_pool(2)
+    assert executor.provider_pool_resident_ram_bytes >= 5
+    assert authority.provider_residency_estimate()[0] >= 5
+
+
+def test_j_dependent_execution_oom_preserves_lower_j_batch_capability() -> None:
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "two-dimensional-oom"}),
+        maximum_batch_size=32,
+        maximum_concurrent_model_jobs=4,
+        live_ram_budget_bytes=1 << 20,
+        live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=1,
+    )
+    authority.record(StaticInferenceOperatingPointEvidence(
+        16, 4, 0.0, 0, None, feasible=False, failure_kind="execution-oom"
+    ))
+    assert authority.learned_safe_batch_ceiling == 32
+    candidates = authority.candidate_operating_points(
+        available_structures=128, concurrency_available=True
+    )
+    assert (16, 1) in candidates and (16, 2) in candidates
+    assert (16, 4) not in candidates
+
+
+def test_resource_classifier_and_pool_shrink_are_type_aware_and_once_only(monkeypatch) -> None:
+    import errno
+
+    assert StaticMaceInferenceExecutor._is_oom(MemoryError())
+    assert StaticMaceInferenceExecutor._is_oom(OSError(errno.ENOMEM, "full"))
+    released: list[None] = []
+    monkeypatch.setattr(
+        StaticMaceInferenceExecutor, "_release_cuda_cache", staticmethod(lambda: released.append(None))
+    )
+    executor = StaticMaceInferenceExecutor(_Provider(), batch_size=1)
+    executor._provider_pool.extend((_Provider(), _Provider(), _Provider()))
+    executor._provider_pool_resident_ram_bytes.extend((1, 1, 1))
+    executor._provider_pool_resident_vram_bytes.extend((None, None, None))
+    executor._provider_pool_observed_ram_bytes.extend((0, 0, 0))
+    executor._provider_pool_observed_vram_bytes.extend((None, None, None))
+    executor._retire_private_providers(keep_jobs=2)
+    assert executor.resident_provider_pool_size == 2
+    assert len(released) == 1
+    executor._retire_private_providers(keep_jobs=2)
+    assert len(released) == 1
 
 
 def test_v4_feasible_evidence_requires_explicit_consistent_components() -> None:
