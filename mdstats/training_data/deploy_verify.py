@@ -619,9 +619,22 @@ def predict_mace_model_on_probe(
             maximum_concurrent_model_jobs=active_jobs,
             live_ram_budget_bytes=int(resources.ram_budget_bytes),
             live_vram_budget_bytes=(
-                admission.gpu_memory_budget_bytes
+                resources.gpu.budget_bytes
                 if str(device).startswith("cuda")
                 else None
+            ),
+            ram_policy_fraction=float(execution_plan.ram_fraction),
+            vram_policy_fraction=min(
+                float(execution_plan.gpu_memory_fraction),
+                float(policy.gpu_memory_fraction),
+            ),
+            estimated_provider_resident_ram_bytes=int(
+                admission.estimated_ram_bytes_per_job
+            ),
+            estimated_provider_resident_vram_bytes=(
+                None
+                if not str(device).startswith("cuda")
+                else admission.estimated_gpu_bytes_per_job
             ),
             cold_start_batch_size=int(execution_plan.selected_batch_size),
             compatible_profile=compatible_profile,

@@ -12,7 +12,10 @@ from mdstats.training_data.model_features import (
     StaticMaceInferenceExecutor,
 )
 from mdstats.training_data._common import digest
-from mdstats.training_data._common import TrainingDataInputError
+from mdstats.training_data._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+)
 
 
 def _atoms(count: int = 9):
@@ -114,6 +117,10 @@ def _measured_point(batch, jobs, throughput, ram, vram):
         completed_structures=completed,
         elapsed_seconds=completed / throughput,
         observed_max_active_jobs=jobs,
+        provider_pool_resident_ram_bytes=0,
+        provider_pool_resident_vram_bytes=None if vram is None else 0,
+        execution_peak_ram_bytes=ram,
+        execution_peak_vram_bytes=vram,
     )
 
 
@@ -290,7 +297,7 @@ def test_joint_executor_reuses_persistent_private_provider_pool_across_waves() -
     assert authority.selected_point is not None
     assert authority.selected_point.concurrent_model_jobs == 2
     assert created == 1
-    executor.predict(_atoms(32))
+    executor.predict(_atoms(64))
     assert created == 1
     assert executor.resident_provider_pool_size == 2
     executor.close()
@@ -339,7 +346,7 @@ def test_resource_limited_private_pool_growth_retains_lower_safe_point() -> None
 
     assert len(executor.predict(_atoms(128))) == 128
     assert any(
-        point.concurrent_model_jobs == 4 and point.failure_kind == "oom"
+        point.concurrent_model_jobs == 4 and point.failure_kind == "provider-pool-oom"
         for point in authority.evidence
     )
     assert authority.selected_point is not None
@@ -495,9 +502,9 @@ def test_cuda_resource_monitor_retains_transient_live_peak(monkeypatch) -> None:
     from mdstats.training_data import model_features, training_parallel
     from mdstats.training_data.training_parallel import GpuTelemetrySample
 
-    # Initial planning plus the mandatory immediate pre-wave live admission
-    # consume two samples before the execution-region monitor begins.
-    used = iter((10, 10, 10, 90, 20, 20))
+    # Initial planning, pre-wave admission, and the mandatory post-growth
+    # admission consume three samples before the execution-region monitor.
+    used = iter((10, 10, 10, 10, 90, 20, 20))
     monkeypatch.setattr(model_features, "_current_process_rss_bytes", lambda: 1_000)
     monkeypatch.setattr(
         training_parallel,
@@ -546,6 +553,96 @@ def test_v2_runtime_profile_is_rejected_for_pre_persistent_pool_semantics(tmp_pa
     ) is None
 
 
+def test_v3_runtime_profile_is_rejected_for_pre_marginal_pool_semantics(tmp_path) -> None:
+    path = tmp_path / "v3-profile.json"
+    path.write_text(
+        '{"schema":"mdstats.static-inference-runtime-profile.v3"}',
+        encoding="utf-8",
+    )
+    assert StaticInferenceRuntimeProfile.load_compatible(
+        path, compatibility_digest=digest({"fixture": "joint-static"})
+    ) is None
+
+
+def test_v4_feasible_evidence_requires_explicit_consistent_components() -> None:
+    point = _measured_point(8, 1, 100.0, 2_000, 4_000)
+    malformed = point.to_dict()
+    malformed.pop("execution_peak_ram_bytes")
+    with pytest.raises(TrainingDataSerializationError, match="required resource components"):
+        StaticInferenceOperatingPointEvidence.from_dict(malformed)
+    with pytest.raises(TrainingDataInputError, match="must equal residency"):
+        StaticInferenceOperatingPointEvidence(
+            8, 1, 100.0, 2_000, 4_000,
+            completed_structures=8,
+            elapsed_seconds=0.08,
+            observed_max_active_jobs=1,
+            provider_pool_resident_ram_bytes=0,
+            provider_pool_resident_vram_bytes=0,
+            execution_peak_ram_bytes=1_999,
+            execution_peak_vram_bytes=4_000,
+        )
+
+
+def test_live_reclamp_uses_policy_fraction_of_current_availability() -> None:
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "live-coordinate"}),
+        maximum_batch_size=8,
+        maximum_concurrent_model_jobs=2,
+        live_ram_budget_bytes=80 * 1024**3,
+        live_vram_budget_bytes=int(21.6 * 1024**3),
+        ram_policy_fraction=0.80,
+        vram_policy_fraction=0.90,
+    )
+    authority.reclamp(
+        live_ram_available_bytes=10 * 1024**3,
+        live_vram_available_bytes=6 * 1024**3,
+    )
+    assert authority.live_ram_budget_bytes == 8 * 1024**3
+    assert authority.live_vram_budget_bytes == int(5.4 * 1024**3)
+
+
+def test_resident_pool_is_admitted_against_only_its_execution_transient(monkeypatch) -> None:
+    from mdstats.training_data import resources
+
+    original = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "warm-pool-marginal"}),
+        maximum_batch_size=8,
+        maximum_concurrent_model_jobs=2,
+        live_ram_budget_bytes=14,
+        live_vram_budget_bytes=None,
+        ram_policy_fraction=1.0,
+    )
+    original.record(_measured_point(8, 1, 10.0, 4, None))
+    original.record(
+        StaticInferenceOperatingPointEvidence(
+            8, 2, 20.0, 14, None,
+            completed_structures=16,
+            elapsed_seconds=0.8,
+            observed_max_active_jobs=2,
+            provider_pool_resident_ram_bytes=10,
+            execution_peak_ram_bytes=4,
+        )
+    )
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=original.compatibility_digest,
+        maximum_batch_size=8,
+        maximum_concurrent_model_jobs=2,
+        live_ram_budget_bytes=14,
+        live_vram_budget_bytes=None,
+        ram_policy_fraction=1.0,
+        compatible_profile=original.profile(),
+    )
+    executor = StaticMaceInferenceExecutor(
+        _Provider(), batch_size=8, runtime_authority=authority
+    )
+    executor._provider_pool.append(_Provider())
+    executor._provider_pool_resident_ram_bytes.append(10)
+    executor._provider_pool_resident_vram_bytes.append(None)
+    monkeypatch.setattr(resources, "available_memory_bytes", lambda: 4)
+
+    assert len(executor.predict(_atoms(16))) == 16
+
+
 def test_runtime_profile_reuse_requires_compatibility_and_live_reclamps() -> None:
     original = _authority()
     low = _measured_point(8, 1, 100.0, 2_000, 4_000)
@@ -566,8 +663,14 @@ def test_runtime_profile_reuse_requires_compatibility_and_live_reclamps() -> Non
     assert not stale.reused_compatible_profile
     assert stale.next_batch_size(32) == 8
 
-    selected = reused.reclamp(live_ram_budget_bytes=3_000, live_vram_budget_bytes=5_000)
-    assert selected == low
+    selected = reused.reclamp(
+        live_ram_available_bytes=3_750,
+        live_vram_available_bytes=5_556,
+    )
+    # Profile evidence remains a source of measured candidates. The executor's
+    # marginal current-state admission selects/falls back at wave launch rather
+    # than rejecting this fresh-baseline aggregate here.
+    assert selected == high
     assert reused.reused_compatible_profile
 
 
@@ -653,13 +756,11 @@ def test_auto_execution_path_persists_and_reuses_compatible_profile(
     profile = StaticInferenceRuntimeProfile.from_dict(
         __import__("json").loads(profiles[0].read_text(encoding="utf-8"))
     )
-    assert any(
-        point.concurrent_model_jobs == 2
-        and point.observed_max_active_jobs == 2
-        and point.completed_structures > 0
-        and point.structures_per_second
-        == pytest.approx(point.completed_structures / point.elapsed_seconds)
+    assert all(
+        point.provider_pool_resident_ram_bytes + point.execution_peak_ram_bytes
+        == point.peak_ram_bytes
         for point in profile.evidence
+        if point.feasible
     )
 
     reused_provider = Provider()

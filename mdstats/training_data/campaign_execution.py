@@ -2571,6 +2571,22 @@ def _predict_model_on_atoms(
             live_vram_budget_bytes=(
                 resources.gpu.budget_bytes if uses_cuda else None
             ),
+            ram_policy_fraction=float(active_execution.ram_fraction),
+            vram_policy_fraction=float(active_execution.gpu_memory_fraction),
+            estimated_provider_resident_ram_bytes=max(
+                1,
+                int(resources.ram_budget_bytes)
+                // max(1, int(active_execution.selected_concurrent_model_jobs)),
+            ),
+            estimated_provider_resident_vram_bytes=(
+                None
+                if not uses_cuda or resources.gpu.budget_bytes is None
+                else max(
+                    1,
+                    int(resources.gpu.budget_bytes)
+                    // max(1, int(active_execution.selected_concurrent_model_jobs)),
+                )
+            ),
             cold_start_batch_size=int(active_execution.selected_batch_size),
             compatible_profile=compatible_profile,
         )

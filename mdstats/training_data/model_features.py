@@ -61,9 +61,9 @@ MACE_DESCRIPTOR_POLICY_VERSION = "mdstats.mlff-data6.mace-descriptor.2026-08.v2"
 MACE_ADAPTER_VERSION = "mdstats.mlff-data6.mace-calculator.2026-08.v2"
 MACE_MONITOR_GRAPH_CACHE_SCHEMA = "mdstats.mace-monitor-graph-cache.v1"
 MACE_MONITOR_GRAPH_POLICY_VERSION = "mdstats.mlff-opt-eval3.graph.2026-08.v1"
-STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA = "mdstats.static-inference-runtime-profile.v3"
+STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA = "mdstats.static-inference-runtime-profile.v4"
 STATIC_INFERENCE_EVIDENCE_SEMANTICS = (
-    "persistent-provider-residency-plus-steady-state-execution-peak.v3"
+    "persistent-provider-residency-plus-steady-state-execution-peak.v4"
 )
 
 
@@ -2506,6 +2506,40 @@ class StaticInferenceOperatingPointEvidence:
                 raise TrainingDataInputError(
                     "Static inference throughput must equal completed work / joint wall time."
                 )
+        if self.feasible:
+            if int(self.peak_ram_bytes) != (
+                int(self.provider_pool_resident_ram_bytes)
+                + int(self.execution_peak_ram_bytes)
+            ):
+                raise TrainingDataInputError(
+                    "Feasible static inference RAM evidence must equal residency plus execution peak."
+                )
+            if self.peak_vram_bytes is not None:
+                if (
+                    self.provider_pool_resident_vram_bytes is None
+                    or self.execution_peak_vram_bytes is None
+                    or int(self.peak_vram_bytes) != (
+                        int(self.provider_pool_resident_vram_bytes)
+                        + int(self.execution_peak_vram_bytes)
+                    )
+                ):
+                    raise TrainingDataInputError(
+                        "Feasible static inference VRAM evidence must equal residency plus execution peak."
+                    )
+            if int(self.concurrent_model_jobs) == 1 and int(
+                self.provider_pool_resident_ram_bytes
+            ) != 0:
+                raise TrainingDataInputError(
+                    "One-job static inference evidence cannot retain private-provider residency."
+                )
+            if (
+                int(self.concurrent_model_jobs) == 1
+                and self.peak_vram_bytes is not None
+                and int(self.provider_pool_resident_vram_bytes or 0) != 0
+            ):
+                raise TrainingDataInputError(
+                    "One-job static inference evidence cannot retain private-provider VRAM residency."
+                )
         object.__setattr__(self, "batch_size", int(self.batch_size))
         object.__setattr__(self, "concurrent_model_jobs", int(self.concurrent_model_jobs))
         object.__setattr__(self, "structures_per_second", float(self.structures_per_second))
@@ -2552,6 +2586,26 @@ class StaticInferenceOperatingPointEvidence:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "StaticInferenceOperatingPointEvidence":
+        if bool(payload.get("feasible", True)):
+            required = (
+                "provider_pool_resident_ram_bytes",
+                "execution_peak_ram_bytes",
+            )
+            missing = [name for name in required if name not in payload]
+            if payload.get("peak_vram_bytes") is not None:
+                missing.extend(
+                    name
+                    for name in (
+                        "provider_pool_resident_vram_bytes",
+                        "execution_peak_vram_bytes",
+                    )
+                    if name not in payload
+                )
+            if missing:
+                raise TrainingDataSerializationError(
+                    "Feasible v4 static-inference evidence omits required resource components: "
+                    + ", ".join(missing)
+                )
         return cls(
             batch_size=int(payload["batch_size"]),
             concurrent_model_jobs=int(payload["concurrent_model_jobs"]),
@@ -2662,7 +2716,14 @@ class StaticInferenceRuntimeProfile:
             return None
         try:
             result = cls.from_dict(json.loads(candidate.read_text(encoding="utf-8")))
-        except (OSError, ValueError, KeyError, TypeError, TrainingDataInputError):
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            TrainingDataInputError,
+            TrainingDataSerializationError,
+        ):
             return None
         return (
             result
@@ -2701,6 +2762,10 @@ class StaticInferenceRuntimeAuthority:
         maximum_concurrent_model_jobs: int,
         live_ram_budget_bytes: int,
         live_vram_budget_bytes: int | None,
+        ram_policy_fraction: float = 0.80,
+        vram_policy_fraction: float = 0.90,
+        estimated_provider_resident_ram_bytes: int | None = None,
+        estimated_provider_resident_vram_bytes: int | None = None,
         cold_start_batch_size: int = 8,
         throughput_tolerance_fraction: float = 0.05,
         compatible_profile: StaticInferenceRuntimeProfile | None = None,
@@ -2714,12 +2779,20 @@ class StaticInferenceRuntimeAuthority:
         self.live_vram_budget_bytes = (
             None if live_vram_budget_bytes is None else int(live_vram_budget_bytes)
         )
+        self.initial_incremental_ram_cap_bytes = int(live_ram_budget_bytes)
+        self.initial_incremental_vram_cap_bytes = (
+            None if live_vram_budget_bytes is None else int(live_vram_budget_bytes)
+        )
+        self.ram_policy_fraction = float(ram_policy_fraction)
+        self.vram_policy_fraction = float(vram_policy_fraction)
         self.throughput_tolerance_fraction = float(throughput_tolerance_fraction)
         if (
             self.maximum_batch_size <= 0
             or self.maximum_concurrent_model_jobs <= 0
             or self.live_ram_budget_bytes <= 0
             or (self.live_vram_budget_bytes is not None and self.live_vram_budget_bytes <= 0)
+            or not 0.0 < self.ram_policy_fraction <= 1.0
+            or not 0.0 < self.vram_policy_fraction <= 1.0
             or not 0.0 <= self.throughput_tolerance_fraction < 1.0
         ):
             raise TrainingDataInputError("Static inference runtime authority limits are invalid.")
@@ -2737,6 +2810,27 @@ class StaticInferenceRuntimeAuthority:
             value //= 2
         self.candidate_batch_sizes = tuple(dict.fromkeys((*ascending, *descending, 1)))
         self.learned_safe_batch_ceiling = self.maximum_batch_size
+        # This estimate is deliberately independent of a one-job execution
+        # transient.  It is the conservative outer-envelope fallback until a
+        # private shell has actually been measured by the executor.
+        self.estimated_provider_resident_ram_bytes = max(
+            1,
+            int(estimated_provider_resident_ram_bytes)
+            if estimated_provider_resident_ram_bytes is not None
+            else int(live_ram_budget_bytes) // self.maximum_concurrent_model_jobs,
+        )
+        self.estimated_provider_resident_vram_bytes = (
+            None
+            if self.initial_incremental_vram_cap_bytes is None
+            else max(
+                1,
+                int(estimated_provider_resident_vram_bytes)
+                if estimated_provider_resident_vram_bytes is not None
+                else int(self.initial_incremental_vram_cap_bytes)
+                // self.maximum_concurrent_model_jobs,
+            )
+        )
+        self.failed_provider_concurrency: set[int] = set()
         self.evidence: list[StaticInferenceOperatingPointEvidence] = []
         self.selected_point: StaticInferenceOperatingPointEvidence | None = None
         self.reused_compatible_profile = False
@@ -2767,27 +2861,69 @@ class StaticInferenceRuntimeAuthority:
             and point.batch_size <= self.learned_safe_batch_ceiling
             and point.batch_size <= self.maximum_batch_size
             and point.concurrent_model_jobs <= self.maximum_concurrent_model_jobs
-            and point.peak_ram_bytes <= self.live_ram_budget_bytes
+            and point.peak_ram_bytes <= self.initial_incremental_ram_cap_bytes
             and (
-                self.live_vram_budget_bytes is None
+                self.initial_incremental_vram_cap_bytes is None
                 or point.peak_vram_bytes is not None
-                and point.peak_vram_bytes <= self.live_vram_budget_bytes
+                and point.peak_vram_bytes <= self.initial_incremental_vram_cap_bytes
+            )
+            and not any(
+                point.concurrent_model_jobs >= failed
+                for failed in self.failed_provider_concurrency
             )
         )
 
     def admits_requirement(
-        self, *, ram_bytes: int, vram_bytes: int | None
+        self,
+        *,
+        ram_bytes: int,
+        vram_bytes: int | None,
+        concurrent_model_jobs: int = 1,
     ) -> bool:
         """Return whether a fresh live budget admits a material transition."""
 
         return bool(
             int(ram_bytes) <= self.live_ram_budget_bytes
             and (
-                self.live_vram_budget_bytes is None
+                (
+                    self.initial_incremental_vram_cap_bytes is None
+                )
                 or vram_bytes is not None
+                and self.live_vram_budget_bytes is not None
                 and int(vram_bytes) <= self.live_vram_budget_bytes
+                or (
+                    int(concurrent_model_jobs) <= 1
+                    and (
+                        vram_bytes is None
+                        or self.live_vram_budget_bytes is None
+                    )
+                )
             )
         )
+
+    def provider_residency_estimate(self) -> tuple[int, int | None]:
+        """Return the conservative next-private-slot residency estimate."""
+
+        return (
+            int(self.estimated_provider_resident_ram_bytes),
+            None
+            if self.estimated_provider_resident_vram_bytes is None
+            else int(self.estimated_provider_resident_vram_bytes),
+        )
+
+    def observe_provider_residency(self, *, ram_bytes: int, vram_bytes: int | None) -> None:
+        """Tighten the next-slot estimate without ever substituting zero."""
+
+        self.estimated_provider_resident_ram_bytes = max(
+            self.estimated_provider_resident_ram_bytes, max(1, int(ram_bytes))
+        )
+        if self.initial_incremental_vram_cap_bytes is not None:
+            if vram_bytes is None:
+                self.estimated_provider_resident_vram_bytes = None
+            elif self.estimated_provider_resident_vram_bytes is not None:
+                self.estimated_provider_resident_vram_bytes = max(
+                    self.estimated_provider_resident_vram_bytes, max(1, int(vram_bytes))
+                )
 
     def _select(self) -> StaticInferenceOperatingPointEvidence | None:
         safe = tuple(point for point in self.evidence if self._safe(point))
@@ -2849,24 +2985,46 @@ class StaticInferenceRuntimeAuthority:
             for concurrent in jobs
             for batch in self.candidate_batch_sizes
             if batch <= self.learned_safe_batch_ceiling
+            and not any(concurrent >= failed for failed in self.failed_provider_concurrency)
             and batch * concurrent <= available
             and (batch, concurrent) not in measured
         )
 
     def record(self, point: StaticInferenceOperatingPointEvidence) -> None:
         self.evidence.append(point)
-        if not point.feasible and point.failure_kind == "oom":
+        if not point.feasible and point.failure_kind == "execution-oom":
             self.learned_safe_batch_ceiling = min(
                 self.learned_safe_batch_ceiling, max(1, point.batch_size // 2)
             )
+        if not point.feasible and point.failure_kind == "provider-pool-oom":
+            self.failed_provider_concurrency.add(int(point.concurrent_model_jobs))
         self._select()
 
     def reclamp(
-        self, *, live_ram_budget_bytes: int, live_vram_budget_bytes: int | None
+        self,
+        *,
+        live_ram_available_bytes: int,
+        live_vram_available_bytes: int | None,
     ) -> StaticInferenceOperatingPointEvidence | None:
-        self.live_ram_budget_bytes = int(live_ram_budget_bytes)
+        self.live_ram_budget_bytes = max(
+            1,
+            min(
+                self.initial_incremental_ram_cap_bytes,
+                math.floor(int(live_ram_available_bytes) * self.ram_policy_fraction),
+            ),
+        )
         self.live_vram_budget_bytes = (
-            None if live_vram_budget_bytes is None else int(live_vram_budget_bytes)
+            None
+            if live_vram_available_bytes is None
+            else max(
+                1,
+                min(
+                    int(self.initial_incremental_vram_cap_bytes or 0),
+                    math.floor(
+                        int(live_vram_available_bytes) * self.vram_policy_fraction
+                    ),
+                ),
+            )
         )
         return self._select()
 
@@ -2968,6 +3126,20 @@ class StaticMaceInferenceExecutor:
         except Exception:
             return
 
+    def _synchronize_device(self) -> None:
+        """Make the executor's timing boundary include completed CUDA work."""
+
+        if not self.device.startswith("cuda"):
+            return
+        try:
+            import torch
+
+            torch.cuda.synchronize(self.device)
+        except Exception:
+            # Providers may be CPU-backed test doubles with a CUDA-labelled
+            # policy. Actual CUDA failures are still reported by prediction.
+            return
+
     def close(self) -> None:
         if self._closed:
             return
@@ -3012,7 +3184,9 @@ class StaticMaceInferenceExecutor:
             self._provider_pool_resident_vram_bytes.pop()
             self._close_provider(provider)
 
-    def _ensure_provider_pool(self, jobs: int) -> None:
+    def _ensure_provider_pool(
+        self, jobs: int, *, admit_next_slot: Callable[[], bool] | None = None
+    ) -> None:
         target = max(1, int(jobs))
         if target <= len(self._provider_pool):
             return
@@ -3025,6 +3199,10 @@ class StaticMaceInferenceExecutor:
         accepted = len(self._provider_pool)
         try:
             while len(self._provider_pool) < target:
+                if admit_next_slot is not None and not admit_next_slot():
+                    raise TrainingDataInputError(
+                        "Live RAM/VRAM headroom does not admit the next private provider slot."
+                    )
                 monitor = _StaticInferenceResourceMonitor(self.device)
                 monitor.start()
                 provider: Any | None = None
@@ -3041,6 +3219,10 @@ class StaticMaceInferenceExecutor:
                 self._provider_pool_resident_vram_bytes.append(
                     None if growth_vram is None else max(0, int(growth_vram))
                 )
+                if self.runtime_authority is not None:
+                    self.runtime_authority.observe_provider_residency(
+                        ram_bytes=max(0, int(growth_ram)), vram_bytes=growth_vram
+                    )
         except BaseException:
             self._retire_private_providers(keep_jobs=accepted)
             self._release_cuda_cache()
@@ -3106,7 +3288,7 @@ class StaticMaceInferenceExecutor:
                             peak_ram_bytes=peak_ram,
                             peak_vram_bytes=peak_vram,
                             feasible=False,
-                            failure_kind="oom",
+                            failure_kind="execution-oom",
                         )
                     )
                 if self.oom_backoff_count >= self.maximum_oom_backoffs:
@@ -3121,6 +3303,7 @@ class StaticMaceInferenceExecutor:
                 if monitor is not None:
                     monitor.finish()
                 raise
+            self._synchronize_device()
             elapsed = max(time.perf_counter() - started, 1.0e-12)
             peak_ram, peak_vram = (
                 monitor.finish() if monitor is not None else (0, None)
@@ -3143,6 +3326,12 @@ class StaticMaceInferenceExecutor:
                         completed_structures=batch_size,
                         elapsed_seconds=elapsed,
                         observed_max_active_jobs=1,
+                        provider_pool_resident_ram_bytes=0,
+                        provider_pool_resident_vram_bytes=(
+                            None if peak_vram is None else 0
+                        ),
+                        execution_peak_ram_bytes=peak_ram,
+                        execution_peak_vram_bytes=peak_vram,
                     )
                 )
         if self.runtime_authority is not None and self.runtime_authority.selected_point is not None:
@@ -3169,7 +3358,10 @@ class StaticMaceInferenceExecutor:
         batch, jobs = int(batch_size), int(concurrent_jobs)
         if batch <= 0 or jobs <= 0 or len(values) != batch * jobs:
             raise TrainingDataInputError("Joint static inference wave dimensions are invalid.")
-        self._ensure_provider_pool(jobs)
+        if len(self._provider_pool) < jobs:
+            raise TrainingDataInputError(
+                "Joint static inference wave requires an already admitted provider pool."
+            )
         ready = Barrier(jobs)
         active_ready = Barrier(jobs)
         active_lock = Lock()
@@ -3220,6 +3412,7 @@ class StaticMaceInferenceExecutor:
         except BaseException:
             monitor.finish()
             raise
+        self._synchronize_device()
         elapsed = max(time.perf_counter() - started, 1.0e-12)
         execution_ram, execution_vram = monitor.finish()
         resident_ram = self.provider_pool_resident_ram_bytes
@@ -3261,121 +3454,136 @@ class StaticMaceInferenceExecutor:
             raise TrainingDataInputError("Static inference geometry identity count mismatch.")
 
         def reclamp_live() -> StaticInferenceOperatingPointEvidence | None:
-            ram_budget = authority.live_ram_budget_bytes
+            """Resolve one post-base-provider incremental coordinate snapshot."""
+
             try:
                 from .resources import available_memory_bytes
 
-                available = available_memory_bytes()
-                if available is not None:
-                    ram_budget = min(ram_budget, int(available))
+                ram_available = available_memory_bytes()
             except Exception:
-                pass
-            vram_budget = authority.live_vram_budget_bytes
-            if vram_budget is not None and self.device.startswith("cuda"):
+                ram_available = None
+            if ram_available is None:
+                # Host telemetry was required when the authority was created.
+                # Retaining its last conservative cap is safer than inventing a
+                # larger current value when a later probe is transiently absent.
+                ram_available = max(
+                    1, math.floor(authority.live_ram_budget_bytes / authority.ram_policy_fraction)
+                )
+            vram_available: int | None = None
+            if authority.initial_incremental_vram_cap_bytes is not None:
                 try:
                     from .training_parallel import query_gpu_telemetry
 
                     sample = query_gpu_telemetry(self.device)
                     if sample is not None:
-                        vram_budget = min(vram_budget, int(sample.free_bytes))
+                        vram_available = int(sample.free_bytes)
                 except Exception:
-                    pass
+                    vram_available = None
             return authority.reclamp(
-                live_ram_budget_bytes=ram_budget,
-                live_vram_budget_bytes=vram_budget,
+                live_ram_available_bytes=int(ram_available),
+                live_vram_available_bytes=vram_available,
             )
 
-        def fresh_admission(batch: int, jobs: int) -> bool:
-            """Re-read live resources immediately before every material transition."""
-
-            reclamp_live()
-            known = next(
+        def point_for(batch: int, jobs: int) -> StaticInferenceOperatingPointEvidence | None:
+            return next(
                 (
                     point
                     for point in authority.evidence
                     if point.feasible
-                    and point.batch_size == batch
-                    and point.concurrent_model_jobs == jobs
+                    and point.batch_size == int(batch)
+                    and point.concurrent_model_jobs == int(jobs)
                 ),
                 None,
             )
+
+        def marginal_requirement(batch: int, jobs: int) -> tuple[int, int | None]:
+            """Return remaining pool growth plus the selected wave transient."""
+
+            known = point_for(batch, jobs)
+            single = point_for(batch, 1)
+            current_ram = self.provider_pool_resident_ram_bytes
+            current_vram = self.provider_pool_resident_vram_bytes
             if known is not None:
-                return authority.admits_requirement(
-                    ram_bytes=known.peak_ram_bytes,
-                    vram_bytes=known.peak_vram_bytes,
+                target_ram = known.provider_pool_resident_ram_bytes
+                target_vram = known.provider_pool_resident_vram_bytes
+                execution_ram = known.execution_peak_ram_bytes
+                execution_vram = known.execution_peak_vram_bytes
+            else:
+                estimated_ram, estimated_vram = authority.provider_residency_estimate()
+                additional = max(0, int(jobs) - self.resident_provider_pool_size)
+                target_ram = current_ram + additional * estimated_ram
+                target_vram = (
+                    None
+                    if current_vram is None or estimated_vram is None
+                    else current_vram + additional * estimated_vram
                 )
-            resident_ram = self.provider_pool_resident_ram_bytes
-            resident_vram = self.provider_pool_resident_vram_bytes
-            # A prior growth observation is the conservative estimate for the
-            # next private shell.  Before the first growth, the only honest
-            # known cost is the resident baseline, which is still rechecked.
-            private_ram = max(self._provider_pool_resident_ram_bytes[1:], default=0)
-            private_vram_values = [
-                value for value in self._provider_pool_resident_vram_bytes[1:]
-                if value is not None
-            ]
-            private_vram = max(private_vram_values, default=None)
-            additional = max(0, int(jobs) - self.resident_provider_pool_size)
-            # J=1 is evaluated for every batch before any larger J.  Its
-            # aggregate observation is the conservative bootstrap estimate for
-            # the first unknown private shell, so pool growth never relies on a
-            # zero-cost assumption merely because no clone has been built yet.
-            single = next(
-                (
-                    point for point in authority.evidence
-                    if point.feasible
-                    and point.batch_size == batch
-                    and point.concurrent_model_jobs == 1
-                ),
-                None,
+                execution_ram = 0 if single is None else single.execution_peak_ram_bytes
+                execution_vram = None if single is None else single.execution_peak_vram_bytes
+            ram = max(0, int(target_ram) - current_ram) + int(execution_ram)
+            vram = (
+                None
+                if target_vram is None or current_vram is None or execution_vram is None
+                else max(0, int(target_vram) - int(current_vram)) + int(execution_vram)
             )
-            if single is not None:
-                private_ram = max(private_ram, single.peak_ram_bytes)
-                if single.peak_vram_bytes is not None:
-                    private_vram = max(
-                        0 if private_vram is None else private_vram,
-                        single.peak_vram_bytes,
-                    )
-            execution_ram = 0 if single is None else single.peak_ram_bytes
-            execution_vram = None if single is None else single.peak_vram_bytes
-            projected_ram = resident_ram + execution_ram + additional * private_ram
-            projected_vram = (
-                ((0 if resident_vram is None else resident_vram)
-                 + (0 if execution_vram is None else execution_vram))
-                if additional == 0
-                else None
-                if private_vram is None or resident_vram is None or execution_vram is None
-                else resident_vram + execution_vram + additional * private_vram
-            )
+            return ram, vram
+
+        def fresh_admission(batch: int, jobs: int) -> bool:
+            reclamp_live()
+            ram, vram = marginal_requirement(batch, jobs)
             return authority.admits_requirement(
-                ram_bytes=projected_ram, vram_bytes=projected_vram
+                ram_bytes=ram, vram_bytes=vram, concurrent_model_jobs=jobs
             )
+
+        def record_failure(batch: int, jobs: int, failure_kind: str) -> None:
+            authority.record(
+                StaticInferenceOperatingPointEvidence(
+                    batch_size=batch,
+                    concurrent_model_jobs=jobs,
+                    structures_per_second=0.0,
+                    peak_ram_bytes=self.provider_pool_resident_ram_bytes,
+                    peak_vram_bytes=self.provider_pool_resident_vram_bytes,
+                    feasible=False,
+                    failure_kind=failure_kind,
+                )
+            )
+
+        def prepare_wave(batch: int, jobs: int) -> str | None:
+            # A smaller operating point must not inherit a larger explored
+            # pool's residency. Retire first so its marginal requirement is
+            # interpreted in that point's own coordinate.
+            self._retire_private_providers(keep_jobs=jobs)
+            if not fresh_admission(batch, jobs):
+                return "live-resource"
+            try:
+                self._ensure_provider_pool(
+                    jobs,
+                    admit_next_slot=lambda: fresh_admission(batch, jobs),
+                )
+            except BaseException as exc:
+                if isinstance(exc, TrainingDataInputError) and "next private provider slot" in str(exc):
+                    return "live-resource"
+                if self._is_oom(exc):
+                    self._release_cuda_cache()
+                    return "provider-pool-oom"
+                raise
+            # Materialization itself can consume more than the conservative
+            # estimate. Re-clamp and admit the transient immediately before the
+            # worker barrier is entered.
+            return None if fresh_admission(batch, jobs) else "live-resource"
 
         reclamp_live()
 
         if not authority.reused_compatible_profile:
-            failed_concurrency: int | None = None
             for batch, jobs in authority.candidate_operating_points(
                 available_structures=len(values),
                 concurrency_available=self.provider_factory is not None,
             ):
                 if batch > authority.learned_safe_batch_ceiling:
                     continue
-                if failed_concurrency is not None and jobs >= failed_concurrency:
-                    continue
                 count = batch * jobs
-                if not fresh_admission(batch, jobs):
-                    authority.record(
-                        StaticInferenceOperatingPointEvidence(
-                            batch_size=batch, concurrent_model_jobs=jobs,
-                            structures_per_second=0.0,
-                            peak_ram_bytes=self.provider_pool_resident_ram_bytes,
-                            peak_vram_bytes=self.provider_pool_resident_vram_bytes,
-                            feasible=False, failure_kind="live-resource",
-                        )
-                    )
-                    if jobs > 1:
-                        failed_concurrency = jobs
+                failure = prepare_wave(batch, jobs)
+                if failure is not None:
+                    record_failure(batch, jobs, failure)
                     continue
                 try:
                     wave = self._run_joint_wave(
@@ -3387,22 +3595,8 @@ class StaticMaceInferenceExecutor:
                 except BaseException as exc:
                     if not self._is_oom(exc):
                         raise
-                    authority.record(
-                        StaticInferenceOperatingPointEvidence(
-                            batch_size=batch, concurrent_model_jobs=jobs,
-                            structures_per_second=0.0,
-                            peak_ram_bytes=self.provider_pool_resident_ram_bytes,
-                            peak_vram_bytes=self.provider_pool_resident_vram_bytes,
-                            feasible=False, failure_kind="oom",
-                        )
-                    )
+                    record_failure(batch, jobs, "execution-oom")
                     self._release_cuda_cache()
-                    if jobs > 1:
-                        failed_concurrency = jobs
-                    else:
-                        authority.learned_safe_batch_ceiling = min(
-                            authority.learned_safe_batch_ceiling, max(1, batch // 2)
-                        )
                     continue
                 (
                     _, elapsed, peak_ram, peak_vram, observed, safe_ceiling, backoffs,
@@ -3410,90 +3604,104 @@ class StaticMaceInferenceExecutor:
                 ) = wave
                 feasible = backoffs == 0 and safe_ceiling >= batch
                 completed = count if feasible else 0
-                point = StaticInferenceOperatingPointEvidence(
-                    batch_size=batch,
-                    concurrent_model_jobs=jobs,
-                    structures_per_second=completed / elapsed if completed else 0.0,
-                    peak_ram_bytes=peak_ram,
-                    peak_vram_bytes=peak_vram,
-                    feasible=feasible,
-                    failure_kind=None if feasible else "oom",
-                    completed_structures=completed,
-                    elapsed_seconds=elapsed if completed else 0.0,
-                    observed_max_active_jobs=observed,
-                    provider_pool_resident_ram_bytes=resident_ram,
-                    provider_pool_resident_vram_bytes=resident_vram,
-                    execution_peak_ram_bytes=execution_ram,
-                    execution_peak_vram_bytes=execution_vram,
+                authority.record(
+                    StaticInferenceOperatingPointEvidence(
+                        batch_size=batch,
+                        concurrent_model_jobs=jobs,
+                        structures_per_second=completed / elapsed if completed else 0.0,
+                        peak_ram_bytes=peak_ram,
+                        peak_vram_bytes=peak_vram,
+                        feasible=feasible,
+                        failure_kind=None if feasible else "execution-oom",
+                        completed_structures=completed,
+                        elapsed_seconds=elapsed if completed else 0.0,
+                        observed_max_active_jobs=observed,
+                        provider_pool_resident_ram_bytes=resident_ram,
+                        provider_pool_resident_vram_bytes=resident_vram,
+                        execution_peak_ram_bytes=execution_ram,
+                        execution_peak_vram_bytes=execution_vram,
+                    )
                 )
-                authority.record(point)
-                if not feasible:
-                    authority.learned_safe_batch_ceiling = min(
-                        authority.learned_safe_batch_ceiling, safe_ceiling
-                    )
-                    authority._select()
-                elif not authority._safe(point) and jobs == 1:
-                    # Do not probe larger batches or any concurrency after a
-                    # one-job point breaches the live resource envelope. Reduce
-                    # toward the minimum required work unit; batch-one failure
-                    # proves zero future admission and is terminal.
-                    if batch == 1:
-                        raise TrainingDataInputError(
-                            "Measured one-job static inference demand exceeds the live "
-                            "RAM/VRAM envelope; no future prediction is admissible."
-                        )
-                    authority.learned_safe_batch_ceiling = min(
-                        authority.learned_safe_batch_ceiling, max(1, batch // 2)
-                    )
 
-        selected = authority._select()
-        if selected is None:
-            raise TrainingDataInputError(
-                "No actually measured static inference operating point fits the live resource envelope."
+        def select_available(
+            excluded: set[tuple[int, int]], remaining: int
+        ) -> StaticInferenceOperatingPointEvidence | None:
+            candidates = [
+                point
+                for point in authority.evidence
+                if authority._safe(point)
+                and (point.batch_size, point.concurrent_model_jobs) not in excluded
+                and point.batch_size * point.concurrent_model_jobs <= remaining
+            ]
+            if not candidates:
+                return None
+            peak = max(point.structures_per_second for point in candidates)
+            floor = peak * (1.0 - authority.throughput_tolerance_fraction)
+            return min(
+                (point for point in candidates if point.structures_per_second >= floor),
+                key=lambda point: (
+                    point.peak_ram_bytes,
+                    -1 if point.peak_vram_bytes is None else point.peak_vram_bytes,
+                    point.concurrent_model_jobs,
+                    point.batch_size,
+                    -point.structures_per_second,
+                ),
             )
-        self._retire_private_providers(keep_jobs=selected.concurrent_model_jobs)
+
         result: list[AtomicModelPrediction] = []
         position = 0
         while position < len(values):
-            selected = reclamp_live()
-            if selected is None:
-                raise TrainingDataInputError(
-                    "Live RAM/VRAM headroom no longer admits one measured static inference point."
-                )
             remaining = len(values) - position
-            jobs = min(selected.concurrent_model_jobs, remaining // selected.batch_size)
-            if jobs == 0:
-                # A tail cannot claim the selected joint operating point.
-                saved = self.runtime_authority
-                self.runtime_authority = None
+            excluded: set[tuple[int, int]] = set()
+            while True:
+                selected = select_available(excluded, remaining)
+                if selected is None:
+                    raise TrainingDataInputError(
+                        "no future prediction is admissible from the measured static inference operating points."
+                    )
+                jobs = min(selected.concurrent_model_jobs, remaining // selected.batch_size)
+                if jobs == 0:
+                    saved = self.runtime_authority
+                    self.runtime_authority = None
+                    try:
+                        result.extend(self._predict_owned(
+                            values[position:],
+                            geometry_identities=None if identities is None else identities[position:],
+                        ))
+                    finally:
+                        self.runtime_authority = saved
+                    position = len(values)
+                    break
+                failure = prepare_wave(selected.batch_size, jobs)
+                if failure is not None:
+                    record_failure(selected.batch_size, jobs, failure)
+                    excluded.add((selected.batch_size, jobs))
+                    continue
                 try:
-                    result.extend(self._predict_owned(
-                        values[position:],
-                        geometry_identities=None if identities is None else identities[position:],
-                    ))
-                finally:
-                    self.runtime_authority = saved
+                    wave = self._run_joint_wave(
+                        values[position:position + jobs * selected.batch_size],
+                        None if identities is None else identities[position:position + jobs * selected.batch_size],
+                        batch_size=selected.batch_size,
+                        concurrent_jobs=jobs,
+                    )
+                except BaseException as exc:
+                    if not self._is_oom(exc):
+                        raise
+                    record_failure(selected.batch_size, jobs, "execution-oom")
+                    self._release_cuda_cache()
+                    excluded.add((selected.batch_size, jobs))
+                    continue
+                predicted, _, _, _, observed, safe_ceiling, _, _, _, _, _ = wave
+                if observed != jobs:
+                    raise TrainingDataInputError(
+                        "Static inference execution did not realize selected model-job concurrency."
+                    )
+                authority.learned_safe_batch_ceiling = min(
+                    authority.learned_safe_batch_ceiling, safe_ceiling
+                )
+                result.extend(predicted)
+                position += jobs * selected.batch_size
                 break
-            count = jobs * selected.batch_size
-            if not fresh_admission(selected.batch_size, jobs):
-                raise TrainingDataInputError(
-                    "Live RAM/VRAM headroom no longer admits the selected static inference wave."
-                )
-            predicted, _, _, _, observed, safe_ceiling, _, _, _, _, _ = self._run_joint_wave(
-                values[position:position + count],
-                None if identities is None else identities[position:position + count],
-                batch_size=selected.batch_size,
-                concurrent_jobs=jobs,
-            )
-            if observed != jobs:
-                raise TrainingDataInputError(
-                    "Static inference execution did not realize selected model-job concurrency."
-                )
-            authority.learned_safe_batch_ceiling = min(
-                authority.learned_safe_batch_ceiling, safe_ceiling
-            )
-            result.extend(predicted)
-            position += count
         return tuple(result)
 
     def predict(

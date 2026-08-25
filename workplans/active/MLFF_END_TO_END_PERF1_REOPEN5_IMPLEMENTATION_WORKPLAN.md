@@ -421,3 +421,46 @@ Return MLFF-END-TO-END-PERF1 to **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-
 - a distinct fresh assembled production-interface integration passes on the same candidate;
 - genuinely unavailable checks are explicitly recorded;
 - full target-workstation GPU qualification remains deferred as the final release handoff.
+
+## 15. 2026-08-24 implementation record
+
+The executable fifth-reopen resource-semantics delta is implemented on
+`feat/mlff-end-to-end-performance-v1`.
+
+- P5-R2B1: the canonical authority now stores initial incremental caps and
+  recomputes live RAM/VRAM budgets as the configured fraction of current
+  availability. DEPLOY now passes the same post-base incremental GPU envelope
+  as EVAL rather than its pre-base aggregate used-memory ceiling.
+- P5-R2B2: provider growth is admitted one private slot at a time from a
+  conservative provider-residency estimate, observes each retained slot, and
+  re-admits the execution transient after growth and immediately before the
+  worker wave. Warm pools use remaining growth plus execution demand, never a
+  double-charged fresh-profile aggregate.
+- P5-R2B3: execution OOM, provider-pool OOM, and pre-execution live-resource
+  rejection are recorded separately. Provider-pool failures prune concurrency
+  only, and profile reuse falls back through retained measured points.
+- P5-R2C: runtime evidence/profile semantics are now v4. Feasible evidence
+  requires explicit aggregate/component invariants, v1-v3 profiles rebuild,
+  and the executor synchronizes CUDA before stopping steady-state timing.
+
+Fresh focused and affected-surface evidence on this candidate:
+
+- `tests/test_mlff_static_mace_inference.py`: **25 passed**.
+- scheduler, staged-EVAL, DEPLOY, resource, campaign, PES, LOCKED, replay,
+  command-boundary, DYN, RELAX, and restart groups: **209 passed, 1 skipped**
+  (the skip needs an externally supplied LTA training root).
+- Combined non-overlapping affected surface: **234 passed, 1 skipped**.
+
+Unavailable/blocked checks, deliberately not classified as passes:
+
+- The repository-wide `pytest -q` collection is blocked by the pre-existing
+  absent `tests/data/mesh_topology_revision_stage1_cases.json` fixture.
+- No configured real assembled campaign can presently exercise the required
+  preflight -> materialization -> TRAIN/EVAL -> DEPLOY -> PES -> RELAX -> DYN
+  -> selection/publication chain on this candidate.
+- Target-workstation full GPU qualification remains deferred.
+
+Accordingly P5-R2B1/B2/B3/R2C/R5 are implementation-complete with the stated
+affected regression evidence, but P5-R8 and the workplan's functional
+acceptance status remain **ACTIVE** until the separate assembled integration is
+available and terminally classified.
