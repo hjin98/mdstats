@@ -6,15 +6,27 @@ Current MLFF workplans:
 
 - `DATA78_POST_IMPLEMENTATION_CLOSEOUT_WORKPLAN.md` — DATA7/DATA8 post-implementation closeout.
 - `MLCV_LIFECYCLE_AUTHORITY_FIX_WORKPLAN.md` — blocking MLCV lifecycle authority/provenance reconciliation correction for shared training entry, including TARGET-SIZE-V5.
-- `MLFF_FLEXIBLE_FIDELITY_CODEBASE_REWORK3_WORKPLAN.md` — Protocol 5.6-reopened flexible-fidelity Rework 3 closure. Independent review of candidate `45c3cfb65738dbe1b63149cf421f213861fb5cf3` found that partial product fixes were directionally correct but exact persistent `n1/n2/n3/n` frontiers and genuine A/B/C/D1/D2/D3 acceptance were still being satisfied through direct helpers, mocked semantic owners, helper-only consumers, or custom stores. The scientific `(n1,n2,n3)/n` design remains frozen.
-- `MLFF_FLEXIBLE_FIDELITY_CODEBASE_REWORK3_REVIEW1_AMENDMENT.md` — controlling post-implementation amendment for candidate `5d8363517743c6072c6002342561c8629275b659`. It records the reproduced v10 DATA8 predecessor failure, corrects the authority-generation ownership contract, requires authentic v8-study/v6-policy predecessor identity rather than a current-v7 `(3,10,30)` reconstruction, and reopens W2A/W2B proxy-proof acceptance. Read it together with the parent Rework 3 workplan; where more specific, the amendment controls.
+- `MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_WORKPLAN.md` — **controlling target-size design contract** at reviewed head `ea196babecd951491ae4656d3b3e38b8eb866144`. TARGET-SIZE-V5 screening now targets an independent `n3`-horizon successive-fidelity trajectory (default `1 -> 3 -> 10`, horizon 10), while production `n` (default 30) is reserved for a fresh selected-size production campaign. This workplan supersedes conflicting full-`n` screening statements in the Rework-3 files while preserving their nonconflicting candidate-authority, compatibility, continuation, and proxy-proof acceptance requirements.
+- `MLFF_FLEXIBLE_FIDELITY_CODEBASE_REWORK3_WORKPLAN.md` — retained active historical/implementation context for flexible-fidelity Rework 3. Its target-size scientific statements are subordinate to `MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_WORKPLAN.md` wherever they conflict.
+- `MLFF_FLEXIBLE_FIDELITY_CODEBASE_REWORK3_REVIEW1_AMENDMENT.md` — retained Rework-3 authority-bridge and acceptance context. Nonconflicting requirements remain applicable; conflicting target-size full-horizon semantics are superseded by the decoupling workplan.
+- `MLFF_FLEXIBLE_FIDELITY_CODEBASE_REWORK3_REVIEW2_AMENDMENT.md` — retained implementation-review context, including DATA6 restore optimization and acceptance findings. Its statements that screening uses the production full-`n` schedule, that `(3,10,30)/30` is current-valid, or that `/n` is the screen schedule denominator are superseded.
 
-### Flexible-fidelity transition precedence
+### Target-size transition precedence
 
-The accepted flexible-fidelity scientific design remains unchanged. The active Rework 3 file plus its Review 1 amendment are the controlling closure contract and adopt Protocol 5.6 proxy-proof acceptance for the still-open obligations. They supersede prior Rework 3 completion claims as final acceptance authority while preserving parent, Rework 1, Rework 2, and earlier Rework 3 frozen product decisions.
+For TARGET-SIZE-V5, read `MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_WORKPLAN.md` first. Its frozen current design is:
 
-For the reopened acceptance work, a test may fake expensive external training/evaluation only below the required production semantic-owner boundary. It may not mock/bypass that owner and then claim its behavior is accepted. The active workplan and amendment contain the task-specific real-owner, allowed-double, forbidden-substitution, authority-generation, and observable-evidence contracts.
+```text
+0 < n1 < n2 < n3 < n
+screen horizon = n3
+production horizon = n
+screen continuation = exact n1 -> n2 -> n3
+production = fresh post-selection training
+```
 
-Historical records remain in `../archive/` except the reopened Rework 3 workplan and its controlling amendment while they are active. Rework 3 must not return to the archive until the corrected predecessor authority bridge, fresh same-candidate affected regression, genuine assembled A/B/C/D1/D2/D3 acceptance, exact persistent frontier checks, architecture regression protection, and the targeted anti-bypass guard all pass.
+Nonconflicting Rework-3 requirements remain in force, especially policy-independent DATA7/DATA8 candidate-prefix authority, authenticated predecessor-only compatibility, no historical screen/evaluation relabeling, exact checkpoint/optimizer/RNG screen continuation, real-owner/proxy-proof acceptance, and deferred full GPU/production qualification.
 
-Unrelated active performance, lifecycle, scientific, resource, and acceptance workplans remain authoritative. Completed or superseded workplans and retained coordination records belong in `../archive/`.
+For gate-closing acceptance, expensive external training/evaluation may be faked only below the required production semantic-owner boundary. Configuration normalization, `CampaignStore`, target-size construction/migration, DATA8 compatibility, runtime budget/schedule assembly, orchestration/authorization, evidence reduction, restart/invalidation, and screen-to-production consumers must execute for real when their behavior is the claim.
+
+Historical records remain in `../archive/` except active workplans still governing implementation or closeout. Superseded target-size/full-horizon assumptions must not be used as current implementation authority merely because their files remain active for historical dependency/acceptance context.
+
+Unrelated active performance, lifecycle, scientific, resource, and acceptance workplans remain authoritative. Completed or superseded workplans and retained coordination records belong in `../archive/` when their remaining obligations are closed.
