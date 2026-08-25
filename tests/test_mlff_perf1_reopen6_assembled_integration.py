@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Bounded production-orchestration integration for PERF1 resource ownership."""
 
+import json
 from types import SimpleNamespace
 
 import mdstats
@@ -92,10 +93,14 @@ def test_reopen7_campaign_state_and_canonical_static_profile_restart(tmp_path, m
         batch_policy="auto", selected_batch_size=1, maximum_batch_size=2,
         selected_concurrent_model_jobs=2, provider_residency_ram_bytes=1,
     )
-    store.put_record("reopen7_runtime_plan", plan.to_dict())
-    restored_plan = mdstats.InferenceExecutionPlan.from_dict(
-        store.get_payload("reopen7_runtime_plan")
+    plan_key = "inference_execution_plan:deploy:bounded-restart"
+    store.put_record(plan_key, plan.to_dict())
+    restored_plan = campaign_cli._evaluation_inference_execution_plan(
+        {"evaluation": {"inference_batch_policy": "auto", "maximum_inference_batch_size": 2}},
+        store=store,
+        record_key=plan_key,
     )
+    assert store.get_payload(plan_key)["schema"] == "mdstats.inference-execution-plan.v3"
 
     snapshot = SystemResourceSnapshot(
         cpu_threads_available=4, cpu_fraction=0.90, cpu_threads_budget=3,
@@ -127,6 +132,15 @@ def test_reopen7_campaign_state_and_canonical_static_profile_restart(tmp_path, m
         "from_model_path",
         classmethod(lambda cls, *args, **kwargs: Provider()),
     )
+    original_authority = model_features.StaticInferenceRuntimeAuthority
+    compatible_profiles = []
+
+    class RecordingAuthority(original_authority):
+        def __init__(self, *args, **kwargs):
+            compatible_profiles.append(kwargs.get("compatible_profile"))
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(model_features, "StaticInferenceRuntimeAuthority", RecordingAuthority)
     model = tmp_path / "candidate.model"
     model.write_bytes(b"bounded-canonical-model")
     atoms = tuple(
@@ -143,10 +157,15 @@ def test_reopen7_campaign_state_and_canonical_static_profile_restart(tmp_path, m
     )
     profiles = tuple((paths.internal / "static-inference-runtime-profiles").glob("*.json"))
     assert len(profiles) == 1
+    persisted = model_features.StaticInferenceRuntimeProfile.from_dict(
+        json.loads(profiles[0].read_text(encoding="utf-8"))
+    )
+    assert persisted.to_dict()["schema"] == "mdstats.static-inference-runtime-profile.v6"
     second = campaign_execution._predict_model_on_atoms(
         model, atoms, head=None, policy=policy, execution_plan=restored_plan,
         provider=Provider(), graph_cache_directory=graph_cache,
     )
 
     assert [value.energy_ev for value in first] == [value.energy_ev for value in second]
+    assert compatible_profiles == [None, persisted]
     assert campaign_cli.main(["--config", str(config), "status"]) == 0

@@ -219,6 +219,126 @@ def test_historical_inference_execution_plan_v2_validates_exact_shape_then_migra
         mdstats.InferenceExecutionPlan.from_dict(expanded)
 
 
+def test_persisted_v2_execution_plan_is_migrated_by_normal_restart_consumer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A resumed deployment path owns v2 parsing and rewrites its normal record."""
+
+    from dataclasses import replace
+
+    import numpy as np
+    from ase import Atoms
+
+    from mdstats.training_data import campaign_execution, model_features, resources
+    from mdstats.training_data.model_features import AtomicModelPrediction
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    store = campaign_cli.CampaignStore(tmp_path / "campaign.sqlite3")
+    key = "inference_execution_plan:deploy:resumed-run"
+    legacy = {
+        "schema": "mdstats.inference-execution-plan.v2",
+        "batch_policy": "auto",
+        "selected_batch_size": 8,
+        "maximum_batch_size": 32,
+        "selected_concurrent_model_jobs": 2,
+        "cpu_fraction": 0.75,
+        "ram_fraction": 0.80,
+        "gpu_memory_fraction": 0.85,
+        "graph_cache_enabled": False,
+        "monitor_cache_enabled": True,
+        "prediction_cache_enabled": False,
+        "rationale": ["persisted-before-reopen6"],
+    }
+    legacy["execution_digest"] = digest(legacy)
+    store.put_record(key, legacy)
+
+    resumed = campaign_core._evaluation_inference_execution_plan(
+        {"evaluation": {"inference_batch_policy": "auto", "maximum_inference_batch_size": 32}},
+        store=store,
+        record_key=key,
+    )
+
+    assert resumed.provider_residency_ram_bytes is None
+    assert resumed.provider_residency_vram_bytes is None
+    assert resumed.selected_concurrent_model_jobs == 2
+    assert resumed.to_dict()["schema"] == "mdstats.inference-execution-plan.v3"
+    assert store.get_payload(key) == resumed.to_dict()
+    # A second normal restart consumes the current record rather than rebuilding
+    # inferred residency from historical v2 fields that never existed.
+    assert campaign_core._evaluation_inference_execution_plan(
+        {"evaluation": {"inference_batch_policy": "auto", "maximum_inference_batch_size": 32}},
+        store=store,
+        record_key=key,
+    ) == resumed
+
+    snapshot = SystemResourceSnapshot(
+        cpu_threads_available=4, cpu_fraction=0.75, cpu_threads_budget=3,
+        ram_available_bytes=1 << 30, ram_fraction=0.80, ram_budget_bytes=1 << 29,
+        gpu_memory_fraction=0.85,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+    monkeypatch.setattr(resources, "detect_system_resources", lambda **_: snapshot)
+    private_provider_creations: list[object] = []
+
+    class Provider:
+        def set_head(self, _head):
+            pass
+
+        def predict_batch(self, atoms, **_):
+            return tuple(
+                AtomicModelPrediction(
+                    energy_ev=float(index),
+                    forces_ev_per_angstrom=np.zeros((2, 3)),
+                    stress_ev_per_angstrom3=np.zeros((3, 3)),
+                )
+                for index, _ in enumerate(atoms)
+            )
+
+        def close(self):
+            pass
+
+    def private_provider(*_args, **_kwargs):
+        private_provider_creations.append(object())
+        return Provider()
+
+    monkeypatch.setattr(
+        model_features.MaceCalculatorProvider,
+        "from_model_path",
+        classmethod(lambda cls, *args, **kwargs: private_provider(*args, **kwargs)),
+    )
+    model = tmp_path / "candidate.model"
+    model.write_bytes(b"persisted-v2-static-consumer")
+    atoms = tuple(Atoms("H2", positions=[[0, 0, 0], [0, 0, 0.7]]) for _ in range(4))
+    policy = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), device="cpu", default_dtype="float64"
+    )
+    # V2 had no provider-residency authority: its normal migrated consumer must
+    # enter the canonical static path without materializing J>1 private shells.
+    assert len(campaign_execution._predict_model_on_atoms(
+        model, atoms, head=None, policy=policy, execution_plan=resumed, provider=Provider()
+    )) == len(atoms)
+    assert private_provider_creations == []
+    # Current planning can independently supply conservative residency before it
+    # enables J>1; no historical field is manufactured to reach this branch.
+    current_with_residency = replace(resumed, provider_residency_ram_bytes=1)
+    assert len(campaign_execution._predict_model_on_atoms(
+        model, atoms, head=None, policy=policy,
+        execution_plan=current_with_residency, provider=Provider()
+    )) == len(atoms)
+    assert len(private_provider_creations) == 1
+
+    corrupted_key = "inference_execution_plan:deploy:corrupted-run"
+    corrupted = dict(legacy)
+    corrupted["selected_batch_size"] = 16
+    store.put_record(corrupted_key, corrupted)
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="legacy v2 digest mismatch"):
+        campaign_core._evaluation_inference_execution_plan(
+            {"evaluation": {"inference_batch_policy": "auto", "maximum_inference_batch_size": 32}},
+            store=store,
+            record_key=corrupted_key,
+        )
+
+
 def test_runtime_variants_leave_scientific_policy_and_metrics_unchanged() -> None:
     import numpy as np
     from ase import Atoms

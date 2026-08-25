@@ -61,9 +61,9 @@ MACE_DESCRIPTOR_POLICY_VERSION = "mdstats.mlff-data6.mace-descriptor.2026-08.v2"
 MACE_ADAPTER_VERSION = "mdstats.mlff-data6.mace-calculator.2026-08.v2"
 MACE_MONITOR_GRAPH_CACHE_SCHEMA = "mdstats.mace-monitor-graph-cache.v1"
 MACE_MONITOR_GRAPH_POLICY_VERSION = "mdstats.mlff-opt-eval3.graph.2026-08.v1"
-STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA = "mdstats.static-inference-runtime-profile.v5"
+STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA = "mdstats.static-inference-runtime-profile.v6"
 STATIC_INFERENCE_EVIDENCE_SEMANTICS = (
-    "persistent-provider-required-residency-plus-steady-state-execution-peak.v5"
+    "persistent-provider-required-residency-plus-2d-failure-learning.v6"
 )
 
 
@@ -3246,7 +3246,9 @@ class StaticMaceInferenceExecutor:
             else:
                 provider.close()
 
-    def _retire_private_providers(self, *, keep_jobs: int) -> None:
+    def _retire_private_providers(
+        self, *, keep_jobs: int, release_cuda_cache: bool = True
+    ) -> None:
         keep = max(1, int(keep_jobs))
         shrunk = False
         while len(self._provider_pool) > keep:
@@ -3260,7 +3262,7 @@ class StaticMaceInferenceExecutor:
             # every surplus owner has been dropped.
             self._close_provider(provider, release_cuda_memory=False)
             shrunk = True
-        if shrunk and self.device.startswith("cuda"):
+        if shrunk and release_cuda_cache and self.device.startswith("cuda"):
             self._release_cuda_cache()
 
     def _ensure_provider_pool(
@@ -3276,6 +3278,7 @@ class StaticMaceInferenceExecutor:
         # Grow one slot at a time.  A construction failure can therefore close
         # only the new attempt and preserve every previously admitted provider.
         accepted = len(self._provider_pool)
+        attempt_provider: Any | None = None
         try:
             while len(self._provider_pool) < target:
                 if admit_next_slot is not None and not admit_next_slot():
@@ -3284,13 +3287,10 @@ class StaticMaceInferenceExecutor:
                     )
                 monitor = _StaticInferenceResourceMonitor(self.device)
                 monitor.start()
-                provider: Any | None = None
                 try:
-                    provider = self.provider_factory()
+                    attempt_provider = self.provider_factory()
                 except BaseException:
                     monitor.finish()
-                    if provider is not None:
-                        self._close_provider(provider)
                     raise
                 growth_ram, growth_vram = monitor.finish()
                 required_ram, required_vram = (
@@ -3304,19 +3304,29 @@ class StaticMaceInferenceExecutor:
                     if required_vram is None or growth_vram is None
                     else max(int(required_vram), max(1, int(growth_vram)))
                 )
-                self._provider_pool.append(provider)
+                self._provider_pool.append(attempt_provider)
                 self._provider_pool_resident_ram_bytes.append(required_ram)
                 self._provider_pool_resident_vram_bytes.append(required_vram)
                 self._provider_pool_observed_ram_bytes.append(max(0, int(growth_ram)))
                 self._provider_pool_observed_vram_bytes.append(
                     None if growth_vram is None else max(0, int(growth_vram))
                 )
+                # From here the provider is owned by the pool rollback rather
+                # than this construction attempt.
+                attempt_provider = None
                 if self.runtime_authority is not None:
                     self.runtime_authority.observe_provider_residency(
                         ram_bytes=required_ram, vram_bytes=required_vram
                     )
         except BaseException:
-            self._retire_private_providers(keep_jobs=accepted)
+            if attempt_provider is not None:
+                self._close_provider(attempt_provider, release_cuda_memory=False)
+            # Provider-growth failure is one executor-owned cleanup transaction:
+            # exact rollback first, then one allocator release for CUDA only.
+            self._retire_private_providers(
+                keep_jobs=accepted, release_cuda_cache=False
+            )
+            self._release_cuda_cache()
             raise
 
     def _provider_batch(
@@ -3654,7 +3664,6 @@ class StaticMaceInferenceExecutor:
                 if isinstance(exc, TrainingDataInputError) and "next private provider slot" in str(exc):
                     return "live-resource"
                 if self._is_oom(exc):
-                    self._release_cuda_cache()
                     return "provider-pool-oom"
                 raise
             # Materialization itself can consume more than the conservative

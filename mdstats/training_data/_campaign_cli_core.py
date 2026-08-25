@@ -18011,8 +18011,19 @@ def _indexed_target_atoms(
     return dict(mdstats.iter_indexed_extxyz_frames(index, source_indices=requested))
 
 
-def _evaluation_inference_execution_plan(cfg: Mapping[str, Any]) -> Any:
-    """Resolve new auto/fixed execution config without reinterpreting legacy values."""
+def _evaluation_inference_execution_plan(
+    cfg: Mapping[str, Any],
+    *,
+    store: CampaignStore | None = None,
+    record_key: str | None = None,
+) -> Any:
+    """Resolve or restart a persisted evaluation execution plan.
+
+    Runtime plans are stored under the normal evaluation/deployment record keys.
+    Reading through ``CampaignStore`` deliberately invokes the owning v1/v2/v3
+    parser before a resumed consumer reaches static inference; a migrated legacy
+    plan is immediately re-persisted as current v3 bytes.
+    """
 
     import mdstats
 
@@ -18029,7 +18040,7 @@ def _evaluation_inference_execution_plan(cfg: Mapping[str, Any]) -> Any:
         selected = int(section.get("batch_size", 8))
         if selected <= 0:
             raise CampaignCliError("Legacy evaluation.batch_size must be positive.")
-        return mdstats.InferenceExecutionPlan(
+        resolved = mdstats.InferenceExecutionPlan(
             batch_policy="fixed",
             selected_batch_size=selected,
             maximum_batch_size=selected,
@@ -18039,36 +18050,46 @@ def _evaluation_inference_execution_plan(cfg: Mapping[str, Any]) -> Any:
             rationale=("legacy_positive_batch_is_explicit_fixed",),
             **execution_fractions,
         )
-
-    policy = str(raw_policy).strip().lower()
-    if policy not in {"auto", "fixed"}:
-        raise CampaignCliError("evaluation.inference_batch_policy must be 'auto' or 'fixed'.")
-    maximum = int(section.get("maximum_inference_batch_size", 32))
-    if maximum <= 0:
-        raise CampaignCliError("evaluation.maximum_inference_batch_size must be positive.")
-    if policy == "fixed":
-        selected = int(section.get("fixed_inference_batch_size", section.get("batch_size", 8)))
-        if selected <= 0 or selected > maximum:
-            raise CampaignCliError(
-                "evaluation.fixed_inference_batch_size must be positive and no larger than maximum_inference_batch_size."
-            )
-        rationale = ("explicit_fixed_execution_configuration",)
     else:
-        # Batch 8 is the bounded cold-start point. The canonical executor retains
-        # OOM-learned ceilings, while compatible calibrated profiles and final
-        # target-hardware qualification may select another operating point.
-        selected = min(8, maximum)
-        rationale = ("auto_requested", "bounded_cold_start_operating_point")
-    return mdstats.InferenceExecutionPlan(
-        batch_policy=policy,
-        selected_batch_size=selected,
-        maximum_batch_size=maximum,
-        graph_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
-        monitor_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
-        prediction_cache_enabled=bool(section.get("cache_replay_baseline", True)),
-        rationale=rationale,
-        **execution_fractions,
-    )
+        policy = str(raw_policy).strip().lower()
+        if policy not in {"auto", "fixed"}:
+            raise CampaignCliError("evaluation.inference_batch_policy must be 'auto' or 'fixed'.")
+        maximum = int(section.get("maximum_inference_batch_size", 32))
+        if maximum <= 0:
+            raise CampaignCliError("evaluation.maximum_inference_batch_size must be positive.")
+        if policy == "fixed":
+            selected = int(section.get("fixed_inference_batch_size", section.get("batch_size", 8)))
+            if selected <= 0 or selected > maximum:
+                raise CampaignCliError(
+                    "evaluation.fixed_inference_batch_size must be positive and no larger than maximum_inference_batch_size."
+                )
+            rationale = ("explicit_fixed_execution_configuration",)
+        else:
+            # Batch 8 is the bounded cold-start point. The canonical executor retains
+            # OOM-learned ceilings, while compatible calibrated profiles and final
+            # target-hardware qualification may select another operating point.
+            selected = min(8, maximum)
+            rationale = ("auto_requested", "bounded_cold_start_operating_point")
+        resolved = mdstats.InferenceExecutionPlan(
+            batch_policy=policy,
+            selected_batch_size=selected,
+            maximum_batch_size=maximum,
+            graph_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
+            monitor_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
+            prediction_cache_enabled=bool(section.get("cache_replay_baseline", True)),
+            rationale=rationale,
+            **execution_fractions,
+        )
+    if store is None or record_key is None:
+        return resolved
+    persisted = store.get_record_optional(record_key, mdstats.InferenceExecutionPlan)
+    if persisted is None:
+        store.put_record(record_key, resolved)
+        return resolved
+    # A successful legacy read is current runtime state from this point forward.
+    # Rewriting it v3 prevents repeated historical parsing on later restarts.
+    store.put_record(record_key, persisted)
+    return persisted
 
 
 def _eval2_evaluation_policy(cfg: Mapping[str, Any], paths: CampaignPaths, job: Any, *, model_dtype: str) -> Any:
@@ -18119,9 +18140,10 @@ def _eval2_full_checkpoint(
     if admissibility is None:
         raise CampaignCliError("EVAL2 checkpoint is missing TRAIN2 admissibility authority.")
     evaluation_policy = _eval2_evaluation_policy(cfg, paths, job, model_dtype=model_dtype)
-    execution_plan = _evaluation_inference_execution_plan(cfg)
-    store.put_record(
-        f"inference_execution_plan:{run.run_id}:{checkpoint.sha256}", execution_plan
+    execution_plan = _evaluation_inference_execution_plan(
+        cfg,
+        store=store,
+        record_key=f"inference_execution_plan:{run.run_id}:{checkpoint.sha256}",
     )
     training_replay_artifact = bundle.replay_plan.monitor_artifact
     training_replay_path = None
@@ -21722,8 +21744,11 @@ def _deploy_verify_one_train2_run(
     )
     probe_atoms = tuple(target_by_index[index] for index in probe_set.configuration_indices)
     device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
-    deploy_execution = _evaluation_inference_execution_plan(cfg)
-    store.put_record(f"inference_execution_plan:deploy:{run.run_id}", deploy_execution)
+    deploy_execution = _evaluation_inference_execution_plan(
+        cfg,
+        store=store,
+        record_key=f"inference_execution_plan:deploy:{run.run_id}",
+    )
     deploy_graph_cache = paths.internal / "verification-graphs"
     rtol, atol = policy.tolerances
     print(f"[DEPLOY] comparing checkpoint target head to exported target-only model on {len(probe_atoms)} probes", flush=True)
@@ -22241,8 +22266,9 @@ def _command_verify_train2_pes(
         store.delete_record("pes_verify")
 
     device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
-    pes_execution = _evaluation_inference_execution_plan(cfg)
-    store.put_record("inference_execution_plan:pes", pes_execution)
+    pes_execution = _evaluation_inference_execution_plan(
+        cfg, store=store, record_key="inference_execution_plan:pes"
+    )
     pes_geometry_identities = tuple(probe.probe_uid for probe in probe_set.probes)
     pes_graph_cache = paths.internal / "verification-graphs"
     foundation_head = pes_foundation_head

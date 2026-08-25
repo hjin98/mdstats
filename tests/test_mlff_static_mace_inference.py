@@ -599,6 +599,52 @@ def test_v4_runtime_profile_is_rejected_for_pre_reproducible_residency(tmp_path)
     ) is None
 
 
+def test_valid_v5_runtime_profile_is_refused_after_2d_failure_learning_fix(tmp_path) -> None:
+    """A v5 ceiling may have been contaminated by the old J>1 backoff bug."""
+
+    current = _authority(vram=None)
+    current.record(_measured_point(8, 1, 10.0, 1, None))
+    legacy = current.profile().to_dict()
+    legacy["schema"] = "mdstats.static-inference-runtime-profile.v5"
+    legacy["evidence_semantics"] = (
+        "persistent-provider-required-residency-plus-steady-state-execution-peak.v5"
+    )
+    legacy["learned_safe_batch_ceiling"] = 1
+    legacy["content_digest"] = digest({
+        key: value for key, value in legacy.items() if key != "content_digest"
+    })
+    path = tmp_path / "v5-profile.json"
+    path.write_text(__import__("json").dumps(legacy), encoding="utf-8")
+
+    assert StaticInferenceRuntimeProfile.load_compatible(
+        path, compatibility_digest=current.compatibility_digest
+    ) is None
+    rebuilt = _authority(vram=None)
+    assert rebuilt.learned_safe_batch_ceiling == rebuilt.maximum_batch_size
+
+
+def test_v6_profile_round_trips_and_compatibility_identity_excludes_v5() -> None:
+    from mdstats.training_data import model_features
+
+    authority = _authority(vram=None)
+    authority.record(_measured_point(8, 1, 10.0, 1, None))
+    profile = authority.profile()
+    assert profile.to_dict()["schema"] == "mdstats.static-inference-runtime-profile.v6"
+    assert StaticInferenceRuntimeProfile.from_dict(profile.to_dict()) == profile
+
+    payload = {"fixture": "compatibility-v6"}
+    current = StaticInferenceRuntimeAuthority.compatibility_key(payload)
+    legacy = digest({
+        "schema": "mdstats.static-inference-compatibility.v2",
+        "evidence_semantics": (
+            "persistent-provider-required-residency-plus-steady-state-execution-peak.v5"
+        ),
+        **payload,
+    })
+    assert current != legacy
+    assert model_features.STATIC_INFERENCE_EVIDENCE_SEMANTICS.endswith(".v6")
+
+
 def test_provider_requirement_never_collapses_to_zero_allocator_delta(monkeypatch) -> None:
     from mdstats.training_data import model_features
 
@@ -846,6 +892,98 @@ def test_private_mace_pool_retirement_defers_cache_release_to_the_executor(monke
 
     assert retired == [False, False]
     assert len(released) == 1
+
+
+@pytest.mark.parametrize("failure", (MemoryError("full"), OSError(12, "full")))
+def test_first_private_growth_failure_releases_cuda_cache_once(monkeypatch, failure) -> None:
+    released: list[None] = []
+    monkeypatch.setattr(
+        StaticMaceInferenceExecutor, "_release_cuda_cache", lambda self: released.append(None)
+    )
+    base = _Provider()
+    executor = StaticMaceInferenceExecutor(
+        base, batch_size=1, device="cuda:0", provider_factory=lambda: (_ for _ in ()).throw(failure)
+    )
+
+    with pytest.raises(type(failure)):
+        executor._ensure_provider_pool(2)
+
+    assert executor.resident_provider_pool_size == 1
+    assert executor.provider is base
+    assert len(released) == 1
+
+
+def test_later_private_growth_failure_rolls_back_once_without_leak(monkeypatch) -> None:
+    released: list[None] = []
+    monkeypatch.setattr(
+        StaticMaceInferenceExecutor, "_release_cuda_cache", lambda self: released.append(None)
+    )
+    closed: list[str] = []
+
+    class Provider(_Provider):
+        def __init__(self, name):
+            super().__init__()
+            self.name = name
+
+        def close(self):
+            closed.append(self.name)
+
+    attempts = iter((Provider("first"), MemoryError("full")))
+
+    def factory():
+        value = next(attempts)
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    executor = StaticMaceInferenceExecutor(
+        Provider("base"), batch_size=1, device="cuda:0",
+        provider_factory=factory,
+    )
+
+    with pytest.raises(MemoryError):
+        executor._ensure_provider_pool(3)
+
+    assert executor.resident_provider_pool_size == 1
+    assert closed == ["first"]
+    assert len(released) == 1
+
+
+def test_nonresource_private_growth_failure_propagates_after_exact_cleanup(monkeypatch) -> None:
+    released: list[None] = []
+    monkeypatch.setattr(
+        StaticMaceInferenceExecutor,
+        "_release_cuda_cache",
+        lambda self: released.append(None) if self.device.startswith("cuda") else None,
+    )
+    executor = StaticMaceInferenceExecutor(
+        _Provider(), batch_size=1, device="cuda:0",
+        provider_factory=lambda: (_ for _ in ()).throw(ValueError("bad provider")),
+    )
+
+    with pytest.raises(ValueError, match="bad provider"):
+        executor._ensure_provider_pool(2)
+
+    assert executor.resident_provider_pool_size == 1
+    assert len(released) == 1
+
+
+def test_cpu_private_growth_failure_never_releases_cuda_cache(monkeypatch) -> None:
+    released: list[None] = []
+    monkeypatch.setattr(
+        StaticMaceInferenceExecutor,
+        "_release_cuda_cache",
+        lambda self: released.append(None) if self.device.startswith("cuda") else None,
+    )
+    executor = StaticMaceInferenceExecutor(
+        _Provider(), batch_size=1, device="cpu",
+        provider_factory=lambda: (_ for _ in ()).throw(MemoryError("full")),
+    )
+
+    with pytest.raises(MemoryError):
+        executor._ensure_provider_pool(2)
+
+    assert released == []
 
 
 def test_v4_feasible_evidence_requires_explicit_consistent_components() -> None:
