@@ -361,7 +361,7 @@ def test_supplemental_case_c_deduplicates_physical_final_reference_endpoint_but_
     ("fidelity_epochs", "horizon"),
     [((1, 3, 10), 30), ((2, 5, 12), 40)],
 )
-def test_persisted_campaign_selects_configured_boundaries_and_exposes_restart_status(
+def test_supplemental_persisted_campaign_selects_configured_boundaries_and_exposes_restart_status(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -438,6 +438,10 @@ def test_persisted_campaign_selects_configured_boundaries_and_exposes_restart_st
     monkeypatch.setattr(cli, "_execute_evaluate_current_authority", fake_evaluate)
 
     assert cli.command_select_target_size(argparse.Namespace(config=str(config))) == 0
+    selection_output = capsys.readouterr().out
+    assert f"fidelity_epochs={list(fidelity_epochs)}" in selection_output
+    assert f"schedule_horizon={horizon}" in selection_output
+    assert f"screen_boundary={fidelity_epochs[0]}" in selection_output
     selected = cli._load_verified_target_size_study_authority(store)
     assert selected.outcome == mdstats.OUTCOME_SELECTED
     assert authorized_boundaries == list(fidelity_epochs)

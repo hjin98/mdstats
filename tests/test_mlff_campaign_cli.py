@@ -929,6 +929,38 @@ def test_mace_training_progress_probe_reports_exact_gradient_percentage(tmp_path
     assert "progress=12/48 (25.0%); unit=gradient-update" in text
 
 
+@pytest.mark.parametrize(
+    ("screen_boundary", "schedule_horizon", "expected_phase"),
+    [
+        (1, 30, "phase=screen epoch 1/1; schedule epoch 1/30"),
+        (3, 30, "phase=screen epoch 1/3; schedule epoch 1/30"),
+    ],
+)
+def test_train2_progress_reports_active_screen_boundary_and_full_schedule(
+    tmp_path: Path,
+    screen_boundary: int,
+    schedule_horizon: int,
+    expected_phase: str,
+) -> None:
+    logs = tmp_path / "logs"
+    results = tmp_path / "results"
+    logs.mkdir()
+    results.mkdir()
+    (results / "run_train.txt").write_text(
+        json.dumps({"mode": "opt", "epoch": 0}) + "\n", encoding="utf-8"
+    )
+    probe = campaign_cli._MaceTrainingProgressProbe(
+        log_dir=logs,
+        result_dir=results,
+        expected_updates=8,
+        device="cpu",
+        max_epochs=screen_boundary,
+        screen_boundary_epochs=screen_boundary,
+        schedule_horizon_epochs=schedule_horizon,
+    )
+    assert expected_phase in probe()
+
+
 def test_mace_training_progress_probe_marks_only_new_optimizer_activity_as_true_epoch(tmp_path: Path) -> None:
     logs = tmp_path / "logs"
     results = tmp_path / "results"

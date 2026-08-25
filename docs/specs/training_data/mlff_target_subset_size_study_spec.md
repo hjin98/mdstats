@@ -123,6 +123,12 @@ exact `n2` state. The full horizon `n` is the frozen TRAIN2 schedule horizon,
 not a fourth ordinary size-screen. Restart or persistence may change storage
 realization but not parentage.
 
+Live target-size progress SHALL report both the active screen endpoint and the
+full schedule horizon when they differ (for example, `screen epoch 2/3;
+schedule epoch 2/30`). The screen denominator controls the current reduction
+operation; the schedule denominator remains the authenticated continuation
+horizon and SHALL NOT be hidden or reinterpreted as a second screen boundary.
+
 Ordinary target-success early stopping is disabled during the target-size study. Candidates must reach the common fidelity boundary to remain comparable. A successful endpoint is represented only by strict finite `TargetSizeTrainingEvidence`; positively identified candidate-specific TRAIN2/EVAL2 numerical invalidity is represented separately by authenticated `TargetSizeTrajectoryFailureEvidence`. Generic execution, resource, input, schema, lineage, timeout, interruption, launch, and programming failures remain campaign errors rather than scientific size evidence.
 
 ## 6. Production successive-fidelity funnel

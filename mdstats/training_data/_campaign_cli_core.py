@@ -3859,6 +3859,46 @@ def _load_prepared(
     )
 
 
+@contextmanager
+def _command_restore_cache(store: CampaignStore):
+    """Share already-authenticated large records within one startup boundary.
+
+    This is deliberately process-local and scoped to authority validation.  It
+    does not persist a second DATA6 authority, skip deserialization integrity
+    checks, or retain the large bundle for the subsequent training lifetime.
+    """
+
+    previous = getattr(store, "_command_restore_cache", None)
+    owned = not isinstance(previous, dict)
+    if owned:
+        setattr(store, "_command_restore_cache", {})
+    try:
+        yield
+    finally:
+        if owned:
+            if previous is None:
+                delattr(store, "_command_restore_cache")
+            else:
+                setattr(store, "_command_restore_cache", previous)
+
+
+def _restore_data6_for_command(store: CampaignStore) -> Any:
+    """Restore DATA6 once per scoped command while preserving its verifier."""
+
+    import mdstats
+
+    cache = getattr(store, "_command_restore_cache", None)
+    record_digest = store.record_digest("data6")
+    if isinstance(cache, dict):
+        cached = cache.get("data6")
+        if cached is not None and cached[0] == record_digest:
+            return cached[1]
+    data6 = store.get_record("data6", mdstats.Data6FeatureBundle)
+    if isinstance(cache, dict):
+        cache["data6"] = (record_digest, data6)
+    return data6
+
+
 def _ensure_target_data_role_freeze(store: CampaignStore) -> Any:
     """Build or verify the immutable TARGET-DATA2A size-selection authority.
 
@@ -3912,7 +3952,7 @@ def _load_verified_foundation_audit_authority(store: CampaignStore) -> Any:
     role_freeze = store.get_record(
         "target_data_role_freeze", mdstats.TargetDataRoleFreeze
     )
-    data6 = store.get_record("data6", mdstats.Data6FeatureBundle)
+    data6 = _restore_data6_for_command(store)
     audit = store.get_record("foundation_target_audit", mdstats.FoundationTargetAudit)
     mdstats.validate_foundation_target_audit_authority(
         audit,
@@ -4089,7 +4129,7 @@ def _load_verified_target_coverage_reference_authority(
     role_freeze = store.get_record(
         "target_data_role_freeze", mdstats.TargetDataRoleFreeze
     )
-    data6 = store.get_record("data6", mdstats.Data6FeatureBundle)
+    data6 = _restore_data6_for_command(store)
     audit = store.get_record("foundation_target_audit", mdstats.FoundationTargetAudit)
     reference = store.get_record(
         "target_coverage_reference", mdstats.TargetCoverageReference
@@ -11371,6 +11411,7 @@ class _MaceTrainingProgressProbe:
     device: str
     max_epochs: int = 1
     schedule_horizon_epochs: int | None = None
+    screen_boundary_epochs: int | None = None
     stage_name: str | None = None
     checkpoint_dir: Path | None = None
     epoch_activity_timeout_seconds: float = 120.0
@@ -11396,6 +11437,22 @@ class _MaceTrainingProgressProbe:
             raise CampaignCliError("Training progress endpoint/horizon geometry is invalid.")
         self.max_epochs = int(self.max_epochs)
         self.schedule_horizon_epochs = horizon
+        boundary = self.max_epochs if self.screen_boundary_epochs is None else int(
+            self.screen_boundary_epochs
+        )
+        if boundary <= 0 or boundary > self.schedule_horizon_epochs:
+            raise CampaignCliError("Training progress screen-boundary geometry is invalid.")
+        self.screen_boundary_epochs = boundary
+
+    def _epoch_phase(self, epoch: int, suffix: str = "") -> str:
+        """Render screen and full-schedule progress without conflating them."""
+
+        if self.screen_boundary_epochs == self.schedule_horizon_epochs:
+            return f"epoch {epoch}/{self.max_epochs}{suffix}"
+        return (
+            f"screen epoch {epoch}/{self.screen_boundary_epochs}; "
+            f"schedule epoch {epoch}/{self.schedule_horizon_epochs}{suffix}"
+        )
 
     def _log_tail(self) -> str:
         candidates = [path for path in self.log_dir.glob("*.log") if "_debug" not in path.name]
@@ -11559,19 +11616,21 @@ class _MaceTrainingProgressProbe:
                 phase = "post-epoch validation/checkpoint"
             elif replaying_committed_epoch:
                 phase = (
-                    f"restart checkpoint epoch {checkpoint_epoch + 1}/{self.max_epochs} "
-                    "(duplicate updates excluded)"
+                    "restart checkpoint "
+                    + self._epoch_phase(
+                        checkpoint_epoch + 1, " (duplicate updates excluded)"
+                    )
                 )
             elif fresh_optimizer_activity:
                 current_epoch = min(self.max_epochs, (epoch or 0) + 1)
-                phase = f"epoch {current_epoch}/{self.max_epochs}"
+                phase = self._epoch_phase(current_epoch)
             elif "Saving model to" in tail or "Computing metrics for training" in tail:
                 phase = "saving/exporting model"
             elif "Training complete" in tail:
                 phase = "post-epoch evaluation/checkpoint"
             elif updates > 0:
                 current_epoch = min(self.max_epochs, (epoch or 0) + 1)
-                phase = f"epoch {current_epoch}/{self.max_epochs} (inactive)"
+                phase = self._epoch_phase(current_epoch, " (inactive)")
             elif "===========TRAINING===========" in tail:
                 phase = "initial validation / first update"
             elif "OPTIMIZER INFORMATION" in tail:
@@ -11939,26 +11998,27 @@ def command_preflight(args: argparse.Namespace) -> int:
     _binary_model_precision_contract(cfg)
     store = CampaignStore(paths.state_db)
     _require_stage_complete(store, paths, "prepare")
-    try:
-        foundation_audit = _load_verified_foundation_audit_authority(store)
-    except Exception as exc:
-        raise CampaignCliError(
-            "FOUNDATION-AUDIT1 is missing or stale; rerun `prepare` before preflight: "
-            f"{exc}"
-        ) from exc
+    with _command_restore_cache(store):
+        try:
+            foundation_audit = _load_verified_foundation_audit_authority(store)
+        except Exception as exc:
+            raise CampaignCliError(
+                "FOUNDATION-AUDIT1 is missing or stale; rerun `prepare` before preflight: "
+                f"{exc}"
+            ) from exc
+        try:
+            coverage_reference = _load_verified_target_coverage_reference_authority(
+                store, cfg=cfg
+            )
+        except Exception as exc:
+            raise CampaignCliError(
+                "TARGET-DATA2B is missing or stale; rerun `prepare` before preflight: "
+                f"{exc}"
+            ) from exc
     _ok(
         "FOUNDATION-AUDIT1 authority verified before preflight: "
         f"{foundation_audit.content_digest[:12]}..."
     )
-    try:
-        coverage_reference = _load_verified_target_coverage_reference_authority(
-            store, cfg=cfg
-        )
-    except Exception as exc:
-        raise CampaignCliError(
-            "TARGET-DATA2B is missing or stale; rerun `prepare` before preflight: "
-            f"{exc}"
-        ) from exc
     _ok(
         "TARGET-DATA2B authority verified before preflight: "
         f"{coverage_reference.content_digest[:12]}..."
@@ -14414,22 +14474,23 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
     _binary_model_precision_contract(cfg)
     store = CampaignStore(paths.state_db)
     _require_stage_complete(store, paths, "preflight")
-    try:
-        foundation_audit = _load_verified_foundation_audit_authority(store)
-    except Exception as exc:
-        raise CampaignCliError(
-            "Training refused because FOUNDATION-AUDIT1 authority is missing or stale; "
-            f"rerun `prepare` and `preflight`: {exc}"
-        ) from exc
-    try:
-        coverage_reference = _load_verified_target_coverage_reference_authority(
-            store, cfg=cfg
-        )
-    except Exception as exc:
-        raise CampaignCliError(
-            "Training refused because TARGET-DATA2B authority is missing or stale; "
-            f"rerun `prepare` and `preflight`: {exc}"
-        ) from exc
+    with _command_restore_cache(store):
+        try:
+            foundation_audit = _load_verified_foundation_audit_authority(store)
+        except Exception as exc:
+            raise CampaignCliError(
+                "Training refused because FOUNDATION-AUDIT1 authority is missing or stale; "
+                f"rerun `prepare` and `preflight`: {exc}"
+            ) from exc
+        try:
+            coverage_reference = _load_verified_target_coverage_reference_authority(
+                store, cfg=cfg
+            )
+        except Exception as exc:
+            raise CampaignCliError(
+                "Training refused because TARGET-DATA2B authority is missing or stale; "
+                f"rerun `prepare` and `preflight`: {exc}"
+            ) from exc
     _ok(
         "TARGET-DATA2B authority verified before training: "
         f"{coverage_reference.content_digest[:12]}..."
@@ -14958,6 +15019,11 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                         else optimizer.max_num_epochs
                     ),
                     schedule_horizon_epochs=optimizer.max_num_epochs,
+                    screen_boundary_epochs=(
+                        train2_execution_epoch_limit
+                        if policy_family == "train2" and train2_execution_epoch_limit is not None
+                        else None
+                    ),
                     stage_name=(
                         train2_stage_label if policy_family == "train2" else None
                     ),
@@ -15551,6 +15617,13 @@ def command_select_target_size(args: argparse.Namespace) -> int:
         "checkpoints may contribute to target-size ranking.",
         flush=True,
     )
+    print(
+        "TARGET-SIZE-V5 effective configuration: "
+        f"fidelity_epochs={list(study.policy.fidelity_epochs)}; "
+        f"schedule_horizon={study.training_horizon_epochs}; "
+        f"active_boundary={study.next_training_epoch}",
+        flush=True,
+    )
 
     while study.outcome in active_outcomes:
         _require_train2_preflight_authorization(cfg, paths, store, study)
@@ -15558,6 +15631,7 @@ def command_select_target_size(args: argparse.Namespace) -> int:
         sizes = tuple(int(value) for value in study.next_training_sizes)
         print(
             f"\nTARGET-SIZE-V5 boundary epoch {boundary}: "
+            f"screen_boundary={boundary}; schedule_horizon={study.training_horizon_epochs}; "
             f"sizes={list(sizes)}; seeds={list(study.policy.screening_optimizer_seeds)}",
             flush=True,
         )
