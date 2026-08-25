@@ -1938,7 +1938,7 @@ def test_prepare_materialization_real_bridge_reaches_first_data7_invocation(
     study = SimpleNamespace(
         qualified_sizes=(4,),
         selected_target_size=(4 if selected else None),
-        outcome=(mdstats.OUTCOME_SELECTED if selected else mdstats.OUTCOME_AWAITING_EPOCH_3),
+        outcome=(mdstats.OUTCOME_SELECTED if selected else mdstats.OUTCOME_AWAITING_COARSE_SCREEN),
         content_digest=study_digest,
         candidate_authority_digest=study_digest,
     )

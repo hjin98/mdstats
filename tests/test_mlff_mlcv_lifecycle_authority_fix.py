@@ -120,7 +120,7 @@ def test_target_size_funnel_reaches_epoch_boundaries_without_synthesizing_mlcv_s
 ):
     active = (
         SimpleNamespace(
-            outcome=mdstats.OUTCOME_AWAITING_EPOCH_3,
+            outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
             next_training_epoch=3,
             next_training_sizes=(512, 1024, 2048, 4096, 8192),
             selected_target_size=None,
@@ -130,7 +130,7 @@ def test_target_size_funnel_reaches_epoch_boundaries_without_synthesizing_mlcv_s
             policy=SimpleNamespace(screening_optimizer_seeds=(1, 2)),
         ),
         SimpleNamespace(
-            outcome=mdstats.OUTCOME_AWAITING_EPOCH_10,
+            outcome=mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
             next_training_epoch=10,
             next_training_sizes=(1024, 2048),
             selected_target_size=None,
@@ -140,7 +140,7 @@ def test_target_size_funnel_reaches_epoch_boundaries_without_synthesizing_mlcv_s
             policy=SimpleNamespace(screening_optimizer_seeds=(1, 2)),
         ),
         SimpleNamespace(
-            outcome=mdstats.OUTCOME_AWAITING_EPOCH_30,
+            outcome=mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
             next_training_epoch=30,
             next_training_sizes=(2048,),
             selected_target_size=None,

@@ -1,8 +1,8 @@
 ---
 geometry: "margin=0.75in"
-architecture_revision: 105
+architecture_revision: 106
 status: "current normative architecture"
-last_updated: "2026-08-22"
+last_updated: "2026-08-25"
 ---
 
 # MLFF Training-Data and Fine-Tuning Architecture
@@ -38,7 +38,7 @@ source evidence and labels
   -> MVSEL2 target order
   -> REPAIR2 repaired master order + MVSTATE2 continuation state
   -> independent MVQUAL prefix qualification
-  -> fixed target-size study
+  -> configurable target-size study
   -> one protocol-global selected target size
   -> domain-local target prefixes
   -> training / checkpoint selection
@@ -71,7 +71,7 @@ For targeted human or AI loading, use the smallest current source containing the
 | source/label identity, eligibility, strain/stress, raw features/events | `20_data_contracts.md` |
 | evidence roles, leakage, CV, fitted metrics, E0, objective, weighting, exposure | `30_statistical_design.md` |
 | replay, MACE, checkpoint, evaluation, deployment, calibration, active learning | `40_training_evaluation.md` |
-| FEAS1, MVIDX1, MVSEL2, REPAIR2, MVSTATE2, MVQUAL, target size, 3/10/30 | `50_target_multiview.md` |
+| FEAS1, MVIDX1, MVSEL2, REPAIR2, MVSTATE2, MVQUAL, target size, `n1/n2/n3` | `50_target_multiview.md` |
 | scheduler, sparse execution, out-of-core, memory, persistence, progress | `60_execution_performance.md` |
 | owner, dependency direction, unsupported generation, extension boundary | `80_ownership_and_decisions.md` |
 | scientific/algorithmic provenance | `90_references.md` |

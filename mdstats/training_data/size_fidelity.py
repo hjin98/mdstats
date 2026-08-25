@@ -25,9 +25,9 @@ from .target_size_study import TargetSizeStudyPolicy, _equivalence_aware_target_
 SIZE_FIDELITY_POLICY_SCHEMA = "mdstats.size-fidelity1-policy.flexible-fidelity.v3"
 SIZE_FIDELITY_EXECUTION_PLAN_SCHEMA = "mdstats.size-fidelity1-execution-plan.flexible-fidelity.v3"
 SIZE_FIDELITY_METRIC_SCHEMA = "mdstats.size-fidelity1-metric.v1"
-SIZE_FIDELITY_CANDIDATE_SCHEMA = "mdstats.size-fidelity1-candidate-assessment.v1"
-SIZE_FIDELITY_REPORT_SCHEMA = "mdstats.size-fidelity1-qualification-report.flexible-fidelity.v3"
-SIZE_FIDELITY_VERSION = "mdstats.size-fidelity1.coarse-screen-calibration.flexible-fidelity.2026-08.v3"
+SIZE_FIDELITY_CANDIDATE_SCHEMA = "mdstats.size-fidelity1-candidate-assessment.v2"
+SIZE_FIDELITY_REPORT_SCHEMA = "mdstats.size-fidelity1-qualification-report.flexible-fidelity.v4"
+SIZE_FIDELITY_VERSION = "mdstats.size-fidelity1.coarse-screen-calibration.flexible-fidelity.2026-08.v4"
 
 _FULL_ROLE = "full_development"
 
@@ -439,12 +439,14 @@ class SizeFidelityCandidateAssessment:
     monitor_decision_equivalence_rate: float
     coarse_finalist_recall: float
     short_finalist_recall: float
+    final_screen_winner_recall: float
     coarse_winner_recall: float
     short_winner_recall: float
     boundary_miss_count: int
     mean_coarse_final_rank_spearman_rho: float
     coarse_survivor_sizes_by_seed: tuple[tuple[int, tuple[int, ...]], ...]
     short_finalist_sizes_by_seed: tuple[tuple[int, tuple[int, ...]], ...]
+    final_screen_sizes_by_seed: tuple[tuple[int, tuple[int, ...]], ...]
     reference_finalist_sizes_by_seed: tuple[tuple[int, tuple[int, ...]], ...]
     passed: bool
     failure_reasons: tuple[str, ...] = ()
@@ -457,6 +459,7 @@ class SizeFidelityCandidateAssessment:
             raise TrainingDataInputError("SIZE-FIDELITY1 candidate epsilon must be positive and finite.")
         for name in (
             "monitor_decision_equivalence_rate", "coarse_finalist_recall", "short_finalist_recall",
+            "final_screen_winner_recall",
             "coarse_winner_recall", "short_winner_recall",
         ):
             value = float(getattr(self, name))
@@ -474,6 +477,7 @@ class SizeFidelityCandidateAssessment:
         object.__setattr__(self, "mean_coarse_final_rank_spearman_rho", rho)
         object.__setattr__(self, "coarse_survivor_sizes_by_seed", tuple(sorted((int(s), tuple(int(v) for v in sizes)) for s, sizes in self.coarse_survivor_sizes_by_seed)))
         object.__setattr__(self, "short_finalist_sizes_by_seed", tuple(sorted((int(s), tuple(int(v) for v in sizes)) for s, sizes in self.short_finalist_sizes_by_seed)))
+        object.__setattr__(self, "final_screen_sizes_by_seed", tuple(sorted((int(s), tuple(int(v) for v in sizes)) for s, sizes in self.final_screen_sizes_by_seed)))
         object.__setattr__(self, "reference_finalist_sizes_by_seed", tuple(sorted((int(s), tuple(int(v) for v in sizes)) for s, sizes in self.reference_finalist_sizes_by_seed)))
         object.__setattr__(self, "failure_reasons", tuple(sorted(set(str(v) for v in self.failure_reasons))))
 
@@ -487,12 +491,14 @@ class SizeFidelityCandidateAssessment:
             "monitor_decision_equivalence_rate": self.monitor_decision_equivalence_rate,
             "coarse_finalist_recall": self.coarse_finalist_recall,
             "short_finalist_recall": self.short_finalist_recall,
+            "final_screen_winner_recall": self.final_screen_winner_recall,
             "coarse_winner_recall": self.coarse_winner_recall,
             "short_winner_recall": self.short_winner_recall,
             "boundary_miss_count": self.boundary_miss_count,
             "mean_coarse_final_rank_spearman_rho": self.mean_coarse_final_rank_spearman_rho,
             "coarse_survivor_sizes_by_seed": [[s, list(v)] for s, v in self.coarse_survivor_sizes_by_seed],
             "short_finalist_sizes_by_seed": [[s, list(v)] for s, v in self.short_finalist_sizes_by_seed],
+            "final_screen_sizes_by_seed": [[s, list(v)] for s, v in self.final_screen_sizes_by_seed],
             "reference_finalist_sizes_by_seed": [[s, list(v)] for s, v in self.reference_finalist_sizes_by_seed],
             "passed": bool(self.passed),
             "failure_reasons": list(self.failure_reasons),
@@ -510,7 +516,7 @@ class SizeFidelityCandidateAssessment:
         if payload.get("schema") != SIZE_FIDELITY_CANDIDATE_SCHEMA:
             raise TrainingDataSerializationError("Unsupported SIZE-FIDELITY1 candidate schema.")
         kwargs = dict(payload); kwargs.pop("schema", None); kwargs.pop("content_digest", None)
-        for key in ("coarse_survivor_sizes_by_seed", "short_finalist_sizes_by_seed", "reference_finalist_sizes_by_seed"):
+        for key in ("coarse_survivor_sizes_by_seed", "short_finalist_sizes_by_seed", "final_screen_sizes_by_seed", "reference_finalist_sizes_by_seed"):
             kwargs[key] = tuple((int(s), tuple(int(v) for v in sizes)) for s, sizes in kwargs[key])
         kwargs["failure_reasons"] = tuple(str(v) for v in kwargs.get("failure_reasons", ()))
         result = cls(**kwargs)
@@ -728,12 +734,14 @@ def build_size_fidelity_qualification(
                 monitor_matches = 0
                 coarse_finalists_retained = 0
                 short_finalists_retained = 0
+                final_screen_winner_retained = 0
                 coarse_winner_retained = 0
                 short_winner_retained = 0
                 boundary_misses = 0
                 rhos: list[float] = []
                 coarse_sets: list[tuple[int, tuple[int, ...]]] = []
                 short_sets: list[tuple[int, tuple[int, ...]]] = []
+                final_screen_sets: list[tuple[int, tuple[int, ...]]] = []
                 final_sets: list[tuple[int, tuple[int, ...]]] = []
 
                 for seed in policy.screening_seeds:
@@ -756,15 +764,30 @@ def build_size_fidelity_qualification(
                         monitor_matches += 1
 
                     short_metrics = [metric_map[(seed, size, int(target_size_policy.fidelity_epochs[1]), _FULL_ROLE, None)] for size in coarse_survivors]
-                    short_order = _screen_order(short_metrics, epsilon=final_epsilon, boundary_size=boundary_size)
+                    short_order = _screen_order(short_metrics, epsilon=coarse_epsilon, boundary_size=boundary_size)
                     if len(short_order) < short_count:
                         raise TrainingDataInputError(f"SIZE-FIDELITY1 seed {seed} has insufficient valid 10-epoch survivors.")
                     short_finalists = tuple(short_order[:short_count])
+
+                    final_screen_metrics = [
+                        metric_map[(seed, size, int(target_size_policy.fidelity_epochs[2]), _FULL_ROLE, None)]
+                        for size in short_finalists
+                    ]
+                    final_screen_order = _screen_order(
+                        final_screen_metrics, epsilon=final_epsilon, boundary_size=boundary_size
+                    )
+                    if len(final_screen_order) < short_count:
+                        raise TrainingDataInputError(
+                            f"SIZE-FIDELITY1 seed {seed} has insufficient valid final-screen finalists."
+                        )
+                    final_screen_winner = final_screen_order[0]
 
                     if reference_winner in coarse_survivors:
                         coarse_winner_retained += 1
                     if reference_winner in short_finalists:
                         short_winner_retained += 1
+                    if reference_winner == final_screen_winner:
+                        final_screen_winner_retained += 1
                     if set(reference_finalists).issubset(coarse_survivors):
                         coarse_finalists_retained += 1
                     if set(reference_finalists).issubset(short_finalists):
@@ -783,12 +806,14 @@ def build_size_fidelity_qualification(
                             rhos.append(rho)
                     coarse_sets.append((seed, coarse_survivors))
                     short_sets.append((seed, short_finalists))
+                    final_screen_sets.append((seed, final_screen_order))
                     final_sets.append((seed, reference_finalists))
 
                 n = len(policy.screening_seeds)
                 monitor_rate = monitor_matches / n
                 coarse_finalist_recall = coarse_finalists_retained / n
                 short_finalist_recall = short_finalists_retained / n
+                final_screen_winner_recall = final_screen_winner_retained / n
                 coarse_winner_recall = coarse_winner_retained / n
                 short_winner_recall = short_winner_retained / n
                 mean_rho = float(np.mean(rhos)) if rhos else 0.0
@@ -799,6 +824,8 @@ def build_size_fidelity_qualification(
                     failures.append("coarse_screen_drops_full_horizon_reference_finalist")
                 if short_finalist_recall + 1.0e-12 < policy.required_short_finalist_recall:
                     failures.append("short_screen_drops_full_horizon_reference_finalist")
+                if final_screen_winner_recall < 1.0:
+                    failures.append("final_screen_winner_differs_from_full_horizon_reference")
                 if boundary_misses:
                     failures.append("largest_boundary_finalist_missed")
                 assessments.append(SizeFidelityCandidateAssessment(
@@ -809,12 +836,14 @@ def build_size_fidelity_qualification(
                     monitor_decision_equivalence_rate=monitor_rate,
                     coarse_finalist_recall=coarse_finalist_recall,
                     short_finalist_recall=short_finalist_recall,
+                    final_screen_winner_recall=final_screen_winner_recall,
                     coarse_winner_recall=coarse_winner_recall,
                     short_winner_recall=short_winner_recall,
                     boundary_miss_count=boundary_misses,
                     mean_coarse_final_rank_spearman_rho=mean_rho,
                     coarse_survivor_sizes_by_seed=tuple(coarse_sets),
                     short_finalist_sizes_by_seed=tuple(short_sets),
+                    final_screen_sizes_by_seed=tuple(final_screen_sets),
                     reference_finalist_sizes_by_seed=tuple(final_sets),
                     passed=not failures,
                     failure_reasons=tuple(failures),
@@ -836,7 +865,7 @@ def build_size_fidelity_qualification(
     reason = (
         f"SIZE-FIDELITY1 certified epoch {recommendation.coarse_epoch}, monitor {recommendation.monitor_configurations}, "
         f"and coarse equivalence {recommendation.coarse_equivalence_mev_per_a:g} meV/A across {len(policy.screening_seeds)} frozen seeds; "
-        "both eventual 30-epoch target finalists survived epochs coarse and 10."
+        f"both full-reference finalists survived coarse/short screens and the final screen agreed at epoch {int(target_size_policy.fidelity_epochs[2])}."
         if recommendation is not None
         else "SIZE-FIDELITY1 found no candidate coarse endpoint/monitor/equivalence combination with complete finalist recall and monitor-decision equivalence."
     )

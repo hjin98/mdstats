@@ -763,7 +763,11 @@ class TargetSizeStudyPlan:
                 "dataset_id": self.dataset_id,
                 "repair2_authority_digest": self.repair2_authority_digest,
                 "mvqual_authority_digest": self.mvqual_authority_digest,
-                "policy_digest": self.policy.policy_digest,
+                # DATA7/DATA8 candidate-prefix materialization depends on the
+                # admitted fixed prefixes, not on later screen geometry.  Keep
+                # fidelity policy identity on screening evidence/plans, while
+                # allowing an in-place fidelity upgrade to reuse byte-identical
+                # candidate materializations after REPAIR2/MVQUAL validation.
                 "candidate_digests": [item.content_digest for item in self.candidates],
                 "qualified_sizes": list(self.qualified_sizes),
             })

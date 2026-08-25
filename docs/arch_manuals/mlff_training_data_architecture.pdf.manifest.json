@@ -1,31 +1,26 @@
 {
   "pdf": {
     "name": "mlff_training_data_architecture.pdf",
-    "sha256": "9db97fc60af3018dc4a6b6bb9ec7d742eafb999ac355018ce670543ec2ae1e4f"
+    "sha256": "ee1a42e7890b4e1cbd2492911114214bb0e6c972b3ef2ceaaf2ddb399f3dd594"
   },
   "renderer": {
     "config": {
-      "absolute_images": "reject",
-      "fontsize": "10.5pt",
       "from": "markdown+tex_math_single_backslash+tex_math_dollars",
-      "lang": "en-US",
       "margin": "0.75in",
       "papersize": "us-letter",
-      "pdf_engine": "xelatex",
-      "remote_images": "reject",
-      "resource_path": "source-parent",
-      "resource_provenance": "pandoc-image-ast-local-files-v1"
+      "pdf_engine": "typst",
+      "typst_binary": "mace-dependencies/typst-x86_64-unknown-linux-musl.tar.xz"
     },
-    "config_sha256": "06f2f4840cb24e2e612c792aca9403c1964d209659ccadaa8a9b4af8e7ba5e6d",
+    "config_sha256": "ae5de8a0087e57a9e1cbdb0450036656a0d8b2f0bf742d4ccaef43c396d293f9",
     "driver": "pandoc-local",
-    "pandoc_version": "pandoc 3.1.11.1",
-    "policy_version": "pandoc-xelatex-local-v1",
-    "xelatex_version": "XeTeX 3.141592653-2.6-0.999996 (TeX Live 2025/dev/Debian)"
+    "pandoc_version": "pandoc 3.10.2",
+    "policy_version": "pandoc-typst-local-v1",
+    "typst_version": "typst 0.15.1 (9dfd3a08)"
   },
   "resources": [],
   "schema_version": 1,
   "source": {
     "name": "mlff_training_data_architecture.md",
-    "sha256": "4c74fce393f81b2d32d25acdefb097543ae7dfddf5a9c52c06c87d212c435d55"
+    "sha256": "c45b02bf05ad5d57bc30d1d2786bb1f27d7cd98803a06035c134ed98059609ba"
   }
 }

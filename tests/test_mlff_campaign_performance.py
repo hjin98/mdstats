@@ -443,6 +443,7 @@ def test_completed_prepare_receipt_is_true_noop(
         "schema": campaign_cli.PREPARE_RESTART_RECEIPT_SCHEMA,
         "contract": {"contract": "current"},
         "config_sha256": "cfg",
+        "preparation_config_digest": "prepare-config",
         "input_identities": [{"path": "inputs", "size": 1}],
         "record_digests": digests,
         "model_sweep": pointer,
@@ -467,6 +468,10 @@ def test_completed_prepare_receipt_is_true_noop(
         def get_meta(self, key):
             return "cfg"
 
+        def set_meta(self, key, value):
+            assert key == campaign_cli._stage_config_key("prepare")
+            assert value == "cfg"
+
         def has_record(self, key):
             return key == "prepare_restart_receipt" or key in digests or key == "model_sweep_checkpoint"
 
@@ -488,6 +493,9 @@ def test_completed_prepare_receipt_is_true_noop(
         "_prepare_input_identities",
         lambda cfg, paths, sources: [{"path": "inputs", "size": 1}],
     )
+    monkeypatch.setattr(
+        campaign_cli._core, "_preparation_config_digest", lambda cfg: "prepare-config"
+    )
     monkeypatch.setattr(campaign_cli._core, "_current_data8_entries", lambda store: [entry])
     cfg = {
         "training": {"modes": ["multihead_replay"], "seeds": [2]},
@@ -495,3 +503,113 @@ def test_completed_prepare_receipt_is_true_noop(
     }
     paths = SimpleNamespace(config=tmp_path / "campaign.toml")
     assert campaign_cli._try_reuse_completed_prepare(cfg, paths, Store())
+
+
+@pytest.mark.parametrize(
+    "historical_schema",
+    [campaign_cli._core._HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA, None],
+)
+def test_historical_prepare_receipt_reuses_upstream_data_and_reissues_current_receipt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, historical_schema: str | None
+) -> None:
+    """A v2 receipt's TOML identity is provenance, not a v3 reuse blocker."""
+    variant_id = "multihead_replay-n512-seed2"
+    artifact = SimpleNamespace(tree_digest="t" * 64, bundle_digest="b" * 64)
+    materialization = SimpleNamespace(
+        checkpoint=SimpleNamespace(
+            plan=SimpleNamespace(content_digest="p" * 64), data8_artifact=artifact
+        )
+    )
+    bundle = SimpleNamespace(content_digest="b" * 64)
+    entry = SimpleNamespace(variant_id=variant_id, materialization=materialization, bundle=bundle)
+    digests = {key: (key[0] * 64) for key in campaign_cli._PREPARE_RECEIPT_RECORD_KEYS}
+    pointer = {
+        "checkpoint_digest": "c" * 64,
+        "plan_digest": "q" * 64,
+        "status": "complete",
+        "completed_frames": 10,
+        "requested_frames": 10,
+        "relative_directory": ".mdstats/model-sweep",
+    }
+    paths = SimpleNamespace(config=tmp_path / "campaign.toml", manifest=tmp_path / "manifest.json")
+    receipt = {
+        "contract": {"contract": "current"},
+        "config_sha256": "historical-config",
+        "input_identities": [
+            {"path": str(paths.config.resolve()), "size": 99},
+            {"path": "inputs", "size": 1},
+        ],
+        "record_digests": digests,
+        "model_sweep": pointer,
+        "data8": [{
+            "variant_id": variant_id,
+            "bundle_digest": bundle.content_digest,
+            "plan_digest": materialization.checkpoint.plan.content_digest,
+            "tree_digest": artifact.tree_digest,
+        }],
+    }
+    if historical_schema is not None:
+        receipt["schema"] = historical_schema
+    source_catalog = SimpleNamespace(sources=())
+    qualification = SimpleNamespace(
+        status=SimpleNamespace(value="passed"), full_data9a_passed=True
+    )
+    rewritten: list[dict[str, object]] = []
+
+    class Store:
+        def stage(self, name):
+            return campaign_cli.StageState.COMPLETE, "done"
+
+        def get_meta(self, key):
+            return "historical-config"
+
+        def set_meta(self, key, value):
+            pass
+
+        def has_record(self, key):
+            return key in {
+                "prepare_restart_receipt", "model_sweep_checkpoint", "source_catalog",
+                "production_qualification",
+            } or key in digests
+
+        def get_payload(self, key):
+            return receipt if key == "prepare_restart_receipt" else pointer
+
+        def get_record(self, key, cls):
+            return source_catalog if key == "source_catalog" else qualification
+
+        def record_digest(self, key):
+            return digests[key]
+
+        def put_record(self, key, value):
+            assert key == "prepare_restart_receipt"
+            rewritten.append(value)
+
+    monkeypatch.setattr(campaign_cli._core, "_sha256", lambda path: "new-config")
+    monkeypatch.setattr(
+        campaign_cli._core, "_prepare_contract_signature", lambda: {"contract": "current"}
+    )
+    monkeypatch.setattr(
+        campaign_cli._core, "_prepare_input_identities",
+        lambda cfg, paths, sources: [{"path": "inputs", "size": 1}],
+    )
+    monkeypatch.setattr(campaign_cli._core, "_current_data8_entries", lambda store: [entry])
+    monkeypatch.setattr(
+        campaign_cli._core,
+        "_target_size_materialization_variants",
+        lambda cfg, *, study: (SimpleNamespace(variant_id=variant_id),),
+    )
+    refreshed: list[object] = []
+    monkeypatch.setattr(
+        campaign_cli._core,
+        "_ensure_target_size_study",
+        lambda store, *, cfg, repair2, mvqual2: refreshed.append((repair2, mvqual2)) or SimpleNamespace(),
+    )
+    monkeypatch.setattr(campaign_cli._core, "_validate_train2_data8_matrix", lambda cfg, store, study: None)
+    cfg = {
+        "training": {"policy_generation": "train2", "modes": ["multihead_replay"], "seeds": [2]},
+        "selection": {"sizes": [512]},
+    }
+    assert campaign_cli._try_reuse_completed_prepare(cfg, paths, Store())
+    assert refreshed, "historical target-size evidence must be replaced at the flexible boundary"
+    assert rewritten and rewritten[0]["schema"] == campaign_cli.PREPARE_RESTART_RECEIPT_SCHEMA

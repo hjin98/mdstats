@@ -242,10 +242,10 @@ Monitor policies are type-distinct from target-size policy. A target monitor of 
 Each candidate follows one authenticated training continuation:
 
 ```text
-0 -> 3 epochs -> 10 epochs -> 30 epochs
+0 -> n1 coarse -> n2 short -> n3 final screen
 ```
 
-The epoch-10 state authenticates the exact epoch-3 model, optimizer, RNG, and protocol parent. Epoch 30 continues epoch 10. All size candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered training-seed set. The seed authority is the ordered `seeds` field of the sole enabled training method; current generated campaigns default that field to `[1, 2]`. The target-size policy authenticates this ordered set rather than owning an unrelated seed convention.
+`n1 < n2 < n3 <= n`, where `n` is the independent frozen TRAIN2 schedule horizon. The short state authenticates the exact coarse model, optimizer, RNG, and protocol parent; the final screen continues the short state. All size candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered training-seed set. The seed authority is the ordered `seeds` field of the sole enabled training method; current generated campaigns default that field to `[1, 2]`. The target-size policy authenticates this ordered set rather than owning an unrelated seed convention.
 
 Ordinary target-success early stopping is disabled during this experiment because size candidates must be compared at common fidelity boundaries. Each expected candidate/seed resolves to exactly one authenticated stage outcome: strict finite endpoint success or explicit candidate-specific TRAIN2/EVAL2 numerical failure. Generic execution/resource/input/lineage failures remain fail-closed campaign errors. Normal production/CV stopping resumes once the size experiment is complete.
 
@@ -255,16 +255,16 @@ Let \(q=|\mathcal Q|\). The production decision requires at least three qualifie
 
 ```text
 q < 3      -> insufficient_qualified_sizes
-q >= 3     -> epoch 3:  q -> min(q,4)
-              epoch 10: <=4 -> 2
-              epoch 30: 2 -> 1
+q >= 3     -> coarse n1:       q -> min(q,4)
+              short n2:       <=4 -> 2
+              final screen n3: 2 -> 1
 ```
 
 Candidate comparison uses paired seed-aggregated evidence: every candidate uses the same authenticated ordered seed set, avoiding comparisons between unrelated stochastic realizations. Missing, duplicated, reordered, or candidate-specific seed populations fail closed.
 
-At epoch 3 and epoch 10, the coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric; the smaller size is preferred inside the configured band. At epoch 30 the final width independently defaults to 1 meV/Angstrom. Both widths are configurable positive finite policy fields and therefore participate in target-size policy identity; changing either width invalidates reuse of derived study evidence from the old policy. The early screens rank relative promise; they do not require the final absolute force-accuracy threshold.
+At `n1` and `n2`, the coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric; the smaller size is preferred inside the configured band. At `n3` the final width independently defaults to 1 meV/Angstrom. Both widths are configurable positive finite policy fields and therefore participate in target-size policy identity; changing either width invalidates reuse of derived study evidence from the old policy. The early screens rank relative promise; they do not require the final absolute force-accuracy threshold.
 
-At epoch 30, size selection remains a target-only ranking decision over candidates already admitted by MVQUAL. MVQUAL is the sole hard target-size eligibility authority; the size study does not re-apply target-threshold, replay-retention, energy/stress, physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates. Only candidates with complete paired successful endpoints are rankable; authenticated scientific failures remain explicit failure outcomes. Replay scores cannot rank, qualify, reject, or tie-break sizes. Model/protocol acceptance runs only after `N_selected` is frozen and cannot feed back into the size decision.
+At `n3`, size selection remains a target-only ranking decision over candidates already admitted by MVQUAL. MVQUAL is the sole hard target-size eligibility authority; the size study does not re-apply target-threshold, replay-retention, energy/stress, physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates. Only candidates with complete paired successful endpoints are rankable; authenticated scientific failures remain explicit failure outcomes. Replay scores cannot rank, qualify, reject, or tie-break sizes. Model/protocol acceptance runs only after `N_selected` is frozen and cannot feed back into the size decision.
 
 ### Typed terminal outcomes
 

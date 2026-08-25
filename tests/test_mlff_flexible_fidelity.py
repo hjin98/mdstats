@@ -129,6 +129,50 @@ def test_perf_exposure_uses_incremental_weighted_screen_work_and_full_reference(
     assert exposure.exhaustive_structure_epochs == 40 * (128 + 256 + 512)
 
 
+def test_candidate_materialization_identity_excludes_later_screen_geometry() -> None:
+    first = mdstats.build_target_size_study(
+        _Repair(), _Qual(),
+        policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(1, 3, 10)),
+        training_horizon_epochs=30,
+    )
+    second = mdstats.build_target_size_study(
+        _Repair(), _Qual(),
+        policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(2, 5, 12)),
+        training_horizon_epochs=40,
+    )
+    assert first.policy.policy_digest != second.policy.policy_digest
+    assert first.candidate_authority_digest == second.candidate_authority_digest
+
+
+def test_preparation_config_identity_excludes_only_downstream_fidelity_controls() -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    base = {
+        "schema": "mdstats.mlff-campaign-cli.v2",
+        "target_data": {"size_convergence": {
+            "fidelity_epochs": [1, 3, 10],
+            "coarse_practical_equivalence_mev_per_a": 1.0,
+            "practical_equivalence_mev_per_a": 1.0,
+            "coverage_threshold": 0.95,
+        }},
+        "training": {"modes": ["multihead_replay"], "seeds": [1, 2]},
+    }
+    changed_fidelity = {
+        **base,
+        "target_data": {"size_convergence": {
+            **base["target_data"]["size_convergence"], "fidelity_epochs": [2, 5, 12],
+        }},
+    }
+    changed_preparation = {
+        **base,
+        "target_data": {"size_convergence": {
+            **base["target_data"]["size_convergence"], "coverage_threshold": 0.90,
+        }},
+    }
+    assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed_fidelity)
+    assert cli._preparation_config_digest(base) != cli._preparation_config_digest(changed_preparation)
+
+
 def test_authenticated_fixed_generation_plan_migrates_without_new_default_substitution() -> None:
     old_policy = {
         "schema": "mdstats.target-size-study-policy.v6",

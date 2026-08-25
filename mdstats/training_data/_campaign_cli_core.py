@@ -123,7 +123,11 @@ _LEGACY_CAMPAIGN_CLI_SCHEMA = "mdstats.mlff-campaign-cli.v1"
 FOUNDATION_CONFIG_CONTRACT_SCHEMA = "mdstats.mlff-foundation-config-contract.v2"
 CAMPAIGN_STATE_SCHEMA = "mdstats.mlff-campaign-state.v2"
 EXTERNAL_RECORD_POINTER_SCHEMA = "mdstats.mlff-campaign-external-record.v1"
-PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v2"
+PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v3"
+# v2 and schema-less receipts authenticated the full TOML file as a preparation
+# input. They remain admissible only through the explicit migration check
+# below; new writes always use the dependency-scoped v3 receipt.
+_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v2"
 # Scientific/materialization contract. Target-size v5 is a hard derived-state
 # cut: independently valid upstream authorities may be reused, but legacy
 # ladder/migration/rescue/convergence receipts cannot authenticate this contract.
@@ -8632,6 +8636,41 @@ _PREPARE_RECEIPT_OPTIONAL_RECORD_KEYS = (
     "final_gpu1_qualification",
 )
 
+# Target-size state is downstream of preparation.  Its policy/digest must be
+# rebuilt or migrated on a fidelity-generation change, but that change alone
+# must not invalidate authenticated DATA2-DATA8 preparation evidence.
+_PREPARE_REUSE_RECORD_KEYS = tuple(
+    key for key in _PREPARE_RECEIPT_RECORD_KEYS
+    if key != "target_size_study"
+)
+
+
+def _preparation_config_digest(cfg: Mapping[str, Any]) -> str:
+    """Fingerprint only configuration that can change prepared artifacts.
+
+    A fidelity tuple and target-size ranking tolerances govern downstream
+    TRAIN2 selection; they do not change the admitted REPAIR2 prefixes or the
+    candidate DATA7/DATA8 bytes.  Keep the full TOML hash as provenance, but
+    use this dependency-scoped identity for completed-prepare reuse.
+    """
+
+    normalized = json.loads(json.dumps(cfg, sort_keys=True, default=str))
+    normalized.pop("schema", None)
+    target_data = normalized.get("target_data")
+    if isinstance(target_data, dict):
+        convergence = target_data.get("size_convergence")
+        if isinstance(convergence, dict):
+            for key in (
+                "fidelity_epochs",
+                "coarse_training_epochs",
+                "short_training_epochs",
+                "final_training_epochs",
+                "coarse_practical_equivalence_mev_per_a",
+                "practical_equivalence_mev_per_a",
+            ):
+                convergence.pop(key, None)
+    return digest({"schema": "mdstats.mlff-prepare-semantic-config.v1", "config": normalized})
+
 
 def _file_stat_identity(path: Path) -> dict[str, Any]:
     source = path.expanduser().resolve()
@@ -8652,7 +8691,10 @@ def _file_stat_identity(path: Path) -> dict[str, Any]:
 def _prepare_input_identities(
     cfg: Mapping[str, Any], paths: CampaignPaths, sources: Any
 ) -> list[dict[str, Any]]:
-    candidates: set[Path] = {paths.config, paths.manifest}
+    # The config itself is authenticated separately through the scoped digest;
+    # including its file stat here would turn harmless downstream tuple edits
+    # into an upstream preparation invalidation.
+    candidates: set[Path] = {paths.manifest}
     for key in ("foundation_model", "replay_set", "replay_train", "replay_monitor", "replay_true_labels"):
         value = _path_cfg(cfg, paths, key, required=False)
         if value is not None:
@@ -8664,6 +8706,34 @@ def _prepare_input_identities(
             locator = training_root / locator
         candidates.add(locator)
     return [_file_stat_identity(path) for path in sorted(candidates, key=lambda item: str(item))]
+
+
+def _historical_prepare_inputs_match_current(
+    receipt_inputs: Any,
+    cfg: Mapping[str, Any],
+    paths: CampaignPaths,
+    sources: Any,
+) -> bool:
+    """Validate a v2 receipt after removing its obsolete TOML-file identity.
+
+    v2 included the campaign TOML itself among preparation inputs. A v1-to-v2
+    fidelity upgrade necessarily changes that file, so comparing that one
+    identity would make a whole-config hash mismatch incorrectly demand DATA2
+    through DATA9A recomputation. We accept the historical record only when it
+    contains exactly that old config identity and every remaining immutable
+    input still matches the current preparation-scoped identity.
+    """
+
+    if not isinstance(receipt_inputs, list):
+        return False
+    config_path = str(paths.config.expanduser().resolve())
+    historical_non_config = [
+        item for item in receipt_inputs
+        if not isinstance(item, Mapping) or item.get("path") != config_path
+    ]
+    if len(historical_non_config) != len(receipt_inputs) - 1:
+        return False
+    return historical_non_config == _prepare_input_identities(cfg, paths, sources)
 
 
 def _prepare_contract_signature() -> dict[str, Any]:
@@ -8737,10 +8807,11 @@ def _write_prepare_restart_receipt(
         "schema": PREPARE_RESTART_RECEIPT_SCHEMA,
         "contract": _prepare_contract_signature(),
         "config_sha256": _sha256(paths.config),
+        "preparation_config_digest": _preparation_config_digest(cfg),
         "input_identities": _prepare_input_identities(cfg, paths, sources),
         "record_digests": {
             key: (store.record_digest(key) if store.has_record(key) else None)
-            for key in (*_PREPARE_RECEIPT_RECORD_KEYS, *_PREPARE_RECEIPT_OPTIONAL_RECORD_KEYS)
+            for key in (*_PREPARE_REUSE_RECORD_KEYS, *_PREPARE_RECEIPT_OPTIONAL_RECORD_KEYS)
         },
         "model_sweep": {
             key: sweep_pointer.get(key)
@@ -8767,27 +8838,38 @@ def _try_reuse_completed_prepare(
 
     if store.stage("prepare")[0] is not StageState.COMPLETE:
         return False
-    if store.get_meta(_stage_config_key("prepare")) != _sha256(paths.config):
-        return False
     if not store.has_record("prepare_restart_receipt"):
         return False
     try:
         receipt = store.get_payload("prepare_restart_receipt")
-        if receipt.get("schema") != PREPARE_RESTART_RECEIPT_SCHEMA:
+        receipt_schema = receipt.get("schema")
+        if receipt_schema not in {
+            PREPARE_RESTART_RECEIPT_SCHEMA,
+            _HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
+            None,
+        }:
             return False
         if receipt.get("contract") != _prepare_contract_signature():
-            return False
-        if receipt.get("config_sha256") != _sha256(paths.config):
             return False
         import mdstats
 
         sources = store.get_record("source_catalog", mdstats.TrainingDataSourceCatalog)
-        if receipt.get("input_identities") != _prepare_input_identities(cfg, paths, sources):
+        if receipt_schema == PREPARE_RESTART_RECEIPT_SCHEMA:
+            if receipt.get("preparation_config_digest") != _preparation_config_digest(cfg):
+                return False
+            inputs_current = receipt.get("input_identities") == _prepare_input_identities(
+                cfg, paths, sources
+            )
+        else:
+            inputs_current = _historical_prepare_inputs_match_current(
+                receipt.get("input_identities"), cfg, paths, sources
+            )
+        if not inputs_current:
             return False
         expected_record_digests = receipt.get("record_digests", {})
         if any(
             (store.record_digest(key) if store.has_record(key) else None) != expected_record_digests.get(key)
-            for key in (*_PREPARE_RECEIPT_RECORD_KEYS, *_PREPARE_RECEIPT_OPTIONAL_RECORD_KEYS)
+            for key in (*_PREPARE_REUSE_RECORD_KEYS, *_PREPARE_RECEIPT_OPTIONAL_RECORD_KEYS)
         ):
             return False
         if store.get_payload("model_sweep_checkpoint") != receipt.get("model_sweep"):
@@ -8801,7 +8883,18 @@ def _try_reuse_completed_prepare(
                 return False
         entries = _current_data8_entries(store)
         if _training_policy_generation(cfg) == "train2":
-            study = _load_verified_target_size_study_authority(store)
+            # Validate the historical receipt before replacing downstream
+            # target-size state. The old plan is not evidence for the new
+            # flexible boundaries; `_ensure` rebuilds it from REPAIR2/MVQUAL2.
+            repair2 = store.get_record(
+                "target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2
+            )
+            mvqual2 = store.get_record(
+                "target_multi_view_qualification_v2", mdstats.TargetMultiViewQualificationPlanV2
+            )
+            study = _ensure_target_size_study(
+                store, cfg=cfg, repair2=repair2, mvqual2=mvqual2
+            )
             expected_variants = _target_size_materialization_variants(cfg, study=study)
         else:
             expected_variants = _variant_specs(cfg)
@@ -8839,6 +8932,28 @@ def _try_reuse_completed_prepare(
             return False
     except Exception:
         return False
+    # The receipt proved that the completed preparation remains semantically
+    # current under the new TOML generation.  Refresh only the stage's
+    # presentation/config marker so downstream lifecycle checks do not demand
+    # a pointless rerun; the immutable receipt still retains the historical
+    # full-file hash as provenance.
+    store.set_meta(_stage_config_key("prepare"), _sha256(paths.config))
+    if receipt_schema != PREPARE_RESTART_RECEIPT_SCHEMA:
+        by_variant = {entry.variant_id: entry for entry in entries}
+        ordered_entries = [by_variant[variant.variant_id] for variant in expected_variants]
+        _write_prepare_restart_receipt(
+            cfg,
+            paths,
+            store,
+            sources=sources,
+            variants=expected_variants,
+            materializations=[entry.materialization for entry in ordered_entries],
+            bundles=[entry.bundle for entry in ordered_entries],
+        )
+        _ok(
+            "migrated validated historical prepare receipt to dependency-scoped v3; "
+            "upstream DATA2-DATA9A artifacts were reused"
+        )
     _ok(
         "prepare is already complete and byte/current-input identities are unchanged; "
         "skipped DATA2-DATA9A without repeating DATA6 or DATA7/DATA8 work"
@@ -14059,9 +14174,20 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             job.loader_dry_run.target_train_count_effective
             + job.loader_dry_run.replay_train_count_effective
         )
+        authorized_epochs = optimizer.max_num_epochs
+        if policy_family == "train2" and train2_execution_epoch_limit is not None:
+            completed_epochs = (
+                0 if train2_existing_summary is None
+                else int(train2_existing_summary.completed_epochs)
+            )
+            authorized_epochs = int(train2_execution_epoch_limit) - completed_epochs
+        if authorized_epochs <= 0:
+            raise CampaignCliError(
+                f"TRAIN2 progress geometry for {run.run_id} has no authorized remaining epochs."
+            )
         expected_training_updates = max(
             1,
-            (effective_per_epoch // optimizer.batch_size) * optimizer.max_num_epochs,
+            (effective_per_epoch // optimizer.batch_size) * authorized_epochs,
         )
         pending_tasks.append(
             _PendingTrainingTask(

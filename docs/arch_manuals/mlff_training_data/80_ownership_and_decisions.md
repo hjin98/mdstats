@@ -156,12 +156,12 @@ A pass/fail/pass sequence is an invariant violation in nesting, identity, qualif
 Each candidate follows one authenticated continuation trajectory:
 
 ```text
-foundation -> epoch 3 -> epoch 10 -> epoch 30
+foundation -> coarse n1 -> short n2 -> final screen n3
 ```
 
-Epoch 10 authenticates the exact epoch-3 model/optimizer/RNG parent; epoch 30 authenticates epoch 10. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
+The short screen authenticates the exact coarse model/optimizer/RNG parent; the final screen authenticates the short parent. `n1 < n2 < n3 <= n`, where `n` is the independent full TRAIN2 schedule horizon. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
 
-At every target-size boundary the endpoint itself is authoritative: `S(N,3)`, `S(N,10)`, and `S(N,30)` are evaluated at matched fidelity. A better earlier checkpoint cannot replace the prescribed endpoint. This is distinct from post-selection production checkpoint selection, where `N_selected` is fixed and the checkpoint epoch may be optimized over the admissible trajectory.
+At every target-size boundary the endpoint itself is authoritative: `S(N,n1)`, `S(N,n2)`, and `S(N,n3)` are evaluated at matched fidelity. A better earlier checkpoint cannot replace the prescribed endpoint. This is distinct from post-selection production checkpoint selection, where `N_selected` is fixed and the checkpoint epoch may be optimized over the admissible trajectory.
 
 Ordinary target-success early stopping is disabled during the size experiment because candidates must reach comparable fidelity boundaries. Every expected candidate/seed produces exactly one stage outcome: strict successful endpoint evidence or explicit authenticated candidate-specific numerical/scientific failure evidence. Generic execution/resource/input/schema/lineage failures remain campaign errors. Normal production/CV stopping resumes after target size is frozen.
 
@@ -173,7 +173,7 @@ The TRAIN2 CLI is a projection of existing scientific/execution authorities, not
 prepare -> preflight -> select-target-size -> materialize -> preflight -> train -> evaluate -> verify
 ```
 
-`select-target-size` is the sole public owner of the restartable 3/10/30 controlled-fidelity loop. It reuses one screening DATA8 matrix and one matrix-bound preflight across all halving boundaries. Once `selected_target_size` is frozen, `materialize` realizes exactly that size across the final-development and configured CV topology; because this changes the active DATA8 matrix, the earlier screening preflight cannot authorize production training. Public `train` and `evaluate` are then restricted to the selected production/CV workload. `status` and `advance` derive these semantic steps from `TargetSizeStudyPlan`, active DATA8 identities, the preflight matrix digest, and existing execution/evaluation receipts; they do not write a second scientific state machine.
+`select-target-size` is the sole public owner of the restartable `n1/n2/n3` controlled-fidelity loop. It reuses one screening DATA8 matrix and one matrix-bound preflight across all configured boundaries. Once `selected_target_size` is frozen, `materialize` realizes exactly that size across the final-development and configured CV topology; because this changes the active DATA8 matrix, the earlier screening preflight cannot authorize production training. Public `train` and `evaluate` are then restricted to the selected production/CV workload. `status` and `advance` derive these semantic steps from `TargetSizeStudyPlan`, active DATA8 identities, the preflight matrix digest, and existing execution/evaluation receipts; they do not write a second scientific state machine.
 
 ### Successive-fidelity funnel
 
@@ -181,16 +181,16 @@ Let \(q=|\mathcal Q|\). Fewer than three qualified sizes is a typed failure. Oth
 
 ```text
 q >= 3
-  epoch 3:  q -> min(q,4)
-  epoch 10: <=4 -> 2
-  epoch 30: 2 -> 1
+  coarse n1:       q -> min(q,4)
+  short n2:       <=4 -> 2
+  final screen n3: 2 -> 1
 ```
 
 All candidates use the same authenticated ordered training-seed set, and comparisons aggregate paired seed evidence rather than unrelated stochastic realizations. Missing, duplicated, reordered, or candidate-specific seed populations invalidate the state.
 
-At epoch 3 and epoch 10, the configurable coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric, and candidates inside that band prefer the smaller size. The independently configurable final width also defaults to 1 meV/Angstrom for epoch-30 ranking and fixed-ceiling material superiority. Both positive finite values are policy-identity fields, not frozen schema constants. Early screens need not satisfy the final absolute force-accuracy threshold.
+At `n1` and `n2`, the configurable coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric, and candidates inside that band prefer the smaller size. The independently configurable final width also defaults to 1 meV/Angstrom for `n3` ranking and fixed-ceiling material superiority. Both positive finite values are policy-identity fields, not frozen schema constants. Early screens need not satisfy the final absolute force-accuracy threshold.
 
-At epoch 30, the two finalists are ranked only by the target-size study metric under the frozen practical-equivalence rule. MVQUAL remains the sole hard target-size eligibility gate; target-threshold, replay, physical-integrity, relaxation, deployment, and other model/protocol acceptance evidence is downstream of the immutable size choice. Only complete paired successful candidates are rankable; authenticated trajectory failures remain explicit evidence and replay scores cannot affect ranking or tie-breaking.
+At `n3`, the two finalists are ranked only by the target-size study metric under the frozen practical-equivalence rule. MVQUAL remains the sole hard target-size eligibility gate; target-threshold, replay, physical-integrity, relaxation, deployment, and other model/protocol acceptance evidence is downstream of the immutable size choice. Only complete paired successful candidates are rankable; authenticated trajectory failures remain explicit evidence and replay scores cannot affect ranking or tie-breaking.
 
 ### Typed terminal outcomes
 
@@ -274,7 +274,7 @@ The current MLFF subsystem follows these durable rules:
 5. target size and monitor cardinalities are typed, distinct policy families;
 6. frame membership is domain-local while selected target size is protocol-global;
 7. one repaired master order defines every candidate prefix and hard coverage is monotone with increasing prefix size;
-8. the target-size experiment uses development/model-selection evidence, fixed 3/10/30 continuation, paired seeds, and typed non-convergence/failure outcomes;
+8. the target-size experiment uses development/model-selection evidence, configured `n1/n2/n3` continuation on a full horizon `n`, paired seeds, and typed non-convergence/failure outcomes;
 9. MVQUAL is the sole hard target-size eligibility authority; downstream model/protocol acceptance cannot alter the immutable size choice;
 10. locked tests remain sealed until the frozen protocol/committee activation boundary;
 11. unsupported old campaigns are re-prepared rather than migrated;
