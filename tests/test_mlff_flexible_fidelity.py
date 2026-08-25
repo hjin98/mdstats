@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import ast
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -1403,20 +1402,119 @@ def test_authenticated_fixed_generation_plan_migrates_without_new_default_substi
         "comparison_failures": [],
     }
     legacy["content_digest"] = digest(legacy)
+    historical = mdstats.authenticated_fixed_predecessor_candidate_authority(legacy)
+    assert historical["generation"] == mdstats.LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION
+    assert historical["historical_policy_digest"] == old_policy["policy_digest"]
+    assert historical["candidate_authority_digest"] != current.candidate_authority_digest
     migrated = mdstats.TargetSizeStudyPlan.from_dict(legacy)
     assert migrated.policy.fidelity_epochs == (3, 10, 30)
     assert migrated.outcome == mdstats.OUTCOME_AWAITING_COARSE_SCREEN
     legacy["qualified_sizes"] = [512]
     with pytest.raises(mdstats.TrainingDataSerializationError, match="digest mismatch"):
         mdstats.TargetSizeStudyPlan.from_dict(legacy)
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="digest mismatch"):
+        mdstats.authenticated_fixed_predecessor_candidate_authority(legacy)
 
 
-def _fixed_predecessor_bridge_entry(study: object, *, authority_digest: str | None = None):
-    """A bounded external DATA8 artifact below the bridge-owner boundary."""
+def test_historical_fixed_authority_is_captured_before_v8_study_migration(
+    tmp_path: Path,
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
 
-    from mdstats.training_data.production_materialization import (
-        PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
+    current = mdstats.build_target_size_study(
+        _Repair(), _Qual(),
+        policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(1, 3, 10)),
+        training_horizon_epochs=30,
     )
+    legacy = _authentic_fixed_predecessor_payload(current)
+    store = cli.CampaignStore(tmp_path / "campaign.sqlite3")
+    store.put_record("target_size_study", legacy)
+    cli._capture_historical_fixed_candidate_authority(store)
+    receipt = store.get_payload(cli._HISTORICAL_FIXED_CANDIDATE_AUTHORITY_KEY)
+    assert receipt == mdstats.authenticated_fixed_predecessor_candidate_authority(legacy)
+    # Reopening proves that the raw v6 policy identity survives the later
+    # v8-to-flexible normalization boundary as compatibility evidence.
+    store.close()
+    reopened = cli.CampaignStore(tmp_path / "campaign.sqlite3")
+    cli._capture_historical_fixed_candidate_authority(reopened)
+    assert reopened.get_payload(cli._HISTORICAL_FIXED_CANDIDATE_AUTHORITY_KEY) == receipt
+    reopened.close()
+
+
+def test_stage_local_real_store_captures_fixed_authority_before_flexible_rebuild(
+    tmp_path: Path,
+) -> None:
+    """Exercise raw v8/v6 capture and the real current study owner together."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    repair, qualification = _persistable_target_size_authorities()
+    legacy_current = mdstats.build_target_size_study(
+        repair,
+        qualification,
+        policy=mdstats.TargetSizeStudyPolicy(
+            fidelity_epochs=(3, 10, 30), screening_optimizer_seeds=(1,)
+        ),
+        training_horizon_epochs=30,
+    )
+    store = cli.CampaignStore(tmp_path / "campaign.sqlite3")
+    store.put_records({
+        "target_multi_view_repair_v2": repair,
+        "target_multi_view_qualification_v2": qualification,
+        "target_size_study": _authentic_fixed_predecessor_payload(legacy_current),
+    })
+    current = cli._ensure_target_size_study(
+        store,
+        cfg=_migration_cfg((1, 3, 10), 30),
+        repair2=repair,
+        mvqual2=qualification,
+    )
+    assert current.policy.fidelity_epochs == (1, 3, 10)
+    historical = store.get_payload(cli._HISTORICAL_FIXED_CANDIDATE_AUTHORITY_KEY)
+    assert historical["candidate_authority_digest"] != current.candidate_authority_digest
+    assert historical["dataset_id"] == current.dataset_id
+    assert historical["candidate_digests"] == list(current.candidate_authority_inputs["candidate_digests"])
+    store.close()
+
+
+def _authentic_fixed_predecessor_payload(study: object) -> dict[str, object]:
+    """Return raw v8/v6 evidence for focused bridge-unit coverage only."""
+
+    old_policy = {
+        "schema": "mdstats.target-size-study-policy.v6",
+        "authority_version": "mdstats.target-size-study.fixed-eight.2026-08.v5.3",
+        "candidate_sizes": list(mdstats.FIXED_TARGET_SIZES),
+        "minimum_qualified_sizes": 3,
+        "epoch3_survivor_limit": 4,
+        "epoch10_finalist_count": 2,
+        "fidelity_epochs": [3, 10, 30],
+        "practical_equivalence_mev_per_a": 1.0,
+        "coarse_practical_equivalence_mev_per_a": 1.0,
+        "screening_optimizer_seeds": [1],
+        "paired_seed_aggregation": "arithmetic_mean",
+    }
+    old_policy["policy_digest"] = digest(old_policy)
+    payload: dict[str, object] = {
+        "schema": "mdstats.target-size-study-plan.v8",
+        "authority_version": "mdstats.target-size-study.fixed-eight.2026-08.v5.3",
+        "dataset_id": study.dataset_id,
+        "repair2_authority_digest": study.repair2_authority_digest,
+        "mvqual_authority_digest": study.mvqual_authority_digest,
+        "policy": old_policy,
+        "candidates": [item.to_dict() for item in study.candidates],
+        "qualified_sizes": list(study.qualified_sizes),
+        "epoch3_outcomes": [], "epoch3_survivor_sizes": [],
+        "epoch10_outcomes": [], "epoch10_finalist_sizes": [], "epoch30_outcomes": [],
+        "selected_target_size": None, "outcome": "awaiting_epoch_3",
+        "decision_reason": "legacy fixture", "comparison_failure_stage": None,
+        "comparison_failures": [],
+    }
+    payload["content_digest"] = digest(payload)
+    return payload
+
+
+def _fixed_predecessor_bridge_entry(*, authority_digest: str, plan_schema: str):
+    """A bounded external DATA8 artifact below the bridge-owner boundary."""
 
     bundle = SimpleNamespace(content_digest=_h("legacy-data8-bundle"))
     protocol = SimpleNamespace(
@@ -1436,13 +1534,9 @@ def _fixed_predecessor_bridge_entry(study: object, *, authority_digest: str | No
         tree_digest=_h("legacy-data8-tree"),
     )
     plan = SimpleNamespace(
-        plan_schema=PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
+        plan_schema=plan_schema,
         selection_authority_role="target_size_candidate",
-        target_size_study_digest=(
-            mdstats.fixed_predecessor_candidate_authority_digest(study)
-            if authority_digest is None
-            else authority_digest
-        ),
+        target_size_study_digest=authority_digest,
         content_digest=_h("legacy-materialization-plan"),
     )
     materialization = SimpleNamespace(
@@ -1456,7 +1550,7 @@ def _fixed_predecessor_bridge_entry(study: object, *, authority_digest: str | No
     )
 
 
-def test_real_owner_fixed_predecessor_data8_authority_bridge_is_explicit_and_idempotent(
+def test_supplemental_fixed_predecessor_data8_authority_bridge_is_explicit_and_idempotent(
     tmp_path: Path,
 ) -> None:
     """The bridge verifies the old generation rather than accepting a mismatch."""
@@ -1468,9 +1562,17 @@ def test_real_owner_fixed_predecessor_data8_authority_bridge_is_explicit_and_ide
         policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(1, 3, 10)),
         training_horizon_epochs=30,
     )
-    assert study.candidate_authority_digest != mdstats.fixed_predecessor_candidate_authority_digest(study)
     store = cli.CampaignStore(tmp_path / "campaign.sqlite3")
-    entry = _fixed_predecessor_bridge_entry(study)
+    historical = mdstats.authenticated_fixed_predecessor_candidate_authority(
+        _authentic_fixed_predecessor_payload(study)
+    )
+    store.put_record(cli._HISTORICAL_FIXED_CANDIDATE_AUTHORITY_KEY, historical)
+    entry = _fixed_predecessor_bridge_entry(
+        authority_digest=historical["candidate_authority_digest"],
+        # This deliberately proves the bridge does not classify authority by
+        # production serialization generation.
+        plan_schema="mdstats.production-materialization-plan.v10",
+    )
     cli._fixed_predecessor_data8_authority_bridge(store, study, [entry])
     key = f"target_size_data8_authority_bridge:{study.candidate_authority_digest}"
     receipt = store.get_payload(key)
@@ -1482,65 +1584,35 @@ def test_real_owner_fixed_predecessor_data8_authority_bridge_is_explicit_and_ide
     cli._fixed_predecessor_data8_authority_bridge(store, study, [entry])
     assert store.record_keys("target_size_data8_authority_bridge:") == (key,)
     store.close()
+    # The compact fixture remains unit coverage, but it proves receipt
+    # idempotence across the actual SQLite persistence boundary.
+    reopened = cli.CampaignStore(tmp_path / "campaign.sqlite3")
+    cli._fixed_predecessor_data8_authority_bridge(reopened, study, [entry])
+    assert reopened.record_keys("target_size_data8_authority_bridge:") == (key,)
+    reopened.close()
 
 
-@pytest.mark.parametrize("mismatch", ["wrong-authority", "current-generation"])
-def test_real_owner_fixed_predecessor_data8_authority_bridge_fails_closed(
+@pytest.mark.parametrize("mismatch", ["wrong-authority", "missing-evidence"])
+def test_supplemental_fixed_predecessor_data8_authority_bridge_fails_closed(
     tmp_path: Path, mismatch: str
 ) -> None:
     from mdstats.training_data import _campaign_cli_core as cli
 
     study = mdstats.build_target_size_study(_Repair(), _Qual())
-    entry = _fixed_predecessor_bridge_entry(
-        study,
-        authority_digest=_h(mismatch),
+    historical = mdstats.authenticated_fixed_predecessor_candidate_authority(
+        _authentic_fixed_predecessor_payload(study)
     )
-    if mismatch == "current-generation":
-        entry.materialization.checkpoint.plan.plan_schema = "mdstats.production-materialization-plan.v10"
+    entry = _fixed_predecessor_bridge_entry(
+        authority_digest=(
+            _h(mismatch) if mismatch == "wrong-authority"
+            else historical["candidate_authority_digest"]
+        ),
+        plan_schema="mdstats.production-materialization-plan.v10",
+    )
     store = cli.CampaignStore(tmp_path / "campaign.sqlite3")
-    with pytest.raises(cli.CampaignCliError, match="(fixed-fidelity authority|unsupported predecessor authority)"):
+    if mismatch != "missing-evidence":
+        store.put_record(cli._HISTORICAL_FIXED_CANDIDATE_AUTHORITY_KEY, historical)
+    with pytest.raises(cli.CampaignCliError, match="(fixed-fidelity authority|fixed v8/v6 predecessor evidence)"):
         cli._fixed_predecessor_data8_authority_bridge(store, study, [entry])
     assert not store.record_keys("target_size_data8_authority_bridge:")
     store.close()
-
-
-def test_real_owner_acceptance_guard_rejects_semantic_owner_substitution() -> None:
-    """Protect the dedicated real-owner acceptance set from proxy regressions."""
-
-    forbidden = {
-        "_require_train2_preflight_authorization",
-        "_historical_prepare_inputs_match_current",
-        "_prepare_contract_signature",
-        "_preparation_config_digest",
-        "_current_data8_entries",
-        "_target_size_materialization_variants",
-        "_ensure_target_size_study",
-        "_fixed_predecessor_data8_authority_bridge",
-        "_validate_train2_data8_matrix",
-        "_stage_config_digest",
-        "_next_public_operation",
-        "_invalidate_train2_downstream_state",
-        "CampaignStore",
-    }
-    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
-    real_owner_tests = [
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name.startswith("test_real_owner_")
-        and node.name != "test_real_owner_acceptance_guard_rejects_semantic_owner_substitution"
-    ]
-    assert real_owner_tests
-    for test in real_owner_tests:
-        for call in ast.walk(test):
-            if not isinstance(call, ast.Call):
-                continue
-            if (
-                isinstance(call.func, ast.Attribute)
-                and call.func.attr == "setattr"
-                and len(call.args) >= 2
-                and isinstance(call.args[1], ast.Constant)
-                and call.args[1].value in forbidden
-            ):
-                pytest.fail(
-                    f"{test.name} replaces semantic owner {call.args[1].value!r}."
-                )

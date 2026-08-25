@@ -64,6 +64,7 @@ from ._common import (
     digest,
     prune_sha256_receipts,
     sha256_file_cached,
+    validate_digest,
 )
 from ._frame_access import ase_atoms_for_frame, build_frame_array_index
 from .mace_compatibility import (
@@ -4827,11 +4828,46 @@ def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
     return policy
 
 
+_HISTORICAL_FIXED_CANDIDATE_AUTHORITY_KEY = "target_size_historical_candidate_authority"
+
+
+def _capture_historical_fixed_candidate_authority(store: CampaignStore) -> None:
+    """Durably retain authenticated v8/v6 compatibility evidence before migration.
+
+    The raw fixed study is the only owner of its v6 policy digest.  Capture a
+    compact, integrity-bound receipt before normal deserialization migrates it
+    to the flexible representation; later DATA8 compatibility consumes this
+    receipt rather than guessing from a materialization serialization schema.
+    """
+
+    import mdstats
+
+    raw = store.get_payload_optional("target_size_study")
+    if raw is None or raw.get("schema") != "mdstats.target-size-study-plan.v8":
+        return
+    try:
+        receipt = mdstats.authenticated_fixed_predecessor_candidate_authority(raw)
+    except Exception as exc:
+        raise CampaignCliError(
+            "Historical target-size state cannot supply authenticated fixed-generation "
+            "candidate-authority evidence."
+        ) from exc
+    existing = store.get_payload_optional(_HISTORICAL_FIXED_CANDIDATE_AUTHORITY_KEY)
+    if existing is not None and existing != receipt:
+        raise CampaignCliError(
+            "Persisted historical fixed-generation candidate-authority evidence conflicts "
+            "with the raw v8/v6 target-size study."
+        )
+    if existing is None:
+        store.put_record(_HISTORICAL_FIXED_CANDIDATE_AUTHORITY_KEY, receipt)
+
+
 def _load_verified_target_size_study_authority(store: CampaignStore) -> Any:
     """Restore v5 target-size authority and authenticate direct REPAIR2/MVQUAL2 lineage."""
 
     import mdstats
 
+    _capture_historical_fixed_candidate_authority(store)
     repair2 = store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
     mvqual2 = store.get_record(
         "target_multi_view_qualification_v2", mdstats.TargetMultiViewQualificationPlanV2
@@ -4850,6 +4886,7 @@ def _ensure_target_size_study(
 
     policy = _target_size_study_policy(cfg)
     training_horizon = int(_cfg(cfg, "training", "max_num_epochs", 30))
+    _capture_historical_fixed_candidate_authority(store)
     try:
         existing = store.get_record_optional("target_size_study", mdstats.TargetSizeStudyPlan)
     except Exception as exc:
@@ -10765,18 +10802,63 @@ def _fixed_predecessor_data8_authority_bridge(
 ) -> None:
     """Re-authenticate exactly one fixed-fidelity DATA8 authority generation.
 
-    A fixed-fidelity materialization (production-plan v9) bound candidate DATA8
-    to the old policy-bound authority digest.  Flexible fidelity uses a
-    policy-independent candidate-prefix authority.  The old digest is never
-    accepted on its own: this owner proves every current upstream candidate
-    input, expected role/topology, and promoted DATA8 artifact before storing
-    an idempotent compatibility receipt.
+    Fixed fidelity bound candidate DATA8 to a policy-bound authority digest.
+    Flexible fidelity uses a policy-independent candidate-prefix authority.
+    Materialization serialization generation is intentionally irrelevant: the
+    old digest is admitted only through a raw authenticated v8-study/v6-policy
+    receipt, then this owner proves every current upstream candidate input,
+    expected role/topology, and promoted DATA8 artifact before storing an
+    idempotent compatibility receipt.
     """
 
     import mdstats
-    from .production_materialization import PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA
 
-    legacy_digest = mdstats.fixed_predecessor_candidate_authority_digest(study)
+    receipt = store.get_payload_optional(_HISTORICAL_FIXED_CANDIDATE_AUTHORITY_KEY)
+    if receipt is None:
+        raise CampaignCliError(
+            "DATA8 candidate-authority mismatch has no authenticated fixed v8/v6 predecessor "
+            "evidence. Transitional flexible-v1 and unknown generations are not admitted."
+        )
+    receipt_payload = dict(receipt)
+    observed_receipt_digest = receipt_payload.pop("content_digest", None)
+    if (
+        receipt_payload.get("schema")
+        != mdstats.HISTORICAL_FIXED_CANDIDATE_AUTHORITY_RECEIPT_SCHEMA
+        or observed_receipt_digest != digest(receipt_payload)
+        or receipt_payload.get("generation")
+        != mdstats.LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION
+    ):
+        raise CampaignCliError(
+            "Persisted fixed-generation candidate-authority evidence is corrupt or unsupported."
+        )
+    legacy_digest = str(receipt_payload.get("candidate_authority_digest", ""))
+    try:
+        validate_digest(legacy_digest, name="historical candidate authority digest")
+        validate_digest(
+            str(receipt_payload.get("historical_study_digest", "")),
+            name="historical fixed study digest",
+        )
+        validate_digest(
+            str(receipt_payload.get("historical_policy_digest", "")),
+            name="historical fixed policy digest",
+        )
+    except Exception as exc:
+        raise CampaignCliError(
+            "Persisted fixed-generation candidate-authority evidence has no valid legacy digest."
+        ) from exc
+    inputs = study.candidate_authority_inputs
+    for key, expected in {
+        "dataset_id": inputs["dataset_id"],
+        "repair2_authority_digest": inputs["repair2_authority_digest"],
+        "mvqual_authority_digest": inputs["mvqual_authority_digest"],
+        "candidate_digests": list(inputs["candidate_digests"]),
+        "qualified_sizes": list(inputs["qualified_sizes"]),
+    }.items():
+        if receipt_payload.get(key) != expected:
+            raise CampaignCliError(
+                "Authenticated fixed-generation predecessor is not semantically equivalent "
+                f"to the current candidate authority ({key} changed)."
+            )
     validated: list[dict[str, Any]] = []
     for entry in sorted(entries, key=lambda value: value.variant_id):
         materialization = entry.materialization
@@ -10786,11 +10868,6 @@ def _fixed_predecessor_data8_authority_bridge(
             )
         checkpoint = materialization.checkpoint
         plan = checkpoint.plan
-        if plan.plan_schema != PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA:
-            raise CampaignCliError(
-                f"DATA8 bundle {entry.variant_id} has unsupported predecessor authority generation "
-                f"{plan.plan_schema!r}."
-            )
         if plan.selection_authority_role != "target_size_candidate":
             raise CampaignCliError(
                 f"DATA8 bundle {entry.variant_id} is not a fixed-fidelity candidate materialization."
@@ -10824,12 +10901,12 @@ def _fixed_predecessor_data8_authority_bridge(
             "data8_tree_digest": artifact.tree_digest,
         })
 
-    inputs = study.candidate_authority_inputs
     payload = {
         "schema": _DATA8_PREDECESSOR_AUTHORITY_BRIDGE_SCHEMA,
         "predecessor_generation": mdstats.LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION,
         "current_generation": mdstats.TARGET_SIZE_CANDIDATE_AUTHORITY_GENERATION,
         "predecessor_authority_digest": legacy_digest,
+        "historical_authority_receipt_digest": observed_receipt_digest,
         "current_authority_digest": study.candidate_authority_digest,
         "dataset_id": inputs["dataset_id"],
         "repair2_authority_digest": inputs["repair2_authority_digest"],

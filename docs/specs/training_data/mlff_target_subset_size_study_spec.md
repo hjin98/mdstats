@@ -289,10 +289,15 @@ continuation, not immutable candidate membership.
 
 The immediately preceding fixed-fidelity generation is the sole compatibility
 exception. It used a distinct, policy-bound authority derivation and may be
-reused only when its production materialization generation explicitly
-identifies that predecessor, the recorded legacy digest is recomputed from the
-authenticated current inputs, the candidate role/topology and complete expected
-matrix match, and the promoted DATA8 artifact passes its own integrity check.
+reused only when the raw historical v8-study/v6-policy authority is
+authenticated before migration, its authentic v6 policy digest proves the
+recorded legacy candidate binding, the candidate role/topology and complete
+expected matrix match, and the promoted DATA8 artifact passes its own integrity
+check. Production-materialization serialization versions are not candidate
+authority generations and SHALL NOT classify a predecessor. A policy-independent
+flexible-v1 binding that cannot be unambiguously proven current is a distinct,
+unsupported transitional generation and SHALL fail closed rather than falling
+through the fixed-predecessor exception.
 Successful re-authentication records a durable, idempotent compatibility
 receipt; it neither rewrites DATA7/DATA8 nor relabels historical screen,
 schedule, checkpoint, or TRAIN2 evidence as current configurable-fidelity

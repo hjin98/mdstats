@@ -41,6 +41,9 @@ TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA = "mdstats.target-size-study-candidate-au
 TARGET_SIZE_CANDIDATE_AUTHORITY_GENERATION = "flexible-fidelity-candidate-prefix.v1"
 LEGACY_FIXED_CANDIDATE_AUTHORITY_SCHEMA = "mdstats.target-size-study-candidate-authority.v1"
 LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION = "fixed-fidelity-policy-bound.v1"
+HISTORICAL_FIXED_CANDIDATE_AUTHORITY_RECEIPT_SCHEMA = (
+    "mdstats.target-size-study-historical-candidate-authority.v1"
+)
 
 FIXED_TARGET_SIZES = (128, 256, 512, 1024, 2048, 4096, 8192, 16384)
 FIXED_TARGET_SIZE_CEILING = FIXED_TARGET_SIZES[-1]
@@ -908,40 +911,92 @@ class TargetSizeStudyPlan:
         return result
 
 
-def fixed_predecessor_candidate_authority_digest(
-    study: TargetSizeStudyPlan,
-) -> str:
-    """Reconstruct the one supported fixed-fidelity candidate authority.
+def authenticated_fixed_predecessor_candidate_authority(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Extract the authentic fixed-generation candidate binding from raw state.
 
-    The predecessor bound DATA8 to its fixed `(3, 10, 30)` policy digest. A
-    caller must additionally prove its persisted materialization is the
-    recognized predecessor generation; this helper alone never admits a
-    legacy digest.
+    This is deliberately a raw-v8/v6 boundary.  Once a legacy study is
+    normalized into the flexible plan, the v6 policy serialization (and thus
+    the only authentic legacy policy digest) is no longer available.  The
+    returned receipt is compatibility evidence, not a second scientific
+    target-size authority.
     """
 
-    policy = TargetSizeStudyPolicy(
-        candidate_sizes=study.policy.candidate_sizes,
-        minimum_qualified_sizes=study.policy.minimum_qualified_sizes,
-        coarse_survivor_limit=study.policy.coarse_survivor_limit,
-        short_finalist_count=study.policy.short_finalist_count,
-        fidelity_epochs=(3, 10, 30),
-        practical_equivalence_mev_per_a=study.policy.practical_equivalence_mev_per_a,
-        coarse_practical_equivalence_mev_per_a=(
-            study.policy.coarse_practical_equivalence_mev_per_a
-        ),
-        screening_optimizer_seeds=study.policy.screening_optimizer_seeds,
-        paired_seed_aggregation=study.policy.paired_seed_aggregation,
-    )
-    inputs = study.candidate_authority_inputs
-    return digest({
+    raw = dict(payload)
+    observed_digest = raw.pop("content_digest", None)
+    if observed_digest is not None and observed_digest != digest(raw):
+        raise TrainingDataSerializationError(
+            "Historical fixed target-size study digest mismatch."
+        )
+    if (
+        raw.get("schema") != "mdstats.target-size-study-plan.v8"
+        or raw.get("authority_version") != _LEGACY_TARGET_SIZE_STUDY_VERSION
+    ):
+        raise TrainingDataSerializationError(
+            "Historical target-size study is not the supported fixed v8 generation."
+        )
+    policy = raw.get("policy")
+    if not isinstance(policy, Mapping):
+        raise TrainingDataSerializationError(
+            "Historical fixed target-size study lacks a v6 policy payload."
+        )
+    policy_raw = dict(policy)
+    policy_digest = policy_raw.pop("policy_digest", None)
+    if (
+        policy_raw.get("schema") != _LEGACY_TARGET_SIZE_STUDY_POLICY_SCHEMA
+        or policy_raw.get("authority_version") != _LEGACY_TARGET_SIZE_STUDY_VERSION
+    ):
+        raise TrainingDataSerializationError(
+            "Historical target-size policy is not the supported fixed v6 generation."
+        )
+    if not isinstance(policy_digest, str) or policy_digest != digest(policy_raw):
+        raise TrainingDataSerializationError(
+            "Historical fixed target-size policy digest mismatch."
+        )
+    if tuple(policy_raw.get("fidelity_epochs", ())) != (3, 10, 30):
+        raise TrainingDataSerializationError(
+            "Historical fixed target-size policy has an ambiguous fidelity tuple."
+        )
+    candidates_raw = raw.get("candidates")
+    if not isinstance(candidates_raw, list) or not candidates_raw:
+        raise TrainingDataSerializationError(
+            "Historical fixed target-size study has no candidate population."
+        )
+    candidates = tuple(TargetSizeStudyCandidate.from_dict(item) for item in candidates_raw)
+    qualified_sizes = tuple(int(value) for value in raw.get("qualified_sizes", ()))
+    if not qualified_sizes or tuple(sorted(set(qualified_sizes))) != qualified_sizes:
+        raise TrainingDataSerializationError(
+            "Historical fixed target-size study has an invalid qualified-size set."
+        )
+    candidate_sizes = {candidate.target_size for candidate in candidates}
+    if not set(qualified_sizes).issubset(candidate_sizes):
+        raise TrainingDataSerializationError(
+            "Historical fixed target-size qualified sizes are outside its candidate population."
+        )
+    candidate_digests = tuple(candidate.content_digest for candidate in candidates)
+    authority_digest = digest({
         "schema": LEGACY_FIXED_CANDIDATE_AUTHORITY_SCHEMA,
-        "dataset_id": inputs["dataset_id"],
-        "repair2_authority_digest": inputs["repair2_authority_digest"],
-        "mvqual_authority_digest": inputs["mvqual_authority_digest"],
-        "policy_digest": policy.policy_digest,
-        "candidate_digests": list(inputs["candidate_digests"]),
-        "qualified_sizes": list(inputs["qualified_sizes"]),
+        "dataset_id": str(raw["dataset_id"]),
+        "repair2_authority_digest": str(raw["repair2_authority_digest"]),
+        "mvqual_authority_digest": str(raw["mvqual_authority_digest"]),
+        "policy_digest": policy_digest,
+        "candidate_digests": list(candidate_digests),
+        "qualified_sizes": list(qualified_sizes),
     })
+    receipt = {
+        "schema": HISTORICAL_FIXED_CANDIDATE_AUTHORITY_RECEIPT_SCHEMA,
+        "generation": LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION,
+        "historical_study_digest": observed_digest or digest(raw),
+        "historical_policy_digest": policy_digest,
+        "candidate_authority_digest": authority_digest,
+        "dataset_id": str(raw["dataset_id"]),
+        "repair2_authority_digest": str(raw["repair2_authority_digest"]),
+        "mvqual_authority_digest": str(raw["mvqual_authority_digest"]),
+        "candidate_digests": list(candidate_digests),
+        "qualified_sizes": list(qualified_sizes),
+    }
+    return {**receipt, "content_digest": digest(receipt)}
 
 
 def _migrate_fixed_generation_plan(payload: Mapping[str, Any]) -> TargetSizeStudyPlan:
@@ -1641,6 +1696,7 @@ __all__ = [
     "TARGET_SIZE_PREFIX_SCHEMA", "TARGET_SIZE_CANDIDATE_DATA_SCHEMA", "TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA",
     "TARGET_SIZE_CANDIDATE_AUTHORITY_GENERATION", "LEGACY_FIXED_CANDIDATE_AUTHORITY_SCHEMA",
     "LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION",
+    "HISTORICAL_FIXED_CANDIDATE_AUTHORITY_RECEIPT_SCHEMA",
     "OUTCOME_INSUFFICIENT_QUALIFIED_SIZES", "OUTCOME_AWAITING_COARSE_SCREEN", "OUTCOME_AWAITING_SHORT_SCREEN",
     "OUTCOME_AWAITING_FINAL_SCREEN", "OUTCOME_SELECTED", "OUTCOME_NONCONVERGED_AT_FIXED_CEILING",
     "OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES",
@@ -1650,7 +1706,7 @@ __all__ = [
     "TargetSizeStudyPolicy", "TargetSizeStudyCandidate", "TargetSizeTrainingEvidence",
     "TargetSizeTrajectoryFailureEvidence", "TargetSizeStageOutcome", "TargetSizeStudyPlan",
     "build_target_size_study", "validate_target_size_study_authority",
-    "fixed_predecessor_candidate_authority_digest",
+    "authenticated_fixed_predecessor_candidate_authority",
     "materialize_candidate_prefix", "materialize_candidate_prefix_matrix", "materialize_selected_prefix",
     "attach_coarse_outcomes", "attach_short_outcomes", "attach_final_screen_outcomes",
     "attach_coarse_evidence", "attach_short_evidence", "attach_final_screen_evidence",
