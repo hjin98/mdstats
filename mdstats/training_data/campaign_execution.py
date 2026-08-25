@@ -89,7 +89,8 @@ CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA = "mdstats.checkpoint-evaluation-p
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA = "mdstats.checkpoint-evaluation-policy.v3"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V2_SCHEMA = "mdstats.checkpoint-evaluation-policy.v2"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v1"
-INFERENCE_EXECUTION_PLAN_SCHEMA = "mdstats.inference-execution-plan.v2"
+INFERENCE_EXECUTION_PLAN_SCHEMA = "mdstats.inference-execution-plan.v3"
+INFERENCE_EXECUTION_PLAN_LEGACY_V2_SCHEMA = "mdstats.inference-execution-plan.v2"
 INFERENCE_EXECUTION_PLAN_LEGACY_SCHEMA = "mdstats.inference-execution-plan.v1"
 MODEL_DATASET_METRIC_RECORD_SCHEMA = "mdstats.model-dataset-metric-record.v1"
 CHECKPOINT_EVALUATION_RECORD_SCHEMA = "mdstats.checkpoint-evaluation-record.v3"
@@ -2227,6 +2228,27 @@ class InferenceExecutionPlan:
     def to_dict(self) -> dict[str, Any]:
         return {**self._payload(), "execution_digest": self.execution_digest}
 
+    @staticmethod
+    def _historical_v2_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Construct the exact v2 wire shape before validating its digest."""
+
+        return {
+            "schema": INFERENCE_EXECUTION_PLAN_LEGACY_V2_SCHEMA,
+            "batch_policy": str(payload["batch_policy"]),
+            "selected_batch_size": int(payload["selected_batch_size"]),
+            "maximum_batch_size": int(payload["maximum_batch_size"]),
+            "selected_concurrent_model_jobs": int(
+                payload.get("selected_concurrent_model_jobs", 1)
+            ),
+            "cpu_fraction": float(payload.get("cpu_fraction", 0.90)),
+            "ram_fraction": float(payload.get("ram_fraction", 0.80)),
+            "gpu_memory_fraction": float(payload.get("gpu_memory_fraction", 0.90)),
+            "graph_cache_enabled": bool(payload.get("graph_cache_enabled", True)),
+            "monitor_cache_enabled": bool(payload.get("monitor_cache_enabled", True)),
+            "prediction_cache_enabled": bool(payload.get("prediction_cache_enabled", True)),
+            "rationale": [str(value) for value in payload.get("rationale", ())],
+        }
+
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "InferenceExecutionPlan":
         schema = payload.get("schema")
@@ -2270,6 +2292,36 @@ class InferenceExecutionPlan:
                 prediction_cache_enabled=True,
                 rationale=tuple(legacy_payload["rationale"])
                 + ("rebuilt_from_inference_execution_plan_v1",),
+            )
+        if schema == INFERENCE_EXECUTION_PLAN_LEGACY_V2_SCHEMA:
+            legacy_payload = cls._historical_v2_payload(payload)
+            expected_keys = set(legacy_payload) | {"execution_digest"}
+            if set(payload) != expected_keys:
+                raise TrainingDataSerializationError(
+                    "Inference-execution plan legacy v2 payload shape is invalid."
+                )
+            if payload.get("execution_digest") != digest(legacy_payload):
+                raise TrainingDataSerializationError(
+                    "Inference-execution plan legacy v2 digest mismatch."
+                )
+            # Provider-residency fields did not exist in v2.  Keep them absent
+            # after migration; normal current resource planning may supply a
+            # conservative requirement before a future provider-pool growth.
+            return cls(
+                batch_policy=legacy_payload["batch_policy"],
+                selected_batch_size=legacy_payload["selected_batch_size"],
+                maximum_batch_size=legacy_payload["maximum_batch_size"],
+                selected_concurrent_model_jobs=legacy_payload[
+                    "selected_concurrent_model_jobs"
+                ],
+                cpu_fraction=legacy_payload["cpu_fraction"],
+                ram_fraction=legacy_payload["ram_fraction"],
+                gpu_memory_fraction=legacy_payload["gpu_memory_fraction"],
+                graph_cache_enabled=legacy_payload["graph_cache_enabled"],
+                monitor_cache_enabled=legacy_payload["monitor_cache_enabled"],
+                prediction_cache_enabled=legacy_payload["prediction_cache_enabled"],
+                rationale=tuple(legacy_payload["rationale"])
+                + ("rebuilt_from_inference_execution_plan_v2",),
             )
         if schema != INFERENCE_EXECUTION_PLAN_SCHEMA:
             raise TrainingDataSerializationError("Unsupported inference-execution plan schema.")

@@ -2828,6 +2828,10 @@ class StaticInferenceRuntimeAuthority:
         # private shell has actually been measured by the executor.
         self.private_provider_growth_available = (
             estimated_provider_resident_ram_bytes is not None
+            and (
+                self.initial_incremental_vram_cap_bytes is None
+                or estimated_provider_resident_vram_bytes is not None
+            )
         )
         self.estimated_provider_resident_ram_bytes = max(
             1,
@@ -2994,13 +2998,17 @@ class StaticInferenceRuntimeAuthority:
     def candidate_concurrencies(self) -> tuple[int, ...]:
         """Bounded geometric job-count candidates, including the configured cap."""
 
+        # Without a configured or observed conservative requirement, materializing
+        # even the first private shell is not a safe automatic decision.  Do not
+        # leak intermediate geometric candidates when the configured cap is >2.
+        if not self.private_provider_growth_available:
+            return (1,)
         values = [1]
         candidate = 2
         while candidate < self.maximum_concurrent_model_jobs:
             values.append(candidate)
             candidate *= 2
-        if self.private_provider_growth_available:
-            values.append(self.maximum_concurrent_model_jobs)
+        values.append(self.maximum_concurrent_model_jobs)
         return tuple(dict.fromkeys(values))
 
     def candidate_operating_points(
@@ -3173,8 +3181,11 @@ class StaticMaceInferenceExecutor:
             )
         )
 
-    @staticmethod
-    def _release_cuda_cache() -> None:
+    def _release_cuda_cache(self) -> None:
+        """Release this executor's allocator cache only for a CUDA executor."""
+
+        if not self.device.startswith("cuda"):
+            return
         try:
             import torch
             if torch.cuda.is_available():
@@ -3228,9 +3239,12 @@ class StaticMaceInferenceExecutor:
         return sum(int(value) for value in values if value is not None)
 
     @staticmethod
-    def _close_provider(provider: Any) -> None:
+    def _close_provider(provider: Any, *, release_cuda_memory: bool = True) -> None:
         if hasattr(provider, "close"):
-            provider.close()
+            if isinstance(provider, MaceCalculatorProvider):
+                provider.close(release_cuda_memory=release_cuda_memory)
+            else:
+                provider.close()
 
     def _retire_private_providers(self, *, keep_jobs: int) -> None:
         keep = max(1, int(keep_jobs))
@@ -3241,9 +3255,12 @@ class StaticMaceInferenceExecutor:
             self._provider_pool_resident_vram_bytes.pop()
             self._provider_pool_observed_ram_bytes.pop()
             self._provider_pool_observed_vram_bytes.pop()
-            self._close_provider(provider)
+            # Private MACE providers must not individually flush the process-wide
+            # allocator cache.  The executor owns one release transaction after
+            # every surplus owner has been dropped.
+            self._close_provider(provider, release_cuda_memory=False)
             shrunk = True
-        if shrunk:
+        if shrunk and self.device.startswith("cuda"):
             self._release_cuda_cache()
 
     def _ensure_provider_pool(
@@ -3300,7 +3317,6 @@ class StaticMaceInferenceExecutor:
                     )
         except BaseException:
             self._retire_private_providers(keep_jobs=accepted)
-            self._release_cuda_cache()
             raise
 
     def _provider_batch(
@@ -3766,14 +3782,37 @@ class StaticMaceInferenceExecutor:
                     self._release_cuda_cache()
                     excluded.add((selected.batch_size, jobs))
                     continue
-                predicted, _, _, _, observed, safe_ceiling, _, _, _, _, _ = wave
+                (
+                    predicted, elapsed, peak_ram, peak_vram, observed, safe_ceiling,
+                    backoffs, resident_ram, resident_vram, execution_ram, execution_vram,
+                ) = wave
                 if observed != jobs:
                     raise TrainingDataInputError(
                         "Static inference execution did not realize selected model-job concurrency."
                     )
-                authority.learned_safe_batch_ceiling = min(
-                    authority.learned_safe_batch_ceiling, safe_ceiling
-                )
+                if backoffs > 0 or safe_ceiling < selected.batch_size:
+                    # A successful worker-local subdivision remains valid for
+                    # this wave, but its causal capability evidence belongs to
+                    # the requested two-dimensional operating point.  The
+                    # authority keeps J=1 ceilings separate from J>1 bounds.
+                    authority.record(
+                        StaticInferenceOperatingPointEvidence(
+                            batch_size=selected.batch_size,
+                            concurrent_model_jobs=jobs,
+                            structures_per_second=0.0,
+                            peak_ram_bytes=peak_ram,
+                            peak_vram_bytes=peak_vram,
+                            feasible=False,
+                            failure_kind="execution-oom",
+                            completed_structures=0,
+                            elapsed_seconds=0.0,
+                            observed_max_active_jobs=observed,
+                            provider_pool_resident_ram_bytes=resident_ram,
+                            provider_pool_resident_vram_bytes=resident_vram,
+                            execution_peak_ram_bytes=execution_ram,
+                            execution_peak_vram_bytes=execution_vram,
+                        )
+                    )
                 result.extend(predicted)
                 position += jobs * selected.batch_size
                 break

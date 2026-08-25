@@ -60,3 +60,93 @@ def test_reopen6_bounded_assembled_stage_chain_restarts_with_one_outer_owner(mon
         "preflight", "materialize", "train-eval", "deploy", "pes", "relax", "dyn", "publish"
     ))
     assert seen == list(first) + list(second)
+
+
+def test_reopen7_campaign_state_and_canonical_static_profile_restart(tmp_path, monkeypatch):
+    """Exercise real campaign state plus the production static-inference path.
+
+    This is intentionally distinct from the scheduler-only test above.  It
+    enters through the public campaign initializer, persists its runtime plan
+    in the production SQLite state store, invokes the canonical model-on-atoms
+    entrypoint, and performs a second invocation that discovers the durable
+    runtime profile written by that entrypoint.  The model adapter is the only
+    stubbed boundary; campaign state, runtime-plan wire format, profile
+    persistence, and restart lookup remain production code.
+    """
+    import numpy as np
+    from ase import Atoms
+
+    from mdstats.training_data import campaign_execution, model_features, resources
+    from mdstats.training_data.model_features import AtomicModelPrediction
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    config = tmp_path / "campaign.toml"
+    assert campaign_cli.main([
+        "--config", str(config), "init", "--workspace", "work",
+        "--training-root", "training", "--foundation-model", "foundation.model",
+        "--replay-train", "replay-train.xyz", "--replay-monitor", "replay-monitor.xyz",
+    ]) == 0
+    _, paths = campaign_cli._load_config(config)
+    store = campaign_cli.CampaignStore(paths.state_db)
+    plan = mdstats.InferenceExecutionPlan(
+        batch_policy="auto", selected_batch_size=1, maximum_batch_size=2,
+        selected_concurrent_model_jobs=2, provider_residency_ram_bytes=1,
+    )
+    store.put_record("reopen7_runtime_plan", plan.to_dict())
+    restored_plan = mdstats.InferenceExecutionPlan.from_dict(
+        store.get_payload("reopen7_runtime_plan")
+    )
+
+    snapshot = SystemResourceSnapshot(
+        cpu_threads_available=4, cpu_fraction=0.90, cpu_threads_budget=3,
+        ram_available_bytes=1 << 30, ram_fraction=0.80, ram_budget_bytes=1 << 29,
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+    monkeypatch.setattr(resources, "detect_system_resources", lambda **_: snapshot)
+
+    class Provider:
+        def set_head(self, head):
+            pass
+
+        def predict_batch(self, atoms, **_):
+            return tuple(
+                AtomicModelPrediction(
+                    energy_ev=float(atom.positions[1, 2]),
+                    forces_ev_per_angstrom=np.zeros((2, 3)),
+                    stress_ev_per_angstrom3=np.zeros((3, 3)),
+                )
+                for atom in atoms
+            )
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        model_features.MaceCalculatorProvider,
+        "from_model_path",
+        classmethod(lambda cls, *args, **kwargs: Provider()),
+    )
+    model = tmp_path / "candidate.model"
+    model.write_bytes(b"bounded-canonical-model")
+    atoms = tuple(
+        Atoms("H2", positions=[[0, 0, 0], [0, 0, 0.7 + 0.01 * index]])
+        for index in range(8)
+    )
+    policy = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), device="cpu", default_dtype="float64"
+    )
+    graph_cache = paths.internal / "evaluation-graphs"
+    first = campaign_execution._predict_model_on_atoms(
+        model, atoms, head=None, policy=policy, execution_plan=restored_plan,
+        provider=Provider(), graph_cache_directory=graph_cache,
+    )
+    profiles = tuple((paths.internal / "static-inference-runtime-profiles").glob("*.json"))
+    assert len(profiles) == 1
+    second = campaign_execution._predict_model_on_atoms(
+        model, atoms, head=None, policy=policy, execution_plan=restored_plan,
+        provider=Provider(), graph_cache_directory=graph_cache,
+    )
+
+    assert [value.energy_ev for value in first] == [value.energy_ev for value in second]
+    assert campaign_cli.main(["--config", str(config), "status"]) == 0

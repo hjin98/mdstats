@@ -645,6 +645,150 @@ def test_j_dependent_execution_oom_preserves_lower_j_batch_capability() -> None:
     assert (16, 4) not in candidates
 
 
+def test_production_j4_backoff_records_only_a_two_dimensional_boundary(monkeypatch) -> None:
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "production-j4-backoff"}),
+        maximum_batch_size=16,
+        maximum_concurrent_model_jobs=4,
+        live_ram_budget_bytes=1 << 30,
+        live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=1,
+    )
+    for jobs, throughput in ((1, 100.0), (2, 200.0), (4, 300.0)):
+        authority.record(_measured_point(16, jobs, throughput, 1, None))
+    authority.reused_compatible_profile = True
+    executor = StaticMaceInferenceExecutor(
+        _Provider(), batch_size=16, runtime_authority=authority,
+        provider_factory=_Provider,
+    )
+    requested_jobs: list[int] = []
+
+    def wave(values, identities, *, batch_size, concurrent_jobs):
+        requested_jobs.append(concurrent_jobs)
+        resident = executor.provider_pool_resident_ram_bytes
+        predicted = _Provider().predict_batch(values)
+        backed_off = concurrent_jobs == 4
+        return (
+            predicted, 1.0, resident + 1, None, concurrent_jobs,
+            8 if backed_off else batch_size, 1 if backed_off else 0,
+            resident, None, 1, None,
+        )
+
+    monkeypatch.setattr(executor, "_run_joint_wave", wave)
+    observed = executor.predict(_atoms(80))
+
+    assert requested_jobs == [4, 1]
+    assert authority.learned_safe_batch_ceiling == 16
+    assert (16, 4) in authority.failed_execution_boundaries
+    assert authority._safe(next(
+        point for point in authority.evidence
+        if (point.batch_size, point.concurrent_model_jobs) == (16, 1) and point.feasible
+    ))
+    assert authority._safe(next(
+        point for point in authority.evidence
+        if (point.batch_size, point.concurrent_model_jobs) == (16, 2) and point.feasible
+    ))
+    np.testing.assert_allclose(
+        [value.energy_ev for value in observed],
+        [value.positions[1, 2] for value in _atoms(80)], rtol=0.0, atol=0.0,
+    )
+
+
+def test_production_j1_backoff_still_tightens_the_single_provider_ceiling(monkeypatch) -> None:
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "production-j1-backoff"}),
+        maximum_batch_size=16,
+        maximum_concurrent_model_jobs=1,
+        live_ram_budget_bytes=1 << 30,
+        live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=1,
+    )
+    authority.record(_measured_point(16, 1, 100.0, 1, None))
+    authority.reused_compatible_profile = True
+    executor = StaticMaceInferenceExecutor(_Provider(), batch_size=16, runtime_authority=authority)
+
+    def wave(values, identities, *, batch_size, concurrent_jobs):
+        return (
+            _Provider().predict_batch(values), 1.0, 1, None, 1, 8, 1,
+            0, None, 1, None,
+        )
+
+    monkeypatch.setattr(executor, "_run_joint_wave", wave)
+    assert len(executor.predict(_atoms(16))) == 16
+    assert authority.learned_safe_batch_ceiling == 8
+
+
+@pytest.mark.parametrize("maximum_jobs", (4, 8))
+def test_fresh_growth_without_residency_estimate_is_single_provider_only(maximum_jobs) -> None:
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": f"fresh-j{maximum_jobs}"}),
+        maximum_batch_size=8,
+        maximum_concurrent_model_jobs=maximum_jobs,
+        live_ram_budget_bytes=1 << 30,
+        live_vram_budget_bytes=None,
+    )
+    created = 0
+
+    def factory():
+        nonlocal created
+        created += 1
+        return _Provider()
+
+    executor = StaticMaceInferenceExecutor(
+        _Provider(), batch_size=8, runtime_authority=authority, provider_factory=factory,
+    )
+    assert authority.candidate_concurrencies == (1,)
+    assert len(executor.predict(_atoms(16))) == 16
+    assert created == 0
+
+
+def test_residency_estimate_restores_geometric_growth_and_profile_reuse() -> None:
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "fresh-geometric"}),
+        maximum_batch_size=8,
+        maximum_concurrent_model_jobs=8,
+        live_ram_budget_bytes=1 << 30,
+        live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=1,
+    )
+    assert authority.candidate_concurrencies == (1, 2, 4, 8)
+
+    original = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "profile-j2"}),
+        maximum_batch_size=8,
+        maximum_concurrent_model_jobs=2,
+        live_ram_budget_bytes=100,
+        live_vram_budget_bytes=None,
+        estimated_provider_resident_ram_bytes=1,
+    )
+    original.record(_measured_point(8, 1, 10.0, 1, None))
+    original.record(_measured_point(8, 2, 20.0, 2, None))
+    reused = StaticInferenceRuntimeAuthority(
+        compatibility_digest=original.compatibility_digest,
+        maximum_batch_size=8,
+        maximum_concurrent_model_jobs=2,
+        live_ram_budget_bytes=100,
+        live_vram_budget_bytes=None,
+        compatible_profile=original.profile(),
+    )
+    assert reused.reused_compatible_profile
+    assert reused.selected_point is not None
+    assert reused.selected_point.concurrent_model_jobs == 2
+
+
+def test_cuda_growth_requires_a_complete_ram_and_vram_residency_requirement() -> None:
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "fresh-cuda-requirement"}),
+        maximum_batch_size=8,
+        maximum_concurrent_model_jobs=4,
+        live_ram_budget_bytes=1 << 30,
+        live_vram_budget_bytes=1 << 30,
+        estimated_provider_resident_ram_bytes=1,
+        estimated_provider_resident_vram_bytes=None,
+    )
+    assert authority.candidate_concurrencies == (1,)
+
+
 def test_resource_classifier_and_pool_shrink_are_type_aware_and_once_only(monkeypatch) -> None:
     import errno
 
@@ -654,7 +798,7 @@ def test_resource_classifier_and_pool_shrink_are_type_aware_and_once_only(monkey
     monkeypatch.setattr(
         StaticMaceInferenceExecutor, "_release_cuda_cache", staticmethod(lambda: released.append(None))
     )
-    executor = StaticMaceInferenceExecutor(_Provider(), batch_size=1)
+    executor = StaticMaceInferenceExecutor(_Provider(), batch_size=1, device="cuda:0")
     executor._provider_pool.extend((_Provider(), _Provider(), _Provider()))
     executor._provider_pool_resident_ram_bytes.extend((1, 1, 1))
     executor._provider_pool_resident_vram_bytes.extend((None, None, None))
@@ -664,6 +808,43 @@ def test_resource_classifier_and_pool_shrink_are_type_aware_and_once_only(monkey
     assert executor.resident_provider_pool_size == 2
     assert len(released) == 1
     executor._retire_private_providers(keep_jobs=2)
+    assert len(released) == 1
+
+    cpu_executor = StaticMaceInferenceExecutor(_Provider(), batch_size=1, device="cpu")
+    cpu_executor._provider_pool.extend((_Provider(), _Provider(), _Provider()))
+    cpu_executor._provider_pool_resident_ram_bytes.extend((1, 1, 1))
+    cpu_executor._provider_pool_resident_vram_bytes.extend((None, None, None))
+    cpu_executor._provider_pool_observed_ram_bytes.extend((0, 0, 0))
+    cpu_executor._provider_pool_observed_vram_bytes.extend((None, None, None))
+    cpu_executor._retire_private_providers(keep_jobs=2)
+    assert len(released) == 1
+
+
+def test_private_mace_pool_retirement_defers_cache_release_to_the_executor(monkeypatch) -> None:
+    from mdstats.training_data.model_features import MaceCalculatorProvider
+
+    retired: list[bool] = []
+    monkeypatch.setattr(
+        MaceCalculatorProvider,
+        "close",
+        lambda self, *, release_cuda_memory=True: retired.append(release_cuda_memory),
+    )
+    released: list[None] = []
+    monkeypatch.setattr(
+        StaticMaceInferenceExecutor, "_release_cuda_cache", staticmethod(lambda: released.append(None))
+    )
+    executor = StaticMaceInferenceExecutor(_Provider(), batch_size=1, device="cuda:0")
+    first_private = object.__new__(MaceCalculatorProvider)
+    second_private = object.__new__(MaceCalculatorProvider)
+    executor._provider_pool.extend((_Provider(), first_private, second_private))
+    executor._provider_pool_resident_ram_bytes.extend((1, 1, 1))
+    executor._provider_pool_resident_vram_bytes.extend((None, None, None))
+    executor._provider_pool_observed_ram_bytes.extend((0, 0, 0))
+    executor._provider_pool_observed_vram_bytes.extend((None, None, None))
+
+    executor._retire_private_providers(keep_jobs=1)
+
+    assert retired == [False, False]
     assert len(released) == 1
 
 

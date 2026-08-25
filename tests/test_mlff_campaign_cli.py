@@ -146,7 +146,7 @@ def test_inference_execution_plan_roundtrip_is_separate_from_scientific_policy()
     assert "batch_policy" not in policy.to_dict()
 
 
-def test_historical_inference_execution_plan_v1_is_validated_then_rebuilt_as_v2() -> None:
+def test_historical_inference_execution_plan_v1_is_validated_then_rebuilt_as_v3() -> None:
     legacy = {
         "schema": "mdstats.inference-execution-plan.v1",
         "batch_policy": "auto",
@@ -164,7 +164,7 @@ def test_historical_inference_execution_plan_v1_is_validated_then_rebuilt_as_v2(
 
     rebuilt = mdstats.InferenceExecutionPlan.from_dict(legacy)
 
-    assert rebuilt.to_dict()["schema"] == "mdstats.inference-execution-plan.v2"
+    assert rebuilt.to_dict()["schema"] == "mdstats.inference-execution-plan.v3"
     assert rebuilt.selected_batch_size == 8
     assert rebuilt.maximum_batch_size == 32
     assert rebuilt.graph_cache_enabled is False
@@ -179,6 +179,44 @@ def test_historical_inference_execution_plan_v1_is_validated_then_rebuilt_as_v2(
     corrupted["selected_batch_size"] = 16
     with pytest.raises(mdstats.TrainingDataSerializationError, match="legacy v1 digest mismatch"):
         mdstats.InferenceExecutionPlan.from_dict(corrupted)
+
+
+def test_historical_inference_execution_plan_v2_validates_exact_shape_then_migrates() -> None:
+    legacy = {
+        "schema": "mdstats.inference-execution-plan.v2",
+        "batch_policy": "auto",
+        "selected_batch_size": 8,
+        "maximum_batch_size": 32,
+        "selected_concurrent_model_jobs": 2,
+        "cpu_fraction": 0.75,
+        "ram_fraction": 0.80,
+        "gpu_memory_fraction": 0.85,
+        "graph_cache_enabled": False,
+        "monitor_cache_enabled": True,
+        "prediction_cache_enabled": False,
+        "rationale": ["pre-reopen6"],
+    }
+    legacy["execution_digest"] = digest(legacy)
+
+    rebuilt = mdstats.InferenceExecutionPlan.from_dict(legacy)
+
+    assert rebuilt.to_dict()["schema"] == "mdstats.inference-execution-plan.v3"
+    assert rebuilt.provider_residency_ram_bytes is None
+    assert rebuilt.provider_residency_vram_bytes is None
+    assert rebuilt.rationale == (
+        "pre-reopen6", "rebuilt_from_inference_execution_plan_v2",
+    )
+    assert mdstats.InferenceExecutionPlan.from_dict(rebuilt.to_dict()) == rebuilt
+
+    corrupted = dict(legacy)
+    corrupted["selected_batch_size"] = 16
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="legacy v2 digest mismatch"):
+        mdstats.InferenceExecutionPlan.from_dict(corrupted)
+
+    expanded = dict(legacy)
+    expanded["provider_residency_ram_bytes"] = 1
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="payload shape"):
+        mdstats.InferenceExecutionPlan.from_dict(expanded)
 
 
 def test_runtime_variants_leave_scientific_policy_and_metrics_unchanged() -> None:
