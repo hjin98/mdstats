@@ -455,6 +455,107 @@ def test_persisted_campaign_selects_configured_boundaries_and_exposes_restart_st
     reopened.close()
 
 
+@pytest.mark.parametrize(
+    ("replacement", "horizon", "expected_epoch", "reason"),
+    (
+        ((2, 3, 10), 30, 2, "fidelity"),
+        ((1, 5, 10), 30, 1, "fidelity"),
+        ((1, 3, 12), 30, 1, "fidelity"),
+        ((1, 3, 10), 40, 1, "horizon"),
+    ),
+)
+def test_real_campaign_store_frontier_replaces_only_target_size_and_live_train2_state(
+    tmp_path: Path,
+    replacement: tuple[int, int, int],
+    horizon: int,
+    expected_epoch: int,
+    reason: str,
+) -> None:
+    """Exercise durable study replacement and forensic TRAIN2 invalidation.
+
+    This fixture intentionally constructs only the already-qualified REPAIR2/
+    MVQUAL2 authorities and compact live downstream state.  The current TOML
+    parser, SQLite `CampaignStore`, target-size construction/serialization,
+    stage markers, and invalidation owner all remain real.
+    """
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    config = tmp_path / "campaign.toml"
+    config.write_text(
+        cli._config_template(
+            workspace="workspace",
+            training_root="training",
+            foundation_model="foundation.model",
+            replay_train="replay-train.xyz",
+            replay_monitor="replay-monitor.xyz",
+            acceleration_backend="e3nn",
+        ),
+        encoding="utf-8",
+    )
+    cfg, paths = cli._load_config(config)
+    paths.ensure()
+    repair, qualification = _persistable_target_size_authorities()
+    store = cli.CampaignStore(paths.state_db)
+    store.put_records(
+        {
+            "target_multi_view_repair_v2": repair,
+            "target_multi_view_qualification_v2": qualification,
+            # These compact payloads model persisted scientific products and
+            # are deliberately not TRAIN2 invalidation targets.
+            "data7:fixture": {"schema": "fixture.data7", "content_digest": _h("data7")},
+            "data8:fixture": {"schema": "fixture.data8", "content_digest": _h("data8")},
+            "execution:old": {"schema": "fixture.execution", "content_digest": _h("execution")},
+            "training_campaign": {"schema": "fixture.campaign", "content_digest": _h("campaign")},
+        }
+    )
+    previous = cli._ensure_target_size_study(
+        store, cfg=cfg, repair2=repair, mvqual2=qualification
+    )
+    cli._mark_stage(store, paths, "prepare", cli.StageState.COMPLETE, "fixture prepare")
+    cli._mark_stage(store, paths, "preflight", cli.StageState.COMPLETE, "fixture preflight")
+    store.close()
+
+    text = config.read_text(encoding="utf-8")
+    text = text.replace("fidelity_epochs = [1, 3, 10]", f"fidelity_epochs = {list(replacement)}")
+    text = text.replace("max_num_epochs = 30", f"max_num_epochs = {horizon}", 1)
+    config.write_text(text, encoding="utf-8")
+    changed_cfg, changed_paths = cli._load_config(config)
+    reopened = cli.CampaignStore(changed_paths.state_db)
+    current_repair = reopened.get_record("target_multi_view_repair_v2", type(repair))
+    current_qualification = reopened.get_record(
+        "target_multi_view_qualification_v2", type(qualification)
+    )
+    fresh = cli._ensure_target_size_study(
+        reopened, cfg=changed_cfg, repair2=current_repair, mvqual2=current_qualification
+    )
+
+    assert fresh.content_digest != previous.content_digest
+    assert fresh.policy.fidelity_epochs == replacement
+    assert fresh.training_horizon_epochs == horizon
+    assert fresh.next_training_epoch == expected_epoch
+    assert reopened.has_record("data7:fixture")
+    assert reopened.has_record("data8:fixture")
+
+    cli._invalidate_train2_downstream_state(
+        reopened,
+        changed_paths,
+        reason=f"fixture {reason} transition",
+        preserve_preflight=True,
+    )
+    assert not reopened.has_record("execution:old")
+    assert not reopened.has_record("training_campaign")
+    assert any(
+        key.startswith("historical:train2-invalidation:execution:old:")
+        for key in reopened.record_keys("historical:train2-invalidation:")
+    )
+    assert reopened.stage("prepare")[0] is cli.StageState.COMPLETE
+    assert reopened.stage("preflight")[0] is cli.StageState.COMPLETE
+    for stage in ("train", "evaluate", "verify"):
+        assert reopened.stage(stage) == (cli.StageState.WAITING, f"fixture {reason} transition")
+    reopened.close()
+
+
 def test_nondefault_tuple_uses_semantic_states_and_independent_horizon() -> None:
     policy = mdstats.TargetSizeStudyPolicy(fidelity_epochs=(2, 5, 12), screening_optimizer_seeds=(1,))
     plan = mdstats.build_target_size_study(_Repair(), _Qual(), policy=policy, training_horizon_epochs=40)
@@ -576,6 +677,123 @@ def test_preparation_config_identity_excludes_only_downstream_fidelity_controls(
     }
     assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed_horizon)
     assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed_presentation)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        ("training_backend", "cueq"),
+        ("only_cueq", True),
+        ("require_available", False),
+    ),
+)
+def test_preparation_identity_excludes_train2_and_acceleration_availability_controls(
+    field: str, replacement: object
+) -> None:
+    """Source inference backend remains semantic; TRAIN2/runtime controls do not."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    acceleration = {
+        "backend": "e3nn",
+        "training_backend": "e3nn",
+        "only_cueq": False,
+        "require_available": True,
+    }
+    base = {
+        "acceleration": acceleration,
+        "training": {"policy_generation": "train2", "max_num_epochs": 30},
+    }
+    changed = {**base, "acceleration": {**acceleration, field: replacement}}
+    source_backend_changed = {
+        **base,
+        "acceleration": {**acceleration, "backend": "cueq"},
+    }
+
+    assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed)
+    assert cli._preparation_config_digest(base) != cli._preparation_config_digest(source_backend_changed)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    (
+        ("max_num_epochs = 30", "max_num_epochs = 40"),
+        ("fidelity_epochs = [1, 3, 10]", "fidelity_epochs = [2, 5, 12]"),
+        ('training_backend = "cueq"', 'training_backend = "e3nn"'),
+        ("only_cueq = false", "only_cueq = true"),
+        ("require_available = true", "require_available = false"),
+        ('id = "lta-mh1-omat-pbe-finetune"', 'id = "presentation-only-name"'),
+    ),
+)
+def test_real_store_prepare_marker_reuses_execution_only_toml_changes(
+    tmp_path: Path, old: str, new: str
+) -> None:
+    """Stage reuse follows the persisted positive preparation projection."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    config = tmp_path / "campaign.toml"
+    config.write_text(
+        cli._config_template(
+            workspace="workspace",
+            training_root="training",
+            foundation_model="foundation.model",
+            replay_train="replay-train.xyz",
+            replay_monitor="replay-monitor.xyz",
+            acceleration_backend="e3nn",
+        ),
+        encoding="utf-8",
+    )
+    _cfg, paths = cli._load_config(config)
+    paths.ensure()
+    store = cli.CampaignStore(paths.state_db)
+    cli._mark_stage(store, paths, "prepare", cli.StageState.COMPLETE, "fixture prepare")
+    store.close()
+
+    text = config.read_text(encoding="utf-8")
+    assert old in text
+    config.write_text(text.replace(old, new, 1), encoding="utf-8")
+    _changed_cfg, changed_paths = cli._load_config(config)
+    reopened = cli.CampaignStore(changed_paths.state_db)
+    assert cli._effective_stage(reopened, changed_paths, "prepare") == (
+        cli.StageState.COMPLETE,
+        "fixture prepare",
+    )
+    reopened.close()
+
+
+def test_real_store_prepare_marker_fails_closed_for_preparation_scientific_change(
+    tmp_path: Path,
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    config = tmp_path / "campaign.toml"
+    config.write_text(
+        cli._config_template(
+            workspace="workspace",
+            training_root="training",
+            foundation_model="foundation.model",
+            replay_train="replay-train.xyz",
+            replay_monitor="replay-monitor.xyz",
+            acceleration_backend="e3nn",
+        ),
+        encoding="utf-8",
+    )
+    _cfg, paths = cli._load_config(config)
+    paths.ensure()
+    store = cli.CampaignStore(paths.state_db)
+    cli._mark_stage(store, paths, "prepare", cli.StageState.COMPLETE, "fixture prepare")
+    store.close()
+
+    text = config.read_text(encoding="utf-8")
+    assert 'head = "omat_pbe"' in text
+    config.write_text(text.replace('head = "omat_pbe"', 'head = "changed-head"', 1), encoding="utf-8")
+    _changed_cfg, changed_paths = cli._load_config(config)
+    reopened = cli.CampaignStore(changed_paths.state_db)
+    state, message = cli._effective_stage(reopened, changed_paths, "prepare")
+    assert state is cli.StageState.WAITING
+    assert "campaign.toml changed" in message
+    reopened.close()
 
 
 @pytest.mark.parametrize(

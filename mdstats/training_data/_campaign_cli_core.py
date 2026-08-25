@@ -8942,7 +8942,14 @@ _PREPARATION_CONFIG_PROJECTION_FIELDS: dict[str, tuple[str, ...]] = {
     # realizations: their compatibility belongs to the sweep/materialization
     # records that own them, never to preparation scientific identity.
     "model": ("device", "dtype"),
-    "acceleration": ("backend", "training_backend", "only_cueq", "require_available"),
+    # ``backend`` controls the source foundation inference used to create DATA6
+    # evidence.  The remaining acceleration settings are either TRAIN2-only
+    # (``training_backend``) or execution availability/conversion controls
+    # (``only_cueq`` and ``require_available``); they cannot change the
+    # authoritative DATA2-DATA8 scientific products after the source backend
+    # has been resolved.  Their compatibility is owned by the runtime
+    # realization that consumes them, not by completed-prepare reuse.
+    "acceleration": ("backend",),
     "selection": ("sizes",),
     "objective": ("energy_weight", "forces_weight", "stress_weight"),
     "acceptance": ("maximum_replay_degradation_fraction",),
