@@ -2228,14 +2228,31 @@ def _reconcile_mlcv_lifecycle_authority(
     *,
     requested_checkpoint_strategy: str,
 ) -> Any | None:
-    """Create/read the immutable conventional-CV evaluator-family identity."""
+    """Create/read the immutable conventional-CV evaluator-family identity.
+
+    DATA8 ROLE1/MON1 provenance identifies the historical origin of a bundle;
+    it does not, by itself, admit campaign-wide MLCV lifecycle state.  For a
+    new authority, only the canonical MLCV policy or its explicitly recorded
+    transitional alias provides current lifecycle intent.  Once an authority
+    exists, its historical source strategy remains authoritative regardless of
+    the current invocation's runtime/evaluation policy.
+    """
 
     import mdstats
 
     existing = store.get_record_optional(
         "mlcv_lifecycle_authority", mdstats.MlcvLifecycleAuthorityRecord
     )
-    source_strategy = str(requested_checkpoint_strategy).strip().lower()
+    requested_strategy = str(requested_checkpoint_strategy).strip().lower()
+    if existing is None:
+        source_strategy = {
+            mdstats.MLCV_CHECKPOINT_STRATEGY: mdstats.MLCV_CHECKPOINT_STRATEGY,
+            mdstats.MLCV_TRANSITIONAL_STRATEGY_ALIAS: mdstats.MLCV_TRANSITIONAL_STRATEGY_ALIAS,
+        }.get(requested_strategy)
+        if source_strategy is None:
+            return None
+    else:
+        source_strategy = existing.source_checkpoint_strategy
     candidate = mdstats.build_mlcv_lifecycle_authority(
         campaign, data8_bundles, source_checkpoint_strategy=source_strategy
     )
