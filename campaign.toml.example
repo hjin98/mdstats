@@ -107,32 +107,19 @@ sizes = [512]
 structural_workers = 0
 
 [target_data.size_convergence]
-# TARGET-DATA2C fixed generic ladder plus TARGET-DATA2D successive-fidelity
-# authority. Coverage is hard admission only: every qualifying rung proceeds to
-# the common epoch-3 target-only screen. Epoch-3/10/30 evidence is supplied by
-# TRAIN2/EVAL2/VERIFY; legacy adaptive-stop runs cannot satisfy it.
-ladder_exponents = [7, 8, 9, 10, 11, 12, 13]
-minimum_materializable_rungs = 3
-reserve_required_strata = true
-reserve_correlation_intervals = true
-fps_tie_tolerance = 1.0e-12
+# This table owns target-coverage controls and target-size equivalence thresholds.
+# Target-size v5 candidate sizes and the 3/10/30 screening boundaries are fixed by
+# TargetSizeStudyPolicy; they are not user-authored configuration keys. Screening
+# optimizer seeds come from the sole enabled training method.
 coverage_metric = "reference_mass_local_knn"
 coverage_threshold = 0.95
 coverage_resolution_mass = 0.0078125
 coverage_leave_one_out = true
 extent_quantile_alpha = 0.01
 extent_default_tolerance = "none"
-min_coverage_qualifiers = 3
-coarse_training_epochs = 3
-max_coarse_training_candidates = 4
-coarse_target_monitor_configurations = 256
-short_training_epochs = 10
-max_short_training_candidates = 2
-final_training_epochs = 30
 # Omit to inherit practical_equivalence_mev_per_a.
 coarse_practical_equivalence_mev_per_a = 1.0
 practical_equivalence_mev_per_a = 1.0
-screening_optimizer_seed = 1
 
 [objective]
 energy_weight = 1.0

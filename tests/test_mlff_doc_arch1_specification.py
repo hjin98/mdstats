@@ -71,7 +71,7 @@ def test_doc_arch1_history_is_indexed_once_and_current_revision_is_recorded():
     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
     assert revisions == sorted(set(revisions))
-    assert revisions[-1] == 104
+    assert revisions[-1] == 105
     assert "DOC-MVSEL2" in REV_INDEX.read_text()
     assert "0.20.242a0" in REL_INDEX.read_text()
     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()

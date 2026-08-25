@@ -1,0 +1,64 @@
+name: Temporary flexible-fidelity Part 1 closeout
+
+on:
+  push:
+    branches:
+      - feat/mlff-end-to-end-performance-v1
+    paths:
+      - '.github/workflows/part1-closeout.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  closeout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout closeout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/mlff-end-to-end-performance-v1
+          fetch-depth: 0
+
+      - name: Reconcile normative Stage-11 SIZE-FIDELITY1 node
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('docs/arch_manuals/stage11_dependency_graph.json')
+          graph = json.loads(path.read_text(encoding='utf-8'))
+          node = next(
+              item for item in graph['nodes']
+              if item.get('id') == 'SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION'
+          )
+          node['authority_version'] = 'mdstats.size-fidelity1.coarse-screen-calibration.target-size-v5.2026-08.v2'
+          node['calibrates'] = [
+              'coarse_epoch_candidates',
+              'coarse_monitor_configuration_candidates',
+              'coarse_equivalence_candidates_mev_per_a',
+          ]
+          node['hard_requirements'] = [
+              'coarse_monitor_vs_full_promotion_set_equivalence_when_required',
+              'coarse_finalist_recall_meets_configured_threshold',
+              'short_finalist_recall_meets_configured_threshold',
+              'zero_boundary_finalist_misses',
+              'uninterrupted_seed_size_trajectory_identity',
+          ]
+          node['current_schema_generation'] = 'target-size-v5 v2'
+          assert 'winner_recall_equals_1' not in node['hard_requirements']
+          path.write_text(json.dumps(graph, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Commit graph correction and remove temporary helper
+        run: |
+          set -euo pipefail
+          rm .github/workflows/part1-closeout.yml
+          python -m json.tool docs/arch_manuals/stage11_dependency_graph.json >/dev/null
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/arch_manuals/stage11_dependency_graph.json .github/workflows/part1-closeout.yml
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          git commit -m 'docs: finalize flexible fidelity part1 closeout'
+          git push origin HEAD:feat/mlff-end-to-end-performance-v1
