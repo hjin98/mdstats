@@ -1,4 +1,4 @@
-"""SIZE-FIDELITY1 calibration authority for the target-size 3/10/30 funnel.
+"""SIZE-FIDELITY1 calibration authority for the flexible target-size funnel.
 
 The production target-size policy uses hard coverage followed by a coarse
 training screen.  This module does not train models itself.  It authenticates
@@ -22,12 +22,12 @@ import numpy as np
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
 from .target_size_study import TargetSizeStudyPolicy, _equivalence_aware_target_order
 
-SIZE_FIDELITY_POLICY_SCHEMA = "mdstats.size-fidelity1-policy.target-size-v5.v2"
-SIZE_FIDELITY_EXECUTION_PLAN_SCHEMA = "mdstats.size-fidelity1-execution-plan.target-size-v5.v2"
+SIZE_FIDELITY_POLICY_SCHEMA = "mdstats.size-fidelity1-policy.flexible-fidelity.v3"
+SIZE_FIDELITY_EXECUTION_PLAN_SCHEMA = "mdstats.size-fidelity1-execution-plan.flexible-fidelity.v3"
 SIZE_FIDELITY_METRIC_SCHEMA = "mdstats.size-fidelity1-metric.v1"
 SIZE_FIDELITY_CANDIDATE_SCHEMA = "mdstats.size-fidelity1-candidate-assessment.v1"
-SIZE_FIDELITY_REPORT_SCHEMA = "mdstats.size-fidelity1-qualification-report.target-size-v5.v2"
-SIZE_FIDELITY_VERSION = "mdstats.size-fidelity1.coarse-screen-calibration.target-size-v5.2026-08.v2"
+SIZE_FIDELITY_REPORT_SCHEMA = "mdstats.size-fidelity1-qualification-report.flexible-fidelity.v3"
+SIZE_FIDELITY_VERSION = "mdstats.size-fidelity1.coarse-screen-calibration.flexible-fidelity.2026-08.v3"
 
 _FULL_ROLE = "full_development"
 
@@ -57,7 +57,7 @@ class SizeFidelityCalibrationPolicy:
     """
 
     screening_seeds: tuple[int, ...] = (1, 2, 3)
-    coarse_epoch_candidates: tuple[int, ...] = (3, 4, 5)
+    coarse_epoch_candidates: tuple[int, ...] = (1, 2)
     coarse_monitor_configuration_candidates: tuple[int, ...] = (128, 256, 512, 1024)
     coarse_equivalence_candidates_mev_per_a: tuple[float, ...] = (1.0, 2.0, 4.0)
     required_coarse_finalist_recall: float = 1.0
@@ -108,7 +108,7 @@ class SizeFidelityCalibrationPolicy:
             raise TrainingDataInputError(
                 "SIZE-FIDELITY1 first coarse equivalence width must equal the current target-size v5 production width."
             )
-        if int(policy.epoch3_survivor_limit) < int(policy.epoch10_finalist_count):
+        if int(policy.coarse_survivor_limit) < int(policy.short_finalist_count):
             raise TrainingDataInputError("target-size v5 survivor counts are inconsistent with SIZE-FIDELITY1.")
 
     def _payload(self) -> dict[str, Any]:
@@ -163,8 +163,9 @@ class SizeFidelityExecutionPlan:
     target_sizes: tuple[int, ...]
     required_training_runs: tuple[tuple[int, int], ...]
     required_checkpoint_epochs: tuple[int, ...]
-    short_training_epoch: int
-    final_training_epoch: int
+    short_screen_epoch: int
+    final_screen_epoch: int
+    reference_training_epoch: int
     monitor_views_derived_from_full_predictions: bool = True
     authority_version: str = SIZE_FIDELITY_VERSION
 
@@ -178,12 +179,14 @@ class SizeFidelityExecutionPlan:
         if runs != tuple(sorted(expected_runs)):
             raise TrainingDataInputError("SIZE-FIDELITY1 execution plan must contain every seed x coverage-qualified-size run exactly once.")
         checkpoints = _sorted_unique_ints(self.required_checkpoint_epochs, name="SIZE-FIDELITY1 required_checkpoint_epochs", minimum=1)
-        short_epoch, final_epoch = int(self.short_training_epoch), int(self.final_training_epoch)
-        if not (0 < short_epoch < final_epoch):
+        short_epoch, final_epoch, reference_epoch = (
+            int(self.short_screen_epoch), int(self.final_screen_epoch), int(self.reference_training_epoch)
+        )
+        if not (0 < short_epoch < final_epoch <= reference_epoch):
             raise TrainingDataInputError("SIZE-FIDELITY1 execution-plan short/final epochs are invalid.")
-        expected_checkpoints = tuple(sorted(set(self.calibration_policy.coarse_epoch_candidates + (short_epoch, final_epoch))))
+        expected_checkpoints = tuple(sorted(set(self.calibration_policy.coarse_epoch_candidates + (short_epoch, final_epoch, reference_epoch))))
         if checkpoints != expected_checkpoints:
-            raise TrainingDataInputError("SIZE-FIDELITY1 execution plan checkpoint epochs do not match the calibration policy plus 10/30 boundaries.")
+            raise TrainingDataInputError("SIZE-FIDELITY1 execution-plan checkpoints do not match the calibration policy and semantic screen/reference boundaries.")
         if not self.monitor_views_derived_from_full_predictions:
             raise TrainingDataInputError("SIZE-FIDELITY1 v1 requires monitor metrics to be derived from full-role prediction authority, not repeated inference.")
         if self.authority_version != SIZE_FIDELITY_VERSION:
@@ -194,8 +197,9 @@ class SizeFidelityExecutionPlan:
         object.__setattr__(self, "target_sizes", sizes)
         object.__setattr__(self, "required_training_runs", runs)
         object.__setattr__(self, "required_checkpoint_epochs", checkpoints)
-        object.__setattr__(self, "short_training_epoch", short_epoch)
-        object.__setattr__(self, "final_training_epoch", final_epoch)
+        object.__setattr__(self, "short_screen_epoch", short_epoch)
+        object.__setattr__(self, "final_screen_epoch", final_epoch)
+        object.__setattr__(self, "reference_training_epoch", reference_epoch)
 
     @property
     def expected_training_run_count(self) -> int:
@@ -220,8 +224,9 @@ class SizeFidelityExecutionPlan:
             "target_sizes": list(self.target_sizes),
             "required_training_runs": [list(v) for v in self.required_training_runs],
             "required_checkpoint_epochs": list(self.required_checkpoint_epochs),
-            "short_training_epoch": self.short_training_epoch,
-            "final_training_epoch": self.final_training_epoch,
+            "short_screen_epoch": self.short_screen_epoch,
+            "final_screen_epoch": self.final_screen_epoch,
+            "reference_training_epoch": self.reference_training_epoch,
             "monitor_views_derived_from_full_predictions": self.monitor_views_derived_from_full_predictions,
         }
 
@@ -244,8 +249,9 @@ class SizeFidelityExecutionPlan:
             target_sizes=tuple(int(v) for v in payload["target_sizes"]),
             required_training_runs=tuple((int(a), int(b)) for a, b in payload["required_training_runs"]),
             required_checkpoint_epochs=tuple(int(v) for v in payload["required_checkpoint_epochs"]),
-            short_training_epoch=int(payload["short_training_epoch"]),
-            final_training_epoch=int(payload["final_training_epoch"]),
+            short_screen_epoch=int(payload["short_screen_epoch"]),
+            final_screen_epoch=int(payload["final_screen_epoch"]),
+            reference_training_epoch=int(payload["reference_training_epoch"]),
             monitor_views_derived_from_full_predictions=bool(payload["monitor_views_derived_from_full_predictions"]),
             authority_version=str(payload["authority_version"]),
         )
@@ -260,6 +266,7 @@ def build_size_fidelity_execution_plan(
     target_size_candidate_authority_digest: str,
     target_size_policy: TargetSizeStudyPolicy,
     target_sizes: Sequence[int],
+    training_horizon_epochs: int = 30,
     calibration_policy: SizeFidelityCalibrationPolicy | None = None,
 ) -> SizeFidelityExecutionPlan:
     policy = calibration_policy or SizeFidelityCalibrationPolicy()
@@ -268,7 +275,10 @@ def build_size_fidelity_execution_plan(
     if len(sizes) < target_size_policy.minimum_qualified_sizes:
         raise TrainingDataInputError("SIZE-FIDELITY1 execution plan requires at least the target-size v5 minimum coverage qualifiers.")
     runs = tuple((seed, size) for seed in policy.screening_seeds for size in sizes)
-    checkpoints = tuple(sorted(set(policy.coarse_epoch_candidates + (target_size_policy.fidelity_epochs[1], target_size_policy.fidelity_epochs[2]))))
+    reference_epoch = int(training_horizon_epochs)
+    if target_size_policy.fidelity_epochs[-1] > reference_epoch:
+        raise TrainingDataInputError("SIZE-FIDELITY1 final screen exceeds its full-reference TRAIN2 horizon.")
+    checkpoints = tuple(sorted(set(policy.coarse_epoch_candidates + (target_size_policy.fidelity_epochs[1], target_size_policy.fidelity_epochs[2], reference_epoch))))
     return SizeFidelityExecutionPlan(
         dataset_id=dataset_id,
         target_size_candidate_authority_digest=target_size_candidate_authority_digest,
@@ -277,8 +287,9 @@ def build_size_fidelity_execution_plan(
         target_sizes=sizes,
         required_training_runs=runs,
         required_checkpoint_epochs=checkpoints,
-        short_training_epoch=int(target_size_policy.fidelity_epochs[1]),
-        final_training_epoch=int(target_size_policy.fidelity_epochs[2]),
+        short_screen_epoch=int(target_size_policy.fidelity_epochs[1]),
+        final_screen_epoch=int(target_size_policy.fidelity_epochs[2]),
+        reference_training_epoch=reference_epoch,
     )
 
 
@@ -434,7 +445,7 @@ class SizeFidelityCandidateAssessment:
     mean_coarse_final_rank_spearman_rho: float
     coarse_survivor_sizes_by_seed: tuple[tuple[int, tuple[int, ...]], ...]
     short_finalist_sizes_by_seed: tuple[tuple[int, tuple[int, ...]], ...]
-    eventual_finalist_sizes_by_seed: tuple[tuple[int, tuple[int, ...]], ...]
+    reference_finalist_sizes_by_seed: tuple[tuple[int, tuple[int, ...]], ...]
     passed: bool
     failure_reasons: tuple[str, ...] = ()
 
@@ -463,7 +474,7 @@ class SizeFidelityCandidateAssessment:
         object.__setattr__(self, "mean_coarse_final_rank_spearman_rho", rho)
         object.__setattr__(self, "coarse_survivor_sizes_by_seed", tuple(sorted((int(s), tuple(int(v) for v in sizes)) for s, sizes in self.coarse_survivor_sizes_by_seed)))
         object.__setattr__(self, "short_finalist_sizes_by_seed", tuple(sorted((int(s), tuple(int(v) for v in sizes)) for s, sizes in self.short_finalist_sizes_by_seed)))
-        object.__setattr__(self, "eventual_finalist_sizes_by_seed", tuple(sorted((int(s), tuple(int(v) for v in sizes)) for s, sizes in self.eventual_finalist_sizes_by_seed)))
+        object.__setattr__(self, "reference_finalist_sizes_by_seed", tuple(sorted((int(s), tuple(int(v) for v in sizes)) for s, sizes in self.reference_finalist_sizes_by_seed)))
         object.__setattr__(self, "failure_reasons", tuple(sorted(set(str(v) for v in self.failure_reasons))))
 
     def _payload(self) -> dict[str, Any]:
@@ -482,7 +493,7 @@ class SizeFidelityCandidateAssessment:
             "mean_coarse_final_rank_spearman_rho": self.mean_coarse_final_rank_spearman_rho,
             "coarse_survivor_sizes_by_seed": [[s, list(v)] for s, v in self.coarse_survivor_sizes_by_seed],
             "short_finalist_sizes_by_seed": [[s, list(v)] for s, v in self.short_finalist_sizes_by_seed],
-            "eventual_finalist_sizes_by_seed": [[s, list(v)] for s, v in self.eventual_finalist_sizes_by_seed],
+            "reference_finalist_sizes_by_seed": [[s, list(v)] for s, v in self.reference_finalist_sizes_by_seed],
             "passed": bool(self.passed),
             "failure_reasons": list(self.failure_reasons),
         }
@@ -499,7 +510,7 @@ class SizeFidelityCandidateAssessment:
         if payload.get("schema") != SIZE_FIDELITY_CANDIDATE_SCHEMA:
             raise TrainingDataSerializationError("Unsupported SIZE-FIDELITY1 candidate schema.")
         kwargs = dict(payload); kwargs.pop("schema", None); kwargs.pop("content_digest", None)
-        for key in ("coarse_survivor_sizes_by_seed", "short_finalist_sizes_by_seed", "eventual_finalist_sizes_by_seed"):
+        for key in ("coarse_survivor_sizes_by_seed", "short_finalist_sizes_by_seed", "reference_finalist_sizes_by_seed"):
             kwargs[key] = tuple((int(s), tuple(int(v) for v in sizes)) for s, sizes in kwargs[key])
         kwargs["failure_reasons"] = tuple(str(v) for v in kwargs.get("failure_reasons", ()))
         result = cls(**kwargs)
@@ -513,6 +524,7 @@ class SizeFidelityQualificationReport:
     dataset_id: str
     target_size_candidate_authority_digest: str
     target_size_policy_digest: str
+    reference_training_epoch: int
     calibration_policy: SizeFidelityCalibrationPolicy
     target_sizes: tuple[int, ...]
     metrics: tuple[SizeFidelityMetric, ...]
@@ -553,6 +565,10 @@ class SizeFidelityQualificationReport:
         object.__setattr__(self, "dataset_id", dataset_id)
         object.__setattr__(self, "target_size_candidate_authority_digest", validate_digest(self.target_size_candidate_authority_digest, name="target_size_candidate_authority_digest"))
         object.__setattr__(self, "target_size_policy_digest", validate_digest(self.target_size_policy_digest, name="target_size_policy_digest"))
+        reference_epoch = int(self.reference_training_epoch)
+        if reference_epoch <= 0:
+            raise TrainingDataInputError("SIZE-FIDELITY1 reference training epoch must be positive.")
+        object.__setattr__(self, "reference_training_epoch", reference_epoch)
         object.__setattr__(self, "target_sizes", sizes)
         object.__setattr__(self, "metrics", metrics)
         object.__setattr__(self, "candidate_assessments", assessments)
@@ -565,6 +581,7 @@ class SizeFidelityQualificationReport:
             "dataset_id": self.dataset_id,
             "target_size_candidate_authority_digest": self.target_size_candidate_authority_digest,
             "target_size_policy_digest": self.target_size_policy_digest,
+            "reference_training_epoch": self.reference_training_epoch,
             "calibration_policy": self.calibration_policy.to_dict(),
             "target_sizes": list(self.target_sizes),
             "metrics": [v.to_dict() for v in self.metrics],
@@ -596,6 +613,7 @@ class SizeFidelityQualificationReport:
             dataset_id=str(payload["dataset_id"]),
             target_size_candidate_authority_digest=str(payload["target_size_candidate_authority_digest"]),
             target_size_policy_digest=str(payload["target_size_policy_digest"]),
+            reference_training_epoch=int(payload["reference_training_epoch"]),
             calibration_policy=SizeFidelityCalibrationPolicy.from_dict(payload["calibration_policy"]),
             target_sizes=tuple(int(v) for v in payload["target_sizes"]),
             metrics=tuple(SizeFidelityMetric.from_dict(v) for v in payload["metrics"]),
@@ -620,6 +638,7 @@ def build_size_fidelity_qualification(
     target_sizes: Sequence[int],
     metrics: Sequence[SizeFidelityMetric],
     calibration_policy: SizeFidelityCalibrationPolicy | None = None,
+    training_horizon_epochs: int = 30,
 ) -> SizeFidelityQualificationReport:
     """Evaluate exhaustive target-size trajectories and certify a coarse screen.
 
@@ -631,6 +650,9 @@ def build_size_fidelity_qualification(
 
     policy = calibration_policy or SizeFidelityCalibrationPolicy()
     policy.validate_against_target_size_policy(target_size_policy)
+    reference_epoch = int(training_horizon_epochs)
+    if target_size_policy.fidelity_epochs[-1] > reference_epoch:
+        raise TrainingDataInputError("SIZE-FIDELITY1 final screen lies beyond the full reference horizon.")
     sizes = _sorted_unique_ints(target_sizes, name="SIZE-FIDELITY1 target_sizes", minimum=1)
     if len(sizes) < target_size_policy.minimum_qualified_sizes:
         raise TrainingDataInputError("SIZE-FIDELITY1 target sizes do not satisfy target-size v5 coverage-qualifier minimum.")
@@ -658,6 +680,7 @@ def build_size_fidelity_qualification(
                     required_keys.append((seed, size, epoch, "coarse_monitor", monitor))
             required_keys.append((seed, size, int(target_size_policy.fidelity_epochs[1]), _FULL_ROLE, None))
             required_keys.append((seed, size, int(target_size_policy.fidelity_epochs[2]), _FULL_ROLE, None))
+            required_keys.append((seed, size, reference_epoch, _FULL_ROLE, None))
     expected_key_set = set(required_keys)
     actual_key_set = set(metric_map)
     missing = tuple(sorted(expected_key_set - actual_key_set))
@@ -696,8 +719,8 @@ def build_size_fidelity_qualification(
     assessments: list[SizeFidelityCandidateAssessment] = []
     boundary_size = max(sizes)
     final_epsilon = float(target_size_policy.practical_equivalence_mev_per_a)
-    short_count = int(target_size_policy.epoch10_finalist_count)
-    coarse_count = int(target_size_policy.epoch3_survivor_limit)
+    short_count = int(target_size_policy.short_finalist_count)
+    coarse_count = int(target_size_policy.coarse_survivor_limit)
 
     for coarse_epoch in policy.coarse_epoch_candidates:
         for monitor_size in policy.coarse_monitor_configuration_candidates:
@@ -714,12 +737,12 @@ def build_size_fidelity_qualification(
                 final_sets: list[tuple[int, tuple[int, ...]]] = []
 
                 for seed in policy.screening_seeds:
-                    final_metrics = [metric_map[(seed, size, int(target_size_policy.fidelity_epochs[2]), _FULL_ROLE, None)] for size in sizes]
-                    final_order = _screen_order(final_metrics, epsilon=final_epsilon, boundary_size=None)
-                    if len(final_order) < short_count:
-                        raise TrainingDataInputError(f"SIZE-FIDELITY1 seed {seed} has fewer than {short_count} valid 30-epoch target candidates.")
-                    eventual_finalists = tuple(final_order[:short_count])
-                    eventual_winner = eventual_finalists[0]
+                    reference_metrics = [metric_map[(seed, size, reference_epoch, _FULL_ROLE, None)] for size in sizes]
+                    reference_order = _screen_order(reference_metrics, epsilon=final_epsilon, boundary_size=None)
+                    if len(reference_order) < short_count:
+                        raise TrainingDataInputError(f"SIZE-FIDELITY1 seed {seed} has fewer than {short_count} valid full-horizon target candidates.")
+                    reference_finalists = tuple(reference_order[:short_count])
+                    reference_winner = reference_finalists[0]
 
                     coarse_full = [metric_map[(seed, size, coarse_epoch, _FULL_ROLE, None)] for size in sizes]
                     coarse_monitor = [metric_map[(seed, size, coarse_epoch, "coarse_monitor", monitor_size)] for size in sizes]
@@ -738,29 +761,29 @@ def build_size_fidelity_qualification(
                         raise TrainingDataInputError(f"SIZE-FIDELITY1 seed {seed} has insufficient valid 10-epoch survivors.")
                     short_finalists = tuple(short_order[:short_count])
 
-                    if eventual_winner in coarse_survivors:
+                    if reference_winner in coarse_survivors:
                         coarse_winner_retained += 1
-                    if eventual_winner in short_finalists:
+                    if reference_winner in short_finalists:
                         short_winner_retained += 1
-                    if set(eventual_finalists).issubset(coarse_survivors):
+                    if set(reference_finalists).issubset(coarse_survivors):
                         coarse_finalists_retained += 1
-                    if set(eventual_finalists).issubset(short_finalists):
+                    if set(reference_finalists).issubset(short_finalists):
                         short_finalists_retained += 1
-                    if boundary_size in eventual_finalists and (
+                    if boundary_size in reference_finalists and (
                         boundary_size not in coarse_survivors or boundary_size not in short_finalists
                     ):
                         boundary_misses += 1
 
                     coarse_score_by_size = {v.target_size: v.target_force_score_mev_per_a for v in coarse_full}
-                    final_score_by_size = {v.target_size: v.target_force_score_mev_per_a for v in final_metrics}
-                    common = [size for size in sizes if metric_map[(seed, size, coarse_epoch, _FULL_ROLE, None)].admissible and metric_map[(seed, size, int(target_size_policy.fidelity_epochs[2]), _FULL_ROLE, None)].admissible]
+                    reference_score_by_size = {v.target_size: v.target_force_score_mev_per_a for v in reference_metrics}
+                    common = [size for size in sizes if metric_map[(seed, size, coarse_epoch, _FULL_ROLE, None)].admissible and metric_map[(seed, size, reference_epoch, _FULL_ROLE, None)].admissible]
                     if len(common) >= 2:
-                        rho = _spearman_rho([coarse_score_by_size[s] for s in common], [final_score_by_size[s] for s in common])
+                        rho = _spearman_rho([coarse_score_by_size[s] for s in common], [reference_score_by_size[s] for s in common])
                         if math.isfinite(rho):
                             rhos.append(rho)
                     coarse_sets.append((seed, coarse_survivors))
                     short_sets.append((seed, short_finalists))
-                    final_sets.append((seed, eventual_finalists))
+                    final_sets.append((seed, reference_finalists))
 
                 n = len(policy.screening_seeds)
                 monitor_rate = monitor_matches / n
@@ -773,9 +796,9 @@ def build_size_fidelity_qualification(
                 if policy.require_monitor_decision_equivalence and monitor_rate < 1.0:
                     failures.append("coarse_monitor_promotion_differs_from_full_development")
                 if coarse_finalist_recall + 1.0e-12 < policy.required_coarse_finalist_recall:
-                    failures.append("epoch_coarse_drops_eventual_30_epoch_finalist")
+                    failures.append("coarse_screen_drops_full_horizon_reference_finalist")
                 if short_finalist_recall + 1.0e-12 < policy.required_short_finalist_recall:
-                    failures.append("epoch_10_drops_eventual_30_epoch_finalist")
+                    failures.append("short_screen_drops_full_horizon_reference_finalist")
                 if boundary_misses:
                     failures.append("largest_boundary_finalist_missed")
                 assessments.append(SizeFidelityCandidateAssessment(
@@ -792,7 +815,7 @@ def build_size_fidelity_qualification(
                     mean_coarse_final_rank_spearman_rho=mean_rho,
                     coarse_survivor_sizes_by_seed=tuple(coarse_sets),
                     short_finalist_sizes_by_seed=tuple(short_sets),
-                    eventual_finalist_sizes_by_seed=tuple(final_sets),
+                    reference_finalist_sizes_by_seed=tuple(final_sets),
                     passed=not failures,
                     failure_reasons=tuple(failures),
                 ))
@@ -821,6 +844,7 @@ def build_size_fidelity_qualification(
         dataset_id=dataset_id,
         target_size_candidate_authority_digest=target_size_candidate_authority_digest,
         target_size_policy_digest=target_size_policy.policy_digest,
+        reference_training_epoch=reference_epoch,
         calibration_policy=policy,
         target_sizes=sizes,
         metrics=metric_tuple,
@@ -850,6 +874,7 @@ def validate_size_fidelity_qualification(
         target_sizes=report.target_sizes,
         metrics=report.metrics,
         calibration_policy=report.calibration_policy,
+        training_horizon_epochs=report.reference_training_epoch,
     )
     if rebuilt.content_digest != report.content_digest:
         raise TrainingDataInputError("SIZE-FIDELITY1 persisted qualification differs from recomputed authority.")

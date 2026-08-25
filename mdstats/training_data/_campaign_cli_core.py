@@ -32,6 +32,7 @@ import sys
 import textwrap
 import time
 import tomllib
+import warnings
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -117,7 +118,8 @@ MLFF_DATA9B3_VERSION = "0.20.99a0"
 # Parallel scheduling does not change the scientific NVE case identity. Keep
 # the 0.20.85a0 runtime token so completed verification caches remain reusable.
 VERIFICATION_RUNTIME_COMPATIBILITY_VERSION = "0.20.85a0"
-CAMPAIGN_CLI_SCHEMA = "mdstats.mlff-campaign-cli.v1"
+CAMPAIGN_CLI_SCHEMA = "mdstats.mlff-campaign-cli.v2"
+_LEGACY_CAMPAIGN_CLI_SCHEMA = "mdstats.mlff-campaign-cli.v1"
 FOUNDATION_CONFIG_CONTRACT_SCHEMA = "mdstats.mlff-foundation-config-contract.v2"
 CAMPAIGN_STATE_SCHEMA = "mdstats.mlff-campaign-state.v2"
 EXTERNAL_RECORD_POINTER_SCHEMA = "mdstats.mlff-campaign-external-record.v1"
@@ -967,8 +969,9 @@ def _load_config(path: str | Path) -> tuple[dict[str, Any], CampaignPaths]:
         raise CampaignCliError(f"Configuration not found: {config_path}. Run `init` first.")
     with config_path.open("rb") as handle:
         cfg = tomllib.load(handle)
-    if cfg.get("schema") not in (None, CAMPAIGN_CLI_SCHEMA):
+    if cfg.get("schema") not in (None, _LEGACY_CAMPAIGN_CLI_SCHEMA, CAMPAIGN_CLI_SCHEMA):
         raise CampaignCliError(f"Unsupported campaign configuration schema: {cfg.get('schema')!r}.")
+    _normalize_target_size_fidelity_config(cfg)
     paths = CampaignPaths.from_config(config_path, cfg)
     paths.ensure()
     # TRAIN2A migration authority is configuration-level and must fail on every
@@ -978,6 +981,70 @@ def _load_config(path: str | Path) -> tuple[dict[str, Any], CampaignPaths]:
     _normalize_foundation_config_in_memory(cfg)
     _validate_canonical_foundation_head_aliases(cfg)
     return cfg, paths
+
+
+def _normalize_target_size_fidelity_config(cfg: dict[str, Any]) -> None:
+    """Normalize the one current target-size authoring surface before use.
+
+    Schema-less/v1 TRAIN2 files have historical fixed semantics.  The three
+    former target-size-looking keys were never active authorities, so only
+    their exact historical spelling can be tolerated during this transition.
+    """
+
+    target_data = cfg.setdefault("target_data", {})
+    if not isinstance(target_data, dict):
+        raise CampaignCliError("[target_data] must be a TOML table.")
+    size_cfg = target_data.setdefault("size_convergence", {})
+    if not isinstance(size_cfg, dict):
+        raise CampaignCliError("[target_data.size_convergence] must be a TOML table.")
+    training = cfg.setdefault("training", {})
+    if not isinstance(training, dict):
+        raise CampaignCliError("[training] must be a TOML table.")
+
+    legacy_keys = {
+        "coarse_training_epochs": 3,
+        "short_training_epochs": 10,
+        "final_training_epochs": 30,
+    }
+    schema = cfg.get("schema")
+    has_tuple = "fidelity_epochs" in size_cfg
+    present_legacy = {key: size_cfg[key] for key in legacy_keys if key in size_cfg}
+    if schema == CAMPAIGN_CLI_SCHEMA:
+        if not has_tuple:
+            raise CampaignCliError(
+                "Campaign schema v2 requires [target_data.size_convergence].fidelity_epochs."
+            )
+        if present_legacy:
+            raise CampaignCliError(
+                "Campaign schema v2 rejects retired target-size epoch keys: "
+                + ", ".join(sorted(present_legacy))
+            )
+        return
+    if has_tuple:
+        raise CampaignCliError(
+            "Historical campaign schema cannot contain fidelity_epochs; set schema to "
+            f"{CAMPAIGN_CLI_SCHEMA!r} and use the v2 configuration contract."
+        )
+    bad = {
+        key: value for key, value in present_legacy.items()
+        if value != legacy_keys[key]
+    }
+    if bad:
+        raise CampaignCliError(
+            "Historical target-size epoch-looking keys were not runtime authorities and "
+            "cannot be reconstructed with non-historical values: "
+            + ", ".join(f"{key}={value!r}" for key, value in sorted(bad.items()))
+        )
+    if present_legacy:
+        warnings.warn(
+            "Historical target-size epoch-looking keys are ignored; v1 uses the fixed "
+            "(3, 10, 30) screening tuple. Migrate to campaign schema v2 to configure it.",
+            UserWarning,
+            stacklevel=3,
+        )
+    # Canonical in-memory resolved policy for old campaigns.  It is never
+    # written back as v2 configuration and the full horizon remains training-owned.
+    size_cfg["fidelity_epochs"] = [3, 10, 30]
 
 
 def _normalize_foundation_config_in_memory(cfg: dict[str, Any]) -> None:
@@ -4617,7 +4684,7 @@ def _ensure_target_coverage_feasibility(
 
 
 def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
-    """Resolve the sole v5 fixed-eight target-size study policy."""
+    """Resolve the target-size tuple; TRAIN2 retains the full horizon."""
 
     import mdstats
 
@@ -4637,7 +4704,15 @@ def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
             "Target-size v5 requires exactly one enabled training mode so one training-protocol "
             f"seed authority exists; found {[item.mode for item in methods]}."
         )
+    if "fidelity_epochs" not in size_cfg:
+        raise CampaignCliError(
+            "Resolved target-size configuration lacks fidelity_epochs; configuration normalization did not run."
+        )
+    raw_epochs = size_cfg["fidelity_epochs"]
+    if not isinstance(raw_epochs, (tuple, list)):
+        raise CampaignCliError("[target_data.size_convergence].fidelity_epochs must be an array of three integers.")
     policy = mdstats.TargetSizeStudyPolicy(
+        fidelity_epochs=tuple(raw_epochs),
         practical_equivalence_mev_per_a=float(size_cfg.get("practical_equivalence_mev_per_a", 1.0)),
         coarse_practical_equivalence_mev_per_a=float(
             size_cfg.get(
@@ -4650,16 +4725,10 @@ def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
     training = cfg.get("training", {})
     if not isinstance(training, Mapping):
         raise CampaignCliError("[training] must be a TOML table.")
-    configured_epochs = int(training.get("max_num_epochs", policy.fidelity_epochs[-1]))
-    if configured_epochs != policy.fidelity_epochs[-1]:
+    configured_epochs = int(training.get("max_num_epochs", 30))
+    if policy.fidelity_epochs[-1] > configured_epochs:
         raise CampaignCliError(
-            "Target-size v5 requires [training].max_num_epochs=30 so epoch 3/10/30 are exact continuation "
-            "boundaries of one frozen TRAIN2 schedule."
-        )
-    warmup_end = float(training.get("train2_warmup_end_fraction", 0.05))
-    if policy.fidelity_epochs[0] / policy.fidelity_epochs[-1] <= warmup_end + 1.0e-12:
-        raise CampaignCliError(
-            "Target-size v5 epoch-3 boundary must lie strictly after TRAIN2 LR warm-up."
+            "Target-size fidelity_epochs must satisfy n3 <= [training].max_num_epochs."
         )
     return policy
 
@@ -4686,6 +4755,7 @@ def _ensure_target_size_study(
     import mdstats
 
     policy = _target_size_study_policy(cfg)
+    training_horizon = int(_cfg(cfg, "training", "max_num_epochs", 30))
     try:
         existing = store.get_record_optional("target_size_study", mdstats.TargetSizeStudyPlan)
     except Exception as exc:
@@ -4696,7 +4766,7 @@ def _ensure_target_size_study(
         existing = None
     if existing is not None:
         try:
-            if existing.policy.policy_digest != policy.policy_digest:
+            if existing.policy.policy_digest != policy.policy_digest or existing.training_horizon_epochs != training_horizon:
                 raise CampaignCliError("target-size study policy changed")
             mdstats.validate_target_size_study_authority(existing, repair2=repair2, mvqual=mvqual2)
         except Exception as exc:
@@ -4711,7 +4781,9 @@ def _ensure_target_size_study(
                 f"digest={existing.content_digest[:12]}..."
             )
             return existing
-    plan = mdstats.build_target_size_study(repair2, mvqual2, policy=policy)
+    plan = mdstats.build_target_size_study(
+        repair2, mvqual2, policy=policy, training_horizon_epochs=training_horizon
+    )
     store.put_record("target_size_study", plan)
     _ok(
         "TARGET-SIZE-V5 frozen directly from REPAIR2 + MVQUAL2: "
@@ -8265,7 +8337,7 @@ def _target_size_materialization_variants(
 
     Before selection the complete qualified candidate population is materialized
     once, with the training protocol's complete ordered screening seed set and no
-    held-out CV jobs.  That exact DATA8 matrix survives all 3/10/30 continuation
+    held-out CV jobs.  That exact DATA8 matrix survives all configured screening continuation
     boundaries.  After selection the normal configured seed/CV matrix is
     materialized for the single frozen production size.
     """
@@ -8275,9 +8347,9 @@ def _target_size_materialization_variants(
     if study.outcome == mdstats.OUTCOME_SELECTED:
         return _variant_specs(cfg, selection_sizes=(int(study.selected_target_size),))
     if study.outcome not in {
-        mdstats.OUTCOME_AWAITING_EPOCH_3,
-        mdstats.OUTCOME_AWAITING_EPOCH_10,
-        mdstats.OUTCOME_AWAITING_EPOCH_30,
+        mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
+        mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
+        mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
     }:
         return ()
     methods = _training_method_specs(cfg)
@@ -8304,7 +8376,7 @@ def _target_size_training_variants(
 
     The active DATA8 matrix intentionally remains the complete screening matrix;
     this narrower view controls which already-materialized variants participate in
-    epoch-3/10/30 training.  After selection it equals the production matrix.
+    semantic screen-boundary training.  After selection it equals the production matrix.
     """
 
     import mdstats
@@ -8312,9 +8384,9 @@ def _target_size_training_variants(
     if study.outcome == mdstats.OUTCOME_SELECTED:
         return _variant_specs(cfg, selection_sizes=(int(study.selected_target_size),))
     if study.outcome not in {
-        mdstats.OUTCOME_AWAITING_EPOCH_3,
-        mdstats.OUTCOME_AWAITING_EPOCH_10,
-        mdstats.OUTCOME_AWAITING_EPOCH_30,
+        mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
+        mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
+        mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
     }:
         return ()
     methods = _training_method_specs(cfg)
@@ -10443,6 +10515,8 @@ class _MaceTrainingProgressProbe:
     expected_updates: int | None
     device: str
     max_epochs: int = 1
+    schedule_horizon_epochs: int | None = None
+    stage_name: str | None = None
     checkpoint_dir: Path | None = None
     epoch_activity_timeout_seconds: float = 120.0
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
@@ -10462,6 +10536,11 @@ class _MaceTrainingProgressProbe:
         # appends a fresh optimizer row.
         self._refresh_gradient_updates(mark_activity=False)
         self._primed = True
+        horizon = self.max_epochs if self.schedule_horizon_epochs is None else int(self.schedule_horizon_epochs)
+        if int(self.max_epochs) <= 0 or horizon < int(self.max_epochs):
+            raise CampaignCliError("Training progress endpoint/horizon geometry is invalid.")
+        self.max_epochs = int(self.max_epochs)
+        self.schedule_horizon_epochs = horizon
 
     def _log_tail(self) -> str:
         candidates = [path for path in self.log_dir.glob("*.log") if "_debug" not in path.name]
@@ -10668,8 +10747,9 @@ class _MaceTrainingProgressProbe:
         else:
             progress = f"progress={state.updates:,}; unit=gradient-update"
         telemetry = _gpu_telemetry(self.device)
+        stage = None if self.stage_name is None else f"stage={self.stage_name}; schedule_horizon={self.schedule_horizon_epochs}"
         return "; ".join(
-            item for item in (f"phase={state.phase}", progress, telemetry) if item
+            item for item in (stage, f"phase={state.phase}", progress, telemetry) if item
         )
 
 def _run_local_preflight_smoke(
@@ -13558,7 +13638,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             )
         study = target_size_study
         if study.outcome == mdstats.OUTCOME_SELECTED:
-            train2_execution_epoch_limit = int(study.policy.fidelity_epochs[-1])
+            train2_execution_epoch_limit = int(_cfg(cfg, "training", "max_num_epochs", 30))
             train2_allow_successful_continuation = False
             train2_stage_label = "production fixed-budget training"
             allowed_sizes = {int(study.selected_target_size)}
@@ -13566,14 +13646,15 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                 run.run_id for run in campaign.runs if run.selection_size in allowed_sizes
             }
         elif study.outcome in {
-            mdstats.OUTCOME_AWAITING_EPOCH_3,
-            mdstats.OUTCOME_AWAITING_EPOCH_10,
-            mdstats.OUTCOME_AWAITING_EPOCH_30,
+            mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
+            mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
+            mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
         }:
             train2_execution_epoch_limit = int(study.next_training_epoch)
-            train2_allow_successful_continuation = train2_execution_epoch_limit > 3
+            train2_allow_successful_continuation = study.next_training_stage != mdstats.STAGE_COARSE
             train2_stage_label = (
-                f"target-size v5 exact continuation to epoch {train2_execution_epoch_limit}/30"
+                f"target-size exact continuation to {study.next_training_stage} endpoint "
+                f"{train2_execution_epoch_limit}/{int(_cfg(cfg, 'training', 'max_num_epochs', 30))}"
             )
             allowed_sizes = set(int(v) for v in study.next_training_sizes)
             screening_seeds = set(int(v) for v in study.policy.screening_optimizer_seeds)
@@ -14004,7 +14085,15 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                     checkpoint_dir=run_root / "checkpoints",
                     expected_updates=expected_training_updates,
                     device=optimizer.device,
-                    max_epochs=optimizer.max_num_epochs,
+                    max_epochs=(
+                        train2_execution_epoch_limit
+                        if policy_family == "train2" and train2_execution_epoch_limit is not None
+                        else optimizer.max_num_epochs
+                    ),
+                    schedule_horizon_epochs=optimizer.max_num_epochs,
+                    stage_name=(
+                        train2_stage_label if policy_family == "train2" else None
+                    ),
                     epoch_activity_timeout_seconds=float(
                         _cfg(
                             cfg,
@@ -14533,7 +14622,7 @@ def command_train(args: argparse.Namespace) -> int:
         if study.outcome != mdstats.OUTCOME_SELECTED:
             raise CampaignCliError(
                 "TRAIN2 public `train` is reserved for the frozen production/CV workload. "
-                "The target-size 3/10/30 experiment is owned by `select-target-size`."
+                "The target-size flexible-fidelity experiment is owned by `select-target-size`."
             )
         try:
             _require_train2_preflight_authorization(cfg, paths, store, study)
@@ -14546,7 +14635,7 @@ def command_train(args: argparse.Namespace) -> int:
 
 
 def command_select_target_size(args: argparse.Namespace) -> int:
-    """Run/resume the complete TRAIN2 3/10/30 controlled-fidelity study."""
+    """Run/resume the complete TRAIN2 configurable-fidelity study."""
 
     import mdstats
 
@@ -14579,9 +14668,9 @@ def command_select_target_size(args: argparse.Namespace) -> int:
         return 0
 
     active_outcomes = {
-        mdstats.OUTCOME_AWAITING_EPOCH_3,
-        mdstats.OUTCOME_AWAITING_EPOCH_10,
-        mdstats.OUTCOME_AWAITING_EPOCH_30,
+        mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
+        mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
+        mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
     }
     if study.outcome not in active_outcomes:
         raise CampaignCliError(
@@ -14589,9 +14678,9 @@ def command_select_target_size(args: argparse.Namespace) -> int:
         )
 
     _require_train2_preflight_authorization(cfg, paths, store, study)
-    _print_header("Target-size selection - controlled 3 -> 10 -> 30 epoch fidelity")
+    _print_header("Target-size selection - controlled configurable fidelity")
     print(
-        "Epoch is controlled during this operation: only the exact 3/10/30 boundary "
+        "Epoch is controlled during this operation: only the exact configured screen boundary "
         "checkpoints may contribute to target-size ranking.",
         flush=True,
     )
@@ -18421,12 +18510,11 @@ def _eval2_target_size_endpoint_evidence(
     import mdstats
 
     epoch = target_size_study.next_training_epoch
-    stage_by_epoch = {3: "coarse", 10: "short", 30: "final"}
-    if epoch not in stage_by_epoch:
+    stage = target_size_study.next_training_stage
+    if epoch is None or stage is None:
         raise CampaignCliError(
             f"Target-size evidence requested from non-trainable state {target_size_study.outcome}."
         )
-    stage = stage_by_epoch[int(epoch)]
     expected_sizes = tuple(int(v) for v in target_size_study.next_training_sizes)
     screening_seeds = tuple(int(v) for v in target_size_study.policy.screening_optimizer_seeds)
     expected_keys = tuple((size, seed) for size in expected_sizes for seed in screening_seeds)
@@ -18445,12 +18533,12 @@ def _eval2_target_size_endpoint_evidence(
             f"missing={missing}, extra={extra}."
         )
 
-    if epoch == 3:
+    if stage == mdstats.STAGE_COARSE:
         parent_by_key: dict[tuple[int, int], Any] = {}
-    elif epoch == 10:
-        parent_by_key = {item.key: item.success for item in target_size_study.epoch3_outcomes}
+    elif stage == mdstats.STAGE_SHORT:
+        parent_by_key = {item.key: item.success for item in target_size_study.coarse_outcomes}
     else:
-        parent_by_key = {item.key: item.success for item in target_size_study.epoch10_outcomes}
+        parent_by_key = {item.key: item.success for item in target_size_study.short_outcomes}
 
     outcomes: list[Any] = []
     for key in expected_keys:
@@ -18542,9 +18630,10 @@ def _eval2_target_size_endpoint_evidence(
             runtime = mdstats.load_train2_runtime_summary(
                 paths.runs / run.run_id / "checkpoints"
             )
-        if runtime.completed_epochs != epoch or runtime.planned_epochs != 30:
+        if runtime.completed_epochs != epoch or runtime.planned_epochs != target_size_study.training_horizon_epochs:
             raise CampaignCliError(
-                f"{run.run_id} is not the exact {epoch}-of-30 TRAIN2 endpoint."
+                f"{run.run_id} is not the exact {stage} endpoint on the full "
+                f"{target_size_study.training_horizon_epochs}-epoch TRAIN2 schedule."
             )
         target_role = _eval2_target_role_for_run(
             store=store, target_size_study=target_size_study, repair2=repair2,
@@ -18616,10 +18705,10 @@ def _eval2_target_size_endpoint_evidence(
             continue
 
         parent = parent_by_key.get(key)
-        if epoch > 3 and parent is None:
+        if stage != mdstats.STAGE_COARSE and parent is None:
             raise CampaignCliError(
                 f"n={run.selection_size}, seed={run.seed} lost its authenticated "
-                f"epoch-{3 if epoch == 10 else 10} continuation parent."
+                "semantic-screen continuation parent."
             )
         wall_time = sum(float(attempt.elapsed_seconds) for attempt in execution.attempts)
         success = mdstats.TargetSizeStudyTrainingEvidence(
@@ -18679,9 +18768,9 @@ def _command_evaluate_train2(
     _print_precision_profile(cfg)
 
     if study.outcome in {
-        mdstats.OUTCOME_AWAITING_EPOCH_3,
-        mdstats.OUTCOME_AWAITING_EPOCH_10,
-        mdstats.OUTCOME_AWAITING_EPOCH_30,
+        mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
+        mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
+        mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
     }:
         epoch = int(study.next_training_epoch)
         outcomes = _eval2_target_size_endpoint_evidence(
@@ -18690,12 +18779,12 @@ def _command_evaluate_train2(
             role_freeze=role_freeze, baseline_model=baseline_model, model_dtype=model_dtype,
             local_wrappers=local_wrappers,
         )
-        if epoch == 3:
-            updated = mdstats.attach_epoch_3_outcomes(study, outcomes)
-        elif epoch == 10:
-            updated = mdstats.attach_epoch_10_outcomes(study, outcomes)
+        if study.next_training_stage == mdstats.STAGE_COARSE:
+            updated = mdstats.attach_coarse_outcomes(study, outcomes)
+        elif study.next_training_stage == mdstats.STAGE_SHORT:
+            updated = mdstats.attach_short_outcomes(study, outcomes)
         else:
-            updated = mdstats.attach_epoch_30_outcomes(study, outcomes)
+            updated = mdstats.attach_final_screen_outcomes(study, outcomes)
         store.put_record("target_size_study", updated)
         success_count = sum(item.success is not None for item in outcomes)
         failure_count = len(outcomes) - success_count
@@ -18703,25 +18792,25 @@ def _command_evaluate_train2(
             f"TARGET-SIZE-V5 epoch {epoch} exact population reduced: "
             f"successes={success_count}, scientific_failures={failure_count}, outcome={updated.outcome}"
         )
-        if updated.outcome == mdstats.OUTCOME_AWAITING_EPOCH_10:
+        if updated.outcome == mdstats.OUTCOME_AWAITING_SHORT_SCREEN:
             _ok(
-                "epoch-3 survivors: "
-                + ", ".join(f"n={v}" for v in updated.epoch3_survivor_sizes)
+                "coarse-screen survivors: "
+                + ", ".join(f"n={v}" for v in updated.coarse_survivor_sizes)
             )
-            _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size epoch-3 screen complete")
+            _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size coarse screen complete")
             _mark_stage(store, paths, "train", StageState.WAITING, "continue target-size survivors to epoch 10")
             if not bool(getattr(args, "_target_size_orchestrated", False)):
-                print("\nTarget-size epoch-3 screen complete. Continue with `select-target-size`.")
+                print("\nTarget-size coarse screen complete. Continue with `select-target-size`.")
             return 0
-        if updated.outcome == mdstats.OUTCOME_AWAITING_EPOCH_30:
+        if updated.outcome == mdstats.OUTCOME_AWAITING_FINAL_SCREEN:
             _ok(
-                "epoch-10 finalists: "
-                + ", ".join(f"n={v}" for v in updated.epoch10_finalist_sizes)
+                "short-screen finalists: "
+                + ", ".join(f"n={v}" for v in updated.short_finalist_sizes)
             )
-            _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size epoch-10 screen complete")
+            _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size short screen complete")
             _mark_stage(store, paths, "train", StageState.WAITING, "continue target-size finalists to epoch 30")
             if not bool(getattr(args, "_target_size_orchestrated", False)):
-                print("\nTarget-size epoch-10 screen complete. Continue with `select-target-size`.")
+                print("\nTarget-size short screen complete. Continue with `select-target-size`.")
             return 0
         if updated.outcome in {
             mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
@@ -18748,7 +18837,7 @@ def _command_evaluate_train2(
                 paths,
                 "evaluate",
                 StageState.COMPLETE,
-                f"target-size v5 selected n={updated.selected_target_size} at exact epoch-30 boundary",
+                f"target-size selected n={updated.selected_target_size} at the exact final-screen boundary",
             )
             print(
                 f"\nTarget data size selected and frozen: n={updated.selected_target_size}. "
@@ -25078,9 +25167,9 @@ def _train2_public_lifecycle(
         mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
     }
     active_outcomes = {
-        mdstats.OUTCOME_AWAITING_EPOCH_3,
-        mdstats.OUTCOME_AWAITING_EPOCH_10,
-        mdstats.OUTCOME_AWAITING_EPOCH_30,
+        mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
+        mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
+        mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
     }
 
     if study is None:
@@ -25100,7 +25189,7 @@ def _train2_public_lifecycle(
             ),
             _PublicLifecycleStep(
                 "target_size_selection", "select-target-size", "select-target-size",
-                "controlled exact 3/10/30 target-size selection", StageState.NOT_STARTED,
+                "controlled configurable-fidelity target-size selection", StageState.NOT_STARTED,
                 "target-size authority has not been established",
             ),
         ))
@@ -25117,7 +25206,7 @@ def _train2_public_lifecycle(
             ),
             _PublicLifecycleStep(
                 "target_size_selection", "select-target-size", "select-target-size",
-                "controlled exact 3/10/30 target-size selection", StageState.COMPLETE,
+                "controlled configurable-fidelity target-size selection", StageState.COMPLETE,
                 f"selected target size frozen at n={study.selected_target_size}",
             ),
         ))
@@ -25145,7 +25234,7 @@ def _train2_public_lifecycle(
             ),
             _PublicLifecycleStep(
                 "target_size_selection", "select-target-size", "select-target-size",
-                "controlled exact 3/10/30 target-size selection", StageState.COMPLETE,
+                "controlled configurable-fidelity target-size selection", StageState.COMPLETE,
                 f"scientific terminal outcome: {study.outcome}; {study.decision_reason}",
                 terminal=True,
             ),
@@ -25168,7 +25257,7 @@ def _train2_public_lifecycle(
                 preflight_message = f"screening preflight is not current ({exc})"
             else:
                 preflight_state = StageState.COMPLETE
-                preflight_message = "one preflight authorizes the unchanged 3/10/30 screening matrix"
+                preflight_message = "one preflight authorizes the unchanged configured screening matrix"
         raw_train_state, _ = store.stage("train")
         raw_eval_state, _ = store.stage("evaluate")
         selection_state = (
@@ -25191,7 +25280,7 @@ def _train2_public_lifecycle(
             ),
             _PublicLifecycleStep(
                 "target_size_selection", "select-target-size", "select-target-size",
-                "controlled exact 3/10/30 target-size selection", selection_state,
+                "controlled configurable-fidelity target-size selection", selection_state,
                 selection_message,
             ),
         ))
@@ -25913,11 +26002,13 @@ sizes = [512]
 structural_workers = 0
 
 [target_data.size_convergence]
-# Target-size v5 has one fixed candidate universe:
+# Target-size has one fixed candidate universe:
 # 128, 256, 512, 1024, 2048, 4096, 8192, 16384.
 # REPAIR2-prefix materializability plus MVQUAL2 hard admission defines Q.
-# TRAIN2 then follows exact continuation at epochs 3 -> 10 -> 30.
+# These are the three screening boundaries; the independent full TRAIN2
+# schedule horizon is [training].max_num_epochs.
 # No generated/rescue sizes and no ceiling above 16384 are permitted.
+fidelity_epochs = [1, 3, 10]
 coarse_practical_equivalence_mev_per_a = 1.0
 practical_equivalence_mev_per_a = 1.0
 # Screening seeds are not configured here. Target-size v5 authenticates the
@@ -26394,15 +26485,15 @@ TRAIN2 has one stable public lifecycle:
 2. doctor              Verify paths, MACE wrappers, checkpoint-bound replay, CUDA, and the frozen e3nn/CuEq backend.
 3. prepare             Build the initial leakage-safe target-size screening DATA7/DATA8 matrix.
 4. preflight           Verify that exact screening matrix and run the required real one-epoch smoke.
-5. select-target-size  Run/resume the complete controlled 3 -> 10 -> 30 epoch target-size experiment and freeze N*.
+5. select-target-size  Run/resume the complete configurable-fidelity target-size experiment and freeze N*.
 6. materialize         Realize the selected N* final-development and held-out CV production matrix.
 7. preflight           Re-run the same operational smoke contract for the changed production matrix.
 8. train               Train/resume only the frozen selected-size production/CV workload.
 9. evaluate            Evaluate production trajectories and select admissible checkpoints; an earlier epoch may beat epoch 30.
 10. verify             Run the existing physical/deployment/locked verification sequence.
 
-During `select-target-size`, epoch is a controlled variable: only exact epoch-3,
-epoch-10, and epoch-30 checkpoints may affect target-size ranking. Production
+During `select-target-size`, epoch is a controlled variable: only exact configured
+coarse, short, and final-screen checkpoints may affect target-size ranking. Production
 `evaluate` answers a different question: target size is already frozen and the
 best admissible checkpoint epoch may be selected from the trajectory.
 
@@ -26467,7 +26558,7 @@ TRAIN2A/TRAIN2B/EVAL2/DEPLOY-VERIFY1/PES-VERIFY1/RELAX-VERIFY1/DYN-VERIFY2/SELEC
 TrainingBudgetPolicy, LearningRateSchedulePolicy, CheckpointAdmissibilityPolicy, and
 CheckpointSelectionPolicy identities. Replay is an authenticated TRUE_DFT hard-retention constraint;
 once admissible, extra replay margin has zero checkpoint/seed ranking or tie-break authority.
-`select-target-size` owns TRAIN2B exact continuation at 3/10/30 and EVAL2 endpoint
+`select-target-size` owns TRAIN2B exact continuation at the configured screen boundaries and EVAL2 endpoint
 reduction; it never substitutes a better earlier checkpoint. After N* is frozen,
 public `train` uses the same TRAIN2B fixed-budget runtime for the selected production/CV
 matrix and public `evaluate` uses EVAL2 production checkpoint selection, where an
@@ -26668,7 +26759,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "select-target-size",
-        help="run/resume the complete TRAIN2 exact 3/10/30 target-size selection funnel",
+        help="run/resume the complete TRAIN2 configurable-fidelity target-size selection funnel",
     )
     p.set_defaults(func=command_select_target_size)
 

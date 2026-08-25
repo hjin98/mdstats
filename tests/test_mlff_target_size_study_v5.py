@@ -13,32 +13,54 @@ from mdstats.training_data._common import (
 )
 from mdstats.training_data.target_size_study import (
     FIXED_TARGET_SIZES,
-    OUTCOME_AWAITING_EPOCH_10,
-    OUTCOME_AWAITING_EPOCH_30,
+    OUTCOME_AWAITING_SHORT_SCREEN,
+    OUTCOME_AWAITING_FINAL_SCREEN,
     OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
     OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
     OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
     OUTCOME_SELECTED,
     FAILURE_PHASE_TRAIN,
     STAGE_COARSE,
-    STAGE_FINAL,
+    STAGE_FINAL_SCREEN,
     STAGE_SHORT,
     TargetSizeStageOutcome,
     TargetSizeStudyPlan,
     TargetSizeStudyPolicy,
     TargetSizeTrainingEvidence,
     TargetSizeTrajectoryFailureEvidence,
-    attach_epoch_10_evidence,
-    attach_epoch_10_outcomes,
-    attach_epoch_30_evidence,
-    attach_epoch_30_outcomes,
-    attach_epoch_3_evidence,
-    attach_epoch_3_outcomes,
+    attach_coarse_evidence,
+    attach_coarse_outcomes,
+    attach_final_screen_evidence,
+    attach_final_screen_outcomes,
+    attach_short_evidence,
+    attach_short_outcomes,
     build_target_size_study,
     materialize_candidate_prefix,
     materialize_candidate_prefix_matrix,
     materialize_selected_prefix,
 )
+
+OUTCOME_AWAITING_EPOCH_10 = OUTCOME_AWAITING_SHORT_SCREEN
+OUTCOME_AWAITING_EPOCH_30 = OUTCOME_AWAITING_FINAL_SCREEN
+STAGE_FINAL = STAGE_FINAL_SCREEN
+attach_epoch_3_evidence = attach_coarse_evidence
+attach_epoch_3_outcomes = attach_coarse_outcomes
+attach_epoch_10_evidence = attach_short_evidence
+attach_epoch_10_outcomes = attach_short_outcomes
+attach_epoch_30_evidence = attach_final_screen_evidence
+attach_epoch_30_outcomes = attach_final_screen_outcomes
+
+# Fixed-v5 fixtures exercise the immediately preceding `(3, 10, 30)/30`
+# contract through the current semantic API; they are migration/regression
+# coverage, not current public aliases.
+TargetSizeStudyPlan.epoch3_outcomes = property(lambda self: self.coarse_outcomes)
+TargetSizeStudyPlan.epoch3_survivor_sizes = property(lambda self: self.coarse_survivor_sizes)
+TargetSizeStudyPlan.epoch10_outcomes = property(lambda self: self.short_outcomes)
+TargetSizeStudyPlan.epoch10_finalist_sizes = property(lambda self: self.short_finalist_sizes)
+TargetSizeStudyPlan.epoch30_outcomes = property(lambda self: self.final_screen_outcomes)
+TargetSizeStudyPlan.epoch3_evidence = property(lambda self: self.coarse_evidence)
+TargetSizeStudyPlan.epoch10_evidence = property(lambda self: self.short_evidence)
+TargetSizeStudyPlan.epoch30_evidence = property(lambda self: self.final_screen_evidence)
 
 
 def h(tag: str) -> str:
@@ -76,7 +98,8 @@ class Qual:
 def study(qualified=FIXED_TARGET_SIZES, lengths=(20000, 20000), *, policy=None):
     repair = Repair(lengths)
     qual = Qual(repair, qualified)
-    return repair, qual, build_target_size_study(repair, qual, policy=policy)
+    policy = policy or TargetSizeStudyPolicy(fidelity_epochs=(3, 10, 30))
+    return repair, qual, build_target_size_study(repair, qual, policy=policy, training_horizon_epochs=30)
 
 
 def test_bulk_candidate_prefix_materialization_is_exported_from_top_level():
@@ -125,7 +148,7 @@ def evidence(
     score: float,
     parent=None,
 ):
-    stage = {3: "coarse", 10: "short", 30: "final"}[epoch]
+    stage = {3: "coarse", 10: "short", 30: "final_screen"}[epoch]
     kwargs = dict(
         stage=stage,
         target_size=size,
@@ -451,8 +474,8 @@ def test_v5_restart_round_trip_revalidates_exact_continuation_semantics():
     assert restored.content_digest == plan.content_digest
 
     forged = plan.to_dict()
-    forged["epoch10_outcomes"][0]["success"]["parent_checkpoint_digest"] = h("forged-parent")
-    _recompute_nested_and_outer_digest(forged, "epoch10_outcomes", 0)
+    forged["short_outcomes"][0]["success"]["parent_checkpoint_digest"] = h("forged-parent")
+    _recompute_nested_and_outer_digest(forged, "short_outcomes", 0)
     with pytest.raises(TrainingDataInputError, match="checkpoint ancestry"):
         TargetSizeStudyPlan.from_dict(forged)
 
@@ -472,8 +495,8 @@ def test_restart_rejects_forged_optimizer_and_rng_continuation(field, message):
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
     )
     forged = plan.to_dict()
-    forged["epoch10_outcomes"][0]["success"][field] = h(f"forged-{field}")
-    _recompute_nested_and_outer_digest(forged, "epoch10_outcomes", 0)
+    forged["short_outcomes"][0]["success"][field] = h(f"forged-{field}")
+    _recompute_nested_and_outer_digest(forged, "short_outcomes", 0)
     with pytest.raises(TrainingDataInputError, match=message):
         TargetSizeStudyPlan.from_dict(forged)
 
@@ -486,7 +509,7 @@ def test_restart_rejects_forged_survivor_decision_after_digest_recomputation():
     )
     eliminated = next(size for size in plan.qualified_sizes if size not in plan.epoch3_survivor_sizes)
     forged = plan.to_dict()
-    forged["epoch3_survivor_sizes"][-1] = eliminated
+    forged["coarse_survivor_sizes"][-1] = eliminated
     forged.pop("content_digest", None)
     forged["content_digest"] = digest(forged)
     with pytest.raises(TrainingDataInputError, match="survivor decision"):
@@ -527,9 +550,9 @@ def test_restart_rejects_reordered_seed_evidence_even_with_recomputed_outer_dige
     _, _, plan = study((4096, 8192, 16384))
     plan = advance_to_epoch10(plan, {4096: 10.0, 8192: 9.8, 16384: 9.5})
     forged = plan.to_dict()
-    forged["epoch3_outcomes"][0], forged["epoch3_outcomes"][1] = (
-        forged["epoch3_outcomes"][1],
-        forged["epoch3_outcomes"][0],
+    forged["coarse_outcomes"][0], forged["coarse_outcomes"][1] = (
+        forged["coarse_outcomes"][1],
+        forged["coarse_outcomes"][0],
     )
     forged.pop("content_digest")
     forged["content_digest"] = digest(forged)
@@ -547,10 +570,12 @@ def test_v5_restart_hard_rejects_legacy_schema():
 
 def test_nondefault_equivalence_width_changes_policy_identity_and_ranking():
     narrow = TargetSizeStudyPolicy(
+        fidelity_epochs=(3, 10, 30),
         coarse_practical_equivalence_mev_per_a=0.1,
         practical_equivalence_mev_per_a=0.1,
     )
     wide = TargetSizeStudyPolicy(
+        fidelity_epochs=(3, 10, 30),
         coarse_practical_equivalence_mev_per_a=1.0,
         practical_equivalence_mev_per_a=1.0,
     )
@@ -729,10 +754,10 @@ def test_restart_rejects_forged_failure_stage_or_seed(field, value, message) -> 
     payload = terminal.to_dict()
     index = next(
         i
-        for i, outcome in enumerate(payload["epoch3_outcomes"])
+        for i, outcome in enumerate(payload["coarse_outcomes"])
         if outcome["failure"] is not None
     )
-    payload["epoch3_outcomes"][index]["failure"][field] = value
-    _recompute_nested_and_outer_digest(payload, "epoch3_outcomes", index)
+    payload["coarse_outcomes"][index]["failure"][field] = value
+    _recompute_nested_and_outer_digest(payload, "coarse_outcomes", index)
     with pytest.raises(TrainingDataInputError, match=message):
         TargetSizeStudyPlan.from_dict(payload)

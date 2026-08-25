@@ -1,4 +1,4 @@
-schema = "mdstats.mlff-campaign-cli.v1"
+schema = "mdstats.mlff-campaign-cli.v2"
 
 [campaign]
 id = "lta-mh1-omat-pbe-finetune"
@@ -108,9 +108,11 @@ structural_workers = 0
 
 [target_data.size_convergence]
 # This table owns target-coverage controls and target-size equivalence thresholds.
-# Target-size v5 candidate sizes and the 3/10/30 screening boundaries are fixed by
-# TargetSizeStudyPolicy; they are not user-authored configuration keys. Screening
+# Target-size candidate sizes are fixed by TargetSizeStudyPolicy.  The three
+# screening boundaries are configurable; full TRAIN2 horizon remains [training].
+# max_num_epochs. Screening
 # optimizer seeds come from the sole enabled training method.
+fidelity_epochs = [1, 3, 10]
 coverage_metric = "reference_mass_local_knn"
 coverage_threshold = 0.95
 coverage_resolution_mass = 0.0078125

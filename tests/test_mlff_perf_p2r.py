@@ -9,31 +9,31 @@ from mdstats.training_data._common import digest
 
 
 def _study(outcome: str, *, selected: int | None = None):
-    policy = mdstats.TargetSizeStudyPolicy()
+    policy = mdstats.TargetSizeStudyPolicy(fidelity_epochs=(3, 10, 30))
     return SimpleNamespace(
         outcome=outcome,
         policy=policy,
         content_digest=digest({"study": outcome, "selected": selected}),
         qualified_sizes=(512, 1024, 2048, 4096, 8192),
-        epoch3_survivor_sizes=(1024, 2048, 4096, 8192),
-        epoch10_finalist_sizes=(4096, 8192),
+        training_horizon_epochs=30,
+        coarse_survivor_sizes=(1024, 2048, 4096, 8192),
+        short_finalist_sizes=(4096, 8192),
         selected_target_size=selected,
     )
 
 
 def test_perf_p2r_parameter_grid_matches_frozen_v5_surface() -> None:
     grid = mdstats.PerfP2RParameterGrid()
-    assert grid.coarse_epoch_candidates == (3,)
+    assert grid.coarse_epoch_candidates == (1,)
     assert grid.coarse_monitor_size_candidates == (128, 256, 512, 1024)
     assert grid.coarse_equivalence_mev_per_a_candidates == (1.0,)
     assert (grid.minimum_coverage_qualified_sizes, grid.maximum_coverage_qualified_sizes) == (3, 8)
     assert (grid.coarse_survivor_limit, grid.short_survivor_limit) == (4, 2)
-    assert (grid.short_training_epochs, grid.final_training_epochs) == (10, 30)
     assert mdstats.PerfP2RParameterGrid.from_dict(grid.to_dict()) == grid
 
 
 def test_perf_p2r_stage_plan_authorizes_only_v5_incremental_work() -> None:
-    coarse_stage = mdstats.build_perf_p2r_stage_plan(_study(mdstats.OUTCOME_AWAITING_EPOCH_3))
+    coarse_stage = mdstats.build_perf_p2r_stage_plan(_study(mdstats.OUTCOME_AWAITING_COARSE_SCREEN))
     assert coarse_stage.stage == "coarse"
     assert (coarse_stage.start_epoch, coarse_stage.target_epoch) == (0, 3)
     assert coarse_stage.candidate_sizes == (512, 1024, 2048, 4096, 8192)
@@ -42,7 +42,7 @@ def test_perf_p2r_stage_plan_authorizes_only_v5_incremental_work() -> None:
     assert not coarse_stage.replay_diagnostic_authorized
     assert not coarse_stage.physical_qualification_authorized
 
-    short_stage = mdstats.build_perf_p2r_stage_plan(_study(mdstats.OUTCOME_AWAITING_EPOCH_10))
+    short_stage = mdstats.build_perf_p2r_stage_plan(_study(mdstats.OUTCOME_AWAITING_SHORT_SCREEN))
     assert short_stage.stage == "short"
     assert (short_stage.start_epoch, short_stage.target_epoch) == (3, 10)
     assert short_stage.candidate_sizes == (1024, 2048, 4096, 8192)
@@ -52,8 +52,8 @@ def test_perf_p2r_stage_plan_authorizes_only_v5_incremental_work() -> None:
     assert not short_stage.replay_diagnostic_authorized
     assert not short_stage.physical_qualification_authorized
 
-    final_stage = mdstats.build_perf_p2r_stage_plan(_study(mdstats.OUTCOME_AWAITING_EPOCH_30))
-    assert final_stage.stage == "final"
+    final_stage = mdstats.build_perf_p2r_stage_plan(_study(mdstats.OUTCOME_AWAITING_FINAL_SCREEN))
+    assert final_stage.stage == "final_screen"
     assert (final_stage.start_epoch, final_stage.target_epoch) == (10, 30)
     assert final_stage.incremental_epochs == 20
     assert final_stage.candidate_sizes == (4096, 8192)
@@ -83,7 +83,8 @@ def test_perf_p2r_production_work_is_authorized_only_after_selection() -> None:
 def test_perf_p2r_exposure_uses_exact_3_10_30_incremental_geometry() -> None:
     sizes = (128, 256, 512, 1024, 2048, 4096, 8192, 16384)
     exposure = mdstats.build_perf_p2r_exposure(
-        sizes, (2048, 4096, 8192, 16384), (8192, 16384), coarse_training_epochs=3
+        sizes, (2048, 4096, 8192, 16384), (8192, 16384),
+        coarse_screen_epoch=3, short_screen_epoch=10, final_screen_epoch=30, reference_training_epoch=30,
     )
     assert exposure.coarse_structure_epochs == 3 * sum(sizes)
     assert exposure.short_increment_structure_epochs == 7 * sum((2048, 4096, 8192, 16384))
@@ -96,5 +97,6 @@ def test_perf_p2r_exposure_uses_exact_3_10_30_incremental_geometry() -> None:
 def test_perf_p2r_rejects_non_nested_survivors() -> None:
     with pytest.raises(mdstats.TrainingDataInputError, match="nested"):
         mdstats.build_perf_p2r_exposure(
-            (128, 256, 512), (128, 1024), (128,), coarse_training_epochs=3
+            (128, 256, 512), (128, 1024), (128,),
+            coarse_screen_epoch=3, short_screen_epoch=10, final_screen_epoch=30, reference_training_epoch=30,
         )

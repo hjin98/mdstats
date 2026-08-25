@@ -1,7 +1,7 @@
 """PERF-P2R CPU/control-plane authority for the corrected size funnel.
 
 This module contains no accelerator assumptions.  It encodes the parameterized
-3/10/30-style successive-fidelity execution geometry required while
+configurable successive-fidelity execution geometry required while
 SIZE-FIDELITY1 is awaiting final-release GPU calibration.
 """
 
@@ -17,9 +17,9 @@ from ._common import (
     validate_digest,
 )
 
-PERF_P2R_PARAMETER_GRID_SCHEMA = "mdstats.perf-p2r-parameter-grid.target-size-v5.v2"
-PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.target-size-v5.v3"
-PERF_P2R_EXPOSURE_SCHEMA = "mdstats.perf-p2r-exposure.v1"
+PERF_P2R_PARAMETER_GRID_SCHEMA = "mdstats.perf-p2r-parameter-grid.flexible-fidelity.v3"
+PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.flexible-fidelity.v4"
+PERF_P2R_EXPOSURE_SCHEMA = "mdstats.perf-p2r-exposure.v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,15 +31,13 @@ class PerfP2RParameterGrid:
     branching into a different implementation.
     """
 
-    coarse_epoch_candidates: tuple[int, ...] = (3,)
+    coarse_epoch_candidates: tuple[int, ...] = (1,)
     coarse_monitor_size_candidates: tuple[int, ...] = (128, 256, 512, 1024)
     coarse_equivalence_mev_per_a_candidates: tuple[float, ...] = (1.0,)
     minimum_coverage_qualified_sizes: int = 3
     maximum_coverage_qualified_sizes: int = 8
     coarse_survivor_limit: int = 4
     short_survivor_limit: int = 2
-    short_training_epochs: int = 10
-    final_training_epochs: int = 30
     serialization_schema: str = field(
         default=PERF_P2R_PARAMETER_GRID_SCHEMA, repr=False, compare=False
     )
@@ -62,16 +60,10 @@ class PerfP2RParameterGrid:
         maximum = int(self.maximum_coverage_qualified_sizes)
         coarse_limit = int(self.coarse_survivor_limit)
         short_limit = int(self.short_survivor_limit)
-        short_epochs = int(self.short_training_epochs)
-        final_epochs = int(self.final_training_epochs)
         if minimum < 2 or maximum < minimum:
             raise TrainingDataInputError("PERF-P2R coverage-qualified size bounds are invalid.")
         if short_limit != 2 or coarse_limit < short_limit or coarse_limit > maximum:
             raise TrainingDataInputError("PERF-P2R survivor limits are invalid.")
-        if any(v >= short_epochs for v in coarse) or short_epochs >= final_epochs:
-            raise TrainingDataInputError(
-                "PERF-P2R requires coarse < short < final training boundaries."
-            )
         object.__setattr__(self, "coarse_epoch_candidates", coarse)
         object.__setattr__(self, "coarse_monitor_size_candidates", monitors)
         object.__setattr__(self, "coarse_equivalence_mev_per_a_candidates", equivalence)
@@ -79,8 +71,6 @@ class PerfP2RParameterGrid:
         object.__setattr__(self, "maximum_coverage_qualified_sizes", maximum)
         object.__setattr__(self, "coarse_survivor_limit", coarse_limit)
         object.__setattr__(self, "short_survivor_limit", short_limit)
-        object.__setattr__(self, "short_training_epochs", short_epochs)
-        object.__setattr__(self, "final_training_epochs", final_epochs)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -94,8 +84,6 @@ class PerfP2RParameterGrid:
             "maximum_coverage_qualified_sizes": self.maximum_coverage_qualified_sizes,
             "coarse_survivor_limit": self.coarse_survivor_limit,
             "short_survivor_limit": self.short_survivor_limit,
-            "short_training_epochs": self.short_training_epochs,
-            "final_training_epochs": self.final_training_epochs,
         }
 
     @property
@@ -121,8 +109,6 @@ class PerfP2RParameterGrid:
             maximum_coverage_qualified_sizes=int(payload["maximum_coverage_qualified_sizes"]),
             coarse_survivor_limit=int(payload["coarse_survivor_limit"]),
             short_survivor_limit=int(payload["short_survivor_limit"]),
-            short_training_epochs=int(payload["short_training_epochs"]),
-            final_training_epochs=int(payload["final_training_epochs"]),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("PERF-P2R parameter-grid digest mismatch.")
@@ -138,7 +124,7 @@ class PerfP2RStagePlan:
     candidate_sizes: tuple[int, ...]
     start_epoch: int
     target_epoch: int
-    planned_final_epoch: int
+    schedule_horizon_epoch: int
     screening_optimizer_seeds: tuple[int, ...]
     continuation_required: bool
     target_only_evaluation: bool
@@ -157,15 +143,15 @@ class PerfP2RStagePlan:
             validate_digest(self.target_size_study_digest, name="target_size_study_digest"),
         )
         stage = str(self.stage)
-        if stage not in {"coarse", "short", "final", "production"}:
+        if stage not in {"coarse", "short", "final_screen", "production"}:
             raise TrainingDataInputError("Unsupported PERF-P2R execution stage.")
         sizes = tuple(sorted(set(int(v) for v in self.candidate_sizes)))
         if not sizes or any(v <= 0 for v in sizes):
             raise TrainingDataInputError("PERF-P2R stage requires positive candidate sizes.")
         start = int(self.start_epoch)
         target = int(self.target_epoch)
-        final = int(self.planned_final_epoch)
-        if start < 0 or target <= start or final < target:
+        horizon = int(self.schedule_horizon_epoch)
+        if start < 0 or target <= start or horizon < target:
             raise TrainingDataInputError("PERF-P2R stage epoch geometry is invalid.")
         if bool(self.continuation_required) != (start > 0):
             raise TrainingDataInputError(
@@ -174,7 +160,7 @@ class PerfP2RStagePlan:
         if stage == "coarse":
             if not self.target_only_evaluation or self.replay_diagnostic_authorized or self.physical_qualification_authorized:
                 raise TrainingDataInputError("PERF-P2R coarse stage must be target-only.")
-        elif stage in {"short", "final"}:
+        elif stage in {"short", "final_screen"}:
             if not self.target_only_evaluation or self.replay_diagnostic_authorized or self.physical_qualification_authorized:
                 raise TrainingDataInputError(
                     "PERF-P2R target-size-v5 selection stages must remain target-only."
@@ -183,7 +169,7 @@ class PerfP2RStagePlan:
         object.__setattr__(self, "candidate_sizes", sizes)
         object.__setattr__(self, "start_epoch", start)
         object.__setattr__(self, "target_epoch", target)
-        object.__setattr__(self, "planned_final_epoch", final)
+        object.__setattr__(self, "schedule_horizon_epoch", horizon)
         seeds = tuple(int(v) for v in self.screening_optimizer_seeds)
         if stage == "production":
             if seeds:
@@ -208,7 +194,7 @@ class PerfP2RStagePlan:
             "candidate_sizes": list(self.candidate_sizes),
             "start_epoch": self.start_epoch,
             "target_epoch": self.target_epoch,
-            "planned_final_epoch": self.planned_final_epoch,
+            "schedule_horizon_epoch": self.schedule_horizon_epoch,
             "screening_optimizer_seeds": list(self.screening_optimizer_seeds),
             "continuation_required": self.continuation_required,
             "target_only_evaluation": self.target_only_evaluation,
@@ -233,7 +219,7 @@ class PerfP2RStagePlan:
             candidate_sizes=tuple(int(v) for v in payload["candidate_sizes"]),
             start_epoch=int(payload["start_epoch"]),
             target_epoch=int(payload["target_epoch"]),
-            planned_final_epoch=int(payload["planned_final_epoch"]),
+            schedule_horizon_epoch=int(payload["schedule_horizon_epoch"]),
             screening_optimizer_seeds=tuple(
                 int(v) for v in payload.get("screening_optimizer_seeds", ())
             ),
@@ -252,31 +238,31 @@ def build_perf_p2r_stage_plan(study: Any) -> PerfP2RStagePlan:
 
     outcome = str(study.outcome)
     policy = study.policy
-    epoch3, epoch10, epoch30 = (int(v) for v in policy.fidelity_epochs)
+    coarse_epoch, short_epoch, final_screen_epoch = (int(v) for v in policy.fidelity_epochs)
     common = dict(
         target_size_study_digest=str(study.content_digest),
-        planned_final_epoch=epoch30,
+        schedule_horizon_epoch=int(study.training_horizon_epochs),
     )
-    if outcome == "awaiting_epoch_3":
+    if outcome == "awaiting_coarse_screen":
         return PerfP2RStagePlan(
             **common, stage="coarse", candidate_sizes=tuple(study.qualified_sizes),
-            start_epoch=0, target_epoch=epoch3,
+            start_epoch=0, target_epoch=coarse_epoch,
             screening_optimizer_seeds=tuple(policy.screening_optimizer_seeds),
             continuation_required=False, target_only_evaluation=True,
             replay_diagnostic_authorized=False, physical_qualification_authorized=False,
         )
-    if outcome == "awaiting_epoch_10":
+    if outcome == "awaiting_short_screen":
         return PerfP2RStagePlan(
-            **common, stage="short", candidate_sizes=tuple(study.epoch3_survivor_sizes),
-            start_epoch=epoch3, target_epoch=epoch10,
+            **common, stage="short", candidate_sizes=tuple(study.coarse_survivor_sizes),
+            start_epoch=coarse_epoch, target_epoch=short_epoch,
             screening_optimizer_seeds=tuple(policy.screening_optimizer_seeds),
             continuation_required=True, target_only_evaluation=True,
             replay_diagnostic_authorized=False, physical_qualification_authorized=False,
         )
-    if outcome == "awaiting_epoch_30":
+    if outcome == "awaiting_final_screen":
         return PerfP2RStagePlan(
-            **common, stage="final", candidate_sizes=tuple(study.epoch10_finalist_sizes),
-            start_epoch=epoch10, target_epoch=epoch30,
+            **common, stage="final_screen", candidate_sizes=tuple(study.short_finalist_sizes),
+            start_epoch=short_epoch, target_epoch=final_screen_epoch,
             screening_optimizer_seeds=tuple(policy.screening_optimizer_seeds),
             continuation_required=True, target_only_evaluation=True,
             replay_diagnostic_authorized=False, physical_qualification_authorized=False,
@@ -286,7 +272,7 @@ def build_perf_p2r_stage_plan(study: Any) -> PerfP2RStagePlan:
             raise TrainingDataInputError("Selected target-size-v5 authority lacks a target size.")
         return PerfP2RStagePlan(
             **common, stage="production", candidate_sizes=(int(study.selected_target_size),),
-            start_epoch=0, target_epoch=epoch30, screening_optimizer_seeds=(),
+            start_epoch=0, target_epoch=int(study.training_horizon_epochs), screening_optimizer_seeds=(),
             continuation_required=False, target_only_evaluation=False,
             replay_diagnostic_authorized=True, physical_qualification_authorized=True,
         )
@@ -300,9 +286,10 @@ class PerfP2RExposure:
     admissible_sizes: tuple[int, ...]
     coarse_survivor_sizes: tuple[int, ...]
     short_finalist_sizes: tuple[int, ...]
-    coarse_training_epochs: int
-    short_training_epochs: int
-    final_training_epochs: int
+    coarse_screen_epoch: int
+    short_screen_epoch: int
+    final_screen_epoch: int
+    reference_training_epoch: int
     coarse_structure_epochs: int
     short_increment_structure_epochs: int
     final_increment_structure_epochs: int
@@ -338,9 +325,10 @@ class PerfP2RExposure:
             "admissible_sizes": list(self.admissible_sizes),
             "coarse_survivor_sizes": list(self.coarse_survivor_sizes),
             "short_finalist_sizes": list(self.short_finalist_sizes),
-            "coarse_training_epochs": self.coarse_training_epochs,
-            "short_training_epochs": self.short_training_epochs,
-            "final_training_epochs": self.final_training_epochs,
+            "coarse_screen_epoch": self.coarse_screen_epoch,
+            "short_screen_epoch": self.short_screen_epoch,
+            "final_screen_epoch": self.final_screen_epoch,
+            "reference_training_epoch": self.reference_training_epoch,
             "coarse_structure_epochs": self.coarse_structure_epochs,
             "short_increment_structure_epochs": self.short_increment_structure_epochs,
             "final_increment_structure_epochs": self.final_increment_structure_epochs,
@@ -365,9 +353,10 @@ class PerfP2RExposure:
             admissible_sizes=tuple(int(v) for v in payload["admissible_sizes"]),
             coarse_survivor_sizes=tuple(int(v) for v in payload["coarse_survivor_sizes"]),
             short_finalist_sizes=tuple(int(v) for v in payload["short_finalist_sizes"]),
-            coarse_training_epochs=int(payload["coarse_training_epochs"]),
-            short_training_epochs=int(payload["short_training_epochs"]),
-            final_training_epochs=int(payload["final_training_epochs"]),
+            coarse_screen_epoch=int(payload["coarse_screen_epoch"]),
+            short_screen_epoch=int(payload["short_screen_epoch"]),
+            final_screen_epoch=int(payload["final_screen_epoch"]),
+            reference_training_epoch=int(payload["reference_training_epoch"]),
             coarse_structure_epochs=int(payload["coarse_structure_epochs"]),
             short_increment_structure_epochs=int(payload["short_increment_structure_epochs"]),
             final_increment_structure_epochs=int(payload["final_increment_structure_epochs"]),
@@ -386,9 +375,10 @@ def build_perf_p2r_exposure(
     coarse_survivor_sizes: Sequence[int],
     short_finalist_sizes: Sequence[int],
     *,
-    coarse_training_epochs: int,
-    short_training_epochs: int = 10,
-    final_training_epochs: int = 30,
+    coarse_screen_epoch: int,
+    short_screen_epoch: int,
+    final_screen_epoch: int,
+    reference_training_epoch: int,
 ) -> PerfP2RExposure:
     """Compute exact incremental work exposure with no repaid training prefix."""
 
@@ -401,16 +391,17 @@ def build_perf_p2r_exposure(
         raise TrainingDataInputError("PERF-P2R survivor memberships must be nested.")
     if not finalists:
         raise TrainingDataInputError("PERF-P2R exposure requires at least one final candidate.")
-    e0 = int(coarse_training_epochs)
-    e1 = int(short_training_epochs)
-    e2 = int(final_training_epochs)
-    if e0 <= 0 or not e0 < e1 < e2:
+    e0 = int(coarse_screen_epoch)
+    e1 = int(short_screen_epoch)
+    e2 = int(final_screen_epoch)
+    reference = int(reference_training_epoch)
+    if e0 <= 0 or not e0 < e1 < e2 <= reference:
         raise TrainingDataInputError("PERF-P2R exposure requires coarse < short < final epochs.")
     coarse_work = e0 * sum(admissible)
     short_work = (e1 - e0) * sum(coarse)
     final_work = (e2 - e1) * sum(finalists)
     total = coarse_work + short_work + final_work
-    exhaustive = e2 * sum(admissible)
+    exhaustive = reference * sum(admissible)
     saved = exhaustive - total
     if saved < 0:
         raise TrainingDataInputError("PERF-P2R exposure cannot exceed exhaustive training.")
@@ -418,9 +409,10 @@ def build_perf_p2r_exposure(
         admissible_sizes=admissible,
         coarse_survivor_sizes=coarse,
         short_finalist_sizes=finalists,
-        coarse_training_epochs=e0,
-        short_training_epochs=e1,
-        final_training_epochs=e2,
+        coarse_screen_epoch=e0,
+        short_screen_epoch=e1,
+        final_screen_epoch=e2,
+        reference_training_epoch=reference,
         coarse_structure_epochs=coarse_work,
         short_increment_structure_epochs=short_work,
         final_increment_structure_epochs=final_work,
