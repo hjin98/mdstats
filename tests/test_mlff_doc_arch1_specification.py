@@ -18,13 +18,13 @@ REL_INDEX = ROOT / "docs/history/mlff/release_notes/INDEX.md"
 def test_doc_arch1_release_and_current_authority_are_synchronized():
     assert mdstats.__version__ == "0.20.242a0"
     text = MANUAL.read_text(encoding="utf-8")
-    assert "architecture_revision: 105" in text
+    assert "architecture_revision: 106" in text
     assert "# Part VI - Bounded execution, restart, and performance architecture" in text
     assert "# Part VII - Ownership and extension boundaries" in text
     assert "## Context retrieval index" in text
     assert "MVSEL2 target order" in text
     assert "independent MVQUAL prefix qualification" in text
-    assert "fixed target-size study" in text
+    assert "configurable target-size study" in text
     assert not (ROOT / "mlff_training_data_architecture.md").exists()
     assert not (ROOT / "mlff_training_data_dependency_graph.json").exists()
 
@@ -52,7 +52,7 @@ def test_doc_arch1_current_target_size_and_execution_contract():
     assert "MVQUAL is the sole hard target-size eligibility authority" in text
     assert "q < 3" in text
     assert "nonconverged_at_fixed_ceiling" in text
-    assert "0 -> 3 epochs -> 10 epochs -> 30 epochs" in text
+    assert "0 -> n1 coarse -> n2 short -> n3 final screen" in text
     assert "no alternate MVSEL1/REPAIR1 path" in text
 
 
@@ -71,7 +71,7 @@ def test_doc_arch1_history_is_indexed_once_and_current_revision_is_recorded():
     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
     assert revisions == sorted(set(revisions))
-    assert revisions[-1] == 105
+    assert revisions[-1] == 106
     assert "DOC-MVSEL2" in REV_INDEX.read_text()
     assert "0.20.242a0" in REL_INDEX.read_text()
     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
@@ -88,11 +88,12 @@ def test_doc_arch1_graph_and_directory_ownership_are_current():
         "DOMAIN_SELECTION_ORDER", "DOMAIN_REPAIRED_MASTER_ORDER",
         "COMPACT_CONTINUATION_STATE", "PREFIX_QUALIFICATION_EVIDENCE",
         "TARGET_SIZE_STUDY_POLICY", "QUALIFIED_TARGET_SIZE_POPULATION",
-        "TARGET_SIZE_DECISION", "SIZE_STUDY_EPOCH3",
-        "SIZE_STUDY_EPOCH10", "SIZE_STUDY_EPOCH30",
+        "TARGET_SIZE_DECISION", "COARSE_SCREEN", "SHORT_SCREEN",
+        "FINAL_SCREEN", "FULL_TRAIN2_SCHEDULE",
         "OUT_OF_FOLD_PROTOCOL_EVIDENCE", "DEPLOYMENT_ARTIFACTS",
     ):
         assert node in node_ids
+    assert not any(node.startswith("SIZE_STUDY_EPOCH") for node in node_ids)
     forbidden = "\n".join(graph["forbidden_current_paths"])
     assert "MVMIGRATE" in forbidden
     assert "held-out CV evaluation -> target-size decision" in forbidden

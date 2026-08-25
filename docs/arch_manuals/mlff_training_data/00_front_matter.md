@@ -47,7 +47,12 @@ source evidence and labels
   -> calibration and activated locked-test / observable validation
 ```
 
-The current graph has no alternate MVSEL1/REPAIR1 path and no migration path for superseded campaign generations.
+The current graph has no alternate MVSEL1/REPAIR1 path. Superseded campaign
+generations are not generally compatible; the sole supported restart boundary
+is the immediately preceding fixed-fidelity campaign, which is re-authenticated
+against unchanged upstream preparation inputs before a fresh configurable
+target-size study is created. Ambiguous or older historical state fails closed
+at the narrowest required re-preparation boundary.
 
 ## Reading index
 

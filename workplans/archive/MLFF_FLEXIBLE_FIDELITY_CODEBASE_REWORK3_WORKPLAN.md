@@ -2,7 +2,8 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-FLEXIBLE-FIDELITY-EPOCH-REWORK-V1-REWORK3
 protocol_version: 5.5.0
-status: active
+status: completed
+completed_date: 2026-08-25
 ---
 
 # MLFF Flexible-Fidelity Rework 3 Closure Workplan
@@ -426,3 +427,18 @@ No known material review finding, protected concern, or required cross-module co
 - Documentation tests may reveal additional stale fixed-stage assumptions outside the files named above. Treat these as affected-surface consequences, not reasons to weaken semantic architecture.
 - A historical campaign may lack enough persisted evidence to prove compatibility. Fail closed at the narrowest safe boundary rather than inventing compatibility or forcing blanket recomputation for all campaigns.
 - If genuine assembled integration reveals a new scientific/state-machine defect unrelated to the findings above, route it explicitly and reopen only that affected design surface.
+
+## 10. Completion record
+
+Completed on `feat/mlff-end-to-end-performance-v1` after repairing the
+preparation semantic projection, adding bounded persistent target-size
+orchestration coverage for default and nondefault fidelity schedules, and
+synchronizing revision-106 current authority.
+
+Final bounded affected-surface evidence on this candidate:
+
+- `200 passed, 1 skipped` across flexible-fidelity, campaign/store,
+  target-size, TRAIN2 runtime, SIZE-FIDELITY, PERF-P2R, migration-reuse, and
+  current documentation surfaces;
+- the one skip requires an unavailable real LTA training root;
+- GPU/production qualification remains explicitly deferred.

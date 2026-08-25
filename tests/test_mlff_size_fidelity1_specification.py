@@ -15,7 +15,7 @@ def test_size_fidelity1_release_and_public_authority_are_synchronized() -> None:
     assert mdstats.__version__ == "0.20.242a0"
     assert (
         mdstats.SIZE_FIDELITY_VERSION
-        == "mdstats.size-fidelity1.coarse-screen-calibration.target-size-v5.2026-08.v2"
+        == "mdstats.size-fidelity1.coarse-screen-calibration.flexible-fidelity.2026-08.v4"
     )
     for name in (
         "SizeFidelityCalibrationPolicy",
@@ -30,34 +30,23 @@ def test_size_fidelity1_release_and_public_authority_are_synchronized() -> None:
         assert hasattr(mdstats, name)
 
 
-def test_size_fidelity1_current_spec_matches_fixed_runtime_generation() -> None:
+def test_size_fidelity1_current_spec_matches_configurable_runtime_generation() -> None:
     root = _root()
     spec = (root / "docs/specs/training_data/mlff_size_fidelity1_calibration_spec.md").read_text()
-    stage11 = json.loads((root / "docs/arch_manuals/stage11_dependency_graph.json").read_text())
-    node = {item["id"]: item for item in stage11["nodes"]}[
-        "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION"
-    ]
+    graph = json.loads((root / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+    node_ids = {item["id"] for item in graph["nodes"]}
 
-    assert "current normative calibration contract for the fixed target-size-v5 runtime" in spec
+    assert "current normative calibration contract for the flexible-fidelity target-size runtime" in spec
     assert "coarse endpoint candidates:        3, 4, 5" in spec
-    assert "short-screen endpoint:             10" in spec
-    assert "full/final reference endpoint:     30" in spec
-    assert "eventual 30-epoch target finalists" in spec
+    assert "short-screen endpoint:             n2" in spec
+    assert "final-screen endpoint:             n3" in spec
+    assert "full reference endpoint:           n" in spec
+    assert "eventual full-reference target finalists" in spec
     assert "Spearman rank correlation" in spec
     assert "diagnostic only" in spec
-    assert "(1,3,10)/n" not in spec
-    assert "CODE-MLFF-FLEXIBLE-FIDELITY-EPOCH-REWORK-V1" not in spec
-    assert node["authority_version"] == mdstats.SIZE_FIDELITY_VERSION
-    assert node["current_schema_generation"] == "target-size-v5 v2"
-    assert node["implementation_status"] == "implemented_deferred_final_gpu_qualification"
-    assert node["calibrates"] == [
-        "coarse_epoch_candidates",
-        "coarse_monitor_configuration_candidates",
-        "coarse_equivalence_candidates_mev_per_a",
-    ]
-    assert "coarse_finalist_recall_meets_configured_threshold" in node["hard_requirements"]
-    assert "short_finalist_recall_meets_configured_threshold" in node["hard_requirements"]
-    assert "winner_recall_equals_1" not in node["hard_requirements"]
+    assert "(1, 3, 10) / 30" in spec
+    assert {"COARSE_SCREEN", "SHORT_SCREEN", "FINAL_SCREEN", "FULL_TRAIN2_SCHEDULE"} <= node_ids
+    assert not any(node.startswith("SIZE_STUDY_EPOCH") for node in node_ids)
 
 
 def test_current_campaign_example_does_not_advertise_ignored_or_retired_size_controls() -> None:
@@ -65,7 +54,6 @@ def test_current_campaign_example_does_not_advertise_ignored_or_retired_size_con
     config = tomllib.loads((root / "campaign.toml.example").read_text())
     size_cfg = config["target_data"]["size_convergence"]
     for key in (
-        "fidelity_epochs",
         "coarse_training_epochs",
         "short_training_epochs",
         "final_training_epochs",
@@ -81,6 +69,7 @@ def test_current_campaign_example_does_not_advertise_ignored_or_retired_size_con
         "max_short_training_candidates",
     ):
         assert key not in size_cfg
+    assert size_cfg["fidelity_epochs"] == [1, 3, 10]
     assert config["training"]["max_num_epochs"] == 30
 
 

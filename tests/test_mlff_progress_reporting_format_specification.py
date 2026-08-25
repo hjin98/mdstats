@@ -12,11 +12,11 @@ SPEC = ROOT / "docs/specs/training_data/mlff_progress_reporting_format_spec.md"
 
 def test_progress_format_release_metadata_and_architecture_boundary() -> None:
     # 0.20.237a0 is the frozen introduction release. The presentation grammar
-    # remains implemented while the current architecture has advanced to rev105.
+    # remains implemented while the current architecture has advanced to rev106.
     assert mdstats.__version__ == "0.20.242a0"
     text = MANUAL.read_text(encoding="utf-8")
     spec = SPEC.read_text(encoding="utf-8")
-    assert "architecture_revision: 105" in text
+    assert "architecture_revision: 106" in text
     assert "Implemented in mdstats 0.20.237a0" in spec
     assert "presentation-only" in spec
 
@@ -38,6 +38,7 @@ def test_progress_format_introduction_history_is_preserved_across_later_architec
     assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.237a0.md").is_file()
     assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV103.md").is_file()
     assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV105.md").is_file()
+    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV106.md").is_file()
 
 
 def test_progress_format_qualification_record_is_presentation_only() -> None:

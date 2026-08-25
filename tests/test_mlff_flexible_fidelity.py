@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass, replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -149,6 +151,146 @@ def _complete_funnel(
     return mdstats.attach_final_screen_outcomes(plan, final)
 
 
+def _persistable_target_size_authorities() -> tuple[object, object]:
+    """Return compact, fully serializable REPAIR2/MVQUAL2 input authorities.
+
+    The campaign integration tests deliberately persist these real records
+    instead of replacing the target-size owner with a helper double.  The
+    fixtures model only the already-qualified prefix universe; they do not
+    stand in for any target-size reduction or restart behavior.
+    """
+
+    from mdstats.training_data._target_multi_view_scoring import (
+        TargetMultiViewSelectorTelemetry,
+    )
+    from mdstats.training_data.target_multi_view_repair import TargetMultiViewRepairRung
+    from mdstats.training_data.target_multi_view_repair_v2 import (
+        TargetMultiViewRepairDomainPlanV2,
+        TargetMultiViewRepairPlanV2,
+        TargetMultiViewRepairPolicyV2,
+    )
+    from mdstats.training_data.target_multi_view_qualification_v2 import (
+        OUTCOME_QUALIFIED,
+        TargetMultiViewQualificationDomainPlanV2,
+        TargetMultiViewQualificationPlanV2,
+        TargetMultiViewQualificationPolicyV2,
+        TargetMultiViewQualificationRungV2,
+    )
+
+    uids = tuple(_h(f"persisted-frame-{index}") for index in range(16_384))
+    repair_domain = TargetMultiViewRepairDomainPlanV2(
+        label_domain_id="target",
+        reference_domain_digest=_h("persisted-reference-domain"),
+        mvidx1_domain_digest=_h("persisted-sparse-domain"),
+        selection_domain_digest=_h("persisted-selection-domain"),
+        candidate_count=len(uids),
+        repaired_master_order=uids,
+        rungs=tuple(
+            TargetMultiViewRepairRung(
+                target_size=size,
+                materializable=True,
+                active_shell_start=0,
+                frame_uids=uids[:size],
+                hard_obligations_passed=True,
+                hard_coverage_qualified=True,
+            )
+            for size in mdstats.FIXED_TARGET_SIZES
+        ),
+        total_swaps=0,
+    )
+    repair = TargetMultiViewRepairPlanV2(
+        dataset_id="persisted-flexible-fixture",
+        target_coverage_reference_digest=_h("persisted-reference"),
+        mvidx1_content_digest=_h("persisted-sparse-index"),
+        target_multi_view_selection_v2_digest=_h("persisted-selection"),
+        policy=TargetMultiViewRepairPolicyV2(),
+        domains=(repair_domain,),
+    )
+    telemetry = TargetMultiViewSelectorTelemetry(
+        uncovered_witness_count=0,
+        uncovered_reference_mass=0.0,
+        unique_reference_mass_fraction=0.1,
+        zero_unique_candidate_fraction=0.0,
+        correlation_unit_count=1,
+        maximum_correlation_unit_fraction=1.0,
+        run_count=1,
+        condition_count=1,
+    )
+    qualification_domain = TargetMultiViewQualificationDomainPlanV2(
+        label_domain_id="target",
+        reference_domain_digest=repair_domain.reference_domain_digest,
+        sparse_domain_digest=repair_domain.mvidx1_domain_digest,
+        repair_domain_digest=repair_domain.content_digest,
+        rungs=tuple(
+            TargetMultiViewQualificationRungV2(
+                target_size=size,
+                materializable=True,
+                coverage_passed=True,
+                hard_obligations_passed=True,
+                qualified=True,
+                coverage_report_digest=_h(f"persisted-coverage-{size}"),
+                telemetry=telemetry,
+            )
+            for size in mdstats.FIXED_TARGET_SIZES
+        ),
+    )
+    qualification = TargetMultiViewQualificationPlanV2(
+        dataset_id=repair.dataset_id,
+        target_coverage_reference_digest=repair.target_coverage_reference_digest,
+        target_coverage_sparse_index_digest=repair.mvidx1_content_digest,
+        target_coverage_feasibility_digest=_h("persisted-feasibility"),
+        target_data_role_freeze_digest=_h("persisted-role-freeze"),
+        target_multi_view_repair_digest=repair.content_digest,
+        policy=TargetMultiViewQualificationPolicyV2(),
+        domains=(qualification_domain,),
+        mv_qualified_sizes=mdstats.FIXED_TARGET_SIZES,
+        outcome=OUTCOME_QUALIFIED,
+    )
+    return repair, qualification
+
+
+def _attach_persisted_boundary_evidence(plan: object) -> object:
+    """Perform one real semantic reduction for the active persisted study."""
+
+    stage = plan.next_training_stage
+    epoch = int(plan.next_training_epoch)
+    sizes = tuple(int(value) for value in plan.next_training_sizes)
+    previous = {
+        (item.success.target_size, item.success.optimizer_seed): item.success
+        for item in (*plan.coarse_outcomes, *plan.short_outcomes)
+        if item.success is not None
+    }
+    outcomes = []
+    for size in sizes:
+        for seed in plan.policy.screening_optimizer_seeds:
+            item = _evidence(
+                plan,
+                stage=stage,
+                epoch=epoch,
+                size=size,
+                planned_epochs=plan.training_horizon_epochs,
+                target_score=float(size),
+                parent=previous.get((size, seed)),
+            )
+            outcomes.append(
+                replace(
+                    item,
+                    optimizer_seed=seed,
+                    training_run_digest=_h(f"persisted-run-{size}-{seed}"),
+                    checkpoint_digest=_h(f"persisted-checkpoint-{size}-{seed}-{epoch}"),
+                    optimizer_state_digest=_h(f"persisted-optimizer-{size}-{seed}-{epoch}"),
+                    rng_state_digest=_h(f"persisted-rng-{size}-{seed}-{epoch}"),
+                    target_evaluation_digest=_h(f"persisted-evaluation-{size}-{seed}-{epoch}"),
+                )
+            )
+    if stage == mdstats.STAGE_COARSE:
+        return mdstats.attach_coarse_outcomes(plan, tuple(outcomes))
+    if stage == mdstats.STAGE_SHORT:
+        return mdstats.attach_short_outcomes(plan, tuple(outcomes))
+    assert stage == mdstats.STAGE_FINAL_SCREEN
+    return mdstats.attach_final_screen_outcomes(plan, tuple(outcomes))
+
+
 def test_assembled_case_a_default_funnel_reaches_production_and_roundtrips_status() -> None:
     plan = _complete_funnel(fidelity_epochs=(1, 3, 10), training_horizon=30)
     assert plan.outcome == mdstats.OUTCOME_SELECTED
@@ -213,6 +355,104 @@ def test_assembled_case_c_deduplicates_physical_final_reference_endpoint_but_kee
     assert execution.reference_training_epoch == 30
     assert execution.required_checkpoint_epochs == (1, 3, 30)
     assert execution.expected_checkpoint_count == execution.expected_training_run_count * 3
+
+
+@pytest.mark.parametrize(
+    ("fidelity_epochs", "horizon"),
+    [((1, 3, 10), 30), ((2, 5, 12), 40)],
+)
+def test_persisted_campaign_selects_configured_boundaries_and_exposes_restart_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    fidelity_epochs: tuple[int, int, int],
+    horizon: int,
+) -> None:
+    """Exercise config, SQLite, target-size ownership, reductions, and status.
+
+    MACE training/evaluation are intentionally replaced at their external
+    execution boundary.  Configuration normalization, CampaignStore,
+    TARGET-SIZE-V5 construction/validation, evidence reduction, selected-size
+    persistence, status, and restart lifecycle derivation remain real.
+    """
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    config = tmp_path / "campaign.toml"
+    config.write_text(
+        cli._config_template(
+            workspace="workspace",
+            training_root="training",
+            foundation_model="foundation.model",
+            replay_train="replay-train.xyz",
+            replay_monitor="replay-monitor.xyz",
+            acceleration_backend="e3nn",
+        ),
+        encoding="utf-8",
+    )
+    text = config.read_text(encoding="utf-8")
+    text = text.replace(
+        "fidelity_epochs = [1, 3, 10]",
+        f"fidelity_epochs = {list(fidelity_epochs)}",
+    ).replace("max_num_epochs = 30", f"max_num_epochs = {horizon}", 1)
+    config.write_text(text, encoding="utf-8")
+    cfg, paths = cli._load_config(config)
+    paths.ensure()
+    store = cli.CampaignStore(paths.state_db)
+    repair, qualification = _persistable_target_size_authorities()
+    store.put_records(
+        {
+            "target_multi_view_repair_v2": repair,
+            "target_multi_view_qualification_v2": qualification,
+        }
+    )
+    cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "fixture doctor passed")
+    frozen = cli._ensure_target_size_study(
+        store, cfg=cfg, repair2=repair, mvqual2=qualification
+    )
+    assert (frozen.policy.fidelity_epochs, frozen.training_horizon_epochs) == (
+        fidelity_epochs,
+        horizon,
+    )
+    assert cli._load_verified_target_size_study_authority(store).content_digest == frozen.content_digest
+
+    authorized_boundaries: list[int] = []
+
+    def fake_train(_args: argparse.Namespace) -> int:
+        study = cli._load_verified_target_size_study_authority(store)
+        authorized_boundaries.append(int(study.next_training_epoch))
+        cli._mark_stage(store, paths, "train", cli.StageState.COMPLETE, "external bounded train passed")
+        return 0
+
+    def fake_evaluate(_args: argparse.Namespace) -> int:
+        study = cli._load_verified_target_size_study_authority(store)
+        store.put_record("target_size_study", _attach_persisted_boundary_evidence(study))
+        cli._mark_stage(store, paths, "evaluate", cli.StageState.COMPLETE, "external endpoint evaluation passed")
+        return 0
+
+    # The fixture has no physical DATA8 tree.  The actual selection owner and
+    # all persisted semantic state stay intact; only the unavailable MACE smoke
+    # transport is admitted as an external-compute substitute.
+    monkeypatch.setattr(cli, "_require_train2_preflight_authorization", lambda *_args: ([], "fixture"))
+    monkeypatch.setattr(cli, "_execute_train_current_authority", fake_train)
+    monkeypatch.setattr(cli, "_execute_evaluate_current_authority", fake_evaluate)
+
+    assert cli.command_select_target_size(argparse.Namespace(config=str(config))) == 0
+    selected = cli._load_verified_target_size_study_authority(store)
+    assert selected.outcome == mdstats.OUTCOME_SELECTED
+    assert authorized_boundaries == list(fidelity_epochs)
+    assert mdstats.build_perf_p2r_stage_plan(selected).schedule_horizon_epoch == horizon
+
+    # Reopen the durable store to prove that a restart/status consumer sees the
+    # frozen selection rather than helper-local state.
+    store.close()
+    reopened = cli.CampaignStore(paths.state_db)
+    assert cli._next_public_operation(cfg, paths, reopened) == "materialize"
+    assert cli.command_status(argparse.Namespace(config=str(config))) == 0
+    status = capsys.readouterr().out
+    assert f"selected target size frozen at n={selected.selected_target_size}" in status
+    assert "Next command:" in status and " materialize" in status
+    reopened.close()
 
 
 def test_nondefault_tuple_uses_semantic_states_and_independent_horizon() -> None:
@@ -336,6 +576,54 @@ def test_preparation_config_identity_excludes_only_downstream_fidelity_controls(
     }
     assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed_horizon)
     assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed_presentation)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        ("max_new_frames", 128),
+        ("inference_batch_size", 4),
+        ("maximum_inference_batch_size", 32),
+        ("estimated_inference_memory_mib_per_frame", 768.0),
+        ("batch_calibration_stress_structures", 16),
+        ("vram_max_device_fraction", 0.75),
+        ("vram_reserve_gib", 6.0),
+        ("batch_throughput_tolerance_fraction", 0.10),
+        ("pipeline_enabled", False),
+        ("persistence_queue_depth", 2),
+        ("checkpoint_interval", 256),
+        ("artifact_shard_size", 256),
+    ),
+)
+def test_preparation_identity_excludes_execution_only_model_realization_controls(
+    field: str, replacement: object
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    model = {
+        "device": "cuda",
+        "dtype": "float32",
+        "max_new_frames": 0,
+        "inference_batch_size": 0,
+        "maximum_inference_batch_size": 16,
+        "estimated_inference_memory_mib_per_frame": 512.0,
+        "batch_calibration_stress_structures": 8,
+        "vram_max_device_fraction": 0.80,
+        "vram_reserve_gib": 4.0,
+        "batch_throughput_tolerance_fraction": 0.05,
+        "pipeline_enabled": True,
+        "persistence_queue_depth": 1,
+        "checkpoint_interval": 128,
+        "artifact_shard_size": 128,
+    }
+    base = {
+        "model": model,
+        "training": {"policy_generation": "train2", "max_num_epochs": 30},
+        "target_data": {"size_convergence": {"fidelity_epochs": [1, 3, 10]}},
+    }
+    changed = {**base, "model": {**model, field: replacement}}
+
+    assert cli._preparation_config_digest(base) == cli._preparation_config_digest(changed)
 
 
 def test_preflight_matrix_identity_excludes_generated_train2_schedule_files() -> None:

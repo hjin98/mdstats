@@ -47,7 +47,12 @@ source evidence and labels
   -> calibration and activated locked-test / observable validation
 ```
 
-The current graph has no alternate MVSEL1/REPAIR1 path and no migration path for superseded campaign generations.
+The current graph has no alternate MVSEL1/REPAIR1 path. Superseded campaign
+generations are not generally compatible; the sole supported restart boundary
+is the immediately preceding fixed-fidelity campaign, which is re-authenticated
+against unchanged upstream preparation inputs before a fresh configurable
+target-size study is created. Ambiguous or older historical state fails closed
+at the narrowest required re-preparation boundary.
 
 ## Reading index
 
@@ -256,7 +261,7 @@ The implementation may reorganize Python modules while preserving the architectu
 - validation/calibration/locked evidence;
 - external analysis-owned results.
 
-Current specifications control public/serialized current-generation contracts. Internal refactoring may reuse common sampling/execution primitives when externally owned scientific behavior and persisted current-generation identities remain conforming. Backward compatibility with superseded campaign generations is not an architectural requirement.
+Current specifications control public/serialized current-generation contracts. Internal refactoring may reuse common sampling/execution primitives when externally owned scientific behavior and persisted current-generation identities remain conforming. Backward compatibility with superseded campaign generations is not an architectural requirement, except for the narrow immediately preceding fixed-fidelity restart boundary: it may reuse authenticated unchanged preparation inputs, but it must create a fresh configurable target-size authority and fails closed when compatibility is ambiguous.
 
 # Part II - Data and evidence contracts
 

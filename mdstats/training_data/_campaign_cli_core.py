@@ -8937,25 +8937,11 @@ _PREPARATION_CONFIG_PROJECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "online_monitor_seed",
         "fold_partition_seed",
     ),
-    # Device/dtype/backend are part of DATA6 foundation-feature identity.  The
-    # remaining model controls are calibration, persistence, or progress
-    # policy and therefore do not belong to preparation identity.
-    "model": (
-        "device",
-        "dtype",
-        "max_new_frames",
-        "inference_batch_size",
-        "maximum_inference_batch_size",
-        "estimated_inference_memory_mib_per_frame",
-        "batch_calibration_stress_structures",
-        "vram_max_device_fraction",
-        "vram_reserve_gib",
-        "batch_throughput_tolerance_fraction",
-        "pipeline_enabled",
-        "persistence_queue_depth",
-        "checkpoint_interval",
-        "artifact_shard_size",
-    ),
+    # DATA6 values depend on the resolved foundation device/dtype.  Sweep
+    # batching, capacity calibration, journals, and shard layout are execution
+    # realizations: their compatibility belongs to the sweep/materialization
+    # records that own them, never to preparation scientific identity.
+    "model": ("device", "dtype"),
     "acceleration": ("backend", "training_backend", "only_cueq", "require_available"),
     "selection": ("sizes",),
     "objective": ("energy_weight", "forces_weight", "stress_weight"),
