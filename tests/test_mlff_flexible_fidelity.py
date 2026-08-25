@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -291,7 +292,7 @@ def _attach_persisted_boundary_evidence(plan: object) -> object:
     return mdstats.attach_final_screen_outcomes(plan, tuple(outcomes))
 
 
-def test_assembled_case_a_default_funnel_reaches_production_and_roundtrips_status() -> None:
+def test_supplemental_case_a_default_funnel_reaches_production_and_roundtrips_status() -> None:
     plan = _complete_funnel(fidelity_epochs=(1, 3, 10), training_horizon=30)
     assert plan.outcome == mdstats.OUTCOME_SELECTED
     assert plan.policy.fidelity_epochs == (1, 3, 10)
@@ -304,7 +305,7 @@ def test_assembled_case_a_default_funnel_reaches_production_and_roundtrips_statu
     ) == ("production", 30, 30)
 
 
-def test_assembled_case_b_nondefault_funnel_authenticates_full_horizon_and_denominators() -> None:
+def test_supplemental_case_b_nondefault_funnel_authenticates_full_horizon_and_denominators() -> None:
     plan = _complete_funnel(
         fidelity_epochs=(2, 5, 12),
         training_horizon=40,
@@ -337,7 +338,7 @@ def test_assembled_case_b_nondefault_funnel_authenticates_full_horizon_and_denom
     assert mdstats.TargetSizeStudyPlan.from_dict(plan.to_dict()).selected_target_size == plan.selected_target_size
 
 
-def test_assembled_case_c_deduplicates_physical_final_reference_endpoint_but_keeps_roles() -> None:
+def test_supplemental_case_c_deduplicates_physical_final_reference_endpoint_but_keeps_roles() -> None:
     policy = mdstats.TargetSizeStudyPolicy(
         fidelity_epochs=(1, 3, 30),
         screening_optimizer_seeds=(1,),
@@ -1219,7 +1220,7 @@ def _migration_entry(cli, cfg: dict, *, current: bool):
         ((2, 5, 12), 40, True, 2),
     ],
 )
-def test_assembled_historical_upgrade_d1_d2_reuses_data_matrix_and_reopens_exact_frontier(
+def test_supplemental_historical_upgrade_d1_d2_reuses_data_matrix_and_reopens_exact_frontier(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
     fidelity_epochs: tuple[int, int, int],
@@ -1312,7 +1313,7 @@ def test_assembled_historical_upgrade_d1_d2_reuses_data_matrix_and_reopens_exact
     assert store.payloads["preflight_smoke"]["data8_matrix_digest"] == matrix_before
 
 
-def test_assembled_case_d3_preparation_change_rejects_completed_reuse_before_data_access(
+def test_supplemental_case_d3_preparation_change_rejects_completed_reuse_before_data_access(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     from mdstats.training_data import _campaign_cli_core as cli
@@ -1408,3 +1409,138 @@ def test_authenticated_fixed_generation_plan_migrates_without_new_default_substi
     legacy["qualified_sizes"] = [512]
     with pytest.raises(mdstats.TrainingDataSerializationError, match="digest mismatch"):
         mdstats.TargetSizeStudyPlan.from_dict(legacy)
+
+
+def _fixed_predecessor_bridge_entry(study: object, *, authority_digest: str | None = None):
+    """A bounded external DATA8 artifact below the bridge-owner boundary."""
+
+    from mdstats.training_data.production_materialization import (
+        PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
+    )
+
+    bundle = SimpleNamespace(content_digest=_h("legacy-data8-bundle"))
+    protocol = SimpleNamespace(
+        training_mode=SimpleNamespace(value="multihead_replay"),
+        selection_size=512,
+        optimizer_policy=SimpleNamespace(seed=1),
+    )
+    bundle.jobs = (
+        SimpleNamespace(
+            kind=SimpleNamespace(value="final_development"),
+            fold_index=None,
+            protocol=protocol,
+        ),
+    )
+    artifact = SimpleNamespace(
+        bundle_digest=bundle.content_digest,
+        tree_digest=_h("legacy-data8-tree"),
+    )
+    plan = SimpleNamespace(
+        plan_schema=PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
+        selection_authority_role="target_size_candidate",
+        target_size_study_digest=(
+            mdstats.fixed_predecessor_candidate_authority_digest(study)
+            if authority_digest is None
+            else authority_digest
+        ),
+        content_digest=_h("legacy-materialization-plan"),
+    )
+    materialization = SimpleNamespace(
+        checkpoint=SimpleNamespace(plan=plan, data8_artifact=artifact),
+        load_data8_bundle=lambda: bundle,
+    )
+    return SimpleNamespace(
+        variant_id="multihead_replay-n512-seed1",
+        bundle=bundle,
+        materialization=materialization,
+    )
+
+
+def test_real_owner_fixed_predecessor_data8_authority_bridge_is_explicit_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    """The bridge verifies the old generation rather than accepting a mismatch."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    study = mdstats.build_target_size_study(
+        _Repair(), _Qual(),
+        policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(1, 3, 10)),
+        training_horizon_epochs=30,
+    )
+    assert study.candidate_authority_digest != mdstats.fixed_predecessor_candidate_authority_digest(study)
+    store = cli.CampaignStore(tmp_path / "campaign.sqlite3")
+    entry = _fixed_predecessor_bridge_entry(study)
+    cli._fixed_predecessor_data8_authority_bridge(store, study, [entry])
+    key = f"target_size_data8_authority_bridge:{study.candidate_authority_digest}"
+    receipt = store.get_payload(key)
+    assert receipt["predecessor_generation"] == "fixed-fidelity-policy-bound.v1"
+    assert receipt["current_generation"] == "flexible-fidelity-candidate-prefix.v1"
+    assert receipt["entries"][0]["data8_bundle_digest"] == entry.bundle.content_digest
+    # A repeated restart uses the same immutable DATA8 binding without adding
+    # a second bridge record or rewriting the scientific artifact.
+    cli._fixed_predecessor_data8_authority_bridge(store, study, [entry])
+    assert store.record_keys("target_size_data8_authority_bridge:") == (key,)
+    store.close()
+
+
+@pytest.mark.parametrize("mismatch", ["wrong-authority", "current-generation"])
+def test_real_owner_fixed_predecessor_data8_authority_bridge_fails_closed(
+    tmp_path: Path, mismatch: str
+) -> None:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    study = mdstats.build_target_size_study(_Repair(), _Qual())
+    entry = _fixed_predecessor_bridge_entry(
+        study,
+        authority_digest=_h(mismatch),
+    )
+    if mismatch == "current-generation":
+        entry.materialization.checkpoint.plan.plan_schema = "mdstats.production-materialization-plan.v10"
+    store = cli.CampaignStore(tmp_path / "campaign.sqlite3")
+    with pytest.raises(cli.CampaignCliError, match="(fixed-fidelity authority|unsupported predecessor authority)"):
+        cli._fixed_predecessor_data8_authority_bridge(store, study, [entry])
+    assert not store.record_keys("target_size_data8_authority_bridge:")
+    store.close()
+
+
+def test_real_owner_acceptance_guard_rejects_semantic_owner_substitution() -> None:
+    """Protect the dedicated real-owner acceptance set from proxy regressions."""
+
+    forbidden = {
+        "_require_train2_preflight_authorization",
+        "_historical_prepare_inputs_match_current",
+        "_prepare_contract_signature",
+        "_preparation_config_digest",
+        "_current_data8_entries",
+        "_target_size_materialization_variants",
+        "_ensure_target_size_study",
+        "_fixed_predecessor_data8_authority_bridge",
+        "_validate_train2_data8_matrix",
+        "_stage_config_digest",
+        "_next_public_operation",
+        "_invalidate_train2_downstream_state",
+        "CampaignStore",
+    }
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    real_owner_tests = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name.startswith("test_real_owner_")
+        and node.name != "test_real_owner_acceptance_guard_rejects_semantic_owner_substitution"
+    ]
+    assert real_owner_tests
+    for test in real_owner_tests:
+        for call in ast.walk(test):
+            if not isinstance(call, ast.Call):
+                continue
+            if (
+                isinstance(call.func, ast.Attribute)
+                and call.func.attr == "setattr"
+                and len(call.args) >= 2
+                and isinstance(call.args[1], ast.Constant)
+                and call.args[1].value in forbidden
+            ):
+                pytest.fail(
+                    f"{test.name} replaces semantic owner {call.args[1].value!r}."
+                )

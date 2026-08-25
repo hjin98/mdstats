@@ -6516,6 +6516,10 @@ from .training_data.target_multi_view_qualification_v2 import (
 )
 from .training_data.target_size_study import (
     TARGET_SIZE_STUDY_VERSION,
+    TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA,
+    TARGET_SIZE_CANDIDATE_AUTHORITY_GENERATION,
+    LEGACY_FIXED_CANDIDATE_AUTHORITY_SCHEMA,
+    LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION,
     FIXED_TARGET_SIZES,
     FIXED_TARGET_SIZE_CEILING,
     OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
@@ -6538,6 +6542,7 @@ from .training_data.target_size_study import (
     TargetSizeStageOutcome,
     build_target_size_study,
     validate_target_size_study_authority,
+    fixed_predecessor_candidate_authority_digest,
     materialize_candidate_prefix,
     materialize_candidate_prefix_matrix,
     materialize_selected_prefix,

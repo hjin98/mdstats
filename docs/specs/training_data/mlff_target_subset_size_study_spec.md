@@ -278,6 +278,27 @@ Candidate sizes are prefix metadata/views over one current REPAIR2 master order 
 
 Training artifacts are materialized only for candidates authorized to train at the current fidelity stage. Reconstructible caches may be evicted/rebuilt under the current resource/storage specifications without changing the scientific decision.
 
+### 11.1 Candidate-prefix authority generations
+
+DATA7/DATA8 candidate materialization is bound to a versioned,
+policy-independent candidate-prefix authority. Its semantic inputs are the
+dataset identity, REPAIR2 and MVQUAL authorities, every admitted candidate
+prefix digest, and the qualified-size set. The serialized fidelity tuple and
+full TRAIN2 horizon are excluded: they control screening evidence and schedule
+continuation, not immutable candidate membership.
+
+The immediately preceding fixed-fidelity generation is the sole compatibility
+exception. It used a distinct, policy-bound authority derivation and may be
+reused only when its production materialization generation explicitly
+identifies that predecessor, the recorded legacy digest is recomputed from the
+authenticated current inputs, the candidate role/topology and complete expected
+matrix match, and the promoted DATA8 artifact passes its own integrity check.
+Successful re-authentication records a durable, idempotent compatibility
+receipt; it neither rewrites DATA7/DATA8 nor relabels historical screen,
+schedule, checkpoint, or TRAIN2 evidence as current configurable-fidelity
+evidence. Unknown generations, malformed or mismatched inputs, mixed matrices,
+and current-generation authority mismatches SHALL fail closed.
+
 ## 12. Unsupported historical behavior
 
 The current specification has no generated-size rescue policy, adaptive ladder construction, MVMIGRATE path, or legacy campaign-generation fallback.

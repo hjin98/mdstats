@@ -10753,6 +10753,103 @@ def _data8_entry_variant_shape(entry: _Data8RuntimeEntry) -> tuple[str, int, int
     return _data8_bundle_variant_shape(entry.bundle, label=entry.variant_id)
 
 
+_DATA8_PREDECESSOR_AUTHORITY_BRIDGE_SCHEMA = (
+    "mdstats.target-size-data8-authority-bridge.fixed-predecessor.v1"
+)
+
+
+def _fixed_predecessor_data8_authority_bridge(
+    store: CampaignStore,
+    study: Any,
+    entries: Sequence[_Data8RuntimeEntry],
+) -> None:
+    """Re-authenticate exactly one fixed-fidelity DATA8 authority generation.
+
+    A fixed-fidelity materialization (production-plan v9) bound candidate DATA8
+    to the old policy-bound authority digest.  Flexible fidelity uses a
+    policy-independent candidate-prefix authority.  The old digest is never
+    accepted on its own: this owner proves every current upstream candidate
+    input, expected role/topology, and promoted DATA8 artifact before storing
+    an idempotent compatibility receipt.
+    """
+
+    import mdstats
+    from .production_materialization import PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA
+
+    legacy_digest = mdstats.fixed_predecessor_candidate_authority_digest(study)
+    validated: list[dict[str, Any]] = []
+    for entry in sorted(entries, key=lambda value: value.variant_id):
+        materialization = entry.materialization
+        if materialization is None:
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} lacks a promoted materialization record."
+            )
+        checkpoint = materialization.checkpoint
+        plan = checkpoint.plan
+        if plan.plan_schema != PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA:
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} has unsupported predecessor authority generation "
+                f"{plan.plan_schema!r}."
+            )
+        if plan.selection_authority_role != "target_size_candidate":
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} is not a fixed-fidelity candidate materialization."
+            )
+        if plan.target_size_study_digest != legacy_digest:
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} does not carry the authenticated fixed-fidelity authority."
+            )
+        artifact = checkpoint.data8_artifact
+        if artifact is None or artifact.bundle_digest != entry.bundle.content_digest:
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} has corrupt materialization/bundle lineage."
+            )
+        # Re-read through the production materialization owner.  This verifies
+        # the promoted immutable tree rather than trusting a database pointer.
+        try:
+            verified_bundle = materialization.load_data8_bundle()
+        except Exception as exc:
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} failed predecessor integrity verification."
+            ) from exc
+        if verified_bundle.content_digest != entry.bundle.content_digest:
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} changed during predecessor integrity verification."
+            )
+        validated.append({
+            "variant_id": entry.variant_id,
+            "variant_shape": list(_data8_entry_variant_shape(entry)),
+            "materialization_plan_digest": plan.content_digest,
+            "data8_bundle_digest": entry.bundle.content_digest,
+            "data8_tree_digest": artifact.tree_digest,
+        })
+
+    inputs = study.candidate_authority_inputs
+    payload = {
+        "schema": _DATA8_PREDECESSOR_AUTHORITY_BRIDGE_SCHEMA,
+        "predecessor_generation": mdstats.LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION,
+        "current_generation": mdstats.TARGET_SIZE_CANDIDATE_AUTHORITY_GENERATION,
+        "predecessor_authority_digest": legacy_digest,
+        "current_authority_digest": study.candidate_authority_digest,
+        "dataset_id": inputs["dataset_id"],
+        "repair2_authority_digest": inputs["repair2_authority_digest"],
+        "mvqual_authority_digest": inputs["mvqual_authority_digest"],
+        "candidate_digests": list(inputs["candidate_digests"]),
+        "qualified_sizes": list(inputs["qualified_sizes"]),
+        "entries": validated,
+    }
+    payload["content_digest"] = digest(payload)
+    key = f"target_size_data8_authority_bridge:{study.candidate_authority_digest}"
+    existing = store.get_payload_optional(key)
+    if existing is not None and existing != payload:
+        raise CampaignCliError(
+            "Persisted fixed-predecessor DATA8 authority bridge disagrees with the "
+            "current authenticated candidate matrix."
+        )
+    if existing is None:
+        store.put_record(key, payload)
+
+
 def _validate_train2_data8_matrix(
     cfg: Mapping[str, Any],
     store: CampaignStore,
@@ -10789,6 +10886,7 @@ def _validate_train2_data8_matrix(
         expected_role = "target_size_candidate"
         expected_study_digest = study.candidate_authority_digest
         phase = "target-size screening"
+    predecessor_entries: list[_Data8RuntimeEntry] = []
     for entry in entries:
         materialization = entry.materialization
         if materialization is None:
@@ -10801,10 +10899,19 @@ def _validate_train2_data8_matrix(
                 f"DATA8 bundle {entry.variant_id} carries selection role "
                 f"{plan.selection_authority_role!r}; expected {expected_role!r} for {phase}."
             )
-        if plan.target_size_study_digest != expected_study_digest:
+        if plan.target_size_study_digest == expected_study_digest:
+            continue
+        if expected_role != "target_size_candidate":
             raise CampaignCliError(
                 f"DATA8 bundle {entry.variant_id} is bound to a different target-size authority."
             )
+        predecessor_entries.append(entry)
+    if predecessor_entries:
+        if len(predecessor_entries) != len(entries):
+            raise CampaignCliError(
+                "DATA8 matrix mixes current and predecessor candidate-authority generations."
+            )
+        _fixed_predecessor_data8_authority_bridge(store, study, predecessor_entries)
     return entries, phase
 
 

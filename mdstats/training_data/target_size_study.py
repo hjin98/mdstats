@@ -32,7 +32,15 @@ TARGET_SIZE_STAGE_OUTCOME_SCHEMA = "mdstats.target-size-stage-outcome.v2"
 TARGET_SIZE_STUDY_PLAN_SCHEMA = "mdstats.target-size-study-plan.v9"
 TARGET_SIZE_PREFIX_SCHEMA = "mdstats.target-size-study-repair2-prefix.v1"
 TARGET_SIZE_CANDIDATE_DATA_SCHEMA = "mdstats.target-size-study-candidate-data.v1"
-TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA = "mdstats.target-size-study-candidate-authority.v1"
+# Candidate authority is persisted in DATA7/DATA8 materialization plans.  The
+# fixed-fidelity generation used the same unversioned schema label for a
+# policy-bound formula; flexible fidelity deliberately does not.  Keep those
+# derivations explicitly distinct so restart compatibility never has to infer
+# meaning from a bare digest.
+TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA = "mdstats.target-size-study-candidate-authority.v2"
+TARGET_SIZE_CANDIDATE_AUTHORITY_GENERATION = "flexible-fidelity-candidate-prefix.v1"
+LEGACY_FIXED_CANDIDATE_AUTHORITY_SCHEMA = "mdstats.target-size-study-candidate-authority.v1"
+LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION = "fixed-fidelity-policy-bound.v1"
 
 FIXED_TARGET_SIZES = (128, 256, 512, 1024, 2048, 4096, 8192, 16384)
 FIXED_TARGET_SIZE_CEILING = FIXED_TARGET_SIZES[-1]
@@ -760,6 +768,7 @@ class TargetSizeStudyPlan:
         if not cached:
             cached = digest({
                 "schema": TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA,
+                "generation": TARGET_SIZE_CANDIDATE_AUTHORITY_GENERATION,
                 "dataset_id": self.dataset_id,
                 "repair2_authority_digest": self.repair2_authority_digest,
                 "mvqual_authority_digest": self.mvqual_authority_digest,
@@ -773,6 +782,24 @@ class TargetSizeStudyPlan:
             })
             object.__setattr__(self, "_candidate_authority_digest_cache", cached)
         return cached
+
+    @property
+    def candidate_authority_inputs(self) -> dict[str, Any]:
+        """Return the complete policy-independent DATA7/DATA8 authority.
+
+        This deliberately exposes the authenticated inputs used by the
+        immediate-predecessor bridge.  It is not a second authority: callers
+        use it only to prove that a legacy policy-bound digest represents the
+        exact same candidate-prefix materialization.
+        """
+
+        return {
+            "dataset_id": self.dataset_id,
+            "repair2_authority_digest": self.repair2_authority_digest,
+            "mvqual_authority_digest": self.mvqual_authority_digest,
+            "candidate_digests": tuple(item.content_digest for item in self.candidates),
+            "qualified_sizes": self.qualified_sizes,
+        }
 
     @property
     def complete(self) -> bool:
@@ -879,6 +906,42 @@ class TargetSizeStudyPlan:
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Target-size study plan digest mismatch.")
         return result
+
+
+def fixed_predecessor_candidate_authority_digest(
+    study: TargetSizeStudyPlan,
+) -> str:
+    """Reconstruct the one supported fixed-fidelity candidate authority.
+
+    The predecessor bound DATA8 to its fixed `(3, 10, 30)` policy digest. A
+    caller must additionally prove its persisted materialization is the
+    recognized predecessor generation; this helper alone never admits a
+    legacy digest.
+    """
+
+    policy = TargetSizeStudyPolicy(
+        candidate_sizes=study.policy.candidate_sizes,
+        minimum_qualified_sizes=study.policy.minimum_qualified_sizes,
+        coarse_survivor_limit=study.policy.coarse_survivor_limit,
+        short_finalist_count=study.policy.short_finalist_count,
+        fidelity_epochs=(3, 10, 30),
+        practical_equivalence_mev_per_a=study.policy.practical_equivalence_mev_per_a,
+        coarse_practical_equivalence_mev_per_a=(
+            study.policy.coarse_practical_equivalence_mev_per_a
+        ),
+        screening_optimizer_seeds=study.policy.screening_optimizer_seeds,
+        paired_seed_aggregation=study.policy.paired_seed_aggregation,
+    )
+    inputs = study.candidate_authority_inputs
+    return digest({
+        "schema": LEGACY_FIXED_CANDIDATE_AUTHORITY_SCHEMA,
+        "dataset_id": inputs["dataset_id"],
+        "repair2_authority_digest": inputs["repair2_authority_digest"],
+        "mvqual_authority_digest": inputs["mvqual_authority_digest"],
+        "policy_digest": policy.policy_digest,
+        "candidate_digests": list(inputs["candidate_digests"]),
+        "qualified_sizes": list(inputs["qualified_sizes"]),
+    })
 
 
 def _migrate_fixed_generation_plan(payload: Mapping[str, Any]) -> TargetSizeStudyPlan:
@@ -1576,6 +1639,8 @@ __all__ = [
     "TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA", "TARGET_SIZE_TRAJECTORY_FAILURE_EVIDENCE_SCHEMA",
     "TARGET_SIZE_STAGE_OUTCOME_SCHEMA", "TARGET_SIZE_STUDY_PLAN_SCHEMA",
     "TARGET_SIZE_PREFIX_SCHEMA", "TARGET_SIZE_CANDIDATE_DATA_SCHEMA", "TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA",
+    "TARGET_SIZE_CANDIDATE_AUTHORITY_GENERATION", "LEGACY_FIXED_CANDIDATE_AUTHORITY_SCHEMA",
+    "LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION",
     "OUTCOME_INSUFFICIENT_QUALIFIED_SIZES", "OUTCOME_AWAITING_COARSE_SCREEN", "OUTCOME_AWAITING_SHORT_SCREEN",
     "OUTCOME_AWAITING_FINAL_SCREEN", "OUTCOME_SELECTED", "OUTCOME_NONCONVERGED_AT_FIXED_CEILING",
     "OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES",
@@ -1585,6 +1650,7 @@ __all__ = [
     "TargetSizeStudyPolicy", "TargetSizeStudyCandidate", "TargetSizeTrainingEvidence",
     "TargetSizeTrajectoryFailureEvidence", "TargetSizeStageOutcome", "TargetSizeStudyPlan",
     "build_target_size_study", "validate_target_size_study_authority",
+    "fixed_predecessor_candidate_authority_digest",
     "materialize_candidate_prefix", "materialize_candidate_prefix_matrix", "materialize_selected_prefix",
     "attach_coarse_outcomes", "attach_short_outcomes", "attach_final_screen_outcomes",
     "attach_coarse_evidence", "attach_short_evidence", "attach_final_screen_evidence",
