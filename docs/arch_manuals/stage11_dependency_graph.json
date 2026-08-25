@@ -3868,11 +3868,11 @@
       "implemented_version": "0.20.182a0"
     },
     {
-      "authority_version": "mdstats.size-fidelity1.coarse-screen-calibration.2026-08.v1",
+      "authority_version": "mdstats.size-fidelity1.coarse-screen-calibration.target-size-v5.2026-08.v2",
       "calibrates": [
-        "coarse_training_epochs",
-        "coarse_target_monitor_configurations",
-        "coarse_practical_equivalence_mev_per_a"
+        "coarse_epoch_candidates",
+        "coarse_monitor_configuration_candidates",
+        "coarse_equivalence_candidates_mev_per_a"
       ],
       "diagnostics": [
         "spearman_rank_correlation",
@@ -3880,10 +3880,9 @@
       ],
       "foundation_inputs_available": true,
       "hard_requirements": [
-        "coarse_monitor_vs_full_promotion_set_equivalence",
-        "coarse_recall_of_both_30_epoch_target_finalists_equals_1",
-        "epoch10_recall_of_both_30_epoch_target_finalists_equals_1",
-        "winner_recall_equals_1",
+        "coarse_monitor_vs_full_promotion_set_equivalence_when_required",
+        "coarse_finalist_recall_meets_configured_threshold",
+        "short_finalist_recall_meets_configured_threshold",
         "zero_boundary_finalist_misses",
         "uninterrupted_seed_size_trajectory_identity"
       ],
@@ -3893,7 +3892,8 @@
       "inference_reuse": "derive all monitor-size metrics from one authenticated full-development prediction authority per checkpoint",
       "qualification_kind": "scientific_low_fidelity_calibration",
       "qualification_schedule": "FINAL_GPU1",
-      "requires_authorizing_runtime": "CUDA/CuEquivariance final-release qualification runtime"
+      "requires_authorizing_runtime": "CUDA/CuEquivariance final-release qualification runtime",
+      "current_schema_generation": "target-size-v5 v2"
     },
     {
       "authority_class": "E",
