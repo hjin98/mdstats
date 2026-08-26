@@ -19653,6 +19653,12 @@ def _eval2_full_checkpoint(
     admissibility = job.protocol.checkpoint_admissibility_policy
     if admissibility is None:
         raise CampaignCliError("EVAL2 checkpoint is missing TRAIN2 admissibility authority.")
+    target_only_authorized = not include_replay
+    if target_only_authorized and getattr(target_role, "role_kind", None) != "size_development_complement":
+        raise CampaignCliError(
+            "EVAL2 target-only checkpoint evaluation is reserved for the "
+            "TARGET-SIZE-V5 development-complement role."
+        )
     evaluation_policy = _eval2_evaluation_policy(cfg, paths, job, model_dtype=model_dtype)
     execution_plan = _evaluation_inference_execution_plan(
         cfg,
@@ -19697,6 +19703,11 @@ def _eval2_full_checkpoint(
         and cached_eval.target_candidate_prediction_digest == cached_metric.prediction_digest
         and cached_eval.replay_monitor_artifact_digest == (None if replay_artifact is None else replay_artifact.content_digest)
         and cached_eval.replay_monitor_sha256 == (None if replay_artifact is None else replay_artifact.sha256)
+        and (
+            not target_only_authorized
+            or "evaluation_scope:authorized_target_only"
+            in cached_eval.metric_record.evaluation_notes
+        )
     )
     if not reusable:
         if cached_eval is not None:
@@ -19727,6 +19738,7 @@ def _eval2_full_checkpoint(
             graph_cache_directory=paths.internal / "evaluation-graphs",
             allow_target_monitor_override=(target_artifact.content_digest != run.target_monitor_artifact_digest),
             allow_replay_without_training_lineage=False,
+            allow_target_only_evaluation=target_only_authorized,
         )
         calculator_model = None
         try:

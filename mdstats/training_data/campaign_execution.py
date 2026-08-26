@@ -3594,10 +3594,10 @@ def prepare_mace_checkpoint_evaluation(
     ):
         raise TrainingDataInputError("Target monitor artifact lineage does not match campaign run.")
     if allow_target_only_evaluation:
-        if not allow_target_monitor_override:
-            raise TrainingDataInputError(
-                "Target-only evaluation authorization is reserved for an explicit target-monitor override."
-            )
+        # Target-monitor override and target-only scope are independent
+        # authorizations.  A caller may deliberately evaluate only the run's
+        # frozen target monitor while retaining replay lineage in the training
+        # protocol (for example TARGET-SIZE-V5 screening).
         if any(
             value is not None
             for value in (

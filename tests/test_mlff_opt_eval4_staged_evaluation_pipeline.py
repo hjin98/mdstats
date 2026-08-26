@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -753,16 +755,94 @@ def test_target_only_outer_cv_authorization_omits_run_replay_lineage(
     assert "evaluation_scope:authorized_target_only" in record.metric_record.evaluation_notes
 
 
-def test_target_only_evaluation_requires_explicit_target_override(tmp_path: Path) -> None:
+def test_target_only_evaluation_authorization_is_independent_of_target_override(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "target.extxyz"
+    write(target, [_frame()], format="extxyz")
+    artifact = _target_artifact(target)
+    candidate = tmp_path / "candidate.pt"
+    candidate.write_bytes(b"candidate")
+    run = mdstats.TrainingCampaignRunPlan(
+        run_id="opt-eval4-target-size-run",
+        data8_bundle_digest=_h("data8-target-size"),
+        mace_job_artifact_digest=_h("job-target-size"),
+        job_id="job-target-size",
+        kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
+        fold_index=None,
+        training_mode=mdstats.TrainingMode.MULTIHEAD_REPLAY,
+        selection_size=512,
+        seed=1,
+        protocol_family_digest=_h("family-target-size"),
+        protocol_variant_digest=_h("variant-target-size"),
+        protocol_digest=_h("protocol-target-size"),
+        checkpoint_metric_policy_digest=_h("metric-policy-target-size"),
+        target_monitor_artifact_digest=artifact.content_digest,
+        replay_monitor_artifact_digest=_h("training-replay-target-size"),
+        relative_output_directory="run-target-size",
+    )
+    checkpoint = mdstats.CheckpointFileRecord(
+        run_plan_digest=run.content_digest,
+        candidate_id="candidate",
+        epoch=1,
+        relative_path=candidate.name,
+        sha256=hashlib.sha256(candidate.read_bytes()).hexdigest(),
+        size_bytes=candidate.stat().st_size,
+    )
+    prepared = mdstats.prepare_mace_checkpoint_evaluation(
+        run,
+        checkpoint,
+        candidate_model_path=candidate,
+        calculator_model_path=candidate,
+        target_monitor_path=target,
+        target_monitor_artifact=artifact,
+        policy=mdstats.CheckpointEvaluationPolicy(condition_keys=()),
+        allow_target_only_evaluation=True,
+    )
+    assert prepared.target_only_evaluation_authorized
+    assert prepared.replay_monitor_artifact is None
+    assert prepared.baseline_model_path is None
+
+    with pytest.raises(
+        mdstats.TrainingDataInputError,
+        match="Target-only evaluation cannot also carry replay monitor inputs",
+    ):
+        mdstats.prepare_mace_checkpoint_evaluation(
+            run,
+            checkpoint,
+            candidate_model_path=candidate,
+            calculator_model_path=candidate,
+            target_monitor_path=target,
+            target_monitor_artifact=artifact,
+            policy=mdstats.CheckpointEvaluationPolicy(condition_keys=()),
+            replay_monitor_path=target,
+            allow_target_only_evaluation=True,
+        )
+
+
+def test_target_only_evaluation_does_not_authorize_target_monitor_override(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / "target.extxyz"
     write(target, [_frame()], format="extxyz")
     artifact = _target_artifact(target)
     candidate = tmp_path / "candidate.pt"
     candidate.write_bytes(b"candidate")
     run, checkpoint = _run_checkpoint(artifact, candidate)
+    run = replace(
+        run, target_monitor_artifact_digest=_h("different-target-monitor")
+    )
+    checkpoint = mdstats.CheckpointFileRecord(
+        run_plan_digest=run.content_digest,
+        candidate_id="candidate",
+        epoch=1,
+        relative_path=candidate.name,
+        sha256=hashlib.sha256(candidate.read_bytes()).hexdigest(),
+        size_bytes=candidate.stat().st_size,
+    )
     with pytest.raises(
         mdstats.TrainingDataInputError,
-        match="reserved for an explicit target-monitor override",
+        match="Target monitor artifact lineage does not match campaign run",
     ):
         mdstats.prepare_mace_checkpoint_evaluation(
             run,
@@ -773,6 +853,211 @@ def test_target_only_evaluation_requires_explicit_target_override(tmp_path: Path
             target_monitor_artifact=artifact,
             policy=mdstats.CheckpointEvaluationPolicy(condition_keys=()),
             allow_target_only_evaluation=True,
+        )
+
+
+def test_target_size_eval2_full_checkpoint_authorizes_frozen_target_only_monitor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "target-size.extxyz"
+    write(target, [_frame()], format="extxyz")
+    artifact = _target_artifact(target)
+    candidate = tmp_path / "candidate.pt"
+    candidate.write_bytes(b"candidate")
+    run = mdstats.TrainingCampaignRunPlan(
+        run_id="target-size-eval2-run",
+        data8_bundle_digest=_h("target-size-data8"),
+        mace_job_artifact_digest=_h("target-size-job"),
+        job_id="target-size-job",
+        kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
+        fold_index=None,
+        training_mode=mdstats.TrainingMode.MULTIHEAD_REPLAY,
+        selection_size=512,
+        seed=1,
+        protocol_family_digest=_h("target-size-family"),
+        protocol_variant_digest=_h("target-size-variant"),
+        protocol_digest=_h("target-size-protocol"),
+        checkpoint_metric_policy_digest=_h("target-size-metric-policy"),
+        target_monitor_artifact_digest=artifact.content_digest,
+        replay_monitor_artifact_digest=_h("target-size-training-replay"),
+        relative_output_directory="target-size-run",
+    )
+    checkpoint = mdstats.CheckpointFileRecord(
+        run_plan_digest=run.content_digest,
+        candidate_id="candidate",
+        epoch=1,
+        relative_path=candidate.name,
+        sha256=hashlib.sha256(candidate.read_bytes()).hexdigest(),
+        size_bytes=candidate.stat().st_size,
+    )
+    role = mdstats.Eval2TargetRole(
+        label_domain_id="label-domain-target-size",
+        role_kind="size_development_complement",
+        target_data_role_freeze_digest=_h("target-size-role-freeze"),
+        target_size_study_digest=_h("target-size-study"),
+        evaluation_frame_uids=artifact.frame_uids,
+        correlation_block_ids=(_h("target-size-block"),),
+        excluded_training_frame_uids=(_h("target-size-training-frame"),),
+    )
+    point = mdstats.Eval2TrajectoryPoint(
+        epoch=0,
+        checkpoint_sha256=checkpoint.sha256,
+        lightweight_target_score_ev_per_angstrom=0.01,
+        normalized_schedule_progress=0.1,
+        instantaneous_learning_rate=1.0e-3,
+        phase="adaptation",
+        runtime_summary_digest=_h("target-size-runtime"),
+        stable_candidate_identity="target-size-epoch-1",
+    )
+    job = SimpleNamespace(
+        relative_directory="job",
+        config_relative_path="job/config.yaml",
+        protocol=SimpleNamespace(
+            checkpoint_admissibility_policy=mdstats.CheckpointAdmissibilityPolicy()
+        ),
+    )
+    execution = SimpleNamespace(checkpoint_catalog=SimpleNamespace())
+    bundle = SimpleNamespace(
+        replay_plan=SimpleNamespace(
+            monitor_artifact=SimpleNamespace(
+                content_digest=run.replay_monitor_artifact_digest
+            )
+        )
+    )
+
+    class Store:
+        def __init__(self):
+            self.records = {}
+
+        def get_record_optional(self, key, _record_type):
+            return self.records.get(key)
+
+        def delete_record(self, key):
+            self.records.pop(key, None)
+
+        def put_record(self, key, value):
+            self.records[key] = value
+
+    store = Store()
+    paths = SimpleNamespace(internal=tmp_path / "internal", runs=tmp_path / "runs")
+    campaign_core = campaign_cli._core
+    monkeypatch.setattr(
+        campaign_core,
+        "_eval2_evaluation_policy",
+        lambda *_args, **_kwargs: mdstats.CheckpointEvaluationPolicy(condition_keys=()),
+    )
+    monkeypatch.setattr(
+        campaign_core,
+        "_evaluation_inference_execution_plan",
+        lambda *_args, **_kwargs: mdstats.InferenceExecutionPlan(
+            batch_policy="fixed", selected_batch_size=1, maximum_batch_size=1
+        ),
+    )
+    monkeypatch.setattr(
+        campaign_core,
+        "_checkpoint_source_for_evaluation",
+        lambda *_args, **_kwargs: (candidate, None),
+    )
+    monkeypatch.setattr(
+        mdstats, "materialize_mace_checkpoint_model", lambda *_args, **_kwargs: candidate
+    )
+    observed = {}
+
+    def infer(prepared, *, calculator_model_path=None, **_kwargs):
+        observed["target_only_authorized"] = prepared.target_only_evaluation_authorized
+        observed["target_monitor_override"] = (
+            prepared.target_monitor_artifact.content_digest
+            != prepared.run_plan.target_monitor_artifact_digest
+        )
+        return mdstats.CheckpointEvaluationPredictionBundle(
+            target_candidate_predictions=(
+                AtomicModelPrediction(
+                    energy_ev=-1.9,
+                    forces_ev_per_angstrom=np.full((2, 3), 0.01),
+                    stress_ev_per_angstrom3=np.zeros((3, 3)),
+                ),
+            ),
+            target_candidate_artifact=None,
+            target_foundation_predictions=None,
+            target_foundation_artifact=None,
+            replay_candidate_predictions=None,
+            replay_candidate_artifact=None,
+            replay_foundation_predictions=None,
+            replay_foundation_artifact=None,
+        )
+
+    monkeypatch.setattr(mdstats, "run_prepared_mace_checkpoint_inference", infer)
+    result = campaign_core._eval2_full_checkpoint(
+        cfg={},
+        paths=paths,
+        store=store,
+        run=run,
+        job=job,
+        bundle=bundle,
+        root=tmp_path,
+        execution=execution,
+        checkpoint=checkpoint,
+        point=point,
+        target_role=role,
+        target_artifact=artifact,
+        target_path=target,
+        true_replay_resolution=None,
+        baseline_model=None,
+        model_dtype="float32",
+        local_wrappers={"mdstats-mace-train": tmp_path / "unused-wrapper"},
+        shortlist_reasons=("target_size_v5_epoch_1_exact_endpoint",),
+        full_evaluation_rank=1,
+        include_replay=False,
+    )
+    assert observed == {
+        "target_only_authorized": True,
+        "target_monitor_override": False,
+    }
+    assert result.target_metrics.configuration_count == 1
+    assert result.replay_candidate_force_rmse_ev_per_angstrom is None
+    eval_key = (
+        f"eval2_evaluation:target-only:{run.run_id}:"
+        f"{role.content_digest}:{checkpoint.sha256}"
+    )
+    evaluation = store.records[eval_key]
+    assert evaluation.replay_monitor_artifact_digest is None
+    assert evaluation.replay_configuration_count == 0
+    assert evaluation.replay_baseline_model_path is None
+    assert (
+        "evaluation_scope:authorized_target_only"
+        in evaluation.metric_record.evaluation_notes
+    )
+
+
+def test_eval2_target_only_scope_is_not_a_generic_replay_bypass(tmp_path: Path) -> None:
+    job = SimpleNamespace(
+        protocol=SimpleNamespace(
+            checkpoint_admissibility_policy=mdstats.CheckpointAdmissibilityPolicy()
+        )
+    )
+    with pytest.raises(
+        campaign_cli._core.CampaignCliError,
+        match="reserved for the TARGET-SIZE-V5 development-complement role",
+    ):
+        campaign_cli._core._eval2_full_checkpoint(
+            cfg={},
+            paths=SimpleNamespace(),
+            store=SimpleNamespace(),
+            run=SimpleNamespace(),
+            job=job,
+            bundle=SimpleNamespace(),
+            root=tmp_path,
+            execution=SimpleNamespace(),
+            checkpoint=SimpleNamespace(),
+            point=SimpleNamespace(),
+            target_role=SimpleNamespace(role_kind="cv_checkpoint_monitor"),
+            target_artifact=SimpleNamespace(),
+            target_path=tmp_path / "unused.extxyz",
+            true_replay_resolution=None,
+            baseline_model=None,
+            model_dtype="float32",
+            local_wrappers={},
+            include_replay=False,
         )
 
 
