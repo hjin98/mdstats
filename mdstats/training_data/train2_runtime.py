@@ -212,6 +212,73 @@ def _tensor_state_digest(values: Sequence[Any], *, schema: str) -> str:
     return h.hexdigest()
 
 
+def _verify_train2_continuation_content_digests(
+    payload: Mapping[str, Any], summary: "Train2RuntimeSummary"
+) -> None:
+    """Authenticate live-parameter/EMA/RNG companion content against its summary.
+
+    Shape/type/metadata checks alone cannot detect a syntactically valid
+    companion whose scientific continuation content (model parameters, EMA
+    shadow/collected state, or RNG state) was modified while its metadata was
+    left untouched.  This recomputes the same canonical digests used at
+    persistence time and fails closed on any mismatch.
+    """
+
+    live = payload.get("live_parameters")
+    if not isinstance(live, list) or not live:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion live-parameter state is incomplete."
+        )
+    live_digest = _tensor_state_digest(live, schema="mdstats.train2-live-parameters.v1")
+    if live_digest != summary.live_parameter_digest:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion live-parameter content does not match "
+            "its authenticated summary digest."
+        )
+    ema_state = payload.get("ema_state")
+    if summary.ema_state_digest is None:
+        if ema_state is not None:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion carries EMA state but its authenticated "
+                "summary records none."
+            )
+    else:
+        if not isinstance(ema_state, Mapping):
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion EMA state is missing."
+            )
+        shadow = ema_state.get("shadow_params")
+        if not isinstance(shadow, list) or not shadow:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion EMA shadow-parameter state is incomplete."
+            )
+        ema_values = list(shadow)
+        collected = ema_state.get("collected_params")
+        if collected is not None:
+            if not isinstance(collected, list):
+                raise TrainingDataSerializationError(
+                    "TRAIN2 continuation companion EMA collected-parameter state is invalid."
+                )
+            ema_values.extend(collected)
+        ema_digest = _tensor_state_digest(ema_values, schema="mdstats.train2-ema-state.v1")
+        if ema_digest != summary.ema_state_digest:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion EMA content does not match its "
+                "authenticated summary digest."
+            )
+    rng_state = payload.get("rng_state")
+    if not isinstance(rng_state, Mapping):
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion RNG state is incomplete."
+        )
+    rng_digest = digest(rng_state)
+    if rng_digest != summary.rng_state_digest:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion RNG content does not match its "
+            "authenticated summary digest."
+        )
+
+
 def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
     matches = []
     for item in directory.glob("*.pt"):
@@ -637,6 +704,11 @@ class _Train2Runtime:
             raise TrainingDataSerializationError("TRAIN2 continuation companion structures-presented geometry changed across restart.")
         if payload.get("raw_checkpoint_sha256") != summary.raw_checkpoint_sha256:
             raise TrainingDataSerializationError("TRAIN2 continuation companion checkpoint digest mismatch.")
+        # Metadata/shape identity alone cannot detect a syntactically valid
+        # companion whose live/EMA/RNG content was modified in place.  Recompute
+        # and compare canonical content digests before any restart state is
+        # applied to the resumed model/process.
+        _verify_train2_continuation_content_digests(payload, summary)
         live = payload.get("live_parameters")
         parameters = list(self.model.parameters())
         if not isinstance(live, list) or len(live) != len(parameters):
@@ -1047,8 +1119,11 @@ def validate_train2_runtime_continuation_artifacts(
         or Path(str(payload.get("raw_checkpoint_name", ""))).name != raw.name
     ):
         raise TrainingDataSerializationError("TRAIN2 continuation companion disagrees with its runtime summary.")
-    if not isinstance(payload.get("live_parameters"), list) or not isinstance(payload.get("rng_state"), Mapping):
-        raise TrainingDataSerializationError("TRAIN2 continuation companion state is incomplete.")
+    # Metadata/shape/type agreement is insufficient: a syntactically valid
+    # companion can still carry modified live-parameter, EMA, or RNG values.
+    # Recompute the same canonical content digests used at persistence time
+    # and fail closed before the campaign may treat this state as resumable.
+    _verify_train2_continuation_content_digests(payload, summary)
     return summary
 
 

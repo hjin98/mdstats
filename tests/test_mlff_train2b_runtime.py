@@ -258,6 +258,140 @@ def test_train2b_authenticated_continuation_rejects_tampered_companion(tmp_path:
         )
 
 
+def _authentic_runtime_and_summary(
+    checkpoint_dir: Path, metrics: Path, *, limit: int = 3
+) -> tuple[runtime_mod._Train2Runtime, mdstats.Train2RuntimeSummary]:
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4)
+    runtime = runtime_mod._Train2Runtime(
+        _plan(limit=limit),
+        model=model,
+        optimizer=optimizer,
+        lr_scheduler=_Scheduler(),
+        ema=ExponentialMovingAverage(model.parameters(), decay=0.9),
+        train_loader=[object()],
+        current_epoch=0,
+        checkpoint_handler=SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir))),
+        logger_path=str(metrics),
+        rank=0,
+    )
+    _step(model, optimizer, runtime.ema)
+    _raw_checkpoint(checkpoint_dir, 0)
+    summary = runtime.persist_epoch(epoch=0)
+    assert summary is not None
+    return runtime, summary
+
+
+def _load_companion(checkpoint_dir: Path) -> dict:
+    return torch.load(
+        checkpoint_dir / runtime_mod.TRAIN2_RUNTIME_COMPANION_FILENAME,
+        map_location="cpu",
+        weights_only=False,
+    )
+
+
+def _save_companion(checkpoint_dir: Path, payload: dict) -> None:
+    torch.save(payload, checkpoint_dir / runtime_mod.TRAIN2_RUNTIME_COMPANION_FILENAME)
+
+
+def _validate(checkpoint_dir: Path, summary) -> mdstats.Train2RuntimeSummary:
+    return mdstats.validate_train2_runtime_continuation_artifacts(
+        checkpoint_dir,
+        training_protocol_digest=summary.training_protocol_digest,
+        optimizer_policy_digest=summary.optimizer_policy_digest,
+        budget_policy=_plan(limit=3).budget_policy,
+        learning_rate_policy=_plan(limit=3).learning_rate_policy,
+        structures_per_epoch=17,
+    )
+
+
+def test_train2b_scheduler_validator_rejects_tampered_live_parameter_value(tmp_path: Path) -> None:
+    """A syntactically valid companion with one modified live-parameter value fails closed."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    _, summary = _authentic_runtime_and_summary(checkpoint_dir, metrics)
+
+    payload = _load_companion(checkpoint_dir)
+    payload["live_parameters"][0] = payload["live_parameters"][0] + 1.0
+    _save_companion(checkpoint_dir, payload)
+
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="live-parameter"):
+        _validate(checkpoint_dir, summary)
+
+
+def test_train2b_scheduler_validator_rejects_tampered_ema_state_value(tmp_path: Path) -> None:
+    """A syntactically valid companion with one modified EMA tensor value fails closed."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    _, summary = _authentic_runtime_and_summary(checkpoint_dir, metrics)
+
+    payload = _load_companion(checkpoint_dir)
+    payload["ema_state"]["shadow_params"][0] = payload["ema_state"]["shadow_params"][0] + 1.0
+    _save_companion(checkpoint_dir, payload)
+
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="EMA"):
+        _validate(checkpoint_dir, summary)
+
+
+def test_train2b_scheduler_validator_rejects_tampered_rng_state_value(tmp_path: Path) -> None:
+    """A syntactically valid companion with one modified RNG state value fails closed."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    _, summary = _authentic_runtime_and_summary(checkpoint_dir, metrics)
+
+    payload = _load_companion(checkpoint_dir)
+    payload["rng_state"]["python"]["state"][0] = int(payload["rng_state"]["python"]["state"][0]) + 1
+    _save_companion(checkpoint_dir, payload)
+
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="RNG"):
+        _validate(checkpoint_dir, summary)
+
+
+def test_train2b_restart_activation_rejects_tampered_live_parameter_before_applying_state(
+    tmp_path: Path,
+) -> None:
+    """`_restore_continuation` itself must authenticate content, not only the scheduler validator."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    _authentic_runtime_and_summary(checkpoint_dir, metrics, limit=10)
+
+    payload = _load_companion(checkpoint_dir)
+    payload["live_parameters"][0] = payload["live_parameters"][0] + 1.0
+    _save_companion(checkpoint_dir, payload)
+
+    resumed_model = torch.nn.Linear(1, 1)
+    original_parameters = [p.detach().clone() for p in resumed_model.parameters()]
+    resumed_optimizer = torch.optim.SGD(resumed_model.parameters(), lr=1.0e-4)
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="live-parameter"):
+        runtime_mod._Train2Runtime(
+            _plan(limit=10),
+            model=resumed_model,
+            optimizer=resumed_optimizer,
+            lr_scheduler=_Scheduler(),
+            ema=ExponentialMovingAverage(resumed_model.parameters(), decay=0.9),
+            train_loader=[object()],
+            current_epoch=1,
+            checkpoint_handler=SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir))),
+            logger_path=str(metrics),
+            rank=0,
+        )
+    # The rejected companion must never have mutated the resumed model.
+    for actual, original in zip(resumed_model.parameters(), original_parameters):
+        torch.testing.assert_close(actual.detach(), original)
+
+
 def test_train2b_activation_rejects_restored_epoch_beyond_active_boundary(tmp_path: Path) -> None:
     checkpoint_dir = tmp_path / "checkpoints"
     checkpoint_dir.mkdir()
