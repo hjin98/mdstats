@@ -5,6 +5,7 @@ Active workplans are temporary engineering coordination and do not define curren
 Current MLFF workplans:
 
 - `MLFF_TARGET_SIZE_EXACT_BOUNDARY_SCREENING_REWORK_WORKPLAN.md` — controlling target-size correction: `fidelity_epochs` are exact screening boundaries only; production `n` is independent. This supersedes conflicting screen-horizon language in the older final-closure plan while its implementation/validation is in progress.
+- `MLFF_TARGET_SIZE_EVAL2_STAGED_EXECUTION_OPT1_WORKPLAN.md` — execution/performance companion for TARGET-SIZE-V5 exact-boundary EVAL2: migrate the private serial endpoint loop onto the existing OPT-EVAL4 staged scheduler, restore hierarchical progress/heartbeat, consolidate shared target data, and evaluate deeper provider/calibration/GPU concurrency optimizations only behind representative evidence gates. It is subordinate to the exact-boundary scientific workplan above and does not change target-size ranking semantics.
 - `DATA78_POST_IMPLEMENTATION_CLOSEOUT_WORKPLAN.md` — DATA7/DATA8 post-implementation closeout.
 - `MLCV_LIFECYCLE_AUTHORITY_FIX_WORKPLAN.md` — blocking MLCV lifecycle authority/provenance reconciliation correction for shared training entry, including TARGET-SIZE-V5.
 The prior target-size repair chain and its final-closure plan are superseded for active closure by the exact-boundary rework and retained only as historical engineering context:
