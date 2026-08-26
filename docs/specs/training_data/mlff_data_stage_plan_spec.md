@@ -112,7 +112,9 @@ DATA7 TargetSubsetInputBundle
 
 No current alternate v1/migration/rescue branch exists.
 
-The exact fixed nominal target-size population and configurable `(n1,n2,n3)/n` fidelity policy are owned by `mlff_target_subset_size_study_spec.md` and are not duplicated here.
+The exact fixed nominal target-size population and configurable screen
+`(n1,n2,n3)` plus independent production-horizon policy are owned by
+`mlff_target_subset_size_study_spec.md` and are not duplicated here.
 
 For each required training domain `d`, candidate membership at size `N` is the prefix of that domain's one repaired master order. One selected `N` is frozen into the complete training protocol across required fold/final domains.
 

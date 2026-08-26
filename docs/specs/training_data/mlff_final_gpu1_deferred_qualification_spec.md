@@ -86,7 +86,7 @@ $$
 \mathcal N_0=(128,256,512,1024,2048,4096,8192,16384).
 $$
 
-`REPAIR2` owns candidate membership through exact prefixes, `MVQUAL2` is the sole hard size-eligibility authority, and `TargetSizeStudyPolicy` owns the complete configurable `(n1,n2,n3)/n` successive-fidelity decision. Generated campaigns default to `(1,3,10)/30`; `selected_target_size` is frozen before held-out CV/EVAL/VERIFY.
+`REPAIR2` owns candidate membership through exact prefixes, `MVQUAL2` is the sole hard size-eligibility authority, and `TargetSizeStudyPolicy` owns the complete configurable screen `(n1,n2,n3)` decision. Generated campaigns default to screen `(1,3,10)` with fresh production horizon `30`; `selected_target_size` is frozen before held-out CV/EVAL/VERIFY.
 
 FINAL-GPU1 may measure the performance of this workflow and may execute `SIZE_FIDELITY1` as an algorithm-calibration/release-qualification exercise, but it may not:
 

@@ -109,25 +109,26 @@ The following SHALL be identical across candidate sizes:
 - frozen ordered training-seed set.
 
 Each candidate/seed follows one authenticated continuation trajectory controlled
-by the serialized fidelity tuple `(n1, n2, n3)` and independent full TRAIN2
-horizon `n`:
+by the serialized fidelity tuple `(n1, n2, n3)`. Its screen-local TRAIN2
+scheduler horizon is exactly `n3`; the independent production horizon `n`
+is not a screen authority:
 
 ```text
 foundation -> epoch n1 -> epoch n2 -> epoch n3
                               \-> selected production training to n
 ```
 
-`n1 < n2 < n3 <= n` is required. Epoch `n2` SHALL continue the exact
+`n1 < n2 < n3 < n` is required for current executable configuration. Epoch `n2` SHALL continue the exact
 `n1` model, optimizer, RNG, and protocol state; epoch `n3` SHALL continue the
-exact `n2` state. The full horizon `n` is the frozen TRAIN2 schedule horizon,
-not a fourth ordinary size-screen. Restart or persistence may change storage
-realization but not parentage.
+exact `n2` state. The screen scheduler horizon is frozen at `n3`; `n` is
+reserved for a separate fresh selected-size production run, never a fourth
+screen boundary or a hidden screen schedule authority. Restart or persistence
+may change storage realization but not parentage.
 
-Live target-size progress SHALL report both the active screen endpoint and the
-full schedule horizon when they differ (for example, `screen epoch 2/3;
-schedule epoch 2/30`). The screen denominator controls the current reduction
-operation; the schedule denominator remains the authenticated continuation
-horizon and SHALL NOT be hidden or reinterpreted as a second screen boundary.
+Live target-size progress SHALL report the active screen endpoint and the
+screen horizon (for example, `screen epoch 2/10; boundary 3`). It may display
+the future production horizon separately, but production `n` SHALL NOT become
+a screen denominator, run identity, or continuation authority.
 
 Ordinary target-success early stopping is disabled during the target-size study. Candidates must reach the common fidelity boundary to remain comparable. A successful endpoint is represented only by strict finite `TargetSizeTrainingEvidence`; positively identified candidate-specific TRAIN2/EVAL2 numerical invalidity is represented separately by authenticated `TargetSizeTrajectoryFailureEvidence`. Generic execution, resource, input, schema, lineage, timeout, interruption, launch, and programming failures remain campaign errors rather than scientific size evidence.
 
@@ -135,11 +136,10 @@ Ordinary target-success early stopping is disabled during the target-size study.
 
 Let `q = len(qualified_sizes)`.
 
-`[target_data.size_convergence].fidelity_epochs` supplies `(n1, n2, n3)`;
-`[training].max_num_epochs` supplies `n`. The generated current default is
-`(1, 3, 10) / 30`, but these are configuration values authenticated by
-`TargetSizeStudyPolicy` and the TRAIN2 schedule authority, not public numeric
-API names or fixed schema behavior.
+`[target_data.size_convergence].fidelity_epochs` supplies `(n1, n2, n3)` and
+therefore the screen horizon. `[training].max_num_epochs` supplies the later
+fresh production horizon `n`. The generated current default is `(1, 3, 10) /
+30`; only the tuple is target-size-screen authority.
 
 The production funnel is exactly:
 
@@ -290,8 +290,8 @@ DATA7/DATA8 candidate materialization is bound to a versioned,
 policy-independent candidate-prefix authority. Its semantic inputs are the
 dataset identity, REPAIR2 and MVQUAL authorities, every admitted candidate
 prefix digest, and the qualified-size set. The serialized fidelity tuple and
-full TRAIN2 horizon are excluded: they control screening evidence and schedule
-continuation, not immutable candidate membership.
+separate production horizon are excluded: they control screening/production
+schedule continuation, not immutable candidate membership.
 
 The immediately preceding fixed-fidelity generation is the sole compatibility
 exception. It used a distinct, policy-bound authority derivation and may be

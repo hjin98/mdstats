@@ -1,7 +1,7 @@
 {
   "pdf": {
     "name": "mlff_data_stage_plan_spec.pdf",
-    "sha256": "f1f6d5bcfe70c36e613362faa548e121e9ec9272c125e1aa5472e70632f75062"
+    "sha256": "4b72eacd4b9871212b5c7e8637d8eb62b9f4d34c57b6e1aab9e5eea34ba8320f"
   },
   "renderer": {
     "config": {
@@ -26,6 +26,6 @@
   "schema_version": 1,
   "source": {
     "name": "mlff_data_stage_plan_spec.md",
-    "sha256": "74e5543eed197f536069e05666ba6ce49c996dba007ced01bfdf5ac99ec81ba2"
+    "sha256": "bc6b5406374f18ec27d8e9bae8172d48c823055f6f1cf74e701e14c02869d429"
   }
 }

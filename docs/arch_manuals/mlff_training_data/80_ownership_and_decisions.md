@@ -159,7 +159,7 @@ Each candidate follows one authenticated continuation trajectory:
 foundation -> coarse n1 -> short n2 -> final screen n3
 ```
 
-The short screen authenticates the exact coarse model/optimizer/RNG parent; the final screen authenticates the short parent. `n1 < n2 < n3 <= n`, where `n` is the independent full TRAIN2 schedule horizon. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
+The short screen authenticates the exact coarse model/optimizer/RNG parent; the final screen authenticates the short parent. `n1 < n2 < n3 < n`, where the screen schedule horizon is `n3` and fresh production uses independent horizon `n`. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
 
 At every target-size boundary the endpoint itself is authoritative: `S(N,n1)`, `S(N,n2)`, and `S(N,n3)` are evaluated at matched fidelity. A better earlier checkpoint cannot replace the prescribed endpoint. This is distinct from post-selection production checkpoint selection, where `N_selected` is fixed and the checkpoint epoch may be optimized over the admissible trajectory.
 
@@ -274,7 +274,7 @@ The current MLFF subsystem follows these durable rules:
 5. target size and monitor cardinalities are typed, distinct policy families;
 6. frame membership is domain-local while selected target size is protocol-global;
 7. one repaired master order defines every candidate prefix and hard coverage is monotone with increasing prefix size;
-8. the target-size experiment uses development/model-selection evidence, configured `n1/n2/n3` continuation on a full horizon `n`, paired seeds, and typed non-convergence/failure outcomes;
+8. the target-size experiment uses development/model-selection evidence, configured `n1/n2/n3` continuation on a screen-local horizon `n3`, paired seeds, and typed non-convergence/failure outcomes; fresh selected-size production owns the independent horizon `n`;
 9. MVQUAL is the sole hard target-size eligibility authority; downstream model/protocol acceptance cannot alter the immutable size choice;
 10. locked tests remain sealed until the frozen protocol/committee activation boundary;
 11. unsupported old campaigns are re-prepared rather than migrated;

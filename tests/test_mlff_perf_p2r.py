@@ -64,10 +64,13 @@ def test_perf_p2r_stage_plan_authorizes_only_v5_incremental_work() -> None:
 
 
 def test_perf_p2r_production_work_is_authorized_only_after_selection() -> None:
-    stage = mdstats.build_perf_p2r_stage_plan(_study(mdstats.OUTCOME_SELECTED, selected=4096))
+    stage = mdstats.build_perf_p2r_stage_plan(
+        _study(mdstats.OUTCOME_SELECTED, selected=4096),
+        production_horizon_epochs=40,
+    )
     assert stage.stage == "production"
     assert stage.candidate_sizes == (4096,)
-    assert (stage.start_epoch, stage.target_epoch) == (0, 30)
+    assert (stage.start_epoch, stage.target_epoch) == (0, 40)
     assert not stage.target_only_evaluation
     assert stage.replay_diagnostic_authorized
     assert stage.physical_qualification_authorized

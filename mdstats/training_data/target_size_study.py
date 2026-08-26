@@ -19,17 +19,17 @@ from ._common import (
     validate_digest,
 )
 
-TARGET_SIZE_STUDY_VERSION = "mdstats.target-size-study.flexible-fidelity.2026-08.v1"
-TARGET_SIZE_STUDY_POLICY_SCHEMA = "mdstats.target-size-study-policy.v7"
+TARGET_SIZE_STUDY_VERSION = "mdstats.target-size-study.decoupled-screen.2026-08.v2"
+TARGET_SIZE_STUDY_POLICY_SCHEMA = "mdstats.target-size-study-policy.v8"
 _LEGACY_TARGET_SIZE_STUDY_VERSION = "mdstats.target-size-study.fixed-eight.2026-08.v5.3"
 _LEGACY_TARGET_SIZE_STUDY_POLICY_SCHEMA = "mdstats.target-size-study-policy.v6"
 TARGET_SIZE_STUDY_CANDIDATE_SCHEMA = "mdstats.target-size-study-candidate.v5"
-TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA = "mdstats.target-size-training-evidence.v8"
+TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA = "mdstats.target-size-training-evidence.v9"
 TARGET_SIZE_TRAJECTORY_FAILURE_EVIDENCE_SCHEMA = (
-    "mdstats.target-size-trajectory-failure-evidence.v1"
+    "mdstats.target-size-trajectory-failure-evidence.v2"
 )
-TARGET_SIZE_STAGE_OUTCOME_SCHEMA = "mdstats.target-size-stage-outcome.v2"
-TARGET_SIZE_STUDY_PLAN_SCHEMA = "mdstats.target-size-study-plan.v9"
+TARGET_SIZE_STAGE_OUTCOME_SCHEMA = "mdstats.target-size-stage-outcome.v3"
+TARGET_SIZE_STUDY_PLAN_SCHEMA = "mdstats.target-size-study-plan.v10"
 TARGET_SIZE_PREFIX_SCHEMA = "mdstats.target-size-study-repair2-prefix.v1"
 TARGET_SIZE_CANDIDATE_DATA_SCHEMA = "mdstats.target-size-study-candidate-data.v1"
 # Candidate authority is persisted in DATA7/DATA8 materialization plans.  The
@@ -91,9 +91,10 @@ TARGET_SIZE_SCIENTIFIC_FAILURE_CODES = TRAIN2_NUMERICAL_FAILURE_CODES | EVAL2_NU
 class TargetSizeStudyPolicy:
     """Fixed-universe policy with configurable screening boundaries.
 
-    ``fidelity_epochs`` owns only the three screening boundaries.  The full
-    TRAIN2 horizon is deliberately supplied by ``TrainingBudgetPolicy`` at
-    assembly/execution time; putting it here would create a second authority.
+    ``fidelity_epochs`` owns only the three screening boundaries.  The
+    separately configured production horizon is deliberately supplied by
+    ``TrainingBudgetPolicy`` at production assembly/execution time; putting it
+    here would create a second target-size authority.
     """
 
     candidate_sizes: tuple[int, ...] = FIXED_TARGET_SIZES
@@ -682,7 +683,6 @@ class TargetSizeStudyPlan:
     policy: TargetSizeStudyPolicy
     candidates: tuple[TargetSizeStudyCandidate, ...]
     qualified_sizes: tuple[int, ...]
-    training_horizon_epochs: int = 30
     coarse_outcomes: tuple[TargetSizeStageOutcome, ...] = ()
     coarse_survivor_sizes: tuple[int, ...] = ()
     short_outcomes: tuple[TargetSizeStageOutcome, ...] = ()
@@ -704,9 +704,6 @@ class TargetSizeStudyPlan:
         object.__setattr__(self, "mvqual_authority_digest", validate_digest(self.mvqual_authority_digest, name="mvqual_authority_digest"))
         if self.authority_version != TARGET_SIZE_STUDY_VERSION:
             raise TrainingDataInputError("Unsupported target-size study authority version.")
-        horizon = int(self.training_horizon_epochs)
-        if horizon <= 0 or self.policy.fidelity_epochs[-1] > horizon:
-            raise TrainingDataInputError("Target-size screen boundaries must lie inside the authenticated TRAIN2 horizon.")
         candidates = tuple(sorted(self.candidates, key=lambda v: v.target_size))
         if tuple(v.target_size for v in candidates) != FIXED_TARGET_SIZES:
             raise TrainingDataInputError("Target-size study must record exactly the fixed eight candidates.")
@@ -726,7 +723,6 @@ class TargetSizeStudyPlan:
             if candidate.candidate_data_digest != expected:
                 raise TrainingDataInputError("Target-size candidate_data_digest failed semantic recomputation.")
         object.__setattr__(self, "candidates", candidates)
-        object.__setattr__(self, "training_horizon_epochs", horizon)
         object.__setattr__(self, "qualified_sizes", qualified)
         object.__setattr__(self, "coarse_outcomes", tuple(self.coarse_outcomes))
         object.__setattr__(self, "coarse_survivor_sizes", tuple(int(v) for v in self.coarse_survivor_sizes))
@@ -809,6 +805,27 @@ class TargetSizeStudyPlan:
         return self.outcome in _TERMINAL_OUTCOMES
 
     @property
+    def screening_horizon_epochs(self) -> int:
+        """The sole frozen scheduler budget for target-size screening.
+
+        This is deliberately derived from the third semantic screen boundary.
+        Production ``[training].max_num_epochs`` is consumed only by the
+        selected-size production owner and cannot enter study persistence.
+        """
+
+        return int(self.policy.fidelity_epochs[-1])
+
+    @property
+    def training_horizon_epochs(self) -> int:
+        """Compatibility spelling for the derived screen horizon.
+
+        It deliberately cannot expose or retain production configuration.
+        New owners should use :attr:`screening_horizon_epochs`.
+        """
+
+        return self.screening_horizon_epochs
+
+    @property
     def next_training_sizes(self) -> tuple[int, ...]:
         if self.outcome == OUTCOME_AWAITING_COARSE_SCREEN:
             return self.qualified_sizes
@@ -849,7 +866,6 @@ class TargetSizeStudyPlan:
             "repair2_authority_digest": self.repair2_authority_digest,
             "mvqual_authority_digest": self.mvqual_authority_digest,
             "policy": self.policy.to_dict(),
-            "training_horizon_epochs": self.training_horizon_epochs,
             "candidates": [v.to_dict() for v in self.candidates],
             "qualified_sizes": list(self.qualified_sizes),
             "coarse_outcomes": [v.to_dict() for v in self.coarse_outcomes],
@@ -877,21 +893,15 @@ class TargetSizeStudyPlan:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "TargetSizeStudyPlan":
-        if (
-            payload.get("schema") == "mdstats.target-size-study-plan.v8"
-            and payload.get("authority_version") == _LEGACY_TARGET_SIZE_STUDY_VERSION
-        ):
-            return _migrate_fixed_generation_plan(payload)
         if payload.get("schema") != TARGET_SIZE_STUDY_PLAN_SCHEMA or payload.get("authority_version") != TARGET_SIZE_STUDY_VERSION:
             raise TrainingDataSerializationError(
-                "Historical target-size study state is not restart-compatible with v5 closeout; rebuild from upstream authorities."
+                "Historical target-size screen state is not restart-compatible with the decoupled-screen generation; preserve authenticated candidate materialization and rebuild screening from REPAIR2 + MVQUAL2."
             )
         result = cls(
             dataset_id=str(payload["dataset_id"]),
             repair2_authority_digest=str(payload["repair2_authority_digest"]),
             mvqual_authority_digest=str(payload["mvqual_authority_digest"]),
             policy=TargetSizeStudyPolicy.from_dict(payload["policy"]),
-            training_horizon_epochs=int(payload["training_horizon_epochs"]),
             candidates=tuple(TargetSizeStudyCandidate.from_dict(v) for v in payload["candidates"]),
             qualified_sizes=tuple(int(v) for v in payload["qualified_sizes"]),
             coarse_outcomes=tuple(TargetSizeStageOutcome.from_dict(v) for v in payload.get("coarse_outcomes", ())),
@@ -999,87 +1009,6 @@ def authenticated_fixed_predecessor_candidate_authority(
     return {**receipt, "content_digest": digest(receipt)}
 
 
-def _migrate_fixed_generation_plan(payload: Mapping[str, Any]) -> TargetSizeStudyPlan:
-    """Convert the immediately preceding authenticated fixed-generation state.
-
-    This is intentionally narrow: the fixed generation was semantically
-    `(3, 10, 30)/30`, so its meaning is recoverable.  Any other historical
-    schema remains outside the supported restart boundary.
-    """
-
-    legacy_payload = dict(payload)
-    observed_digest = legacy_payload.pop("content_digest", None)
-    if observed_digest is not None and observed_digest != digest(legacy_payload):
-        raise TrainingDataSerializationError("Legacy target-size study plan digest mismatch before migration.")
-    old_policy = payload.get("policy")
-    if not isinstance(old_policy, Mapping):
-        raise TrainingDataSerializationError("Legacy target-size study plan lacks its policy payload.")
-    policy_payload = dict(old_policy)
-    policy_digest = policy_payload.pop("policy_digest", None)
-    if policy_payload.get("schema") != _LEGACY_TARGET_SIZE_STUDY_POLICY_SCHEMA or policy_payload.get("authority_version") != _LEGACY_TARGET_SIZE_STUDY_VERSION:
-        raise TrainingDataSerializationError("Unsupported legacy target-size policy generation.")
-    if policy_digest is not None and policy_digest != digest(policy_payload):
-        raise TrainingDataSerializationError("Legacy target-size policy digest mismatch before migration.")
-    if tuple(policy_payload.get("fidelity_epochs", ())) != (3, 10, 30):
-        raise TrainingDataSerializationError("Legacy target-size state cannot be migrated because its fixed fidelity tuple is ambiguous.")
-    policy = TargetSizeStudyPolicy(
-        candidate_sizes=tuple(int(v) for v in policy_payload["candidate_sizes"]),
-        minimum_qualified_sizes=int(policy_payload["minimum_qualified_sizes"]),
-        coarse_survivor_limit=int(policy_payload["epoch3_survivor_limit"]),
-        short_finalist_count=int(policy_payload["epoch10_finalist_count"]),
-        fidelity_epochs=(3, 10, 30),
-        practical_equivalence_mev_per_a=float(policy_payload["practical_equivalence_mev_per_a"]),
-        coarse_practical_equivalence_mev_per_a=float(policy_payload["coarse_practical_equivalence_mev_per_a"]),
-        screening_optimizer_seeds=tuple(int(v) for v in policy_payload["screening_optimizer_seeds"]),
-        paired_seed_aggregation=str(policy_payload["paired_seed_aggregation"]),
-    )
-
-    def migrate_outcome(item: Mapping[str, Any]) -> TargetSizeStageOutcome:
-        success = item.get("success")
-        failure = item.get("failure")
-        if (success is None) == (failure is None):
-            raise TrainingDataSerializationError("Legacy target-size stage outcome is malformed.")
-        if success is not None:
-            raw = dict(success); raw.pop("schema", None); raw.pop("content_digest", None)
-            raw["stage"] = STAGE_FINAL_SCREEN if raw.get("stage") == "final" else raw.get("stage")
-            return TargetSizeStageOutcome(success=TargetSizeTrainingEvidence(**raw))
-        raw = dict(failure); raw.pop("schema", None); raw.pop("content_digest", None)
-        raw["stage"] = STAGE_FINAL_SCREEN if raw.get("stage") == "final" else raw.get("stage")
-        raw["failure_reasons"] = tuple(str(v) for v in raw.get("failure_reasons", ()))
-        return TargetSizeStageOutcome(failure=TargetSizeTrajectoryFailureEvidence(**raw))
-
-    outcome_map = {
-        "awaiting_epoch_3": OUTCOME_AWAITING_COARSE_SCREEN,
-        "awaiting_epoch_10": OUTCOME_AWAITING_SHORT_SCREEN,
-        "awaiting_epoch_30": OUTCOME_AWAITING_FINAL_SCREEN,
-    }
-    return TargetSizeStudyPlan(
-        dataset_id=str(payload["dataset_id"]),
-        repair2_authority_digest=str(payload["repair2_authority_digest"]),
-        mvqual_authority_digest=str(payload["mvqual_authority_digest"]),
-        policy=policy,
-        candidates=tuple(TargetSizeStudyCandidate.from_dict(v) for v in payload["candidates"]),
-        qualified_sizes=tuple(int(v) for v in payload["qualified_sizes"]),
-        training_horizon_epochs=30,
-        coarse_outcomes=tuple(migrate_outcome(v) for v in payload.get("epoch3_outcomes", ())),
-        coarse_survivor_sizes=tuple(int(v) for v in payload.get("epoch3_survivor_sizes", ())),
-        short_outcomes=tuple(migrate_outcome(v) for v in payload.get("epoch10_outcomes", ())),
-        short_finalist_sizes=tuple(int(v) for v in payload.get("epoch10_finalist_sizes", ())),
-        final_screen_outcomes=tuple(migrate_outcome(v) for v in payload.get("epoch30_outcomes", ())),
-        selected_target_size=None if payload.get("selected_target_size") is None else int(payload["selected_target_size"]),
-        outcome=outcome_map.get(str(payload["outcome"]), str(payload["outcome"])),
-        decision_reason=str(payload.get("decision_reason", "")),
-        comparison_failure_stage=(
-            STAGE_FINAL_SCREEN if payload.get("comparison_failure_stage") == "final"
-            else payload.get("comparison_failure_stage")
-        ),
-        comparison_failures=tuple(
-            (int(v[0]), int(v[1]), tuple(str(reason) for reason in v[2]))
-            for v in payload.get("comparison_failures", ())
-        ),
-    )
-
-
 def _repair_domains(repair: Any) -> tuple[Any, ...]:
     domains = tuple(
         sorted(tuple(repair.domains), key=lambda v: str(v.label_domain_id))
@@ -1128,11 +1057,15 @@ def build_target_size_study(
     mvqual: Any,
     *,
     policy: TargetSizeStudyPolicy | None = None,
-    training_horizon_epochs: int = 30,
+    training_horizon_epochs: int | None = None,
 ) -> TargetSizeStudyPlan:
     """Build the sole v5 target-size authority directly from REPAIR2 + MVQUAL."""
 
     policy = policy or TargetSizeStudyPolicy()
+    # Kept only to avoid a hard API break for callers during the schema
+    # transition.  It is intentionally ignored: current study persistence and
+    # authority are derived solely from ``policy.fidelity_epochs[-1]``.
+    _ = training_horizon_epochs
     dataset_id = str(repair2.dataset_id)
     if dataset_id != str(mvqual.dataset_id):
         raise TrainingDataInputError("REPAIR2 and MVQUAL dataset identities differ.")
@@ -1195,7 +1128,6 @@ def build_target_size_study(
             repair2_authority_digest=repair_digest,
             mvqual_authority_digest=mvqual_digest,
             policy=policy,
-            training_horizon_epochs=training_horizon_epochs,
             candidates=tuple(candidates),
             qualified_sizes=qualified,
             outcome=OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
@@ -1208,7 +1140,6 @@ def build_target_size_study(
         repair2_authority_digest=repair_digest,
         mvqual_authority_digest=mvqual_digest,
         policy=policy,
-        training_horizon_epochs=training_horizon_epochs,
         candidates=tuple(candidates),
         qualified_sizes=qualified,
         outcome=OUTCOME_AWAITING_COARSE_SCREEN,
@@ -1224,9 +1155,7 @@ def validate_target_size_study_authority(
     repair2: Any,
     mvqual: Any,
 ) -> None:
-    rebuilt = build_target_size_study(
-        repair2, mvqual, policy=plan.policy, training_horizon_epochs=plan.training_horizon_epochs
-    )
+    rebuilt = build_target_size_study(repair2, mvqual, policy=plan.policy)
     if (
         plan.dataset_id != rebuilt.dataset_id
         or plan.repair2_authority_digest != rebuilt.repair2_authority_digest
@@ -1432,11 +1361,11 @@ def _validate_outcome_batch(
         if outcome.success is not None:
             if item.completed_epochs != expected_endpoint:
                 raise TrainingDataInputError("Target-size evidence is not at the configured semantic-stage boundary.")
-            if item.planned_epochs != plan.training_horizon_epochs:
-                raise TrainingDataInputError("Target-size evidence schedule horizon differs from the authenticated full TRAIN2 horizon.")
+            if item.planned_epochs != plan.screening_horizon_epochs:
+                raise TrainingDataInputError("Target-size evidence schedule horizon differs from the authenticated screen horizon.")
             expected_progress = item.completed_epochs / item.planned_epochs
             if abs(item.normalized_schedule_progress - expected_progress) > 1.0e-12:
-                raise TrainingDataInputError("Target-size evidence schedule progress is inconsistent with its full horizon.")
+                raise TrainingDataInputError("Target-size evidence schedule progress is inconsistent with its screen horizon.")
         training_policy_digests.add(item.training_policy_digest)
         schedule_digests.add(item.schedule_digest)
         if outcome.success is not None:

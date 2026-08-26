@@ -20,8 +20,9 @@ $$
 A \xrightarrow{n_1} S_4 \xrightarrow{n_2} S_2 \xrightarrow{n_3} K^*,
 $$
 
-where $n_1<n_2<n_3\le n$ and $n$ is the independent frozen TRAIN2 schedule
-horizon. The generated default is $(1,3,10)/30$.
+where $n_1<n_2<n_3<n$. The screen scheduler horizon is exactly $n_3$;
+$n$ is a separate fresh selected-size production horizon. The generated
+default is $(1,3,10)/30$.
 
 The structure follows the resource-allocation principle of successive halving: inexpensive low-fidelity observations eliminate weak candidates before additional budget is spent on survivors.[^jamieson2016] In mdstats, however, candidate set sizes, evaluation roles, continuation identities, tie handling, and downstream physical qualification are project-specific scientific authorities; they are not inherited from the generic algorithm.
 
@@ -30,9 +31,9 @@ The structure follows the resource-allocation principle of successive halving: i
 PERF-P2R separates implementation status from accelerator qualification:
 
 $$
-I(\mathrm{PERF\!\!-\!P2R})=\mathrm{implemented},
+I(\text{PERF-P2R})=\mathrm{implemented},
 \qquad
-Q(\mathrm{PERF\!\!-\!P2R})=\mathrm{pending}.
+Q(\text{PERF-P2R})=\mathrm{pending}.
 $$
 
 The CPU/control-plane implementation may be released and used to prepare the final qualification package. It must not authorize a GPU speed claim, calibrated coarse default, or production survivor decision before FINAL-GPU1 closes the corresponding scientific and accelerator evidence.
@@ -47,17 +48,17 @@ The CPU/control-plane implementation may be released and used to prepare the fin
 - hard-coverage-qualified ladder width: 3 through 7;
 - coarse survivor limit: 4;
 - short survivor limit: 2;
-- short boundary: production `n2`;
-- final-screen boundary: production `n3`; and
+- short boundary: screen `n2`;
+- final-screen boundary and screen schedule horizon: `n3`; and
 - full-reference boundary: TRAIN2 horizon `n`.
 
 These values are a compatibility grid, not calibrated defaults.
 
 `build_perf_p2r_stage_plan()` converts the current target-size authority into
-exactly one authorized work stage. It derives candidate sizes, start epoch,
-target epoch, continuation requirement, screening seed, and allowed evidence
-class from the scientific state. Campaign dispatch must not duplicate
-independent numeric-boundary branches.
+exactly one authorized work stage. Screen plans derive their horizon from the
+study; the fresh production plan must receive the separately owned production
+horizon only after selection. Campaign dispatch must not duplicate independent
+numeric-boundary branches.
 
 # P2R-2: exact continuation and no repaid prefix
 

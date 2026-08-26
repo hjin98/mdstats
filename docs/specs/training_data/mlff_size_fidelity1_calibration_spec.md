@@ -21,12 +21,13 @@ final screen:   n3
 full reference: n
 ```
 
-`n1 < n2 < n3 <= n`. `TargetSizeStudyPolicy` owns the three production
-boundaries and the paired-screening seed identity used by the ordinary
-target-size study; the frozen TRAIN2 schedule owns `n`. The generated default
-is `(1, 3, 10) / 30`, but all four values are authenticated configuration, not
-fixed-generation assumptions. `SizeFidelityCalibrationPolicy` owns the
-calibration grid used to challenge provisional low-fidelity choices.
+`n1 < n2 < n3 < n`. `TargetSizeStudyPolicy` owns the three screen boundaries
+and the paired-screening seed identity used by the ordinary target-size study;
+the separate production/reference budget owns `n` for this calibration. The
+generated default is screen `(1, 3, 10)` with production/reference `30`, but
+all four values are authenticated configuration, not fixed-generation
+assumptions. `SizeFidelityCalibrationPolicy` owns the calibration grid used to
+challenge provisional low-fidelity choices.
 
 
 ## 2. Exhaustive trajectory and checkpoint contract
@@ -149,7 +150,7 @@ The report may be implementation-complete while final accelerator/scientific run
 
 ## 10. Related current authorities
 
-- `mlff_target_subset_size_study_spec.md` owns the ordinary configurable `n1/n2/n3` target-size selection policy and full horizon `n` split.
+- `mlff_target_subset_size_study_spec.md` owns the ordinary configurable screen `n1/n2/n3` target-size selection policy and its strict split from production horizon `n`.
 - `mlff_perf_p2r_successive_fidelity_execution_spec.md` owns efficient execution/performance realization for the current target-size funnel and calibration parameter surface.
 - `mlff_progress_reporting_format_spec.md` owns presentation grammar only.
 

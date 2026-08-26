@@ -293,6 +293,48 @@ def test_campaign_plan_requires_passed_gate_and_complete_matrix() -> None:
         )
 
 
+def test_campaign_plan_namespaces_separate_screen_and_production_runs() -> None:
+    metric_policy = _metric_policy()
+    replay = _bundle(mode=mdstats.TrainingMode.MULTIHEAD_REPLAY, size=512, seed=1, metric_policy=metric_policy)
+    naive = _bundle(mode=mdstats.TrainingMode.NAIVE_FINE_TUNING, size=512, seed=1, metric_policy=metric_policy)
+    policy = mdstats.TrainingCampaignPolicy(
+        required_training_modes=(mdstats.TrainingMode.NAIVE_FINE_TUNING, mdstats.TrainingMode.MULTIHEAD_REPLAY),
+        required_selection_sizes=(512,),
+        required_seeds=(1,),
+    )
+
+    screen = mdstats.build_training_campaign_plan(
+        _qualification(replay),
+        (replay, naive),
+        campaign_id="lta-target-size",
+        policy=policy,
+        run_namespace="target-size-screen",
+    )
+    production = mdstats.build_training_campaign_plan(
+        _qualification(replay),
+        (replay, naive),
+        campaign_id="lta-target-size",
+        policy=policy,
+        run_namespace="production",
+    )
+
+    screen_ids = {run.run_id for run in screen.runs}
+    production_ids = {run.run_id for run in production.runs}
+    assert screen_ids.isdisjoint(production_ids)
+    assert all(run_id.startswith("target-size-screen-") for run_id in screen_ids)
+    assert all(run_id.startswith("production-") for run_id in production_ids)
+    assert screen.content_digest != production.content_digest
+
+    with pytest.raises(mdstats.TrainingDataInputError, match="lowercase filesystem-safe"):
+        mdstats.build_training_campaign_plan(
+            _qualification(replay),
+            (replay, naive),
+            campaign_id="lta-target-size",
+            policy=policy,
+            run_namespace="Production",
+        )
+
+
 def test_campaign_plan_rejects_missing_fold_and_raw_wrapper() -> None:
     metric_policy = _metric_policy()
     replay = _bundle(mode=mdstats.TrainingMode.MULTIHEAD_REPLAY, size=512, seed=1, metric_policy=metric_policy)

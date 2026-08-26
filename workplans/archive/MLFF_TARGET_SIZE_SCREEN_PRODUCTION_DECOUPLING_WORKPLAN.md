@@ -2,8 +2,9 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-TARGET-SIZE-SCREEN-PRODUCTION-DECOUPLING-V1
 protocol_version: 5.7.0
-status: active
+status: complete
 created_date: 2026-08-25
+completed_date: 2026-08-25
 reviewed_head: ea196babecd951491ae4656d3b3e38b8eb866144
 supersedes_conflicting_target_size_design: true
 ---
@@ -671,6 +672,17 @@ Implement O9/O10 and reconcile old full-horizon tests/specs. Preserve explicit c
 Complete O11 and task-specific A-M on one assembled commit. Re-derive final affected surface and run final affected regression/integration plus repository-required checks.
 
 **Gate:** no material claim is closed by a proxy that can stay green while its semantic owner is broken; no required affected check is failing or unexecuted.
+
+## Implementation closeout evidence
+
+The implementation gates G0-G6 are complete on the current development branch.
+
+- The affected CPU/control-plane regression passed with `216 passed, 1 skipped`. The one skip is the environment-dependent real-LTA campaign path (`real LTA training root not supplied`); it is recorded as unavailable rather than treated as a pass.
+- The direct campaign owner regression covers screen/production namespace separation, digest separation, and fail-closed namespace validation.
+- The current documentation and assembled architecture were reconciled to screen horizon `n3` and fresh production horizon `n`; current PDFs were regenerated with the pinned Pandoc/Typst toolchain from `archive/mace-dependencies` and visually checked with Poppler.
+- GPU and long real-data production qualification remain explicitly deferred to FINAL-GPU1 as required by this workplan.
+
+The unrelated legacy specification slice still reports baseline failures for historical release/version/graph assertions and one raw-config normalization contract; those failures are outside this target-size implementation surface and are not used as acceptance evidence for this closeout.
 
 ### G7 - Closeout
 

@@ -1042,14 +1042,16 @@ def _normalize_target_size_fidelity_config(cfg: dict[str, Any]) -> None:
         )
     if present_legacy:
         warnings.warn(
-            "Historical target-size epoch-looking keys are ignored; v1 uses the fixed "
-            "(3, 10, 30) screening tuple. Migrate to campaign schema v2 to configure it.",
+            "Historical target-size epoch-looking keys are ignored; v1 records retain "
+            "historical fixed (3, 10, 30) evidence, while a rebuilt current screen "
+            "starts at (1, 3, 10). Migrate to campaign schema v2 to configure it.",
             UserWarning,
             stacklevel=3,
         )
     # Canonical in-memory resolved policy for old campaigns.  It is never
-    # written back as v2 configuration and the full horizon remains training-owned.
-    size_cfg["fidelity_epochs"] = [3, 10, 30]
+    # written back as v2 configuration.  Historical 3/10/30 screen evidence
+    # stays historical; a rebuilt current screen starts from 1/3/10.
+    size_cfg["fidelity_epochs"] = [1, 3, 10]
 
 
 def _normalize_foundation_config_in_memory(cfg: dict[str, Any]) -> None:
@@ -1546,6 +1548,7 @@ def _optimizer_policy(
     seed: int,
     num_workers: int,
     paths: CampaignPaths | None = None,
+    planned_epochs: int | None = None,
 ) -> Any:
     """Build one protocol-frozen optimizer policy under binary model precision."""
 
@@ -1562,7 +1565,10 @@ def _optimizer_policy(
         batch_size=int(_cfg(cfg, "training", "batch_size", 2)),
         valid_batch_size=int(_cfg(cfg, "training", "valid_batch_size", 2)),
         num_workers=num_workers,
-        max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
+        max_num_epochs=(
+            int(_cfg(cfg, "training", "max_num_epochs", 30))
+            if planned_epochs is None else int(planned_epochs)
+        ),
         eval_interval=int(_cfg(cfg, "training", "eval_interval", 1)),
         default_dtype=model_dtype,
         device=str(_cfg(cfg, "training", "device", "cuda")),
@@ -1625,7 +1631,9 @@ def _validate_train2_migration_config(cfg: Mapping[str, Any]) -> None:
         )
 
 
-def _train2_policy_set(cfg: Mapping[str, Any], *, require_replay: bool) -> tuple[Any, Any, Any, Any]:
+def _train2_policy_set(
+    cfg: Mapping[str, Any], *, require_replay: bool, planned_epochs: int | None = None,
+) -> tuple[Any, Any, Any, Any]:
     """Build the four orthogonal TRAIN2/EVAL2 policy authorities."""
 
     import mdstats
@@ -1633,7 +1641,10 @@ def _train2_policy_set(cfg: Mapping[str, Any], *, require_replay: bool) -> tuple
     _validate_train2_migration_config(cfg)
     if _training_policy_generation(cfg) != "train2":
         raise CampaignCliError("TRAIN2 policies requested for a historical adaptive campaign.")
-    max_epochs = int(_cfg(cfg, "training", "max_num_epochs", 30))
+    max_epochs = (
+        int(_cfg(cfg, "training", "max_num_epochs", 30))
+        if planned_epochs is None else int(planned_epochs)
+    )
     eval_interval = int(_cfg(cfg, "training", "eval_interval", 1))
     base_lr = float(_cfg(cfg, "training", "learning_rate", 1.0e-4))
     replay_budget_mev = float(
@@ -4819,7 +4830,7 @@ def _ensure_target_coverage_feasibility(
 
 
 def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
-    """Resolve the target-size tuple; TRAIN2 retains the full horizon."""
+    """Resolve the screen-local target-size policy and validate current geometry."""
 
     import mdstats
 
@@ -4861,9 +4872,9 @@ def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
     if not isinstance(training, Mapping):
         raise CampaignCliError("[training] must be a TOML table.")
     configured_epochs = int(training.get("max_num_epochs", 30))
-    if policy.fidelity_epochs[-1] > configured_epochs:
+    if policy.fidelity_epochs[-1] >= configured_epochs:
         raise CampaignCliError(
-            "Target-size fidelity_epochs must satisfy n3 <= [training].max_num_epochs."
+            "Target-size fidelity_epochs must satisfy 0 < n1 < n2 < n3 < [training].max_num_epochs."
         )
     return policy
 
@@ -4925,7 +4936,6 @@ def _ensure_target_size_study(
     import mdstats
 
     policy = _target_size_study_policy(cfg)
-    training_horizon = int(_cfg(cfg, "training", "max_num_epochs", 30))
     _capture_historical_fixed_candidate_authority(store)
     try:
         existing = store.get_record_optional("target_size_study", mdstats.TargetSizeStudyPlan)
@@ -4937,7 +4947,7 @@ def _ensure_target_size_study(
         existing = None
     if existing is not None:
         try:
-            if existing.policy.policy_digest != policy.policy_digest or existing.training_horizon_epochs != training_horizon:
+            if existing.policy.policy_digest != policy.policy_digest:
                 raise CampaignCliError("target-size study policy changed")
             mdstats.validate_target_size_study_authority(existing, repair2=repair2, mvqual=mvqual2)
         except Exception as exc:
@@ -4952,9 +4962,7 @@ def _ensure_target_size_study(
                 f"digest={existing.content_digest[:12]}..."
             )
             return existing
-    plan = mdstats.build_target_size_study(
-        repair2, mvqual2, policy=policy, training_horizon_epochs=training_horizon
-    )
+    plan = mdstats.build_target_size_study(repair2, mvqual2, policy=policy)
     store.put_record("target_size_study", plan)
     _ok(
         "TARGET-SIZE-V5 frozen directly from REPAIR2 + MVQUAL2: "
@@ -4964,15 +4972,15 @@ def _ensure_target_size_study(
 
 
 def _train2_data8_schedule_matches_config(
-    cfg: Mapping[str, Any], entries: Sequence[_Data8RuntimeEntry]
+    cfg: Mapping[str, Any], entries: Sequence[_Data8RuntimeEntry], *, study: Any | None = None,
 ) -> bool:
     """Check downstream TRAIN2 schedule authorities without widening reuse.
 
-    DATA7 and the scientific DATA8 files are independent of the TRAIN2 full
-    horizon and its later schedule/evaluation controls.  The generated DATA8
-    job protocol is nevertheless the authority consumed by the runtime, so a
-    completed-prepare receipt may not silently reuse a protocol carrying an
-    old budget, LR, checkpoint, or selection policy.  A real DATA8 bundle
+    DATA7 and the scientific DATA8 files are independent of the role-local
+    TRAIN2 schedule and its later schedule/evaluation controls.  The generated
+    DATA8 job protocol is nevertheless the authority consumed by the runtime,
+    so a completed-prepare receipt may not silently reuse a protocol carrying
+    an old budget, LR, checkpoint, or selection policy.  A real DATA8 bundle
     always exposes jobs; the missing-jobs branch keeps compact unit doubles
     from pretending to authenticate a schedule they do not model.
     """
@@ -4988,7 +4996,7 @@ def _train2_data8_schedule_matches_config(
     if not jobs:
         return False
 
-    expected_cache: dict[bool, tuple[Any, Any, Any, Any]] = {}
+    expected_cache: dict[tuple[bool, int | None], tuple[Any, Any, Any, Any]] = {}
     try:
         expected_loader_workers = _resolve_mace_loader_workers(cfg)[0]
     except Exception:
@@ -5002,10 +5010,18 @@ def _train2_data8_schedule_matches_config(
         if protocol is None or optimizer is None:
             return False
         require_replay = str(getattr(protocol.training_mode, "value", protocol.training_mode)) == "multihead_replay"
-        expected = expected_cache.get(require_replay)
+        expected_horizon = (
+            int(study.screening_horizon_epochs)
+            if study is not None and getattr(study, "outcome", None) != "selected"
+            else None
+        )
+        cache_key = (require_replay, expected_horizon)
+        expected = expected_cache.get(cache_key)
         if expected is None:
-            expected = _train2_policy_set(cfg, require_replay=require_replay)
-            expected_cache[require_replay] = expected
+            expected = _train2_policy_set(
+                cfg, require_replay=require_replay, planned_epochs=expected_horizon
+            )
+            expected_cache[cache_key] = expected
         expected_budget, expected_lr, expected_admissibility, expected_selection = expected
         observed_budget = getattr(protocol, "training_budget_policy", None)
         observed_lr = getattr(protocol, "learning_rate_schedule_policy", None)
@@ -5034,6 +5050,7 @@ def _train2_data8_schedule_matches_config(
             cfg,
             seed=int(getattr(optimizer, "seed", -1)),
             num_workers=expected_loader_workers,
+            planned_epochs=expected_horizon,
         )
         if optimizer.policy_digest != expected_optimizer.policy_digest:
             return False
@@ -9439,27 +9456,17 @@ def _try_reuse_completed_prepare(
                 previous_study is not None
                 and previous_study.policy.policy_digest != study.policy.policy_digest
             )
-            horizon_changed = bool(
-                previous_study is not None
-                and int(previous_study.training_horizon_epochs)
-                != int(study.training_horizon_epochs)
-            )
-            if fidelity_changed or horizon_changed:
+            if fidelity_changed:
                 screening_phase = getattr(study, "outcome", None) != mdstats.OUTCOME_SELECTED
                 _invalidate_train2_downstream_state(
                     store,
                     paths,
-                    reason=(
-                        "TRAIN2 fidelity boundaries changed; target-size evidence and dependent "
-                        "training/evaluation state were reset"
-                        if fidelity_changed
-                        else "TRAIN2 full-horizon schedule changed; dependent training/checkpoint/evaluation state was reset"
-                    ),
+                    reason="TRAIN2 screen fidelity boundaries changed; target-size evidence and dependent training/evaluation state were reset",
                     preserve_preflight=screening_phase,
                 )
             if (
                 getattr(study, "outcome", None) != mdstats.OUTCOME_SELECTED
-                and (fidelity_changed or horizon_changed or historical_generation_upgrade)
+                and (fidelity_changed or historical_generation_upgrade)
             ):
                 # The receipt and DATA8 entries have passed their historical or
                 # current preparation validation.  Re-authenticate the old
@@ -9475,12 +9482,12 @@ def _try_reuse_completed_prepare(
             return False
         if _training_policy_generation(cfg) == "train2":
             _validate_train2_data8_matrix(cfg, store, study)
-            if not _train2_data8_schedule_matches_config(cfg, entries):
+            if not _train2_data8_schedule_matches_config(cfg, entries, study=study):
                 screening_phase = getattr(study, "outcome", None) != mdstats.OUTCOME_SELECTED
                 _invalidate_train2_downstream_state(
                     store,
                     paths,
-                    reason="TRAIN2 materialization carries an incompatible full-horizon/schedule identity; downstream state was reset",
+                    reason="TRAIN2 materialization carries an incompatible role-local schedule identity; downstream state was reset",
                     preserve_preflight=screening_phase,
                 )
                 return False
@@ -10086,12 +10093,19 @@ def _prepare_materialization(
         checkpoint_admissibility_policy = None
         checkpoint_selection_policy = None
         if policy_generation == "train2":
+            screen_phase = target_size_study.outcome != mdstats.OUTCOME_SELECTED
+            role_budget = (
+                int(target_size_study.screening_horizon_epochs)
+                if screen_phase else int(_cfg(cfg, "training", "max_num_epochs", 30))
+            )
             (
                 training_budget_policy,
                 learning_rate_schedule_policy,
                 checkpoint_admissibility_policy,
                 checkpoint_selection_policy,
-            ) = _train2_policy_set(cfg, require_replay=require_replay)
+            ) = _train2_policy_set(
+                cfg, require_replay=require_replay, planned_epochs=role_budget
+            )
         else:
             adaptive_stop_policy = _adaptive_training_stop_policy(
                 cfg, replay_head_name=("pt_head" if require_replay else "replay_monitor")
@@ -10157,7 +10171,13 @@ def _prepare_materialization(
                 ),
             ),
             optimizer_policy=_optimizer_policy(
-                cfg, seed=seed, num_workers=loader_workers
+                cfg, seed=seed, num_workers=loader_workers,
+                planned_epochs=(
+                    int(target_size_study.screening_horizon_epochs)
+                    if policy_generation == "train2"
+                    and target_size_study.outcome != mdstats.OUTCOME_SELECTED
+                    else None
+                ),
             ),
             checkpoint_control_policy=mdstats.MaceCheckpointControlPolicy(),
             extxyz_policy=mdstats.MaceExtxyzPolicy(),
@@ -12250,6 +12270,11 @@ def _build_campaign(cfg: Mapping[str, Any], store: CampaignStore, data8_bundles:
         data8_bundles,
         campaign_id=str(_cfg(cfg, "campaign", "id", "mlff-campaign")),
         policy=policy,
+        run_namespace=(
+            "target-size-screen"
+            if study is not None and study.outcome != mdstats.OUTCOME_SELECTED
+            else "production"
+        ),
     )
 
 
@@ -14570,7 +14595,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             train2_allow_successful_continuation = study.next_training_stage != mdstats.STAGE_COARSE
             train2_stage_label = (
                 f"target-size exact continuation to {study.next_training_stage} endpoint "
-                f"{train2_execution_epoch_limit}/{int(_cfg(cfg, 'training', 'max_num_epochs', 30))}"
+                f"{train2_execution_epoch_limit}/{study.screening_horizon_epochs}"
             )
             allowed_sizes = set(int(v) for v in study.next_training_sizes)
             screening_seeds = set(int(v) for v in study.policy.screening_optimizer_seeds)
@@ -15620,8 +15645,9 @@ def command_select_target_size(args: argparse.Namespace) -> int:
     print(
         "TARGET-SIZE-V5 effective configuration: "
         f"fidelity_epochs={list(study.policy.fidelity_epochs)}; "
-        f"schedule_horizon={study.training_horizon_epochs}; "
-        f"active_boundary={study.next_training_epoch}",
+        f"screen_schedule_horizon={study.screening_horizon_epochs}; "
+        f"active_boundary={study.next_training_epoch}; "
+        f"future_production_horizon={int(_cfg(cfg, 'training', 'max_num_epochs', 30))}",
         flush=True,
     )
 
@@ -15631,7 +15657,7 @@ def command_select_target_size(args: argparse.Namespace) -> int:
         sizes = tuple(int(value) for value in study.next_training_sizes)
         print(
             f"\nTARGET-SIZE-V5 boundary epoch {boundary}: "
-            f"screen_boundary={boundary}; schedule_horizon={study.training_horizon_epochs}; "
+            f"screen_boundary={boundary}; screen_schedule_horizon={study.screening_horizon_epochs}; "
             f"sizes={list(sizes)}; seeds={list(study.policy.screening_optimizer_seeds)}",
             flush=True,
         )
@@ -19571,10 +19597,10 @@ def _eval2_target_size_endpoint_evidence(
             runtime = mdstats.load_train2_runtime_summary(
                 paths.runs / run.run_id / "checkpoints"
             )
-        if runtime.completed_epochs != epoch or runtime.planned_epochs != target_size_study.training_horizon_epochs:
+        if runtime.completed_epochs != epoch or runtime.planned_epochs != target_size_study.screening_horizon_epochs:
             raise CampaignCliError(
-                f"{run.run_id} is not the exact {stage} endpoint on the full "
-                f"{target_size_study.training_horizon_epochs}-epoch TRAIN2 schedule."
+                f"{run.run_id} is not the exact {stage} endpoint on the "
+                f"{target_size_study.screening_horizon_epochs}-epoch screen schedule."
             )
         target_role = _eval2_target_role_for_run(
             store=store, target_size_study=target_size_study, repair2=repair2,
@@ -26958,8 +26984,9 @@ structural_workers = 0
 # Target-size has one fixed candidate universe:
 # 128, 256, 512, 1024, 2048, 4096, 8192, 16384.
 # REPAIR2-prefix materializability plus MVQUAL2 hard admission defines Q.
-# These are the three screening boundaries; the independent full TRAIN2
-# schedule horizon is [training].max_num_epochs.
+# These are the three screening boundaries and the screen scheduler horizon is
+# the final boundary n3 (=10 by default). [training].max_num_epochs is the
+# separate future production budget and must remain strictly greater than n3.
 # No generated/rescue sizes and no ceiling above 16384 are permitted.
 fidelity_epochs = [1, 3, 10]
 coarse_practical_equivalence_mev_per_a = 1.0
@@ -27442,7 +27469,7 @@ TRAIN2 has one stable public lifecycle:
 6. materialize         Realize the selected N* final-development and held-out CV production matrix.
 7. preflight           Re-run the same operational smoke contract for the changed production matrix.
 8. train               Train/resume only the frozen selected-size production/CV workload.
-9. evaluate            Evaluate production trajectories and select admissible checkpoints; an earlier epoch may beat the configured full horizon.
+9. evaluate            Evaluate production trajectories and select admissible checkpoints; an earlier epoch may beat the configured production horizon.
 10. verify             Run the existing physical/deployment/locked verification sequence.
 
 During `select-target-size`, epoch is a controlled variable: only exact configured
@@ -27516,7 +27543,7 @@ reduction; it never substitutes a better earlier checkpoint. After N* is frozen,
 public `train` uses the same TRAIN2B fixed-budget runtime for the selected production/CV
 matrix and public `evaluate` uses EVAL2 production checkpoint selection, where an
 earlier admissible epoch may legitimately win. LR advances once per optimizer update
-on the configured full horizon and continuation preserves authenticated live/EMA/
+on the role-local configured horizon and screen continuation preserves authenticated live/EMA/
 optimizer/RNG state without renormalizing the schedule. `verify` executes DEPLOY-VERIFY1, then PES-VERIFY1 with a common fixed-geometry DFT probe request, then RELAX-VERIFY1 with matched fixed-cell DFT zero-K relaxations, and finally DYN-VERIFY2 with common deployed finite-temperature NVT->NVE structural rollouts; SELECT2 freezes the first physically qualified seed in the pre-ranked target-only order; LOCKED-TEST2 then evaluates that exact frozen candidate once on sealed locked E and either publishes the exact frozen MACE/ML-IAP bytes or fails the campaign without fallback. Historical configs without `policy_generation` retain their
 original authority.
 

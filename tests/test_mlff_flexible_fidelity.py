@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import mdstats
-from mdstats.training_data._common import TrainingDataInputError, digest
+from mdstats.training_data._common import TrainingDataInputError, TrainingDataSerializationError, digest
 
 
 def _h(tag: str) -> str:
@@ -102,12 +102,7 @@ def _complete_funnel(
         mv_qualified_sizes=qualified_sizes,
         content_digest=_h(f"qual-{fidelity_epochs}-{qualified_sizes}"),
     )
-    plan = mdstats.build_target_size_study(
-        repair,
-        qualification,
-        policy=policy,
-        training_horizon_epochs=training_horizon,
-    )
+    plan = mdstats.build_target_size_study(repair, qualification, policy=policy)
     coarse_scores = coarse_scores or {size: float(size) for size in plan.qualified_sizes}
     coarse = tuple(
         _evidence(
@@ -115,7 +110,7 @@ def _complete_funnel(
             stage=mdstats.STAGE_COARSE,
             epoch=fidelity_epochs[0],
             size=size,
-            planned_epochs=training_horizon,
+            planned_epochs=plan.screening_horizon_epochs,
             target_score=coarse_scores[size],
         )
         for size in plan.qualified_sizes
@@ -128,7 +123,7 @@ def _complete_funnel(
             stage=mdstats.STAGE_SHORT,
             epoch=fidelity_epochs[1],
             size=size,
-            planned_epochs=training_horizon,
+            planned_epochs=plan.screening_horizon_epochs,
             target_score=short_scores[size],
             parent=next(item.success for item in plan.coarse_outcomes if item.key == (size, 1)),
         )
@@ -142,7 +137,7 @@ def _complete_funnel(
             stage=mdstats.STAGE_FINAL_SCREEN,
             epoch=fidelity_epochs[2],
             size=size,
-            planned_epochs=training_horizon,
+            planned_epochs=plan.screening_horizon_epochs,
             target_score=final_scores[size],
             parent=next(item.success for item in plan.short_outcomes if item.key == (size, 1)),
         )
@@ -268,7 +263,7 @@ def _attach_persisted_boundary_evidence(plan: object) -> object:
                 stage=stage,
                 epoch=epoch,
                 size=size,
-                planned_epochs=plan.training_horizon_epochs,
+                planned_epochs=plan.screening_horizon_epochs,
                 target_score=float(size),
                 parent=previous.get((size, seed)),
             )
@@ -296,7 +291,7 @@ def test_supplemental_case_a_default_funnel_reaches_production_and_roundtrips_st
     assert plan.outcome == mdstats.OUTCOME_SELECTED
     assert plan.policy.fidelity_epochs == (1, 3, 10)
     assert mdstats.TargetSizeStudyPlan.from_dict(plan.to_dict()) == plan
-    production = mdstats.build_perf_p2r_stage_plan(plan)
+    production = mdstats.build_perf_p2r_stage_plan(plan, production_horizon_epochs=30)
     assert (
         production.stage,
         production.target_epoch,
@@ -316,7 +311,7 @@ def test_supplemental_case_b_nondefault_funnel_authenticates_full_horizon_and_de
     assert plan.outcome == mdstats.OUTCOME_SELECTED
     assert 512 not in plan.coarse_survivor_sizes
     assert len(plan.short_finalist_sizes) == 2
-    production = mdstats.build_perf_p2r_stage_plan(plan)
+    production = mdstats.build_perf_p2r_stage_plan(plan, production_horizon_epochs=40)
     assert (
         production.target_epoch,
         production.schedule_horizon_epoch,
@@ -410,9 +405,9 @@ def test_supplemental_persisted_campaign_selects_configured_boundaries_and_expos
     frozen = cli._ensure_target_size_study(
         store, cfg=cfg, repair2=repair, mvqual2=qualification
     )
-    assert (frozen.policy.fidelity_epochs, frozen.training_horizon_epochs) == (
+    assert (frozen.policy.fidelity_epochs, frozen.screening_horizon_epochs) == (
         fidelity_epochs,
-        horizon,
+        fidelity_epochs[-1],
     )
     assert cli._load_verified_target_size_study_authority(store).content_digest == frozen.content_digest
 
@@ -440,12 +435,14 @@ def test_supplemental_persisted_campaign_selects_configured_boundaries_and_expos
     assert cli.command_select_target_size(argparse.Namespace(config=str(config))) == 0
     selection_output = capsys.readouterr().out
     assert f"fidelity_epochs={list(fidelity_epochs)}" in selection_output
-    assert f"schedule_horizon={horizon}" in selection_output
+    assert f"screen_schedule_horizon={fidelity_epochs[-1]}" in selection_output
     assert f"screen_boundary={fidelity_epochs[0]}" in selection_output
     selected = cli._load_verified_target_size_study_authority(store)
     assert selected.outcome == mdstats.OUTCOME_SELECTED
     assert authorized_boundaries == list(fidelity_epochs)
-    assert mdstats.build_perf_p2r_stage_plan(selected).schedule_horizon_epoch == horizon
+    assert mdstats.build_perf_p2r_stage_plan(
+        selected, production_horizon_epochs=horizon
+    ).schedule_horizon_epoch == horizon
 
     # Reopen the durable store to prove that a restart/status consumer sees the
     # frozen selection rather than helper-local state.
@@ -534,9 +531,9 @@ def test_real_campaign_store_frontier_replaces_only_target_size_and_live_train2_
         reopened, cfg=changed_cfg, repair2=current_repair, mvqual2=current_qualification
     )
 
-    assert fresh.content_digest != previous.content_digest
+    assert (fresh.content_digest != previous.content_digest) is (reason == "fidelity")
     assert fresh.policy.fidelity_epochs == replacement
-    assert fresh.training_horizon_epochs == horizon
+    assert fresh.screening_horizon_epochs == replacement[-1]
     assert fresh.next_training_epoch == expected_epoch
     assert reopened.has_record("data7:fixture")
     assert reopened.has_record("data8:fixture")
@@ -565,16 +562,16 @@ def test_nondefault_tuple_uses_semantic_states_and_independent_horizon() -> None
     plan = mdstats.build_target_size_study(_Repair(), _Qual(), policy=policy, training_horizon_epochs=40)
     assert plan.outcome == mdstats.OUTCOME_AWAITING_COARSE_SCREEN
     assert (plan.next_training_stage, plan.next_training_epoch) == (mdstats.STAGE_COARSE, 2)
-    coarse = tuple(_evidence(plan, stage=mdstats.STAGE_COARSE, epoch=2, size=size) for size in plan.qualified_sizes)
+    coarse = tuple(_evidence(plan, stage=mdstats.STAGE_COARSE, epoch=2, size=size, planned_epochs=12) for size in plan.qualified_sizes)
     plan = mdstats.attach_coarse_outcomes(plan, coarse)
     assert (plan.outcome, plan.next_training_epoch) == (mdstats.OUTCOME_AWAITING_SHORT_SCREEN, 5)
-    short = tuple(_evidence(plan, stage=mdstats.STAGE_SHORT, epoch=5, size=size, parent=next(item.success for item in plan.coarse_outcomes if item.key == (size, 1))) for size in plan.coarse_survivor_sizes)
+    short = tuple(_evidence(plan, stage=mdstats.STAGE_SHORT, epoch=5, size=size, planned_epochs=12, parent=next(item.success for item in plan.coarse_outcomes if item.key == (size, 1))) for size in plan.coarse_survivor_sizes)
     plan = mdstats.attach_short_outcomes(plan, short)
     assert (plan.outcome, plan.next_training_epoch) == (mdstats.OUTCOME_AWAITING_FINAL_SCREEN, 12)
-    final = tuple(_evidence(plan, stage=mdstats.STAGE_FINAL_SCREEN, epoch=12, size=size, parent=next(item.success for item in plan.short_outcomes if item.key == (size, 1))) for size in plan.short_finalist_sizes)
+    final = tuple(_evidence(plan, stage=mdstats.STAGE_FINAL_SCREEN, epoch=12, size=size, planned_epochs=12, parent=next(item.success for item in plan.short_outcomes if item.key == (size, 1))) for size in plan.short_finalist_sizes)
     plan = mdstats.attach_final_screen_outcomes(plan, final)
     assert plan.outcome == mdstats.OUTCOME_SELECTED
-    stage = mdstats.build_perf_p2r_stage_plan(plan)
+    stage = mdstats.build_perf_p2r_stage_plan(plan, production_horizon_epochs=40)
     assert (stage.stage, stage.target_epoch, stage.schedule_horizon_epoch) == ("production", 40, 40)
 
 
@@ -1034,7 +1031,7 @@ def test_train2_schedule_identity_rejects_cross_horizon_materialization(
     monkeypatch.setattr(
         cli,
         "_train2_policy_set",
-        lambda _cfg, *, require_replay: (budget, lr, admissibility, selection),
+        lambda _cfg, *, require_replay, planned_epochs=None: (budget, lr, admissibility, selection),
     )
     protocol = type(
         "Protocol",
@@ -1175,7 +1172,7 @@ def _migration_entry(cli, cfg: dict, *, current: bool):
     )
     optimizer = cli._optimizer_policy(cfg, seed=1, num_workers=1)
     if not current:
-        old_cfg = _migration_cfg((3, 10, 30), 30)
+        old_cfg = _migration_cfg((3, 10, 30), 31)
         budget, learning_rate, admissibility, selection = cli._train2_policy_set(
             old_cfg, require_replay=True
         )
@@ -1302,12 +1299,9 @@ def test_supplemental_historical_upgrade_d1_d2_reuses_data_matrix_and_reopens_ex
     monkeypatch.setattr(cli, "_stage_config_digest", lambda _paths, name: f"current-{name}")
 
     reused = cli._try_reuse_completed_prepare(current_cfg, paths, store)
-    if old_schedule:
-        assert reused is False
-        current_entry = _migration_entry(cli, current_cfg, current=True)
-        assert cli._train2_data8_schedule_matches_config(current_cfg, [current_entry])
-    else:
-        assert reused is True
+    # Both historical populations are intentionally non-current now: their
+    # full-horizon screen state is retained only for forensic/DATA8 bridge use.
+    assert reused is False
     assert cli._data8_matrix_digest([entry]) == matrix_before
     assert new_study.next_training_epoch == expected_first_epoch
     assert store.stage("preflight")[0] is cli.StageState.COMPLETE
@@ -1410,11 +1404,10 @@ def test_authenticated_fixed_generation_plan_migrates_without_new_default_substi
     assert historical["generation"] == mdstats.LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION
     assert historical["historical_policy_digest"] == old_policy["policy_digest"]
     assert historical["candidate_authority_digest"] != current.candidate_authority_digest
-    migrated = mdstats.TargetSizeStudyPlan.from_dict(legacy)
-    assert migrated.policy.fidelity_epochs == (3, 10, 30)
-    assert migrated.outcome == mdstats.OUTCOME_AWAITING_COARSE_SCREEN
+    with pytest.raises(TrainingDataSerializationError):
+        mdstats.TargetSizeStudyPlan.from_dict(legacy)
     legacy["qualified_sizes"] = [512]
-    with pytest.raises(mdstats.TrainingDataSerializationError, match="digest mismatch"):
+    with pytest.raises(mdstats.TrainingDataSerializationError):
         mdstats.TargetSizeStudyPlan.from_dict(legacy)
     with pytest.raises(mdstats.TrainingDataSerializationError, match="digest mismatch"):
         mdstats.authenticated_fixed_predecessor_candidate_authority(legacy)

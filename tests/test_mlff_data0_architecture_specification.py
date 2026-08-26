@@ -24,7 +24,7 @@ def test_current_architecture_manual_describes_revision_106_authorities() -> Non
         "MVQUAL prefix qualification",
         "configurable target-size study",
         "0 -> n1 coarse -> n2 short -> n3 final screen",
-        "independent frozen TRAIN2 schedule horizon",
+        "independent fresh production horizon",
         "reconstructible execution cache",
     ):
         assert token in text
@@ -49,11 +49,18 @@ def test_current_dependency_graph_is_semantic_and_acyclic() -> None:
     assert graph["authority_model"] == "single_generation_current_dependency_architecture"
     assert graph["schema_version"] == 2
     node_ids = {node["id"] for node in graph["nodes"]}
-    assert {"COARSE_SCREEN", "SHORT_SCREEN", "FINAL_SCREEN", "FULL_TRAIN2_SCHEDULE"} <= node_ids
+    assert {
+        "COARSE_SCREEN",
+        "SHORT_SCREEN",
+        "FINAL_SCREEN",
+        "TARGET_SIZE_SCREEN_SCHEDULE",
+        "FULL_TRAIN2_SCHEDULE",
+    } <= node_ids
     assert not any(node.startswith("SIZE_STUDY_EPOCH") for node in node_ids)
     edge_pairs = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
     for screen in ("COARSE_SCREEN", "SHORT_SCREEN", "FINAL_SCREEN"):
-        assert ("FULL_TRAIN2_SCHEDULE", screen, "identity_requires") in edge_pairs
+        assert ("TARGET_SIZE_SCREEN_SCHEDULE", screen, "identity_requires") in edge_pairs
+        assert ("FULL_TRAIN2_SCHEDULE", screen, "identity_requires") not in edge_pairs
 
     adjacency = {node_id: set() for node_id in node_ids}
     for edge in graph["edges"]:

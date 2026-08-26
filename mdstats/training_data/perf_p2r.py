@@ -18,7 +18,7 @@ from ._common import (
 )
 
 PERF_P2R_PARAMETER_GRID_SCHEMA = "mdstats.perf-p2r-parameter-grid.flexible-fidelity.v3"
-PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.flexible-fidelity.v4"
+PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.decoupled-screen.v5"
 PERF_P2R_EXPOSURE_SCHEMA = "mdstats.perf-p2r-exposure.v2"
 
 
@@ -233,15 +233,25 @@ class PerfP2RStagePlan:
         return result
 
 
-def build_perf_p2r_stage_plan(study: Any) -> PerfP2RStagePlan:
-    """Translate one current target-size-v5 authority into an exact work boundary."""
+def build_perf_p2r_stage_plan(
+    study: Any, *, production_horizon_epochs: int | None = None,
+) -> PerfP2RStagePlan:
+    """Translate current screen authority and an independent production budget.
+
+    The screen has no access to the production budget.  It is required only
+    after a target size is terminally selected, where a new production plan is
+    deliberately assembled from epoch zero.
+    """
 
     outcome = str(study.outcome)
     policy = study.policy
     coarse_epoch, short_epoch, final_screen_epoch = (int(v) for v in policy.fidelity_epochs)
+    screening_horizon = int(
+        getattr(study, "screening_horizon_epochs", final_screen_epoch)
+    )
     common = dict(
         target_size_study_digest=str(study.content_digest),
-        schedule_horizon_epoch=int(study.training_horizon_epochs),
+        schedule_horizon_epoch=screening_horizon,
     )
     if outcome == "awaiting_coarse_screen":
         return PerfP2RStagePlan(
@@ -270,9 +280,20 @@ def build_perf_p2r_stage_plan(study: Any) -> PerfP2RStagePlan:
     if outcome == "selected":
         if study.selected_target_size is None:
             raise TrainingDataInputError("Selected target-size-v5 authority lacks a target size.")
+        if production_horizon_epochs is None:
+            raise TrainingDataInputError(
+                "PERF-P2R production planning requires the separately owned production horizon."
+            )
+        production_horizon = int(production_horizon_epochs)
+        if production_horizon <= screening_horizon:
+            raise TrainingDataInputError(
+                "Production horizon must remain strictly greater than the completed screen horizon."
+            )
         return PerfP2RStagePlan(
-            **common, stage="production", candidate_sizes=(int(study.selected_target_size),),
-            start_epoch=0, target_epoch=int(study.training_horizon_epochs), screening_optimizer_seeds=(),
+            target_size_study_digest=str(study.content_digest),
+            schedule_horizon_epoch=production_horizon,
+            stage="production", candidate_sizes=(int(study.selected_target_size),),
+            start_epoch=0, target_epoch=production_horizon, screening_optimizer_seeds=(),
             continuation_required=False, target_only_evaluation=False,
             replay_diagnostic_authorized=True, physical_qualification_authorized=True,
         )
