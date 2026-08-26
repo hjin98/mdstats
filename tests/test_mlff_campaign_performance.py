@@ -507,12 +507,12 @@ def test_completed_prepare_receipt_is_true_noop(
 
 @pytest.mark.parametrize(
     "historical_schema",
-    [campaign_cli._core._HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA, None],
+    [campaign_cli._core._OLDER_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA, None],
 )
 def test_historical_prepare_receipt_reuses_upstream_data_and_reissues_current_receipt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, historical_schema: str | None
 ) -> None:
-    """A v2 receipt's TOML identity is provenance, not a v3 reuse blocker."""
+    """A v2/schema-less receipt's TOML identity is provenance, not a v4 reuse blocker."""
     variant_id = "multihead_replay-n512-seed2"
     artifact = SimpleNamespace(tree_digest="t" * 64, bundle_digest="b" * 64)
     materialization = SimpleNamespace(
@@ -566,6 +566,9 @@ def test_historical_prepare_receipt_reuses_upstream_data_and_reissues_current_re
         def set_meta(self, key, value):
             pass
 
+        def set_stage(self, name, state, message):
+            pass
+
         def has_record(self, key):
             return key in {
                 "prepare_restart_receipt", "model_sweep_checkpoint", "source_catalog",
@@ -603,9 +606,15 @@ def test_historical_prepare_receipt_reuses_upstream_data_and_reissues_current_re
     monkeypatch.setattr(
         campaign_cli._core,
         "_ensure_target_size_study",
-        lambda store, *, cfg, repair2, mvqual2: refreshed.append((repair2, mvqual2)) or SimpleNamespace(),
+        lambda store, *, cfg, repair2, mvqual2: refreshed.append((repair2, mvqual2))
+        or SimpleNamespace(outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN),
     )
     monkeypatch.setattr(campaign_cli._core, "_validate_train2_data8_matrix", lambda cfg, store, study: None)
+    monkeypatch.setattr(
+        campaign_cli._core,
+        "_train2_data8_schedule_matches_config",
+        lambda cfg, entries, *, study: True,
+    )
     cfg = {
         "training": {"policy_generation": "train2", "modes": ["multihead_replay"], "seeds": [2]},
         "selection": {"sizes": [512]},

@@ -125,11 +125,14 @@ _LEGACY_CAMPAIGN_CLI_SCHEMA = "mdstats.mlff-campaign-cli.v1"
 FOUNDATION_CONFIG_CONTRACT_SCHEMA = "mdstats.mlff-foundation-config-contract.v2"
 CAMPAIGN_STATE_SCHEMA = "mdstats.mlff-campaign-state.v2"
 EXTERNAL_RECORD_POINTER_SCHEMA = "mdstats.mlff-campaign-external-record.v1"
-PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v3"
-# v2 and schema-less receipts authenticated the full TOML file as a preparation
-# input. They remain admissible only through the explicit migration check
-# below; new writes always use the dependency-scoped v3 receipt.
-_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v2"
+PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v4"
+# v3 is dependency-scoped upstream evidence from the pre-exact-boundary
+# screening generation.  v2/schema-less receipts additionally authenticated
+# the full TOML file as a preparation input.  All remain admissible only
+# through the explicit migration check below; new writes use v4 so downstream
+# TRAIN2 execution from the older screen generation cannot survive unnoticed.
+_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v3"
+_OLDER_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v2"
 # Scientific/materialization contract. Target-size v5 is a hard derived-state
 # cut: independently valid upstream authorities may be reused, but legacy
 # ladder/migration/rescue/convergence receipts cannot authenticate this contract.
@@ -9460,6 +9463,7 @@ def _try_reuse_completed_prepare(
         if receipt_schema not in {
             PREPARE_RESTART_RECEIPT_SCHEMA,
             _HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
+            _OLDER_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
             None,
         }:
             return False
@@ -9469,9 +9473,12 @@ def _try_reuse_completed_prepare(
 
         sources = store.get_record("source_catalog", mdstats.TrainingDataSourceCatalog)
         refresh_receipt = False
-        if receipt_schema == PREPARE_RESTART_RECEIPT_SCHEMA:
+        if receipt_schema in {
+            PREPARE_RESTART_RECEIPT_SCHEMA,
+            _HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
+        }:
             if receipt.get("preparation_config_digest") != _preparation_config_digest(cfg):
-                # A v3 receipt written before the positive projection repair
+                # A dependency-scoped receipt written before the positive projection repair
                 # has no safe way to classify a changed TOML.  Reuse it only
                 # when the complete bytes are unchanged, then re-authenticate
                 # and rewrite the receipt with the repaired semantic digest.
@@ -9525,12 +9532,18 @@ def _try_reuse_completed_prepare(
                 previous_study is not None
                 and previous_study.policy.policy_digest != study.policy.policy_digest
             )
-            if fidelity_changed:
+            if fidelity_changed or historical_generation_upgrade:
                 screening_phase = getattr(study, "outcome", None) != mdstats.OUTCOME_SELECTED
+                reason = (
+                    "TRAIN2 exact-boundary screening generation changed; historical screen "
+                    "execution/evidence was reset while reusable preparation was preserved"
+                    if historical_generation_upgrade and not fidelity_changed
+                    else "TRAIN2 screen fidelity boundaries changed; target-size evidence and dependent training/evaluation state were reset"
+                )
                 _invalidate_train2_downstream_state(
                     store,
                     paths,
-                    reason="TRAIN2 screen fidelity boundaries changed; target-size evidence and dependent training/evaluation state were reset",
+                    reason=reason,
                     preserve_preflight=screening_phase,
                 )
             if (
@@ -9608,7 +9621,7 @@ def _try_reuse_completed_prepare(
             bundles=[entry.bundle for entry in ordered_entries],
         )
         _ok(
-            "migrated validated historical prepare receipt to dependency-scoped v3; "
+            "migrated validated historical prepare receipt to exact-boundary dependency-scoped v4; "
             "upstream DATA2-DATA9A artifacts were reused"
         )
     _ok(
@@ -11138,6 +11151,15 @@ def _require_train2_preflight_authorization(
     study: Any,
 ) -> tuple[list[_Data8RuntimeEntry], str]:
     """Require a passed smoke bound to the exact active TRAIN2 DATA8 matrix."""
+
+    receipt = store.get_payload_optional("prepare_restart_receipt")
+    receipt_schema = None if not isinstance(receipt, Mapping) else receipt.get("schema")
+    if receipt_schema != PREPARE_RESTART_RECEIPT_SCHEMA:
+        raise CampaignCliError(
+            "TRAIN2 exact-boundary screening requires the current prepare restart generation. "
+            "Run `prepare` once to authenticate/reuse compatible upstream artifacts and invalidate "
+            "pre-exact-boundary screen execution state; rerun `preflight` only if prepare marks it stale."
+        )
 
     entries, phase = _validate_train2_data8_matrix(cfg, store, study)
     # Matrix membership alone is not enough: a DATA8 bundle carries the
@@ -14614,34 +14636,29 @@ def _is_target_size_scientific_execution_failure(
     )
 
 
-def _invalidate_overshot_target_size_screen(
+def _reset_target_size_screen_execution(
     *,
     campaign: Any,
     store: CampaignStore,
     paths: CampaignPaths,
     target_size_study: Any,
     policy_family: str,
-    run_id: str,
-    completed_epochs: int,
-    boundary: int,
+    forensic_namespace: str,
+    reason: str,
+    preserve_preflight: bool,
+    error_message: str,
 ) -> None:
-    """Invalidate unauthorized target-screen progress and restore coarse authority.
-
-    A checkpoint beyond the active rung can never be evidence for that rung,
-    even if it contains an otherwise authentic continuation state.  Preserve
-    compact forensic state, retain DATA7/DATA8 scientific inputs, and require
-    a fresh screen preflight before rebuilding the coarse run.
-    """
+    """Invalidate current target-screen execution/evidence and restore coarse authority."""
 
     import mdstats
 
     if policy_family != "train2" or target_size_study.outcome == mdstats.OUTCOME_SELECTED:
-        raise CampaignCliError("Overshoot recovery was requested outside target-size screening.")
+        raise CampaignCliError("Target-size screen reset was requested outside screening.")
     previous_payload = store.get_payload_optional("target_size_study")
     if previous_payload is not None:
         previous_digest = str(store.record_digest("target_size_study"))
         store.put_record(
-            f"historical:target-size-overshoot:{previous_digest}", previous_payload
+            f"historical:{forensic_namespace}:{previous_digest}", previous_payload
         )
     for campaign_run in campaign.runs:
         _archive_obsolete_training_runtime(
@@ -14660,15 +14677,41 @@ def _invalidate_overshot_target_size_screen(
     _invalidate_train2_downstream_state(
         store,
         paths,
+        reason=reason,
+        preserve_preflight=preserve_preflight,
+    )
+    raise CampaignCliError(error_message)
+
+
+def _invalidate_overshot_target_size_screen(
+    *,
+    campaign: Any,
+    store: CampaignStore,
+    paths: CampaignPaths,
+    target_size_study: Any,
+    policy_family: str,
+    run_id: str,
+    completed_epochs: int,
+    boundary: int,
+) -> None:
+    """Invalidate unauthorized target-screen progress and restore coarse authority."""
+
+    _reset_target_size_screen_execution(
+        campaign=campaign,
+        store=store,
+        paths=paths,
+        target_size_study=target_size_study,
+        policy_family=policy_family,
+        forensic_namespace="target-size-overshoot",
         reason=(
             f"target-size run {run_id} reached epoch {completed_epochs} beyond active "
             f"boundary {boundary}; screening evidence was invalidated and restarted at coarse"
         ),
         preserve_preflight=False,
-    )
-    raise CampaignCliError(
-        f"Target-size screening overshot active boundary {boundary} in {run_id}; "
-        "unauthorized evidence was invalidated. Run `prepare`, `preflight`, then `select-target-size`."
+        error_message=(
+            f"Target-size screening overshot active boundary {boundary} in {run_id}; "
+            "unauthorized evidence was invalidated. Run `prepare`, `preflight`, then `select-target-size`."
+        ),
     )
 
 
@@ -14906,6 +14949,42 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             (checkpoint_directory / marker).exists() for marker in runtime_markers
         )
         if not has_runtime_artifact:
+            if (
+                previous is not None
+                and previous.state is mdstats.TrainingRunState.INTERRUPTED
+                and previous.checkpoint_catalog is not None
+                and target_size_study is not None
+                and target_size_study.outcome != mdstats.OUTCOME_SELECTED
+            ):
+                # The durable execution record says this interrupted screen had
+                # a resumable checkpoint, while the complete runtime namespace
+                # now contains neither raw checkpoint bytes nor a TRAIN2
+                # continuation marker.  Continuing with the stale record reaches
+                # CandidateCheckpointCatalog's intentional non-empty invariant;
+                # silently starting the survivor from scratch would be worse at
+                # later rungs because it would break checkpoint/optimizer/RNG
+                # ancestry.  Reset the screen authority to coarse and preserve
+                # current preflight, because the DATA8 matrix itself remains
+                # authenticated and no stale runtime bytes can be discovered.
+                _reset_target_size_screen_execution(
+                    campaign=campaign,
+                    store=store,
+                    paths=paths,
+                    target_size_study=target_size_study,
+                    policy_family=policy_family,
+                    forensic_namespace="target-size-missing-continuation",
+                    reason=(
+                        f"interrupted target-size run {run_id} recorded checkpoint evidence but "
+                        "its runtime checkpoint/continuation bytes are absent; screen execution "
+                        "was invalidated and restarted at coarse"
+                    ),
+                    preserve_preflight=True,
+                    error_message=(
+                        f"Target-size continuation bytes are missing for interrupted run {run_id}. "
+                        "The stale screen execution was invalidated and coarse authority restored; "
+                        "rerun `select-target-size`."
+                    ),
+                )
             return None
         summary_path = checkpoint_directory / TRAIN2_RUNTIME_SUMMARY_FILENAME
         companion_path = checkpoint_directory / TRAIN2_RUNTIME_COMPANION_FILENAME

@@ -446,6 +446,10 @@ def test_preflight_authorization_rejects_real_stale_screen_schedule_before_train
         "preflight_smoke",
         {"passed": True, "data8_matrix_digest": cli._data8_matrix_digest(entries)},
     )
+    store.put_record(
+        "prepare_restart_receipt",
+        {"schema": cli.PREPARE_RESTART_RECEIPT_SCHEMA},
+    )
     cli._mark_stage(store, paths, "preflight", cli.StageState.COMPLETE, "stale receipt fixture")
 
     with pytest.raises(cli.CampaignCliError, match="incompatible TRAIN2 schedule"):

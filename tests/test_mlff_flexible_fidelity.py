@@ -1290,7 +1290,7 @@ def test_supplemental_historical_upgrade_d1_d2_reuses_data_matrix_and_reopens_ex
         "relative_directory": ".mdstats/model-sweep",
     }
     receipt = {
-        "schema": cli._HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
+        "schema": cli._OLDER_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
         "contract": {"contract": "current"},
         "config_sha256": "historical-config",
         "input_identities": [],
@@ -1333,6 +1333,87 @@ def test_supplemental_historical_upgrade_d1_d2_reuses_data_matrix_and_reopens_ex
     assert "historical:train2-invalidation:training_campaign:" in "\n".join(store.records)
     assert "training_campaign" not in store.records
     assert store.payloads["preflight_smoke"]["data8_matrix_digest"] == matrix_before
+
+
+def test_exact_boundary_receipt_upgrade_invalidates_legacy_screen_execution_even_when_policy_matches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """v3 preparation bytes remain reusable, but their screen execution generation does not."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    cfg = _migration_cfg((1, 3, 10), 30)
+    study = mdstats.build_target_size_study(
+        _Repair(),
+        _Qual(),
+        policy=mdstats.TargetSizeStudyPolicy(
+            fidelity_epochs=(1, 3, 10), screening_optimizer_seeds=(1,)
+        ),
+    )
+    entry = _migration_entry(cli, cfg, current=True)
+    paths = SimpleNamespace(
+        config=tmp_path / "campaign.toml",
+        manifest=tmp_path / "manifest.json",
+        config_dir=tmp_path,
+    )
+    paths.config.write_text("[campaign]\nprofile = 'lta'\n", encoding="utf-8")
+    paths.manifest.write_text("{}\n", encoding="utf-8")
+    pointer = {
+        "checkpoint_digest": "c" * 64,
+        "plan_digest": "q" * 64,
+        "status": "complete",
+        "completed_frames": 1,
+        "requested_frames": 1,
+        "relative_directory": ".mdstats/model-sweep",
+    }
+    receipt = {
+        "schema": cli._HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
+        "contract": {"contract": "current"},
+        "config_sha256": "historical-config",
+        "preparation_config_digest": "preparation-current",
+        "input_identities": [],
+        "record_digests": {
+            key: digest({"record": key}) for key in cli._PREPARE_REUSE_RECORD_KEYS
+        },
+        "model_sweep": pointer,
+        "data8": [{
+            "variant_id": entry.variant_id,
+            "bundle_digest": entry.bundle.content_digest,
+            "plan_digest": entry.materialization.checkpoint.plan.content_digest,
+            "tree_digest": entry.materialization.checkpoint.data8_artifact.tree_digest,
+        }],
+    }
+    smoke = {
+        "passed": True,
+        "data8_matrix_digest": cli._data8_matrix_digest([entry]),
+    }
+    store = _MigrationStore(
+        receipt=receipt, previous_study=study, entry=entry, smoke=smoke
+    )
+    monkeypatch.setattr(cli, "_prepare_contract_signature", lambda: {"contract": "current"})
+    monkeypatch.setattr(cli, "_preparation_config_digest", lambda _cfg: "preparation-current")
+    monkeypatch.setattr(cli, "_prepare_input_identities", lambda *_args: [])
+    monkeypatch.setattr(cli, "_current_data8_entries", lambda _store: [entry])
+    monkeypatch.setattr(
+        cli,
+        "_target_size_materialization_variants",
+        lambda _cfg, *, study: (SimpleNamespace(variant_id=entry.variant_id),),
+    )
+    monkeypatch.setattr(cli, "_ensure_target_size_study", lambda *_args, **_kwargs: study)
+    monkeypatch.setattr(cli, "_validate_train2_data8_matrix", lambda *_args: None)
+    monkeypatch.setattr(cli, "_train2_data8_schedule_matches_config", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(cli, "_reconcile_reused_preflight_identity", lambda *_args: True)
+    monkeypatch.setattr(cli, "_stage_config_digest", lambda _paths, name: f"current-{name}")
+
+    assert cli._try_reuse_completed_prepare(cfg, paths, store) is True
+    assert "execution:old" not in store.records
+    assert "training_campaign" not in store.records
+    assert any(
+        key.startswith("historical:train2-invalidation:execution:old:")
+        for key in store.records
+    )
+    assert store.stage("preflight")[0] is cli.StageState.COMPLETE
+    assert store.payloads["prepare_restart_receipt"]["schema"] == cli.PREPARE_RESTART_RECEIPT_SCHEMA
 
 
 def test_supplemental_case_d3_preparation_change_rejects_completed_reuse_before_data_access(

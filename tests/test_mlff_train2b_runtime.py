@@ -486,8 +486,9 @@ def test_train2b_source_qualified_mace_loop_patch_installs(monkeypatch: pytest.M
         mace_tools.train = original
         runtime_mod._ACTIVE_RUNTIME = None
 
-def test_train2b_patched_mace_loop_runs_exact_10_epoch_pause_without_patience_stop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("execution_epoch_limit", [1, 10])
+def test_train2b_patched_mace_loop_runs_exact_boundary_pause_without_patience_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, execution_epoch_limit: int
 ) -> None:
     import mace.tools as mace_tools
 
@@ -496,7 +497,7 @@ def test_train2b_patched_mace_loop_runs_exact_10_epoch_pause_without_patience_st
     checkpoint_dir.mkdir()
     metrics = tmp_path / "metrics.jsonl"
     metrics.write_text("", encoding="utf-8")
-    plan = _plan(limit=10)
+    plan = _plan(limit=execution_epoch_limit)
     monkeypatch.setenv(mdstats.TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE, json.dumps(plan.to_dict()))
 
     class Handler:
@@ -573,22 +574,23 @@ def test_train2b_patched_mace_loop_runs_exact_10_epoch_pause_without_patience_st
             train_sampler=None,
             rank=0,
         )
-        assert epochs_seen == list(range(10))
+        assert epochs_seen == list(range(execution_epoch_limit))
         assert scheduler.calls == 0
         summary = mdstats.load_train2_runtime_summary(checkpoint_dir)
-        assert summary.completed_epochs == 10
-        assert summary.completed_updates == 20
+        assert summary.completed_epochs == execution_epoch_limit
+        assert summary.completed_updates == execution_epoch_limit * 2
         assert summary.planned_updates == 60
-        assert summary.execution_epoch_limit == 10
+        assert summary.execution_epoch_limit == execution_epoch_limit
         assert not summary.complete_budget
         history = [json.loads(line) for line in (checkpoint_dir / "train2_history.jsonl").read_text().splitlines()]
-        assert len(history) == 10
-        assert history[-1]["phase"] == plan.learning_rate_policy.phase(19 / 59)
+        assert len(history) == execution_epoch_limit
+        final_update_index = execution_epoch_limit * 2 - 1
+        assert history[-1]["phase"] == plan.learning_rate_policy.phase(final_update_index / 59)
         persistence = [
             json.loads(line)
             for line in (checkpoint_dir / "train2_persistence.jsonl").read_text().splitlines()
         ]
-        assert len(persistence) == 10
+        assert len(persistence) == execution_epoch_limit
         assert persistence[-1]["schema"] == "mdstats.train2-persistence-telemetry.v1"
         assert persistence[-1]["hash_transport"] == "python-buffer-protocol-chunked-v1"
         assert persistence[-1]["total_persistence_seconds"] >= 0.0

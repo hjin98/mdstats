@@ -1473,12 +1473,32 @@ def execute_training_run(
     for directory in (model_dir, log_dir, result_dir, checkpoints):
         directory.mkdir(parents=True, exist_ok=True)
 
+    def _candidate_checkpoint_paths() -> tuple[Path, ...]:
+        """Return the current raw checkpoint population without constructing a catalog.
+
+        ``CandidateCheckpointCatalog`` is intentionally non-empty.  Restart and
+        interruption control flow must therefore distinguish "no durable
+        checkpoint yet" from a corrupt/non-empty catalog before calling the
+        inventory owner.
+        """
+
+        return tuple(
+            path
+            for path in sorted(checkpoints.rglob(policy.checkpoint_glob))
+            if path.is_file()
+        )
+
     if prior_record is not None:
         if prior_record.run_plan_digest != run_plan.content_digest:
             raise TrainingDataInputError("Prior execution record belongs to a different run.")
         if prior_record.execution_policy_digest != policy.policy_digest:
             raise TrainingDataInputError("Prior execution record uses a different policy.")
         if prior_record.state is TrainingRunState.SUCCEEDED:
+            if not _candidate_checkpoint_paths():
+                raise TrainingDataInputError(
+                    "Successful execution recorded checkpoint evidence, but the raw checkpoint "
+                    "bytes required for continuation are missing."
+                )
             catalog = inventory_mace_checkpoints(run_plan, checkpoints, pattern=policy.checkpoint_glob)
             if catalog.content_digest != prior_record.checkpoint_catalog.content_digest:
                 raise TrainingDataInputError("Successful execution checkpoint bytes changed after recording.")
@@ -1488,6 +1508,11 @@ def execute_training_run(
             prior_record.state is TrainingRunState.INTERRUPTED
             and prior_record.checkpoint_catalog is not None
         ):
+            if not _candidate_checkpoint_paths():
+                raise TrainingDataInputError(
+                    "Interrupted execution recorded resumable checkpoint evidence, but the "
+                    "checkpoint bytes are now missing before continuation."
+                )
             catalog = inventory_mace_checkpoints(
                 run_plan, checkpoints, pattern=policy.checkpoint_glob
             )
@@ -1791,7 +1816,7 @@ def execute_training_run(
         )
         if state is not TrainingRunState.SUCCEEDED:
             interrupted_catalog = None
-            if state is TrainingRunState.INTERRUPTED:
+            if state is TrainingRunState.INTERRUPTED and _candidate_checkpoint_paths():
                 interrupted_catalog = inventory_mace_checkpoints(
                     run_plan, checkpoints, pattern=policy.checkpoint_glob
                 )
@@ -1813,9 +1838,11 @@ def execute_training_run(
             ):
                 return interim
         if state is TrainingRunState.SUCCEEDED:
+            if policy.require_checkpoint_on_success and not _candidate_checkpoint_paths():
+                raise TrainingDataInputError(
+                    "Training command succeeded but produced no candidate checkpoint."
+                )
             catalog = inventory_mace_checkpoints(run_plan, checkpoints, pattern=policy.checkpoint_glob)
-            if policy.require_checkpoint_on_success and not catalog.checkpoints:
-                raise TrainingDataInputError("Training command succeeded but produced no candidate checkpoint.")
             record = TrainingRunExecutionRecord(
                 run_plan_digest=run_plan.content_digest,
                 mace_job_artifact_digest=job.content_digest,
