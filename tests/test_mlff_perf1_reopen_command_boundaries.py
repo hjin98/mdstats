@@ -124,6 +124,7 @@ def test_deploy_command_consumer_uses_real_inference_execution_plan(tmp_path, mo
         ),
         store=store, run=run, job=job, bundle=object(), root=tmp_path,
         execution=object(), target_size_study=object(), repair2=object(), role_freeze=object(),
+        target_materialization_resolver=object(),
         policy=policy, model_dtype="float64", local_wrappers={
             "mdstats-mace-train": tmp_path / "train", "mdstats-mace-select-head": tmp_path / "head"
         },

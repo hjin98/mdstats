@@ -304,6 +304,7 @@ def build_eval2_size_study_target_role(
     *,
     label_domain_id: str,
     maximum_training_size: int,
+    repair2_label_domain_id: str | None = None,
 ) -> Eval2TargetRole:
     """Freeze one leakage-safe development-complement role for target-size v5.
 
@@ -313,11 +314,16 @@ def build_eval2_size_study_target_role(
     """
 
     domain = role_freeze.domain(label_domain_id)
+    repair_domain_id = (
+        label_domain_id
+        if repair2_label_domain_id is None
+        else str(repair2_label_domain_id)
+    )
     excluded = tuple(
         materialize_candidate_prefix(
             target_size_study,
             repair2=repair2,
-            label_domain_id=label_domain_id,
+            label_domain_id=repair_domain_id,
             target_size=int(maximum_training_size),
         )
     )
@@ -352,6 +358,7 @@ def build_eval2_coarse_size_study_target_role(
     label_domain_id: str,
     maximum_training_size: int,
     maximum_configurations: int = 256,
+    repair2_label_domain_id: str | None = None,
 ) -> Eval2TargetRole:
     """Legacy/pre-v5 bounded target-only monitor helper.
 
@@ -374,6 +381,7 @@ def build_eval2_coarse_size_study_target_role(
         target_size_study,
         label_domain_id=label_domain_id,
         maximum_training_size=maximum_training_size,
+        repair2_label_domain_id=repair2_label_domain_id,
     )
     if len(full.evaluation_frame_uids) <= limit:
         selected_uids = full.evaluation_frame_uids

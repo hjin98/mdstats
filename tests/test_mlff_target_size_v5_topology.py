@@ -113,9 +113,106 @@ def test_held_out_cv_runtime_is_rejected_before_target_size_freeze(monkeypatch) 
             target_size_study=study,
             repair2=object(),
             role_freeze=object(),
+            target_materialization_resolver=object(),
             bundle=object(),
             run=run,
         )
+
+
+def test_eval2_resolves_source_label_to_final_repair2_training_domain() -> None:
+    source_label = "label-domain-source"
+    repair2_label = "label-domain-source::final_development:final:authority"
+    coverage = SimpleNamespace(
+        label_domain_id=repair2_label,
+        source_label_domain_id=source_label,
+        training_domain_kind="final_development",
+        training_domain_digest=_direct_digest("training-domain"),
+        content_digest=_direct_digest("coverage-domain"),
+    )
+    coverage_reference = SimpleNamespace(domains=(coverage,))
+    repair_domain = SimpleNamespace(
+        label_domain_id=repair2_label,
+        reference_domain_digest=coverage.content_digest,
+    )
+
+    class Repair:
+        domains = (repair_domain,)
+        content_digest = _direct_digest("repair-authority")
+
+        @staticmethod
+        def domain(label_domain_id: str):
+            if label_domain_id != repair2_label:
+                raise KeyError(label_domain_id)
+            return repair_domain
+
+    resolver = campaign_core._TargetSizeMaterializationResolver(
+        coverage_reference,
+        SimpleNamespace(qualified_sizes=(128,), outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN),
+        Repair(),
+    )
+    assert resolver.repair2_label_domain_id_for_source_label(source_label) == repair2_label
+
+
+def test_eval2_repair2_namespace_resolution_fails_closed_on_missing_domain() -> None:
+    source_label = "label-domain-source"
+    repair2_label = "label-domain-source::final_development:final:authority"
+    coverage = SimpleNamespace(
+        label_domain_id=repair2_label,
+        source_label_domain_id=source_label,
+        training_domain_kind="final_development",
+        training_domain_digest=_direct_digest("missing-training-domain"),
+        content_digest=_direct_digest("missing-coverage-domain"),
+    )
+    resolver = campaign_core._TargetSizeMaterializationResolver(
+        SimpleNamespace(domains=(coverage,)),
+        SimpleNamespace(qualified_sizes=(128,), outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN),
+        SimpleNamespace(
+            domains=(),
+            content_digest=_direct_digest("missing-repair-authority"),
+            domain=lambda label_domain_id: (_ for _ in ()).throw(KeyError(label_domain_id)),
+        ),
+    )
+    with pytest.raises(campaign_core.CampaignCliError, match="final-development namespace mismatch"):
+        resolver.repair2_label_domain_id_for_source_label(source_label)
+
+
+def test_eval2_rejects_catalog_fold_membership_disagreement() -> None:
+    source_label = "label-domain-source"
+    frozen = SimpleNamespace(size_development_frame_uids=(_direct_digest("frame-a"),))
+    role_freeze = SimpleNamespace(domain=lambda label: frozen if label == source_label else None)
+    bundle = SimpleNamespace(
+        mlcv_role_catalog=SimpleNamespace(label_domain_id=source_label),
+        fold_evaluation_artifacts=(
+            SimpleNamespace(frame_uids=(_direct_digest("frame-b"),)),
+        ),
+    )
+    with pytest.raises(campaign_core.CampaignCliError, match="fold-evaluation artifacts disagree"):
+        campaign_core._eval2_label_domain_id(bundle, role_freeze)
+
+
+def test_eval2_resolver_loader_rejects_cross_generation_authority_mismatch() -> None:
+    coverage_digest = _direct_digest("coverage-authority")
+    repair_digest = _direct_digest("repair-authority")
+    coverage = SimpleNamespace(content_digest=coverage_digest, domains=())
+
+    class Store:
+        @staticmethod
+        def get_record(key, _record_type):
+            assert key == "target_coverage_reference"
+            return coverage
+
+    repair = SimpleNamespace(
+        content_digest=repair_digest,
+        target_coverage_reference_digest=_direct_digest("other-coverage"),
+    )
+    study = SimpleNamespace(repair2_authority_digest=repair_digest)
+    with pytest.raises(campaign_core.CampaignCliError, match="different TARGET-DATA2B coverage"):
+        campaign_core._load_target_size_materialization_resolver(Store(), study, repair)
+
+    repair.target_coverage_reference_digest = coverage_digest
+    study.repair2_authority_digest = _direct_digest("other-repair")
+    with pytest.raises(campaign_core.CampaignCliError, match="different REPAIR2 authority"):
+        campaign_core._load_target_size_materialization_resolver(Store(), study, repair)
 
 
 def test_screening_materialization_is_stable_while_training_population_halves(monkeypatch) -> None:
@@ -403,6 +500,7 @@ def test_real_target_size_eval_path_converts_authenticated_train2_failure_popula
         cfg={}, paths=paths, store=_DirectStore(records),
         campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
         target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
+        target_materialization_resolver=object(),
         baseline_model=None, model_dtype="float64", local_wrappers={},
     )
     assert len(outcomes) == len(runs)
@@ -418,6 +516,7 @@ def test_real_target_size_eval_path_converts_authenticated_train2_failure_popula
             cfg={}, paths=paths, store=_DirectStore(records),
             campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
             target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
+            target_materialization_resolver=object(),
             baseline_model=None, model_dtype="float64", local_wrappers={},
         )
 
@@ -507,6 +606,7 @@ def test_real_target_size_eval_path_converts_eval2_nonfinite_signal(tmp_path: Pa
         cfg={}, paths=paths, store=_DirectStore(records),
         campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
         target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
+        target_materialization_resolver=object(),
         baseline_model=None, model_dtype="float64", local_wrappers={},
     )
     outcome = next(item for item in outcomes if item.key == eval_key)
@@ -533,6 +633,7 @@ def test_real_target_size_eval_path_converts_eval2_nonfinite_signal(tmp_path: Pa
             cfg={}, paths=paths, store=_DirectStore(records),
             campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
             target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
+            target_materialization_resolver=object(),
             baseline_model=None, model_dtype="float64", local_wrappers={},
         )
 

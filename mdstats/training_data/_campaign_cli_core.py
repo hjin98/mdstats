@@ -4537,6 +4537,38 @@ class _TargetSizeMaterializationResolver:
     def cached_prefix_count(self) -> int:
         return len(self._prefixes)
 
+    def repair2_label_domain_id_for_source_label(self, source_label_domain_id: str) -> str:
+        """Resolve one DATA2A source label to its final-development REPAIR2 authority."""
+
+        source_label = str(source_label_domain_id)
+        coverage = self._final_by_source_label.get(source_label)
+        if coverage is None:
+            raise CampaignCliError(
+                "Target-size coverage authority has no unique final-development domain for "
+                f"source label {source_label!r}."
+            )
+        repair2_label = str(coverage.label_domain_id)
+        try:
+            repair_domain = self._repair2.domain(repair2_label)
+        except KeyError:
+            available = tuple(
+                str(domain.label_domain_id) for domain in getattr(self._repair2, "domains", ())
+            )
+            raise CampaignCliError(
+                "EVAL2 final-development namespace mismatch: authenticated TARGET-DATA2B "
+                f"maps source label {source_label!r} to REPAIR2 domain {repair2_label!r}, "
+                "but that domain is absent from the current REPAIR2 authority "
+                f"{getattr(self._repair2, 'content_digest', '<unknown>')}. "
+                f"available_domains={list(available[:6])}."
+            ) from None
+        if str(repair_domain.reference_domain_digest) != str(coverage.content_digest):
+            raise CampaignCliError(
+                "EVAL2 final-development namespace mismatch: REPAIR2/reference lineage "
+                f"disagrees for source label {source_label!r} and authority domain "
+                f"{repair2_label!r}."
+            )
+        return repair2_label
+
     def _coverage_for_domain(self, feature_domain: Any) -> Any:
         try:
             coverage = self._by_training_digest[feature_domain.content_digest]
@@ -4618,6 +4650,31 @@ class _TargetSizeMaterializationResolver:
             for domain in feature_domains
             if domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
         }
+
+
+def _load_target_size_materialization_resolver(
+    store: CampaignStore, target_size_study: Any, repair2: Any
+) -> _TargetSizeMaterializationResolver:
+    """Restore the exact coverage namespace bound into the active REPAIR2 authority."""
+
+    import mdstats
+
+    coverage_reference = store.get_record(
+        "target_coverage_reference", mdstats.TargetCoverageReference
+    )
+    if str(repair2.target_coverage_reference_digest) != str(coverage_reference.content_digest):
+        raise CampaignCliError(
+            "Target-size REPAIR2 authority is bound to a different TARGET-DATA2B coverage "
+            "reference; rerun `prepare` before EVAL2/verification."
+        )
+    if str(target_size_study.repair2_authority_digest) != str(repair2.content_digest):
+        raise CampaignCliError(
+            "Target-size study is bound to a different REPAIR2 authority; rerun `prepare`."
+        )
+    return _TargetSizeMaterializationResolver(
+        coverage_reference, target_size_study, repair2
+    )
+
 
 def _ensure_target_coverage_reference(
     store: CampaignStore,
@@ -19231,11 +19288,32 @@ def _train2_policy_set_digest(protocol: Any) -> str:
 
 def _eval2_label_domain_id(bundle: Any, role_freeze: Any) -> str:
     catalog = getattr(bundle, "mlcv_role_catalog", None)
-    if catalog is not None and str(getattr(catalog, "label_domain_id", "")).strip():
-        return str(catalog.label_domain_id)
+    catalog_label = (
+        ""
+        if catalog is None
+        else str(getattr(catalog, "label_domain_id", "")).strip()
+    )
+    observed = {
+        uid
+        for artifact in getattr(bundle, "fold_evaluation_artifacts", ())
+        for uid in artifact.frame_uids
+    }
+    if catalog_label:
+        try:
+            frozen = role_freeze.domain(catalog_label)
+        except KeyError:
+            raise CampaignCliError(
+                "EVAL2 DATA8 role catalog references unknown TARGET-DATA2A source label "
+                f"{catalog_label!r}."
+            ) from None
+        if observed and observed != set(frozen.size_development_frame_uids):
+            raise CampaignCliError(
+                "EVAL2 DATA8 role catalog and fold-evaluation artifacts disagree on the "
+                f"TARGET-DATA2A source label {catalog_label!r}."
+            )
+        return catalog_label
     # Compatibility fallback: CV evaluation artifacts partition the entire
     # TARGET-DATA2A development domain exactly once.
-    observed = {uid for artifact in bundle.fold_evaluation_artifacts for uid in artifact.frame_uids}
     matches = [
         domain.label_domain_id
         for domain in role_freeze.domains
@@ -19252,6 +19330,7 @@ def _eval2_target_role_for_run(
     target_size_study: Any,
     repair2: Any,
     role_freeze: Any,
+    target_materialization_resolver: _TargetSizeMaterializationResolver,
     bundle: Any,
     run: Any,
     coarse: bool = False,
@@ -19269,6 +19348,11 @@ def _eval2_target_role_for_run(
             role_freeze, label_domain_id=label_domain_id, fold_index=int(run.fold_index)
         )
     else:
+        repair2_label_domain_id = (
+            target_materialization_resolver.repair2_label_domain_id_for_source_label(
+                label_domain_id
+            )
+        )
         maximum_training_size = (
             int(target_size_study.selected_target_size)
             if target_size_study.outcome == mdstats.OUTCOME_SELECTED
@@ -19278,6 +19362,7 @@ def _eval2_target_role_for_run(
             role_freeze, repair2, target_size_study,
             label_domain_id=label_domain_id,
             maximum_training_size=maximum_training_size,
+            repair2_label_domain_id=repair2_label_domain_id,
         )
     key = f"eval2_target_role:{role.content_digest}"
     existing = store.get_record_optional(key, mdstats.Eval2TargetRole)
@@ -19715,6 +19800,7 @@ def _eval2_run_record_for_completed_train2_run(
     target_size_study: Any,
     repair2: Any,
     role_freeze: Any,
+    target_materialization_resolver: _TargetSizeMaterializationResolver,
     true_replay_resolution: Any | None,
     baseline_model: Path | None,
     model_dtype: str,
@@ -19724,6 +19810,7 @@ def _eval2_run_record_for_completed_train2_run(
 
     target_role = _eval2_target_role_for_run(
         store=store, target_size_study=target_size_study, repair2=repair2, role_freeze=role_freeze,
+        target_materialization_resolver=target_materialization_resolver,
         bundle=bundle, run=run,
     )
     target_artifact, target_path = _eval2_target_artifact_for_run(
@@ -19818,6 +19905,7 @@ def _eval2_target_size_endpoint_evidence(
     target_size_study: Any,
     repair2: Any,
     role_freeze: Any,
+    target_materialization_resolver: _TargetSizeMaterializationResolver,
     baseline_model: Path | None,
     model_dtype: str,
     local_wrappers: Mapping[str, Path],
@@ -19959,7 +20047,9 @@ def _eval2_target_size_endpoint_evidence(
             )
         target_role = _eval2_target_role_for_run(
             store=store, target_size_study=target_size_study, repair2=repair2,
-            role_freeze=role_freeze, bundle=bundle, run=run,
+            role_freeze=role_freeze,
+            target_materialization_resolver=target_materialization_resolver,
+            bundle=bundle, run=run,
         )
         target_artifact, target_path = _eval2_target_artifact_for_run(
             paths=paths, store=store, bundle=bundle, job=job, root=root, role=target_role
@@ -20080,6 +20170,9 @@ def _command_evaluate_train2(
         "target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2
     )
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
+    target_materialization_resolver = _load_target_size_materialization_resolver(
+        store, study, repair2
+    )
     baseline_model = _path_cfg(cfg, paths, "foundation_model")
     local_wrappers = _ensure_local_wrappers(paths)
 
@@ -20096,7 +20189,9 @@ def _command_evaluate_train2(
         outcomes = _eval2_target_size_endpoint_evidence(
             cfg=cfg, paths=paths, store=store, campaign=campaign, jobs=jobs,
             target_size_study=study, repair2=repair2,
-            role_freeze=role_freeze, baseline_model=baseline_model, model_dtype=model_dtype,
+            role_freeze=role_freeze,
+            target_materialization_resolver=target_materialization_resolver,
+            baseline_model=baseline_model, model_dtype=model_dtype,
             local_wrappers=local_wrappers,
         )
         if study.next_training_stage == mdstats.STAGE_COARSE:
@@ -20208,6 +20303,7 @@ def _command_evaluate_train2(
             cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
             execution=execution_records[run.content_digest], target_size_study=study,
             repair2=repair2, role_freeze=role_freeze,
+            target_materialization_resolver=target_materialization_resolver,
             true_replay_resolution=true_replay_resolution, baseline_model=baseline_model,
             model_dtype=model_dtype, local_wrappers=local_wrappers,
         )
@@ -23074,6 +23170,7 @@ def _deploy_verify_one_train2_run(
     target_size_study: Any,
     repair2: Any,
     role_freeze: Any,
+    target_materialization_resolver: _TargetSizeMaterializationResolver,
     policy: Any,
     model_dtype: str,
     local_wrappers: Mapping[str, Path],
@@ -23088,6 +23185,7 @@ def _deploy_verify_one_train2_run(
         target_size_study=target_size_study,
         repair2=repair2,
         role_freeze=role_freeze,
+        target_materialization_resolver=target_materialization_resolver,
         bundle=bundle,
         run=run,
     )
@@ -23477,11 +23575,15 @@ def _pes_verify_common_target(
     bundle, job, root = jobs[run.mace_job_artifact_digest]
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
     repair2 = store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
+    target_materialization_resolver = _load_target_size_materialization_resolver(
+        store, target_size_study, repair2
+    )
     role = _eval2_target_role_for_run(
         store=store,
         target_size_study=target_size_study,
         repair2=repair2,
         role_freeze=role_freeze,
+        target_materialization_resolver=target_materialization_resolver,
         bundle=bundle,
         run=run,
     )
@@ -24952,6 +25054,9 @@ def _command_verify_train2_deploy(
     executions = _available_successful_executions(cfg, paths, store, campaign, jobs)
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
     repair2 = store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
+    target_materialization_resolver = _load_target_size_materialization_resolver(
+        store, target_size_study, repair2
+    )
     policy = _deploy_verify_policy(cfg, model_dtype=model_dtype)
     local_wrappers = _ensure_local_wrappers(paths)
     _mark_stage(store, paths, "verify", StageState.RUNNING, "running DEPLOY-VERIFY1 deployment parity")
@@ -24974,6 +25079,7 @@ def _command_verify_train2_deploy(
                 target_size_study=target_size_study,
                 repair2=repair2,
                 role_freeze=role_freeze,
+                target_materialization_resolver=target_materialization_resolver,
                 policy=policy,
                 model_dtype=model_dtype,
                 local_wrappers=local_wrappers,
