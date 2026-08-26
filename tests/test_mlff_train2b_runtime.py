@@ -219,6 +219,50 @@ def test_train2b_restart_rejects_changed_lr_authority(tmp_path: Path) -> None:
         )
 
 
+def test_train2b_restart_rejects_changed_full_horizon(tmp_path: Path) -> None:
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    handler = SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir)))
+    loader = [object()]
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4)
+    rt = runtime_mod._Train2Runtime(
+        _plan(limit=10), model=model, optimizer=optimizer, lr_scheduler=_Scheduler(), ema=ExponentialMovingAverage(model.parameters(), decay=0.9),
+        train_loader=loader, current_epoch=0, checkpoint_handler=handler,
+        logger_path=str(metrics), rank=0,
+    )
+    for epoch in range(10):
+        _step(model, optimizer, rt.ema)
+        _raw_checkpoint(checkpoint_dir, epoch)
+        rt.persist_epoch(epoch=epoch)
+
+    changed_horizon = mdstats.Train2RuntimePlan(
+        training_protocol_digest=_h("a"),
+        optimizer_policy_digest=_h("b"),
+        budget_policy=mdstats.TrainingBudgetPolicy(planned_epochs=40),
+        learning_rate_policy=mdstats.LearningRateSchedulePolicy(base_learning_rate=1.0e-4),
+        structures_per_epoch=17,
+        execution_epoch_limit=40,
+    )
+    resumed_model = torch.nn.Linear(1, 1)
+    resumed_optimizer = torch.optim.SGD(resumed_model.parameters(), lr=1.0e-4)
+    with pytest.raises(mdstats.TrainingDataInputError, match="training-budget policy"):
+        runtime_mod._Train2Runtime(
+            changed_horizon,
+            model=resumed_model,
+            optimizer=resumed_optimizer,
+            lr_scheduler=_Scheduler(),
+            ema=ExponentialMovingAverage(resumed_model.parameters(), decay=0.9),
+            train_loader=loader,
+            current_epoch=10,
+            checkpoint_handler=handler,
+            logger_path=str(metrics),
+            rank=0,
+        )
+
+
 def test_train2b_runtime_plan_and_summary_roundtrip(tmp_path: Path) -> None:
     plan = _plan(limit=10)
     assert mdstats.Train2RuntimePlan.from_dict(plan.to_dict()) == plan

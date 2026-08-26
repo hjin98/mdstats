@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from mdstats.training_data.inference_parallel import (
     AdaptiveInferenceConcurrency,
     CpuTelemetryProbe,
@@ -147,7 +149,7 @@ def test_cuda_single_job_calibration_caps_fixed_target_below_ninety_percent() ->
     predicted_memory, predicted_util = controller._cuda_projection_for_jobs(3)
     assert predicted_util >= 90.0
 
-def test_cuda_calibration_uses_peak_trimmed_upper_band_mean() -> None:
+def test_cuda_calibration_keeps_vram_peak_while_trimming_utilization() -> None:
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=8,
         stabilization_seconds=20.0,
@@ -171,10 +173,8 @@ def test_cuda_calibration_uses_peak_trimmed_upper_band_mean() -> None:
     controller = AdaptiveInferenceConcurrency(plan, policy)
     controller.start_calibration(now=0.0)
 
-    # Eight modest samples, one representative high-load sample, and one extreme
-    # burst. The highest 10% (the extreme burst) is discarded and the next 10%
-    # is used, so the estimate follows the representative high-load point rather
-    # than either the full mean or the single maximum.
+    # GPU utilization may use the representative upper band, but the extreme
+    # allocation remains safety evidence for VRAM admission.
     decision = None
     for index in range(1, 11):
         second = float(index * 2)
@@ -192,12 +192,12 @@ def test_cuda_calibration_uses_peak_trimmed_upper_band_mean() -> None:
 
     assert decision is not None
     assert controller.gpu_calibrated
-    # Baseline is 2% GPU and 1 GiB VRAM, so the representative high-load
-    # increments are 40% and 4 GiB after the top spike is trimmed.
+    # Baseline is 2% GPU and 1 GiB VRAM. Utilization uses the representative
+    # 40% increment while VRAM retains the 9-GiB incremental allocation peak.
     assert controller._gpu_estimated_utilization_per_job == 40.0
-    assert controller._gpu_estimated_memory_bytes_per_job == 4 * _GIB
+    assert controller._gpu_estimated_memory_bytes_per_job == 9 * _GIB
     assert controller.target_jobs == 2
-    assert "discards GPU=1, VRAM=1 sample(s) from the highest 10%" in decision.reason
+    assert "VRAM uses the retained allocation peak" in decision.reason
     assert "next 10%" in decision.reason
 
 
@@ -219,6 +219,359 @@ def test_cpu_initial_parallelism_respects_ninety_percent_utility_and_eighty_perc
     assert 1 <= plan.initial_jobs <= 6
     projected = 10.0 + plan.initial_jobs * plan.estimated_cpu_utilization_per_job
     assert projected <= 90.0
+
+
+def test_one_job_ram_infeasibility_fails_before_launch() -> None:
+    with pytest.raises(ValueError, match="cannot fit one job"):
+        build_inference_concurrency_plan(
+            task_count=1, device="cpu", resources=_resources(ram_gib=1),
+            policy=InferenceConcurrencyPolicy(estimated_ram_mib_per_job=2048.0),
+            gpu_sample=None, cpu_sample=CpuTelemetrySample(0.0, 0.0),
+        )
+
+
+def test_live_host_ram_reclamp_can_block_future_replacement() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        estimated_ram_mib_per_job=8192.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cpu",
+        resources=_resources(ram_gib=128),
+        policy=policy,
+        gpu_sample=None,
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+
+    decision = controller.observe(
+        active_jobs=1,
+        workload_active_jobs=1,
+        cpu_sample=CpuTelemetrySample(1.0, 10.0),
+        live_ram_available_bytes=1 * _GIB,
+        now=1.0,
+    )
+
+    assert decision.changed
+    assert decision.target_jobs == 0
+    assert controller.admission_blocked_reason is not None
+    assert "host-RAM" in decision.reason
+
+
+def test_one_job_vram_infeasibility_and_missing_telemetry_fail_before_launch() -> None:
+    policy = InferenceConcurrencyPolicy(estimated_gpu_memory_mib_per_job=4096.0)
+    with pytest.raises(ValueError, match="cannot fit one job"):
+        build_inference_concurrency_plan(
+            task_count=1, device="cuda:0", resources=_resources(), policy=policy,
+            gpu_sample=_gpu_sample(0.0, 20.0, 1.0),
+            cpu_sample=CpuTelemetrySample(0.0, 0.0),
+        )
+    with pytest.raises(ValueError, match="requires live VRAM telemetry"):
+        build_inference_concurrency_plan(
+            task_count=1, device="cuda:0", resources=_resources(), policy=policy,
+            gpu_sample=None, cpu_sample=CpuTelemetrySample(0.0, 0.0),
+        )
+
+
+def test_live_vram_change_reclamps_future_admission() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4, stabilization_seconds=2.0,
+        minimum_calibration_seconds=2.0, stability_samples=2,
+        monitor_interval_seconds=1.0, observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4, device="cuda:0", resources=_resources(), policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(1.0, 3.0, 12.0), now=1.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(2.0, 3.0, 12.0), now=2.0)
+    assert controller.target_jobs >= 3
+    decision = controller.observe(
+        active_jobs=1, gpu_sample=_gpu_sample(3.0, 18.0, 12.0), now=3.0
+    )
+    assert decision.changed
+    assert decision.target_jobs == 2
+    assert "live VRAM re-clamp" in decision.reason
+
+
+def test_measured_one_job_vram_infeasibility_blocks_future_admission() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=300.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+
+    decision = controller.observe(
+        active_jobs=1,
+        gpu_sample=_gpu_sample(1.0, 23.0, 20.0),
+        now=1.0,
+    )
+
+    assert decision.changed
+    assert decision.target_jobs == 0
+    assert controller.target_jobs == 0
+    assert controller.admission_blocked_reason is not None
+    assert "measured single-job VRAM peak" in decision.reason
+
+
+def test_one_slot_cuda_ceiling_still_measures_and_blocks_unsafe_replacement() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=1,
+        stabilization_seconds=300.0,
+        minimum_calibration_seconds=300.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    assert plan.maximum_jobs == 1
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    assert not controller.gpu_calibrated
+
+    decision = controller.observe(
+        active_jobs=1,
+        gpu_sample=_gpu_sample(1.0, 23.0, 20.0),
+        now=1.0,
+    )
+
+    assert not controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    decision = controller.complete_first_cuda_job(now=2.0)
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 0
+    assert controller.admission_blocked_reason is not None
+    assert "fixed projection permits 0" in decision.reason
+
+
+def test_one_slot_cuda_ceiling_completes_calibration_only_after_first_job() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=1,
+        stabilization_seconds=300.0,
+        minimum_calibration_seconds=300.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    decision = controller.observe(
+        active_jobs=1,
+        gpu_sample=_gpu_sample(1.0, 3.0, 12.0),
+        now=1.0,
+    )
+
+    assert not controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    assert "complete-first-job" in decision.reason
+
+    decision = controller.complete_first_cuda_job(now=2.0)
+
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    assert controller.admission_blocked_reason is None
+    assert "calibration complete" in decision.reason
+
+
+def test_one_slot_cuda_completion_uses_late_peak_and_blocks_replacement() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=1,
+        stabilization_seconds=300.0,
+        minimum_calibration_seconds=300.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.observe(
+        active_jobs=1, gpu_sample=_gpu_sample(1.0, 3.0, 12.0), now=1.0
+    )
+    assert not controller.gpu_calibrated
+
+    decision = controller.complete_first_cuda_job(
+        gpu_sample=_gpu_sample(2.0, 23.0, 12.0), now=2.0
+    )
+
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 0
+    assert controller.admission_blocked_reason is not None
+    assert "fixed projection permits 0" in decision.reason
+
+
+def test_one_slot_cuda_completion_uses_configured_vram_fallback_without_samples() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=1,
+        estimated_gpu_memory_mib_per_job=1024.0,
+        observed_memory_growth_margin=1.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+
+    decision = controller.complete_first_cuda_job(now=1.0)
+
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    assert "configured VRAM fallback" in decision.reason
+
+
+def test_live_external_vram_baseline_can_block_all_future_admission() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=2.0,
+        minimum_calibration_seconds=2.0,
+        stability_samples=2,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.1,
+        observed_utilization_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(1.0, 3.0, 12.0), now=1.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(2.0, 3.0, 12.0), now=2.0)
+    assert controller.target_jobs > 1
+
+    decision = controller.observe(
+        active_jobs=1,
+        gpu_sample=_gpu_sample(3.0, 21.5, 12.0),
+        now=3.0,
+    )
+
+    assert decision.changed
+    assert decision.target_jobs == 0
+    assert "external VRAM baseline" in decision.reason
+
+
+def test_zero_admission_queue_fails_cleanly_without_launching_replacement(
+    monkeypatch,
+) -> None:
+    import time
+
+    from mdstats.training_data import campaign_cli
+
+    monkeypatch.setattr(
+        campaign_cli._core,
+        "detect_system_resources",
+        lambda **kwargs: _resources(),
+    )
+
+    class Probe:
+        def __init__(self, **kwargs):
+            pass
+
+        def sample(self, **kwargs):
+            return CpuTelemetrySample(time.monotonic(), 0.0)
+
+    samples = iter((_gpu_sample(0.0, 1.0, 2.0),))
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", Probe)
+    monkeypatch.setattr(
+        campaign_cli._core,
+        "query_gpu_telemetry",
+        lambda device: next(samples, _gpu_sample(time.monotonic(), 23.0, 20.0)),
+    )
+
+    launched: list[int] = []
+
+    def execute(index: int) -> int:
+        launched.append(index)
+        time.sleep(0.08)
+        return index
+
+    class Progress:
+        def item_start(self, *args, **kwargs):
+            pass
+
+        def item_done(self, *args, **kwargs):
+            pass
+
+    tasks = [
+        campaign_cli._AdaptiveInferenceTask(
+            display_index=index + 1,
+            key=str(index),
+            label=f"task-{index}",
+            start_detail="test",
+            execute=lambda index=index: execute(index),
+            done_detail=lambda result, wall: str(result),
+        )
+        for index in range(2)
+    ]
+    cfg = {
+        "performance": {"cpu_fraction": 0.90, "ram_fraction": 0.80},
+        "execution": {
+            "parallel_evaluation_jobs": 2,
+            "evaluation_estimated_ram_mib_per_job": 1.0,
+            "parallel_evaluation_stabilization_seconds": 300.0,
+            "parallel_evaluation_monitor_interval_seconds": 0.01,
+            "parallel_inference_post_calibration_monitor_interval_seconds": 0.01,
+            "evaluation_estimated_gpu_memory_mib_per_job": 1024.0,
+        },
+    }
+
+    with pytest.raises(campaign_cli.CampaignCliError, match="resource admission blocked"):
+        campaign_cli._run_adaptive_inference_tasks(
+            tasks,
+            cfg=cfg,
+            phase="evaluation",
+            device="cuda:0",
+            progress=Progress(),
+        )
+
+    assert launched == [0]
 
 
 
@@ -636,32 +989,33 @@ def test_campaign_runner_reports_evaluation_stage_transitions(monkeypatch, capsy
     assert "loading candidate MACE model" in output
     assert "evaluating candidate on LTA target monitor" in output
 
-def test_legacy_generated_ten_second_window_migrates_to_five_minutes() -> None:
+def test_legacy_generated_ten_second_window_migrates_to_bounded_two_minutes() -> None:
     from mdstats.training_data import campaign_cli
 
     policy = campaign_cli._inference_concurrency_policy(
         {"execution": {"parallel_inference_stabilization_seconds": 10.0}},
         "evaluation",
     )
-    assert policy.stabilization_seconds == 300.0
+    assert policy.stabilization_seconds == 120.0
+    assert policy.minimum_calibration_seconds == 20.0
 
-def test_previous_shared_sixty_second_default_migrates_to_five_minutes() -> None:
+def test_previous_shared_sixty_second_default_migrates_to_bounded_two_minutes() -> None:
     from mdstats.training_data import campaign_cli
 
     policy = campaign_cli._inference_concurrency_policy(
         {"execution": {"parallel_inference_calibration_window_seconds": 60.0}},
         "evaluation",
     )
-    assert policy.stabilization_seconds == 300.0
+    assert policy.stabilization_seconds == 120.0
 
-def test_previous_shared_twenty_second_default_migrates_to_five_minutes() -> None:
+def test_previous_shared_twenty_second_default_migrates_to_bounded_two_minutes() -> None:
     from mdstats.training_data import campaign_cli
 
     policy = campaign_cli._inference_concurrency_policy(
         {"execution": {"parallel_inference_calibration_window_seconds": 20.0}},
         "verification",
     )
-    assert policy.stabilization_seconds == 300.0
+    assert policy.stabilization_seconds == 120.0
     assert policy.cpu_stabilization_seconds == 20.0
     assert policy.minimum_gpu_activity_fraction == 0.01
     assert policy.gpu_calibration_peak_trim_fraction == 0.05
@@ -698,6 +1052,7 @@ def test_default_peak_trim_uses_85_to_95_percentile_band() -> None:
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=8,
         stabilization_seconds=40.0,
+        minimum_calibration_seconds=40.0,
         minimum_gpu_activity_fraction=0.01,
         stability_samples=2,
         monitor_interval_seconds=2.0,
@@ -730,22 +1085,47 @@ def test_default_peak_trim_uses_85_to_95_percentile_band() -> None:
         )
 
     assert decision is not None and controller.gpu_calibrated
-    # Baseline is 2% / 1 GiB. After discarding the 90%-increment / 9-GiB peak,
-    # the next two increments average (50 + 40)/2 = 45% and (5 + 4)/2 = 4.5 GiB.
+    # Utilization averages the next two increments, while VRAM retains the
+    # 9-GiB incremental allocation peak.
     assert controller._gpu_estimated_utilization_per_job == 45.0
-    assert controller._gpu_estimated_memory_bytes_per_job == int(4.5 * _GIB)
+    assert controller._gpu_estimated_memory_bytes_per_job == 9 * _GIB
     assert "highest 5%" in decision.reason
     assert "next 10%" in decision.reason
 
 
-def test_previous_shared_three_minute_default_migrates_to_five_minutes() -> None:
+def test_cuda_calibration_converges_after_minimum_stable_representative_evidence() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4, stabilization_seconds=120.0,
+        minimum_calibration_seconds=20.0, calibration_stability_relative_tolerance=0.05,
+        stability_samples=3, monitor_interval_seconds=5.0,
+        estimated_gpu_memory_mib_per_job=512.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4, device="cuda:0", resources=_resources(), policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0), cpu_sample=CpuTelemetrySample(0.0, 3.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    for second in (5.0, 10.0, 15.0):
+        decision = controller.observe(
+            active_jobs=1, gpu_sample=_gpu_sample(second, 4.0, 40.0), now=second,
+        )
+        assert not controller.gpu_calibrated
+    decision = controller.observe(
+        active_jobs=1, gpu_sample=_gpu_sample(20.0, 4.0, 40.0), now=20.0,
+    )
+    assert controller.gpu_calibrated
+    assert "calibration complete" in decision.reason
+
+
+def test_previous_shared_three_minute_default_migrates_to_bounded_two_minutes() -> None:
     from mdstats.training_data import campaign_cli
 
     policy = campaign_cli._inference_concurrency_policy(
         {"execution": {"parallel_inference_calibration_window_seconds": 180.0}},
         "evaluation",
     )
-    assert policy.stabilization_seconds == 300.0
+    assert policy.stabilization_seconds == 120.0
 
 
 def test_phase_specific_sixty_second_window_remains_authoritative() -> None:

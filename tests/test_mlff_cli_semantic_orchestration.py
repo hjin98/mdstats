@@ -7,13 +7,17 @@ from types import SimpleNamespace
 import mdstats
 import pytest
 from mdstats.training_data import _campaign_cli_core as cli
+from mdstats.training_data._common import TrainingDataSerializationError
 
 
 ACTIVE = (
-    mdstats.OUTCOME_AWAITING_EPOCH_3,
-    mdstats.OUTCOME_AWAITING_EPOCH_10,
-    mdstats.OUTCOME_AWAITING_EPOCH_30,
+    mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
+    mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
+    mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
 )
+
+DEFAULT_FIDELITY = (1, 3, 10)
+DEFAULT_HORIZON = 30
 
 
 def _cfg() -> dict:
@@ -26,9 +30,9 @@ def _paths() -> SimpleNamespace:
 
 def _study(outcome: str, *, selected: int | None = None) -> SimpleNamespace:
     boundary = {
-        mdstats.OUTCOME_AWAITING_EPOCH_3: (3, (512, 1024, 2048, 4096)),
-        mdstats.OUTCOME_AWAITING_EPOCH_10: (10, (1024, 2048)),
-        mdstats.OUTCOME_AWAITING_EPOCH_30: (30, (2048,)),
+        mdstats.OUTCOME_AWAITING_COARSE_SCREEN: (DEFAULT_FIDELITY[0], (512, 1024, 2048, 4096)),
+        mdstats.OUTCOME_AWAITING_SHORT_SCREEN: (DEFAULT_FIDELITY[1], (1024, 2048)),
+        mdstats.OUTCOME_AWAITING_FINAL_SCREEN: (DEFAULT_FIDELITY[2], (2048,)),
     }.get(outcome, (None, ()))
     return SimpleNamespace(
         outcome=outcome,
@@ -37,7 +41,10 @@ def _study(outcome: str, *, selected: int | None = None) -> SimpleNamespace:
         next_training_epoch=boundary[0],
         next_training_sizes=boundary[1],
         qualified_sizes=(512, 1024, 2048, 4096),
-        policy=SimpleNamespace(screening_optimizer_seeds=(1, 2)),
+        policy=SimpleNamespace(
+            screening_optimizer_seeds=(1, 2), fidelity_epochs=DEFAULT_FIDELITY
+        ),
+        screening_horizon_epochs=DEFAULT_FIDELITY[-1],
         candidate_authority_digest="a" * 64,
         content_digest="b" * 64,
     )
@@ -50,7 +57,7 @@ def test_materialize_requires_selected_train2_authority(monkeypatch: pytest.Monk
     monkeypatch.setattr(
         cli,
         "_load_verified_target_size_study_authority",
-        lambda _store: _study(mdstats.OUTCOME_AWAITING_EPOCH_10),
+        lambda _store: _study(mdstats.OUTCOME_AWAITING_SHORT_SCREEN),
     )
     with pytest.raises(cli.CampaignCliError, match="Run `select-target-size` first"):
         cli.command_materialize(argparse.Namespace(config="campaign.toml", max_new_domains=None))
@@ -130,12 +137,38 @@ def test_prepare_rejects_post_selection_semantic_reuse(monkeypatch: pytest.Monke
         cli.command_prepare(argparse.Namespace(config="campaign.toml"))
 
 
+def test_prepare_routes_legacy_target_size_payload_to_current_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public wrapper must not preempt the REPAIR2/MVQUAL2 migration owner."""
+
+    paths = _paths()
+    observed: list[str] = []
+    monkeypatch.setattr(cli, "_load_config", lambda _path: (_cfg(), paths))
+    monkeypatch.setattr(cli, "CampaignStore", lambda _path: object())
+    monkeypatch.setattr(
+        cli,
+        "_load_train2_study_optional",
+        lambda _store: (_ for _ in ()).throw(
+            TrainingDataSerializationError("legacy target-size record")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_execute_prepare_current_authority",
+        lambda args: observed.append(args._semantic_operation) or 0,
+    )
+
+    assert cli.command_prepare(argparse.Namespace(config="campaign.toml")) == 0
+    assert observed == ["prepare"]
+
+
 @pytest.mark.parametrize(
     ("initial_outcome", "expected_boundaries"),
     [
-        (mdstats.OUTCOME_AWAITING_EPOCH_3, [3, 10, 30]),
-        (mdstats.OUTCOME_AWAITING_EPOCH_10, [10, 30]),
-        (mdstats.OUTCOME_AWAITING_EPOCH_30, [30]),
+        (mdstats.OUTCOME_AWAITING_COARSE_SCREEN, list(DEFAULT_FIDELITY)),
+        (mdstats.OUTCOME_AWAITING_SHORT_SCREEN, list(DEFAULT_FIDELITY[1:])),
+        (mdstats.OUTCOME_AWAITING_FINAL_SCREEN, [DEFAULT_FIDELITY[2]]),
     ],
 )
 def test_select_target_size_owns_complete_restartable_funnel(
@@ -317,7 +350,7 @@ def test_preflight_fails_closed_when_current_matrix_changes(monkeypatch: pytest.
     )
     with pytest.raises(cli.CampaignCliError, match="changed after preflight"):
         cli._require_train2_preflight_authorization(
-            _cfg(), _paths(), store, _study(mdstats.OUTCOME_AWAITING_EPOCH_10)
+            _cfg(), _paths(), store, _study(mdstats.OUTCOME_AWAITING_SHORT_SCREEN)
         )
 
 
@@ -340,8 +373,8 @@ def test_advance_uses_same_derived_next_operation(monkeypatch: pytest.MonkeyPatc
 @pytest.mark.parametrize(
     ("outcome", "matrix_ok", "preflight_ok", "train_state", "eval_state", "verify_state", "expected"),
     [
-        (mdstats.OUTCOME_AWAITING_EPOCH_3, True, False, cli.StageState.NOT_STARTED, cli.StageState.NOT_STARTED, cli.StageState.NOT_STARTED, "preflight"),
-        (mdstats.OUTCOME_AWAITING_EPOCH_10, True, True, cli.StageState.WAITING, cli.StageState.WAITING, cli.StageState.NOT_STARTED, "select-target-size"),
+        (mdstats.OUTCOME_AWAITING_COARSE_SCREEN, True, False, cli.StageState.NOT_STARTED, cli.StageState.NOT_STARTED, cli.StageState.NOT_STARTED, "preflight"),
+        (mdstats.OUTCOME_AWAITING_SHORT_SCREEN, True, True, cli.StageState.WAITING, cli.StageState.WAITING, cli.StageState.NOT_STARTED, "select-target-size"),
         (mdstats.OUTCOME_SELECTED, False, False, cli.StageState.WAITING, cli.StageState.WAITING, cli.StageState.NOT_STARTED, "materialize"),
         (mdstats.OUTCOME_SELECTED, True, False, cli.StageState.WAITING, cli.StageState.WAITING, cli.StageState.NOT_STARTED, "preflight"),
         (mdstats.OUTCOME_SELECTED, True, True, cli.StageState.WAITING, cli.StageState.WAITING, cli.StageState.NOT_STARTED, "train"),

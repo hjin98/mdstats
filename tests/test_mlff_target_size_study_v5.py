@@ -13,27 +13,28 @@ from mdstats.training_data._common import (
 )
 from mdstats.training_data.target_size_study import (
     FIXED_TARGET_SIZES,
-    OUTCOME_AWAITING_EPOCH_10,
-    OUTCOME_AWAITING_EPOCH_30,
+    OUTCOME_AWAITING_COARSE_SCREEN,
+    OUTCOME_AWAITING_SHORT_SCREEN,
+    OUTCOME_AWAITING_FINAL_SCREEN,
     OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
     OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
     OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
     OUTCOME_SELECTED,
     FAILURE_PHASE_TRAIN,
     STAGE_COARSE,
-    STAGE_FINAL,
+    STAGE_FINAL_SCREEN,
     STAGE_SHORT,
     TargetSizeStageOutcome,
     TargetSizeStudyPlan,
     TargetSizeStudyPolicy,
     TargetSizeTrainingEvidence,
     TargetSizeTrajectoryFailureEvidence,
-    attach_epoch_10_evidence,
-    attach_epoch_10_outcomes,
-    attach_epoch_30_evidence,
-    attach_epoch_30_outcomes,
-    attach_epoch_3_evidence,
-    attach_epoch_3_outcomes,
+    attach_coarse_evidence,
+    attach_coarse_outcomes,
+    attach_final_screen_evidence,
+    attach_final_screen_outcomes,
+    attach_short_evidence,
+    attach_short_outcomes,
     build_target_size_study,
     materialize_candidate_prefix,
     materialize_candidate_prefix_matrix,
@@ -76,7 +77,8 @@ class Qual:
 def study(qualified=FIXED_TARGET_SIZES, lengths=(20000, 20000), *, policy=None):
     repair = Repair(lengths)
     qual = Qual(repair, qualified)
-    return repair, qual, build_target_size_study(repair, qual, policy=policy)
+    policy = policy or TargetSizeStudyPolicy(fidelity_epochs=(3, 10, 30))
+    return repair, qual, build_target_size_study(repair, qual, policy=policy, training_horizon_epochs=30)
 
 
 def test_bulk_candidate_prefix_materialization_is_exported_from_top_level():
@@ -125,7 +127,7 @@ def evidence(
     score: float,
     parent=None,
 ):
-    stage = {3: "coarse", 10: "short", 30: "final"}[epoch]
+    stage = {3: "coarse", 10: "short", 30: "final_screen"}[epoch]
     kwargs = dict(
         stage=stage,
         target_size=size,
@@ -165,7 +167,7 @@ def evidence(
 
 
 def failure(plan, size: int, seed: int, epoch: int, *, reason="nan_gradient"):
-    stage = {3: STAGE_COARSE, 10: STAGE_SHORT, 30: STAGE_FINAL}[epoch]
+    stage = {3: STAGE_COARSE, 10: STAGE_SHORT, 30: STAGE_FINAL_SCREEN}[epoch]
     return TargetSizeTrajectoryFailureEvidence(
         stage=stage,
         target_size=size,
@@ -210,35 +212,35 @@ def evidence_map(items):
     return {(v.target_size, v.optimizer_seed): v for v in items}
 
 
-def advance_to_epoch10(plan, scores):
-    return attach_epoch_3_evidence(
+def advance_to_short_screen(plan, scores):
+    return attach_coarse_evidence(
         plan, batch(plan, plan.qualified_sizes, 3, scores)
     )
 
 
-def advance_to_epoch30(plan, scores3, scores10):
-    plan = advance_to_epoch10(plan, scores3)
-    return attach_epoch_10_evidence(
+def advance_to_final_screen(plan, scores3, scores10):
+    plan = advance_to_short_screen(plan, scores3)
+    return attach_short_evidence(
         plan,
         batch(
             plan,
-            plan.epoch3_survivor_sizes,
+            plan.coarse_survivor_sizes,
             10,
             scores10,
-            parents=evidence_map(plan.epoch3_evidence),
+            parents=evidence_map(plan.coarse_evidence),
         ),
     )
 
 
 def select(plan, scores30):
-    return attach_epoch_30_evidence(
+    return attach_final_screen_evidence(
         plan,
         batch(
             plan,
-            plan.epoch10_finalist_sizes,
+            plan.short_finalist_sizes,
             30,
             scores30,
-            parents=evidence_map(plan.epoch10_evidence),
+            parents=evidence_map(plan.short_evidence),
         ),
     )
 
@@ -266,35 +268,35 @@ def test_fixed_universe_and_q3_exact_funnel():
     _, _, plan = study((4096, 8192, 16384))
     assert tuple(v.target_size for v in plan.candidates) == FIXED_TARGET_SIZES
     assert plan.policy.screening_optimizer_seeds == (1, 2)
-    plan = advance_to_epoch10(plan, {4096: 20.0, 8192: 18.0, 16384: 17.5})
-    assert plan.outcome == OUTCOME_AWAITING_EPOCH_10
-    assert len(plan.epoch3_survivor_sizes) == 3
-    assert tuple((v.target_size, v.optimizer_seed) for v in plan.epoch3_evidence) == tuple(
+    plan = advance_to_short_screen(plan, {4096: 20.0, 8192: 18.0, 16384: 17.5})
+    assert plan.outcome == OUTCOME_AWAITING_SHORT_SCREEN
+    assert len(plan.coarse_survivor_sizes) == 3
+    assert tuple((v.target_size, v.optimizer_seed) for v in plan.coarse_evidence) == tuple(
         (size, seed)
         for size in plan.qualified_sizes
         for seed in plan.policy.screening_optimizer_seeds
     )
-    plan = attach_epoch_10_evidence(
+    plan = attach_short_evidence(
         plan,
         batch(
             plan,
-            plan.epoch3_survivor_sizes,
+            plan.coarse_survivor_sizes,
             10,
-            {size: 10.0 + i for i, size in enumerate(plan.epoch3_survivor_sizes)},
-            parents=evidence_map(plan.epoch3_evidence),
+            {size: 10.0 + i for i, size in enumerate(plan.coarse_survivor_sizes)},
+            parents=evidence_map(plan.coarse_evidence),
         ),
     )
-    assert plan.outcome == OUTCOME_AWAITING_EPOCH_30
-    assert len(plan.epoch10_finalist_sizes) == 2
+    assert plan.outcome == OUTCOME_AWAITING_FINAL_SCREEN
+    assert len(plan.short_finalist_sizes) == 2
     plan = select(
         plan,
         {
             size: 8.0 + i * 2.0
-            for i, size in enumerate(plan.epoch10_finalist_sizes)
+            for i, size in enumerate(plan.short_finalist_sizes)
         },
     )
     assert plan.outcome == OUTCOME_SELECTED
-    assert plan.selected_target_size in plan.epoch10_finalist_sizes
+    assert plan.selected_target_size in plan.short_finalist_sizes
 
 
 def test_q_below_three_is_terminal_without_rescue():
@@ -320,14 +322,14 @@ def test_candidate_membership_is_exact_repair2_prefix():
 
 def test_epoch10_requires_exact_checkpoint_optimizer_rng_continuation():
     _, _, plan = study((2048, 4096, 8192, 16384))
-    plan = advance_to_epoch10(plan, {2048: 13.0, 4096: 12.0, 8192: 11.0, 16384: 10.5})
+    plan = advance_to_short_screen(plan, {2048: 13.0, 4096: 12.0, 8192: 11.0, 16384: 10.5})
     e10 = list(
         batch(
             plan,
-            plan.epoch3_survivor_sizes,
+            plan.coarse_survivor_sizes,
             10,
-            {size: 8.0 + i for i, size in enumerate(plan.epoch3_survivor_sizes)},
-            parents=evidence_map(plan.epoch3_evidence),
+            {size: 8.0 + i for i, size in enumerate(plan.coarse_survivor_sizes)},
+            parents=evidence_map(plan.coarse_evidence),
         )
     )
     first = e10[0]
@@ -337,17 +339,17 @@ def test_epoch10_requires_exact_checkpoint_optimizer_rng_continuation():
     payload["parent_checkpoint_digest"] = h("wrong-parent")
     e10[0] = TargetSizeTrainingEvidence(**payload)
     with pytest.raises(TrainingDataInputError, match="checkpoint ancestry"):
-        attach_epoch_10_evidence(plan, e10)
+        attach_short_evidence(plan, e10)
 
 
 def test_screening_prefers_smaller_sizes_inside_equivalence_band():
     _, _, plan = study((1024, 2048, 4096, 8192, 16384))
-    plan = advance_to_epoch10(
+    plan = advance_to_short_screen(
         plan,
         {1024: 10.0, 2048: 10.1, 4096: 10.2, 8192: 10.3, 16384: 10.4},
     )
-    assert plan.epoch3_survivor_sizes == (1024, 2048, 4096, 8192)
-    assert 16384 not in plan.epoch3_survivor_sizes
+    assert plan.coarse_survivor_sizes == (1024, 2048, 4096, 8192)
+    assert 16384 not in plan.coarse_survivor_sizes
 
 
 def test_paired_seed_aggregate_controls_ranking_not_single_seed():
@@ -360,36 +362,36 @@ def test_paired_seed_aggregate_controls_ranking_not_single_seed():
         (16384, 1): 9.0,
         (16384, 2): 9.0,
     }
-    plan = advance_to_epoch10(plan, scores)
+    plan = advance_to_short_screen(plan, scores)
     # Paired means are 10, 8, and 9. With epsilon=1, 8192 and 16384 share
     # the best band and smaller 8192 ranks first.
-    assert plan.epoch3_survivor_sizes[:2] == (8192, 16384)
+    assert plan.coarse_survivor_sizes[:2] == (8192, 16384)
 
 
 def test_final_equivalence_prefers_smaller_candidate_and_freezes_selection():
     _, _, plan = study((4096, 8192, 16384))
-    plan = advance_to_epoch30(
+    plan = advance_to_final_screen(
         plan,
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
     )
-    smaller = min(plan.epoch10_finalist_sizes)
-    scores = {size: (8.0 if size == smaller else 7.4) for size in plan.epoch10_finalist_sizes}
+    smaller = min(plan.short_finalist_sizes)
+    scores = {size: (8.0 if size == smaller else 7.4) for size in plan.short_finalist_sizes}
     plan = select(plan, scores)
     assert plan.outcome == OUTCOME_SELECTED
     assert plan.selected_target_size == smaller
     with pytest.raises(TrainingDataInputError):
-        attach_epoch_30_evidence(plan, plan.epoch30_evidence)
+        attach_final_screen_evidence(plan, plan.final_screen_evidence)
 
 
 def test_fixed_ceiling_material_improvement_is_terminal_nonconvergence():
     _, _, plan = study((4096, 8192, 16384))
-    plan = advance_to_epoch30(
+    plan = advance_to_final_screen(
         plan,
         {4096: 20.0, 8192: 10.0, 16384: 9.5},
         {4096: 20.0, 8192: 10.0, 16384: 9.5},
     )
-    other = next(v for v in plan.epoch10_finalist_sizes if v != 16384)
+    other = next(v for v in plan.short_finalist_sizes if v != 16384)
     plan = select(plan, {other: 12.0, 16384: 8.0})
     assert plan.outcome == OUTCOME_NONCONVERGED_AT_FIXED_CEILING
     assert plan.selected_target_size is None
@@ -398,7 +400,7 @@ def test_fixed_ceiling_material_improvement_is_terminal_nonconvergence():
 
 def test_insufficient_paired_comparability_is_typed_terminal_state():
     _, _, plan = study((4096, 8192, 16384))
-    result = attach_epoch_3_outcomes(
+    result = attach_coarse_outcomes(
         plan,
         batch(
             plan,
@@ -419,14 +421,14 @@ def test_selected_production_prefix_is_exact_and_unavailable_before_selection():
     repair, _, plan = study((4096, 8192, 16384))
     with pytest.raises(TrainingDataInputError, match="before target-size selection"):
         materialize_selected_prefix(plan, repair2=repair, label_domain_id="d0")
-    plan = advance_to_epoch30(
+    plan = advance_to_final_screen(
         plan,
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
     )
     plan = select(
         plan,
-        {size: 9.0 + i * 0.2 for i, size in enumerate(plan.epoch10_finalist_sizes)},
+        {size: 9.0 + i * 0.2 for i, size in enumerate(plan.short_finalist_sizes)},
     )
     selected = plan.selected_target_size
     d0_prefix = materialize_selected_prefix(
@@ -442,7 +444,7 @@ def test_selected_production_prefix_is_exact_and_unavailable_before_selection():
 
 def test_v5_restart_round_trip_revalidates_exact_continuation_semantics():
     _, _, plan = study((4096, 8192, 16384))
-    plan = advance_to_epoch30(
+    plan = advance_to_final_screen(
         plan,
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
@@ -451,8 +453,8 @@ def test_v5_restart_round_trip_revalidates_exact_continuation_semantics():
     assert restored.content_digest == plan.content_digest
 
     forged = plan.to_dict()
-    forged["epoch10_outcomes"][0]["success"]["parent_checkpoint_digest"] = h("forged-parent")
-    _recompute_nested_and_outer_digest(forged, "epoch10_outcomes", 0)
+    forged["short_outcomes"][0]["success"]["parent_checkpoint_digest"] = h("forged-parent")
+    _recompute_nested_and_outer_digest(forged, "short_outcomes", 0)
     with pytest.raises(TrainingDataInputError, match="checkpoint ancestry"):
         TargetSizeStudyPlan.from_dict(forged)
 
@@ -466,27 +468,27 @@ def test_v5_restart_round_trip_revalidates_exact_continuation_semantics():
 )
 def test_restart_rejects_forged_optimizer_and_rng_continuation(field, message):
     _, _, plan = study((4096, 8192, 16384))
-    plan = advance_to_epoch30(
+    plan = advance_to_final_screen(
         plan,
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
     )
     forged = plan.to_dict()
-    forged["epoch10_outcomes"][0]["success"][field] = h(f"forged-{field}")
-    _recompute_nested_and_outer_digest(forged, "epoch10_outcomes", 0)
+    forged["short_outcomes"][0]["success"][field] = h(f"forged-{field}")
+    _recompute_nested_and_outer_digest(forged, "short_outcomes", 0)
     with pytest.raises(TrainingDataInputError, match=message):
         TargetSizeStudyPlan.from_dict(forged)
 
 
 def test_restart_rejects_forged_survivor_decision_after_digest_recomputation():
     _, _, plan = study((1024, 2048, 4096, 8192, 16384))
-    plan = advance_to_epoch10(
+    plan = advance_to_short_screen(
         plan,
         {1024: 10.0, 2048: 10.1, 4096: 10.2, 8192: 10.3, 16384: 12.0},
     )
-    eliminated = next(size for size in plan.qualified_sizes if size not in plan.epoch3_survivor_sizes)
+    eliminated = next(size for size in plan.qualified_sizes if size not in plan.coarse_survivor_sizes)
     forged = plan.to_dict()
-    forged["epoch3_survivor_sizes"][-1] = eliminated
+    forged["coarse_survivor_sizes"][-1] = eliminated
     forged.pop("content_digest", None)
     forged["content_digest"] = digest(forged)
     with pytest.raises(TrainingDataInputError, match="survivor decision"):
@@ -495,16 +497,16 @@ def test_restart_rejects_forged_survivor_decision_after_digest_recomputation():
 
 def test_restart_rejects_forged_selected_size_after_digest_recomputation():
     _, _, plan = study((4096, 8192, 16384))
-    plan = advance_to_epoch30(
+    plan = advance_to_final_screen(
         plan,
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
     )
     plan = select(
         plan,
-        {size: 8.0 + i * 0.4 for i, size in enumerate(plan.epoch10_finalist_sizes)},
+        {size: 8.0 + i * 0.4 for i, size in enumerate(plan.short_finalist_sizes)},
     )
-    other = next(size for size in plan.epoch10_finalist_sizes if size != plan.selected_target_size)
+    other = next(size for size in plan.short_finalist_sizes if size != plan.selected_target_size)
     forged = plan.to_dict()
     forged["selected_target_size"] = other
     forged.pop("content_digest", None)
@@ -515,7 +517,7 @@ def test_restart_rejects_forged_selected_size_after_digest_recomputation():
 
 def test_restart_rejects_rebound_equivalence_policy_with_old_evidence():
     _, _, plan = study((4096, 8192, 16384))
-    plan = advance_to_epoch10(plan, {4096: 10.0, 8192: 9.8, 16384: 9.5})
+    plan = advance_to_short_screen(plan, {4096: 10.0, 8192: 9.8, 16384: 9.5})
     forged = plan.to_dict()
     forged["policy"]["coarse_practical_equivalence_mev_per_a"] = 0.5
     _recompute_policy_and_outer_digest(forged)
@@ -525,11 +527,11 @@ def test_restart_rejects_rebound_equivalence_policy_with_old_evidence():
 
 def test_restart_rejects_reordered_seed_evidence_even_with_recomputed_outer_digest():
     _, _, plan = study((4096, 8192, 16384))
-    plan = advance_to_epoch10(plan, {4096: 10.0, 8192: 9.8, 16384: 9.5})
+    plan = advance_to_short_screen(plan, {4096: 10.0, 8192: 9.8, 16384: 9.5})
     forged = plan.to_dict()
-    forged["epoch3_outcomes"][0], forged["epoch3_outcomes"][1] = (
-        forged["epoch3_outcomes"][1],
-        forged["epoch3_outcomes"][0],
+    forged["coarse_outcomes"][0], forged["coarse_outcomes"][1] = (
+        forged["coarse_outcomes"][1],
+        forged["coarse_outcomes"][0],
     )
     forged.pop("content_digest")
     forged["content_digest"] = digest(forged)
@@ -547,10 +549,12 @@ def test_v5_restart_hard_rejects_legacy_schema():
 
 def test_nondefault_equivalence_width_changes_policy_identity_and_ranking():
     narrow = TargetSizeStudyPolicy(
+        fidelity_epochs=(3, 10, 30),
         coarse_practical_equivalence_mev_per_a=0.1,
         practical_equivalence_mev_per_a=0.1,
     )
     wide = TargetSizeStudyPolicy(
+        fidelity_epochs=(3, 10, 30),
         coarse_practical_equivalence_mev_per_a=1.0,
         practical_equivalence_mev_per_a=1.0,
     )
@@ -558,30 +562,30 @@ def test_nondefault_equivalence_width_changes_policy_identity_and_ranking():
     _, _, narrow_plan = study((1024, 2048, 4096, 8192, 16384), policy=narrow)
     _, _, wide_plan = study((1024, 2048, 4096, 8192, 16384), policy=wide)
     scores = {1024: 10.0, 2048: 9.7, 4096: 9.6, 8192: 9.5, 16384: 9.4}
-    narrow_plan = advance_to_epoch10(narrow_plan, scores)
-    wide_plan = advance_to_epoch10(wide_plan, scores)
-    assert narrow_plan.epoch3_survivor_sizes != wide_plan.epoch3_survivor_sizes
-    assert wide_plan.epoch3_survivor_sizes == (1024, 2048, 4096, 8192)
+    narrow_plan = advance_to_short_screen(narrow_plan, scores)
+    wide_plan = advance_to_short_screen(wide_plan, scores)
+    assert narrow_plan.coarse_survivor_sizes != wide_plan.coarse_survivor_sizes
+    assert wide_plan.coarse_survivor_sizes == (1024, 2048, 4096, 8192)
 
 
 def test_epoch30_does_not_apply_second_hard_gate_after_mvqual():
     _, _, plan = study((4096, 8192, 16384))
-    plan = advance_to_epoch30(
+    plan = advance_to_final_screen(
         plan,
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
     )
-    finalists = tuple(plan.epoch10_finalist_sizes)
+    finalists = tuple(plan.short_finalist_sizes)
     smaller = min(finalists)
     final_evidence = batch(
         plan,
         finalists,
         30,
         {size: 8.0 if size == smaller else 8.5 for size in finalists},
-        parents=evidence_map(plan.epoch10_evidence),
+        parents=evidence_map(plan.short_evidence),
     )
     assert all(not hasattr(v, "target_hard_gates_passed") for v in final_evidence)
-    selected = attach_epoch_30_evidence(plan, final_evidence)
+    selected = attach_final_screen_evidence(plan, final_evidence)
     assert selected.outcome == OUTCOME_SELECTED
     assert selected.selected_target_size == smaller
 
@@ -601,19 +605,19 @@ def test_candidate_data_digest_is_recomputed_from_canonical_candidate_inputs() -
 
 def test_too_few_comparable_candidates_at_epoch10_is_typed_terminal() -> None:
     _, _, plan = study((1024, 2048, 4096, 8192, 16384))
-    plan = advance_to_epoch10(
+    plan = advance_to_short_screen(
         plan, {1024: 10.0, 2048: 9.0, 4096: 8.0, 8192: 7.0, 16384: 6.0}
     )
-    sizes = plan.epoch3_survivor_sizes
+    sizes = plan.coarse_survivor_sizes
     invalid = tuple((size, plan.policy.screening_optimizer_seeds[0]) for size in sizes[:-1])
-    result = attach_epoch_10_outcomes(
+    result = attach_short_outcomes(
         plan,
         batch(
             plan,
             sizes,
             10,
             {size: float(i + 1) for i, size in enumerate(sizes)},
-            parents=evidence_map(plan.epoch3_evidence),
+            parents=evidence_map(plan.coarse_evidence),
             invalid=invalid,
         ),
     )
@@ -623,25 +627,25 @@ def test_too_few_comparable_candidates_at_epoch10_is_typed_terminal() -> None:
 
 def test_one_failed_finalist_at_epoch30_is_typed_terminal() -> None:
     _, _, plan = study((1024, 2048, 4096, 8192, 16384))
-    plan = advance_to_epoch30(
+    plan = advance_to_final_screen(
         plan,
         {1024: 10.0, 2048: 9.0, 4096: 8.0, 8192: 7.0, 16384: 6.0},
         {1024: 10.0, 2048: 9.0, 4096: 8.0, 8192: 7.0, 16384: 6.0},
     )
-    finalist = plan.epoch10_finalist_sizes[0]
-    result = attach_epoch_30_outcomes(
+    finalist = plan.short_finalist_sizes[0]
+    result = attach_final_screen_outcomes(
         plan,
         batch(
             plan,
-            plan.epoch10_finalist_sizes,
+            plan.short_finalist_sizes,
             30,
-            {size: float(i + 1) for i, size in enumerate(plan.epoch10_finalist_sizes)},
-            parents=evidence_map(plan.epoch10_evidence),
+            {size: float(i + 1) for i, size in enumerate(plan.short_finalist_sizes)},
+            parents=evidence_map(plan.short_evidence),
             invalid=((finalist, plan.policy.screening_optimizer_seeds[0]),),
         ),
     )
     assert result.outcome == OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES
-    assert result.comparison_failure_stage == STAGE_FINAL
+    assert result.comparison_failure_stage == STAGE_FINAL_SCREEN
 
 
 def test_generic_failure_code_cannot_be_target_size_scientific_evidence() -> None:
@@ -670,26 +674,26 @@ def test_epoch30_replay_diagnostics_cannot_change_target_size_ranking() -> None:
     _, _, right = study((4096, 8192, 16384))
     scores3 = {4096: 10.0, 8192: 9.8, 16384: 9.5}
     scores10 = {4096: 9.7, 8192: 9.6, 16384: 9.4}
-    left = advance_to_epoch30(left, scores3, scores10)
-    right = advance_to_epoch30(right, scores3, scores10)
+    left = advance_to_final_screen(left, scores3, scores10)
+    right = advance_to_final_screen(right, scores3, scores10)
     final_scores = {
         size: 8.0 + 0.2 * index
-        for index, size in enumerate(left.epoch10_finalist_sizes)
+        for index, size in enumerate(left.short_finalist_sizes)
     }
 
     def with_replay(plan, reverse: bool):
         raw = batch(
             plan,
-            plan.epoch10_finalist_sizes,
+            plan.short_finalist_sizes,
             30,
             final_scores,
-            parents=evidence_map(plan.epoch10_evidence),
+            parents=evidence_map(plan.short_evidence),
         )
         rewritten = []
         for item in raw:
             payload = item.to_dict()
             payload.pop("content_digest", None)
-            rank = plan.epoch10_finalist_sizes.index(item.target_size)
+            rank = plan.short_finalist_sizes.index(item.target_size)
             payload["replay_diagnostic_force_rmse_mev_per_a"] = float(
                 1000 - rank if reverse else rank + 1
             )
@@ -699,8 +703,8 @@ def test_epoch30_replay_diagnostics_cannot_change_target_size_ranking() -> None:
             rewritten.append(TargetSizeTrainingEvidence.from_dict(payload))
         return tuple(rewritten)
 
-    left = attach_epoch_30_evidence(left, with_replay(left, False))
-    right = attach_epoch_30_evidence(right, with_replay(right, True))
+    left = attach_final_screen_evidence(left, with_replay(left, False))
+    right = attach_final_screen_evidence(right, with_replay(right, True))
     assert left.outcome == OUTCOME_SELECTED
     assert right.outcome == OUTCOME_SELECTED
     assert left.selected_target_size == right.selected_target_size
@@ -716,7 +720,7 @@ def test_epoch30_replay_diagnostics_cannot_change_target_size_ranking() -> None:
 def test_restart_rejects_forged_failure_stage_or_seed(field, value, message) -> None:
     _, _, plan = study((4096, 8192, 16384))
     failed_key = (8192, plan.policy.screening_optimizer_seeds[0])
-    terminal = attach_epoch_3_outcomes(
+    terminal = attach_coarse_outcomes(
         plan,
         batch(
             plan,
@@ -729,10 +733,10 @@ def test_restart_rejects_forged_failure_stage_or_seed(field, value, message) -> 
     payload = terminal.to_dict()
     index = next(
         i
-        for i, outcome in enumerate(payload["epoch3_outcomes"])
+        for i, outcome in enumerate(payload["coarse_outcomes"])
         if outcome["failure"] is not None
     )
-    payload["epoch3_outcomes"][index]["failure"][field] = value
-    _recompute_nested_and_outer_digest(payload, "epoch3_outcomes", index)
+    payload["coarse_outcomes"][index]["failure"][field] = value
+    _recompute_nested_and_outer_digest(payload, "coarse_outcomes", index)
     with pytest.raises(TrainingDataInputError, match=message):
         TargetSizeStudyPlan.from_dict(payload)

@@ -129,11 +129,11 @@ python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> evaluate
 python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> verify
 ```
 
-The campaign itself owns the fixed-eight target-size path:
+The campaign itself owns the fixed-eight target-size population and configurable fidelity path:
 
 ```text
-REPAIR2 -> MVQUAL2 -> Q -> epoch 3 -> epoch 10 -> epoch 30
-        -> selected_target_size -> selected REPAIR2 prefix
+REPAIR2 -> MVQUAL2 -> Q -> screen(n1 -> n2 -> n3, scheduler horizon n3)
+        -> selected_target_size -> fresh production(0 -> n) -> selected REPAIR2 prefix
         -> held-out CV/EVAL/VERIFY
 ```
 

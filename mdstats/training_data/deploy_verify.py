@@ -16,6 +16,7 @@ import json
 import math
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,7 @@ from ._common import (
     digest,
     validate_digest,
 )
+from .artifact_staging import stage_immutable_artifact
 
 DEPLOY_VERIFY_POLICY_SCHEMA = "mdstats.deploy-verify-policy.v1"
 DEPLOY_VERIFY_PROBE_SET_SCHEMA = "mdstats.deploy-verify-probe-set.v1"
@@ -473,21 +475,6 @@ def compare_prediction_channels(
     )
 
 
-def _load_probe_atoms(path: str | Path, indices: Sequence[int]) -> tuple[Any, ...]:
-    try:
-        from ase.io import read
-    except ModuleNotFoundError as exc:  # pragma: no cover
-        raise TrainingDataInputError("ASE is required for DEPLOY-VERIFY1.") from exc
-    target = Path(path).resolve()
-    if not target.is_file():
-        raise TrainingDataInputError("DEPLOY-VERIFY1 target artifact is missing.")
-    all_atoms = tuple(read(target, index=":"))
-    result = tuple(all_atoms[int(i)] for i in indices)
-    if not result:
-        raise TrainingDataInputError("DEPLOY-VERIFY1 probe set is empty.")
-    return result
-
-
 def predict_mace_model_on_probe(
     model_path: str | Path,
     probe_atoms: Sequence[Any],
@@ -498,6 +485,11 @@ def predict_mace_model_on_probe(
     calculator_kwargs: Mapping[str, Any] | None = None,
     foundation_potential_identity: Any | None = None,
     foundation_inference_identity: Any | None = None,
+    batch_size: int = 1,
+    geometry_identities: Sequence[str] | None = None,
+    graph_cache_directory: str | Path | None = None,
+    execution_plan: Any | None = None,
+    resource_policy: Any | None = None,
 ) -> dict[str, np.ndarray]:
     """Predict energy/forces/stress through the deployable MACE calculator.
 
@@ -505,16 +497,18 @@ def predict_mace_model_on_probe(
     inference identities. Candidate/deployment callers retain the historical
     head-only interface.
     """
-    try:
-        from mace.calculators import MACECalculator
-    except ModuleNotFoundError as exc:  # pragma: no cover
-        raise TrainingDataInputError("mace-torch is required for DEPLOY-VERIFY1.") from exc
+    from .model_features import (
+        MACE_ADAPTER_VERSION,
+        StaticInferenceRuntimeAuthority,
+        StaticInferenceRuntimeProfile,
+        StaticMaceInferenceExecutor,
+    )
+    from ._common import sha256_file_cached
     resolved_path = Path(model_path).resolve()
     kwargs: dict[str, Any] = dict(calculator_kwargs or {})
     if foundation_potential_identity is not None:
         if foundation_inference_identity is None:
             raise TrainingDataInputError("Canonical foundation probe inference requires FoundationInferenceIdentity.")
-        from ._common import sha256_file_cached
         if sha256_file_cached(resolved_path) != foundation_potential_identity.sha256:
             raise TrainingDataInputError("Foundation probe model bytes disagree with FoundationPotentialIdentity.")
         if foundation_inference_identity.foundation_potential_digest != foundation_potential_identity.canonical_content_digest:
@@ -529,34 +523,150 @@ def predict_mace_model_on_probe(
             raise TrainingDataInputError("Foundation probe calculator backend disagrees with inference identity.")
     if head is not None:
         kwargs["head"] = head
-    calculator = MACECalculator(
-        model_paths=str(resolved_path),
+    if foundation_potential_identity is not None:
+        kwargs["foundation_potential_identity"] = foundation_potential_identity
+        kwargs["foundation_inference_identity"] = foundation_inference_identity
+    runtime_authority = None
+    profile_path = None
+    active_batch_size = int(batch_size)
+    active_jobs = 1
+    if execution_plan is not None:
+        from .inference_parallel import (
+            CpuTelemetryProbe,
+            InferenceConcurrencyPolicy,
+            build_inference_concurrency_plan,
+        )
+        from .resources import detect_system_resources
+        from .training_parallel import query_gpu_telemetry
+
+        policy = (
+            InferenceConcurrencyPolicy(maximum_auto_jobs=1)
+            if resource_policy is None
+            else resource_policy
+        )
+        try:
+            resources = detect_system_resources(
+                cpu_fraction=float(execution_plan.cpu_fraction),
+                ram_fraction=float(execution_plan.ram_fraction),
+                gpu_memory_fraction=min(
+                    float(execution_plan.gpu_memory_fraction),
+                    float(policy.gpu_memory_fraction),
+                ),
+                device=str(device),
+            )
+            cpu_sample = CpuTelemetryProbe(
+                capacity_threads=resources.cpu_threads_available
+            ).sample(blocking_seconds=0.10)
+            gpu_sample = query_gpu_telemetry(str(device))
+            admission = build_inference_concurrency_plan(
+                task_count=1,
+                device=str(device),
+                resources=resources,
+                policy=policy,
+                gpu_sample=gpu_sample,
+                cpu_sample=cpu_sample,
+            )
+        except ValueError as exc:
+            raise TrainingDataInputError(str(exc)) from exc
+        if resources.ram_budget_bytes is None:
+            raise TrainingDataInputError(
+                "Static probe admission requires live host-RAM telemetry."
+            )
+        compatibility = StaticInferenceRuntimeAuthority.compatibility_key(
+            {
+                "adapter_version": MACE_ADAPTER_VERSION,
+                "model_sha256": sha256_file_cached(resolved_path),
+                "device": str(device),
+                "default_dtype": str(model_dtype),
+                "head": None if head is None else str(head),
+                "calculator_runtime_digest": digest({
+                    str(key): repr(value) for key, value in sorted(kwargs.items())
+                }),
+                "graph_cache_enabled": bool(
+                    execution_plan.graph_cache_enabled
+                    and graph_cache_directory is not None
+                ),
+                "gpu_name": resources.gpu.device_name,
+                "gpu_total_bytes": resources.gpu.total_bytes,
+                "cpu_threads_available": resources.cpu_threads_available,
+                "workload_shape_digest": digest(
+                    {
+                        "atom_counts": [int(len(value)) for value in probe_atoms],
+                        "configuration_count": len(probe_atoms),
+                    }
+                ),
+            }
+        )
+        compatible_profile = None
+        if graph_cache_directory is not None:
+            profile_path = (
+                Path(graph_cache_directory).resolve().parent
+                / "static-inference-runtime-profiles"
+                / f"{compatibility}.json"
+            )
+            compatible_profile = StaticInferenceRuntimeProfile.load_compatible(
+                profile_path, compatibility_digest=compatibility
+            )
+        active_jobs = max(1, min(
+            int(execution_plan.selected_concurrent_model_jobs),
+            int(admission.maximum_jobs),
+        ))
+        runtime_authority = StaticInferenceRuntimeAuthority(
+            compatibility_digest=compatibility,
+            maximum_batch_size=min(
+                int(execution_plan.maximum_batch_size), len(probe_atoms)
+            ),
+            maximum_concurrent_model_jobs=active_jobs,
+            live_ram_budget_bytes=int(resources.ram_budget_bytes),
+            live_vram_budget_bytes=(
+                resources.gpu.budget_bytes
+                if str(device).startswith("cuda")
+                else None
+            ),
+            ram_policy_fraction=float(execution_plan.ram_fraction),
+            vram_policy_fraction=min(
+                float(execution_plan.gpu_memory_fraction),
+                float(policy.gpu_memory_fraction),
+            ),
+            estimated_provider_resident_ram_bytes=int(
+                admission.estimated_ram_bytes_per_job
+            ),
+            estimated_provider_resident_vram_bytes=(
+                None
+                if not str(device).startswith("cuda")
+                else admission.estimated_gpu_bytes_per_job
+            ),
+            cold_start_batch_size=int(execution_plan.selected_batch_size),
+            compatible_profile=compatible_profile,
+        )
+        active_batch_size = (
+            int(execution_plan.maximum_batch_size)
+            if execution_plan.batch_policy == "auto"
+            else int(execution_plan.selected_batch_size)
+        )
+    with StaticMaceInferenceExecutor.from_model_path(
+        resolved_path,
+        batch_size=max(1, min(active_batch_size, len(probe_atoms))),
         device=str(device),
         default_dtype=str(model_dtype),
+        graph_cache_directory=graph_cache_directory,
+        runtime_authority=runtime_authority,
+        concurrent_model_jobs=active_jobs,
         **kwargs,
-    )
-    energies: list[float] = []
-    forces: list[np.ndarray] = []
-    stresses: list[np.ndarray] = []
-    stress_available = True
-    for source in probe_atoms:
-        atoms = source.copy()
-        atoms.calc = calculator
-        energies.append(float(atoms.get_potential_energy()))
-        forces.append(np.asarray(atoms.get_forces(), dtype=np.float64))
-        if bool(np.all(atoms.pbc)) and float(abs(atoms.get_volume())) > 1.0e-12:
-            try:
-                stresses.append(np.asarray(atoms.get_stress(voigt=False), dtype=np.float64))
-            except Exception:
-                stress_available = False
-        else:
-            stress_available = False
-    result: dict[str, np.ndarray] = {
-        "energy": np.asarray(energies, dtype=np.float64),
-        "forces": np.concatenate([v.reshape(-1) for v in forces]),
-    }
-    if stress_available and len(stresses) == len(probe_atoms):
-        result["stress"] = np.stack(stresses, axis=0)
+    ) as executor:
+        result = executor.prediction_channels(
+            probe_atoms, geometry_identities=geometry_identities
+        )
+    if runtime_authority is not None and profile_path is not None:
+        try:
+            runtime_authority.profile().write_atomic(profile_path)
+        except TrainingDataInputError:
+            pass
+    if not all(
+        bool(np.all(atoms.pbc)) and float(abs(atoms.get_volume())) > 1.0e-12
+        for atoms in probe_atoms
+    ):
+        result.pop("stress", None)
     return result
 
 
@@ -707,7 +817,7 @@ def export_mliap_lammps_artifact(
     root.mkdir(parents=True, exist_ok=True)
     staged = root / "target-only.model"
     if staged.resolve() != source:
-        shutil.copy2(source, staged)
+        staged = Path(stage_immutable_artifact(source, staged).staged_path)
     else:
         staged = source
     command = [
@@ -830,6 +940,44 @@ def _model_element_order(model_path: str | Path) -> tuple[str, ...]:
     return tuple(chemical_symbols[v] for v in values)
 
 
+def _file_tail(path: Path, maximum_bytes: int = 5000) -> str:
+    if not path.is_file():
+        return ""
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        handle.seek(max(0, size - int(maximum_bytes)))
+        return handle.read().decode("utf-8", errors="replace")
+
+
+def _run_file_backed_process(
+    command: Sequence[str], *, cwd: Path, environment: Mapping[str, str],
+    stdout_path: Path, stderr_path: Path, timeout_seconds: float,
+) -> subprocess.CompletedProcess[Any]:
+    """Run an owned external process group without retaining output in RAM."""
+    with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open(
+        "w", encoding="utf-8"
+    ) as stderr_handle:
+        process = subprocess.Popen(
+            list(command), cwd=cwd, env=dict(environment), stdout=stdout_handle,
+            stderr=stderr_handle, text=True, start_new_session=True,
+        )
+        try:
+            returncode = process.wait(timeout=float(timeout_seconds))
+        except BaseException:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=10.0)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                process.wait()
+            raise
+    return subprocess.CompletedProcess(list(command), returncode)
+
+
 def run_lammps_mliap_run0(
     mliap_artifact_path: str | Path,
     target_model_path: str | Path,
@@ -878,7 +1026,7 @@ def run_lammps_mliap_run0(
         case.mkdir(parents=True, exist_ok=True)
         data_path = case / "structure.data"
         local_model = case / "deployment-mliap.pt"
-        shutil.copy2(mliap, local_model)
+        stage_immutable_artifact(mliap, local_model)
         write(data_path, source, format="lammps-data", atom_style="atomic", specorder=list(elements), masses=True)
         boundary = " ".join("p" if bool(v) else "f" for v in source.pbc)
         input_text = "\n".join([
@@ -906,21 +1054,22 @@ def run_lammps_mliap_run0(
         ])
         (case / "run0.in").write_text(input_text, encoding="utf-8")
         command = [str(executable), *[str(v) for v in lammps_arguments], "-in", "run0.in"]
-        completed = subprocess.run(
-            command,
-            cwd=case,
-            env=merged_env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-            timeout=float(timeout_seconds),
-        )
-        if completed.returncode != 0:
-            tail = (completed.stderr or completed.stdout)[-5000:]
-            raise TrainingDataInputError(f"LAMMPS ML-IAP run 0 failed for probe {index}. Last output:\n{tail}")
         metrics_path = case / "metrics.txt"
         dump_path = case / "forces.dump"
+        stdout_path = case / "lammps.stdout.log"
+        stderr_path = case / "lammps.stderr.log"
+        # A failed retry must never authenticate outputs left by an earlier run.
+        metrics_path.unlink(missing_ok=True)
+        dump_path.unlink(missing_ok=True)
+        completed = _run_file_backed_process(
+            command, cwd=case, environment=merged_env, stdout_path=stdout_path,
+            stderr_path=stderr_path, timeout_seconds=float(timeout_seconds),
+        )
+        if completed.returncode != 0:
+            metrics_path.unlink(missing_ok=True)
+            dump_path.unlink(missing_ok=True)
+            tail = _file_tail(stderr_path) or _file_tail(stdout_path)
+            raise TrainingDataInputError(f"LAMMPS ML-IAP run 0 failed for probe {index}. Last output:\n{tail}")
         if not metrics_path.is_file() or not dump_path.is_file():
             raise TrainingDataInputError("LAMMPS run 0 did not create the required parity outputs.")
         values = np.loadtxt(metrics_path, dtype=float).reshape(-1)

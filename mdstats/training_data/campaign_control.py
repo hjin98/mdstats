@@ -587,6 +587,7 @@ def build_training_campaign_plan(
     *,
     campaign_id: str,
     policy: TrainingCampaignPolicy,
+    run_namespace: str = "",
 ) -> TrainingCampaignPlan:
     """Build a fail-closed protocol-matched DATA9B campaign plan."""
 
@@ -613,6 +614,10 @@ def build_training_campaign_plan(
         if bundle.compatibility_probe.content_digest != anchor.compatibility_probe.content_digest:
             raise TrainingDataInputError("DATA8 campaign bundles use different MACE compatibility probes.")
 
+    namespace = str(run_namespace).strip()
+    if namespace and any(char not in "abcdefghijklmnopqrstuvwxyz0123456789-_" for char in namespace):
+        raise TrainingDataInputError("Training campaign run namespace must be lowercase filesystem-safe text.")
+    prefix = "" if not namespace else f"{namespace}-"
     run_plans: list[TrainingCampaignRunPlan] = []
     for bundle in bundles:
         for job in bundle.jobs:
@@ -625,7 +630,7 @@ def build_training_campaign_plan(
             mode = job.protocol.training_mode
             size = job.protocol.selection_size
             fold_label = "final" if job.fold_index is None else f"fold-{job.fold_index:02d}"
-            run_id = f"{mode.value}-n{size}-seed{seed}-{fold_label}"
+            run_id = f"{prefix}{mode.value}-n{size}-seed{seed}-{fold_label}"
             run_plans.append(
                 TrainingCampaignRunPlan(
                     run_id=run_id,

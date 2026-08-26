@@ -80,8 +80,8 @@ def test_worker_calculator_cache_reuses_only_same_identity(monkeypatch, tmp_path
         calls.append(str(model_path))
         return object()
 
-    monkeypatch.setattr(campaign_cli, "_nve_calculator", fake_calculator)
-    campaign_cli._VERIFICATION_WORKER_LOCAL.__dict__.clear()
+    monkeypatch.setattr(campaign_cli._core, "_nve_calculator", fake_calculator)
+    campaign_cli._core._VERIFICATION_WORKER_LOCAL.__dict__.clear()
     policy = SimpleNamespace(policy_digest="policy")
     model_a = tmp_path / "a.model"
     model_b = tmp_path / "b.model"
@@ -182,8 +182,8 @@ def test_nve_worker_reuses_calculator_across_cases(monkeypatch, tmp_path: Path) 
         calls += 1
         return ZeroCalculator()
 
-    monkeypatch.setattr(campaign_cli, "_nve_calculator", fake_calculator)
-    campaign_cli._VERIFICATION_WORKER_LOCAL.__dict__.clear()
+    monkeypatch.setattr(campaign_cli._core, "_nve_calculator", fake_calculator)
+    campaign_cli._core._VERIFICATION_WORKER_LOCAL.__dict__.clear()
     template = Atoms(
         "Li3",
         positions=[[0, 0, 0], [2, 0, 0], [0, 2, 0]],

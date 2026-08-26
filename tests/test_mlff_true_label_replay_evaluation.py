@@ -196,8 +196,6 @@ def test_checkpoint_evaluation_uses_true_labels_without_changing_training_lineag
         return tuple(result)
 
     monkeypatch.setattr(campaign_execution, "_predict_model_on_atoms", ordered_predictions)
-    campaign_execution._BASELINE_METRIC_CACHE.clear()
-    campaign_execution._BASELINE_METRIC_CACHE_ORDER.clear()
     evaluation = mdstats.evaluate_mace_checkpoint(
         run,
         checkpoint,
@@ -304,12 +302,15 @@ def test_true_label_refresh_uses_retained_selected_checkpoint_after_pruning(
     )[3]
 
 
-def test_evaluation_policy_preserves_v3_identity_when_new_target_comparison_is_off() -> None:
+def test_evaluation_policy_writes_runtime_independent_v8_identity() -> None:
     legacy_compatible = mdstats.CheckpointEvaluationPolicy(
         evaluate_foundation_on_target=False
     )
     payload = legacy_compatible.to_dict()
-    assert payload["schema"] == "mdstats.checkpoint-evaluation-policy.v3"
+    assert payload["schema"] == "mdstats.checkpoint-evaluation-policy.v8"
+    assert "batch_size" not in payload
+    assert "cache_monitor_datasets" not in payload
+    assert "cache_replay_baseline" not in payload
     assert "evaluate_foundation_on_target" not in payload
     assert mdstats.CheckpointEvaluationPolicy.from_dict(payload) == legacy_compatible
 
@@ -317,7 +318,7 @@ def test_evaluation_policy_preserves_v3_identity_when_new_target_comparison_is_o
         evaluate_foundation_on_target=True
     )
     payload = full_comparison.to_dict()
-    assert payload["schema"] == "mdstats.checkpoint-evaluation-policy.v4"
+    assert payload["schema"] == "mdstats.checkpoint-evaluation-policy.v8"
     assert payload["evaluate_foundation_on_target"] is True
     assert mdstats.CheckpointEvaluationPolicy.from_dict(payload) == full_comparison
 

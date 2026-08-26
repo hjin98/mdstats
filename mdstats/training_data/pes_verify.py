@@ -890,15 +890,15 @@ def _apply_mode(base_atoms: Any, mode: PESProbeMode, side: int) -> Any:
 
 def build_pes_probe_set(
     deploy_probe_set: Any,
-    target_atoms: Sequence[Any],
+    target_atoms: Sequence[Any] | Mapping[int, Any],
     *,
     policy: PESVerifyPolicy | None = None,
     material_contracts: Any | None = None,
 ) -> tuple[PESProbeSet, tuple[Any, ...]]:
     """Build one candidate-independent finite-displacement request.
 
-    ``target_atoms`` must be the complete target artifact indexed by the
-    deployment probe-set configuration indices.  Base frames are the first
+    ``target_atoms`` may be the complete target artifact or a sparse mapping
+    keyed by deployment configuration index. Base frames are the first
     correlation-block-round-robin deployment probes, so candidate ranking never
     influences membership.
     """
@@ -906,21 +906,25 @@ def build_pes_probe_set(
     active = PESVerifyPolicy() if policy is None else policy
     if getattr(deploy_probe_set, "selection_method", "") != "correlation_block_round_robin_v1":
         raise TrainingDataInputError("PES-VERIFY1 requires the authenticated DEPLOY-VERIFY1 block-balanced probe authority.")
-    target_atoms = tuple(target_atoms)
-    if not target_atoms:
+    sparse_target = isinstance(target_atoms, Mapping)
+    target_by_index = (
+        {int(index): atoms for index, atoms in target_atoms.items()}
+        if sparse_target else {index: atoms for index, atoms in enumerate(tuple(target_atoms))}
+    )
+    if not target_by_index:
         raise TrainingDataInputError("PES-VERIFY1 target artifact is empty.")
     count = min(active.maximum_base_configurations, len(deploy_probe_set.configuration_indices))
     base_frame_uids = tuple(deploy_probe_set.frame_uids[:count])
     base_indices = tuple(int(v) for v in deploy_probe_set.configuration_indices[:count])
-    if any(index >= len(target_atoms) for index in base_indices):
-        raise TrainingDataInputError("PES-VERIFY1 deployment probe index exceeds the target artifact.")
+    if any(index not in target_by_index for index in base_indices):
+        raise TrainingDataInputError("PES-VERIFY1 deployment probe index is absent from the target artifact view.")
 
     modes: list[PESProbeMode] = []
     request_atoms: list[Any] = []
     probes: list[PESProbeGeometry] = []
     request_index = 0
     for base_ordinal, (frame_uid, configuration_index) in enumerate(zip(base_frame_uids, base_indices)):
-        base = _copy_without_calculator(target_atoms[configuration_index])
+        base = _copy_without_calculator(target_by_index[configuration_index])
         base_probe_uid = digest({"schema": "mdstats.pes-probe-uid.v1", "base_frame_uid": frame_uid, "side": 0})
         base.info.update(
             {

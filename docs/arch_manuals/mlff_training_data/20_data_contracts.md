@@ -131,10 +131,10 @@ Strain requires an explicit or uniquely resolvable compatible reference. Accepte
 
 ### Cell and deformation convention
 
-ASE cell vectors are rows. For fractional row vector $\mathbf s_{\rm row}$ and cell $\mathbf H$,
+ASE cell vectors are rows. For fractional row vector $\mathbf s_{\mathrm{row}}$ and cell $\mathbf H$,
 
 $$
-\mathbf r_{\rm row}=\mathbf s_{\rm row}\mathbf H.
+\mathbf r_{\mathrm{row}}=\mathbf s_{\mathrm{row}}\mathbf H.
 $$
 
 For reference $\mathbf H_0$ and current cell $\mathbf H_t$, the reported deformation gradient acting on Cartesian column vectors is

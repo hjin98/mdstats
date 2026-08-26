@@ -34,7 +34,7 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 15. Dynamic resampling/exposure semantics require an explicit current adapter/protocol; static files alone cannot claim them.
 16. Calibration is bound to predictions from the actual frozen final committee and an explicit applicability domain.
 17. Active-learning child generations inherit prior evidence roles unless a new evaluation lineage explicitly reassigns them.
-18. Unsupported old campaign generations are rejected/re-prepared rather than migrated into current semantics.
+18. Unsupported old campaign generations are rejected/re-prepared rather than migrated into current semantics. The immediately preceding fixed-fidelity generation is the sole narrow exception: only authenticated unchanged preparation may be reused, and its target-size study/evidence is rebuilt under current configurable-fidelity authority.
 19. Execution caches, worker scheduling, out-of-core layout, and other realization choices cannot change scientific identity or authoritative decisions.
 20. Publication fails closed when required current-generation identities, upstream evidence, or schema/content validation are missing/incompatible.
 
@@ -112,7 +112,9 @@ DATA7 TargetSubsetInputBundle
 
 No current alternate v1/migration/rescue branch exists.
 
-The exact fixed nominal target-size population and 3/10/30 fidelity policy are owned by `mlff_target_subset_size_study_spec.md` and are not duplicated here.
+The exact fixed nominal target-size population and configurable screen
+`(n1,n2,n3)` plus independent production-horizon policy are owned by
+`mlff_target_subset_size_study_spec.md` and are not duplicated here.
 
 For each required training domain `d`, candidate membership at size `N` is the prefix of that domain's one repaired master order. One selected `N` is frozen into the complete training protocol across required fold/final domains.
 
@@ -170,7 +172,7 @@ Worker count, queue ordering, chunking, file-backed versus in-memory layout, and
 
 Current products SHALL fail closed when required source/label identity, evidence roles, fitted-domain lineage, selector/repair/qualification identity, target-size decision, replay/monitor lineage, training protocol, runtime behavior, or publication payload validation is missing/incompatible.
 
-Unsupported historical campaign schemas are not current compatibility obligations. Current code may retain low-level readers for forensic purposes, but those readers cannot create a second product-semantic path and are not normative documentation authority.
+Unsupported historical campaign schemas are not current compatibility obligations. Current code may retain low-level readers for forensic purposes, but those readers cannot create a second product-semantic path and are not normative documentation authority. The immediate fixed-fidelity predecessor is handled only by the explicit fail-closed re-authentication boundary above; it is not blanket historical compatibility.
 
 # Extension rule
 

@@ -85,7 +85,7 @@ def test_prepare_receipt_hard_cuts_retired_derived_authorities() -> None:
 
 def test_public_train_and_evaluate_do_not_own_active_target_size_screening(monkeypatch) -> None:
     study = SimpleNamespace(
-        outcome=mdstats.OUTCOME_AWAITING_EPOCH_10,
+        outcome=mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
         decision_reason="epoch-3 screen complete",
     )
     cfg = {"training": {"policy_generation": "train2"}}
@@ -106,7 +106,7 @@ def test_held_out_cv_runtime_is_rejected_before_target_size_freeze(monkeypatch) 
         kind=mdstats.MaceJobKind.CROSS_VALIDATION_FOLD,
         fold_index=0,
     )
-    study = SimpleNamespace(outcome=mdstats.OUTCOME_AWAITING_EPOCH_3)
+    study = SimpleNamespace(outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN)
     with pytest.raises(campaign_core.CampaignCliError, match="blocked until selected_target_size is frozen"):
         campaign_core._eval2_target_role_for_run(
             store=object(),
@@ -122,7 +122,7 @@ def test_screening_materialization_is_stable_while_training_population_halves(mo
     method = SimpleNamespace(mode="multihead", fold_partition_seed=17)
     monkeypatch.setattr(campaign_core, "_training_method_specs", lambda _cfg: (method,))
     study = SimpleNamespace(
-        outcome=mdstats.OUTCOME_AWAITING_EPOCH_10,
+        outcome=mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
         qualified_sizes=(512, 1024, 2048, 4096),
         next_training_sizes=(512, 2048),
         policy=SimpleNamespace(screening_optimizer_seeds=(7, 11)),
@@ -259,7 +259,7 @@ def test_scientific_candidate_failure_only_relaxes_scheduler_stop_during_active_
     failed_ordinary = SimpleNamespace(
         state=mdstats.TrainingRunState.FAILED, attempts=(ordinary_attempt,)
     )
-    active = SimpleNamespace(outcome=mdstats.OUTCOME_AWAITING_EPOCH_3)
+    active = SimpleNamespace(outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN)
     selected = SimpleNamespace(outcome=mdstats.OUTCOME_SELECTED)
 
     assert campaign_core._is_target_size_scientific_execution_failure(
@@ -315,7 +315,9 @@ def _direct_study():
         content_digest=_direct_digest("direct-mvqual2"),
         mv_qualified_sizes=qualified,
     )
-    policy = mdstats.TargetSizeStudyPolicy(screening_optimizer_seeds=(7, 11))
+    policy = mdstats.TargetSizeStudyPolicy(
+        fidelity_epochs=(3, 10, 30), screening_optimizer_seeds=(7, 11)
+    )
     return repair, mdstats.build_target_size_study(repair, qualification, policy=policy)
 
 
@@ -406,7 +408,7 @@ def test_real_target_size_eval_path_converts_authenticated_train2_failure_popula
     assert len(outcomes) == len(runs)
     assert all(item.success is None for item in outcomes)
     assert all(item.failure.failure_phase == mdstats.FAILURE_PHASE_TRAIN for item in outcomes)
-    terminal = mdstats.attach_epoch_3_outcomes(study, outcomes)
+    terminal = mdstats.attach_coarse_outcomes(study, outcomes)
     assert terminal.outcome == mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES
 
     forged_run = runs[0]
@@ -595,7 +597,7 @@ def test_target_size_materialization_resolver_confines_authority_namespaces_and_
     )
     study = SimpleNamespace(
         qualified_sizes=(4, 8),
-        outcome=mdstats.OUTCOME_AWAITING_EPOCH_10,
+        outcome=mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
     )
     final_domain = SimpleNamespace(
         content_digest=final_training_digest,
@@ -681,9 +683,9 @@ def test_target_size_materialization_resolver_keeps_fixed_evaluation_cohort_acro
     monkeypatch.setattr(mdstats, "materialize_candidate_prefix", materialize_prefix)
     observed = []
     for outcome in (
-        mdstats.OUTCOME_AWAITING_EPOCH_3,
-        mdstats.OUTCOME_AWAITING_EPOCH_10,
-        mdstats.OUTCOME_AWAITING_EPOCH_30,
+        mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
+        mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
+        mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
     ):
         resolver = campaign_core._TargetSizeMaterializationResolver(
             coverage_reference,
@@ -757,7 +759,7 @@ def test_target_size_materialization_resolver_rejects_ambiguous_training_domain_
     with pytest.raises(campaign_core.CampaignCliError, match="ambiguous training-domain identity"):
         campaign_core._TargetSizeMaterializationResolver(
             reference,
-            SimpleNamespace(qualified_sizes=(4,), outcome=mdstats.OUTCOME_AWAITING_EPOCH_3),
+            SimpleNamespace(qualified_sizes=(4,), outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN),
             object(),
         )
 

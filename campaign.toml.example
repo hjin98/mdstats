@@ -1,4 +1,4 @@
-schema = "mdstats.mlff-campaign-cli.v1"
+schema = "mdstats.mlff-campaign-cli.v2"
 
 [campaign]
 id = "lta-mh1-omat-pbe-finetune"
@@ -107,32 +107,22 @@ sizes = [512]
 structural_workers = 0
 
 [target_data.size_convergence]
-# TARGET-DATA2C fixed generic ladder plus TARGET-DATA2D successive-fidelity
-# authority. Coverage is hard admission only: every qualifying rung proceeds to
-# the common epoch-3 target-only screen. Epoch-3/10/30 evidence is supplied by
-# TRAIN2/EVAL2/VERIFY; legacy adaptive-stop runs cannot satisfy it.
-ladder_exponents = [7, 8, 9, 10, 11, 12, 13]
-minimum_materializable_rungs = 3
-reserve_required_strata = true
-reserve_correlation_intervals = true
-fps_tie_tolerance = 1.0e-12
+# This table owns target-coverage controls and target-size equivalence thresholds.
+# Target-size candidate sizes are fixed by TargetSizeStudyPolicy.  The three
+# screening boundaries are configurable; [training].max_num_epochs is the
+# separate fresh production horizon and must remain greater than screen n3.
+# Screening
+# optimizer seeds come from the sole enabled training method.
+fidelity_epochs = [1, 3, 10]
 coverage_metric = "reference_mass_local_knn"
 coverage_threshold = 0.95
 coverage_resolution_mass = 0.0078125
 coverage_leave_one_out = true
 extent_quantile_alpha = 0.01
 extent_default_tolerance = "none"
-min_coverage_qualifiers = 3
-coarse_training_epochs = 3
-max_coarse_training_candidates = 4
-coarse_target_monitor_configurations = 256
-short_training_epochs = 10
-max_short_training_candidates = 2
-final_training_epochs = 30
 # Omit to inherit practical_equivalence_mev_per_a.
 coarse_practical_equivalence_mev_per_a = 1.0
 practical_equivalence_mev_per_a = 1.0
-screening_optimizer_seed = 1
 
 [objective]
 energy_weight = 1.0
@@ -303,7 +293,9 @@ inference_gpu_memory_fraction = 0.90
 inference_gpu_utilization_fraction = 0.90
 inference_estimated_vram_mib_per_job = 4096.0
 inference_estimated_ram_mib_per_job = 4096.0
-parallel_inference_calibration_window_seconds = 300.0
+parallel_inference_calibration_window_seconds = 120.0
+inference_minimum_calibration_seconds = 20.0
+inference_calibration_stability_relative_tolerance = 0.10
 parallel_inference_cpu_calibration_window_seconds = 20.0
 inference_gpu_minimum_activity_fraction = 0.01
 inference_gpu_calibration_peak_trim_fraction = 0.05
@@ -331,6 +323,26 @@ parallel_inference_post_calibration_monitor_interval_seconds = 30.0
 parallel_evaluation_prepare_jobs = 0
 parallel_evaluation_finalize_jobs = 0
 evaluation_pipeline_buffer_jobs = 0
+evaluation_pipeline_buffer_mib = 0
+# Zero working-memory values use the phase estimate. Finalize/reduction defaults
+# to one quarter of that estimate. Shared residency is explicit and charged once.
+evaluation_prepare_working_memory_mib = 0
+evaluation_inference_working_memory_mib = 0
+evaluation_finalize_working_memory_mib = 0
+evaluation_shared_runtime_residency_mib = 0
+# External DYN cases remain single-process by default until target-GPU evidence
+# proves that multiple LAMMPS/Kokkos processes improve end-to-end throughput.
+parallel_dynamics_jobs = 0
+maximum_parallel_dynamics_jobs = 1
+dynamics_estimated_vram_mib_per_job = 4096.0
+dynamics_estimated_ram_mib_per_job = 4096.0
+dynamics_pipeline_buffer_jobs = 0
+dynamics_pipeline_buffer_mib = 0
+dynamics_prepare_working_memory_mib = 0
+dynamics_inference_working_memory_mib = 0
+dynamics_finalize_working_memory_mib = 0
+dynamics_shared_runtime_residency_mib = 0
+estimated_dynamics_output_mib_per_case = 512.0
 # Stop admitting new jobs after the first failed run; already-active jobs finish.
 stop_scheduling_after_failure = true
 
@@ -415,8 +427,12 @@ eval2_candidate_rescue_cap = 5
 # Permit checkpoint evaluation after any run completes. Incomplete campaigns are
 # labeled interim and cannot create a production protocol freeze.
 allow_partial_campaign = true
-# Native MACE graph batch. CUDA OOM automatically bisects the active batch.
-batch_size = 8
+# Runtime inference choices are execution evidence, not scientific policy.
+# A historical file with no inference_batch_policy keeps its positive batch_size
+# as an exact fixed runtime choice. New fixed mode uses fixed_inference_batch_size
+# (bounded by maximum_inference_batch_size); auto starts bounded and may adapt.
+inference_batch_policy = "auto"
+maximum_inference_batch_size = 32
 # Immutable monitor and foundation-baseline results are reused across checkpoints.
 cache_monitor_datasets = true
 cache_replay_baseline = true

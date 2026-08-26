@@ -319,6 +319,34 @@ def test_campaign_loader_validates_target_data2b_against_canonical_final_and_cv_
     assert restored.content_digest == reference.content_digest
 
 
+def test_command_scoped_data6_restore_cache_preserves_one_verified_physical_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two startup consumers share DATA6 only for their scoped validation."""
+
+    from mdstats.training_data import _campaign_cli_core as campaign_cli_core
+
+    _, _, _, _, _, data6, _, _ = _build_coverage_inputs(tmp_path / "inputs")
+    store = campaign_cli_core.CampaignStore(tmp_path / "campaign.sqlite")
+    store.put_record("data6", data6)
+    original_get_record = store.get_record
+    data6_loads = 0
+
+    def counted_get_record(key, cls):
+        nonlocal data6_loads
+        if key == "data6":
+            data6_loads += 1
+        return original_get_record(key, cls)
+
+    monkeypatch.setattr(store, "get_record", counted_get_record)
+    with campaign_cli_core._command_restore_cache(store):
+        first = campaign_cli_core._restore_data6_for_command(store)
+        second = campaign_cli_core._restore_data6_for_command(store)
+        assert first is second
+    assert data6_loads == 1
+    assert not hasattr(store, "_command_restore_cache")
+
+
 def test_target_data2b_authority_fails_closed_if_data6_changes(tmp_path: Path) -> None:
     _, _, _, data4, data5, data6, freeze, audit = _build_coverage_inputs(tmp_path)
     reference = mdstats.build_target_coverage_reference(data4, data5, data6, freeze, audit)

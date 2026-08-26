@@ -12,17 +12,19 @@ from enum import Enum
 from functools import lru_cache
 from importlib import metadata as importlib_metadata
 from collections import OrderedDict
-from threading import RLock
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Event, Lock, RLock, Thread
 import weakref
 import hashlib
 import io
 import gc
+import math
 import time
 import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence
 
 import numpy as np
 
@@ -59,6 +61,10 @@ MACE_DESCRIPTOR_POLICY_VERSION = "mdstats.mlff-data6.mace-descriptor.2026-08.v2"
 MACE_ADAPTER_VERSION = "mdstats.mlff-data6.mace-calculator.2026-08.v2"
 MACE_MONITOR_GRAPH_CACHE_SCHEMA = "mdstats.mace-monitor-graph-cache.v1"
 MACE_MONITOR_GRAPH_POLICY_VERSION = "mdstats.mlff-opt-eval3.graph.2026-08.v1"
+STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA = "mdstats.static-inference-runtime-profile.v6"
+STATIC_INFERENCE_EVIDENCE_SEMANTICS = (
+    "persistent-provider-required-residency-plus-2d-failure-learning.v6"
+)
 
 
 def _sha256_file(path: Path) -> str:
@@ -2327,6 +2333,1540 @@ class MaceCalculatorProvider:
                 )
             )
         return tuple(result)
+
+
+def _current_process_rss_bytes() -> int:
+    """Return current RSS, never the process-lifetime high-water mark."""
+
+    try:
+        pages = int(Path("/proc/self/statm").read_text(encoding="ascii").split()[1])
+        return pages * int(os.sysconf("SC_PAGE_SIZE"))
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+class _StaticInferenceResourceMonitor:
+    """Point-scoped conservative RSS/device peak sampler.
+
+    ``peak_ram_bytes`` is the baseline-to-peak process RSS contribution during
+    this execution region. ``peak_vram_bytes`` is the baseline-to-peak device
+    residency contribution observed by live telemetry or the allocator peak
+    delta, whichever is larger. These meanings are deliberately
+    versioned by ``STATIC_INFERENCE_EVIDENCE_SEMANTICS``.
+    """
+
+    def __init__(self, device: str, *, interval_seconds: float = 0.002) -> None:
+        self.device = str(device)
+        self.interval_seconds = max(0.0005, float(interval_seconds))
+        self._stop = Event()
+        self._thread: Thread | None = None
+        self._baseline_rss = 0
+        self._peak_rss = 0
+        self._baseline_vram: int | None = None
+        self._peak_vram: int | None = None
+        self._torch = None
+        self._baseline_allocator_reserved = 0
+
+    def _sample(self) -> None:
+        rss = _current_process_rss_bytes()
+        self._peak_rss = max(self._peak_rss, rss)
+        if not self.device.startswith("cuda"):
+            return
+        try:
+            from .training_parallel import query_gpu_telemetry
+
+            sample = query_gpu_telemetry(self.device)
+            if sample is not None:
+                used = int(sample.used_bytes)
+                if self._baseline_vram is None:
+                    self._baseline_vram = used
+                self._peak_vram = max(self._peak_vram or 0, used)
+        except Exception:
+            pass
+
+    def _poll(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            self._sample()
+
+    def start(self) -> None:
+        self._baseline_rss = _current_process_rss_bytes()
+        self._peak_rss = self._baseline_rss
+        self._sample()
+        if self.device.startswith("cuda"):
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize(self.device)
+                    self._baseline_allocator_reserved = int(
+                        torch.cuda.memory_reserved(self.device)
+                    )
+                    torch.cuda.reset_peak_memory_stats(self.device)
+                    self._torch = torch
+            except Exception:
+                self._torch = None
+        self._thread = Thread(
+            target=self._poll, name="mdstats-static-resource-monitor", daemon=True
+        )
+        self._thread.start()
+
+    def finish(self) -> tuple[int, int | None]:
+        self._sample()
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=max(0.05, 4.0 * self.interval_seconds))
+        if self._torch is not None:
+            try:
+                self._torch.cuda.synchronize(self.device)
+                allocator_delta = max(
+                    0,
+                    int(self._torch.cuda.max_memory_reserved(self.device))
+                    - int(self._baseline_allocator_reserved),
+                )
+                telemetry_delta = max(
+                    0, int(self._peak_vram or 0) - int(self._baseline_vram or 0)
+                )
+                self._peak_vram = max(allocator_delta, telemetry_delta)
+            except Exception:
+                pass
+        ram_delta = max(0, int(self._peak_rss) - int(self._baseline_rss))
+        vram_delta = (
+            None if self._peak_vram is None else max(
+                0, int(self._peak_vram) - int(self._baseline_vram or 0)
+            )
+        ) if self._torch is None else self._peak_vram
+        return ram_delta, vram_delta
+
+
+@dataclass(frozen=True, slots=True)
+class StaticInferenceOperatingPointEvidence:
+    """Measured persistent-pool and steady-state operating-point evidence.
+
+    ``peak_*`` is the conservative fresh-process requirement: persistent private
+    provider residency plus the peak incremental cost of one synchronized wave.
+    The components remain explicit so a warm steady-state throughput measurement
+    cannot erase the cost of materializing the selected private provider pool.
+    """
+
+    batch_size: int
+    concurrent_model_jobs: int
+    structures_per_second: float
+    peak_ram_bytes: int
+    peak_vram_bytes: int | None
+    feasible: bool = True
+    failure_kind: str | None = None
+    completed_structures: int = 0
+    elapsed_seconds: float = 0.0
+    observed_max_active_jobs: int = 1
+    provider_pool_resident_ram_bytes: int = 0
+    provider_pool_resident_vram_bytes: int | None = None
+    execution_peak_ram_bytes: int = 0
+    execution_peak_vram_bytes: int | None = None
+    provider_pool_observed_ram_bytes: int = 0
+    provider_pool_observed_vram_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        if int(self.batch_size) <= 0 or int(self.concurrent_model_jobs) <= 0:
+            raise TrainingDataInputError("Static inference operating-point sizes must be positive.")
+        if not np.isfinite(float(self.structures_per_second)) or float(self.structures_per_second) < 0:
+            raise TrainingDataInputError("Static inference throughput must be finite and nonnegative.")
+        if int(self.peak_ram_bytes) < 0 or (
+            self.peak_vram_bytes is not None and int(self.peak_vram_bytes) < 0
+        ):
+            raise TrainingDataInputError("Static inference peak memory must be nonnegative.")
+        for value in (
+            self.provider_pool_resident_ram_bytes,
+            self.execution_peak_ram_bytes,
+        ):
+            if int(value) < 0:
+                raise TrainingDataInputError("Static inference resource components must be nonnegative.")
+        for value in (
+            self.provider_pool_resident_vram_bytes,
+            self.execution_peak_vram_bytes,
+        ):
+            if value is not None and int(value) < 0:
+                raise TrainingDataInputError("Static inference resource components must be nonnegative.")
+        if int(self.completed_structures) < 0 or float(self.elapsed_seconds) < 0.0:
+            raise TrainingDataInputError("Static inference measurement dimensions must be nonnegative.")
+        if int(self.observed_max_active_jobs) <= 0:
+            raise TrainingDataInputError("Observed static inference concurrency must be positive.")
+        if self.feasible and (
+            int(self.completed_structures) <= 0 or float(self.elapsed_seconds) <= 0.0
+        ):
+            raise TrainingDataInputError(
+                "Feasible static inference evidence requires real completed work and wall time."
+            )
+        if self.feasible and int(self.observed_max_active_jobs) != int(self.concurrent_model_jobs):
+            raise TrainingDataInputError(
+                "Recorded static inference concurrency must equal actually observed concurrency."
+            )
+        if int(self.completed_structures) > 0 and float(self.elapsed_seconds) > 0.0:
+            measured = int(self.completed_structures) / float(self.elapsed_seconds)
+            if not math.isclose(
+                measured, float(self.structures_per_second), rel_tol=1.0e-9, abs_tol=1.0e-12
+            ):
+                raise TrainingDataInputError(
+                    "Static inference throughput must equal completed work / joint wall time."
+                )
+        if self.feasible:
+            if int(self.peak_ram_bytes) != (
+                int(self.provider_pool_resident_ram_bytes)
+                + int(self.execution_peak_ram_bytes)
+            ):
+                raise TrainingDataInputError(
+                    "Feasible static inference RAM evidence must equal residency plus execution peak."
+                )
+            if self.peak_vram_bytes is not None:
+                if (
+                    self.provider_pool_resident_vram_bytes is None
+                    or self.execution_peak_vram_bytes is None
+                    or int(self.peak_vram_bytes) != (
+                        int(self.provider_pool_resident_vram_bytes)
+                        + int(self.execution_peak_vram_bytes)
+                    )
+                ):
+                    raise TrainingDataInputError(
+                        "Feasible static inference VRAM evidence must equal residency plus execution peak."
+                    )
+            if int(self.concurrent_model_jobs) == 1 and int(
+                self.provider_pool_resident_ram_bytes
+            ) != 0:
+                raise TrainingDataInputError(
+                    "One-job static inference evidence cannot retain private-provider residency."
+                )
+            if (
+                int(self.concurrent_model_jobs) == 1
+                and self.peak_vram_bytes is not None
+                and int(self.provider_pool_resident_vram_bytes or 0) != 0
+            ):
+                raise TrainingDataInputError(
+                    "One-job static inference evidence cannot retain private-provider VRAM residency."
+                )
+        object.__setattr__(self, "batch_size", int(self.batch_size))
+        object.__setattr__(self, "concurrent_model_jobs", int(self.concurrent_model_jobs))
+        object.__setattr__(self, "structures_per_second", float(self.structures_per_second))
+        object.__setattr__(self, "peak_ram_bytes", int(self.peak_ram_bytes))
+        object.__setattr__(
+            self, "peak_vram_bytes",
+            None if self.peak_vram_bytes is None else int(self.peak_vram_bytes),
+        )
+        object.__setattr__(
+            self, "failure_kind",
+            None if self.failure_kind is None else str(self.failure_kind).strip() or None,
+        )
+        object.__setattr__(self, "completed_structures", int(self.completed_structures))
+        object.__setattr__(self, "elapsed_seconds", float(self.elapsed_seconds))
+        object.__setattr__(self, "observed_max_active_jobs", int(self.observed_max_active_jobs))
+        object.__setattr__(self, "provider_pool_resident_ram_bytes", int(self.provider_pool_resident_ram_bytes))
+        object.__setattr__(
+            self, "provider_pool_resident_vram_bytes",
+            None if self.provider_pool_resident_vram_bytes is None else int(self.provider_pool_resident_vram_bytes),
+        )
+        object.__setattr__(self, "execution_peak_ram_bytes", int(self.execution_peak_ram_bytes))
+        object.__setattr__(
+            self, "execution_peak_vram_bytes",
+            None if self.execution_peak_vram_bytes is None else int(self.execution_peak_vram_bytes),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "batch_size": self.batch_size,
+            "concurrent_model_jobs": self.concurrent_model_jobs,
+            "structures_per_second": self.structures_per_second,
+            "peak_ram_bytes": self.peak_ram_bytes,
+            "peak_vram_bytes": self.peak_vram_bytes,
+            "feasible": bool(self.feasible),
+            "failure_kind": self.failure_kind,
+            "completed_structures": self.completed_structures,
+            "elapsed_seconds": self.elapsed_seconds,
+            "observed_max_active_jobs": self.observed_max_active_jobs,
+            "provider_pool_resident_ram_bytes": self.provider_pool_resident_ram_bytes,
+            "provider_pool_resident_vram_bytes": self.provider_pool_resident_vram_bytes,
+            "provider_pool_required_ram_bytes": self.provider_pool_resident_ram_bytes,
+            "provider_pool_required_vram_bytes": self.provider_pool_resident_vram_bytes,
+            "aggregate_required_ram_bytes": self.peak_ram_bytes,
+            "aggregate_required_vram_bytes": self.peak_vram_bytes,
+            "execution_peak_ram_bytes": self.execution_peak_ram_bytes,
+            "execution_peak_vram_bytes": self.execution_peak_vram_bytes,
+            "provider_pool_observed_ram_bytes": self.provider_pool_observed_ram_bytes,
+            "provider_pool_observed_vram_bytes": self.provider_pool_observed_vram_bytes,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StaticInferenceOperatingPointEvidence":
+        if bool(payload.get("feasible", True)):
+            required = (
+                "provider_pool_required_ram_bytes",
+                "execution_peak_ram_bytes",
+            )
+            missing = [name for name in required if name not in payload]
+            if payload.get("peak_vram_bytes") is not None:
+                missing.extend(
+                    name
+                    for name in (
+                        "provider_pool_required_vram_bytes",
+                        "execution_peak_vram_bytes",
+                    )
+                    if name not in payload
+                )
+            if missing:
+                raise TrainingDataSerializationError(
+                    "Feasible v5 static-inference evidence omits required resource components: "
+                    + ", ".join(missing)
+                )
+        return cls(
+            batch_size=int(payload["batch_size"]),
+            concurrent_model_jobs=int(payload["concurrent_model_jobs"]),
+            structures_per_second=float(payload["structures_per_second"]),
+            peak_ram_bytes=int(payload.get("aggregate_required_ram_bytes", payload["peak_ram_bytes"])),
+            peak_vram_bytes=(
+                None if payload.get("aggregate_required_vram_bytes", payload.get("peak_vram_bytes")) is None
+                else int(payload.get("aggregate_required_vram_bytes", payload["peak_vram_bytes"]))
+            ),
+            feasible=bool(payload.get("feasible", True)),
+            failure_kind=(
+                None if payload.get("failure_kind") is None
+                else str(payload["failure_kind"])
+            ),
+            completed_structures=int(payload.get("completed_structures", 0)),
+            elapsed_seconds=float(payload.get("elapsed_seconds", 0.0)),
+            observed_max_active_jobs=int(payload.get("observed_max_active_jobs", 1)),
+            provider_pool_resident_ram_bytes=int(payload.get("provider_pool_required_ram_bytes", payload.get("provider_pool_resident_ram_bytes", 0))),
+            provider_pool_resident_vram_bytes=(
+                None if payload.get("provider_pool_required_vram_bytes", payload.get("provider_pool_resident_vram_bytes")) is None
+                else int(payload.get("provider_pool_required_vram_bytes", payload["provider_pool_resident_vram_bytes"]))
+            ),
+            execution_peak_ram_bytes=int(payload.get("execution_peak_ram_bytes", 0)),
+            execution_peak_vram_bytes=(
+                None if payload.get("execution_peak_vram_bytes") is None
+                else int(payload["execution_peak_vram_bytes"])
+            ),
+            provider_pool_observed_ram_bytes=int(payload.get("provider_pool_observed_ram_bytes", 0)),
+            provider_pool_observed_vram_bytes=(
+                None if payload.get("provider_pool_observed_vram_bytes") is None
+                else int(payload["provider_pool_observed_vram_bytes"])
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StaticInferenceRuntimeProfile:
+    """Runtime-only compatible result of bounded joint operating-point search."""
+
+    compatibility_digest: str
+    selected_batch_size: int
+    selected_concurrent_model_jobs: int
+    learned_safe_batch_ceiling: int
+    evidence: tuple[StaticInferenceOperatingPointEvidence, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "compatibility_digest",
+            validate_digest(self.compatibility_digest, name="compatibility_digest"),
+        )
+        for value in (
+            self.selected_batch_size,
+            self.selected_concurrent_model_jobs,
+            self.learned_safe_batch_ceiling,
+        ):
+            if int(value) <= 0:
+                raise TrainingDataInputError("Static inference profile sizes must be positive.")
+        object.__setattr__(self, "selected_batch_size", int(self.selected_batch_size))
+        object.__setattr__(
+            self, "selected_concurrent_model_jobs", int(self.selected_concurrent_model_jobs)
+        )
+        object.__setattr__(
+            self, "learned_safe_batch_ceiling", int(self.learned_safe_batch_ceiling)
+        )
+        object.__setattr__(self, "evidence", tuple(self.evidence))
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA,
+            "evidence_semantics": STATIC_INFERENCE_EVIDENCE_SEMANTICS,
+            "compatibility_digest": self.compatibility_digest,
+            "selected_batch_size": self.selected_batch_size,
+            "selected_concurrent_model_jobs": self.selected_concurrent_model_jobs,
+            "learned_safe_batch_ceiling": self.learned_safe_batch_ceiling,
+            "evidence": [value.to_dict() for value in self.evidence],
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StaticInferenceRuntimeProfile":
+        if payload.get("schema") != STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported static-inference runtime profile schema.")
+        if payload.get("evidence_semantics") != STATIC_INFERENCE_EVIDENCE_SEMANTICS:
+            raise TrainingDataSerializationError(
+                "Unsupported static-inference runtime-profile evidence semantics."
+            )
+        result = cls(
+            compatibility_digest=str(payload["compatibility_digest"]),
+            selected_batch_size=int(payload["selected_batch_size"]),
+            selected_concurrent_model_jobs=int(payload["selected_concurrent_model_jobs"]),
+            learned_safe_batch_ceiling=int(payload["learned_safe_batch_ceiling"]),
+            evidence=tuple(
+                StaticInferenceOperatingPointEvidence.from_dict(value)
+                for value in payload.get("evidence", ())
+            ),
+        )
+        if payload.get("content_digest") != result.content_digest:
+            raise TrainingDataSerializationError("Static-inference runtime profile digest mismatch.")
+        return result
+
+    @classmethod
+    def load_compatible(
+        cls, path: str | Path, *, compatibility_digest: str
+    ) -> "StaticInferenceRuntimeProfile | None":
+        candidate = Path(path)
+        if not candidate.is_file():
+            return None
+        try:
+            result = cls.from_dict(json.loads(candidate.read_text(encoding="utf-8")))
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            TrainingDataInputError,
+            TrainingDataSerializationError,
+        ):
+            return None
+        return (
+            result
+            if result.compatibility_digest == compatibility_digest
+            else None
+        )
+
+    def write_atomic(self, path: str | Path) -> None:
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(self.to_dict(), handle, sort_keys=True, separators=(",", ":"))
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, destination)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
+
+class StaticInferenceRuntimeAuthority:
+    """Single owner for static batch/job search, reuse, re-clamp, and OOM learning."""
+
+    def __init__(
+        self,
+        *,
+        compatibility_digest: str,
+        maximum_batch_size: int,
+        maximum_concurrent_model_jobs: int,
+        live_ram_budget_bytes: int,
+        live_vram_budget_bytes: int | None,
+        ram_policy_fraction: float = 0.80,
+        vram_policy_fraction: float = 0.90,
+        estimated_provider_resident_ram_bytes: int | None = None,
+        estimated_provider_resident_vram_bytes: int | None = None,
+        cold_start_batch_size: int = 8,
+        throughput_tolerance_fraction: float = 0.05,
+        compatible_profile: StaticInferenceRuntimeProfile | None = None,
+    ) -> None:
+        self.compatibility_digest = validate_digest(
+            compatibility_digest, name="compatibility_digest"
+        )
+        self.maximum_batch_size = int(maximum_batch_size)
+        self.maximum_concurrent_model_jobs = int(maximum_concurrent_model_jobs)
+        self.live_ram_budget_bytes = int(live_ram_budget_bytes)
+        self.live_vram_budget_bytes = (
+            None if live_vram_budget_bytes is None else int(live_vram_budget_bytes)
+        )
+        self.initial_incremental_ram_cap_bytes = int(live_ram_budget_bytes)
+        self.initial_incremental_vram_cap_bytes = (
+            None if live_vram_budget_bytes is None else int(live_vram_budget_bytes)
+        )
+        self.ram_policy_fraction = float(ram_policy_fraction)
+        self.vram_policy_fraction = float(vram_policy_fraction)
+        self.throughput_tolerance_fraction = float(throughput_tolerance_fraction)
+        if (
+            self.maximum_batch_size <= 0
+            or self.maximum_concurrent_model_jobs <= 0
+            or self.live_ram_budget_bytes <= 0
+            or (self.live_vram_budget_bytes is not None and self.live_vram_budget_bytes <= 0)
+            or not 0.0 < self.ram_policy_fraction <= 1.0
+            or not 0.0 < self.vram_policy_fraction <= 1.0
+            or not 0.0 <= self.throughput_tolerance_fraction < 1.0
+        ):
+            raise TrainingDataInputError("Static inference runtime authority limits are invalid.")
+        cold = min(self.maximum_batch_size, max(1, int(cold_start_batch_size)))
+        ascending: list[int] = []
+        value = cold
+        while value < self.maximum_batch_size:
+            ascending.append(value)
+            value = min(self.maximum_batch_size, value * 2)
+        ascending.append(self.maximum_batch_size)
+        descending: list[int] = []
+        value = cold // 2
+        while value >= 1:
+            descending.append(value)
+            value //= 2
+        self.candidate_batch_sizes = tuple(dict.fromkeys((*ascending, *descending, 1)))
+        self.learned_safe_batch_ceiling = self.maximum_batch_size
+        # This estimate is deliberately independent of a one-job execution
+        # transient.  It is the conservative outer-envelope fallback until a
+        # private shell has actually been measured by the executor.
+        self.private_provider_growth_available = (
+            estimated_provider_resident_ram_bytes is not None
+            and (
+                self.initial_incremental_vram_cap_bytes is None
+                or estimated_provider_resident_vram_bytes is not None
+            )
+        )
+        self.estimated_provider_resident_ram_bytes = max(
+            1,
+            int(estimated_provider_resident_ram_bytes)
+            if estimated_provider_resident_ram_bytes is not None
+            else 1,
+        )
+        self.estimated_provider_resident_vram_bytes = (
+            None
+            if self.initial_incremental_vram_cap_bytes is None
+            else (
+                None
+                if estimated_provider_resident_vram_bytes is None
+                else max(
+                1,
+                int(estimated_provider_resident_vram_bytes),
+                )
+            )
+        )
+        self.failed_provider_concurrency: set[int] = set()
+        self.failed_execution_boundaries: set[tuple[int, int]] = set()
+        self.evidence: list[StaticInferenceOperatingPointEvidence] = []
+        self.selected_point: StaticInferenceOperatingPointEvidence | None = None
+        self.reused_compatible_profile = False
+        if (
+            compatible_profile is not None
+            and compatible_profile.compatibility_digest == self.compatibility_digest
+        ):
+            self.learned_safe_batch_ceiling = min(
+                self.maximum_batch_size, compatible_profile.learned_safe_batch_ceiling
+            )
+            self.evidence.extend(compatible_profile.evidence)
+            for point in self.evidence:
+                if not point.feasible and point.failure_kind == "provider-pool-oom":
+                    self.failed_provider_concurrency.add(point.concurrent_model_jobs)
+                elif not point.feasible and point.failure_kind == "execution-oom":
+                    if point.concurrent_model_jobs == 1:
+                        self.learned_safe_batch_ceiling = min(
+                            self.learned_safe_batch_ceiling, max(1, point.batch_size // 2)
+                        )
+                    else:
+                        self.failed_execution_boundaries.add(
+                            (point.batch_size, point.concurrent_model_jobs)
+                        )
+            self._select()
+            self.reused_compatible_profile = self.selected_point is not None
+
+    @staticmethod
+    def compatibility_key(payload: Mapping[str, Any]) -> str:
+        """Hash conservative hardware/runtime/model/workload-shape identity."""
+
+        return digest({
+            "schema": "mdstats.static-inference-compatibility.v2",
+            "evidence_semantics": STATIC_INFERENCE_EVIDENCE_SEMANTICS,
+            **dict(payload),
+        })
+
+    def _safe(self, point: StaticInferenceOperatingPointEvidence) -> bool:
+        return bool(
+            point.feasible
+            and point.batch_size <= self.learned_safe_batch_ceiling
+            and point.batch_size <= self.maximum_batch_size
+            and point.concurrent_model_jobs <= self.maximum_concurrent_model_jobs
+            and point.peak_ram_bytes <= self.initial_incremental_ram_cap_bytes
+            and (
+                self.initial_incremental_vram_cap_bytes is None
+                or point.peak_vram_bytes is not None
+                and point.peak_vram_bytes <= self.initial_incremental_vram_cap_bytes
+            )
+            and not any(
+                point.concurrent_model_jobs >= failed
+                for failed in self.failed_provider_concurrency
+            )
+            and not any(
+                point.concurrent_model_jobs >= failed_jobs
+                and point.batch_size >= failed_batch
+                for failed_batch, failed_jobs in self.failed_execution_boundaries
+            )
+        )
+
+    def admits_requirement(
+        self,
+        *,
+        ram_bytes: int,
+        vram_bytes: int | None,
+        concurrent_model_jobs: int = 1,
+    ) -> bool:
+        """Return whether a fresh live budget admits a material transition."""
+
+        return bool(
+            int(ram_bytes) <= self.live_ram_budget_bytes
+            and (
+                (
+                    self.initial_incremental_vram_cap_bytes is None
+                )
+                or vram_bytes is not None
+                and self.live_vram_budget_bytes is not None
+                and int(vram_bytes) <= self.live_vram_budget_bytes
+                or (
+                    int(concurrent_model_jobs) <= 1
+                    and (
+                        vram_bytes is None
+                        or self.live_vram_budget_bytes is None
+                    )
+                )
+            )
+        )
+
+    def provider_residency_estimate(self) -> tuple[int, int | None]:
+        """Return the conservative next-private-slot residency estimate."""
+
+        return (
+            int(self.estimated_provider_resident_ram_bytes),
+            None
+            if self.estimated_provider_resident_vram_bytes is None
+            else int(self.estimated_provider_resident_vram_bytes),
+        )
+
+    def observe_provider_residency(self, *, ram_bytes: int, vram_bytes: int | None) -> None:
+        """Tighten the next-slot estimate without ever substituting zero."""
+
+        self.estimated_provider_resident_ram_bytes = max(
+            self.estimated_provider_resident_ram_bytes, max(1, int(ram_bytes))
+        )
+        if self.initial_incremental_vram_cap_bytes is not None:
+            if vram_bytes is None:
+                self.estimated_provider_resident_vram_bytes = None
+            elif self.estimated_provider_resident_vram_bytes is not None:
+                self.estimated_provider_resident_vram_bytes = max(
+                    self.estimated_provider_resident_vram_bytes, max(1, int(vram_bytes))
+                )
+
+    def _select(self) -> StaticInferenceOperatingPointEvidence | None:
+        safe = tuple(point for point in self.evidence if self._safe(point))
+        if not safe:
+            self.selected_point = None
+            return None
+        peak = max(point.structures_per_second for point in safe)
+        floor = peak * (1.0 - self.throughput_tolerance_fraction)
+        near = tuple(point for point in safe if point.structures_per_second >= floor)
+        self.selected_point = min(
+            near,
+            key=lambda point: (
+                point.peak_ram_bytes,
+                -1 if point.peak_vram_bytes is None else point.peak_vram_bytes,
+                point.concurrent_model_jobs,
+                point.batch_size,
+                -point.structures_per_second,
+            ),
+        )
+        return self.selected_point
+
+    def next_batch_size(self, remaining: int) -> int:
+        if self.reused_compatible_profile and self.selected_point is not None:
+            return min(int(remaining), self.selected_point.batch_size)
+        measured = {point.batch_size for point in self.evidence}
+        for candidate in self.candidate_batch_sizes:
+            if candidate <= self.learned_safe_batch_ceiling and candidate not in measured:
+                return min(int(remaining), candidate)
+        selected = self._select()
+        return min(int(remaining), 1 if selected is None else selected.batch_size)
+
+    @property
+    def candidate_concurrencies(self) -> tuple[int, ...]:
+        """Bounded geometric job-count candidates, including the configured cap."""
+
+        # Without a configured or observed conservative requirement, materializing
+        # even the first private shell is not a safe automatic decision.  Do not
+        # leak intermediate geometric candidates when the configured cap is >2.
+        if not self.private_provider_growth_available:
+            return (1,)
+        values = [1]
+        candidate = 2
+        while candidate < self.maximum_concurrent_model_jobs:
+            values.append(candidate)
+            candidate *= 2
+        values.append(self.maximum_concurrent_model_jobs)
+        return tuple(dict.fromkeys(values))
+
+    def candidate_operating_points(
+        self, *, available_structures: int, concurrency_available: bool
+    ) -> tuple[tuple[int, int], ...]:
+        """Return bounded, genuinely exercisable unmeasured ``(batch, jobs)`` points."""
+
+        available = max(0, int(available_structures))
+        measured = {
+            (point.batch_size, point.concurrent_model_jobs) for point in self.evidence
+        }
+        jobs = self.candidate_concurrencies if concurrency_available else (1,)
+        # Grow private model shells monotonically.  Exploring all batch points at
+        # one concurrency avoids repeatedly constructing and retiring the same
+        # providers merely because the batch candidate changed.
+        return tuple(
+            (batch, concurrent)
+            for concurrent in jobs
+            for batch in self.candidate_batch_sizes
+            if batch <= self.learned_safe_batch_ceiling
+            and not any(concurrent >= failed for failed in self.failed_provider_concurrency)
+            and not any(
+                concurrent >= failed_jobs and batch >= failed_batch
+                for failed_batch, failed_jobs in self.failed_execution_boundaries
+            )
+            and batch * concurrent <= available
+            and (batch, concurrent) not in measured
+        )
+
+    def record(self, point: StaticInferenceOperatingPointEvidence) -> None:
+        self.evidence.append(point)
+        if (
+            not point.feasible
+            and point.failure_kind == "execution-oom"
+            and point.concurrent_model_jobs == 1
+        ):
+            self.learned_safe_batch_ceiling = min(
+                self.learned_safe_batch_ceiling, max(1, point.batch_size // 2)
+            )
+        if not point.feasible and point.failure_kind == "execution-oom" and point.concurrent_model_jobs > 1:
+            self.failed_execution_boundaries.add(
+                (int(point.batch_size), int(point.concurrent_model_jobs))
+            )
+        if not point.feasible and point.failure_kind == "provider-pool-oom":
+            self.failed_provider_concurrency.add(int(point.concurrent_model_jobs))
+        self._select()
+
+    def reclamp(
+        self,
+        *,
+        live_ram_available_bytes: int,
+        live_vram_available_bytes: int | None,
+    ) -> StaticInferenceOperatingPointEvidence | None:
+        self.live_ram_budget_bytes = max(
+            1,
+            min(
+                self.initial_incremental_ram_cap_bytes,
+                math.floor(int(live_ram_available_bytes) * self.ram_policy_fraction),
+            ),
+        )
+        self.live_vram_budget_bytes = (
+            None
+            if live_vram_available_bytes is None
+            else max(
+                1,
+                min(
+                    int(self.initial_incremental_vram_cap_bytes or 0),
+                    math.floor(
+                        int(live_vram_available_bytes) * self.vram_policy_fraction
+                    ),
+                ),
+            )
+        )
+        return self._select()
+
+    def profile(self) -> StaticInferenceRuntimeProfile:
+        selected = self._select()
+        if selected is None:
+            raise TrainingDataInputError(
+                "No measured static inference operating point fits the live resource envelope."
+            )
+        return StaticInferenceRuntimeProfile(
+            compatibility_digest=self.compatibility_digest,
+            selected_batch_size=selected.batch_size,
+            selected_concurrent_model_jobs=selected.concurrent_model_jobs,
+            learned_safe_batch_ceiling=self.learned_safe_batch_ceiling,
+            evidence=tuple(self.evidence),
+        )
+
+
+class StaticMaceInferenceExecutor:
+    """Canonical deterministic batched prediction owner with bounded OOM learning."""
+
+    def __init__(
+        self,
+        provider: Any,
+        *,
+        batch_size: int,
+        graph_cache_directory: str | Path | None = None,
+        maximum_oom_backoffs: int = 8,
+        owns_provider: bool = False,
+        runtime_authority: StaticInferenceRuntimeAuthority | None = None,
+        concurrent_model_jobs: int = 1,
+        device: str = "cpu",
+        provider_factory: Callable[[], Any] | None = None,
+    ) -> None:
+        if int(batch_size) <= 0 or int(maximum_oom_backoffs) < 0:
+            raise TrainingDataInputError("Static inference batch/backoff configuration is invalid.")
+        self.provider = provider
+        self.requested_batch_size = int(batch_size)
+        self.learned_safe_batch_size = int(batch_size)
+        self.graph_cache_directory = graph_cache_directory
+        self.maximum_oom_backoffs = int(maximum_oom_backoffs)
+        self.oom_backoff_count = 0
+        self.owns_provider = bool(owns_provider)
+        self.runtime_authority = runtime_authority
+        self.concurrent_model_jobs = max(1, int(concurrent_model_jobs))
+        self.device = str(device)
+        self.provider_factory = provider_factory
+        self._execution_lock = RLock()
+        # Slot zero is caller-provided; every later slot is executor-owned and
+        # survives calibration and production waves until explicitly retired.
+        self._provider_pool: list[Any] = [provider]
+        self._provider_pool_resident_ram_bytes: list[int] = [0]
+        self._provider_pool_resident_vram_bytes: list[int | None] = [None]
+        self._provider_pool_observed_ram_bytes: list[int] = [0]
+        self._provider_pool_observed_vram_bytes: list[int | None] = [None]
+        self._closed = False
+
+    @classmethod
+    def from_model_path(
+        cls,
+        model_path: str | Path,
+        *,
+        batch_size: int,
+        device: str,
+        default_dtype: str,
+        graph_cache_directory: str | Path | None = None,
+        runtime_authority: StaticInferenceRuntimeAuthority | None = None,
+        concurrent_model_jobs: int = 1,
+        **calculator_kwargs: Any,
+    ) -> "StaticMaceInferenceExecutor":
+        def provider_factory() -> Any:
+            return MaceCalculatorProvider.from_model_path(
+                model_path, device=device, default_dtype=default_dtype, **calculator_kwargs
+            )
+
+        provider = provider_factory()
+        return cls(
+            provider, batch_size=batch_size, graph_cache_directory=graph_cache_directory,
+            owns_provider=True, runtime_authority=runtime_authority,
+            concurrent_model_jobs=concurrent_model_jobs, device=device,
+            provider_factory=provider_factory,
+        )
+
+    @staticmethod
+    def _is_oom(exc: BaseException) -> bool:
+        import errno
+
+        if isinstance(exc, MemoryError):
+            return True
+        if isinstance(exc, OSError) and exc.errno == errno.ENOMEM:
+            return True
+        message = str(exc).lower()
+        return any(
+            marker in message
+            for marker in (
+                "out of memory", "cannot allocate memory", "cuda error: memory allocation",
+                "cublas_status_alloc_failed",
+            )
+        )
+
+    def _release_cuda_cache(self) -> None:
+        """Release this executor's allocator cache only for a CUDA executor."""
+
+        if not self.device.startswith("cuda"):
+            return
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            return
+
+    def _synchronize_device(self) -> None:
+        """Make the executor's timing boundary include completed CUDA work."""
+
+        if not self.device.startswith("cuda"):
+            return
+        try:
+            import torch
+
+            torch.cuda.synchronize(self.device)
+        except Exception:
+            # Providers may be CPU-backed test doubles with a CUDA-labelled
+            # policy. Actual CUDA failures are still reported by prediction.
+            return
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._retire_private_providers(keep_jobs=1)
+        if self.owns_provider and hasattr(self.provider, "close"):
+            self.provider.close()
+        self._closed = True
+
+    def __enter__(self) -> "StaticMaceInferenceExecutor":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.close()
+
+    @property
+    def resident_provider_pool_size(self) -> int:
+        return len(self._provider_pool)
+
+    @property
+    def provider_pool_resident_ram_bytes(self) -> int:
+        return sum(self._provider_pool_resident_ram_bytes[1:])
+
+    @property
+    def provider_pool_resident_vram_bytes(self) -> int | None:
+        values = self._provider_pool_resident_vram_bytes[1:]
+        if not values:
+            return 0
+        if any(value is None for value in values):
+            return None
+        return sum(int(value) for value in values if value is not None)
+
+    @staticmethod
+    def _close_provider(provider: Any, *, release_cuda_memory: bool = True) -> None:
+        if hasattr(provider, "close"):
+            if isinstance(provider, MaceCalculatorProvider):
+                provider.close(release_cuda_memory=release_cuda_memory)
+            else:
+                provider.close()
+
+    def _retire_private_providers(
+        self, *, keep_jobs: int, release_cuda_cache: bool = True
+    ) -> None:
+        keep = max(1, int(keep_jobs))
+        shrunk = False
+        while len(self._provider_pool) > keep:
+            provider = self._provider_pool.pop()
+            self._provider_pool_resident_ram_bytes.pop()
+            self._provider_pool_resident_vram_bytes.pop()
+            self._provider_pool_observed_ram_bytes.pop()
+            self._provider_pool_observed_vram_bytes.pop()
+            # Private MACE providers must not individually flush the process-wide
+            # allocator cache.  The executor owns one release transaction after
+            # every surplus owner has been dropped.
+            self._close_provider(provider, release_cuda_memory=False)
+            shrunk = True
+        if shrunk and release_cuda_cache and self.device.startswith("cuda"):
+            self._release_cuda_cache()
+
+    def _ensure_provider_pool(
+        self, jobs: int, *, admit_next_slot: Callable[[], bool] | None = None
+    ) -> None:
+        target = max(1, int(jobs))
+        if target <= len(self._provider_pool):
+            return
+        if self.provider_factory is None:
+            raise TrainingDataInputError(
+                "Concurrent static inference requires a private-provider factory."
+            )
+        # Grow one slot at a time.  A construction failure can therefore close
+        # only the new attempt and preserve every previously admitted provider.
+        accepted = len(self._provider_pool)
+        attempt_provider: Any | None = None
+        try:
+            while len(self._provider_pool) < target:
+                if admit_next_slot is not None and not admit_next_slot():
+                    raise TrainingDataInputError(
+                        "Live RAM/VRAM headroom does not admit the next private provider slot."
+                    )
+                monitor = _StaticInferenceResourceMonitor(self.device)
+                monitor.start()
+                try:
+                    attempt_provider = self.provider_factory()
+                except BaseException:
+                    monitor.finish()
+                    raise
+                growth_ram, growth_vram = monitor.finish()
+                required_ram, required_vram = (
+                    self.runtime_authority.provider_residency_estimate()
+                    if self.runtime_authority is not None
+                    else (max(1, int(growth_ram)), growth_vram)
+                )
+                required_ram = max(int(required_ram), max(1, int(growth_ram)))
+                required_vram = (
+                    None
+                    if required_vram is None or growth_vram is None
+                    else max(int(required_vram), max(1, int(growth_vram)))
+                )
+                self._provider_pool.append(attempt_provider)
+                self._provider_pool_resident_ram_bytes.append(required_ram)
+                self._provider_pool_resident_vram_bytes.append(required_vram)
+                self._provider_pool_observed_ram_bytes.append(max(0, int(growth_ram)))
+                self._provider_pool_observed_vram_bytes.append(
+                    None if growth_vram is None else max(0, int(growth_vram))
+                )
+                # From here the provider is owned by the pool rollback rather
+                # than this construction attempt.
+                attempt_provider = None
+                if self.runtime_authority is not None:
+                    self.runtime_authority.observe_provider_residency(
+                        ram_bytes=required_ram, vram_bytes=required_vram
+                    )
+        except BaseException:
+            if attempt_provider is not None:
+                self._close_provider(attempt_provider, release_cuda_memory=False)
+            # Provider-growth failure is one executor-owned cleanup transaction:
+            # exact rollback first, then one allocator release for CUDA only.
+            self._retire_private_providers(
+                keep_jobs=accepted, release_cuda_cache=False
+            )
+            self._release_cuda_cache()
+            raise
+
+    def _provider_batch(
+        self, atoms_batch: Sequence[Any], geometry_identities: Sequence[str] | None
+    ) -> tuple[AtomicModelPrediction, ...]:
+        try:
+            return tuple(self.provider.predict_batch(
+                atoms_batch, geometry_identities=geometry_identities,
+                graph_cache_directory=self.graph_cache_directory,
+            ))
+        except TypeError as exc:
+            if "unexpected keyword" not in str(exc) and "geometry_identities" not in str(exc):
+                raise
+            return tuple(self.provider.predict_batch(atoms_batch))
+
+    def _predict_owned(
+        self,
+        atoms: Sequence[Any],
+        *,
+        geometry_identities: Sequence[str] | None = None,
+    ) -> tuple[AtomicModelPrediction, ...]:
+        values = tuple(atoms)
+        identities = None if geometry_identities is None else tuple(str(value) for value in geometry_identities)
+        if not values:
+            raise TrainingDataInputError("Static inference input is empty.")
+        if identities is not None and len(identities) != len(values):
+            raise TrainingDataInputError("Static inference geometry identity count mismatch.")
+        result: list[AtomicModelPrediction] = []
+        position = 0
+        while position < len(values):
+            remaining = len(values) - position
+            batch_size = min(self.learned_safe_batch_size, remaining)
+            if self.runtime_authority is not None:
+                batch_size = min(
+                    batch_size, self.runtime_authority.next_batch_size(remaining)
+                )
+            batch = values[position:position + batch_size]
+            batch_ids = None if identities is None else identities[position:position + batch_size]
+            monitor = (
+                _StaticInferenceResourceMonitor(self.device)
+                if self.runtime_authority is not None else None
+            )
+            if monitor is not None:
+                monitor.start()
+            started = time.perf_counter()
+            try:
+                predictions = self._provider_batch(batch, batch_ids)
+            except RuntimeError as exc:
+                peak_ram, peak_vram = (
+                    monitor.finish() if monitor is not None else (0, None)
+                )
+                if not self._is_oom(exc) or batch_size <= 1:
+                    raise
+                if self.runtime_authority is not None:
+                    self.runtime_authority.record(
+                        StaticInferenceOperatingPointEvidence(
+                            batch_size=batch_size,
+                            concurrent_model_jobs=1,
+                            structures_per_second=0.0,
+                            peak_ram_bytes=peak_ram,
+                            peak_vram_bytes=peak_vram,
+                            feasible=False,
+                            failure_kind="execution-oom",
+                        )
+                    )
+                if self.oom_backoff_count >= self.maximum_oom_backoffs:
+                    raise TrainingDataInputError(
+                        "Static inference exhausted its bounded OOM backoff budget."
+                    ) from exc
+                self.oom_backoff_count += 1
+                self.learned_safe_batch_size = max(1, batch_size // 2)
+                self._release_cuda_cache()
+                continue
+            except BaseException:
+                if monitor is not None:
+                    monitor.finish()
+                raise
+            self._synchronize_device()
+            elapsed = max(time.perf_counter() - started, 1.0e-12)
+            peak_ram, peak_vram = (
+                monitor.finish() if monitor is not None else (0, None)
+            )
+            if len(predictions) != len(batch):
+                raise TrainingDataInputError("Static inference provider returned the wrong prediction count.")
+            result.extend(predictions)
+            position += batch_size
+            if self.runtime_authority is not None:
+                self.runtime_authority.record(
+                    StaticInferenceOperatingPointEvidence(
+                        batch_size=batch_size,
+                        # This executor owns one private model shell and executes
+                        # serially. Higher-J evidence is recorded only by the
+                        # joint authority around an actual concurrent wave.
+                        concurrent_model_jobs=1,
+                        structures_per_second=batch_size / elapsed,
+                        peak_ram_bytes=peak_ram,
+                        peak_vram_bytes=peak_vram,
+                        completed_structures=batch_size,
+                        elapsed_seconds=elapsed,
+                        observed_max_active_jobs=1,
+                        provider_pool_resident_ram_bytes=0,
+                        provider_pool_resident_vram_bytes=(
+                            None if peak_vram is None else 0
+                        ),
+                        execution_peak_ram_bytes=peak_ram,
+                        execution_peak_vram_bytes=peak_vram,
+                    )
+                )
+        if self.runtime_authority is not None and self.runtime_authority.selected_point is not None:
+            self.learned_safe_batch_size = min(
+                self.learned_safe_batch_size,
+                self.runtime_authority.selected_point.batch_size,
+                self.runtime_authority.learned_safe_batch_ceiling,
+            )
+        return tuple(result)
+
+    def _run_joint_wave(
+        self,
+        values: tuple[Any, ...],
+        identities: tuple[str, ...] | None,
+        *,
+        batch_size: int,
+        concurrent_jobs: int,
+    ) -> tuple[
+        tuple[AtomicModelPrediction, ...], float, int, int | None, int, int, int,
+        int, int | None, int, int | None,
+    ]:
+        """Run one steady-state wave using stable worker-private provider slots."""
+
+        batch, jobs = int(batch_size), int(concurrent_jobs)
+        if batch <= 0 or jobs <= 0 or len(values) != batch * jobs:
+            raise TrainingDataInputError("Joint static inference wave dimensions are invalid.")
+        if len(self._provider_pool) < jobs:
+            raise TrainingDataInputError(
+                "Joint static inference wave requires an already admitted provider pool."
+            )
+        ready = Barrier(jobs)
+        active_ready = Barrier(jobs)
+        active_lock = Lock()
+        active = 0
+        observed_peak = 0
+        # The timing/resource boundary starts only after the required pool is
+        # resident.  Its separately measured residency remains part of the
+        # conservative profile requirement for a fresh process.
+        monitor = _StaticInferenceResourceMonitor(self.device)
+        monitor.start()
+        started = time.perf_counter()
+        providers = tuple(self._provider_pool[:jobs])
+
+        def execute(index: int) -> tuple[int, tuple[AtomicModelPrediction, ...], int, int]:
+            nonlocal active, observed_peak
+            provider = providers[index]
+            worker = StaticMaceInferenceExecutor(
+                provider,
+                batch_size=batch,
+                graph_cache_directory=self.graph_cache_directory,
+                maximum_oom_backoffs=self.maximum_oom_backoffs,
+                owns_provider=False,
+                device=self.device,
+            )
+            start = index * batch
+            ready.wait(timeout=60.0)
+            with active_lock:
+                active += 1
+                observed_peak = max(observed_peak, active)
+            try:
+                active_ready.wait(timeout=60.0)
+                predicted = worker.predict(
+                    values[start:start + batch],
+                    geometry_identities=(
+                        None if identities is None else identities[start:start + batch]
+                    ),
+                )
+            finally:
+                with active_lock:
+                    active -= 1
+            return index, predicted, worker.learned_safe_batch_size, worker.oom_backoff_count
+
+        try:
+            with ThreadPoolExecutor(
+                max_workers=jobs, thread_name_prefix="mdstats-static-joint"
+            ) as pool:
+                completed = tuple(pool.map(execute, range(jobs)))
+        except BaseException:
+            monitor.finish()
+            raise
+        self._synchronize_device()
+        elapsed = max(time.perf_counter() - started, 1.0e-12)
+        execution_ram, execution_vram = monitor.finish()
+        resident_ram = self.provider_pool_resident_ram_bytes
+        resident_vram = self.provider_pool_resident_vram_bytes
+        peak_ram = resident_ram + execution_ram
+        peak_vram = (
+            None
+            if resident_vram is None or execution_vram is None
+            else resident_vram + execution_vram
+        )
+        ordered = sorted(completed, key=lambda value: value[0])
+        return (
+            tuple(prediction for _, chunk, _, _ in ordered for prediction in chunk),
+            elapsed,
+            peak_ram,
+            peak_vram,
+            observed_peak,
+            min(value[2] for value in ordered),
+            sum(value[3] for value in ordered),
+            resident_ram,
+            resident_vram,
+            execution_ram,
+            execution_vram,
+        )
+
+    def _predict_joint_owned(
+        self,
+        atoms: Sequence[Any],
+        *,
+        geometry_identities: Sequence[str] | None,
+    ) -> tuple[AtomicModelPrediction, ...]:
+        authority = self.runtime_authority
+        assert authority is not None
+        values = tuple(atoms)
+        identities = None if geometry_identities is None else tuple(map(str, geometry_identities))
+        if not values:
+            raise TrainingDataInputError("Static inference input is empty.")
+        if identities is not None and len(identities) != len(values):
+            raise TrainingDataInputError("Static inference geometry identity count mismatch.")
+
+        def reclamp_live() -> StaticInferenceOperatingPointEvidence | None:
+            """Resolve one post-base-provider incremental coordinate snapshot."""
+
+            try:
+                from .resources import available_memory_bytes
+
+                ram_available = available_memory_bytes()
+            except Exception:
+                ram_available = None
+            if ram_available is None:
+                # Host telemetry was required when the authority was created.
+                # Retaining its last conservative cap is safer than inventing a
+                # larger current value when a later probe is transiently absent.
+                ram_available = max(
+                    1, math.floor(authority.live_ram_budget_bytes / authority.ram_policy_fraction)
+                )
+            vram_available: int | None = None
+            if authority.initial_incremental_vram_cap_bytes is not None:
+                try:
+                    from .training_parallel import query_gpu_telemetry
+
+                    sample = query_gpu_telemetry(self.device)
+                    if sample is not None:
+                        vram_available = int(sample.free_bytes)
+                except Exception:
+                    vram_available = None
+            return authority.reclamp(
+                live_ram_available_bytes=int(ram_available),
+                live_vram_available_bytes=vram_available,
+            )
+
+        def point_for(batch: int, jobs: int) -> StaticInferenceOperatingPointEvidence | None:
+            return next(
+                (
+                    point
+                    for point in authority.evidence
+                    if point.feasible
+                    and point.batch_size == int(batch)
+                    and point.concurrent_model_jobs == int(jobs)
+                ),
+                None,
+            )
+
+        def marginal_requirement(batch: int, jobs: int) -> tuple[int, int | None]:
+            """Return remaining pool growth plus the selected wave transient."""
+
+            known = point_for(batch, jobs)
+            single = point_for(batch, 1)
+            current_ram = self.provider_pool_resident_ram_bytes
+            current_vram = self.provider_pool_resident_vram_bytes
+            if known is not None:
+                target_ram = known.provider_pool_resident_ram_bytes
+                target_vram = known.provider_pool_resident_vram_bytes
+                execution_ram = known.execution_peak_ram_bytes
+                execution_vram = known.execution_peak_vram_bytes
+            else:
+                estimated_ram, estimated_vram = authority.provider_residency_estimate()
+                additional = max(0, int(jobs) - self.resident_provider_pool_size)
+                target_ram = current_ram + additional * estimated_ram
+                target_vram = (
+                    None
+                    if current_vram is None or estimated_vram is None
+                    else current_vram + additional * estimated_vram
+                )
+                execution_ram = 0 if single is None else single.execution_peak_ram_bytes
+                execution_vram = None if single is None else single.execution_peak_vram_bytes
+            ram = max(0, int(target_ram) - current_ram) + int(execution_ram)
+            vram = (
+                None
+                if target_vram is None or current_vram is None or execution_vram is None
+                else max(0, int(target_vram) - int(current_vram)) + int(execution_vram)
+            )
+            return ram, vram
+
+        def fresh_admission(batch: int, jobs: int) -> bool:
+            reclamp_live()
+            ram, vram = marginal_requirement(batch, jobs)
+            return authority.admits_requirement(
+                ram_bytes=ram, vram_bytes=vram, concurrent_model_jobs=jobs
+            )
+
+        def record_failure(batch: int, jobs: int, failure_kind: str) -> None:
+            authority.record(
+                StaticInferenceOperatingPointEvidence(
+                    batch_size=batch,
+                    concurrent_model_jobs=jobs,
+                    structures_per_second=0.0,
+                    peak_ram_bytes=self.provider_pool_resident_ram_bytes,
+                    peak_vram_bytes=self.provider_pool_resident_vram_bytes,
+                    feasible=False,
+                    failure_kind=failure_kind,
+                )
+            )
+
+        def prepare_wave(batch: int, jobs: int) -> str | None:
+            # A smaller operating point must not inherit a larger explored
+            # pool's residency. Retire first so its marginal requirement is
+            # interpreted in that point's own coordinate.
+            self._retire_private_providers(keep_jobs=jobs)
+            if not fresh_admission(batch, jobs):
+                return "live-resource"
+            try:
+                self._ensure_provider_pool(
+                    jobs,
+                    admit_next_slot=lambda: fresh_admission(batch, jobs),
+                )
+            except BaseException as exc:
+                if isinstance(exc, TrainingDataInputError) and "next private provider slot" in str(exc):
+                    return "live-resource"
+                if self._is_oom(exc):
+                    return "provider-pool-oom"
+                raise
+            # Materialization itself can consume more than the conservative
+            # estimate. Re-clamp and admit the transient immediately before the
+            # worker barrier is entered.
+            return None if fresh_admission(batch, jobs) else "live-resource"
+
+        reclamp_live()
+
+        if not authority.reused_compatible_profile:
+            for batch, jobs in authority.candidate_operating_points(
+                available_structures=len(values),
+                concurrency_available=self.provider_factory is not None,
+            ):
+                if batch > authority.learned_safe_batch_ceiling:
+                    continue
+                count = batch * jobs
+                failure = prepare_wave(batch, jobs)
+                if failure is not None:
+                    record_failure(batch, jobs, failure)
+                    continue
+                try:
+                    wave = self._run_joint_wave(
+                        values[:count],
+                        None if identities is None else identities[:count],
+                        batch_size=batch,
+                        concurrent_jobs=jobs,
+                    )
+                except BaseException as exc:
+                    if not self._is_oom(exc):
+                        raise
+                    record_failure(batch, jobs, "execution-oom")
+                    self._release_cuda_cache()
+                    continue
+                (
+                    _, elapsed, peak_ram, peak_vram, observed, safe_ceiling, backoffs,
+                    resident_ram, resident_vram, execution_ram, execution_vram,
+                ) = wave
+                feasible = backoffs == 0 and safe_ceiling >= batch
+                completed = count if feasible else 0
+                authority.record(
+                    StaticInferenceOperatingPointEvidence(
+                        batch_size=batch,
+                        concurrent_model_jobs=jobs,
+                        structures_per_second=completed / elapsed if completed else 0.0,
+                        peak_ram_bytes=peak_ram,
+                        peak_vram_bytes=peak_vram,
+                        feasible=feasible,
+                        failure_kind=None if feasible else "execution-oom",
+                        completed_structures=completed,
+                        elapsed_seconds=elapsed if completed else 0.0,
+                        observed_max_active_jobs=observed,
+                        provider_pool_resident_ram_bytes=resident_ram,
+                        provider_pool_resident_vram_bytes=resident_vram,
+                        execution_peak_ram_bytes=execution_ram,
+                        execution_peak_vram_bytes=execution_vram,
+                    )
+                )
+
+        def select_available(
+            excluded: set[tuple[int, int]], remaining: int
+        ) -> StaticInferenceOperatingPointEvidence | None:
+            candidates = [
+                point
+                for point in authority.evidence
+                if authority._safe(point)
+                and (point.batch_size, point.concurrent_model_jobs) not in excluded
+                and point.batch_size * point.concurrent_model_jobs <= remaining
+            ]
+            if not candidates:
+                return None
+            peak = max(point.structures_per_second for point in candidates)
+            floor = peak * (1.0 - authority.throughput_tolerance_fraction)
+            return min(
+                (point for point in candidates if point.structures_per_second >= floor),
+                key=lambda point: (
+                    point.peak_ram_bytes,
+                    -1 if point.peak_vram_bytes is None else point.peak_vram_bytes,
+                    point.concurrent_model_jobs,
+                    point.batch_size,
+                    -point.structures_per_second,
+                ),
+            )
+
+        result: list[AtomicModelPrediction] = []
+        position = 0
+        while position < len(values):
+            remaining = len(values) - position
+            excluded: set[tuple[int, int]] = set()
+            while True:
+                selected = select_available(excluded, remaining)
+                if selected is None:
+                    raise TrainingDataInputError(
+                        "no future prediction is admissible from the measured static inference operating points."
+                    )
+                jobs = min(selected.concurrent_model_jobs, remaining // selected.batch_size)
+                if jobs == 0:
+                    saved = self.runtime_authority
+                    self.runtime_authority = None
+                    try:
+                        result.extend(self._predict_owned(
+                            values[position:],
+                            geometry_identities=None if identities is None else identities[position:],
+                        ))
+                    finally:
+                        self.runtime_authority = saved
+                    position = len(values)
+                    break
+                failure = prepare_wave(selected.batch_size, jobs)
+                if failure is not None:
+                    record_failure(selected.batch_size, jobs, failure)
+                    excluded.add((selected.batch_size, jobs))
+                    continue
+                try:
+                    wave = self._run_joint_wave(
+                        values[position:position + jobs * selected.batch_size],
+                        None if identities is None else identities[position:position + jobs * selected.batch_size],
+                        batch_size=selected.batch_size,
+                        concurrent_jobs=jobs,
+                    )
+                except BaseException as exc:
+                    if not self._is_oom(exc):
+                        raise
+                    record_failure(selected.batch_size, jobs, "execution-oom")
+                    self._release_cuda_cache()
+                    excluded.add((selected.batch_size, jobs))
+                    continue
+                (
+                    predicted, elapsed, peak_ram, peak_vram, observed, safe_ceiling,
+                    backoffs, resident_ram, resident_vram, execution_ram, execution_vram,
+                ) = wave
+                if observed != jobs:
+                    raise TrainingDataInputError(
+                        "Static inference execution did not realize selected model-job concurrency."
+                    )
+                if backoffs > 0 or safe_ceiling < selected.batch_size:
+                    # A successful worker-local subdivision remains valid for
+                    # this wave, but its causal capability evidence belongs to
+                    # the requested two-dimensional operating point.  The
+                    # authority keeps J=1 ceilings separate from J>1 bounds.
+                    authority.record(
+                        StaticInferenceOperatingPointEvidence(
+                            batch_size=selected.batch_size,
+                            concurrent_model_jobs=jobs,
+                            structures_per_second=0.0,
+                            peak_ram_bytes=peak_ram,
+                            peak_vram_bytes=peak_vram,
+                            feasible=False,
+                            failure_kind="execution-oom",
+                            completed_structures=0,
+                            elapsed_seconds=0.0,
+                            observed_max_active_jobs=observed,
+                            provider_pool_resident_ram_bytes=resident_ram,
+                            provider_pool_resident_vram_bytes=resident_vram,
+                            execution_peak_ram_bytes=execution_ram,
+                            execution_peak_vram_bytes=execution_vram,
+                        )
+                    )
+                result.extend(predicted)
+                position += jobs * selected.batch_size
+                break
+        return tuple(result)
+
+    def predict(
+        self,
+        atoms: Sequence[Any],
+        *,
+        geometry_identities: Sequence[str] | None = None,
+    ) -> tuple[AtomicModelPrediction, ...]:
+        """Predict serially with one executor-owned mutable model shell."""
+
+        if not self._execution_lock.acquire(blocking=False):
+            raise TrainingDataInputError(
+                "A StaticMaceInferenceExecutor/model shell cannot be shared across concurrent workers."
+            )
+        try:
+            if self.runtime_authority is not None:
+                return self._predict_joint_owned(
+                    atoms, geometry_identities=geometry_identities
+                )
+            return self._predict_owned(atoms, geometry_identities=geometry_identities)
+        finally:
+            self._execution_lock.release()
+
+    def prediction_channels(
+        self,
+        atoms: Sequence[Any],
+        *,
+        geometry_identities: Sequence[str] | None = None,
+    ) -> dict[str, np.ndarray]:
+        predictions = self.predict(atoms, geometry_identities=geometry_identities)
+        energies = np.asarray([value.energy_ev for value in predictions], dtype=np.float64)
+        forces = np.concatenate([
+            np.asarray(value.forces_ev_per_angstrom, dtype=np.float64).reshape(-1)
+            for value in predictions
+        ])
+        result = {"energy": energies, "forces": forces}
+        if all(value.stress_ev_per_angstrom3 is not None for value in predictions):
+            result["stress"] = np.stack([
+                np.asarray(value.stress_ev_per_angstrom3, dtype=np.float64)
+                for value in predictions
+            ])
+        return result
 
 
 @dataclass(frozen=True, slots=True)

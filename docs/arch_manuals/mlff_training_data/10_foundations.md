@@ -151,4 +151,4 @@ The implementation may reorganize Python modules while preserving the architectu
 - validation/calibration/locked evidence;
 - external analysis-owned results.
 
-Current specifications control public/serialized current-generation contracts. Internal refactoring may reuse common sampling/execution primitives when externally owned scientific behavior and persisted current-generation identities remain conforming. Backward compatibility with superseded campaign generations is not an architectural requirement.
+Current specifications control public/serialized current-generation contracts. Internal refactoring may reuse common sampling/execution primitives when externally owned scientific behavior and persisted current-generation identities remain conforming. Backward compatibility with superseded campaign generations is not an architectural requirement, except for the narrow immediately preceding fixed-fidelity restart boundary: it may reuse authenticated unchanged preparation inputs, but it must create a fresh configurable target-size authority and fails closed when compatibility is ambiguous.

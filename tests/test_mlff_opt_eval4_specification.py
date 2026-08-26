@@ -49,7 +49,7 @@ def test_opt_eval4_generated_config_exposes_bounded_cpu_pipeline_controls() -> N
 
 
 def test_campaign_evaluate_uses_staged_runner() -> None:
-    source = inspect.getsource(campaign_cli.command_evaluate)
+    source = inspect.getsource(campaign_cli._core._execute_evaluate_current_authority)
     assert "_run_staged_evaluation_tasks(" in source
     assert "prepare_mace_checkpoint_evaluation" in source
     assert "run_prepared_mace_checkpoint_inference" in source

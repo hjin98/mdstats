@@ -195,7 +195,7 @@ def test_lammps_runner_materializes_and_parses_short_rollout(tmp_path: Path, mon
         (root / "trajectory.dump").write_text("\n".join(dump) + "\n", encoding="utf-8")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(dv.subprocess, "run", fake_run)
+    monkeypatch.setattr(dv, "_run_file_backed_process", fake_run)
     metric = dv.run_lammps_mliap_dynamics_case(
         mliap, _chain(), base_frame_uid=_sha("base-runner"), topology_atom_indices=(0, 1, 2),
         temperature_kelvin=300.0, velocity_seed=12345, element_order=("O", "Si"), policy=policy,
@@ -206,3 +206,207 @@ def test_lammps_runner_materializes_and_parses_short_rollout(tmp_path: Path, mon
     assert metric.sample_count == 7
     assert Path(metric.trajectory_path).is_file()
     assert metric.trajectory_sha256 == dv._sha256_file(metric.trajectory_path)
+    receipt_path = tmp_path / "case" / "completion.json"
+    arguments_digest = _sha("arguments")
+    receipt = dv.DynCaseCompletionReceipt(
+        run_plan_digest=_sha("run-receipt"), plan_digest=_sha("plan-receipt"),
+        policy_digest=policy.policy_digest, mliap_artifact_sha256=dv._sha256_file(mliap),
+        lammps_executable_sha256=dv._sha256_file(executable),
+        lammps_arguments_digest=arguments_digest, metric=metric,
+    )
+    dv.write_dyn_case_completion_receipt(receipt_path, receipt)
+    accepted_receipt_bytes = receipt_path.read_bytes()
+    monkeypatch.setattr(
+        dv.json, "dump", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("ENOSPC"))
+    )
+    with pytest.raises(OSError, match="ENOSPC"):
+        dv.write_dyn_case_completion_receipt(receipt_path, receipt)
+    assert receipt_path.read_bytes() == accepted_receipt_bytes
+    assert dv.reusable_dyn_case_metric(
+        receipt_path, run_plan_digest=_sha("run-receipt"), plan_digest=_sha("plan-receipt"),
+        policy_digest=policy.policy_digest, mliap_artifact_sha256=dv._sha256_file(mliap),
+        lammps_executable_sha256=dv._sha256_file(executable),
+        lammps_arguments_digest=arguments_digest, base_frame_uid=_sha("base-runner"),
+        temperature_kelvin=300.0, velocity_seed=12345,
+    ) == metric
+    Path(metric.trajectory_path).write_text("corrupt", encoding="utf-8")
+    assert dv.reusable_dyn_case_metric(
+        receipt_path, run_plan_digest=_sha("run-receipt"), plan_digest=_sha("plan-receipt"),
+        policy_digest=policy.policy_digest, mliap_artifact_sha256=dv._sha256_file(mliap),
+        lammps_executable_sha256=dv._sha256_file(executable),
+        lammps_arguments_digest=arguments_digest, base_frame_uid=_sha("base-runner"),
+        temperature_kelvin=300.0, velocity_seed=12345,
+    ) is None
+
+
+def test_thermo_duplicate_timestep_keeps_last_row_and_sorts(tmp_path: Path) -> None:
+    import mdstats.training_data.dyn_verify as dv
+
+    log_path = tmp_path / "log.lammps"
+    log_path.write_text(
+        "LAMMPS fake\n"
+        "Step Temp PotEng KinEng TotEng\n"
+        "20 290 -11 1 -10\n"
+        "0 300 -11 1 -10\n"
+        "Loop time\n"
+        "Step Temp PotEng KinEng TotEng\n"
+        "20 310 -12 2 -10\n"
+        "40 300 -11 1 -10\n"
+        "Loop time\n",
+        encoding="utf-8",
+    )
+
+    assert dv._parse_thermo_log(log_path) == (
+        (0.0, 300.0, -11.0, 1.0, -10.0),
+        (20.0, 310.0, -12.0, 2.0, -10.0),
+        (40.0, 300.0, -11.0, 1.0, -10.0),
+    )
+
+
+def test_lammps_runner_deduplicates_frames_last_wins_and_uses_earliest_frame_as_reference(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from types import SimpleNamespace
+    import mdstats.training_data.dyn_verify as dv
+
+    policy = DynVerifyPolicy(
+        temperatures_kelvin=(300.0,), nvt_steps=20, nve_steps=20,
+        sample_interval_steps=10, persistent_damage_samples=3,
+    )
+    executable = tmp_path / "fake-lmp"
+    executable.write_text("fake executable", encoding="utf-8")
+    mliap = tmp_path / "model.pt"
+    mliap.write_bytes(b"mliap")
+
+    def dump_frame(step: int, first_x: float) -> list[str]:
+        return [
+            "ITEM: TIMESTEP", str(step), "ITEM: NUMBER OF ATOMS", "3",
+            "ITEM: BOX BOUNDS pp pp pp", "0 10", "0 10", "0 10",
+            "ITEM: ATOMS id type x y z fx fy fz",
+            f"1 1 {first_x} 5 5 0.01 0 0", "2 2 5.0 5 5 0.01 0 0",
+            "3 1 6.6 5 5 0.01 0 0",
+        ]
+
+    def fake_run(command, cwd, **kwargs):
+        root = Path(cwd)
+        rows = [f"{step} 300 -11 1 -10" for step in (0, 10, 20, 20, 30, 40)]
+        dump = []
+        for step, first_x in ((0, 3.4), (10, 3.4), (20, 3.4), (20, 3.6), (30, 3.4), (40, 3.4)):
+            dump.extend(dump_frame(step, first_x))
+        (root / "log.lammps").write_text(
+            "Step Temp PotEng KinEng TotEng\n" + "\n".join(rows) + "\nLoop time\n",
+            encoding="utf-8",
+        )
+        (root / "trajectory.dump").write_text("\n".join(dump) + "\n", encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    captured = {}
+
+    def fake_assess(reference, frames, thermo_rows, **kwargs):
+        frames = tuple(frames)
+        captured["reference_x"] = float(reference.positions[0, 0])
+        captured["steps"] = tuple(int(frame.info["timestep"]) for frame in frames)
+        captured["x_by_step"] = tuple(float(frame.positions[0, 0]) for frame in frames)
+        return SimpleNamespace(passed=True)
+
+    monkeypatch.setattr(dv, "_run_file_backed_process", fake_run)
+    monkeypatch.setattr(dv, "assess_dyn_trajectory", fake_assess)
+    result = dv.run_lammps_mliap_dynamics_case(
+        mliap, _chain(), base_frame_uid=_sha("base-runner-duplicate"),
+        topology_atom_indices=(0, 1, 2), temperature_kelvin=300.0, velocity_seed=12345,
+        element_order=("O", "Si"), policy=policy, lammps_executable=executable,
+        work_directory=tmp_path / "case", expected_executable_sha256=dv._sha256_file(executable),
+    )
+
+    assert result.passed
+    assert captured == {
+        "reference_x": 3.4,
+        "steps": (0, 10, 20, 30, 40),
+        "x_by_step": (3.4, 3.4, 3.6, 3.4, 3.4),
+    }
+
+
+def test_lammps_frame_stream_rejects_out_of_order_timesteps(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import ase.io
+    import mdstats
+    import mdstats.training_data.dyn_verify as dv
+
+    frames = tuple(SimpleNamespace(info={"timestep": step}) for step in (0, 20, 10))
+    monkeypatch.setattr(ase.io, "iread", lambda *args, **kwargs: iter(frames))
+    with pytest.raises(mdstats.TrainingDataInputError, match="out of order"):
+        tuple(dv._iter_deduplicated_lammps_frames(tmp_path / "trajectory.dump", elements=("Li",)))
+
+
+def test_file_backed_process_timeout_terminates_the_complete_process_group(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import signal
+    import subprocess
+    import mdstats.training_data.dyn_verify as dv
+
+    class Process:
+        pid = 4321
+
+        def __init__(self):
+            self.waits = 0
+
+        def wait(self, timeout=None):
+            self.waits += 1
+            if self.waits == 1:
+                raise subprocess.TimeoutExpired(["fake"], timeout)
+            return -signal.SIGTERM
+
+    process = Process()
+    signals = []
+    monkeypatch.setattr(dv.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(dv.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    with pytest.raises(subprocess.TimeoutExpired):
+        dv._run_file_backed_process(
+            ("fake",), cwd=tmp_path, environment={},
+            stdout_path=tmp_path / "stdout.log", stderr_path=tmp_path / "stderr.log",
+            timeout_seconds=0.01,
+        )
+    assert signals == [(4321, signal.SIGTERM)]
+
+
+def test_file_backed_process_external_cancellation_terminates_process_group(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import signal
+    import subprocess
+    import mdstats.training_data.dyn_verify as dv
+
+    class Process:
+        pid = 4322
+
+        def __init__(self):
+            self.terminated = False
+
+        def wait(self, timeout=None):
+            if self.terminated:
+                return -signal.SIGTERM
+            raise subprocess.TimeoutExpired(["fake"], timeout)
+
+    process = Process()
+    signals = []
+    checks = iter((False, True))
+    monkeypatch.setattr(dv.subprocess, "Popen", lambda *args, **kwargs: process)
+
+    def killpg(pid, sig):
+        signals.append((pid, sig))
+        process.terminated = True
+
+    monkeypatch.setattr(dv.os, "killpg", killpg)
+    with pytest.raises(dv.TrainingDataInputError, match="cancelled by the staged scheduler"):
+        dv._run_file_backed_process(
+            ("fake",),
+            cwd=tmp_path,
+            environment={},
+            stdout_path=tmp_path / "stdout.log",
+            stderr_path=tmp_path / "stderr.log",
+            timeout_seconds=10.0,
+            cancellation_requested=lambda: next(checks, True),
+        )
+    assert signals == [(4322, signal.SIGTERM)]

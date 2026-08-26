@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import mdstats
 from mdstats.training_data._common import digest
 
@@ -54,7 +56,11 @@ def _matrix(*, epoch3_bad: bool = False):
 
 
 def _policy():
-    return mdstats.TargetSizeStudyPolicy()
+    return mdstats.TargetSizeStudyPolicy(fidelity_epochs=(3, 10, 30))
+
+
+def _calibration():
+    return mdstats.SizeFidelityCalibrationPolicy(coarse_epoch_candidates=(3, 4, 5))
 
 
 def test_size_fidelity1_recommends_earliest_faithful_endpoint_and_smallest_equivalent_monitor():
@@ -65,6 +71,7 @@ def test_size_fidelity1_recommends_earliest_faithful_endpoint_and_smallest_equiv
         target_size_policy=_policy(),
         target_sizes=sizes,
         metrics=metrics,
+        calibration_policy=_calibration(),
     )
     assert report.passed
     assert report.recommended_coarse_epoch == 3
@@ -88,11 +95,35 @@ def test_size_fidelity1_can_recommend_later_coarse_endpoint_when_epoch3_drops_a_
         target_size_policy=_policy(),
         target_sizes=sizes,
         metrics=metrics,
+        calibration_policy=_calibration(),
     )
     assert report.passed
     assert report.recommended_coarse_epoch == 4
     epoch3 = [x for x in report.candidate_assessments if x.coarse_epoch == 3 and x.monitor_configurations == 256]
     assert epoch3 and all(not x.passed for x in epoch3)
+
+
+def test_size_fidelity1_rejects_final_screen_winner_that_disagrees_with_full_reference():
+    sizes, metrics = _matrix()
+    final_screen = []
+    for item in metrics:
+        if item.evaluation_role_kind == "full_development" and item.epoch == 30:
+            score = 0.1 if item.target_size == 16384 else item.target_force_score_mev_per_a + 10.0
+            final_screen.append(replace(item, epoch=20, target_force_score_mev_per_a=score))
+    report = mdstats.build_size_fidelity_qualification(
+        dataset_id="synthetic",
+        target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
+        target_size_policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(3, 10, 20)),
+        target_sizes=sizes,
+        metrics=metrics + tuple(final_screen),
+        calibration_policy=_calibration(),
+        training_horizon_epochs=30,
+    )
+    assert not report.passed
+    assert any(
+        "final_screen_winner_differs_from_full_horizon_reference" in item.failure_reasons
+        for item in report.candidate_assessments
+    )
 
 
 def test_size_fidelity1_requires_complete_exhaustive_matrix():
@@ -104,6 +135,7 @@ def test_size_fidelity1_requires_complete_exhaustive_matrix():
             target_size_policy=_policy(),
             target_sizes=sizes,
             metrics=metrics[:-1],
+            calibration_policy=_calibration(),
         )
     except mdstats.TrainingDataInputError as exc:
         assert "frozen scientific grid" in str(exc)
@@ -119,6 +151,7 @@ def test_size_fidelity1_round_trip_and_recompute_validation():
         target_size_policy=_policy(),
         target_sizes=sizes,
         metrics=metrics,
+        calibration_policy=_calibration(),
     )
     restored = mdstats.SizeFidelityQualificationReport.from_dict(report.to_dict())
     assert restored.to_dict() == report.to_dict()
@@ -127,8 +160,8 @@ def test_size_fidelity1_round_trip_and_recompute_validation():
 
 def test_size_fidelity1_policy_is_bound_to_current_production_defaults():
     policy = mdstats.SizeFidelityCalibrationPolicy()
-    policy.validate_against_target_size_policy(_policy())
-    assert policy.coarse_epoch_candidates == (3, 4, 5)
+    policy.validate_against_target_size_policy(mdstats.TargetSizeStudyPolicy())
+    assert policy.coarse_epoch_candidates == (1, 2)
     assert policy.coarse_monitor_configuration_candidates == (128, 256, 512, 1024)
     assert policy.coarse_equivalence_candidates_mev_per_a == (1.0, 2.0, 4.0)
     assert policy.screening_seeds == (1, 2, 3)
@@ -140,6 +173,7 @@ def test_size_fidelity1_execution_plan_freezes_exhaustive_matrix_and_reuses_full
         target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
         target_size_policy=_policy(),
         target_sizes=(1024, 2048, 4096, 8192, 16384),
+        calibration_policy=_calibration(),
     )
     assert plan.expected_training_run_count == 15
     assert plan.required_checkpoint_epochs == (3, 4, 5, 10, 30)
@@ -156,6 +190,7 @@ def test_size_fidelity1_rejects_extra_unversioned_metric_grid_entries():
         mdstats.build_size_fidelity_qualification(
             dataset_id="synthetic", target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
             target_size_policy=_policy(), target_sizes=sizes, metrics=metrics + (extra,),
+            calibration_policy=_calibration(),
         )
     except mdstats.TrainingDataInputError as exc:
         assert "frozen scientific grid" in str(exc)
@@ -173,7 +208,8 @@ def test_size_fidelity1_rejects_role_identity_drift_across_candidates():
     try:
         mdstats.build_size_fidelity_qualification(
             dataset_id="synthetic", target_size_candidate_authority_digest=digest({"candidate-authority": 1}),
-            target_size_policy=_policy(), target_sizes=sizes, metrics=tuple(items),
+                target_size_policy=_policy(), target_sizes=sizes, metrics=tuple(items),
+                calibration_policy=_calibration(),
         )
     except mdstats.TrainingDataInputError as exc:
         assert "evaluation-role identity" in str(exc)

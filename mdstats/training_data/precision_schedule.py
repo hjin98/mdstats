@@ -369,7 +369,7 @@ class PrecisionSchedulePolicy:
                     # The original 15k reference floor was calibrated on replay-sized
                     # exposure.  For the exact canonical 80/20 refine profile, a small
                     # target-only DATA8 job (notably n512 naive fine tuning) can have
-                    # fewer than 15k optimizer steps in the entire 30-epoch budget.
+                    # fewer than 15k optimizer steps in the configured full-horizon budget.
                     # Failing here makes the canonical profile unusable for the package's
                     # default selection size.  When the nominal 20% tail already meets
                     # the hard epoch floor, preserve that scientifically explicit split

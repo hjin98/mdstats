@@ -1,7 +1,7 @@
 ---
 title: "MLFF PERF-P2R Successive-Fidelity Execution Specification"
-version: "0.20.184a0"
-date: "2026-08-15"
+version: "0.20.241a0"
+date: "2026-08-25"
 status: "implementation-qualified; accelerator qualification deferred to FINAL-GPU1"
 geometry: margin=0.85in
 ---
@@ -14,17 +14,15 @@ The implementation must support the complete SIZE-FIDELITY1 calibration surface 
 
 # Scientific funnel
 
-For hard-coverage-qualified sizes $A$, coarse survivors $S_4$, and epoch-10 finalists $S_2$,
+For hard-coverage-qualified sizes $A$, coarse survivors $S_4$, and short-screen finalists $S_2$,
 
 $$
-A \xrightarrow{e_0} S_4 \xrightarrow{10} S_2 \xrightarrow{30} K^*,
+A \xrightarrow{n_1} S_4 \xrightarrow{n_2} S_2 \xrightarrow{n_3} K^*,
 $$
 
-with
-
-$$
-e_0 \in \{3,4,5\}, \qquad |A|\in\{3,4,5,6,7\}.
-$$
+where $n_1<n_2<n_3<n$. The screen scheduler horizon is exactly $n_3$;
+$n$ is a separate fresh selected-size production horizon. The generated
+default is $(1,3,10)/30$.
 
 The structure follows the resource-allocation principle of successive halving: inexpensive low-fidelity observations eliminate weak candidates before additional budget is spent on survivors.[^jamieson2016] In mdstats, however, candidate set sizes, evaluation roles, continuation identities, tie handling, and downstream physical qualification are project-specific scientific authorities; they are not inherited from the generic algorithm.
 
@@ -33,9 +31,9 @@ The structure follows the resource-allocation principle of successive halving: i
 PERF-P2R separates implementation status from accelerator qualification:
 
 $$
-I(\mathrm{PERF\!\!-\!P2R})=\mathrm{implemented},
+I(\text{PERF-P2R})=\mathrm{implemented},
 \qquad
-Q(\mathrm{PERF\!\!-\!P2R})=\mathrm{pending}.
+Q(\text{PERF-P2R})=\mathrm{pending}.
 $$
 
 The CPU/control-plane implementation may be released and used to prepare the final qualification package. It must not authorize a GPU speed claim, calibrated coarse default, or production survivor decision before FINAL-GPU1 closes the corresponding scientific and accelerator evidence.
@@ -44,18 +42,23 @@ The CPU/control-plane implementation may be released and used to prepare the fin
 
 `PerfP2RParameterGrid` freezes the execution compatibility surface:
 
-- coarse epoch candidates: 3, 4, 5;
+- coarse epoch candidates supplied by the calibration policy;
 - coarse target-monitor candidates: 128, 256, 512, 1024 configurations;
 - coarse practical-equivalence candidates: 1, 2, 4 meV/Angstrom;
 - hard-coverage-qualified ladder width: 3 through 7;
 - coarse survivor limit: 4;
 - short survivor limit: 2;
-- short boundary: epoch 10;
-- final boundary: epoch 30.
+- short boundary: screen `n2`;
+- final-screen boundary and screen schedule horizon: `n3`; and
+- full-reference boundary: TRAIN2 horizon `n`.
 
 These values are a compatibility grid, not calibrated defaults.
 
-`build_perf_p2r_stage_plan()` converts the current TARGET-DATA2D authority into exactly one authorized work stage. It derives candidate sizes, start epoch, target epoch, continuation requirement, screening seed, and allowed evidence class from the scientific state. Campaign dispatch must not duplicate independent hard-coded 3/10/30 branches.
+`build_perf_p2r_stage_plan()` converts the current target-size authority into
+exactly one authorized work stage. Screen plans derive their horizon from the
+study; the fresh production plan must receive the separately owned production
+horizon only after selection. Campaign dispatch must not duplicate independent
+numeric-boundary branches.
 
 # P2R-2: exact continuation and no repaid prefix
 
@@ -64,11 +67,11 @@ A promoted candidate continues the same scientific trajectory:
 $$
 \theta_0
 \rightarrow
-(\theta_{e_0},o_{e_0},r_{e_0})
+(\theta_{n_1},o_{n_1},r_{n_1})
 \rightarrow
-(\theta_{10},o_{10},r_{10})
+(\theta_{n_2},o_{n_2},r_{n_2})
 \rightarrow
-(\theta_{30},o_{30},r_{30}),
+(\theta_{n_3},o_{n_3},r_{n_3}),
 $$
 
 where $\theta$, $o$, and $r$ denote model, optimizer/scheduler, and authenticated runtime/RNG continuation state.
@@ -76,18 +79,21 @@ where $\theta$, $o$, and $r$ denote model, optimizer/scheduler, and authenticate
 The incremental structure-epoch exposure is
 
 $$
-W = e_0\sum_{i\in A}K_i
-  + (10-e_0)\sum_{i\in S_4}K_i
-  + 20\sum_{i\in S_2}K_i.
+W = n_1\sum_{i\in A}K_i
+  + (n_2-n_1)\sum_{i\in S_4}K_i
+  + (n_3-n_2)\sum_{i\in S_2}K_i.
 $$
 
 The exhaustive reference is
 
 $$
-W_{\mathrm{full}} = 30\sum_{i\in A}K_i.
+W_{\mathrm{full}} = n\sum_{i\in A}K_i.
 $$
 
-A promoted candidate must never repay the already completed prefix because orchestration created a new schedule. Boundary checkpoints at $e_0$, 10, and 30 remain scientific evidence; extra recovery checkpoints are execution-only.
+A promoted candidate must never repay the already completed prefix because
+orchestration created a new schedule. Boundary checkpoints at $n_1$, $n_2$,
+and $n_3$ remain scientific evidence; the full-reference checkpoint at $n$ is
+required only by calibration, and extra recovery checkpoints are execution-only.
 
 # P2R-3: authenticated content-addressed DATA8 fixed-file cache
 

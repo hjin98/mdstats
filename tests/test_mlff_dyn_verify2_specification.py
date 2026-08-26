@@ -18,7 +18,8 @@ def test_relax_hands_passing_candidates_to_deployed_dyn_gate() -> None:
     relax_source = inspect.getsource(campaign_cli._command_verify_train2_relax)
     dyn_source = inspect.getsource(campaign_cli._command_verify_train2_dyn)
     assert "_command_verify_train2_dyn" in relax_source
-    assert "run_lammps_mliap_dynamics_case" in dyn_source
+    assert "simulate_lammps_mliap_dynamics_case" in dyn_source
+    assert "reduce_lammps_mliap_dynamics_case" in dyn_source
     assert "mliap_artifact_path" in dyn_source
     assert "expected_executable_sha256" in dyn_source
 

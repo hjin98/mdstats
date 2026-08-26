@@ -347,7 +347,30 @@ def test_interruption_preserves_checkpoint_and_does_not_consume_retry_budget(tmp
     assert interrupted.attempts[0].scientific_failure_code is None
     assert interrupted.attempts[0].scientific_failure_evidence_digest is None
     assert (checkpoints / "model_epoch-0.pt").is_file()
+    assert interrupted.checkpoint_catalog is not None
+    assert interrupted.checkpoint_catalog.checkpoints[0].epoch == 0
+    assert mdstats.TrainingRunExecutionRecord.from_dict(interrupted.to_dict()) == interrupted
     assert not (output / "active_process.json").exists()
+
+    checkpoint = checkpoints / "model_epoch-0.pt"
+    original_checkpoint = checkpoint.read_bytes()
+    checkpoint.write_bytes(b"changed-after-interruption")
+    with pytest.raises(
+        mdstats.TrainingDataInputError,
+        match="checkpoint bytes changed before continuation",
+    ):
+        mdstats.execute_training_run(
+            run,
+            job,
+            data8_root=tmp_path,
+            execution_root=output,
+            checkpoint_directory=checkpoints,
+            policy=policy,
+            environment={"CHECKPOINT_DIR": str(checkpoints)},
+            wrapper_path=wrapper,
+            prior_record=interrupted,
+        )
+    checkpoint.write_bytes(original_checkpoint)
 
     resumed = mdstats.execute_training_run(
         run,
@@ -363,6 +386,85 @@ def test_interruption_preserves_checkpoint_and_does_not_consume_retry_budget(tmp
     assert resumed.state is mdstats.TrainingRunState.SUCCEEDED
     assert len(resumed.attempts) == 2
     assert "--restart_latest" in resumed.attempts[-1].command
+
+
+def test_interrupted_checkpoint_catalog_survives_store_reopen_before_restart(tmp_path: Path) -> None:
+    """The durable interrupted catalog is the exact restart lineage on reopen."""
+
+    import threading
+
+    job, run, _ = _job(tmp_path)
+    wrapper = tmp_path / "mdstats-mace-train"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        "mkdir -p \"$CHECKPOINT_DIR\"\n"
+        "case \" $* \" in *\" --restart_latest \"*) "
+        "printf final > \"$CHECKPOINT_DIR/model_epoch-1.pt\"; exit 0 ;; esac\n"
+        "printf partial > \"$CHECKPOINT_DIR/model_epoch-0.pt\"\n"
+        "while true; do sleep 1; done\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    config = tmp_path / "campaign.toml"
+    config.write_text(
+        campaign_cli._config_template(
+            workspace="workspace",
+            training_root="training",
+            foundation_model="foundation.model",
+            replay_train="replay.xyz",
+            replay_monitor="monitor.xyz",
+        ),
+        encoding="utf-8",
+    )
+    _, paths = campaign_cli._load_config(config)
+    paths.ensure()
+    policy = mdstats.TrainingExecutionPolicy(
+        max_attempts=1, checkpoint_glob="*epoch*.pt", terminate_grace_seconds=1.0
+    )
+    stop = threading.Event()
+    threading.Timer(0.2, stop.set).start()
+    run_root = paths.runs / run.run_id
+    interrupted = mdstats.execute_training_run(
+        run,
+        job,
+        data8_root=tmp_path,
+        execution_root=run_root,
+        checkpoint_directory=run_root / "checkpoints",
+        policy=policy,
+        environment={"CHECKPOINT_DIR": str(run_root / "checkpoints")},
+        wrapper_path=wrapper,
+        progress_interval_seconds=0.05,
+        stop_requested=stop.is_set,
+    )
+    assert interrupted.state is mdstats.TrainingRunState.INTERRUPTED
+    assert interrupted.checkpoint_catalog is not None
+
+    store = campaign_cli.CampaignStore(paths.state_db)
+    store.put_record(f"execution:{run.run_id}", interrupted)
+    store.close()
+    reopened = campaign_cli.CampaignStore(paths.state_db)
+    try:
+        restored = reopened.get_record(
+            f"execution:{run.run_id}", mdstats.TrainingRunExecutionRecord
+        )
+    finally:
+        reopened.close()
+    assert restored.checkpoint_catalog is not None
+    assert restored.checkpoint_catalog.content_digest == interrupted.checkpoint_catalog.content_digest
+
+    resumed = mdstats.execute_training_run(
+        run,
+        job,
+        data8_root=tmp_path,
+        execution_root=run_root,
+        checkpoint_directory=run_root / "checkpoints",
+        policy=policy,
+        environment={"CHECKPOINT_DIR": str(run_root / "checkpoints")},
+        wrapper_path=wrapper,
+        prior_record=restored,
+    )
+    assert resumed.state is mdstats.TrainingRunState.SUCCEEDED
+    assert resumed.attempts[-1].command[-1] == "--restart_latest"
 
 
 def test_training_execution_policy_reads_legacy_v1_payload() -> None:

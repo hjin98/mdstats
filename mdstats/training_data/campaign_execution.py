@@ -81,13 +81,17 @@ TRAINING_EXECUTION_POLICY_SCHEMA = "mdstats.training-execution-policy.v2"
 TRAINING_EXECUTION_POLICY_LEGACY_SCHEMA = "mdstats.training-execution-policy.v1"
 TRAINING_RUN_ATTEMPT_SCHEMA = "mdstats.training-run-attempt.v1"
 TRAINING_RUN_EXECUTION_SCHEMA = "mdstats.training-run-execution.v1"
-CHECKPOINT_EVALUATION_POLICY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v7"
+CHECKPOINT_EVALUATION_POLICY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v8"
+CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA = "mdstats.checkpoint-evaluation-policy.v7"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA = "mdstats.checkpoint-evaluation-policy.v6"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA = "mdstats.checkpoint-evaluation-policy.v5"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA = "mdstats.checkpoint-evaluation-policy.v4"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA = "mdstats.checkpoint-evaluation-policy.v3"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V2_SCHEMA = "mdstats.checkpoint-evaluation-policy.v2"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v1"
+INFERENCE_EXECUTION_PLAN_SCHEMA = "mdstats.inference-execution-plan.v3"
+INFERENCE_EXECUTION_PLAN_LEGACY_V2_SCHEMA = "mdstats.inference-execution-plan.v2"
+INFERENCE_EXECUTION_PLAN_LEGACY_SCHEMA = "mdstats.inference-execution-plan.v1"
 MODEL_DATASET_METRIC_RECORD_SCHEMA = "mdstats.model-dataset-metric-record.v1"
 CHECKPOINT_EVALUATION_RECORD_SCHEMA = "mdstats.checkpoint-evaluation-record.v3"
 CHECKPOINT_EVALUATION_RECORD_LEGACY_V2_SCHEMA = "mdstats.checkpoint-evaluation-record.v2"
@@ -1201,8 +1205,23 @@ class TrainingRunExecutionRecord:
                 raise TrainingDataInputError("Successful attempt index does not reference a successful attempt.")
             if self.checkpoint_catalog.run_plan_digest != self.run_plan_digest:
                 raise TrainingDataInputError("Checkpoint catalog lineage mismatch.")
-        elif self.successful_attempt_index is not None or self.checkpoint_catalog is not None:
-            raise TrainingDataInputError("Unsuccessful execution cannot carry successful checkpoint evidence.")
+        else:
+            if self.successful_attempt_index is not None:
+                raise TrainingDataInputError(
+                    "Unsuccessful execution cannot identify a successful attempt."
+                )
+            # A cooperative interruption is a continuation point, not a
+            # failed scientific result.  Preserve an authenticated catalog
+            # when the child reached a durable checkpoint before the parent
+            # stopped it, so the resumed scheduler can audit exactly the
+            # checkpoint it is about to hand to the real restart path.
+            if self.checkpoint_catalog is not None:
+                if self.state is not TrainingRunState.INTERRUPTED:
+                    raise TrainingDataInputError(
+                        "Only interrupted execution may carry resumable checkpoint evidence."
+                    )
+                if self.checkpoint_catalog.run_plan_digest != self.run_plan_digest:
+                    raise TrainingDataInputError("Checkpoint catalog lineage mismatch.")
         object.__setattr__(self, "attempts", attempts)
 
     def _payload(self) -> dict[str, Any]:
@@ -1465,6 +1484,17 @@ def execute_training_run(
                 raise TrainingDataInputError("Successful execution checkpoint bytes changed after recording.")
             if not allow_successful_continuation:
                 return prior_record
+        elif (
+            prior_record.state is TrainingRunState.INTERRUPTED
+            and prior_record.checkpoint_catalog is not None
+        ):
+            catalog = inventory_mace_checkpoints(
+                run_plan, checkpoints, pattern=policy.checkpoint_glob
+            )
+            if catalog.content_digest != prior_record.checkpoint_catalog.content_digest:
+                raise TrainingDataInputError(
+                    "Interrupted execution checkpoint bytes changed before continuation."
+                )
 
     attempts = [] if prior_record is None else list(prior_record.attempts)
 
@@ -1760,6 +1790,11 @@ def execute_training_run(
             job_root=job_root, run_root=run_root, result_dir=result_dir, job=job
         )
         if state is not TrainingRunState.SUCCEEDED:
+            interrupted_catalog = None
+            if state is TrainingRunState.INTERRUPTED:
+                interrupted_catalog = inventory_mace_checkpoints(
+                    run_plan, checkpoints, pattern=policy.checkpoint_glob
+                )
             interim = TrainingRunExecutionRecord(
                 run_plan_digest=run_plan.content_digest,
                 mace_job_artifact_digest=job.content_digest,
@@ -1767,7 +1802,7 @@ def execute_training_run(
                 attempts=tuple(attempts),
                 state=state,
                 successful_attempt_index=None,
-                checkpoint_catalog=None,
+                checkpoint_catalog=interrupted_catalog,
             )
             _write_json_atomic(run_root / "training_execution.json", interim.to_dict())
             if state is TrainingRunState.INTERRUPTED:
@@ -1837,6 +1872,12 @@ class CheckpointEvaluationPolicy:
     # None preserves the historical critical-FP64 evaluation identity.  PREC3
     # passes an explicit profile-bound policy for canonical single/double/refine.
     critical_precision_policy: MaceCriticalPrecisionPolicy | None = None
+    # Runtime fields remain readable for historical/API compatibility, but are
+    # excluded from the canonical v8 scientific identity. Active campaign
+    # execution is owned by InferenceExecutionPlan.
+    _legacy_serialized_payload: dict[str, Any] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @property
     def active_critical_precision_policy(self) -> MaceCriticalPrecisionPolicy:
@@ -1910,23 +1951,9 @@ class CheckpointEvaluationPolicy:
         return None if self.foundation_inference_identity is None else self.foundation_inference_identity.content_digest
 
     def _payload(self) -> dict[str, Any]:
-        # Preserve the exact v3 identity when the new comparison is disabled.
-        # This keeps legacy campaign TOMLs and cached evaluations reusable.
         explicit_precision = self.critical_precision_policy is not None
         payload = {
-            "schema": (
-                CHECKPOINT_EVALUATION_POLICY_SCHEMA
-                if self.foundation_identity_bound
-                else CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA
-                if self.acceleration_realization_digest is not None
-                else CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA
-                if explicit_precision
-                else (
-                    CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA
-                    if self.evaluate_foundation_on_target
-                    else CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA
-                )
-            ),
+            "schema": CHECKPOINT_EVALUATION_POLICY_SCHEMA,
             "target_head_name": self.target_head_name,
             "replay_head_name": self.replay_head_name,
             "replay_baseline_head_name": self.replay_baseline_head_name,
@@ -1942,9 +1969,6 @@ class CheckpointEvaluationPolicy:
             "combined_stress_weight": self.combined_stress_weight,
             "device": self.device,
             "default_dtype": self.default_dtype,
-            "batch_size": self.batch_size,
-            "cache_monitor_datasets": bool(self.cache_monitor_datasets),
-            "cache_replay_baseline": bool(self.cache_replay_baseline),
             "acceleration_policy": self.acceleration_policy.to_dict(),
         }
         if self.evaluate_foundation_on_target:
@@ -1962,15 +1986,18 @@ class CheckpointEvaluationPolicy:
 
     @property
     def policy_digest(self) -> str:
-        return digest(self._payload())
+        payload = self._legacy_serialized_payload
+        return digest(self._payload() if payload is None else payload)
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self._payload(), "policy_digest": self.policy_digest}
+        payload = self._legacy_serialized_payload
+        return {**(self._payload() if payload is None else payload), "policy_digest": self.policy_digest}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CheckpointEvaluationPolicy":
         if payload.get("schema") not in {
             CHECKPOINT_EVALUATION_POLICY_SCHEMA,
+            CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA,
             CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA,
             CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA,
             CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA,
@@ -1984,7 +2011,8 @@ class CheckpointEvaluationPolicy:
             replay_head_name=str(payload["replay_head_name"]),
             replay_baseline_head_name=(
                 None
-                if payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_SCHEMA
+                if payload.get("schema") in {CHECKPOINT_EVALUATION_POLICY_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA}
+                and payload.get("foundation_potential_identity") is not None
                 else ("pt_head" if "replay_baseline_head_name" not in payload else (None if payload.get("replay_baseline_head_name") in (None, "") else str(payload["replay_baseline_head_name"])))
             ),
             foundation_potential_identity=(None if payload.get("foundation_potential_identity") is None else FoundationPotentialIdentity.from_dict(payload["foundation_potential_identity"])),
@@ -2003,7 +2031,7 @@ class CheckpointEvaluationPolicy:
             default_dtype=str(payload["default_dtype"]),
             batch_size=(
                 int(payload.get("batch_size", 8))
-                if payload.get("schema") in {CHECKPOINT_EVALUATION_POLICY_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA}
+                if payload.get("schema") in {CHECKPOINT_EVALUATION_POLICY_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA}
                 else 1
             ),
             cache_monitor_datasets=bool(payload.get("cache_monitor_datasets", True)),
@@ -2023,7 +2051,11 @@ class CheckpointEvaluationPolicy:
             ),
         )
         expected_digest = result.policy_digest
-        if payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA:
+        if payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA:
+            legacy_payload = dict(payload)
+            legacy_payload.pop("policy_digest", None)
+            expected_digest = digest(legacy_payload)
+        elif payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA:
             legacy_payload = dict(payload)
             legacy_payload.pop("policy_digest", None)
             expected_digest = digest(legacy_payload)
@@ -2143,7 +2175,230 @@ class CheckpointEvaluationPolicy:
             )
         if payload.get("policy_digest") not in (None, expected_digest):
             raise TrainingDataSerializationError("Checkpoint-evaluation policy digest mismatch.")
+        if payload.get("schema") != CHECKPOINT_EVALUATION_POLICY_SCHEMA:
+            legacy_payload = dict(payload)
+            legacy_payload.pop("policy_digest", None)
+            object.__setattr__(result, "_legacy_serialized_payload", legacy_payload)
         return result
+
+
+@dataclass(frozen=True, slots=True)
+class InferenceExecutionPlan:
+    """Resolved runtime choices kept outside scientific evaluation identity."""
+
+    batch_policy: str = "fixed"
+    selected_batch_size: int = 8
+    maximum_batch_size: int = 8
+    selected_concurrent_model_jobs: int = 1
+    cpu_fraction: float = 0.90
+    ram_fraction: float = 0.80
+    gpu_memory_fraction: float = 0.90
+    provider_residency_ram_bytes: int | None = None
+    provider_residency_vram_bytes: int | None = None
+    graph_cache_enabled: bool = True
+    monitor_cache_enabled: bool = True
+    prediction_cache_enabled: bool = True
+    rationale: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        policy = str(self.batch_policy).strip().lower()
+        if policy not in {"auto", "fixed"}:
+            raise TrainingDataInputError("Inference batch_policy must be 'auto' or 'fixed'.")
+        selected = int(self.selected_batch_size)
+        maximum = int(self.maximum_batch_size)
+        jobs = int(self.selected_concurrent_model_jobs)
+        fractions = (
+            float(self.cpu_fraction),
+            float(self.ram_fraction),
+            float(self.gpu_memory_fraction),
+        )
+        if (
+            selected <= 0 or maximum <= 0 or selected > maximum or jobs <= 0
+            or any(not math.isfinite(value) or not 0.0 < value <= 1.0 for value in fractions)
+        ):
+            raise TrainingDataInputError(
+                "Inference batch sizes and selected concurrency must be positive and ordered."
+            )
+        object.__setattr__(self, "batch_policy", policy)
+        object.__setattr__(self, "selected_batch_size", selected)
+        object.__setattr__(self, "maximum_batch_size", maximum)
+        object.__setattr__(self, "selected_concurrent_model_jobs", jobs)
+        object.__setattr__(self, "cpu_fraction", fractions[0])
+        object.__setattr__(self, "ram_fraction", fractions[1])
+        object.__setattr__(self, "gpu_memory_fraction", fractions[2])
+        object.__setattr__(
+            self, "rationale", tuple(str(value) for value in self.rationale if str(value))
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": INFERENCE_EXECUTION_PLAN_SCHEMA,
+            "batch_policy": self.batch_policy,
+            "selected_batch_size": self.selected_batch_size,
+            "maximum_batch_size": self.maximum_batch_size,
+            "selected_concurrent_model_jobs": self.selected_concurrent_model_jobs,
+            "cpu_fraction": self.cpu_fraction,
+            "ram_fraction": self.ram_fraction,
+            "gpu_memory_fraction": self.gpu_memory_fraction,
+            "provider_residency_ram_bytes": self.provider_residency_ram_bytes,
+            "provider_residency_vram_bytes": self.provider_residency_vram_bytes,
+            "graph_cache_enabled": bool(self.graph_cache_enabled),
+            "monitor_cache_enabled": bool(self.monitor_cache_enabled),
+            "prediction_cache_enabled": bool(self.prediction_cache_enabled),
+            "rationale": list(self.rationale),
+        }
+
+    @property
+    def execution_digest(self) -> str:
+        return digest(self._payload())
+
+    @property
+    def content_digest(self) -> str:
+        return self.execution_digest
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "execution_digest": self.execution_digest}
+
+    @staticmethod
+    def _historical_v2_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Construct the exact v2 wire shape before validating its digest."""
+
+        return {
+            "schema": INFERENCE_EXECUTION_PLAN_LEGACY_V2_SCHEMA,
+            "batch_policy": str(payload["batch_policy"]),
+            "selected_batch_size": int(payload["selected_batch_size"]),
+            "maximum_batch_size": int(payload["maximum_batch_size"]),
+            "selected_concurrent_model_jobs": int(
+                payload.get("selected_concurrent_model_jobs", 1)
+            ),
+            "cpu_fraction": float(payload.get("cpu_fraction", 0.90)),
+            "ram_fraction": float(payload.get("ram_fraction", 0.80)),
+            "gpu_memory_fraction": float(payload.get("gpu_memory_fraction", 0.90)),
+            "graph_cache_enabled": bool(payload.get("graph_cache_enabled", True)),
+            "monitor_cache_enabled": bool(payload.get("monitor_cache_enabled", True)),
+            "prediction_cache_enabled": bool(payload.get("prediction_cache_enabled", True)),
+            "rationale": [str(value) for value in payload.get("rationale", ())],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "InferenceExecutionPlan":
+        schema = payload.get("schema")
+        if schema == INFERENCE_EXECUTION_PLAN_LEGACY_SCHEMA:
+            # V1 is validated against its exact historical wire semantics in
+            # this owning migration path.  Removed runtime hints are deliberately
+            # not reintroduced as authorities; the rebuilt v2 plan retains only
+            # the still-supported choices and records the migration rationale.
+            legacy_payload = {
+                "schema": INFERENCE_EXECUTION_PLAN_LEGACY_SCHEMA,
+                "batch_policy": str(payload["batch_policy"]),
+                "selected_batch_size": int(payload["selected_batch_size"]),
+                "maximum_batch_size": int(payload["maximum_batch_size"]),
+                "concurrent_model_jobs": int(payload.get("concurrent_model_jobs", 1)),
+                "use_cuda_streams": bool(payload.get("use_cuda_streams", False)),
+                "host_ram_budget_bytes": (
+                    None
+                    if payload.get("host_ram_budget_bytes") is None
+                    else int(payload["host_ram_budget_bytes"])
+                ),
+                "graph_cache_enabled": bool(payload.get("graph_cache_enabled", True)),
+                "monitor_cache_enabled": bool(payload.get("monitor_cache_enabled", True)),
+                "compatible_profile_digest": (
+                    None
+                    if payload.get("compatible_profile_digest") is None
+                    else str(payload["compatible_profile_digest"])
+                ),
+                "rationale": [str(value) for value in payload.get("rationale", ())],
+            }
+            if payload.get("execution_digest") != digest(legacy_payload):
+                raise TrainingDataSerializationError(
+                    "Inference-execution plan legacy v1 digest mismatch."
+                )
+            return cls(
+                batch_policy=legacy_payload["batch_policy"],
+                selected_batch_size=legacy_payload["selected_batch_size"],
+                maximum_batch_size=legacy_payload["maximum_batch_size"],
+                selected_concurrent_model_jobs=legacy_payload["concurrent_model_jobs"],
+                graph_cache_enabled=legacy_payload["graph_cache_enabled"],
+                monitor_cache_enabled=legacy_payload["monitor_cache_enabled"],
+                prediction_cache_enabled=True,
+                rationale=tuple(legacy_payload["rationale"])
+                + ("rebuilt_from_inference_execution_plan_v1",),
+            )
+        if schema == INFERENCE_EXECUTION_PLAN_LEGACY_V2_SCHEMA:
+            legacy_payload = cls._historical_v2_payload(payload)
+            expected_keys = set(legacy_payload) | {"execution_digest"}
+            if set(payload) != expected_keys:
+                raise TrainingDataSerializationError(
+                    "Inference-execution plan legacy v2 payload shape is invalid."
+                )
+            if payload.get("execution_digest") != digest(legacy_payload):
+                raise TrainingDataSerializationError(
+                    "Inference-execution plan legacy v2 digest mismatch."
+                )
+            # Provider-residency fields did not exist in v2.  Keep them absent
+            # after migration; normal current resource planning may supply a
+            # conservative requirement before a future provider-pool growth.
+            return cls(
+                batch_policy=legacy_payload["batch_policy"],
+                selected_batch_size=legacy_payload["selected_batch_size"],
+                maximum_batch_size=legacy_payload["maximum_batch_size"],
+                selected_concurrent_model_jobs=legacy_payload[
+                    "selected_concurrent_model_jobs"
+                ],
+                cpu_fraction=legacy_payload["cpu_fraction"],
+                ram_fraction=legacy_payload["ram_fraction"],
+                gpu_memory_fraction=legacy_payload["gpu_memory_fraction"],
+                graph_cache_enabled=legacy_payload["graph_cache_enabled"],
+                monitor_cache_enabled=legacy_payload["monitor_cache_enabled"],
+                prediction_cache_enabled=legacy_payload["prediction_cache_enabled"],
+                rationale=tuple(legacy_payload["rationale"])
+                + ("rebuilt_from_inference_execution_plan_v2",),
+            )
+        if schema != INFERENCE_EXECUTION_PLAN_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported inference-execution plan schema.")
+        result = cls(
+            batch_policy=str(payload["batch_policy"]),
+            selected_batch_size=int(payload["selected_batch_size"]),
+            maximum_batch_size=int(payload["maximum_batch_size"]),
+            selected_concurrent_model_jobs=int(
+                payload.get("selected_concurrent_model_jobs", 1)
+            ),
+            cpu_fraction=float(payload.get("cpu_fraction", 0.90)),
+            ram_fraction=float(payload.get("ram_fraction", 0.80)),
+            gpu_memory_fraction=float(payload.get("gpu_memory_fraction", 0.90)),
+            provider_residency_ram_bytes=(
+                None if payload.get("provider_residency_ram_bytes") is None
+                else int(payload["provider_residency_ram_bytes"])
+            ),
+            provider_residency_vram_bytes=(
+                None if payload.get("provider_residency_vram_bytes") is None
+                else int(payload["provider_residency_vram_bytes"])
+            ),
+            graph_cache_enabled=bool(payload.get("graph_cache_enabled", True)),
+            monitor_cache_enabled=bool(payload.get("monitor_cache_enabled", True)),
+            prediction_cache_enabled=bool(payload.get("prediction_cache_enabled", True)),
+            rationale=tuple(str(value) for value in payload.get("rationale", ())),
+        )
+        if payload.get("execution_digest") != result.execution_digest:
+            raise TrainingDataSerializationError("Inference-execution plan digest mismatch.")
+        return result
+
+
+def _legacy_inference_execution_plan(
+    policy: CheckpointEvaluationPolicy,
+) -> InferenceExecutionPlan:
+    """Isolate compatibility for callers predating explicit execution plans."""
+
+    batch_size = max(1, int(policy.batch_size))
+    return InferenceExecutionPlan(
+        batch_policy="fixed",
+        selected_batch_size=batch_size,
+        maximum_batch_size=batch_size,
+        graph_cache_enabled=True,
+        monitor_cache_enabled=bool(policy.cache_monitor_datasets),
+        prediction_cache_enabled=bool(policy.cache_replay_baseline),
+        rationale=("legacy_checkpoint_evaluation_api",),
+    )
 
 
 def _path_cache_identity(path: Path, expected_sha256: str) -> tuple[str, int, int, int, str]:
@@ -2269,63 +2524,6 @@ def _is_memory_exhaustion(exc: BaseException) -> bool:
     )
 
 
-def _release_cuda_cache() -> None:
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except Exception:
-        return
-
-
-def _predict_batch_with_backoff(
-    provider: Any,
-    atoms_batch: Sequence[Any],
-    *,
-    geometry_identities: Sequence[str] | None = None,
-    graph_cache_directory: str | Path | None = None,
-) -> tuple[Any, ...]:
-    if not atoms_batch:
-        return ()
-    if geometry_identities is not None and len(geometry_identities) != len(atoms_batch):
-        raise TrainingDataInputError("Graph-cache geometry identity count mismatch.")
-    try:
-        return tuple(
-            provider.predict_batch(
-                atoms_batch,
-                geometry_identities=geometry_identities,
-                graph_cache_directory=graph_cache_directory,
-            )
-        )
-    except TypeError as exc:
-        # Third-party/test providers predating OPT-EVAL3 retain the original
-        # surface. Only fall back when the keyword extension itself is rejected.
-        if "unexpected keyword" not in str(exc) and "geometry_identities" not in str(exc):
-            raise
-        return tuple(provider.predict_batch(atoms_batch))
-    except RuntimeError as exc:
-        if len(atoms_batch) <= 1 or not _is_memory_exhaustion(exc):
-            raise
-        _release_cuda_cache()
-        middle = len(atoms_batch) // 2
-        left_ids = None if geometry_identities is None else geometry_identities[:middle]
-        right_ids = None if geometry_identities is None else geometry_identities[middle:]
-        return (
-            *_predict_batch_with_backoff(
-                provider,
-                atoms_batch[:middle],
-                geometry_identities=left_ids,
-                graph_cache_directory=graph_cache_directory,
-            ),
-            *_predict_batch_with_backoff(
-                provider,
-                atoms_batch[middle:],
-                geometry_identities=right_ids,
-                graph_cache_directory=graph_cache_directory,
-            ),
-        )
-
 
 @mace_runtime_warning_handled("checkpoint prediction")
 def _predict_model_on_atoms(
@@ -2334,6 +2532,7 @@ def _predict_model_on_atoms(
     *,
     head: str | None,
     policy: CheckpointEvaluationPolicy,
+    execution_plan: InferenceExecutionPlan | None = None,
     provider: Any | None = None,
     geometry_identities: Sequence[str] | None = None,
     graph_cache_directory: str | Path | None = None,
@@ -2374,27 +2573,168 @@ def _predict_model_on_atoms(
         )
     else:
         provider.set_head(head)
-    if geometry_identities is not None and len(geometry_identities) != len(atoms_list):
-        raise TrainingDataInputError("Evaluation geometry identity count mismatch.")
-    batch_size = max(1, min(int(policy.batch_size), len(atoms_list)))
-    result: list[Any] = []
-    for start in range(0, len(atoms_list), batch_size):
-        batch = atoms_list[start : start + batch_size]
-        batch_geometry = (
-            None
-            if geometry_identities is None
-            else geometry_identities[start : start + len(batch)]
+    from .model_features import (
+        MACE_ADAPTER_VERSION,
+        MaceCalculatorProvider,
+        StaticInferenceRuntimeAuthority,
+        StaticInferenceRuntimeProfile,
+        StaticMaceInferenceExecutor,
+    )
+
+    active_execution = (
+        _legacy_inference_execution_plan(policy)
+        if execution_plan is None
+        else execution_plan
+    )
+    runtime_authority = None
+    runtime_profile_path = None
+    provider_factory = None
+    if active_execution.batch_policy == "auto":
+        from .resources import detect_system_resources
+
+        try:
+            resources = detect_system_resources(
+                cpu_fraction=active_execution.cpu_fraction,
+                ram_fraction=active_execution.ram_fraction,
+                gpu_memory_fraction=active_execution.gpu_memory_fraction,
+                device=policy.device,
+            )
+        except ValueError as exc:
+            raise TrainingDataInputError(str(exc)) from exc
+        if resources.ram_budget_bytes is None:
+            raise TrainingDataInputError(
+                "Automatic static inference requires live host-RAM telemetry."
+            )
+        uses_cuda = str(policy.device).startswith("cuda")
+        if uses_cuda and resources.gpu.budget_bytes is None:
+            raise TrainingDataInputError(
+                "Automatic static inference requires live VRAM telemetry."
+            )
+        provider_identity = getattr(provider, "checkpoint_identity", None)
+        model_identity = getattr(provider_identity, "content_digest", None)
+        if model_identity is None:
+            model_identity = _sha256_file(model_path)
+        workload_shape_digest = digest(
+            {
+                "atom_counts": [int(len(value)) for value in atoms_list],
+                "configuration_count": len(atoms_list),
+            }
         )
-        predictions = _predict_batch_with_backoff(
-            provider,
-            batch,
-            geometry_identities=batch_geometry,
-            graph_cache_directory=graph_cache_directory,
+        compatibility = StaticInferenceRuntimeAuthority.compatibility_key(
+            {
+                "adapter_version": MACE_ADAPTER_VERSION,
+                "model_identity": model_identity,
+                "device": str(policy.device),
+                "default_dtype": str(policy.default_dtype),
+                "head": None if head is None else str(head),
+                "acceleration_policy_digest": getattr(
+                    policy.acceleration_policy, "policy_digest", None
+                ),
+                "resolved_acceleration_kernel_mode": policy.resolved_acceleration_kernel_mode,
+                "critical_precision_policy_digest": getattr(
+                    policy.active_critical_precision_policy, "policy_digest", None
+                ),
+                "graph_cache_enabled": bool(
+                    active_execution.graph_cache_enabled
+                    and graph_cache_directory is not None
+                ),
+                "cpu_threads_available": resources.cpu_threads_available,
+                "gpu_name": resources.gpu.device_name,
+                "gpu_total_bytes": resources.gpu.total_bytes,
+                "workload_shape_digest": workload_shape_digest,
+            }
         )
-        if len(predictions) != len(batch):
-            raise TrainingDataInputError("MACE evaluation returned the wrong prediction count.")
-        result.extend(predictions)
-    return tuple(result)
+        compatible_profile = None
+        if graph_cache_directory is not None:
+            runtime_profile_path = (
+                Path(graph_cache_directory).resolve().parent
+                / "static-inference-runtime-profiles"
+                / f"{compatibility}.json"
+            )
+            compatible_profile = StaticInferenceRuntimeProfile.load_compatible(
+                runtime_profile_path, compatibility_digest=compatibility
+            )
+        runtime_authority = StaticInferenceRuntimeAuthority(
+            compatibility_digest=compatibility,
+            maximum_batch_size=min(
+                int(active_execution.maximum_batch_size), len(atoms_list)
+            ),
+            maximum_concurrent_model_jobs=int(
+                active_execution.selected_concurrent_model_jobs
+            ),
+            live_ram_budget_bytes=int(resources.ram_budget_bytes),
+            live_vram_budget_bytes=(
+                resources.gpu.budget_bytes if uses_cuda else None
+            ),
+            ram_policy_fraction=float(active_execution.ram_fraction),
+            vram_policy_fraction=float(active_execution.gpu_memory_fraction),
+            # This consumer has no per-model estimate distinct from its global
+            # budget. The authority must therefore retain safe J=1 operation
+            # rather than treating a budget partition as model residency.
+            estimated_provider_resident_ram_bytes=(
+                None if active_execution.provider_residency_ram_bytes is None
+                else int(active_execution.provider_residency_ram_bytes)
+            ),
+            estimated_provider_resident_vram_bytes=(
+                None if active_execution.provider_residency_vram_bytes is None
+                else int(active_execution.provider_residency_vram_bytes)
+            ),
+            cold_start_batch_size=int(active_execution.selected_batch_size),
+            compatible_profile=compatible_profile,
+        )
+        private_calculator_kwargs = dict(
+            policy.acceleration_policy.calculator_kwargs()
+            if policy.resolved_acceleration_kernel_mode is None
+            else MaceAccelerationKernelMode(
+                policy.resolved_acceleration_kernel_mode
+            ).calculator_kwargs()
+        )
+        if head is not None:
+            private_calculator_kwargs["head"] = head
+
+        def provider_factory() -> Any:
+            return MaceCalculatorProvider.from_model_path(
+                model_path,
+                device=policy.device,
+                default_dtype=policy.default_dtype,
+                critical_precision_policy=policy.active_critical_precision_policy,
+                **private_calculator_kwargs,
+            )
+    executor = StaticMaceInferenceExecutor(
+        provider,
+        batch_size=max(
+            1,
+            min(
+                (
+                    active_execution.maximum_batch_size
+                    if runtime_authority is not None
+                    else active_execution.selected_batch_size
+                ),
+                len(atoms_list),
+            ),
+        ),
+        graph_cache_directory=(
+            graph_cache_directory if active_execution.graph_cache_enabled else None
+        ),
+        runtime_authority=runtime_authority,
+        concurrent_model_jobs=active_execution.selected_concurrent_model_jobs,
+        device=policy.device,
+        provider_factory=provider_factory,
+    )
+    try:
+        result = executor.predict(atoms_list, geometry_identities=geometry_identities)
+    finally:
+        # The caller owns the base provider, while this canonical executor owns
+        # any persistent private slots created for its joint operating point.
+        executor.close()
+    if runtime_authority is not None and runtime_profile_path is not None:
+        try:
+            runtime_authority.profile().write_atomic(runtime_profile_path)
+        except TrainingDataInputError:
+            # The run remains valid when conservative live telemetry declines to
+            # persist a reusable point; the next invocation calibrates again.
+            pass
+    return result
 
 
 def _predict_model_on_monitor(
@@ -2403,6 +2743,7 @@ def _predict_model_on_monitor(
     *,
     head: str | None,
     policy: CheckpointEvaluationPolicy,
+    execution_plan: InferenceExecutionPlan | None = None,
     provider: Any | None = None,
     geometry_identities: Sequence[str] = (),
     graph_cache_directory: str | Path | None,
@@ -2415,6 +2756,7 @@ def _predict_model_on_monitor(
             atoms_list,
             head=head,
             policy=policy,
+            execution_plan=execution_plan,
             provider=provider,
             geometry_identities=geometry_identities,
             graph_cache_directory=graph_cache_directory,
@@ -2486,61 +2828,9 @@ def _evaluate_model_on_atoms(
     return _metrics_from_predictions(atoms_list, predictions, policy=policy)
 
 
-_BASELINE_METRIC_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
-_BASELINE_METRIC_CACHE_ORDER: list[tuple[Any, ...]] = []
-_BASELINE_METRIC_CACHE_LIMIT = 8
+# Durable prediction artifacts are the cache authority. The lock only provides
+# single-flight foundation prediction/import publication within this process.
 _BASELINE_METRIC_CACHE_LOCK = RLock()
-
-
-def _baseline_metrics_cached(
-    model_path: Path,
-    model_sha256: str,
-    monitor_path: Path,
-    monitor_sha256: str,
-    atoms_list: Sequence[Any],
-    *,
-    head: str | None,
-    policy: CheckpointEvaluationPolicy,
-    stage_label: str = "evaluating foundation model",
-) -> dict[str, Any]:
-    from .inference_parallel import report_inference_worker_phase
-
-    # Report before acquiring the first-use cache lock so concurrent workers
-    # visibly explain that they are waiting for or reusing foundation evidence.
-    report_inference_worker_phase(stage_label)
-    key = (
-        _path_cache_identity(model_path, model_sha256),
-        _path_cache_identity(monitor_path, monitor_sha256),
-        head,
-        policy.policy_digest,
-    )
-    if not policy.cache_replay_baseline:
-        return _evaluate_model_on_atoms(
-            model_path,
-            atoms_list,
-            head=head,
-            policy=policy,
-        )
-    # Serialize the first baseline calculation per immutable model/dataset key.
-    # Candidate checkpoints still run concurrently; followers reuse the single
-    # foundation result instead of multiplying VRAM and inference cost.
-    with _BASELINE_METRIC_CACHE_LOCK:
-        cached = _BASELINE_METRIC_CACHE.get(key)
-        if cached is not None:
-            return dict(cached)
-        metrics = _evaluate_model_on_atoms(
-            model_path,
-            atoms_list,
-            head=head,
-            policy=policy,
-        )
-        if key not in _BASELINE_METRIC_CACHE:
-            _BASELINE_METRIC_CACHE_ORDER.append(key)
-        _BASELINE_METRIC_CACHE[key] = dict(metrics)
-        while len(_BASELINE_METRIC_CACHE_ORDER) > _BASELINE_METRIC_CACHE_LIMIT:
-            oldest = _BASELINE_METRIC_CACHE_ORDER.pop(0)
-            _BASELINE_METRIC_CACHE.pop(oldest, None)
-        return metrics
 
 
 def _evaluation_prediction_key(
@@ -2752,6 +3042,7 @@ def _pseudolabel_foundation_predictions(
     baseline_sha256: str,
     head: str | None,
     policy: CheckpointEvaluationPolicy,
+    use_dataset_cache: bool | None = None,
     configuration_indices: Sequence[int] | None = None,
 ) -> tuple[tuple[Any, ...], str] | None:
     """Treat authenticated foundation pseudolabels as persisted foundation predictions."""
@@ -2789,7 +3080,11 @@ def _pseudolabel_foundation_predictions(
     atoms_list = _as_atoms_list(
         path,
         expected_sha256=training_replay_monitor_artifact.sha256,
-        use_cache=policy.cache_monitor_datasets,
+        use_cache=(
+            policy.cache_monitor_datasets
+            if use_dataset_cache is None
+            else bool(use_dataset_cache)
+        ),
     )
     from ase.stress import voigt_6_to_full_3x3_stress
     from .model_features import AtomicModelPrediction
@@ -3128,6 +3423,7 @@ class PreparedCheckpointEvaluation:
     target_configuration_indices: tuple[int, ...]
     target_view: Any
     policy: CheckpointEvaluationPolicy
+    execution_plan: InferenceExecutionPlan
     prediction_cache_directory: Path | None
     graph_cache_directory: Path | None
     baseline_model_path: Path | None
@@ -3213,6 +3509,7 @@ def prepare_mace_checkpoint_evaluation(
     evaluation_state_capsule: EvaluationStateCapsuleRecord | None = None,
     target_monitor_artifact: MaceExtxyzArtifact,
     policy: CheckpointEvaluationPolicy = CheckpointEvaluationPolicy(),
+    execution_plan: InferenceExecutionPlan | None = None,
     replay_monitor_path: str | Path | None = None,
     replay_monitor_artifact: ReplayFileArtifact | None = None,
     training_replay_monitor_artifact: ReplayFileArtifact | None = None,
@@ -3239,6 +3536,11 @@ def prepare_mace_checkpoint_evaluation(
     from .evaluation_views import cached_evaluation_dataset_view
 
     report_inference_worker_phase("authenticating evaluation artifacts")
+    active_execution = (
+        _legacy_inference_execution_plan(policy)
+        if execution_plan is None
+        else execution_plan
+    )
     candidate = Path(candidate_model_path).resolve()
     calculator_model = (
         None if calculator_model_path is None else Path(calculator_model_path).resolve()
@@ -3302,7 +3604,7 @@ def prepare_mace_checkpoint_evaluation(
         _as_atoms_list(
             target,
             expected_sha256=target_monitor_artifact.sha256,
-            use_cache=policy.cache_monitor_datasets,
+            use_cache=active_execution.monitor_cache_enabled,
         )
     )
     if len(target_all_atoms) != target_monitor_artifact.configuration_count:
@@ -3324,8 +3626,16 @@ def prepare_mace_checkpoint_evaluation(
         condition_keys=policy.condition_keys,
     )
 
-    prediction_cache = _optional_cache_path(prediction_cache_directory)
-    graph_cache = _optional_cache_path(graph_cache_directory)
+    prediction_cache = (
+        _optional_cache_path(prediction_cache_directory)
+        if active_execution.prediction_cache_enabled
+        else None
+    )
+    graph_cache = (
+        _optional_cache_path(graph_cache_directory)
+        if active_execution.graph_cache_enabled
+        else None
+    )
     foundation_root = _optional_cache_path(foundation_prediction_root)
 
     target_candidate_artifact, target_candidate_predictions = _cached_evaluation_predictions(
@@ -3477,7 +3787,7 @@ def prepare_mace_checkpoint_evaluation(
             _as_atoms_list(
                 replay,
                 expected_sha256=replay_monitor_artifact.sha256,
-                use_cache=policy.cache_monitor_datasets,
+                use_cache=active_execution.monitor_cache_enabled,
             )
         )
         if len(replay_all_atoms) != replay_monitor_artifact.configuration_count:
@@ -3535,6 +3845,7 @@ def prepare_mace_checkpoint_evaluation(
                         baseline_sha256=baseline_sha,
                         head=policy.source_foundation_head_name,
                         policy=policy,
+                        use_dataset_cache=active_execution.monitor_cache_enabled,
                         configuration_indices=replay_indices,
                     )
                     if pseudo_source is not None:
@@ -3568,6 +3879,7 @@ def prepare_mace_checkpoint_evaluation(
         target_configuration_indices=target_indices,
         target_view=target_view,
         policy=policy,
+        execution_plan=active_execution,
         prediction_cache_directory=prediction_cache,
         graph_cache_directory=graph_cache,
         baseline_model_path=baseline,
@@ -3716,6 +4028,7 @@ def run_prepared_mace_checkpoint_inference(
             prepared.target_atoms,
             head=policy.target_head_name,
             policy=policy,
+            execution_plan=prepared.execution_plan,
             provider=require_candidate_provider(policy.target_head_name),
             geometry_identities=prepared.target_geometry_identities,
             graph_cache_directory=prepared.graph_cache_directory,
@@ -3743,6 +4056,7 @@ def run_prepared_mace_checkpoint_inference(
                     prepared.target_atoms,
                     head=policy.source_foundation_head_name,
                     policy=policy,
+                    execution_plan=prepared.execution_plan,
                     provider=require_baseline_provider(policy.source_foundation_head_name),
                     geometry_identities=prepared.target_geometry_identities,
                     graph_cache_directory=prepared.graph_cache_directory,
@@ -3768,6 +4082,7 @@ def run_prepared_mace_checkpoint_inference(
                 prepared.replay_atoms,
                 head=policy.replay_head_name,
                 policy=policy,
+                execution_plan=prepared.execution_plan,
                 provider=require_candidate_provider(policy.replay_head_name),
                 geometry_identities=prepared.replay_geometry_identities,
                 graph_cache_directory=prepared.graph_cache_directory,
@@ -3791,6 +4106,7 @@ def run_prepared_mace_checkpoint_inference(
                         prepared.replay_atoms,
                         head=policy.source_foundation_head_name,
                         policy=policy,
+                        execution_plan=prepared.execution_plan,
                         provider=require_baseline_provider(policy.source_foundation_head_name),
                         geometry_identities=prepared.replay_geometry_identities,
                         graph_cache_directory=prepared.graph_cache_directory,
@@ -4039,6 +4355,7 @@ def evaluate_mace_checkpoint(
     calculator_model_path: str | Path | None = None,
     target_monitor_artifact: MaceExtxyzArtifact,
     policy: CheckpointEvaluationPolicy = CheckpointEvaluationPolicy(),
+    execution_plan: InferenceExecutionPlan | None = None,
     replay_monitor_path: str | Path | None = None,
     replay_monitor_artifact: ReplayFileArtifact | None = None,
     training_replay_monitor_artifact: ReplayFileArtifact | None = None,
@@ -4066,6 +4383,7 @@ def evaluate_mace_checkpoint(
         target_monitor_path=target_monitor_path,
         target_monitor_artifact=target_monitor_artifact,
         policy=policy,
+        execution_plan=execution_plan,
         replay_monitor_path=replay_monitor_path,
         replay_monitor_artifact=replay_monitor_artifact,
         training_replay_monitor_artifact=training_replay_monitor_artifact,

@@ -91,7 +91,7 @@ def test_adapt_prec1_evaluation_policy_keeps_fp32_model_with_fp64_scientific_red
     assert restored.default_dtype == "float32"
     assert restored.active_critical_precision_policy.policy_digest == critical.policy_digest
     assert restored.active_critical_precision_policy.observable_output_dtype == "float64"
-    assert restored.to_dict()["schema"] == "mdstats.checkpoint-evaluation-policy.v5"
+    assert restored.to_dict()["schema"] == "mdstats.checkpoint-evaluation-policy.v8"
 
 
 def test_prec3_refine_export_promotes_fp32_target_model_to_fp64(tmp_path: Path) -> None:

@@ -8,6 +8,8 @@ import pytest
 import mdstats
 from mdstats.training_data import campaign_cli
 from mdstats.training_data import _campaign_cli_core as campaign_core
+from mdstats.training_data import campaign_execution
+from mdstats.training_data._common import digest
 
 
 def test_parser_exposes_small_unix_style_surface() -> None:
@@ -60,6 +62,11 @@ def test_init_creates_one_config_and_one_state_database(tmp_path: Path) -> None:
     assert "online_monitor_seed = 161803" in text
     assert "online_target_monitor_configurations = 256" in text
     assert "online_replay_monitor_configurations = 512" in text
+    assert 'inference_batch_policy = "auto"' in text
+    assert "maximum_parallel_dynamics_jobs = 1" in text
+    assert "estimated_dynamics_output_mib_per_case = 512.0" in text
+    assert "maximum_inference_batch_size = 32" in text
+    assert "\nbatch_size = 8\n" not in text[text.index("[evaluation]"):text.index("[preflight]")]
     state = tmp_path / "work" / ".mdstats" / "campaign.sqlite3"
     assert state.is_file()
     assert not state.with_name(state.name + "-wal").exists()
@@ -114,6 +121,315 @@ def test_checkpoint_evaluation_policy_separates_baseline_head() -> None:
     foundation = mdstats.CheckpointEvaluationPolicy(replay_baseline_head_name=None)
     assert mdstats.CheckpointEvaluationPolicy.from_dict(foundation.to_dict()) == foundation
     assert foundation.policy_digest != legacy.policy_digest
+
+
+def test_inference_execution_plan_roundtrip_is_separate_from_scientific_policy() -> None:
+    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=(), batch_size=8)
+    plan = mdstats.InferenceExecutionPlan(
+        batch_policy="auto", selected_batch_size=8, maximum_batch_size=32,
+        rationale=("bounded-test",),
+    )
+    assert mdstats.InferenceExecutionPlan.from_dict(plan.to_dict()) == plan
+    assert "execution_digest" in plan.to_dict()
+    assert not ({
+        "concurrent_model_jobs", "use_cuda_streams", "host_ram_budget_bytes",
+        "compatible_profile_digest",
+    } & plan.to_dict().keys())
+    stale = plan.to_dict()
+    stale["compatible_profile_digest"] = "a" * 64
+    stale["execution_digest"] = digest({
+        key: value for key, value in stale.items() if key != "execution_digest"
+    })
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="digest mismatch"):
+        mdstats.InferenceExecutionPlan.from_dict(stale)
+    assert "inference" not in policy.to_dict()["schema"]
+    assert "batch_policy" not in policy.to_dict()
+
+
+def test_historical_inference_execution_plan_v1_is_validated_then_rebuilt_as_v3() -> None:
+    legacy = {
+        "schema": "mdstats.inference-execution-plan.v1",
+        "batch_policy": "auto",
+        "selected_batch_size": 8,
+        "maximum_batch_size": 32,
+        "concurrent_model_jobs": 3,
+        "use_cuda_streams": True,
+        "host_ram_budget_bytes": 8 * 1024**3,
+        "graph_cache_enabled": False,
+        "monitor_cache_enabled": False,
+        "compatible_profile_digest": "a" * 64,
+        "rationale": ["historical-fixture"],
+    }
+    legacy["execution_digest"] = digest(legacy)
+
+    rebuilt = mdstats.InferenceExecutionPlan.from_dict(legacy)
+
+    assert rebuilt.to_dict()["schema"] == "mdstats.inference-execution-plan.v3"
+    assert rebuilt.selected_batch_size == 8
+    assert rebuilt.maximum_batch_size == 32
+    assert rebuilt.graph_cache_enabled is False
+    assert rebuilt.monitor_cache_enabled is False
+    assert rebuilt.rationale == (
+        "historical-fixture",
+        "rebuilt_from_inference_execution_plan_v1",
+    )
+    assert mdstats.InferenceExecutionPlan.from_dict(rebuilt.to_dict()) == rebuilt
+
+    corrupted = dict(legacy)
+    corrupted["selected_batch_size"] = 16
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="legacy v1 digest mismatch"):
+        mdstats.InferenceExecutionPlan.from_dict(corrupted)
+
+
+def test_historical_inference_execution_plan_v2_validates_exact_shape_then_migrates() -> None:
+    legacy = {
+        "schema": "mdstats.inference-execution-plan.v2",
+        "batch_policy": "auto",
+        "selected_batch_size": 8,
+        "maximum_batch_size": 32,
+        "selected_concurrent_model_jobs": 2,
+        "cpu_fraction": 0.75,
+        "ram_fraction": 0.80,
+        "gpu_memory_fraction": 0.85,
+        "graph_cache_enabled": False,
+        "monitor_cache_enabled": True,
+        "prediction_cache_enabled": False,
+        "rationale": ["pre-reopen6"],
+    }
+    legacy["execution_digest"] = digest(legacy)
+
+    rebuilt = mdstats.InferenceExecutionPlan.from_dict(legacy)
+
+    assert rebuilt.to_dict()["schema"] == "mdstats.inference-execution-plan.v3"
+    assert rebuilt.provider_residency_ram_bytes is None
+    assert rebuilt.provider_residency_vram_bytes is None
+    assert rebuilt.rationale == (
+        "pre-reopen6", "rebuilt_from_inference_execution_plan_v2",
+    )
+    assert mdstats.InferenceExecutionPlan.from_dict(rebuilt.to_dict()) == rebuilt
+
+    corrupted = dict(legacy)
+    corrupted["selected_batch_size"] = 16
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="legacy v2 digest mismatch"):
+        mdstats.InferenceExecutionPlan.from_dict(corrupted)
+
+    expanded = dict(legacy)
+    expanded["provider_residency_ram_bytes"] = 1
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="payload shape"):
+        mdstats.InferenceExecutionPlan.from_dict(expanded)
+
+
+def test_persisted_v2_execution_plan_is_migrated_by_normal_restart_consumer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A resumed deployment path owns v2 parsing and rewrites its normal record."""
+
+    from dataclasses import replace
+
+    import numpy as np
+    from ase import Atoms
+
+    from mdstats.training_data import campaign_execution, model_features, resources
+    from mdstats.training_data.model_features import AtomicModelPrediction
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    store = campaign_cli.CampaignStore(tmp_path / "campaign.sqlite3")
+    key = "inference_execution_plan:deploy:resumed-run"
+    legacy = {
+        "schema": "mdstats.inference-execution-plan.v2",
+        "batch_policy": "auto",
+        "selected_batch_size": 8,
+        "maximum_batch_size": 32,
+        "selected_concurrent_model_jobs": 2,
+        "cpu_fraction": 0.75,
+        "ram_fraction": 0.80,
+        "gpu_memory_fraction": 0.85,
+        "graph_cache_enabled": False,
+        "monitor_cache_enabled": True,
+        "prediction_cache_enabled": False,
+        "rationale": ["persisted-before-reopen6"],
+    }
+    legacy["execution_digest"] = digest(legacy)
+    store.put_record(key, legacy)
+
+    resumed = campaign_core._evaluation_inference_execution_plan(
+        {"evaluation": {"inference_batch_policy": "auto", "maximum_inference_batch_size": 32}},
+        store=store,
+        record_key=key,
+    )
+
+    assert resumed.provider_residency_ram_bytes is None
+    assert resumed.provider_residency_vram_bytes is None
+    assert resumed.selected_concurrent_model_jobs == 2
+    assert resumed.to_dict()["schema"] == "mdstats.inference-execution-plan.v3"
+    assert store.get_payload(key) == resumed.to_dict()
+    # A second normal restart consumes the current record rather than rebuilding
+    # inferred residency from historical v2 fields that never existed.
+    assert campaign_core._evaluation_inference_execution_plan(
+        {"evaluation": {"inference_batch_policy": "auto", "maximum_inference_batch_size": 32}},
+        store=store,
+        record_key=key,
+    ) == resumed
+
+    snapshot = SystemResourceSnapshot(
+        cpu_threads_available=4, cpu_fraction=0.75, cpu_threads_budget=3,
+        ram_available_bytes=1 << 30, ram_fraction=0.80, ram_budget_bytes=1 << 29,
+        gpu_memory_fraction=0.85,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+    monkeypatch.setattr(resources, "detect_system_resources", lambda **_: snapshot)
+    private_provider_creations: list[object] = []
+
+    class Provider:
+        def set_head(self, _head):
+            pass
+
+        def predict_batch(self, atoms, **_):
+            return tuple(
+                AtomicModelPrediction(
+                    energy_ev=float(index),
+                    forces_ev_per_angstrom=np.zeros((2, 3)),
+                    stress_ev_per_angstrom3=np.zeros((3, 3)),
+                )
+                for index, _ in enumerate(atoms)
+            )
+
+        def close(self):
+            pass
+
+    def private_provider(*_args, **_kwargs):
+        private_provider_creations.append(object())
+        return Provider()
+
+    monkeypatch.setattr(
+        model_features.MaceCalculatorProvider,
+        "from_model_path",
+        classmethod(lambda cls, *args, **kwargs: private_provider(*args, **kwargs)),
+    )
+    model = tmp_path / "candidate.model"
+    model.write_bytes(b"persisted-v2-static-consumer")
+    atoms = tuple(Atoms("H2", positions=[[0, 0, 0], [0, 0, 0.7]]) for _ in range(4))
+    policy = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), device="cpu", default_dtype="float64"
+    )
+    # V2 had no provider-residency authority: its normal migrated consumer must
+    # enter the canonical static path without materializing J>1 private shells.
+    assert len(campaign_execution._predict_model_on_atoms(
+        model, atoms, head=None, policy=policy, execution_plan=resumed, provider=Provider()
+    )) == len(atoms)
+    assert private_provider_creations == []
+    # Current planning can independently supply conservative residency before it
+    # enables J>1; no historical field is manufactured to reach this branch.
+    current_with_residency = replace(resumed, provider_residency_ram_bytes=1)
+    assert len(campaign_execution._predict_model_on_atoms(
+        model, atoms, head=None, policy=policy,
+        execution_plan=current_with_residency, provider=Provider()
+    )) == len(atoms)
+    assert len(private_provider_creations) == 1
+
+    corrupted_key = "inference_execution_plan:deploy:corrupted-run"
+    corrupted = dict(legacy)
+    corrupted["selected_batch_size"] = 16
+    store.put_record(corrupted_key, corrupted)
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="legacy v2 digest mismatch"):
+        campaign_core._evaluation_inference_execution_plan(
+            {"evaluation": {"inference_batch_policy": "auto", "maximum_inference_batch_size": 32}},
+            store=store,
+            record_key=corrupted_key,
+        )
+
+
+def test_runtime_variants_leave_scientific_policy_and_metrics_unchanged() -> None:
+    import numpy as np
+    from ase import Atoms
+    from mdstats.training_data.model_features import AtomicModelPrediction
+
+    first = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), batch_size=1, cache_monitor_datasets=False,
+        cache_replay_baseline=False,
+    )
+    second = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), batch_size=64, cache_monitor_datasets=True,
+        cache_replay_baseline=True,
+    )
+    assert first.policy_digest == second.policy_digest
+    assert first.to_dict() == second.to_dict()
+
+    atoms = Atoms("Li", cell=[5, 5, 5], pbc=True)
+    atoms.info["REF_energy"] = 1.0
+    atoms.info["REF_stress"] = np.zeros(6)
+    atoms.arrays["REF_forces"] = np.zeros((1, 3))
+    prediction = AtomicModelPrediction(
+        energy_ev=1.0,
+        forces_ev_per_angstrom=np.zeros((1, 3)),
+        stress_ev_per_angstrom3=np.zeros((3, 3)),
+    )
+    assert campaign_execution._metrics_from_predictions(
+        (atoms,), (prediction,), policy=first
+    ) == campaign_execution._metrics_from_predictions(
+        (atoms,), (prediction,), policy=second
+    )
+
+    small = mdstats.InferenceExecutionPlan(
+        selected_batch_size=1, maximum_batch_size=1,
+        graph_cache_enabled=False, monitor_cache_enabled=False,
+        prediction_cache_enabled=False,
+    )
+    large = mdstats.InferenceExecutionPlan(
+        selected_batch_size=32, maximum_batch_size=32,
+    )
+    assert small.execution_digest != large.execution_digest
+
+
+def test_historical_evaluation_policy_digest_roundtrips_without_canonical_rewrite() -> None:
+    payload = mdstats.CheckpointEvaluationPolicy(condition_keys=()).to_dict()
+    payload.pop("policy_digest")
+    payload["schema"] = "mdstats.checkpoint-evaluation-policy.v3"
+    payload.update({
+        "batch_size": 13,
+        "cache_monitor_datasets": False,
+        "cache_replay_baseline": False,
+    })
+    payload["policy_digest"] = digest(payload)
+    restored = mdstats.CheckpointEvaluationPolicy.from_dict(payload)
+    assert restored.batch_size == 13
+    assert restored.policy_digest == payload["policy_digest"]
+    assert restored.to_dict() == payload
+
+
+def test_evaluation_execution_resolution_preserves_legacy_fixed_and_distinguishes_auto() -> None:
+    legacy = campaign_core._evaluation_inference_execution_plan(
+        {"evaluation": {"batch_size": 12}}
+    )
+    automatic = campaign_core._evaluation_inference_execution_plan(
+        {
+            "performance": {"cpu_fraction": 0.75, "ram_fraction": 0.65},
+            "execution": {"inference_gpu_memory_fraction": 0.70},
+            "evaluation": {
+                "inference_batch_policy": "auto", "maximum_inference_batch_size": 24,
+            },
+        }
+    )
+    fixed = campaign_core._evaluation_inference_execution_plan(
+        {"evaluation": {
+            "inference_batch_policy": "fixed", "fixed_inference_batch_size": 6,
+            "maximum_inference_batch_size": 24,
+        }}
+    )
+    assert (legacy.batch_policy, legacy.selected_batch_size, legacy.maximum_batch_size) == (
+        "fixed", 12, 12
+    )
+    assert (automatic.batch_policy, automatic.selected_batch_size, automatic.maximum_batch_size) == (
+        "auto", 8, 24
+    )
+    assert (
+        automatic.cpu_fraction,
+        automatic.ram_fraction,
+        automatic.gpu_memory_fraction,
+    ) == (0.75, 0.65, 0.70)
+    assert (fixed.batch_policy, fixed.selected_batch_size, fixed.maximum_batch_size) == (
+        "fixed", 6, 24
+    )
 
 
 def _as_legacy_mpa0_config(text: str) -> str:
@@ -611,6 +927,38 @@ def test_mace_training_progress_probe_reports_exact_gradient_percentage(tmp_path
     text = probe()
     assert "phase=epoch 1/1" in text
     assert "progress=12/48 (25.0%); unit=gradient-update" in text
+
+
+@pytest.mark.parametrize(
+    ("screen_boundary", "schedule_horizon", "expected_phase"),
+    [
+        (1, 30, "phase=screen epoch 1/1; schedule epoch 1/30"),
+        (3, 30, "phase=screen epoch 1/3; schedule epoch 1/30"),
+    ],
+)
+def test_train2_progress_reports_active_screen_boundary_and_full_schedule(
+    tmp_path: Path,
+    screen_boundary: int,
+    schedule_horizon: int,
+    expected_phase: str,
+) -> None:
+    logs = tmp_path / "logs"
+    results = tmp_path / "results"
+    logs.mkdir()
+    results.mkdir()
+    (results / "run_train.txt").write_text(
+        json.dumps({"mode": "opt", "epoch": 0}) + "\n", encoding="utf-8"
+    )
+    probe = campaign_cli._MaceTrainingProgressProbe(
+        log_dir=logs,
+        result_dir=results,
+        expected_updates=8,
+        device="cpu",
+        max_epochs=screen_boundary,
+        screen_boundary_epochs=screen_boundary,
+        schedule_horizon_epochs=schedule_horizon,
+    )
+    assert expected_phase in probe()
 
 
 def test_mace_training_progress_probe_marks_only_new_optimizer_activity_as_true_epoch(tmp_path: Path) -> None:

@@ -732,47 +732,16 @@ def _provider_predictions(
     *,
     graph_cache_directory: str | Path | None,
 ) -> tuple[Any, ...]:
-    try:
-        result = provider.predict_batch(
-            atoms_batch,
-            geometry_identities=geometry_identities,
-            graph_cache_directory=graph_cache_directory,
-        )
-    except TypeError as exc:
-        message = str(exc)
-        if "unexpected keyword" not in message and "geometry_identities" not in message:
-            raise
-        result = provider.predict_batch(atoms_batch)
-    except RuntimeError as exc:
-        message = str(exc).lower()
-        memory_error = any(
-            marker in message
-            for marker in ("out of memory", "cannot allocate memory", "cuda error: memory allocation", "cublas_status_alloc_failed")
-        )
-        if len(atoms_batch) <= 1 or not memory_error:
-            raise
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
-        middle = len(atoms_batch) // 2
-        return (
-            *_provider_predictions(
-                provider,
-                atoms_batch[:middle],
-                geometry_identities[:middle],
-                graph_cache_directory=graph_cache_directory,
-            ),
-            *_provider_predictions(
-                provider,
-                atoms_batch[middle:],
-                geometry_identities[middle:],
-                graph_cache_directory=graph_cache_directory,
-            ),
-        )
-    return tuple(result)
+    # Replay materialization owns an explicit fixed batch size rather than auto
+    # admission, but it still uses the canonical static executor for model-shell
+    # isolation, deterministic ordering, and bounded OOM learning.
+    from .model_features import StaticMaceInferenceExecutor
+
+    return StaticMaceInferenceExecutor(
+        provider,
+        batch_size=max(1, len(atoms_batch)),
+        graph_cache_directory=graph_cache_directory,
+    ).predict(atoms_batch, geometry_identities=geometry_identities)
 
 
 def _construct_prediction_provider(policy: ReplayFoundationPredictionPolicy, source: ReplaySourceArtifact) -> Any:

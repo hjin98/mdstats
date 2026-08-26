@@ -816,20 +816,28 @@ def _edge_map(atoms: Any, selected: Sequence[int], cutoff_scale: float) -> dict[
         from ase.neighborlist import natural_cutoffs, neighbor_list
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise TrainingDataInputError("ASE is required for RELAX-VERIFY1 topology checks.") from exc
-    selected_set = set(int(v) for v in selected)
+    selected_mask = np.zeros(len(atoms), dtype=bool)
+    selected_mask[np.asarray(tuple(int(v) for v in selected), dtype=np.int64)] = True
     cutoffs = natural_cutoffs(atoms, mult=float(cutoff_scale))
     i_values, j_values = neighbor_list("ij", atoms, cutoffs, self_interaction=False)
-    edges: dict[tuple[int, int], float] = {}
-    for i, j in zip(i_values, j_values):
-        i = int(i); j = int(j)
-        if i == j or i not in selected_set or j not in selected_set:
-            continue
-        key = (i, j) if i < j else (j, i)
-        distance = float(atoms.get_distance(key[0], key[1], mic=True))
-        previous = edges.get(key)
-        if previous is None or distance < previous:
-            edges[key] = distance
-    return edges
+    left = np.asarray(i_values, dtype=np.int64)
+    right = np.asarray(j_values, dtype=np.int64)
+    keep = (left != right) & selected_mask[left] & selected_mask[right]
+    if not np.any(keep):
+        return {}
+    pairs = np.sort(np.column_stack((left[keep], right[keep])), axis=1)
+    order = np.lexsort((pairs[:, 1], pairs[:, 0]))
+    pairs = pairs[order]
+    distances = np.asarray(
+        atoms.get_distances(pairs[:, 0], pairs[:, 1], mic=True), dtype=np.float64
+    )
+    starts = np.r_[0, np.flatnonzero(np.any(pairs[1:] != pairs[:-1], axis=1)) + 1]
+    unique_pairs = pairs[starts]
+    minimum_distances = np.minimum.reduceat(distances, starts)
+    return {
+        (int(pair[0]), int(pair[1])): float(distance)
+        for pair, distance in zip(unique_pairs, minimum_distances)
+    }
 
 
 def _angle_map(atoms: Any, edges: Mapping[tuple[int, int], float]) -> dict[tuple[int, int, int], float]:
@@ -837,15 +845,18 @@ def _angle_map(atoms: Any, edges: Mapping[tuple[int, int], float]) -> dict[tuple
     for i, j in edges:
         adjacency.setdefault(i, set()).add(j)
         adjacency.setdefault(j, set()).add(i)
-    result: dict[tuple[int, int, int], float] = {}
+    keys: list[tuple[int, int, int]] = []
     for center, neighbors in adjacency.items():
         ordered = sorted(neighbors)
         for a in range(len(ordered)):
             for b in range(a + 1, len(ordered)):
                 i, k = ordered[a], ordered[b]
-                key = (min(i, k), center, max(i, k))
-                result[key] = float(atoms.get_angle(i, center, k, mic=True))
-    return result
+                keys.append((min(i, k), center, max(i, k)))
+    if not keys:
+        return {}
+    triples = np.asarray(keys, dtype=np.int64)
+    values = np.asarray(atoms.get_angles(triples, mic=True), dtype=np.float64)
+    return {key: float(value) for key, value in zip(keys, values)}
 
 
 def _coordination(edges: Mapping[tuple[int, int], float], selected: Sequence[int]) -> dict[int, int]:
@@ -964,6 +975,56 @@ def assess_relaxed_geometry(
 
 
 @mace_runtime_warning_handled("RELAX-VERIFY1 MACE zero-K relaxation")
+def create_mace_relax_calculator(
+    model_path: str | Path,
+    *,
+    device: str,
+    model_dtype: str,
+    head: str | None = None,
+) -> Any:
+    """Construct one worker-private calculator reusable across independent cases."""
+    try:
+        from mace.calculators import MACECalculator
+    except ModuleNotFoundError as exc:  # pragma: no cover
+        raise TrainingDataInputError("mace-torch is required for RELAX-VERIFY1 model relaxation.") from exc
+    kwargs: dict[str, Any] = {}
+    if head is not None:
+        kwargs["head"] = str(head)
+    return MACECalculator(
+        model_paths=str(Path(model_path).resolve()), device=str(device),
+        default_dtype=str(model_dtype), **kwargs,
+    )
+
+
+def relax_atoms_with_calculator(
+    source: Any,
+    calculator: Any,
+    *,
+    policy: RelaxVerifyPolicy,
+) -> tuple[Any, int, bool, float | None]:
+    """Run one frozen FIRE case with a caller-owned, worker-private calculator."""
+    try:
+        from ase.optimize import FIRE
+        from ase.calculators.singlepoint import SinglePointCalculator
+    except ModuleNotFoundError as exc:  # pragma: no cover
+        raise TrainingDataInputError("ASE is required for RELAX-VERIFY1 model relaxation.") from exc
+    atoms = source.copy(); atoms.calc = calculator
+    try:
+        initial_energy = float(atoms.get_potential_energy())
+        optimizer = FIRE(atoms, logfile=None)
+        did_converge = bool(optimizer.run(fmax=policy.force_convergence_ev_per_angstrom, steps=policy.maximum_steps))
+        steps = int(getattr(optimizer, "nsteps", policy.maximum_steps))
+        final_energy = float(atoms.get_potential_energy())
+        final_forces = np.asarray(atoms.get_forces(), dtype=np.float64)
+    except Exception as exc:
+        raise TrainingDataInputError(f"RELAX-VERIFY1 MACE relaxation failed: {exc}") from exc
+    if not math.isfinite(initial_energy) or not math.isfinite(final_energy) or not np.all(np.isfinite(final_forces)):
+        raise TrainingDataInputError("RELAX-VERIFY1 MACE relaxation produced non-finite energy/forces.")
+    output = atoms.copy()
+    output.calc = SinglePointCalculator(output, energy=final_energy, forces=final_forces)
+    return output, steps, did_converge, (final_energy - initial_energy) / max(1, len(atoms))
+
+
 def relax_mace_model(
     model_path: str | Path,
     base_atoms: Sequence[Any],
@@ -974,34 +1035,16 @@ def relax_mace_model(
     head: str | None = None,
 ) -> tuple[tuple[Any, ...], tuple[int, ...], tuple[bool, ...], tuple[float | None, ...]]:
     """Relax common bases with one deployable MACE model under the frozen FIRE protocol."""
-    try:
-        from ase.optimize import FIRE
-        from ase.calculators.singlepoint import SinglePointCalculator
-        from mace.calculators import MACECalculator
-    except ModuleNotFoundError as exc:  # pragma: no cover
-        raise TrainingDataInputError("ASE and mace-torch are required for RELAX-VERIFY1 model relaxation.") from exc
-    kwargs: dict[str, Any] = {}
-    if head is not None:
-        kwargs["head"] = str(head)
-    calculator = MACECalculator(model_paths=str(Path(model_path).resolve()), device=str(device), default_dtype=str(model_dtype), **kwargs)
+    calculator = create_mace_relax_calculator(
+        model_path, device=device, model_dtype=model_dtype, head=head
+    )
     relaxed: list[Any] = []; steps_out: list[int] = []; converged_out: list[bool] = []; drops: list[float | None] = []
     for source in base_atoms:
-        atoms = source.copy(); atoms.calc = calculator
-        try:
-            initial_energy = float(atoms.get_potential_energy())
-            optimizer = FIRE(atoms, logfile=None)
-            did_converge = bool(optimizer.run(fmax=policy.force_convergence_ev_per_angstrom, steps=policy.maximum_steps))
-            steps = int(getattr(optimizer, "nsteps", policy.maximum_steps))
-            final_energy = float(atoms.get_potential_energy())
-            final_forces = np.asarray(atoms.get_forces(), dtype=np.float64)
-        except Exception as exc:
-            raise TrainingDataInputError(f"RELAX-VERIFY1 MACE relaxation failed: {exc}") from exc
-        if not math.isfinite(initial_energy) or not math.isfinite(final_energy) or not np.all(np.isfinite(final_forces)):
-            raise TrainingDataInputError("RELAX-VERIFY1 MACE relaxation produced non-finite energy/forces.")
-        output = atoms.copy()
-        output.calc = SinglePointCalculator(output, energy=final_energy, forces=final_forces)
+        output, steps, did_converge, energy_drop = relax_atoms_with_calculator(
+            source, calculator, policy=policy
+        )
         relaxed.append(output); steps_out.append(steps); converged_out.append(did_converge)
-        drops.append((final_energy - initial_energy) / max(1, len(atoms)))
+        drops.append(energy_drop)
     return tuple(relaxed), tuple(steps_out), tuple(converged_out), tuple(drops)
 
 
@@ -1023,5 +1066,6 @@ __all__ = [
     "RelaxReferenceArtifact", "RelaxBaseMetric", "RelaxModelQualification", "RelaxVerifyRunRecord",
     "RelaxVerifyCampaignRecord", "build_relax_base_set", "write_relax_reference_request",
     "load_relax_reference_extxyz", "collect_relax_reference_from_vasp", "assess_relaxed_geometry",
+    "create_mace_relax_calculator", "relax_atoms_with_calculator",
     "relax_mace_model", "write_relaxed_model_artifact",
 ]

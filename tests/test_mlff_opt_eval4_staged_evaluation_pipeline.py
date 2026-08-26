@@ -206,6 +206,61 @@ def _pipeline_cfg() -> dict:
     }
 
 
+def test_staged_eval_has_one_outer_owner_and_binds_joint_model_job_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+    observed_jobs: list[int] = []
+
+    class Prepared:
+        def __init__(self):
+            self.execution_plan = mdstats.InferenceExecutionPlan(
+                batch_policy="auto", selected_batch_size=8,
+                maximum_batch_size=32,
+            )
+
+    def infer(prepared):
+        nonlocal active, peak
+        observed_jobs.append(prepared.execution_plan.selected_concurrent_model_jobs)
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+        return True
+
+    tasks = tuple(
+        campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=str(index),
+            label=f"eval-{index}",
+            start_detail="joint",
+            prepare=Prepared,
+            requires_inference=lambda prepared: True,
+            infer=infer,
+            finalize=lambda prepared, result: result,
+            done_detail=lambda result, wall: "done",
+        )
+        for index in range(2)
+    )
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_jobs"] = 2
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+
+    assert results == {"0": True, "1": True}
+    assert peak == 1
+    assert observed_jobs == [2, 2]
+
+
 def test_staged_runner_overlaps_prepare_and_finalize_with_single_inference_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -294,6 +349,96 @@ def test_cache_only_staged_task_bypasses_inference_pool(
     assert execution_threads
     assert all(name.startswith("mdstats-eval-finalize") for name in execution_threads)
 
+
+def test_dynamics_reduction_overlaps_next_single_slot_simulation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update({
+        "parallel_dynamics_jobs": 1,
+        "maximum_parallel_dynamics_jobs": 1,
+        "parallel_dynamics_prepare_jobs": 1,
+        "parallel_dynamics_finalize_jobs": 1,
+        "dynamics_pipeline_buffer_jobs": 2,
+        "dynamics_estimated_ram_mib_per_job": 1.0,
+        "parallel_dynamics_stabilization_seconds": 0.0,
+        "parallel_dynamics_cpu_stabilization_seconds": 0.0,
+        "parallel_dynamics_stability_samples": 2,
+        "parallel_dynamics_monitor_interval_seconds": 0.005,
+    })
+    lock = threading.Lock()
+    spans: dict[str, list[float]] = {}
+    active_simulations = 0
+    peak_simulations = 0
+
+    def mark(name: str, delay: float, *, simulation: bool = False) -> str:
+        nonlocal active_simulations, peak_simulations
+        with lock:
+            spans[name] = [time.monotonic(), 0.0]
+            if simulation:
+                active_simulations += 1
+                peak_simulations = max(peak_simulations, active_simulations)
+        time.sleep(delay)
+        with lock:
+            spans[name][1] = time.monotonic()
+            if simulation:
+                active_simulations -= 1
+        return name
+
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1, key=f"case-{index}", label=f"case-{index}",
+            start_detail="DYN pipeline test", prepare=lambda: True,
+            requires_inference=lambda prepared: True,
+            infer=lambda prepared: mark(f"simulate{index}", 0.08, simulation=True),
+            finalize=lambda prepared, result: mark(f"reduce{index}", 0.12),
+            done_detail=lambda result, wall: result,
+        )
+
+    result = campaign_cli._run_staged_evaluation_tasks(
+        [task(0), task(1)], cfg=cfg, phase="dynamics", device="cpu", progress=_Progress()
+    )
+    assert set(result) == {"case-0", "case-1"}
+    assert peak_simulations == 1
+    assert spans["simulate1"][0] < spans["reduce0"][1]
+    assert spans["simulate1"][1] > spans["reduce0"][0]
+
+
+def test_dynamics_authenticated_receipt_path_bypasses_simulation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update({
+        "parallel_dynamics_jobs": 1,
+        "maximum_parallel_dynamics_jobs": 1,
+        "parallel_dynamics_prepare_jobs": 1,
+        "parallel_dynamics_finalize_jobs": 1,
+        "parallel_dynamics_stabilization_seconds": 0.0,
+        "parallel_dynamics_cpu_stabilization_seconds": 0.0,
+    })
+    simulated = []
+    receipt_metric = object()
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1, key="accepted", label="accepted", start_detail="restart",
+        prepare=lambda: receipt_metric,
+        requires_inference=lambda prepared: False,
+        infer=lambda prepared: simulated.append(True),
+        cached_result=lambda prepared: prepared,
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "reused",
+    )
+    result = campaign_cli._run_staged_evaluation_tasks(
+        [task], cfg=cfg, phase="dynamics", device="cpu", progress=_Progress()
+    )
+    assert result["accepted"] is receipt_metric
+    assert not simulated
+
 @pytest.mark.parametrize(
     "key",
     ["parallel_evaluation_prepare_jobs", "parallel_evaluation_finalize_jobs"],
@@ -363,6 +508,151 @@ def test_staged_runner_stage_failure_stops_new_work_without_deadlock(
             progress=_Progress(),
         )
     assert executed == ["prepare0"]
+
+
+def test_dynamics_sibling_failure_cancels_active_external_process_group(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import signal
+    import subprocess
+    import mdstats.training_data.dyn_verify as dyn_verify
+    from mdstats.training_data.inference_parallel import inference_cancellation_requested
+
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    active = threading.Event()
+    terminated = threading.Event()
+    signals = []
+
+    class Process:
+        pid = 9876
+
+        def wait(self, timeout=None):
+            active.set()
+            if terminated.is_set():
+                return -signal.SIGTERM
+            raise subprocess.TimeoutExpired(["fake"], timeout)
+
+    monkeypatch.setattr(dyn_verify.subprocess, "Popen", lambda *args, **kwargs: Process())
+
+    def killpg(pid, sig):
+        signals.append((pid, sig))
+        terminated.set()
+
+    monkeypatch.setattr(dyn_verify.os, "killpg", killpg)
+
+    def external(_prepared):
+        return dyn_verify._run_file_backed_process(
+            ("fake",),
+            cwd=tmp_path,
+            environment={},
+            stdout_path=tmp_path / "external.stdout.log",
+            stderr_path=tmp_path / "external.stderr.log",
+            timeout_seconds=10.0,
+            cancellation_requested=inference_cancellation_requested,
+        )
+
+    def fail_sibling(_prepared):
+        assert active.wait(timeout=2.0)
+        raise RuntimeError("sibling failed")
+
+    tasks = (
+        campaign_cli._StagedEvaluationTask(
+            display_index=1, key="external", label="external", start_detail="external",
+            prepare=lambda: True, requires_inference=lambda prepared: True,
+            infer=external, finalize=lambda prepared, result: result,
+            done_detail=lambda result, wall: "done",
+        ),
+        campaign_cli._StagedEvaluationTask(
+            display_index=2, key="failure", label="failure", start_detail="failure",
+            prepare=lambda: True, requires_inference=lambda prepared: True,
+            infer=fail_sibling, finalize=lambda prepared, result: result,
+            done_detail=lambda result, wall: "done",
+        ),
+    )
+    cfg = {
+        "performance": {"cpu_fraction": 0.90, "ram_fraction": 0.80},
+        "execution": {
+            "parallel_dynamics_jobs": 2,
+            "maximum_parallel_dynamics_jobs": 2,
+            "parallel_dynamics_prepare_jobs": 2,
+            "parallel_dynamics_finalize_jobs": 1,
+            "dynamics_pipeline_buffer_jobs": 2,
+            "dynamics_estimated_ram_mib_per_job": 1.0,
+            "parallel_dynamics_cpu_stabilization_seconds": 0.0,
+            "parallel_dynamics_stability_samples": 2,
+            "parallel_dynamics_monitor_interval_seconds": 0.01,
+        },
+    }
+
+    with pytest.raises(campaign_cli.CampaignCliError, match="sibling failed"):
+        campaign_cli._run_staged_evaluation_tasks(
+            tasks, cfg=cfg, phase="dynamics", device="cpu", progress=_Progress()
+        )
+    assert signals == [(9876, signal.SIGTERM)]
+
+
+def test_dynamics_keyboard_interrupt_cancels_active_external_process_group(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import signal
+    import subprocess
+    import mdstats.training_data.dyn_verify as dyn_verify
+    from mdstats.training_data.inference_parallel import inference_cancellation_requested
+
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    active = threading.Event()
+    terminated = threading.Event()
+    signals = []
+
+    class Process:
+        pid = 9877
+
+        def wait(self, timeout=None):
+            active.set()
+            if terminated.is_set():
+                return -signal.SIGTERM
+            raise subprocess.TimeoutExpired(["fake"], timeout)
+
+    monkeypatch.setattr(dyn_verify.subprocess, "Popen", lambda *args, **kwargs: Process())
+
+    def killpg(pid, sig):
+        signals.append((pid, sig))
+        terminated.set()
+
+    monkeypatch.setattr(dyn_verify.os, "killpg", killpg)
+    real_wait = campaign_cli._core.wait
+    def interrupt_wait(futures, **kwargs):
+        if active.wait(timeout=0.05):
+            raise KeyboardInterrupt
+        return real_wait(futures, **kwargs)
+
+    monkeypatch.setattr(campaign_cli._core, "wait", interrupt_wait)
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1, key="interrupt", label="interrupt", start_detail="interrupt",
+        prepare=lambda: True, requires_inference=lambda prepared: True,
+        infer=lambda prepared: dyn_verify._run_file_backed_process(
+            ("fake",), cwd=tmp_path, environment={},
+            stdout_path=tmp_path / "interrupt.stdout.log",
+            stderr_path=tmp_path / "interrupt.stderr.log", timeout_seconds=10.0,
+            cancellation_requested=inference_cancellation_requested,
+        ),
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "done",
+    )
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_dynamics_jobs"] = 1
+    cfg["execution"]["maximum_parallel_dynamics_jobs"] = 1
+    cfg["execution"]["dynamics_estimated_ram_mib_per_job"] = 1.0
+
+    with pytest.raises(KeyboardInterrupt):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task], cfg=cfg, phase="dynamics", device="cpu", progress=_Progress()
+        )
+    assert signals == [(9877, signal.SIGTERM)]
 
 
 def test_target_only_outer_cv_authorization_omits_run_replay_lineage(
@@ -537,3 +827,185 @@ def test_staged_runner_one_thread_budget_serializes_all_cpu_stages(
     )
     assert result == {"one-0": 0, "one-1": 1}
     assert peak == 1
+
+
+def test_staged_runner_applies_byte_budget_to_all_retained_stage_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["evaluation_pipeline_buffer_mib"] = 1.5
+
+    spans: dict[str, list[float]] = {}
+    lock = threading.Lock()
+
+    def record(name: str, delay: float) -> None:
+        with lock:
+            spans[name] = [time.monotonic(), 0.0]
+        time.sleep(delay)
+        with lock:
+            spans[name][1] = time.monotonic()
+
+    def make_task(index: int) -> campaign_cli._StagedEvaluationTask:
+        def prepare():
+            record(f"prepare{index}", 0.02)
+            return np.zeros(400 * 1024, dtype=np.uint8)
+
+        def infer(prepared):
+            record(f"infer{index}", 0.06)
+            return index
+
+        def finalize(prepared, inferred):
+            record(f"finalize{index}", 0.04)
+            return inferred
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"bytes-{index}",
+            label=f"bytes-{index}",
+            start_detail="byte-budget",
+            prepare=prepare,
+            requires_inference=lambda prepared: True,
+            infer=infer,
+            finalize=finalize,
+            done_detail=lambda result, wall: "done",
+        )
+
+    result = campaign_cli._run_staged_evaluation_tasks(
+        [make_task(0), make_task(1)],
+        cfg=cfg,
+        device="cpu",
+        progress=_Progress(),
+    )
+    assert result == {"bytes-0": 0, "bytes-1": 1}
+    # Prepared bytes plus the explicit inference-worker reservation nearly fill
+    # the cap, so the producer is held until the first inference reservation is
+    # released. CPU finalization may then overlap the next preparation.
+    assert spans["prepare1"][0] >= spans["infer0"][1]
+
+
+def test_staged_runner_fails_when_one_prepared_payload_exceeds_byte_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["evaluation_pipeline_buffer_mib"] = 1.5
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1, key="oversized", label="oversized", start_detail="bytes",
+        prepare=lambda: np.zeros(2 * 1024**2, dtype=np.uint8),
+        requires_inference=lambda prepared: True, infer=lambda prepared: 1,
+        finalize=lambda prepared, inferred: inferred,
+        done_detail=lambda result, wall: "done",
+    )
+    with pytest.raises(campaign_cli.CampaignCliError, match="cannot admit one required payload"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task], cfg=cfg, device="cpu", progress=_Progress()
+        )
+
+
+def test_explicit_pipeline_subbudget_cannot_exceed_global_ram_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resources = _resources()
+    resources = SystemResourceSnapshot(
+        cpu_threads_available=resources.cpu_threads_available,
+        cpu_fraction=resources.cpu_fraction,
+        cpu_threads_budget=resources.cpu_threads_budget,
+        ram_available_bytes=1024**2,
+        ram_fraction=0.80,
+        ram_budget_bytes=1024**2,
+        gpu_memory_fraction=resources.gpu_memory_fraction,
+        gpu=resources.gpu,
+    )
+    monkeypatch.setattr(
+        campaign_cli._core, "detect_system_resources", lambda **kwargs: resources
+    )
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["evaluation_estimated_ram_mib_per_job"] = 0.25
+    cfg["execution"]["evaluation_pipeline_buffer_mib"] = 2.0
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="global-cap",
+        label="global-cap",
+        start_detail="global-cap",
+        prepare=lambda: 1,
+        requires_inference=lambda prepared: True,
+        infer=lambda prepared: prepared,
+        finalize=lambda prepared, inferred: inferred,
+        done_detail=lambda result, wall: "done",
+    )
+
+    with pytest.raises(campaign_cli.CampaignCliError, match="exceeding the active global RAM budget"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task], cfg=cfg, device="cpu", progress=_Progress()
+        )
+
+
+def test_finalize_working_memory_is_reserved_before_worker_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["evaluation_pipeline_buffer_mib"] = 1.5
+    cfg["execution"]["evaluation_finalize_working_memory_mib"] = 1.0
+    spans: dict[str, list[float]] = {}
+    lock = threading.Lock()
+
+    def record(name: str, delay: float):
+        with lock:
+            spans[name] = [time.monotonic(), 0.0]
+        time.sleep(delay)
+        with lock:
+            spans[name][1] = time.monotonic()
+
+    def task(index: int):
+        def prepare():
+            record(f"prepare{index}", 0.01)
+            return np.zeros(400 * 1024, dtype=np.uint8)
+
+        def infer(prepared):
+            record(f"infer{index}", 0.01)
+            return index
+
+        def finalize(prepared, inferred):
+            record(f"finalize{index}", 0.05)
+            return inferred
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"finalize-reservation-{index}",
+            label=f"finalize-reservation-{index}",
+            start_detail="finalize-reservation",
+            prepare=prepare,
+            requires_inference=lambda prepared: True,
+            infer=infer,
+            finalize=finalize,
+            done_detail=lambda result, wall: "done",
+        )
+
+    result = campaign_cli._run_staged_evaluation_tasks(
+        [task(0), task(1)], cfg=cfg, device="cpu", progress=_Progress()
+    )
+    assert result == {
+        "finalize-reservation-0": 0,
+        "finalize-reservation-1": 1,
+    }
+    assert spans["prepare1"][0] >= spans["finalize0"][1]
+
+
+def test_ase_atoms_retained_bytes_include_array_storage() -> None:
+    from ase import Atoms
+
+    atoms = Atoms("H100", positions=np.zeros((100, 3)))
+    atoms.arrays["large"] = np.zeros((100, 64), dtype=np.float64)
+    retained = campaign_cli._core._evaluation_payload_bytes(atoms)
+    assert retained >= atoms.arrays["large"].nbytes + atoms.positions.nbytes
+    assert retained > atoms.__sizeof__()

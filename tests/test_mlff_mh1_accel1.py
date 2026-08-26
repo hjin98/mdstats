@@ -268,7 +268,7 @@ def test_accel1_evaluation_policy_binds_inference_realization() -> None:
     )
     restored = mdstats.CheckpointEvaluationPolicy.from_dict(policy.to_dict())
     assert restored == policy
-    assert restored.to_dict()["schema"] == "mdstats.checkpoint-evaluation-policy.v6"
+    assert restored.to_dict()["schema"] == "mdstats.checkpoint-evaluation-policy.v8"
     assert restored.resolved_acceleration_kernel_mode == "cueq_oeq_hybrid"
 
 def test_accel1_legacy_probe_roundtrip_preserves_v1_digest() -> None:

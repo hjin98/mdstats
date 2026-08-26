@@ -1,7 +1,7 @@
 # MLFF target-subset size-study specification
 
 **Status:** current normative target-size policy  
-**Architecture:** revision 105
+**Architecture:** revision 106
 
 ## 1. Scope and sole ownership
 
@@ -108,13 +108,27 @@ The following SHALL be identical across candidate sizes:
 - checkpoint metric definitions used by the study;
 - frozen ordered training-seed set.
 
-Each candidate/seed follows one authenticated continuation trajectory:
+Each candidate/seed follows one authenticated continuation trajectory controlled
+by the serialized fidelity tuple `(n1, n2, n3)`. Its screen-local TRAIN2
+scheduler horizon is exactly `n3`; the independent production horizon `n`
+is not a screen authority:
 
 ```text
-foundation -> epoch 3 -> epoch 10 -> epoch 30
+foundation -> epoch n1 -> epoch n2 -> epoch n3
+                              \-> selected production training to n
 ```
 
-Epoch 10 SHALL continue the exact epoch-3 model, optimizer, RNG, and protocol state. Epoch 30 SHALL continue the exact epoch-10 state. Restart or persistence may change storage realization but not parentage.
+`n1 < n2 < n3 < n` is required for current executable configuration. Epoch `n2` SHALL continue the exact
+`n1` model, optimizer, RNG, and protocol state; epoch `n3` SHALL continue the
+exact `n2` state. The screen scheduler horizon is frozen at `n3`; `n` is
+reserved for a separate fresh selected-size production run, never a fourth
+screen boundary or a hidden screen schedule authority. Restart or persistence
+may change storage realization but not parentage.
+
+Live target-size progress SHALL report the active screen endpoint and the
+screen horizon (for example, `screen epoch 2/10; boundary 3`). It may display
+the future production horizon separately, but production `n` SHALL NOT become
+a screen denominator, run identity, or continuation authority.
 
 Ordinary target-success early stopping is disabled during the target-size study. Candidates must reach the common fidelity boundary to remain comparable. A successful endpoint is represented only by strict finite `TargetSizeTrainingEvidence`; positively identified candidate-specific TRAIN2/EVAL2 numerical invalidity is represented separately by authenticated `TargetSizeTrajectoryFailureEvidence`. Generic execution, resource, input, schema, lineage, timeout, interruption, launch, and programming failures remain campaign errors rather than scientific size evidence.
 
@@ -122,13 +136,18 @@ Ordinary target-success early stopping is disabled during the target-size study.
 
 Let `q = len(qualified_sizes)`.
 
+`[target_data.size_convergence].fidelity_epochs` supplies `(n1, n2, n3)` and
+therefore the screen horizon. `[training].max_num_epochs` supplies the later
+fresh production horizon `n`. The generated current default is `(1, 3, 10) /
+30`; only the tuple is target-size-screen authority.
+
 The production funnel is exactly:
 
 ```text
 q < 3       -> insufficient_qualified_sizes
-q >= 3      -> epoch 3:  q -> min(q,4)
-               epoch 10: <=4 -> 2
-               epoch 30: 2 -> 1 or typed failure
+q >= 3      -> epoch n1: q -> min(q,4)
+               epoch n2: <=4 -> 2
+               epoch n3: 2 -> 1 or typed failure
 ```
 
 No eliminated candidate is trained to a later fidelity in ordinary production.
@@ -143,7 +162,7 @@ Every persisted TRAIN2 endpoint evidence item also authenticates the complete ta
 
 A comparison SHALL NOT substitute unrelated seeds merely because the number of runs is the same. Missing seeds, duplicates, seed reordering, or candidate-specific seed populations invalidate the comparison/restart state.
 
-### 6.2 Epoch-3 and epoch-10 screens
+### 6.2 Coarse and short screens
 
 The primary screening metric is the current target-force metric identified by `TargetSizeStudyPolicy.primary_screen_metric` and evaluated on the common authorized target monitor.
 
@@ -153,25 +172,45 @@ The default coarse practical-equivalence width is
 1 meV/Angstrom
 ```
 
-for the epoch-3 and epoch-10 size screens. It is a configurable positive finite `TargetSizeStudyPolicy.coarse_practical_equivalence_mev_per_a` field, not a schema constant. A non-default configured value changes policy identity and therefore invalidates reuse of target-size evidence produced under another value.
+for the `n1` coarse and `n2` short size screens. It is a configurable positive
+finite `TargetSizeStudyPolicy.coarse_practical_equivalence_mev_per_a` field,
+not a schema constant. A non-default configured value changes policy identity
+and therefore invalidates reuse of target-size evidence produced under another
+value.
 
 When two candidates are within this width under the policy-defined paired aggregate, the smaller target size is preferred.
 
 The early screens rank relative learning behavior. They do not require the final absolute target-force acceptance threshold.
 
-The epoch-3 survivor count is `min(q, 4)`. The epoch-10 survivor count is exactly `2`.
+The coarse survivor count is `min(q, 4)`. The short-screen finalist count is
+exactly `2`.
 
 Tie resolution after the practical-equivalence rule SHALL be deterministic and specification-serialized.
 
-### 6.3 Epoch-30 final comparison
+### 6.3 Final-screen comparison at `n3`
 
-The two finalists continue to epoch 30 on their authenticated trajectories. MVQUAL is the sole hard target-size eligibility authority. The epoch-30 comparison SHALL NOT re-apply target-threshold, replay-retention, energy/stress, structural/physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates as a second size qualification stage.
+The two finalists continue to `n3` on their authenticated trajectories. MVQUAL
+is the sole hard target-size eligibility authority. The final-screen comparison
+SHALL NOT re-apply target-threshold, replay-retention, energy/stress,
+structural/physical-integrity, relaxation, deployment, or other downstream
+model/protocol acceptance gates as a second size qualification stage.
 
 Each expected `(size, seed)` contributes exactly one stage outcome: a strict successful endpoint or authenticated candidate-specific trajectory-failure evidence. Only candidates with complete paired successful seeds are rankable. Among complete finalists, the winner is determined by the policy-defined target-size metric and practical-equivalence/smaller-size rule serialized in `TargetSizeStudyPolicy`. Replay scores and other model-quality metrics may be recorded as diagnostics only; they cannot qualify, reject, rank, or tie-break target sizes.
 
-The final practical-equivalence width defaults to `1 meV/Angstrom` and is independently configurable through `TargetSizeStudyPolicy.practical_equivalence_mev_per_a`. Like the coarse width, it is positive, finite, serialized, and part of the policy digest. It controls the epoch-30 smaller-size equivalence rule and the fixed-ceiling material-superiority test.
+The final practical-equivalence width defaults to `1 meV/Angstrom` and is
+independently configurable through
+`TargetSizeStudyPolicy.practical_equivalence_mev_per_a`. Like the coarse
+width, it is positive, finite, serialized, and part of the policy digest. It
+controls the `n3` smaller-size equivalence rule and the fixed-ceiling
+material-superiority test.
 
-If authenticated numerical/scientific trajectory failures leave too few complete paired-seed candidates to perform a required epoch-3, epoch-10, or epoch-30 comparison, the study terminates as `insufficient_comparable_candidates`. The terminal state records the failed fidelity stage and authenticated `(candidate size, seed)` failure reasons. Ordinary input, programming, or lineage errors remain exceptions rather than being absorbed into this scientific terminal class.
+If authenticated numerical/scientific trajectory failures leave too few complete
+paired-seed candidates to perform a required coarse, short, or final-screen
+comparison, the study terminates as `insufficient_comparable_candidates`. The
+terminal state records the failed fidelity stage and authenticated `(candidate
+size, seed)` failure reasons. Ordinary input, programming, or lineage errors
+remain exceptions rather than being absorbed into this scientific terminal
+class.
 
 After `selected_target_size` is frozen, ordinary production/CV model acceptance, replay-retention, held-out evaluation, and physical/deployment verification may accept or reject the resulting model/protocol but SHALL NOT change the selected target size.
 
@@ -179,7 +218,9 @@ After `selected_target_size` is frozen, ordinary production/CV model acceptance,
 
 The fixed scientific ceiling is 16,384. The workflow SHALL NOT generate an intermediate or larger rescue size to avoid a non-convergence result.
 
-When 16,384 reaches the final comparison and remains materially superior to every smaller complete finalist by more than the configured final practical-equivalence width, the terminal outcome is:
+When 16,384 reaches the `n3` final comparison and remains materially superior to
+every smaller complete finalist by more than the configured final
+practical-equivalence width, the terminal outcome is:
 
 ```text
 nonconverged_at_fixed_ceiling
@@ -207,7 +248,8 @@ A selected `TargetSizeStudyPlan` SHALL bind:
 - common target/replay monitor identities;
 - foundation/replay/objective/optimizer/LR/exposure/precision/backend identities;
 - ordered seed set;
-- authenticated 3/10/30 continuation lineage for trained candidates;
+- authenticated `n1/n2/n3` continuation lineage for trained candidates and
+  the independent full-horizon `n` schedule identity;
 - survivor decisions and deterministic comparison evidence;
 - selected `N`.
 
@@ -227,7 +269,12 @@ Held-out cross-validation then evaluates the complete protocol. Any later change
 
 Ordinary campaigns use only the successive-fidelity funnel above.
 
-Release/algorithm qualification MAY retrospectively train the complete qualified candidate population to epoch 30 to measure whether the epoch-3/epoch-10 screens retained the eventual finalists. Such exhaustive evidence is qualification-only and SHALL NOT become a default production workload or a reason to persist eight independent product-scale dataset/graph states.
+Release/algorithm qualification MAY retrospectively train the complete qualified
+candidate population to full horizon `n` to measure whether the `n1`, `n2`, and
+`n3` screens preserve the eventual finalists and winner. Such exhaustive
+evidence is qualification-only and SHALL NOT become a default production
+workload or a reason to persist eight independent product-scale dataset/graph
+states.
 
 If representative qualification demonstrates inadequate survivor recall, the screening policy must be explicitly revised and requalified.
 
@@ -236,6 +283,32 @@ If representative qualification demonstrates inadequate survivor recall, the scr
 Candidate sizes are prefix metadata/views over one current REPAIR2 master order per training domain. The implementation SHALL NOT require one independent product-scale descriptor set, MVIDX graph, selector state, or repaired dataset per nominal rung.
 
 Training artifacts are materialized only for candidates authorized to train at the current fidelity stage. Reconstructible caches may be evicted/rebuilt under the current resource/storage specifications without changing the scientific decision.
+
+### 11.1 Candidate-prefix authority generations
+
+DATA7/DATA8 candidate materialization is bound to a versioned,
+policy-independent candidate-prefix authority. Its semantic inputs are the
+dataset identity, REPAIR2 and MVQUAL authorities, every admitted candidate
+prefix digest, and the qualified-size set. The serialized fidelity tuple and
+separate production horizon are excluded: they control screening/production
+schedule continuation, not immutable candidate membership.
+
+The immediately preceding fixed-fidelity generation is the sole compatibility
+exception. It used a distinct, policy-bound authority derivation and may be
+reused only when the raw historical v8-study/v6-policy authority is
+authenticated before migration, its authentic v6 policy digest proves the
+recorded legacy candidate binding, the candidate role/topology and complete
+expected matrix match, and the promoted DATA8 artifact passes its own integrity
+check. Production-materialization serialization versions are not candidate
+authority generations and SHALL NOT classify a predecessor. A policy-independent
+flexible-v1 binding that cannot be unambiguously proven current is a distinct,
+unsupported transitional generation and SHALL fail closed rather than falling
+through the fixed-predecessor exception.
+Successful re-authentication records a durable, idempotent compatibility
+receipt; it neither rewrites DATA7/DATA8 nor relabels historical screen,
+schedule, checkpoint, or TRAIN2 evidence as current configurable-fidelity
+evidence. Unknown generations, malformed or mismatched inputs, mixed matrices,
+and current-generation authority mismatches SHALL fail closed.
 
 ## 12. Unsupported historical behavior
 

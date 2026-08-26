@@ -104,7 +104,9 @@ def test_generated_config_exposes_adaptive_evaluation_and_verification() -> None
     assert "screening_steps = 200" in text
     assert "sample_interval_steps = 10" in text
     assert "prune_screened_out_checkpoints_after_evaluate = true" in text
-    assert "parallel_inference_calibration_window_seconds = 300.0" in text
+    assert "parallel_inference_calibration_window_seconds = 120.0" in text
+    assert "inference_minimum_calibration_seconds = 20.0" in text
+    assert "inference_calibration_stability_relative_tolerance = 0.10" in text
     assert "inference_gpu_minimum_activity_fraction = 0.01" in text
     assert "inference_gpu_calibration_peak_trim_fraction = 0.05" in text
     assert "inference_gpu_calibration_band_fraction = 0.10" in text

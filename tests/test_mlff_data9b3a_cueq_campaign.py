@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 import mdstats
-from mdstats.training_data import campaign_cli
+from mdstats.training_data import _campaign_cli_core, campaign_cli
 from tests.test_mlff_data8_mace_artifacts import _data7_bundles, _foundation, _probe
 
 
@@ -133,7 +133,7 @@ def test_provider_passes_cueq_to_mace_calculator(
         available_heads=("omol", "omat_pbe"),
         inspection_state="inspected",
     )
-    monkeypatch.setattr(campaign_cli, "_resolved_foundation_potential_identity", lambda *a, **k: potential)
+    monkeypatch.setattr(_campaign_cli_core, "_resolved_foundation_potential_identity", lambda *a, **k: potential)
     inference = campaign_cli._foundation_inference_identity(
         cfg, potential, adapter_version=mdstats.MACE_ADAPTER_VERSION,
         resolved_kernel_mode="cueq_pure",
@@ -147,7 +147,7 @@ def test_provider_passes_cueq_to_mace_calculator(
         training_parity_record_digest="c" * 64,
         qualified=True,
     )
-    monkeypatch.setattr(campaign_cli, "_stored_acceleration_realization", lambda *a, **k: realization)
+    monkeypatch.setattr(_campaign_cli_core, "_stored_acceleration_realization", lambda *a, **k: realization)
     _, checkpoint = campaign_cli._provider(cfg, paths)
     assert captured["enable_cueq"] is True
     assert captured["enable_oeq"] is False
