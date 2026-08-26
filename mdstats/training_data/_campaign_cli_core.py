@@ -12447,6 +12447,55 @@ class _PendingTrainingTask:
     allow_successful_continuation: bool = False
 
 
+@dataclass(frozen=True)
+class _TrainingExecutionContext:
+    """Public lifecycle ownership projected onto the shared training engine.
+
+    TRAIN2 target-size screening intentionally reuses the production training
+    machinery, but its operator/recovery owner is ``select-target-size``.
+    Keep that fact alongside the generic scheduler rather than reconstructing
+    it from internal stage names or run IDs at each presentation site.
+    """
+
+    execution_role: str
+    public_owner_command: str
+    resume_command: str
+    operator_label: str
+    progress_label: str
+    scheduler_label: str
+
+
+def _training_execution_context(*, policy_family: str, target_size_study: Any) -> _TrainingExecutionContext:
+    """Derive the sole user-facing owner for one verified execution authority."""
+
+    if policy_family != "train2":
+        return _TrainingExecutionContext(
+            execution_role="historical",
+            public_owner_command="train",
+            resume_command="train",
+            operator_label="Historical training",
+            progress_label="TRAIN",
+            scheduler_label="TRAIN scheduler",
+        )
+    if str(target_size_study.outcome) == "selected":
+        return _TrainingExecutionContext(
+            execution_role="production",
+            public_owner_command="train",
+            resume_command="train",
+            operator_label="Production training",
+            progress_label="TRAIN",
+            scheduler_label="TRAIN scheduler",
+        )
+    return _TrainingExecutionContext(
+        execution_role="target-size-screen",
+        public_owner_command="select-target-size",
+        resume_command="select-target-size",
+        operator_label="Target-size screen execution",
+        progress_label="TARGET-SIZE",
+        scheduler_label="TARGET-SIZE scheduler",
+    )
+
+
 def _training_concurrency_policy(cfg: Mapping[str, Any]) -> TrainingConcurrencyPolicy:
     """Resolve runtime-only adaptive training concurrency controls."""
 
@@ -14616,8 +14665,12 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                 f"{train2_stage_label} has no matching materialized DATA8 runs. "
                 "Rerun `prepare`; candidate materializations must cover Q exactly."
             )
+    execution_context = _training_execution_context(
+        policy_family=policy_family, target_size_study=target_size_study
+    )
+    if policy_family == "train2":
         _ok(
-            f"TRAIN2 target-size runtime active: {train2_stage_label}; "
+            f"{execution_context.operator_label} runtime active: {train2_stage_label}; "
             f"runs={len(train2_allowed_run_ids)}"
         )
 
@@ -14747,7 +14800,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         )
     concurrency_policy = _training_concurrency_policy(cfg)
     stop_after_failure = bool(_cfg(cfg, "execution", "stop_scheduling_after_failure", True))
-    training_progress = _ProgressReporter("TRAIN", len(selected_runs))
+    training_progress = _ProgressReporter(execution_context.progress_label, len(selected_runs))
     pending_tasks: deque[_PendingTrainingTask] = deque()
     completed_progress = 0
 
@@ -14850,7 +14903,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                 if archive is None
                 else f"removed obsolete failed runtime; compact diagnostic retained at {archive}"
             )
-            print(f"[TRAIN {run.run_id}] {detail}", flush=True)
+            print(f"[{execution_context.progress_label} {run.run_id}] {detail}", flush=True)
             previous = None
             store.delete_record(key)
 
@@ -15102,7 +15155,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
     except ValueError as exc:
         raise CampaignCliError(str(exc)) from exc
 
-    _print_header("Training campaign")
+    _print_header(execution_context.operator_label)
     print(f"Runs selected: {len(selected_runs)} / {len(campaign.runs)}")
     print(f"Pending runs:  {len(pending_tasks)}")
     print(f"Scheduler:     {concurrency_plan.summary()}")
@@ -15172,7 +15225,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         run_started = time.monotonic()
         optimizer = task.job.protocol.optimizer_policy
         print(
-            f"[TRAIN {task.run.run_id}] expected gradient updates={task.expected_updates}; "
+            f"[{execution_context.progress_label} {task.run.run_id}] expected gradient updates={task.expected_updates}; "
             f"{_training_device_description(optimizer.device, optimizer.acceleration_policy, optimizer.default_dtype)}",
             flush=True,
         )
@@ -15185,7 +15238,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         ) -> None:
             detail = task.progress_probe()
             print(
-                f"[TRAIN {task.run.run_id}] status=running; {detail}; "
+                f"[{execution_context.progress_label} {task.run.run_id}] status=running; {detail}; "
                 f"attempt={attempt_index}; elapsed={format_progress_time(elapsed_seconds)}; "
                 "eta=--:--:--",
                 flush=True,
@@ -15284,7 +15337,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         cancel_event.set()
         if first_request:
             print(
-                "[TRAIN scheduler] interruption received; stopping active MACE children "
+                f"[{execution_context.scheduler_label}] interruption received; stopping active MACE children "
                 "at their latest durable checkpoints and committing resumable records...",
                 flush=True,
             )
@@ -15399,7 +15452,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                 elif record.state is mdstats.TrainingRunState.INTERRUPTED:
                     _warn(
                         f"{task.run.run_id}: interrupted after preserving its latest checkpoint; "
-                        "rerun `train` to continue with --restart_latest"
+                        f"rerun `{execution_context.resume_command}` to resume from the latest authenticated durable checkpoint"
                     )
                 else:
                     if _is_target_size_scientific_execution_failure(
@@ -15444,7 +15497,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                     _print_cleanup_report(pressure_cleanup)
                 if pressure_recovered:
                     print(
-                        f"[TRAIN scheduler] STOR3 safe reclamation restored free disk to "
+                        f"[{execution_context.scheduler_label}] STOR3 safe reclamation restored free disk to "
                         f"{free_disk_after_cleanup:.1f} GiB; active jobs continue.",
                         flush=True,
                     )
@@ -15454,7 +15507,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                     stop_scheduling = True
                     cancel_event.set()
                     print(
-                        f"[TRAIN scheduler] free disk remains {free_disk_after_cleanup:.1f} GiB after "
+                        f"[{execution_context.scheduler_label}] free disk remains {free_disk_after_cleanup:.1f} GiB after "
                         f"STOR3 safe reclamation, below the {minimum_free_disk_gib:.1f} GiB reserve; "
                         "stopping active jobs at their latest durable checkpoints.",
                         flush=True,
@@ -15484,7 +15537,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                     else f"{decision.predicted_utilization_percent_at_target:.1f}%"
                 )
                 print(
-                    f"[TRAIN scheduler] status=concurrency-change; "
+                    f"[{execution_context.scheduler_label}] status=concurrency-change; "
                     f"progress={format_progress_fraction(completed_progress, training_progress.total)}; "
                     f"elapsed={format_progress_time(now - scheduler_started)}; eta=--:--:--; "
                     f"workers={decision.previous_target}->{decision.target_jobs}; reason={decision.reason}; "
@@ -15499,7 +15552,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             ):
                 telemetry = "GPU telemetry unavailable" if sample is None else sample.summary()
                 print(
-                    f"[TRAIN scheduler] status=running; "
+                    f"[{execution_context.scheduler_label}] status=running; "
                     f"progress={format_progress_fraction(completed_progress, training_progress.total)}; "
                     f"elapsed={format_progress_time(now - scheduler_started)}; eta=--:--:--; "
                     f"active={len(active)}; true_epoch={epoch_active_jobs}/{len(active)}; "
@@ -15511,8 +15564,8 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
 
             if stop_scheduling and pending_tasks:
                 print(
-                    f"[TRAIN scheduler] holding {len(pending_tasks)} queued run(s) after a failure; "
-                    "fix the first failure and rerun `train` to resume.",
+                    f"[{execution_context.scheduler_label}] holding {len(pending_tasks)} queued run(s) after a failure; "
+                    f"fix the first failure and rerun `{execution_context.resume_command}` to resume.",
                     flush=True,
                 )
             _launch_ready(pool)
@@ -15547,6 +15600,10 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             "train",
             StageState.WAITING,
             f"{complete_count}/{required_run_count} required runs complete; resumable after {reason}",
+        )
+        _warn(
+            f"{execution_context.operator_label} is resumable; rerun "
+            f"`{execution_context.resume_command}` to continue from authenticated durable checkpoints."
         )
         return 130 if interrupted else 2
     if failures:

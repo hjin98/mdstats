@@ -40,7 +40,10 @@ def _study(outcome: str, *, selected: int | None = None) -> SimpleNamespace:
         next_training_epoch=boundary[0],
         next_training_sizes=boundary[1],
         qualified_sizes=(512, 1024, 2048, 4096),
-        policy=SimpleNamespace(screening_optimizer_seeds=(1, 2)),
+        policy=SimpleNamespace(
+            screening_optimizer_seeds=(1, 2), fidelity_epochs=DEFAULT_FIDELITY
+        ),
+        screening_horizon_epochs=DEFAULT_FIDELITY[-1],
         candidate_authority_digest="a" * 64,
         content_digest="b" * 64,
     )

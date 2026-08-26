@@ -44,7 +44,8 @@ def test_size_fidelity1_current_spec_matches_configurable_runtime_generation() -
     assert "eventual full-reference target finalists" in spec
     assert "Spearman rank correlation" in spec
     assert "diagnostic only" in spec
-    assert "(1, 3, 10) / 30" in spec
+    assert "`n1 < n2 < n3 < n`" in spec
+    assert "screen `(1, 3, 10)` with production/reference `30`" in spec
     assert {"COARSE_SCREEN", "SHORT_SCREEN", "FINAL_SCREEN", "FULL_TRAIN2_SCHEDULE"} <= node_ids
     assert not any(node.startswith("SIZE_STUDY_EPOCH") for node in node_ids)
 

@@ -286,6 +286,50 @@ def _attach_persisted_boundary_evidence(plan: object) -> object:
     return mdstats.attach_final_screen_outcomes(plan, tuple(outcomes))
 
 
+def test_train2_execution_context_keeps_screen_recovery_with_select_target_size() -> None:
+    """The shared scheduler projects recovery from verified lifecycle authority."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    active = SimpleNamespace(outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN)
+    selected = SimpleNamespace(outcome=mdstats.OUTCOME_SELECTED)
+    screen = cli._training_execution_context(
+        policy_family="train2", target_size_study=active
+    )
+    production = cli._training_execution_context(
+        policy_family="train2", target_size_study=selected
+    )
+
+    assert (
+        screen.execution_role,
+        screen.public_owner_command,
+        screen.resume_command,
+        screen.scheduler_label,
+    ) == ("target-size-screen", "select-target-size", "select-target-size", "TARGET-SIZE scheduler")
+    assert (
+        production.execution_role,
+        production.public_owner_command,
+        production.resume_command,
+        production.scheduler_label,
+    ) == ("production", "train", "train", "TRAIN scheduler")
+
+
+def test_shared_scheduler_recovery_text_is_role_contextual_and_never_advertises_private_flag() -> None:
+    """Narrow structural guard for the amendment's public recovery contract."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    source = Path(cli.__file__).read_text(encoding="utf-8")
+    scheduler_source = source[
+        source.index("def _execute_train_current_authority"):
+        source.index("def command_train")
+    ]
+    assert "rerun `train` to continue with --restart_latest" not in scheduler_source
+    assert "--restart_latest" not in scheduler_source
+    assert "execution_context.resume_command" in scheduler_source
+    assert "execution_context.scheduler_label" in scheduler_source
+
+
 def test_supplemental_case_a_default_funnel_reaches_production_and_roundtrips_status() -> None:
     plan = _complete_funnel(fidelity_epochs=(1, 3, 10), training_horizon=30)
     assert plan.outcome == mdstats.OUTCOME_SELECTED
