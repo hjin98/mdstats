@@ -350,6 +350,34 @@ Re-derive the final affected surface from the actual diff. Run only the complete
 
 If A-C pass and no redesign trigger fires, archive this final workplan together with the superseded Repair-1 review chain and close target-size screen/production decoupling implementation work. Do not create another amendment for equivalent-preference findings or already-retired obligations.
 
+## Deferred qualification record (2026-08-25)
+
+The stakeholder directed implementation to finish the executable gates available
+from this checkout and defer unavailable qualification.  This is not a PASS or
+an archive authorization for Final Gates A-C.
+
+The available persisted LTA campaign has authentic candidate DATA8 authority,
+but no selected target-size/selected-production DATA8 fixture.  Its immutable
+externalized record tree is approximately 103 GiB and cannot be safely cloned
+into the test workspace: a copy exceeds the available temporary storage and
+the source and test workspaces do not support hard links across their storage
+boundary.  Running the public commands in place would mutate an external,
+read-only campaign and is therefore out of scope.  Test-side manufacture of
+selected state, production materialization, execution records, checkpoint
+catalogs, or cross-role ancestry remains forbidden.
+
+Accordingly, the following evidence remains deferred pending an authorized,
+bounded, isolated fixture with authentic selected-production authority:
+
+- assembled public screen interruption/reopen/automatic continuation (Gate A);
+- public production interruption/reopen/automatic continuation and both real
+  restart-consumer cross-role rejections (Gate B);
+- final assembled integration and workplan archival (Gate C).
+
+Existing owner-level scheduler/checkpoint/restart and public-command guard
+regressions may be executed and reported as limited evidence only.  They do
+not replace the deferred assembled public-owner proof.
+
 ## Design handoff closure
 
 The final implementation contract preserves every still-material unresolved concern from the latest independent review:
