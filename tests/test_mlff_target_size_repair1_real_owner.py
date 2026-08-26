@@ -71,7 +71,6 @@ def test_real_store_reopens_current_screen_unchanged_when_only_production_horizo
     initial = cli._ensure_target_size_study(
         store, cfg=cfg, repair2=repair, mvqual2=qualification
     )
-    assert initial.screening_horizon_epochs == 10
     assert initial.next_training_epoch == 1
     store.close()
 
@@ -95,7 +94,6 @@ def test_real_store_reopens_current_screen_unchanged_when_only_production_horizo
     )
 
     assert resumed.content_digest == initial.content_digest
-    assert resumed.screening_horizon_epochs == 10
     assert resumed.next_training_epoch == 1
     assert paths.state_db == changed_paths.state_db
     reopened.close()
@@ -126,9 +124,50 @@ def test_real_store_rebuilds_screen_for_a_current_fidelity_change(tmp_path: Path
 
     assert resumed.content_digest != initial.content_digest
     assert resumed.policy.fidelity_epochs == (2, 5, 12)
-    assert resumed.screening_horizon_epochs == 12
     assert resumed.next_training_epoch == 2
     reopened.close()
+
+
+def test_overshot_target_screen_is_forensically_preserved_and_restarted_coarse(
+    tmp_path: Path,
+) -> None:
+    """An overshot persisted target run cannot remain a later-rung authority."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    _, cfg, paths, store, repair, qualification = _campaign(tmp_path / "campaign")
+    study = cli._ensure_target_size_study(
+        store, cfg=cfg, repair2=repair, mvqual2=qualification
+    )
+    old_digest = study.content_digest
+    run_id = "target-size-n4-seed1"
+    run_root = paths.runs / run_id
+    (run_root / "models").mkdir(parents=True)
+    (run_root / "models" / "obsolete.model").write_text("obsolete", encoding="utf-8")
+    store.put_record("training_campaign", {"live_alias": "must be invalidated"})
+    cli._mark_stage(store, paths, "preflight", cli.StageState.COMPLETE, "test receipt")
+
+    with pytest.raises(cli.CampaignCliError, match="overshot active boundary 1"):
+        cli._invalidate_overshot_target_size_screen(
+            campaign=SimpleNamespace(runs=(SimpleNamespace(run_id=run_id),)),
+            store=store,
+            paths=paths,
+            target_size_study=study,
+            policy_family="train2",
+            run_id=run_id,
+            completed_epochs=2,
+            boundary=1,
+        )
+
+    restarted = cli._load_verified_target_size_study_authority(store)
+    assert restarted.next_training_epoch == 1
+    assert store.get_payload_optional("training_campaign") is None
+    assert store.get_payload_optional(f"historical:target-size-overshoot:{old_digest}") is not None
+    assert cli._effective_stage(store, paths, "preflight")[0] is cli.StageState.WAITING
+    assert cli._effective_stage(store, paths, "train")[0] is cli.StageState.WAITING
+    assert not (run_root / "models").exists()
+    assert list((run_root / "obsolete-runtime-diagnostics").glob("*.json"))
+    store.close()
 
 
 @pytest.mark.parametrize(
@@ -382,11 +421,27 @@ def test_preflight_authorization_rejects_real_stale_screen_schedule_before_train
     study = SimpleNamespace(
         outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
         qualified_sizes=(selection_size,),
-        screening_horizon_epochs=10,
-        policy=SimpleNamespace(screening_optimizer_seeds=(1,)),
+            policy=SimpleNamespace(fidelity_epochs=(1, 3, 10), screening_optimizer_seeds=(1,)),
         candidate_authority_digest=materialization_plan.target_size_study_digest,
     )
     entries = cli._current_data8_entries(store)
+    real_job = entries[0].bundle.jobs[0]
+    resolved_run = SimpleNamespace(
+        run_id="resolved-train2",
+        mace_job_artifact_digest=real_job.content_digest,
+        job_id=real_job.job_id,
+        protocol_digest=real_job.protocol.content_digest,
+    )
+    # TrainingCampaignRunPlan intentionally has no ``protocol`` slot. The
+    # classifier must consult this resolved DATA8 MaceJobArtifact instead.
+    assert cli._campaign_training_policy_family(
+        SimpleNamespace(runs=(resolved_run,)), cli._job_lookup(entries)
+    ) == "train2"
+    with pytest.raises(cli.CampaignCliError, match="does not match"):
+        cli._campaign_training_policy_family(
+            SimpleNamespace(runs=(SimpleNamespace(**{**resolved_run.__dict__, "protocol_digest": "0" * 64}),)),
+            cli._job_lookup(entries),
+        )
     store.put_record(
         "preflight_smoke",
         {"passed": True, "data8_matrix_digest": cli._data8_matrix_digest(entries)},

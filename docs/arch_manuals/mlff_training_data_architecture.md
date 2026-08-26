@@ -750,13 +750,25 @@ A target bundle contains one compatible target `LabelDomain` and, when replay is
 
 ## Target-size study versus ordinary stopping
 
-The target-size experiment is a special protocol-comparison control described in Part V. It uses authenticated `n1 -> n2 -> n3` continuation on a screen-local scheduler horizon `n3`, with a common seed set, and disables ordinary target-success early stopping so candidate sizes reach comparable fidelity boundaries. The separate production horizon `n` is reserved for a fresh selected-size campaign. Hard numerical/scientific failure remains a valid rejection.
+The target-size experiment is a special protocol-comparison control described in Part V. It uses authenticated `n1 -> n2 -> n3` continuation at exact configured boundaries, with a common seed set, and disables ordinary target-success early stopping so candidate sizes reach comparable fidelity boundaries. Where TRAIN2 needs a full deterministic schedule extent, it derives that value from the terminal boundary; it is not a second target-size authority. The separate production maximum `n` is reserved for a fresh selected-size campaign. Hard numerical/scientific failure remains a valid rejection.
 
-Epoch has deliberately different semantics in the two phases. During target-size selection, epoch is a **controlled variable**: the configured coarse, short, and final screens consume only exact `n1`, `n2`, and `n3` checkpoints, and the screen scheduler is planned for `n3`. An earlier checkpoint is inadmissible even when it scores better, because substituting it would confound target-data size with achieved training fidelity. The public `select-target-size` operation owns this complete restartable `n1 -> n2 -> n3` experiment; generated campaigns default to `(n1,n2,n3)/n = (1,3,10)/30`, with `n` consumed only by fresh post-selection production.
+Epoch has deliberately different semantics in the two phases. During target-size selection, epoch is a **controlled variable**: the configured coarse, short, and final screens consume only exact `n1`, `n2`, and `n3` checkpoints. An earlier checkpoint is inadmissible even when it scores better, because substituting it would confound target-data size with achieved training fidelity. The public `select-target-size` operation owns this complete restartable `n1 -> n2 -> n3` experiment; generated campaigns default to `(n1,n2,n3)/n = (1,3,10)/30`, with `n` consumed only by fresh post-selection production.
 
 After `N_selected` is frozen, ordinary production/CV training resumes under the frozen protocol. Production checkpoint epoch is then a **selectable model variable**: production `evaluate` may choose an earlier admissible checkpoint when it is better under the frozen checkpoint-selection policy, even though the configured training horizon remains `n` epochs. Its target-oriented stopping and LR-refinement semantics are part of `TrainingProtocolIdentity`; changing them after protocol comparison invalidates the comparison.
 
 The stable TRAIN2 command boundary is therefore `prepare -> preflight -> select-target-size -> materialize -> preflight -> train -> evaluate -> verify`. `prepare` owns only the initial screening workload; `materialize` owns only the selected-size final-development/CV realization; both `preflight` occurrences have the same operational meaning and are bound to the exact current DATA8 matrix. The screening preflight remains valid throughout an unchanged `n1/n2/n3` candidate matrix, while selected-production materialization changes that matrix and therefore requires a new preflight.
+
+## Gate TRAIN2B
+
+TRAIN2B executes one authenticated trajectory per `(target size, seed)`. During
+screening it durably pauses only at the active exact boundary, then the real
+target-size owner ranks outcomes before authorizing survivors to continue.
+Continuation preserves model parameters, EMA state, optimizer/LR state, and
+Python/NumPy/Torch CPU/CUDA RNG states. `train2_true_replay` remains a bounded
+runtime monitor below this scheduler/selection boundary. Restart restores live non-EMA
+parameters, EMA state, optimizer/LR state, and RNG ancestry before new work. A run that has passed
+its active boundary is invalidated to a fresh coarse screen; it cannot supply
+current ranking evidence. Eliminated-size jobs receive no later authorization.
 
 ## Protocol-matched cross-validation
 
@@ -1100,7 +1112,7 @@ Each candidate follows one authenticated training continuation:
 0 -> n1 coarse -> n2 short -> n3 final screen
 ```
 
-`n1 < n2 < n3 < n`, where `n3` is the frozen screen scheduler horizon and `n` is the independent fresh production horizon. The short state authenticates the exact coarse model, optimizer, RNG, and protocol parent; the final screen continues the short state. All size candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered training-seed set. The seed authority is the ordered `seeds` field of the sole enabled training method; current generated campaigns default that field to `[1, 2]`. The target-size policy authenticates this ordered set rather than owning an unrelated seed convention.
+`0 < n1 < n2 < n3` are the exact screening boundaries; `n` is an independent positive production maximum and may equal, exceed, or be less than `n3`. The terminal boundary may be derived internally for the deterministic continuation schedule, but it is not a second screening authority. The short state authenticates the exact coarse model, optimizer, RNG, and protocol parent; the final screen continues the short state. All size candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered training-seed set. The seed authority is the ordered `seeds` field of the sole enabled training method; current generated campaigns default that field to `[1, 2]`. The target-size policy authenticates this ordered set rather than owning an unrelated seed convention.
 
 Ordinary target-success early stopping is disabled during this experiment because size candidates must be compared at common fidelity boundaries. Each expected candidate/seed resolves to exactly one authenticated stage outcome: strict finite endpoint success or explicit candidate-specific TRAIN2/EVAL2 numerical failure. Generic execution/resource/input/lineage failures remain fail-closed campaign errors. Normal production/CV stopping resumes once the size experiment is complete.
 
@@ -1569,7 +1581,7 @@ Each candidate follows one authenticated continuation trajectory:
 foundation -> coarse n1 -> short n2 -> final screen n3
 ```
 
-The short screen authenticates the exact coarse model/optimizer/RNG parent; the final screen authenticates the short parent. `n1 < n2 < n3 < n`, where the screen schedule horizon is `n3` and fresh production uses independent horizon `n`. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
+The short screen authenticates the exact coarse model/optimizer/RNG parent; the final screen authenticates the short parent. `0 < n1 < n2 < n3` are the screening boundaries, while fresh production uses an independent positive maximum `n` with no required ordering against `n3`. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
 
 At every target-size boundary the endpoint itself is authoritative: `S(N,n1)`, `S(N,n2)`, and `S(N,n3)` are evaluated at matched fidelity. A better earlier checkpoint cannot replace the prescribed endpoint. This is distinct from post-selection production checkpoint selection, where `N_selected` is fixed and the checkpoint epoch may be optimized over the admissible trajectory.
 

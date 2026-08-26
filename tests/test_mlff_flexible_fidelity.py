@@ -44,20 +44,16 @@ def _evidence(
     stage: str,
     epoch: int,
     size: int,
-    planned_epochs: int = 40,
     target_score: float | None = None,
     parent: object | None = None,
 ):
-    planned_epochs = int(planned_epochs)
     kwargs = {
         "stage": stage,
         "target_size": size,
         "optimizer_seed": 1,
         "completed_epochs": epoch,
-        "planned_epochs": planned_epochs,
         "optimizer_update_count": epoch * 10,
         "structures_presented": epoch * size,
-        "normalized_schedule_progress": epoch / planned_epochs,
         "instantaneous_learning_rate": 1.0e-3,
         "wall_time_seconds": float(epoch),
         "target_force_score_mev_per_a": float(size if target_score is None else target_score),
@@ -110,7 +106,6 @@ def _complete_funnel(
             stage=mdstats.STAGE_COARSE,
             epoch=fidelity_epochs[0],
             size=size,
-            planned_epochs=plan.screening_horizon_epochs,
             target_score=coarse_scores[size],
         )
         for size in plan.qualified_sizes
@@ -123,7 +118,6 @@ def _complete_funnel(
             stage=mdstats.STAGE_SHORT,
             epoch=fidelity_epochs[1],
             size=size,
-            planned_epochs=plan.screening_horizon_epochs,
             target_score=short_scores[size],
             parent=next(item.success for item in plan.coarse_outcomes if item.key == (size, 1)),
         )
@@ -137,7 +131,6 @@ def _complete_funnel(
             stage=mdstats.STAGE_FINAL_SCREEN,
             epoch=fidelity_epochs[2],
             size=size,
-            planned_epochs=plan.screening_horizon_epochs,
             target_score=final_scores[size],
             parent=next(item.success for item in plan.short_outcomes if item.key == (size, 1)),
         )
@@ -263,7 +256,6 @@ def _attach_persisted_boundary_evidence(plan: object) -> object:
                 stage=stage,
                 epoch=epoch,
                 size=size,
-                planned_epochs=plan.screening_horizon_epochs,
                 target_score=float(size),
                 parent=previous.get((size, seed)),
             )
@@ -339,11 +331,11 @@ def test_supplemental_case_a_default_funnel_reaches_production_and_roundtrips_st
     assert (
         production.stage,
         production.target_epoch,
-        production.schedule_horizon_epoch,
+        production.trajectory_schedule_extent_epoch,
     ) == ("production", 30, 30)
 
 
-def test_supplemental_case_b_nondefault_funnel_authenticates_full_horizon_and_denominators() -> None:
+def test_supplemental_case_b_nondefault_funnel_authenticates_boundaries_and_production_denominator() -> None:
     plan = _complete_funnel(
         fidelity_epochs=(2, 5, 12),
         training_horizon=40,
@@ -358,7 +350,7 @@ def test_supplemental_case_b_nondefault_funnel_authenticates_full_horizon_and_de
     production = mdstats.build_perf_p2r_stage_plan(plan, production_horizon_epochs=40)
     assert (
         production.target_epoch,
-        production.schedule_horizon_epoch,
+        production.trajectory_schedule_extent_epoch,
         production.candidate_sizes,
     ) == (40, 40, (plan.selected_target_size,))
     exposure = mdstats.build_perf_p2r_exposure(
@@ -449,10 +441,7 @@ def test_supplemental_persisted_campaign_selects_configured_boundaries_and_expos
     frozen = cli._ensure_target_size_study(
         store, cfg=cfg, repair2=repair, mvqual2=qualification
     )
-    assert (frozen.policy.fidelity_epochs, frozen.screening_horizon_epochs) == (
-        fidelity_epochs,
-        fidelity_epochs[-1],
-    )
+    assert frozen.policy.fidelity_epochs == fidelity_epochs
     assert cli._load_verified_target_size_study_authority(store).content_digest == frozen.content_digest
 
     authorized_boundaries: list[int] = []
@@ -479,14 +468,13 @@ def test_supplemental_persisted_campaign_selects_configured_boundaries_and_expos
     assert cli.command_select_target_size(argparse.Namespace(config=str(config))) == 0
     selection_output = capsys.readouterr().out
     assert f"fidelity_epochs={list(fidelity_epochs)}" in selection_output
-    assert f"screen_schedule_horizon={fidelity_epochs[-1]}" in selection_output
-    assert f"screen_boundary={fidelity_epochs[0]}" in selection_output
+    assert f"active_boundary={fidelity_epochs[0]}" in selection_output
     selected = cli._load_verified_target_size_study_authority(store)
     assert selected.outcome == mdstats.OUTCOME_SELECTED
     assert authorized_boundaries == list(fidelity_epochs)
     assert mdstats.build_perf_p2r_stage_plan(
         selected, production_horizon_epochs=horizon
-    ).schedule_horizon_epoch == horizon
+    ).trajectory_schedule_extent_epoch == horizon
 
     # Reopen the durable store to prove that a restart/status consumer sees the
     # frozen selection rather than helper-local state.
@@ -577,7 +565,6 @@ def test_real_campaign_store_frontier_replaces_only_target_size_and_live_train2_
 
     assert (fresh.content_digest != previous.content_digest) is (reason == "fidelity")
     assert fresh.policy.fidelity_epochs == replacement
-    assert fresh.screening_horizon_epochs == replacement[-1]
     assert fresh.next_training_epoch == expected_epoch
     assert reopened.has_record("data7:fixture")
     assert reopened.has_record("data8:fixture")
@@ -603,32 +590,32 @@ def test_real_campaign_store_frontier_replaces_only_target_size_and_live_train2_
 
 def test_nondefault_tuple_uses_semantic_states_and_independent_horizon() -> None:
     policy = mdstats.TargetSizeStudyPolicy(fidelity_epochs=(2, 5, 12), screening_optimizer_seeds=(1,))
-    plan = mdstats.build_target_size_study(_Repair(), _Qual(), policy=policy, training_horizon_epochs=40)
+    plan = mdstats.build_target_size_study(_Repair(), _Qual(), policy=policy)
     assert plan.outcome == mdstats.OUTCOME_AWAITING_COARSE_SCREEN
     assert (plan.next_training_stage, plan.next_training_epoch) == (mdstats.STAGE_COARSE, 2)
-    coarse = tuple(_evidence(plan, stage=mdstats.STAGE_COARSE, epoch=2, size=size, planned_epochs=12) for size in plan.qualified_sizes)
+    coarse = tuple(_evidence(plan, stage=mdstats.STAGE_COARSE, epoch=2, size=size) for size in plan.qualified_sizes)
     plan = mdstats.attach_coarse_outcomes(plan, coarse)
     assert (plan.outcome, plan.next_training_epoch) == (mdstats.OUTCOME_AWAITING_SHORT_SCREEN, 5)
-    short = tuple(_evidence(plan, stage=mdstats.STAGE_SHORT, epoch=5, size=size, planned_epochs=12, parent=next(item.success for item in plan.coarse_outcomes if item.key == (size, 1))) for size in plan.coarse_survivor_sizes)
+    short = tuple(_evidence(plan, stage=mdstats.STAGE_SHORT, epoch=5, size=size, parent=next(item.success for item in plan.coarse_outcomes if item.key == (size, 1))) for size in plan.coarse_survivor_sizes)
     plan = mdstats.attach_short_outcomes(plan, short)
     assert (plan.outcome, plan.next_training_epoch) == (mdstats.OUTCOME_AWAITING_FINAL_SCREEN, 12)
-    final = tuple(_evidence(plan, stage=mdstats.STAGE_FINAL_SCREEN, epoch=12, size=size, planned_epochs=12, parent=next(item.success for item in plan.short_outcomes if item.key == (size, 1))) for size in plan.short_finalist_sizes)
+    final = tuple(_evidence(plan, stage=mdstats.STAGE_FINAL_SCREEN, epoch=12, size=size, parent=next(item.success for item in plan.short_outcomes if item.key == (size, 1))) for size in plan.short_finalist_sizes)
     plan = mdstats.attach_final_screen_outcomes(plan, final)
     assert plan.outcome == mdstats.OUTCOME_SELECTED
     stage = mdstats.build_perf_p2r_stage_plan(plan, production_horizon_epochs=40)
-    assert (stage.stage, stage.target_epoch, stage.schedule_horizon_epoch) == ("production", 40, 40)
+    assert (stage.stage, stage.target_epoch, stage.trajectory_schedule_extent_epoch) == ("production", 40, 40)
 
 
-def test_screen_evidence_rejects_wrong_full_horizon() -> None:
+def test_screen_evidence_rejects_wrong_active_boundary() -> None:
     policy = mdstats.TargetSizeStudyPolicy(fidelity_epochs=(2, 5, 12), screening_optimizer_seeds=(1,))
-    plan = mdstats.build_target_size_study(_Repair(), _Qual(), policy=policy, training_horizon_epochs=40)
+    plan = mdstats.build_target_size_study(_Repair(), _Qual(), policy=policy)
     wrong = _evidence(plan, stage=mdstats.STAGE_COARSE, epoch=2, size=512)
-    wrong = replace(wrong, planned_epochs=30, normalized_schedule_progress=2 / 30)
+    wrong = replace(wrong, completed_epochs=3)
     batch = (wrong,) + tuple(
         _evidence(plan, stage=mdstats.STAGE_COARSE, epoch=2, size=size)
         for size in plan.qualified_sizes if size != 512
     )
-    with pytest.raises(TrainingDataInputError, match="schedule horizon"):
+    with pytest.raises(TrainingDataInputError, match="semantic-stage boundary"):
         mdstats.attach_coarse_outcomes(plan, batch)
 
 
@@ -665,12 +652,10 @@ def test_candidate_materialization_identity_excludes_later_screen_geometry() -> 
     first = mdstats.build_target_size_study(
         _Repair(), _Qual(),
         policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(1, 3, 10)),
-        training_horizon_epochs=30,
     )
     second = mdstats.build_target_size_study(
         _Repair(), _Qual(),
         policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(2, 5, 12)),
-        training_horizon_epochs=40,
     )
     assert first.policy.policy_digest != second.policy.policy_digest
     assert first.candidate_authority_digest == second.candidate_authority_digest
@@ -1284,12 +1269,8 @@ def test_supplemental_historical_upgrade_d1_d2_reuses_data_matrix_and_reopens_ex
         fidelity_epochs=(3, 10, 30),
         screening_optimizer_seeds=(1,),
     )
-    previous_study = mdstats.build_target_size_study(
-        _Repair(), _Qual(), policy=previous_policy, training_horizon_epochs=30
-    )
-    new_study = mdstats.build_target_size_study(
-        _Repair(), _Qual(), policy=current_policy, training_horizon_epochs=horizon
-    )
+    previous_study = mdstats.build_target_size_study(_Repair(), _Qual(), policy=previous_policy)
+    new_study = mdstats.build_target_size_study(_Repair(), _Qual(), policy=current_policy)
     assert previous_study.policy.policy_digest != new_study.policy.policy_digest
     entry = _migration_entry(cli, current_cfg, current=not old_schedule)
     paths = SimpleNamespace(
@@ -1344,7 +1325,7 @@ def test_supplemental_historical_upgrade_d1_d2_reuses_data_matrix_and_reopens_ex
 
     reused = cli._try_reuse_completed_prepare(current_cfg, paths, store)
     # Both historical populations are intentionally non-current now: their
-    # full-horizon screen state is retained only for forensic/DATA8 bridge use.
+    # Old-generation screen state is retained only for forensic/DATA8 bridge use.
     assert reused is False
     assert cli._data8_matrix_digest([entry]) == matrix_before
     assert new_study.next_training_epoch == expected_first_epoch
@@ -1465,7 +1446,6 @@ def test_historical_fixed_authority_is_captured_before_v8_study_migration(
     current = mdstats.build_target_size_study(
         _Repair(), _Qual(),
         policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(1, 3, 10)),
-        training_horizon_epochs=30,
     )
     legacy = _authentic_fixed_predecessor_payload(current)
     store = cli.CampaignStore(tmp_path / "campaign.sqlite3")
@@ -1496,7 +1476,6 @@ def test_stage_local_real_store_captures_fixed_authority_before_flexible_rebuild
         policy=mdstats.TargetSizeStudyPolicy(
             fidelity_epochs=(3, 10, 30), screening_optimizer_seeds=(1,)
         ),
-        training_horizon_epochs=30,
     )
     store = cli.CampaignStore(tmp_path / "campaign.sqlite3")
     store.put_records({
@@ -1601,7 +1580,6 @@ def test_supplemental_fixed_predecessor_data8_authority_bridge_is_explicit_and_i
     study = mdstats.build_target_size_study(
         _Repair(), _Qual(),
         policy=mdstats.TargetSizeStudyPolicy(fidelity_epochs=(1, 3, 10)),
-        training_horizon_epochs=30,
     )
     store = cli.CampaignStore(tmp_path / "campaign.sqlite3")
     historical = mdstats.authenticated_fixed_predecessor_candidate_authority(

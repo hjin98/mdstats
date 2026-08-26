@@ -2176,19 +2176,43 @@ def _has_authoritative_protocol_freeze(store: "CampaignStore") -> bool:
     return _protocol_freeze_authority(store) is not None
 
 
-def _campaign_training_policy_family(campaign: Any) -> str:
-    """Classify immutable run protocols without reinterpreting historical evidence."""
+def _campaign_training_policy_family(
+    campaign: Any, jobs: Mapping[str, tuple[Any, Any, Path]] | None = None,
+) -> str:
+    """Classify current campaigns from DATA8 jobs and retained historical plans locally."""
 
     runs = tuple(getattr(campaign, "runs", ()))
     if not runs:
         return "historical"
+    if jobs is None:
+        # Pre-DATA8 historical migration records retained their own protocol
+        # payload. They are never used to authorize current TRAIN2 execution.
+        protocols = [getattr(run, "protocol", None) for run in runs]
+    else:
+        protocols = []
+        for run in runs:
+            entry = jobs.get(run.mace_job_artifact_digest)
+            if entry is None:
+                raise CampaignCliError(
+                    f"Campaign run {run.run_id} references an unresolved DATA8 MaceJobArtifact."
+                )
+            _bundle, job, _root = entry
+            if job.content_digest != run.mace_job_artifact_digest:
+                raise CampaignCliError(
+                    f"Campaign run {run.run_id} DATA8 job digest does not match its run reference."
+                )
+            if job.job_id != run.job_id or job.protocol.content_digest != run.protocol_digest:
+                raise CampaignCliError(
+                    f"Campaign run {run.run_id} does not match its authoritative DATA8 job protocol."
+                )
+            protocols.append(job.protocol)
     adaptive = tuple(
-        getattr(getattr(run, "protocol", None), "adaptive_stop_policy", None) is not None
-        for run in runs
+        getattr(protocol, "adaptive_stop_policy", None) is not None
+        for protocol in protocols
     )
     train2 = tuple(
-        getattr(getattr(run, "protocol", None), "training_budget_policy", None) is not None
-        for run in runs
+        getattr(protocol, "training_budget_policy", None) is not None
+        for protocol in protocols
     )
     if any(a and t for a, t in zip(adaptive, train2)):
         raise CampaignCliError("A run cannot carry both adaptive-stop and TRAIN2 authority.")
@@ -2203,10 +2227,12 @@ def _campaign_training_policy_family(campaign: Any) -> str:
     return next(iter(families))
 
 
-def _campaign_uses_adaptive_training(campaign: Any) -> bool:
+def _campaign_uses_adaptive_training(
+    campaign: Any, jobs: Mapping[str, tuple[Any, Any, Path]] | None = None,
+) -> bool:
     """Compatibility helper for the historical ADAPT/MLCV lifecycle."""
 
-    return _campaign_training_policy_family(campaign) == "adaptive_stop_v3"
+    return _campaign_training_policy_family(campaign, jobs) == "adaptive_stop_v3"
 
 
 def _enforce_evaluation_migration_boundary(
@@ -4896,9 +4922,9 @@ def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
     if not isinstance(training, Mapping):
         raise CampaignCliError("[training] must be a TOML table.")
     configured_epochs = int(training.get("max_num_epochs", 30))
-    if policy.fidelity_epochs[-1] >= configured_epochs:
+    if configured_epochs <= 0:
         raise CampaignCliError(
-            "Target-size fidelity_epochs must satisfy 0 < n1 < n2 < n3 < [training].max_num_epochs."
+            "[training].max_num_epochs must be positive."
         )
     return policy
 
@@ -5039,16 +5065,16 @@ def _train2_data8_schedule_matches_config(
         if protocol is None or optimizer is None:
             return False
         require_replay = str(getattr(protocol.training_mode, "value", protocol.training_mode)) == "multihead_replay"
-        expected_horizon = (
-            int(study.screening_horizon_epochs)
+        screening_schedule_extent = (
+            int(study.policy.fidelity_epochs[-1])
             if study is not None and getattr(study, "outcome", None) != "selected"
             else None
         )
-        cache_key = (require_replay, expected_horizon)
+        cache_key = (require_replay, screening_schedule_extent)
         expected = expected_cache.get(cache_key)
         if expected is None:
             expected = _train2_policy_set(
-                cfg, require_replay=require_replay, planned_epochs=expected_horizon
+                cfg, require_replay=require_replay, planned_epochs=screening_schedule_extent
             )
             expected_cache[cache_key] = expected
         expected_budget, expected_lr, expected_admissibility, expected_selection = expected
@@ -10124,7 +10150,7 @@ def _prepare_materialization(
         if policy_generation == "train2":
             screen_phase = target_size_study.outcome != mdstats.OUTCOME_SELECTED
             role_budget = (
-                int(target_size_study.screening_horizon_epochs)
+                int(target_size_study.policy.fidelity_epochs[-1])
                 if screen_phase else int(_cfg(cfg, "training", "max_num_epochs", 30))
             )
             (
@@ -10202,7 +10228,7 @@ def _prepare_materialization(
             optimizer_policy=_optimizer_policy(
                 cfg, seed=seed, num_workers=loader_workers,
                 planned_epochs=(
-                    int(target_size_study.screening_horizon_epochs)
+                    int(target_size_study.policy.fidelity_epochs[-1])
                     if policy_generation == "train2"
                     and target_size_study.outcome != mdstats.OUTCOME_SELECTED
                     else None
@@ -11104,7 +11130,7 @@ def _require_train2_preflight_authorization(
     # scheduler, LR, checkpoint, and optimizer authority that the shared
     # TRAIN2 engine will consume.  In particular, a historical screen bundle
     # can retain the same candidate corpus/matrix while carrying a different
-    # screen horizon.  Reject it here, before either public screen or
+    # boundary-derived runtime schedule extent. Reject it here, before either public screen or
     # production training can treat an old smoke receipt as authorization.
     if not _train2_data8_schedule_matches_config(cfg, entries, study=study):
         raise CampaignCliError(
@@ -11480,8 +11506,6 @@ class _MaceTrainingProgressProbe:
     expected_updates: int | None
     device: str
     max_epochs: int = 1
-    schedule_horizon_epochs: int | None = None
-    screen_boundary_epochs: int | None = None
     stage_name: str | None = None
     checkpoint_dir: Path | None = None
     epoch_activity_timeout_seconds: float = 120.0
@@ -11502,27 +11526,12 @@ class _MaceTrainingProgressProbe:
         # appends a fresh optimizer row.
         self._refresh_gradient_updates(mark_activity=False)
         self._primed = True
-        horizon = self.max_epochs if self.schedule_horizon_epochs is None else int(self.schedule_horizon_epochs)
-        if int(self.max_epochs) <= 0 or horizon < int(self.max_epochs):
-            raise CampaignCliError("Training progress endpoint/horizon geometry is invalid.")
+        if int(self.max_epochs) <= 0:
+            raise CampaignCliError("Training progress endpoint is invalid.")
         self.max_epochs = int(self.max_epochs)
-        self.schedule_horizon_epochs = horizon
-        boundary = self.max_epochs if self.screen_boundary_epochs is None else int(
-            self.screen_boundary_epochs
-        )
-        if boundary <= 0 or boundary > self.schedule_horizon_epochs:
-            raise CampaignCliError("Training progress screen-boundary geometry is invalid.")
-        self.screen_boundary_epochs = boundary
 
     def _epoch_phase(self, epoch: int, suffix: str = "") -> str:
-        """Render screen and full-schedule progress without conflating them."""
-
-        if self.screen_boundary_epochs == self.schedule_horizon_epochs:
-            return f"epoch {epoch}/{self.max_epochs}{suffix}"
-        return (
-            f"screen epoch {epoch}/{self.screen_boundary_epochs}; "
-            f"schedule epoch {epoch}/{self.schedule_horizon_epochs}{suffix}"
-        )
+        return f"epoch {epoch}/{self.max_epochs}{suffix}"
 
     def _log_tail(self) -> str:
         candidates = [path for path in self.log_dir.glob("*.log") if "_debug" not in path.name]
@@ -11731,7 +11740,7 @@ class _MaceTrainingProgressProbe:
         else:
             progress = f"progress={state.updates:,}; unit=gradient-update"
         telemetry = _gpu_telemetry(self.device)
-        stage = None if self.stage_name is None else f"stage={self.stage_name}; schedule_horizon={self.schedule_horizon_epochs}"
+        stage = None if self.stage_name is None else f"stage={self.stage_name}"
         return "; ".join(
             item for item in (stage, f"phase={state.phase}", progress, telemetry) if item
         )
@@ -14591,6 +14600,64 @@ def _is_target_size_scientific_execution_failure(
     )
 
 
+def _invalidate_overshot_target_size_screen(
+    *,
+    campaign: Any,
+    store: CampaignStore,
+    paths: CampaignPaths,
+    target_size_study: Any,
+    policy_family: str,
+    run_id: str,
+    completed_epochs: int,
+    boundary: int,
+) -> None:
+    """Invalidate unauthorized target-screen progress and restore coarse authority.
+
+    A checkpoint beyond the active rung can never be evidence for that rung,
+    even if it contains an otherwise authentic continuation state.  Preserve
+    compact forensic state, retain DATA7/DATA8 scientific inputs, and require
+    a fresh screen preflight before rebuilding the coarse run.
+    """
+
+    import mdstats
+
+    if policy_family != "train2" or target_size_study.outcome == mdstats.OUTCOME_SELECTED:
+        raise CampaignCliError("Overshoot recovery was requested outside target-size screening.")
+    previous_payload = store.get_payload_optional("target_size_study")
+    if previous_payload is not None:
+        previous_digest = str(store.record_digest("target_size_study"))
+        store.put_record(
+            f"historical:target-size-overshoot:{previous_digest}", previous_payload
+        )
+    for campaign_run in campaign.runs:
+        _archive_obsolete_training_runtime(
+            (paths.runs / campaign_run.run_id).resolve(), target_size_study.content_digest,
+        )
+    repair2 = store.get_record(
+        "target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2
+    )
+    mvqual2 = store.get_record(
+        "target_multi_view_qualification_v2", mdstats.TargetMultiViewQualificationPlanV2
+    )
+    replacement = mdstats.build_target_size_study(
+        repair2, mvqual2, policy=target_size_study.policy
+    )
+    store.put_record("target_size_study", replacement)
+    _invalidate_train2_downstream_state(
+        store,
+        paths,
+        reason=(
+            f"target-size run {run_id} reached epoch {completed_epochs} beyond active "
+            f"boundary {boundary}; screening evidence was invalidated and restarted at coarse"
+        ),
+        preserve_preflight=False,
+    )
+    raise CampaignCliError(
+        f"Target-size screening overshot active boundary {boundary} in {run_id}; "
+        "unauthorized evidence was invalidated. Run `prepare`, `preflight`, then `select-target-size`."
+    )
+
+
 def _execute_train_current_authority(args: argparse.Namespace) -> int:
     import mdstats
 
@@ -14641,6 +14708,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
     )
     _print_cleanup_report(cleanup_report)
     data8_entries = _current_data8_entries(store)
+    jobs = _job_lookup(data8_entries)
     data8_bundles = [entry.bundle for entry in data8_entries]
     transitional_jobs: list[str] = []
     for bundle in data8_bundles:
@@ -14664,7 +14732,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         )
     campaign = _build_campaign(cfg, store, data8_bundles)
     store.put_record("training_campaign", campaign)
-    policy_family = _campaign_training_policy_family(campaign)
+    policy_family = _campaign_training_policy_family(campaign, jobs)
     train2_execution_epoch_limit: int | None = None
     train2_allow_successful_continuation = False
     train2_stage_label: str | None = None
@@ -14694,7 +14762,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             train2_allow_successful_continuation = study.next_training_stage != mdstats.STAGE_COARSE
             train2_stage_label = (
                 f"target-size exact continuation to {study.next_training_stage} endpoint "
-                f"{train2_execution_epoch_limit}/{study.screening_horizon_epochs}"
+                f"epoch {train2_execution_epoch_limit}"
             )
             allowed_sizes = set(int(v) for v in study.next_training_sizes)
             screening_seeds = set(int(v) for v in study.policy.screening_optimizer_seeds)
@@ -14761,6 +14829,17 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         ):
             raise CampaignCliError(f"TRAIN2B runtime summary for {job.job_id} changed its structures-presented geometry.")
         if summary.completed_epochs > int(train2_execution_epoch_limit):
+            if target_size_study is not None and target_size_study.outcome != mdstats.OUTCOME_SELECTED:
+                _invalidate_overshot_target_size_screen(
+                    campaign=campaign,
+                    store=store,
+                    paths=paths,
+                    target_size_study=target_size_study,
+                    policy_family=policy_family,
+                    run_id=run_id,
+                    completed_epochs=int(summary.completed_epochs),
+                    boundary=int(train2_execution_epoch_limit),
+                )
             raise CampaignCliError(
                 f"TRAIN2B run {job.job_id} is already at epoch {summary.completed_epochs}, beyond the "
                 f"current {train2_stage_label} boundary {train2_execution_epoch_limit}."
@@ -15145,12 +15224,6 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                         train2_execution_epoch_limit
                         if policy_family == "train2" and train2_execution_epoch_limit is not None
                         else optimizer.max_num_epochs
-                    ),
-                    schedule_horizon_epochs=optimizer.max_num_epochs,
-                    screen_boundary_epochs=(
-                        train2_execution_epoch_limit
-                        if policy_family == "train2" and train2_execution_epoch_limit is not None
-                        else None
                     ),
                     stage_name=(
                         train2_stage_label if policy_family == "train2" else None
@@ -15752,7 +15825,6 @@ def command_select_target_size(args: argparse.Namespace) -> int:
     print(
         "TARGET-SIZE-V5 effective configuration: "
         f"fidelity_epochs={list(study.policy.fidelity_epochs)}; "
-        f"screen_schedule_horizon={study.screening_horizon_epochs}; "
         f"active_boundary={study.next_training_epoch}; "
         f"future_production_horizon={int(_cfg(cfg, 'training', 'max_num_epochs', 30))}",
         flush=True,
@@ -15764,7 +15836,7 @@ def command_select_target_size(args: argparse.Namespace) -> int:
         sizes = tuple(int(value) for value in study.next_training_sizes)
         print(
             f"\nTARGET-SIZE-V5 boundary epoch {boundary}: "
-            f"screen_boundary={boundary}; screen_schedule_horizon={study.screening_horizon_epochs}; "
+            f"boundary={boundary}; "
             f"sizes={list(sizes)}; seeds={list(study.policy.screening_optimizer_seeds)}",
             flush=True,
         )
@@ -19706,10 +19778,9 @@ def _eval2_target_size_endpoint_evidence(
             runtime = mdstats.load_train2_runtime_summary(
                 paths.runs / run.run_id / "checkpoints"
             )
-        if runtime.completed_epochs != epoch or runtime.planned_epochs != target_size_study.screening_horizon_epochs:
+        if runtime.completed_epochs != epoch:
             raise CampaignCliError(
-                f"{run.run_id} is not the exact {stage} endpoint on the "
-                f"{target_size_study.screening_horizon_epochs}-epoch screen schedule."
+                f"{run.run_id} is not the exact {stage} boundary endpoint {epoch}."
             )
         target_role = _eval2_target_role_for_run(
             store=store, target_size_study=target_size_study, repair2=repair2,
@@ -19792,10 +19863,8 @@ def _eval2_target_size_endpoint_evidence(
             target_size=run.selection_size,
             optimizer_seed=run.seed,
             completed_epochs=runtime.completed_epochs,
-            planned_epochs=runtime.planned_epochs,
             optimizer_update_count=runtime.completed_updates,
             structures_presented=runtime.structures_presented,
-            normalized_schedule_progress=runtime.normalized_progress,
             instantaneous_learning_rate=runtime.instantaneous_learning_rate,
             wall_time_seconds=wall_time,
             target_force_score_mev_per_a=record.target_metrics.force_component_rmse_ev_per_angstrom * 1000.0,
@@ -19994,7 +20063,8 @@ def _execute_evaluate_current_authority(args: argparse.Namespace) -> int:
     store = CampaignStore(paths.state_db)
     stored_campaign_digest = store.record_digest("training_campaign")
     campaign = store.get_record("training_campaign", mdstats.TrainingCampaignPlan)
-    if _campaign_training_policy_family(campaign) == "train2":
+    jobs = _job_lookup(_current_data8_entries(store))
+    if _campaign_training_policy_family(campaign, jobs) == "train2":
         return _command_evaluate_train2(
             args, cfg=cfg, paths=paths, store=store, campaign=campaign, model_dtype=model_dtype
         )
@@ -24770,7 +24840,9 @@ def command_verify(args: argparse.Namespace) -> int:
             "training_campaign", mdstats.TrainingCampaignPlan
         )
     mlcv_authority = None
-    if campaign_for_migration is not None and _campaign_training_policy_family(campaign_for_migration) == "train2":
+    if campaign_for_migration is not None and _campaign_training_policy_family(
+        campaign_for_migration, _job_lookup(_current_data8_entries(store))
+    ) == "train2":
         deploy_authority = _current_train2_deploy_authority(
             cfg, store=store, campaign=campaign_for_migration, model_dtype=model_dtype
         )
@@ -27112,9 +27184,9 @@ structural_workers = 0
 # Target-size has one fixed candidate universe:
 # 128, 256, 512, 1024, 2048, 4096, 8192, 16384.
 # REPAIR2-prefix materializability plus MVQUAL2 hard admission defines Q.
-# These are the three screening boundaries and the screen scheduler horizon is
-# the final boundary n3 (=10 by default). [training].max_num_epochs is the
-# separate future production budget and must remain strictly greater than n3.
+# These are the three exact screening boundaries. Their terminal boundary may
+# be derived internally for the continuous screen trajectory. [training].max_num_epochs
+# is the independent future production maximum and has no required ordering against n3.
 # No generated/rescue sizes and no ceiling above 16384 are permitted.
 fidelity_epochs = [1, 3, 10]
 coarse_practical_equivalence_mev_per_a = 1.0

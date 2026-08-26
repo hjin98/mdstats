@@ -12,15 +12,13 @@ def test_train2b_manual_runtime_contract() -> None:
     manual = (ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md").read_text(
         encoding="utf-8"
     )
-    assert "TRAIN2B is implemented in `mdstats 0.20.170a0`" in manual
-    section = manual.split("## Gate TRAIN2B", 1)[1].split("## Gate EVAL2", 1)[0]
-    assert "successful durable pauses at 3-of-30 and 10-of-30" in section
+    section = manual.split("## Gate TRAIN2B", 1)[1].split("## Protocol-matched cross-validation", 1)[0]
+    assert "durably pauses only at the active exact boundary" in section
     assert "Python/NumPy/Torch CPU/CUDA RNG states" in section
     assert "train2_true_replay" in section
     assert "restores live non-EMA" in section
     assert "parameters, EMA state" in section
-    assert "Eliminated-size jobs do not block" in section
-    assert "one fixed FP32 or FP64 precision stage" in section
+    assert "Eliminated-size jobs receive no later authorization" in section
 
 
 def test_train2b_public_runtime_exports() -> None:

@@ -44,7 +44,6 @@ def _study(outcome: str, *, selected: int | None = None) -> SimpleNamespace:
         policy=SimpleNamespace(
             screening_optimizer_seeds=(1, 2), fidelity_epochs=DEFAULT_FIDELITY
         ),
-        screening_horizon_epochs=DEFAULT_FIDELITY[-1],
         candidate_authority_digest="a" * 64,
         content_digest="b" * 64,
     )

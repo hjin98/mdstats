@@ -19,17 +19,17 @@ from ._common import (
     validate_digest,
 )
 
-TARGET_SIZE_STUDY_VERSION = "mdstats.target-size-study.decoupled-screen.2026-08.v2"
-TARGET_SIZE_STUDY_POLICY_SCHEMA = "mdstats.target-size-study-policy.v8"
+TARGET_SIZE_STUDY_VERSION = "mdstats.target-size-study.exact-boundary-screen.2026-08.v1"
+TARGET_SIZE_STUDY_POLICY_SCHEMA = "mdstats.target-size-study-policy.v9"
 _LEGACY_TARGET_SIZE_STUDY_VERSION = "mdstats.target-size-study.fixed-eight.2026-08.v5.3"
 _LEGACY_TARGET_SIZE_STUDY_POLICY_SCHEMA = "mdstats.target-size-study-policy.v6"
 TARGET_SIZE_STUDY_CANDIDATE_SCHEMA = "mdstats.target-size-study-candidate.v5"
-TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA = "mdstats.target-size-training-evidence.v9"
+TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA = "mdstats.target-size-training-evidence.v10"
 TARGET_SIZE_TRAJECTORY_FAILURE_EVIDENCE_SCHEMA = (
     "mdstats.target-size-trajectory-failure-evidence.v2"
 )
 TARGET_SIZE_STAGE_OUTCOME_SCHEMA = "mdstats.target-size-stage-outcome.v3"
-TARGET_SIZE_STUDY_PLAN_SCHEMA = "mdstats.target-size-study-plan.v10"
+TARGET_SIZE_STUDY_PLAN_SCHEMA = "mdstats.target-size-study-plan.v11"
 TARGET_SIZE_PREFIX_SCHEMA = "mdstats.target-size-study-repair2-prefix.v1"
 TARGET_SIZE_CANDIDATE_DATA_SCHEMA = "mdstats.target-size-study-candidate-data.v1"
 # Candidate authority is persisted in DATA7/DATA8 materialization plans.  The
@@ -311,10 +311,8 @@ class TargetSizeTrainingEvidence:
     target_size: int
     optimizer_seed: int
     completed_epochs: int
-    planned_epochs: int
     optimizer_update_count: int
     structures_presented: int
-    normalized_schedule_progress: float
     instantaneous_learning_rate: float
     wall_time_seconds: float
     target_force_score_mev_per_a: float
@@ -347,22 +345,17 @@ class TargetSizeTrainingEvidence:
         size = int(self.target_size)
         seed = int(self.optimizer_seed)
         completed = int(self.completed_epochs)
-        planned = int(self.planned_epochs)
         updates = int(self.optimizer_update_count)
         structures = int(self.structures_presented)
-        progress = float(self.normalized_schedule_progress)
         lr = float(self.instantaneous_learning_rate)
         wall = float(self.wall_time_seconds)
         score = float(self.target_force_score_mev_per_a)
         if size not in FIXED_TARGET_SIZES or seed < 0 or updates <= 0 or structures <= 0:
             raise TrainingDataInputError("Target-size successful endpoint counts are invalid.")
-        if completed <= 0 or planned < completed:
+        if completed <= 0:
             raise TrainingDataInputError(
-                "Target-size successful evidence must be a positive endpoint on its full schedule."
+                "Target-size successful evidence must be a positive exact-boundary endpoint."
             )
-        expected_progress = completed / planned
-        if not math.isfinite(progress) or abs(progress - expected_progress) > 1.0e-12:
-            raise TrainingDataInputError("Target-size schedule progress is inconsistent with the endpoint.")
         if not math.isfinite(lr) or lr <= 0.0 or not math.isfinite(wall) or wall < 0.0:
             raise TrainingDataInputError("Target-size learning-rate/wall evidence is invalid.")
         if not math.isfinite(score) or score < 0.0:
@@ -423,10 +416,8 @@ class TargetSizeTrainingEvidence:
         object.__setattr__(self, "target_size", size)
         object.__setattr__(self, "optimizer_seed", seed)
         object.__setattr__(self, "completed_epochs", completed)
-        object.__setattr__(self, "planned_epochs", planned)
         object.__setattr__(self, "optimizer_update_count", updates)
         object.__setattr__(self, "structures_presented", structures)
-        object.__setattr__(self, "normalized_schedule_progress", progress)
         object.__setattr__(self, "instantaneous_learning_rate", lr)
         object.__setattr__(self, "wall_time_seconds", wall)
         object.__setattr__(self, "target_force_score_mev_per_a", score)
@@ -447,9 +438,8 @@ class TargetSizeTrainingEvidence:
         return {
             "schema": TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA,
             "stage": self.stage, "target_size": self.target_size, "optimizer_seed": self.optimizer_seed,
-            "completed_epochs": self.completed_epochs, "planned_epochs": self.planned_epochs,
+            "completed_epochs": self.completed_epochs,
             "optimizer_update_count": self.optimizer_update_count, "structures_presented": self.structures_presented,
-            "normalized_schedule_progress": self.normalized_schedule_progress,
             "instantaneous_learning_rate": self.instantaneous_learning_rate,
             "wall_time_seconds": self.wall_time_seconds,
             "target_force_score_mev_per_a": self.target_force_score_mev_per_a,
@@ -805,27 +795,6 @@ class TargetSizeStudyPlan:
         return self.outcome in _TERMINAL_OUTCOMES
 
     @property
-    def screening_horizon_epochs(self) -> int:
-        """The sole frozen scheduler budget for target-size screening.
-
-        This is deliberately derived from the third semantic screen boundary.
-        Production ``[training].max_num_epochs`` is consumed only by the
-        selected-size production owner and cannot enter study persistence.
-        """
-
-        return int(self.policy.fidelity_epochs[-1])
-
-    @property
-    def training_horizon_epochs(self) -> int:
-        """Compatibility spelling for the derived screen horizon.
-
-        It deliberately cannot expose or retain production configuration.
-        New owners should use :attr:`screening_horizon_epochs`.
-        """
-
-        return self.screening_horizon_epochs
-
-    @property
     def next_training_sizes(self) -> tuple[int, ...]:
         if self.outcome == OUTCOME_AWAITING_COARSE_SCREEN:
             return self.qualified_sizes
@@ -1057,15 +1026,10 @@ def build_target_size_study(
     mvqual: Any,
     *,
     policy: TargetSizeStudyPolicy | None = None,
-    training_horizon_epochs: int | None = None,
 ) -> TargetSizeStudyPlan:
     """Build the sole v5 target-size authority directly from REPAIR2 + MVQUAL."""
 
     policy = policy or TargetSizeStudyPolicy()
-    # Kept only to avoid a hard API break for callers during the schema
-    # transition.  It is intentionally ignored: current study persistence and
-    # authority are derived solely from ``policy.fidelity_epochs[-1]``.
-    _ = training_horizon_epochs
     dataset_id = str(repair2.dataset_id)
     if dataset_id != str(mvqual.dataset_id):
         raise TrainingDataInputError("REPAIR2 and MVQUAL dataset identities differ.")
@@ -1361,11 +1325,6 @@ def _validate_outcome_batch(
         if outcome.success is not None:
             if item.completed_epochs != expected_endpoint:
                 raise TrainingDataInputError("Target-size evidence is not at the configured semantic-stage boundary.")
-            if item.planned_epochs != plan.screening_horizon_epochs:
-                raise TrainingDataInputError("Target-size evidence schedule horizon differs from the authenticated screen horizon.")
-            expected_progress = item.completed_epochs / item.planned_epochs
-            if abs(item.normalized_schedule_progress - expected_progress) > 1.0e-12:
-                raise TrainingDataInputError("Target-size evidence schedule progress is inconsistent with its screen horizon.")
         training_policy_digests.add(item.training_policy_digest)
         schedule_digests.add(item.schedule_digest)
         if outcome.success is not None:

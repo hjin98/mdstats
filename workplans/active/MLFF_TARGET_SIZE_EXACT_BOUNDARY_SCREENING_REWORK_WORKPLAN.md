@@ -30,7 +30,7 @@ This rework also closes the confirmed production bug in `_campaign_training_poli
 This workplan supersedes every current target-size statement that treats `n3` as a screen horizon, including conflicting statements in:
 
 - `workplans/archive/MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_WORKPLAN.md`;
-- `workplans/active/MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_FINAL_CLOSURE_WORKPLAN.md`;
+- `workplans/archive/MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_FINAL_CLOSURE_WORKPLAN.md`;
 - `workplans/active/README.md`;
 - current target-size runtime/reporting/specification/tests that encode `screen horizon = n3`, `planned_epochs=n3`, `normalized_progress=boundary/n3`, or dual `screen boundary + schedule horizon` semantics.
 

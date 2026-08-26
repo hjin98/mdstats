@@ -19,7 +19,7 @@ def test_perf_p2r_normative_spec_and_architecture_are_synchronized() -> None:
 
     assert "Exact continuation fidelity" in manual
     assert "successive-fidelity funnel" in manual
-    assert "n1 < n2 < n3 < n" in manual
+    assert "0 < n1 < n2 < n3" in manual
 
     assert graph["schema_version"] == 2
     node_ids = {item["id"] for item in graph["nodes"]}
