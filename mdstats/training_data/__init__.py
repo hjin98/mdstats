@@ -1788,6 +1788,7 @@ from .train2_runtime import (
     Train2NumericalFailure,
     Train2NumericalFailureRecord,
     build_train2_runtime_plan,
+    validate_train2_runtime_continuation_artifacts,
     load_train2_runtime_summary,
     load_train2_numerical_failure,
 )

@@ -219,6 +219,68 @@ def test_train2b_restart_rejects_changed_lr_authority(tmp_path: Path) -> None:
         )
 
 
+def test_train2b_authenticated_continuation_rejects_tampered_companion(tmp_path: Path) -> None:
+    """A raw checkpoint plus summary is not resumable without its companion."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4)
+    runtime = runtime_mod._Train2Runtime(
+        _plan(limit=3),
+        model=model,
+        optimizer=optimizer,
+        lr_scheduler=_Scheduler(),
+        ema=ExponentialMovingAverage(model.parameters(), decay=0.9),
+        train_loader=[object()],
+        current_epoch=0,
+        checkpoint_handler=SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir))),
+        logger_path=str(metrics),
+        rank=0,
+    )
+    _step(model, optimizer, runtime.ema)
+    _raw_checkpoint(checkpoint_dir, 0)
+    summary = runtime.persist_epoch(epoch=0)
+    assert summary is not None
+
+    companion = checkpoint_dir / runtime_mod.TRAIN2_RUNTIME_COMPANION_FILENAME
+    companion.write_bytes(b"not an authenticated torch companion")
+    with pytest.raises((mdstats.TrainingDataInputError, mdstats.TrainingDataSerializationError), match="companion"):
+        mdstats.validate_train2_runtime_continuation_artifacts(
+            checkpoint_dir,
+            training_protocol_digest=summary.training_protocol_digest,
+            optimizer_policy_digest=summary.optimizer_policy_digest,
+            budget_policy=_plan(limit=3).budget_policy,
+            learning_rate_policy=_plan(limit=3).learning_rate_policy,
+            structures_per_epoch=17,
+        )
+
+
+def test_train2b_activation_rejects_restored_epoch_beyond_active_boundary(tmp_path: Path) -> None:
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4)
+
+    with pytest.raises(mdstats.TrainingDataInputError, match="exceeds its active execution boundary"):
+        runtime_mod._Train2Runtime(
+            _plan(limit=3),
+            model=model,
+            optimizer=optimizer,
+            lr_scheduler=_Scheduler(),
+            ema=ExponentialMovingAverage(model.parameters(), decay=0.9),
+            train_loader=[object()],
+            current_epoch=4,
+            checkpoint_handler=SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir))),
+            logger_path=str(metrics),
+            rank=0,
+        )
+
+
 def test_train2b_restart_rejects_changed_full_horizon(tmp_path: Path) -> None:
     checkpoint_dir = tmp_path / "checkpoints"
     checkpoint_dir.mkdir()

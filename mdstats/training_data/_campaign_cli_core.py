@@ -1678,6 +1678,22 @@ def _train2_policy_set(
         replay_label_requirement="true_dft",
         required_physical_gates=(),
     )
+    target_data = cfg.get("target_data", {})
+    size_cfg = (
+        target_data.get("size_convergence", {})
+        if isinstance(target_data, Mapping)
+        else {}
+    )
+    # `_train2_policy_set` is also the generic policy factory used by
+    # low-level callers.  Only target-size orchestration requires the full
+    # three-boundary policy; preserve the same scalar selection authority for
+    # a compact, already-normalized policy fixture that does not model a
+    # screen lifecycle.
+    practical_equivalence_mev_per_a = float(
+        size_cfg.get("practical_equivalence_mev_per_a", 1.0)
+        if isinstance(size_cfg, Mapping)
+        else 1.0
+    )
     selection = mdstats.CheckpointSelectionPolicy(
         primary_target_metric=str(
             _cfg(cfg, "evaluation", "primary_target_metric", "target_force_rmse_ev_per_angstrom")
@@ -1686,9 +1702,7 @@ def _train2_policy_set(
         refinement_reserved_candidates=int(
             _cfg(cfg, "evaluation", "refinement_reserved_candidates", 2)
         ),
-        practical_equivalence_ev_per_angstrom=(
-            float(_target_size_study_policy(cfg).practical_equivalence_mev_per_a) / 1000.0
-        ),
+        practical_equivalence_ev_per_angstrom=practical_equivalence_mev_per_a / 1000.0,
         bootstrap_replicates=int(_cfg(cfg, "evaluation", "bootstrap_replicates", 2000)),
         bootstrap_confidence=float(_cfg(cfg, "evaluation", "bootstrap_confidence", 0.95)),
         bootstrap_min_independent_blocks=int(
@@ -14798,7 +14812,19 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         if train2_execution_epoch_limit is None:
             raise CampaignCliError("TRAIN2B stage is missing its execution epoch limit.")
         try:
-            summary = mdstats.load_train2_runtime_summary(run_root / "checkpoints")
+            if job.protocol.training_budget_policy is None or job.protocol.learning_rate_schedule_policy is None:
+                raise CampaignCliError(f"TRAIN2B run {job.job_id} is missing its frozen budget/LR authorities.")
+            summary = mdstats.validate_train2_runtime_continuation_artifacts(
+                run_root / "checkpoints",
+                training_protocol_digest=job.protocol.content_digest,
+                optimizer_policy_digest=job.protocol.optimizer_policy.policy_digest,
+                budget_policy=job.protocol.training_budget_policy,
+                learning_rate_policy=job.protocol.learning_rate_schedule_policy,
+                structures_per_epoch=(
+                    int(job.loader_dry_run.target_train_count_effective)
+                    + int(job.loader_dry_run.replay_train_count_effective)
+                ),
+            )
         except Exception as exc:
             raise CampaignCliError(
                 f"TRAIN2B run {job.job_id} has successful/recoverable MACE artifacts but no valid "
@@ -14808,8 +14834,6 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             raise CampaignCliError(f"TRAIN2B runtime summary for {job.job_id} belongs to a different protocol.")
         if summary.optimizer_policy_digest != job.protocol.optimizer_policy.policy_digest:
             raise CampaignCliError(f"TRAIN2B runtime summary for {job.job_id} belongs to a different optimizer policy.")
-        if job.protocol.training_budget_policy is None or job.protocol.learning_rate_schedule_policy is None:
-            raise CampaignCliError(f"TRAIN2B run {job.job_id} is missing its frozen budget/LR authorities.")
         if summary.budget_policy_digest != job.protocol.training_budget_policy.policy_digest:
             raise CampaignCliError(f"TRAIN2B runtime summary for {job.job_id} changed its training-budget policy.")
         if summary.lr_policy_digest != job.protocol.learning_rate_schedule_policy.policy_digest:
@@ -14846,6 +14870,64 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             )
         store.put_record(f"train2_runtime:{run_id}", summary)
         return summary
+
+    def _reconcile_train2_runtime_before_disposition(
+        run_root: Path, job: Any, run_id: str, previous: Any | None,
+    ) -> Any | None:
+        """Authenticate durable TRAIN2 state before any scheduler disposition.
+
+        An interrupted parent does not make persisted child progress harmless:
+        if a restartable runtime exists, it is current target-screen state and
+        must be checked against the active boundary before it can be skipped,
+        recovered, retried, or resumed.
+        """
+
+        if policy_family != "train2":
+            return None
+        checkpoint_directory = run_root / "checkpoints"
+        from .train2_runtime import (
+            TRAIN2_NUMERICAL_FAILURE_FILENAME,
+            TRAIN2_RUNTIME_COMPANION_FILENAME,
+            TRAIN2_RUNTIME_HISTORY_FILENAME,
+            TRAIN2_RUNTIME_SUMMARY_FILENAME,
+        )
+
+        runtime_markers = (
+            TRAIN2_RUNTIME_SUMMARY_FILENAME,
+            TRAIN2_RUNTIME_COMPANION_FILENAME,
+            TRAIN2_RUNTIME_HISTORY_FILENAME,
+            TRAIN2_NUMERICAL_FAILURE_FILENAME,
+        )
+        has_checkpoint = (
+            checkpoint_directory.is_dir()
+            and any(path.is_file() for path in checkpoint_directory.rglob("*.pt"))
+        )
+        has_runtime_artifact = has_checkpoint or any(
+            (checkpoint_directory / marker).exists() for marker in runtime_markers
+        )
+        if not has_runtime_artifact:
+            return None
+        summary_path = checkpoint_directory / TRAIN2_RUNTIME_SUMMARY_FILENAME
+        companion_path = checkpoint_directory / TRAIN2_RUNTIME_COMPANION_FILENAME
+        if not summary_path.is_file() or not companion_path.is_file():
+            if (
+                (checkpoint_directory / TRAIN2_NUMERICAL_FAILURE_FILENAME).is_file()
+                and _is_target_size_scientific_execution_failure(
+                    previous,
+                    policy_family=policy_family,
+                    target_size_study=target_size_study,
+                )
+            ):
+                # Numerical-failure persistence deliberately has no restart
+                # companion: it is terminal candidate evidence, not resumable
+                # execution. EVAL2 authenticates its dedicated sidecar.
+                return None
+            raise CampaignCliError(
+                f"TRAIN2B run {job.job_id} has recoverable-looking runtime artifacts but lacks "
+                "an authenticated summary/continuation companion. Refusing a fresh or resumed child; "
+                "restore the exact runtime state or rerun `prepare`, `preflight`, then `select-target-size`."
+            )
+        return _train2_stage_summary(run_root, job, run_id)
 
     _reconcile_mlcv_lifecycle_authority(
         campaign, data8_bundles, store,
@@ -15036,6 +15118,10 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             previous = None
             store.delete_record(key)
 
+        reconciled_train2_summary = _reconcile_train2_runtime_before_disposition(
+            run_root, job, run.run_id, previous
+        )
+
         if _is_target_size_scientific_execution_failure(
             previous, policy_family=policy_family, target_size_study=target_size_study
         ):
@@ -15047,10 +15133,11 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             )
             continue
 
-        train2_existing_summary = None
+        train2_existing_summary = reconciled_train2_summary
         train2_needs_continuation = False
         if previous is not None and previous.state is mdstats.TrainingRunState.SUCCEEDED and policy_family == "train2":
-            train2_existing_summary = _train2_stage_summary(run_root, job, run.run_id)
+            if train2_existing_summary is None:
+                train2_existing_summary = _train2_stage_summary(run_root, job, run.run_id)
             train2_needs_continuation = (
                 train2_existing_summary.completed_epochs < int(train2_execution_epoch_limit)
             )
@@ -15190,10 +15277,19 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                 else int(train2_existing_summary.completed_epochs)
             )
             authorized_epochs = int(train2_execution_epoch_limit) - completed_epochs
-        if authorized_epochs <= 0:
+        if authorized_epochs < 0:
             raise CampaignCliError(
                 f"TRAIN2 progress geometry for {run.run_id} has no authorized remaining epochs."
             )
+        if authorized_epochs == 0 and policy_family != "train2":
+            raise CampaignCliError(
+                f"Training progress geometry for {run.run_id} has no authorized remaining epochs."
+            )
+        # A child interrupted after persisting exactly the active boundary has
+        # no optimizer work left, but still needs one authenticated child
+        # completion/recovery pass to commit its ordinary execution record and
+        # checkpoint catalog.  Enqueue that handoff without extending the
+        # runtime plan: Train2Runtime refuses every epoch above this limit.
         expected_training_updates = max(
             1,
             (effective_per_epoch // optimizer.batch_size) * authorized_epochs,
