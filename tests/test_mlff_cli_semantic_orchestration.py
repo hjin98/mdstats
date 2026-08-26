@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import mdstats
 import pytest
 from mdstats.training_data import _campaign_cli_core as cli
+from mdstats.training_data._common import TrainingDataSerializationError
 
 
 ACTIVE = (
@@ -134,6 +135,32 @@ def test_prepare_rejects_post_selection_semantic_reuse(monkeypatch: pytest.Monke
     )
     with pytest.raises(cli.CampaignCliError, match="run `materialize`"):
         cli.command_prepare(argparse.Namespace(config="campaign.toml"))
+
+
+def test_prepare_routes_legacy_target_size_payload_to_current_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public wrapper must not preempt the REPAIR2/MVQUAL2 migration owner."""
+
+    paths = _paths()
+    observed: list[str] = []
+    monkeypatch.setattr(cli, "_load_config", lambda _path: (_cfg(), paths))
+    monkeypatch.setattr(cli, "CampaignStore", lambda _path: object())
+    monkeypatch.setattr(
+        cli,
+        "_load_train2_study_optional",
+        lambda _store: (_ for _ in ()).throw(
+            TrainingDataSerializationError("legacy target-size record")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_execute_prepare_current_authority",
+        lambda args: observed.append(args._semantic_operation) or 0,
+    )
+
+    assert cli.command_prepare(argparse.Namespace(config="campaign.toml")) == 0
+    assert observed == ["prepare"]
 
 
 @pytest.mark.parametrize(

@@ -1205,8 +1205,23 @@ class TrainingRunExecutionRecord:
                 raise TrainingDataInputError("Successful attempt index does not reference a successful attempt.")
             if self.checkpoint_catalog.run_plan_digest != self.run_plan_digest:
                 raise TrainingDataInputError("Checkpoint catalog lineage mismatch.")
-        elif self.successful_attempt_index is not None or self.checkpoint_catalog is not None:
-            raise TrainingDataInputError("Unsuccessful execution cannot carry successful checkpoint evidence.")
+        else:
+            if self.successful_attempt_index is not None:
+                raise TrainingDataInputError(
+                    "Unsuccessful execution cannot identify a successful attempt."
+                )
+            # A cooperative interruption is a continuation point, not a
+            # failed scientific result.  Preserve an authenticated catalog
+            # when the child reached a durable checkpoint before the parent
+            # stopped it, so the resumed scheduler can audit exactly the
+            # checkpoint it is about to hand to the real restart path.
+            if self.checkpoint_catalog is not None:
+                if self.state is not TrainingRunState.INTERRUPTED:
+                    raise TrainingDataInputError(
+                        "Only interrupted execution may carry resumable checkpoint evidence."
+                    )
+                if self.checkpoint_catalog.run_plan_digest != self.run_plan_digest:
+                    raise TrainingDataInputError("Checkpoint catalog lineage mismatch.")
         object.__setattr__(self, "attempts", attempts)
 
     def _payload(self) -> dict[str, Any]:
@@ -1469,6 +1484,17 @@ def execute_training_run(
                 raise TrainingDataInputError("Successful execution checkpoint bytes changed after recording.")
             if not allow_successful_continuation:
                 return prior_record
+        elif (
+            prior_record.state is TrainingRunState.INTERRUPTED
+            and prior_record.checkpoint_catalog is not None
+        ):
+            catalog = inventory_mace_checkpoints(
+                run_plan, checkpoints, pattern=policy.checkpoint_glob
+            )
+            if catalog.content_digest != prior_record.checkpoint_catalog.content_digest:
+                raise TrainingDataInputError(
+                    "Interrupted execution checkpoint bytes changed before continuation."
+                )
 
     attempts = [] if prior_record is None else list(prior_record.attempts)
 
@@ -1764,6 +1790,11 @@ def execute_training_run(
             job_root=job_root, run_root=run_root, result_dir=result_dir, job=job
         )
         if state is not TrainingRunState.SUCCEEDED:
+            interrupted_catalog = None
+            if state is TrainingRunState.INTERRUPTED:
+                interrupted_catalog = inventory_mace_checkpoints(
+                    run_plan, checkpoints, pattern=policy.checkpoint_glob
+                )
             interim = TrainingRunExecutionRecord(
                 run_plan_digest=run_plan.content_digest,
                 mace_job_artifact_digest=job.content_digest,
@@ -1771,7 +1802,7 @@ def execute_training_run(
                 attempts=tuple(attempts),
                 state=state,
                 successful_attempt_index=None,
-                checkpoint_catalog=None,
+                checkpoint_catalog=interrupted_catalog,
             )
             _write_json_atomic(run_root / "training_execution.json", interim.to_dict())
             if state is TrainingRunState.INTERRUPTED:

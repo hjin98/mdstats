@@ -10,9 +10,11 @@ from __future__ import annotations
 import ast
 import argparse
 from pathlib import Path
+from types import SimpleNamespace
 
 import mdstats
 import pytest
+from mdstats.training_data._common import digest
 
 
 def _authorities() -> tuple[object, object]:
@@ -279,13 +281,152 @@ def test_real_promoted_data8_with_production_budget_fails_screen_schedule_author
     store.close()
 
 
+def test_preflight_authorization_rejects_real_stale_screen_schedule_before_training(
+    tmp_path: Path,
+) -> None:
+    """A passed receipt cannot authorize a real DATA8 tree with the wrong n3.
+
+    The materialization is real and promoted; only the compact study projection
+    supplies the active-screen shape needed to exercise the authorization
+    boundary in isolation.  It deliberately carries the actual candidate role
+    and one real n=4/seed-1 variant, while its n3=10 requirement conflicts
+    with the materialized 30-epoch protocol.
+    """
+
+    from mdstats.training_data import _campaign_cli_core as cli
+    from tests.test_mlff_data9a9b_production_materialization import _fixture
+
+    config, cfg, paths, store, _, _ = _campaign(tmp_path / "campaign")
+    inputs = _fixture(tmp_path / "materialization")
+    sources, frames, frame_data, data4, data5, data6, sweep, legacy_plan, _ = inputs
+    domains = mdstats.build_feature_fit_domains(data5, cross_validation_plans=())
+    selection_size = 4
+    prefixes = {
+        domain.content_digest: tuple(domain.frame_uids[:selection_size])
+        for domain in domains
+    }
+    evaluation_frames = {
+        domain.label_domain_id: tuple(domain.frame_uids[selection_size:])
+        for domain in domains
+        if domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
+    }
+    true_replay = mdstats.inspect_replay_extxyz(
+        Path(legacy_plan.replay_plan.monitor_artifact.path),
+        label_mode=mdstats.ReplayLabelMode.TRUE_DFT,
+    )
+    budget, learning_rate, admissibility, selection = cli._train2_policy_set(
+        cfg, require_replay=True, planned_epochs=30
+    )
+    materialization_plan = mdstats.build_production_materialization_plan(
+        sources,
+        frames,
+        data4,
+        data5,
+        data6,
+        sweep,
+        foundation_checkpoint=legacy_plan.foundation_checkpoint,
+        compatibility_probe=legacy_plan.compatibility_probe,
+        replay_plan=legacy_plan.replay_plan,
+        cross_validation_plans=(),
+        online_monitor_policy=mdstats.OnlineMonitorPolicy(
+            target_configurations=1,
+            replay_configurations=1,
+            training_diagnostic_configurations=1,
+        ),
+        true_replay_monitor_artifact=true_replay,
+        training_budget_policy=budget,
+        learning_rate_schedule_policy=learning_rate,
+        checkpoint_admissibility_policy=admissibility,
+        checkpoint_selection_policy=selection,
+        feature_metric_policy=legacy_plan.feature_metric_policy,
+        atomic_reference_policy=legacy_plan.atomic_reference_policy,
+        objective_policy=legacy_plan.objective_policy,
+        configuration_weight_policy=legacy_plan.configuration_weight_policy,
+        checkpoint_metric_policy=legacy_plan.checkpoint_metric_policy,
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(selection_size,)),
+        compatibility_policy=legacy_plan.compatibility_policy,
+        optimizer_policy=cli._optimizer_policy(
+            cfg, seed=1, num_workers=cli._resolve_mace_loader_workers(cfg)[0], planned_epochs=30
+        ),
+        checkpoint_control_policy=legacy_plan.checkpoint_control_policy,
+        extxyz_policy=legacy_plan.extxyz_policy,
+        foundation_reference_energies=dict(legacy_plan.foundation_reference_energies),
+        selection_size=selection_size,
+        selection_authority_role="target_size_candidate",
+        target_size_study_digest=digest({"candidate": "real-stale-schedule"}),
+        prescribed_training_domain_prefixes=prefixes,
+        prescribed_target_size_evaluation_frames=evaluation_frames,
+        require_foundation_residual_e0=False,
+        require_replay=True,
+    )
+    record = mdstats.run_restartable_production_materialization(
+        sources,
+        frames,
+        frame_data,
+        data4,
+        data5,
+        data6,
+        sweep,
+        materialization_plan,
+        tmp_path / "materialized",
+    )
+    assert record.complete
+    variant_id = "multihead_replay-n4-seed1"
+    store.put_records(
+        {
+            f"data8:{variant_id}": record.load_data8_bundle(),
+            f"materialization:{variant_id}": record,
+        }
+    )
+    store.set_meta("data8_variants", [variant_id])
+    study = SimpleNamespace(
+        outcome=mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
+        qualified_sizes=(selection_size,),
+        screening_horizon_epochs=10,
+        policy=SimpleNamespace(screening_optimizer_seeds=(1,)),
+        candidate_authority_digest=materialization_plan.target_size_study_digest,
+    )
+    entries = cli._current_data8_entries(store)
+    store.put_record(
+        "preflight_smoke",
+        {"passed": True, "data8_matrix_digest": cli._data8_matrix_digest(entries)},
+    )
+    cli._mark_stage(store, paths, "preflight", cli.StageState.COMPLETE, "stale receipt fixture")
+
+    with pytest.raises(cli.CampaignCliError, match="incompatible TRAIN2 schedule"):
+        cli._require_train2_preflight_authorization(cfg, paths, store, study)
+    store.close()
+
+
+def test_private_external_child_seam_is_not_a_public_wrapper_override(tmp_path: Path) -> None:
+    """The bounded child seam is exact-name/private-argument constrained."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    _, _, paths, store, _, _ = _campaign(tmp_path / "campaign")
+    wrapper = tmp_path / "mdstats-mace-train"
+    wrapper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    wrapper.chmod(0o755)
+    assert cli._external_training_child_wrapper(
+        paths, argparse.Namespace(_external_child_wrapper=wrapper)
+    ) == wrapper.resolve()
+    with pytest.raises(cli.CampaignCliError, match="mdstats-mace-train"):
+        cli._external_training_child_wrapper(
+            paths, argparse.Namespace(_external_child_wrapper=tmp_path / "not-the-wrapper")
+        )
+    store.close()
+
+
 def test_repair1_real_owner_module_does_not_replace_forbidden_owners() -> None:
     """Keep gate tests sensitive to the owners they claim to exercise."""
 
     forbidden = {
+        "command_select_target_size",
+        "command_train",
         "_load_config",
         "CampaignStore",
         "_ensure_target_size_study",
+        "_execute_train_current_authority",
         "_current_data8_entries",
         "_validate_train2_data8_matrix",
         "_train2_data8_schedule_matches_config",
@@ -293,6 +434,12 @@ def test_repair1_real_owner_module_does_not_replace_forbidden_owners() -> None:
         "_build_campaign",
         "_train2_policy_set",
         "_optimizer_policy",
+        "execute_training_run",
+        "inventory_mace_checkpoints",
+        "_next_public_operation",
+        "command_advance",
+        "command_materialize",
+        "command_preflight",
         "_invalidate_train2_downstream_state",
     }
     tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))

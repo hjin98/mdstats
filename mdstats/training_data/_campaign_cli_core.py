@@ -60,6 +60,7 @@ from .storage_archive import (
 )
 
 from ._common import (
+    TrainingDataSerializationError,
     configure_sha256_receipt_store,
     digest,
     prune_sha256_receipts,
@@ -2045,6 +2046,29 @@ def _ensure_local_wrappers(paths: CampaignPaths) -> dict[str, Path]:
             target.chmod(0o755)
         result[name] = target
     return result
+
+
+def _external_training_child_wrapper(
+    paths: CampaignPaths, args: argparse.Namespace
+) -> Path:
+    """Resolve the private external-child seam below campaign scheduling.
+
+    Normal campaign invocations always use the qualified local wrapper.  The
+    optional private namespace attribute exists solely for bounded integration
+    harnesses that must exercise the real scheduler, cancellation, checkpoint
+    inventory, and restart owners while replacing only MACE numerical work.
+    It is intentionally not a CLI option or persisted configuration value.
+    """
+
+    supplied = getattr(args, "_external_child_wrapper", None)
+    if supplied is None:
+        return _ensure_local_wrappers(paths)["mdstats-mace-train"]
+    wrapper = Path(supplied).resolve()
+    if wrapper.name != "mdstats-mace-train" or not wrapper.is_file() or not os.access(wrapper, os.X_OK):
+        raise CampaignCliError(
+            "Private external-child wrapper must be an executable named mdstats-mace-train."
+        )
+    return wrapper
 
 def _historical_algorithm_evidence_keys(store: "CampaignStore") -> tuple[str, ...]:
     """Return preserved records produced by retired MLFF ranking/evaluation paths.
@@ -4989,7 +5013,12 @@ def _train2_data8_schedule_matches_config(
         return True
     jobs: list[Any] = []
     for entry in entries:
-        bundle_jobs = getattr(entry.bundle, "jobs", None)
+        # Compact orchestration tests may intentionally model only the
+        # matrix/provenance shape.  They cannot certify a schedule either, so
+        # preserve the established "not modeled" path rather than dereferencing
+        # an absent synthetic bundle.  Real DATA8 entries always carry it and
+        # are checked exhaustively below.
+        bundle_jobs = getattr(getattr(entry, "bundle", None), "jobs", None)
         if bundle_jobs is None:
             return True
         jobs.extend(tuple(bundle_jobs))
@@ -10540,7 +10569,17 @@ def command_prepare(args: argparse.Namespace) -> int:
 
     cfg, paths = _load_config(args.config)
     if _training_policy_generation(cfg) == "train2":
-        study = _load_train2_study_optional(CampaignStore(paths.state_db))
+        # A historical target-size payload is intentionally not directly
+        # restart-compatible with the decoupled study schema.  Do not reject it
+        # here, before the normal prepare/reconciliation owner can preserve its
+        # authenticated predecessor receipt and rebuild current screening
+        # authority from REPAIR2/MVQUAL2.  Current/corrupt state is still
+        # validated by that owner below; this wrapper merely avoids turning a
+        # recoverable migration into a premature public-command failure.
+        try:
+            study = _load_train2_study_optional(CampaignStore(paths.state_db))
+        except TrainingDataSerializationError:
+            study = None
         if study is not None and study.outcome == mdstats.OUTCOME_SELECTED:
             raise CampaignCliError(
                 "Target size is already selected and frozen. `prepare` owns only the initial "
@@ -11061,6 +11100,17 @@ def _require_train2_preflight_authorization(
     """Require a passed smoke bound to the exact active TRAIN2 DATA8 matrix."""
 
     entries, phase = _validate_train2_data8_matrix(cfg, store, study)
+    # Matrix membership alone is not enough: a DATA8 bundle carries the
+    # scheduler, LR, checkpoint, and optimizer authority that the shared
+    # TRAIN2 engine will consume.  In particular, a historical screen bundle
+    # can retain the same candidate corpus/matrix while carrying a different
+    # screen horizon.  Reject it here, before either public screen or
+    # production training can treat an old smoke receipt as authorization.
+    if not _train2_data8_schedule_matches_config(cfg, entries, study=study):
+        raise CampaignCliError(
+            f"The {phase} DATA8 workload carries an incompatible TRAIN2 schedule. "
+            "Run the current materialization operation, then preflight again."
+        )
     if not store.has_record("preflight_smoke"):
         raise CampaignCliError(
             f"The {phase} DATA8 workload has no one-epoch MACE preflight receipt. Run `preflight`."
@@ -15208,7 +15258,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
     )
     failures: list[str] = []
     controller = AdaptiveTrainingConcurrency(concurrency_plan, concurrency_policy)
-    wrapper_path = _ensure_local_wrappers(paths)["mdstats-mace-train"]
+    wrapper_path = _external_training_child_wrapper(paths, args)
     worker_environment = _training_environment_for_plan(concurrency_plan)
     active: dict[Future[Any], _PendingTrainingTask] = {}
     scheduler_started = time.monotonic()
@@ -15728,6 +15778,8 @@ def command_select_target_size(args: argparse.Namespace) -> int:
             max_runs=None,
             _target_size_orchestrated=True,
         )
+        if hasattr(args, "_external_child_wrapper"):
+            train_args._external_child_wrapper = args._external_child_wrapper
         result = _execute_train_current_authority(train_args)
         if result != 0:
             return result
@@ -26542,9 +26594,28 @@ def command_advance(args: argparse.Namespace) -> int:
     if name == "preflight":
         return command_preflight(argparse.Namespace(config=args.config, check_only=False, run_smoke=False))
     if name == "select-target-size":
-        return command_select_target_size(argparse.Namespace(config=args.config))
+        select_args = argparse.Namespace(config=args.config)
+        # This private, in-process attribute is deliberately propagated only
+        # through public lifecycle routing.  It lets the bounded integration
+        # harness retain the real ``advance -> select-target-size`` ownership
+        # while replacing only the external numerical MACE child.  It is not a
+        # parser option, configuration field, or persisted campaign property.
+        if hasattr(args, "_external_child_wrapper"):
+            select_args._external_child_wrapper = args._external_child_wrapper
+        return command_select_target_size(select_args)
     if name == "train":
-        return command_train(argparse.Namespace(config=args.config, run_id=None, training_mode=None, seed=None, selection_size=None, max_runs=None, dry_run=False))
+        train_args = argparse.Namespace(
+            config=args.config,
+            run_id=None,
+            training_mode=None,
+            seed=None,
+            selection_size=None,
+            max_runs=None,
+            dry_run=False,
+        )
+        if hasattr(args, "_external_child_wrapper"):
+            train_args._external_child_wrapper = args._external_child_wrapper
+        return command_train(train_args)
     if name == "evaluate":
         return command_evaluate(argparse.Namespace(config=args.config, training_mode=None, seed=None, selection_size=None, require_complete=False))
     if name == "verify":
