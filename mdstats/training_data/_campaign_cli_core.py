@@ -5119,7 +5119,7 @@ def _train2_data8_schedule_matches_config(
             cfg,
             seed=int(getattr(optimizer, "seed", -1)),
             num_workers=expected_loader_workers,
-            planned_epochs=expected_horizon,
+            planned_epochs=screening_schedule_extent,
         )
         if optimizer.policy_digest != expected_optimizer.policy_digest:
             return False
