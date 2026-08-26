@@ -2440,7 +2440,7 @@ def _path_cache_identity(path: Path, expected_sha256: str) -> tuple[str, int, in
     )
 
 
-_MONITOR_ATOMS_CACHE: "OrderedDict[tuple[str, int, int, int, str], tuple[tuple[Any, ...], int]]" = OrderedDict()
+_MONITOR_ATOMS_CACHE: "OrderedDict[str, tuple[tuple[Any, ...], int]]" = OrderedDict()
 _MONITOR_ATOMS_CACHE_BYTES = 0
 _MONITOR_ATOMS_CACHE_LOCK = RLock()
 _MONITOR_ATOMS_CACHE_MAX_BYTES = max(
@@ -2483,13 +2483,21 @@ def _monitor_atoms_cache_clear() -> None:
 def _as_atoms_tuple_cached(
     identity: tuple[str, int, int, int, str],
 ) -> tuple[Any, ...]:
-    """Load an extxyz monitor through a byte-budgeted authenticated LRU."""
+    """Load an extxyz monitor through a byte-budgeted content-addressed LRU.
+
+    ``identity`` still carries path/stat metadata so the caller can authenticate
+    the concrete source before entering this cache.  Once those bytes have been
+    authenticated, the immutable parsed representation is keyed by SHA256 rather
+    than path so byte-identical materializations do not consume duplicate RAM or
+    repeat ExtXYZ decoding.
+    """
 
     global _MONITOR_ATOMS_CACHE_BYTES
+    content_key = str(identity[-1])
     with _MONITOR_ATOMS_CACHE_LOCK:
-        cached = _MONITOR_ATOMS_CACHE.get(identity)
+        cached = _MONITOR_ATOMS_CACHE.get(content_key)
         if cached is not None:
-            _MONITOR_ATOMS_CACHE.move_to_end(identity)
+            _MONITOR_ATOMS_CACHE.move_to_end(content_key)
             return cached[0]
         # Keep the first authenticated parse inside the lock. Parallel checkpoint
         # evaluations otherwise decode the same multi-GB monitor simultaneously,
@@ -2506,10 +2514,10 @@ def _as_atoms_tuple_cached(
             or resident_bytes > _MONITOR_ATOMS_CACHE_MAX_BYTES
         ):
             return values
-        previous = _MONITOR_ATOMS_CACHE.pop(identity, None)
+        previous = _MONITOR_ATOMS_CACHE.pop(content_key, None)
         if previous is not None:
             _MONITOR_ATOMS_CACHE_BYTES -= previous[1]
-        _MONITOR_ATOMS_CACHE[identity] = (values, resident_bytes)
+        _MONITOR_ATOMS_CACHE[content_key] = (values, resident_bytes)
         _MONITOR_ATOMS_CACHE_BYTES += resident_bytes
         while (
             _MONITOR_ATOMS_CACHE
@@ -2533,6 +2541,15 @@ def _as_atoms_list(
     from ase.io import read
 
     if use_cache and expected_sha256 is not None:
+        # Content-addressed reuse is safe only after the concrete path is proven
+        # to contain the authority bytes.  Receipt-backed hashing makes this
+        # cheap on unchanged files while preventing stale-path cache aliasing.
+        if _sha256_file(path) != validate_digest(
+            expected_sha256, name="monitor_sha256"
+        ):
+            raise TrainingDataInputError(
+                "Evaluation monitor bytes do not match the authenticated cache identity."
+            )
         return _as_atoms_tuple_cached(_path_cache_identity(path, expected_sha256))
     result = read(path, index=":", format="extxyz")
     return tuple(result if isinstance(result, list) else [result])
@@ -3522,6 +3539,153 @@ class CheckpointEvaluationPredictionBundle:
     replay_foundation_artifact: Any | None
 
 
+@dataclass(frozen=True, slots=True)
+class SharedTargetEvaluationContext:
+    """Authenticated immutable target data shared by compatible EVAL tasks.
+
+    This runtime-only object deliberately separates scientific authority
+    (``authority_scope_digest`` and the monitor artifact digest) from the
+    content-addressed computational representation.  ASE objects are retained
+    calculator-free; MACE prediction providers copy an ``Atoms`` object before
+    attaching calculators, while ``EvaluationDatasetView`` owns read-only NumPy
+    buffers.
+    """
+
+    authority_scope_digest: str
+    target_monitor_artifact_digest: str
+    target_monitor_sha256: str
+    source_path: Path
+    target_configuration_indices: tuple[int, ...]
+    target_atoms: tuple[Any, ...]
+    target_geometry_identities: tuple[str, ...]
+    target_view: Any
+    retained_bytes: int
+    compatible_target_monitor_artifact_digests: tuple[str, ...] = ()
+
+
+def _evaluation_view_resident_bytes(view: Any) -> int:
+    arrays = (
+        view.atom_counts,
+        view.force_offsets,
+        view.reference_energies,
+        view.reference_forces,
+        view.atomic_numbers,
+        view.condition_ids,
+        view.reference_stresses,
+        view.stress_present,
+    )
+    return max(
+        1,
+        sum(int(array.nbytes) for array in arrays)
+        + sum(len(value) for value in view.condition_labels)
+        + sum(
+            int(indices.nbytes)
+            for per_frame in view.focus_local_indices
+            for indices in per_frame
+        ),
+    )
+
+
+def prepare_shared_target_evaluation_context(
+    target_monitor_path: str | Path,
+    target_monitor_artifact: MaceExtxyzArtifact,
+    *,
+    policy: CheckpointEvaluationPolicy,
+    execution_plan: InferenceExecutionPlan,
+    authority_scope_digest: str,
+    target_configuration_indices: Sequence[int] | None = None,
+    compatible_target_monitor_artifact_digests: Sequence[str] = (),
+) -> SharedTargetEvaluationContext:
+    """Authenticate/parse one target monitor once for a staged population."""
+
+    from .evaluation_views import cached_evaluation_dataset_view
+    from .inference_parallel import report_inference_worker_phase
+
+    scope = validate_digest(authority_scope_digest, name="target_authority_scope_digest")
+    target = Path(target_monitor_path).resolve()
+    report_inference_worker_phase("authenticating shared target monitor")
+    if not target.is_file() or _sha256_file(target) != target_monitor_artifact.sha256:
+        raise TrainingDataInputError(
+            "Shared target monitor bytes do not match the frozen artifact."
+        )
+    report_inference_worker_phase("loading shared target monitor")
+    all_atoms = tuple(
+        _as_atoms_list(
+            target,
+            expected_sha256=target_monitor_artifact.sha256,
+            use_cache=execution_plan.monitor_cache_enabled,
+        )
+    )
+    if len(all_atoms) != target_monitor_artifact.configuration_count:
+        raise TrainingDataInputError(
+            "Shared target monitor configuration count changed after materialization."
+        )
+    if target_configuration_indices is None:
+        indices = tuple(range(len(all_atoms)))
+    else:
+        indices = tuple(int(value) for value in target_configuration_indices)
+        if not indices:
+            raise TrainingDataInputError(
+                "Shared target monitor configuration subset cannot be empty."
+            )
+        if any(value < 0 or value >= len(all_atoms) for value in indices):
+            raise TrainingDataInputError(
+                "Shared target monitor configuration subset is out of range."
+            )
+        if len(set(indices)) != len(indices):
+            raise TrainingDataInputError(
+                "Shared target monitor configuration subset contains duplicate indices."
+            )
+    atoms = tuple(all_atoms[index] for index in indices)
+    geometry_identities = tuple(
+        target_monitor_artifact.frame_uids[index] for index in indices
+    )
+    # Once target bytes are authenticated, computational view identity is
+    # content-addressed and policy-bound rather than path-bound.  Scientific
+    # role equivalence remains separately carried by ``authority_scope_digest``.
+    view = cached_evaluation_dataset_view(
+        (
+            "sha256",
+            target_monitor_artifact.sha256,
+            "subset",
+            digest({"indices": list(indices)}),
+        ),
+        atoms,
+        energy_key=policy.energy_key,
+        forces_key=policy.forces_key,
+        stress_key=policy.stress_key,
+        focus_atomic_numbers=policy.focus_atomic_numbers,
+        condition_keys=policy.condition_keys,
+    )
+    compatible_artifact_digests = tuple(
+        sorted(
+            {
+                validate_digest(
+                    target_monitor_artifact.content_digest,
+                    name="target_monitor_artifact_digest",
+                ),
+                *(
+                    validate_digest(value, name="target_monitor_artifact_digest")
+                    for value in compatible_target_monitor_artifact_digests
+                ),
+            }
+        )
+    )
+    retained = _atoms_tuple_resident_bytes(atoms) + _evaluation_view_resident_bytes(view)
+    return SharedTargetEvaluationContext(
+        authority_scope_digest=scope,
+        target_monitor_artifact_digest=target_monitor_artifact.content_digest,
+        target_monitor_sha256=target_monitor_artifact.sha256,
+        source_path=target,
+        target_configuration_indices=indices,
+        target_atoms=atoms,
+        target_geometry_identities=geometry_identities,
+        target_view=view,
+        retained_bytes=retained,
+        compatible_target_monitor_artifact_digests=compatible_artifact_digests,
+    )
+
+
 def _optional_cache_path(value: str | Path | None) -> Path | None:
     return None if value is None else Path(value).resolve()
 
@@ -3546,6 +3710,7 @@ def prepare_mace_checkpoint_evaluation(
     graph_cache_directory: str | Path | None = None,
     foundation_prediction_manifest: Any | None = None,
     foundation_prediction_root: str | Path | None = None,
+    shared_target_context: SharedTargetEvaluationContext | None = None,
     target_configuration_indices: Sequence[int] | None = None,
     replay_configuration_indices: Sequence[int] | None = None,
     allow_target_monitor_override: bool = False,
@@ -3626,32 +3791,71 @@ def prepare_mace_checkpoint_evaluation(
             raise TrainingDataInputError(f"{name} configuration subset contains duplicate indices.")
         return result
 
-    report_inference_worker_phase("loading target monitor")
-    target_all_atoms = tuple(
-        _as_atoms_list(
-            target,
-            expected_sha256=target_monitor_artifact.sha256,
-            use_cache=active_execution.monitor_cache_enabled,
+    if shared_target_context is None:
+        report_inference_worker_phase("loading target monitor")
+        target_all_atoms = tuple(
+            _as_atoms_list(
+                target,
+                expected_sha256=target_monitor_artifact.sha256,
+                use_cache=active_execution.monitor_cache_enabled,
+            )
         )
-    )
-    if len(target_all_atoms) != target_monitor_artifact.configuration_count:
-        raise TrainingDataInputError("Target monitor configuration count changed after materialization.")
-    target_indices = normalized_indices(
-        target_configuration_indices, len(target_all_atoms), name="Target monitor"
-    )
-    target_atoms = tuple(target_all_atoms[index] for index in target_indices)
-    target_geometry_identities = tuple(
-        target_monitor_artifact.frame_uids[index] for index in target_indices
-    )
-    target_view = cached_evaluation_dataset_view(
-        f"{_path_cache_identity(target, target_monitor_artifact.sha256)}:subset:{digest({'indices': list(target_indices)})}",
-        target_atoms,
-        energy_key=policy.energy_key,
-        forces_key=policy.forces_key,
-        stress_key=policy.stress_key,
-        focus_atomic_numbers=policy.focus_atomic_numbers,
-        condition_keys=policy.condition_keys,
-    )
+        if len(target_all_atoms) != target_monitor_artifact.configuration_count:
+            raise TrainingDataInputError("Target monitor configuration count changed after materialization.")
+        target_indices = normalized_indices(
+            target_configuration_indices, len(target_all_atoms), name="Target monitor"
+        )
+        target_atoms = tuple(target_all_atoms[index] for index in target_indices)
+        target_geometry_identities = tuple(
+            target_monitor_artifact.frame_uids[index] for index in target_indices
+        )
+        target_view = cached_evaluation_dataset_view(
+            (
+                "sha256",
+                target_monitor_artifact.sha256,
+                "subset",
+                digest({"indices": list(target_indices)}),
+            ),
+            target_atoms,
+            energy_key=policy.energy_key,
+            forces_key=policy.forces_key,
+            stress_key=policy.stress_key,
+            focus_atomic_numbers=policy.focus_atomic_numbers,
+            condition_keys=policy.condition_keys,
+        )
+    else:
+        report_inference_worker_phase("reusing shared target monitor")
+        compatible_artifacts = (
+            shared_target_context.compatible_target_monitor_artifact_digests
+            or (shared_target_context.target_monitor_artifact_digest,)
+        )
+        if (
+            target_monitor_artifact.content_digest not in compatible_artifacts
+            or shared_target_context.target_monitor_sha256 != target_monitor_artifact.sha256
+        ):
+            raise TrainingDataInputError(
+                "Shared target context does not match the requested target authority."
+            )
+        expected_indices = normalized_indices(
+            target_configuration_indices,
+            target_monitor_artifact.configuration_count,
+            name="Target monitor",
+        )
+        if expected_indices != shared_target_context.target_configuration_indices:
+            raise TrainingDataInputError(
+                "Shared target context configuration subset does not match this evaluation."
+            )
+        expected_geometry_identities = tuple(
+            target_monitor_artifact.frame_uids[index] for index in expected_indices
+        )
+        if expected_geometry_identities != shared_target_context.target_geometry_identities:
+            raise TrainingDataInputError(
+                "Shared target context geometry identity does not match the requested target authority."
+            )
+        target_indices = shared_target_context.target_configuration_indices
+        target_atoms = shared_target_context.target_atoms
+        target_geometry_identities = shared_target_context.target_geometry_identities
+        target_view = shared_target_context.target_view
 
     prediction_cache = (
         _optional_cache_path(prediction_cache_directory)

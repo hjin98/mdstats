@@ -14,7 +14,10 @@ from ase.io import write
 
 import mdstats
 from mdstats.training_data import campaign_cli, campaign_execution
-from mdstats.training_data.inference_parallel import CpuTelemetrySample
+from mdstats.training_data.inference_parallel import (
+    CpuTelemetrySample,
+    report_inference_worker_phase,
+)
 from mdstats.training_data.model_features import AtomicModelPrediction, MaceCalculatorProvider
 from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
 
@@ -510,6 +513,51 @@ def test_staged_runner_stage_failure_stops_new_work_without_deadlock(
             progress=_Progress(),
         )
     assert executed == ["prepare0"]
+
+
+def test_staged_runner_does_not_admit_queued_finalize_after_fatal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_prepare_jobs"] = 2
+    cfg["execution"]["parallel_evaluation_finalize_jobs"] = 1
+    cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 2
+    failure_started = threading.Event()
+    finalized: list[str] = []
+
+    def failing_prepare():
+        failure_started.set()
+        raise RuntimeError("fatal sibling")
+
+    def sibling_prepare():
+        assert failure_started.wait(timeout=1.0)
+        time.sleep(0.02)
+        return "prepared-sibling"
+
+    tasks = (
+        campaign_cli._StagedEvaluationTask(
+            display_index=1, key="fatal", label="fatal", start_detail="failure-test",
+            prepare=failing_prepare, requires_inference=lambda prepared: False,
+            infer=lambda prepared: prepared, finalize=lambda prepared, inferred: prepared,
+            done_detail=lambda result, wall: "done", accelerator_possible=False,
+        ),
+        campaign_cli._StagedEvaluationTask(
+            display_index=2, key="queued-finalize", label="queued-finalize",
+            start_detail="failure-test", prepare=sibling_prepare,
+            requires_inference=lambda prepared: False, infer=lambda prepared: prepared,
+            finalize=lambda prepared, inferred: finalized.append(prepared) or prepared,
+            done_detail=lambda result, wall: "done", accelerator_possible=False,
+        ),
+    )
+
+    with pytest.raises(campaign_cli.CampaignCliError, match="fatal sibling"):
+        campaign_cli._run_staged_evaluation_tasks(
+            tasks, cfg=cfg, device="cpu", progress=_Progress()
+        )
+    assert finalized == []
 
 
 def test_dynamics_sibling_failure_cancels_active_external_process_group(
@@ -1294,3 +1342,367 @@ def test_ase_atoms_retained_bytes_include_array_storage() -> None:
     retained = campaign_cli._core._evaluation_payload_bytes(atoms)
     assert retained >= atoms.arrays["large"].nbytes + atoms.positions.nbytes
     assert retained > atoms.__sizeof__()
+
+
+def test_monitor_parse_cache_reuses_authenticated_identical_bytes_across_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import ase.io as ase_io
+
+    first = tmp_path / "first.extxyz"
+    second = tmp_path / "second.extxyz"
+    write(first, [_frame()], format="extxyz")
+    second.write_bytes(first.read_bytes())
+    sha = hashlib.sha256(first.read_bytes()).hexdigest()
+
+    campaign_execution._monitor_atoms_cache_clear()
+    original_read = ase_io.read
+    calls = {"read": 0}
+
+    def counting_read(*args, **kwargs):
+        calls["read"] += 1
+        return original_read(*args, **kwargs)
+
+    monkeypatch.setattr(ase_io, "read", counting_read)
+    parsed_first = campaign_execution._as_atoms_list(
+        first, expected_sha256=sha, use_cache=True
+    )
+    parsed_second = campaign_execution._as_atoms_list(
+        second, expected_sha256=sha, use_cache=True
+    )
+
+    assert calls["read"] == 1
+    assert parsed_first is parsed_second
+
+
+def test_shared_target_context_is_reused_by_checkpoint_preparation(tmp_path: Path) -> None:
+    target = tmp_path / "shared-target.extxyz"
+    write(target, [_frame()], format="extxyz")
+    artifact = _target_artifact(target)
+    candidate = tmp_path / "candidate.pt"
+    candidate.write_bytes(b"candidate")
+    run, checkpoint = _run_checkpoint(artifact, candidate)
+    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=())
+    execution_plan = mdstats.InferenceExecutionPlan(
+        batch_policy="fixed", selected_batch_size=1, maximum_batch_size=1
+    )
+    context = mdstats.prepare_shared_target_evaluation_context(
+        target,
+        artifact,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=_h("shared-target-role"),
+    )
+
+    prepared = mdstats.prepare_mace_checkpoint_evaluation(
+        run,
+        checkpoint,
+        candidate_model_path=candidate,
+        target_monitor_path=target,
+        target_monitor_artifact=artifact,
+        policy=policy,
+        execution_plan=execution_plan,
+        shared_target_context=context,
+    )
+
+    assert prepared.target_atoms is context.target_atoms
+    assert prepared.target_view is context.target_view
+    assert prepared.target_geometry_identities == context.target_geometry_identities
+    assert context.retained_bytes > 0
+
+
+def test_shared_target_context_admits_explicit_byte_equal_artifact_lineages(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "shared-target-a.extxyz"
+    second = tmp_path / "shared-target-b.extxyz"
+    write(first, [_frame()], format="extxyz")
+    second.write_bytes(first.read_bytes())
+    artifact_a = _target_artifact(first)
+    artifact_b = _target_artifact(second)
+    assert artifact_a.sha256 == artifact_b.sha256
+    assert artifact_a.content_digest != artifact_b.content_digest
+
+    candidate = tmp_path / "candidate.pt"
+    candidate.write_bytes(b"candidate")
+    run_b, checkpoint_b = _run_checkpoint(artifact_b, candidate)
+    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=())
+    execution_plan = mdstats.InferenceExecutionPlan(
+        batch_policy="fixed", selected_batch_size=1, maximum_batch_size=1
+    )
+    scope = _h("shared-target-role")
+    context = mdstats.prepare_shared_target_evaluation_context(
+        first,
+        artifact_a,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=scope,
+        compatible_target_monitor_artifact_digests=(artifact_b.content_digest,),
+    )
+
+    prepared = mdstats.prepare_mace_checkpoint_evaluation(
+        run_b,
+        checkpoint_b,
+        candidate_model_path=candidate,
+        target_monitor_path=second,
+        target_monitor_artifact=artifact_b,
+        policy=policy,
+        execution_plan=execution_plan,
+        shared_target_context=context,
+    )
+    assert prepared.target_atoms is context.target_atoms
+    assert set(context.compatible_target_monitor_artifact_digests) == {
+        artifact_a.content_digest,
+        artifact_b.content_digest,
+    }
+
+    strict_context = mdstats.prepare_shared_target_evaluation_context(
+        first,
+        artifact_a,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=scope,
+    )
+    with pytest.raises(
+        mdstats.TrainingDataInputError, match="does not match the requested target authority"
+    ):
+        mdstats.prepare_mace_checkpoint_evaluation(
+            run_b,
+            checkpoint_b,
+            candidate_model_path=candidate,
+            target_monitor_path=second,
+            target_monitor_artifact=artifact_b,
+            policy=policy,
+            execution_plan=execution_plan,
+            shared_target_context=strict_context,
+        )
+
+    incompatible_artifact = replace(
+        artifact_b, frame_uids=(_h("different-frame-identity"),)
+    )
+    incompatible_run, incompatible_checkpoint = _run_checkpoint(
+        incompatible_artifact, candidate
+    )
+    metadata_permissive_context = mdstats.prepare_shared_target_evaluation_context(
+        first,
+        artifact_a,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=scope,
+        compatible_target_monitor_artifact_digests=(
+            incompatible_artifact.content_digest,
+        ),
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="geometry identity"):
+        mdstats.prepare_mace_checkpoint_evaluation(
+            incompatible_run,
+            incompatible_checkpoint,
+            candidate_model_path=candidate,
+            target_monitor_path=second,
+            target_monitor_artifact=incompatible_artifact,
+            policy=policy,
+            execution_plan=execution_plan,
+            shared_target_context=metadata_permissive_context,
+        )
+
+
+def test_staged_runner_rejects_duplicate_logical_task_identity() -> None:
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index,
+            key="duplicate-authority",
+            label=f"duplicate-{index}",
+            start_detail="duplicate",
+            prepare=lambda: True,
+            requires_inference=lambda prepared: False,
+            infer=lambda prepared: prepared,
+            finalize=lambda prepared, inferred: inferred,
+            done_detail=lambda result, wall: "done",
+            accelerator_possible=False,
+        )
+
+    with pytest.raises(campaign_cli.CampaignCliError, match="duplicate logical task"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task(1), task(2)],
+            cfg=_pipeline_cfg(),
+            device="cpu",
+            progress=_Progress(),
+        )
+
+
+def test_staged_runner_rejects_cpu_only_task_that_requires_accelerator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="incorrect-cpu-only",
+        label="incorrect-cpu-only",
+        start_detail="guard",
+        prepare=lambda: True,
+        requires_inference=lambda prepared: True,
+        infer=lambda prepared: prepared,
+        finalize=lambda prepared, inferred: inferred,
+        done_detail=lambda result, wall: "done",
+        accelerator_possible=False,
+    )
+
+    with pytest.raises(campaign_cli.CampaignCliError, match="accelerator_possible=False"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task], cfg=cfg, device="cpu", progress=_Progress()
+        )
+
+
+def test_staged_runner_propagates_prepare_and_finalize_phase_context(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+
+    def prepare():
+        report_inference_worker_phase("prepare-inner-phase")
+        return "prepared"
+
+    def finalize(prepared, inferred):
+        report_inference_worker_phase("finalize-inner-phase")
+        return prepared
+
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="phase-context",
+        label="phase-context",
+        start_detail="phase",
+        prepare=prepare,
+        requires_inference=lambda prepared: False,
+        infer=lambda prepared: prepared,
+        finalize=finalize,
+        done_detail=lambda result, wall: "done",
+        accelerator_possible=False,
+    )
+    campaign_cli._run_staged_evaluation_tasks(
+        [task], cfg=cfg, device="cpu", progress=_Progress()
+    )
+    output = capsys.readouterr().out
+    assert "CPU prepare: prepare-inner-phase" in output
+    assert "CPU finalize: finalize-inner-phase" in output
+
+
+def test_staged_runner_accounts_shared_resident_memory_once_for_population(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "evaluation_pipeline_buffer_mib": 1.5,
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+
+    tasks = [
+        campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"shared-{index}",
+            label=f"shared-{index}",
+            start_detail="shared-resident",
+            prepare=lambda index=index: index,
+            requires_inference=lambda prepared: False,
+            infer=lambda prepared: prepared,
+            finalize=lambda prepared, inferred: prepared,
+            done_detail=lambda result, wall: "done",
+            accelerator_possible=False,
+        )
+        for index in range(2)
+    ]
+    # 0.8 MiB is a stage-wide resident object.  It must be admitted once, not
+    # once per endpoint; two copies plus working reservations would exceed the
+    # 1.5 MiB cap.
+    result = campaign_cli._run_staged_evaluation_tasks(
+        tasks,
+        cfg=cfg,
+        device="cpu",
+        progress=_Progress(),
+        shared_residency_bytes=int(0.8 * 1024**2),
+    )
+    assert result == {"shared-0": 0, "shared-1": 1}
+
+
+def test_staged_progress_counts_accepted_completion_not_display_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+
+    class Progress:
+        def __init__(self):
+            self.done: list[tuple[int, int | None]] = []
+
+        def item_start(self, *args, **kwargs):
+            pass
+
+        def item_done(self, index, name, detail="", *, completed_count=None, **kwargs):
+            self.done.append((int(index), completed_count))
+
+    progress = Progress()
+
+    def make_task(index: int, delay: float) -> campaign_cli._StagedEvaluationTask:
+        def finalize(prepared, inferred):
+            time.sleep(delay)
+            return prepared
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index,
+            key=f"accepted-{index}",
+            label=f"accepted-{index}",
+            start_detail="accepted-progress",
+            prepare=lambda index=index: index,
+            requires_inference=lambda prepared: False,
+            infer=lambda prepared: prepared,
+            finalize=finalize,
+            done_detail=lambda result, wall: "done",
+            accelerator_possible=False,
+        )
+
+    campaign_cli._run_staged_evaluation_tasks(
+        [make_task(1, 0.08), make_task(2, 0.005)],
+        cfg=cfg,
+        device="cpu",
+        progress=progress,
+    )
+
+    assert progress.done[0] == (2, 1)
+    assert progress.done[1] == (1, 2)

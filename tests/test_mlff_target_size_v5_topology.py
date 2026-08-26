@@ -528,11 +528,20 @@ def test_real_target_size_eval_path_converts_eval2_nonfinite_signal(tmp_path: Pa
     records = {}
     jobs = {}
     runs = []
-    paths = SimpleNamespace(runs=tmp_path / "runs")
-    eval_key = (study.next_training_sizes[0], study.policy.screening_optimizer_seeds[0])
+    paths = SimpleNamespace(
+        runs=tmp_path / "runs",
+        internal=tmp_path / "internal",
+    )
+    paths.internal.mkdir(parents=True)
+    eval_keys = tuple(
+        (study.next_training_sizes[0], seed)
+        for seed in study.policy.screening_optimizer_seeds[:2]
+    )
     role_digest = _direct_digest("direct-eval-role")
     checkpoint_digest = _direct_digest("direct-eval-checkpoint")
-    eval_execution = None
+    target_sha = _direct_digest("direct-target-bytes")
+    eval_executions = {}
+    target_artifacts = {}
 
     for size in study.next_training_sizes:
         for seed in study.policy.screening_optimizer_seeds:
@@ -543,29 +552,47 @@ def test_real_target_size_eval_path_converts_eval2_nonfinite_signal(tmp_path: Pa
                 run_id=run_id, kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
                 selection_size=size, seed=seed,
                 mace_job_artifact_digest=job_digest, content_digest=run_digest,
+                target_monitor_artifact_digest=_direct_digest(f"training-target-{size}-{seed}"),
             )
             runs.append(run)
-            jobs[job_digest] = (SimpleNamespace(), SimpleNamespace(protocol=_direct_protocol(f"eval-{size}-{seed}")), tmp_path)
-            if (size, seed) == eval_key:
+            jobs[job_digest] = (
+                SimpleNamespace(),
+                SimpleNamespace(
+                    job_id=run_id,
+                    protocol=_direct_protocol(f"eval-{size}-{seed}"),
+                    relative_directory=".",
+                    config_relative_path="mace.yaml",
+                ),
+                tmp_path,
+            )
+            if (size, seed) in eval_keys:
+                target_artifacts[run_id] = SimpleNamespace(
+                    content_digest=_direct_digest(
+                        f"direct-target-artifact-{size}-{seed}"
+                    ),
+                    sha256=target_sha,
+                )
                 eval_execution = SimpleNamespace(
                     run_plan_digest=run_digest,
                     mace_job_artifact_digest=job_digest,
                     state=mdstats.TrainingRunState.SUCCEEDED,
                     attempts=(SimpleNamespace(
-                        content_digest=_direct_digest("eval-success-attempt"),
+                        content_digest=_direct_digest(f"eval-success-attempt-{size}-{seed}"),
                         scientific_failure_code=None,
                         elapsed_seconds=1.0,
                     ),),
                     successful_attempt_index=1,
-                    content_digest=_direct_digest("eval-success-execution"),
+                    content_digest=_direct_digest(f"eval-success-execution-{size}-{seed}"),
+                    checkpoint_catalog=SimpleNamespace(),
                 )
+                eval_executions[(size, seed)] = eval_execution
                 records[f"execution:{run_id}"] = eval_execution
                 records[f"train2_runtime:{run_id}"] = SimpleNamespace(
                     completed_epochs=3, planned_epochs=30, completed_updates=30,
                     structures_presented=300, normalized_progress=0.1,
                     instantaneous_learning_rate=1.0e-3,
-                    optimizer_state_digest=_direct_digest("eval-optimizer-state"),
-                    rng_state_digest=_direct_digest("eval-rng-state"),
+                    optimizer_state_digest=_direct_digest(f"eval-optimizer-state-{size}-{seed}"),
+                    rng_state_digest=_direct_digest(f"eval-rng-state-{size}-{seed}"),
                 )
                 continue
             failure = mdstats.Train2NumericalFailureRecord(
@@ -586,55 +613,130 @@ def test_real_target_size_eval_path_converts_eval2_nonfinite_signal(tmp_path: Pa
             )
             records[f"execution:{run_id}"] = _direct_failed_execution(failure.content_digest, run_digest, job_digest)
 
-    monkeypatch.setattr(campaign_core, "_eval2_target_role_for_run", lambda **_kwargs: SimpleNamespace(content_digest=role_digest))
-    monkeypatch.setattr(campaign_core, "_eval2_target_artifact_for_run", lambda **_kwargs: (SimpleNamespace(), tmp_path / "target.xyz"))
-    monkeypatch.setattr(campaign_core, "_evaluation_checkpoint_catalog", lambda *_args, **_kwargs: SimpleNamespace(
-        root_directory=str(tmp_path), checkpoints=(SimpleNamespace(sha256=checkpoint_digest),)
-    ))
-    monkeypatch.setattr(mdstats, "read_train2_trajectory_points", lambda *_args, **_kwargs: (
-        SimpleNamespace(epoch=2, checkpoint_sha256=checkpoint_digest),
-    ))
+    target_role = SimpleNamespace(
+        content_digest=role_digest,
+        role_kind="size_development_complement",
+        correlation_block_ids=("block",),
+    )
+    checkpoint = SimpleNamespace(sha256=checkpoint_digest)
+    point = SimpleNamespace(epoch=2, checkpoint_sha256=checkpoint_digest)
+    policy = SimpleNamespace(
+        policy_digest=_direct_digest("direct-eval-policy"),
+        device="cpu",
+    )
+    execution_plan = SimpleNamespace(monitor_cache_enabled=True)
+    shared_context = SimpleNamespace(
+        retained_bytes=128,
+        authority_scope_digest=role_digest,
+    )
+    prepared = SimpleNamespace(
+        requires_model_inference=False,
+        requires_candidate_inference=False,
+        target_view=object(),
+    )
+    predictions = SimpleNamespace(target_candidate_predictions=(object(),))
+    evaluation_record = SimpleNamespace(
+        target_candidate_prediction_digest=_direct_digest("nonfinite-prediction"),
+        content_digest=_direct_digest("evaluation-record"),
+    )
+    source = tmp_path / "checkpoint.pt"
+    source.write_bytes(b"checkpoint")
 
-    def _raise_eval2_numerical(**_kwargs):
+    monkeypatch.setattr(campaign_core, "_eval2_target_role_for_run", lambda **_kwargs: target_role)
+    monkeypatch.setattr(
+        campaign_core,
+        "_eval2_target_artifact_for_run",
+        lambda **kwargs: (
+            target_artifacts[kwargs["job"].job_id],
+            tmp_path / "target.xyz",
+        ),
+    )
+    monkeypatch.setattr(campaign_core, "_evaluation_checkpoint_catalog", lambda *_args, **_kwargs: SimpleNamespace(
+        root_directory=str(tmp_path), checkpoints=(checkpoint,)
+    ))
+    monkeypatch.setattr(mdstats, "read_train2_trajectory_points", lambda *_args, **_kwargs: (point,))
+    monkeypatch.setattr(campaign_core, "_eval2_evaluation_policy", lambda *_args, **_kwargs: policy)
+    monkeypatch.setattr(campaign_core, "_evaluation_inference_execution_plan", lambda *_args, **_kwargs: execution_plan)
+    monkeypatch.setattr(campaign_core, "_checkpoint_source_for_evaluation", lambda *_args, **_kwargs: (source, None))
+    shared_context_calls = []
+
+    def _prepare_shared_context(*_args, **kwargs):
+        shared_context_calls.append(kwargs)
+        assert set(kwargs["compatible_target_monitor_artifact_digests"]) == {
+            artifact.content_digest for artifact in target_artifacts.values()
+        }
+        return shared_context
+
+    monkeypatch.setattr(
+        mdstats, "prepare_shared_target_evaluation_context", _prepare_shared_context
+    )
+    monkeypatch.setattr(mdstats, "prepare_mace_checkpoint_evaluation", lambda *_args, **_kwargs: prepared)
+    monkeypatch.setattr(mdstats, "run_prepared_mace_checkpoint_inference", lambda *_args, **_kwargs: predictions)
+    monkeypatch.setattr(mdstats, "finalize_prepared_mace_checkpoint_evaluation", lambda *_args, **_kwargs: evaluation_record)
+
+    def _raise_eval2_numerical(*_args, **_kwargs):
         raise mdstats.Eval2NumericalEvaluationError(
             "eval_nonfinite_force_prediction", "controlled non-finite target force prediction",
             target_role_digest=role_digest, prediction_digest=_direct_digest("nonfinite-prediction"),
         )
 
-    monkeypatch.setattr(campaign_core, "_eval2_full_checkpoint", _raise_eval2_numerical)
+    monkeypatch.setattr(mdstats, "eval2_target_metrics_from_prediction_view", _raise_eval2_numerical)
+    # The old serial semantic owner must not be able to satisfy this test.
+    monkeypatch.setattr(
+        campaign_core,
+        "_eval2_full_checkpoint",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy serial target-size path executed")),
+    )
+    cfg = {
+        "evaluation": {"device": "cpu"},
+        "execution": {
+            "evaluation_estimated_ram_mib_per_job": 1.0,
+            "evaluation_prepare_working_memory_mib": 1.0,
+            "evaluation_inference_working_memory_mib": 1.0,
+            "evaluation_finalize_working_memory_mib": 1.0,
+            "evaluation_pipeline_buffer_mib": 16.0,
+            "parallel_evaluation_monitor_interval_seconds": 0.01,
+        },
+    }
     outcomes = campaign_core._eval2_target_size_endpoint_evidence(
-        cfg={}, paths=paths, store=_DirectStore(records),
+        cfg=cfg, paths=paths, store=_DirectStore(records),
         campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
         target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
         target_materialization_resolver=object(),
-        baseline_model=None, model_dtype="float64", local_wrappers={},
+        baseline_model=None, model_dtype="float64", local_wrappers={"mdstats-mace-train": tmp_path / "wrapper"},
     )
-    outcome = next(item for item in outcomes if item.key == eval_key)
-    failure = outcome.failure
-    assert failure is not None
-    assert failure.failure_phase == mdstats.FAILURE_PHASE_TARGET_EVALUATION
-    assert failure.failure_code == "eval_nonfinite_force_prediction"
-    assert failure.execution_record_digest == eval_execution.content_digest
-    assert failure.execution_attempt_digest == eval_execution.attempts[0].content_digest
-    assert failure.checkpoint_digest == checkpoint_digest
-    assert failure.evaluation_role_digest == role_digest
-    assert failure.target_evaluation_digest is not None
+    assert len(shared_context_calls) == 1
+    for eval_key in eval_keys:
+        outcome = next(item for item in outcomes if item.key == eval_key)
+        failure = outcome.failure
+        eval_execution = eval_executions[eval_key]
+        assert failure is not None
+        assert failure.failure_phase == mdstats.FAILURE_PHASE_TARGET_EVALUATION
+        assert failure.failure_code == "eval_nonfinite_force_prediction"
+        assert failure.execution_record_digest == eval_execution.content_digest
+        assert failure.execution_attempt_digest == eval_execution.attempts[0].content_digest
+        assert failure.checkpoint_digest == checkpoint_digest
+        assert failure.evaluation_role_digest == role_digest
+        assert failure.target_evaluation_digest is not None
 
-    def _raise_forged_eval2_role(**_kwargs):
+    def _raise_forged_eval2_role(*_args, **_kwargs):
         raise mdstats.Eval2NumericalEvaluationError(
             "eval_nonfinite_force_prediction", "forged role binding",
             target_role_digest=_direct_digest("forged-eval-role"),
             prediction_digest=_direct_digest("forged-nonfinite-prediction"),
         )
 
-    monkeypatch.setattr(campaign_core, "_eval2_full_checkpoint", _raise_forged_eval2_role)
+    monkeypatch.setattr(
+        mdstats, "eval2_target_metrics_from_prediction_view", _raise_forged_eval2_role
+    )
     with pytest.raises(campaign_core.CampaignCliError, match="role provenance"):
         campaign_core._eval2_target_size_endpoint_evidence(
-            cfg={}, paths=paths, store=_DirectStore(records),
+            cfg=cfg, paths=paths, store=_DirectStore(records),
             campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
             target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
             target_materialization_resolver=object(),
-            baseline_model=None, model_dtype="float64", local_wrappers={},
+            baseline_model=None, model_dtype="float64",
+            local_wrappers={"mdstats-mace-train": tmp_path / "wrapper"},
         )
 
 

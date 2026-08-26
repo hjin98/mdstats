@@ -3710,23 +3710,35 @@ class _ProgressReporter:
             flush=True,
         )
 
-    def item_done(self, index: int, name: str, detail: str = "", *, force: bool = True) -> None:
+    def item_done(
+        self,
+        index: int,
+        name: str,
+        detail: str = "",
+        *,
+        force: bool = True,
+        completed_count: int | None = None,
+    ) -> None:
         now = time.monotonic()
-        if not force and index < self.total and now - self.last_printed < self.minimum_interval_seconds:
+        completed = (
+            int(index) if completed_count is None else int(completed_count)
+        )
+        completed = max(0, min(self.total, completed))
+        if not force and completed < self.total and now - self.last_printed < self.minimum_interval_seconds:
             return
         elapsed = now - self.started
         # Completed/recovered work reported immediately after reporter creation
         # is not a sample of current execution speed.  Move the rate baseline
         # past that startup burst.
-        if elapsed <= self._startup_baseline_seconds and index < self.total:
-            self._rate_tracker.reset(completed=index, now=now)
+        if elapsed <= self._startup_baseline_seconds and completed < self.total:
+            self._rate_tracker.reset(completed=completed, now=now)
         timing = self._rate_tracker.snapshot(
-            completed=index, total=self.total, now=now
+            completed=completed, total=self.total, now=now
         )
         suffix = f"; detail={detail}" if detail else ""
         print(
             f"[{self.label} {index:>3}/{self.total}] {name}; status=complete; "
-            f"progress={format_progress_fraction(index, self.total)}; "
+            f"progress={format_progress_fraction(completed, self.total)}; "
             f"elapsed={format_progress_time(elapsed)}; "
             f"eta={format_progress_time(timing.eta_seconds)}{suffix}",
             flush=True,
@@ -13421,6 +13433,7 @@ class _StagedEvaluationTask:
     prepared_bytes: Callable[[Any], int] | None = None
     inference_result_bytes: Callable[[Any], int] | None = None
     cached_result: Callable[[Any], Any] | None = None
+    accelerator_possible: bool = True
 
 
 @dataclass
@@ -13522,6 +13535,7 @@ def _run_staged_evaluation_tasks(
     device: str,
     progress: Any,
     phase: str = "evaluation",
+    shared_residency_bytes: int = 0,
 ) -> dict[str, Any]:
     """Run evaluation as a bounded CPU -> accelerator -> CPU pipeline.
 
@@ -13535,7 +13549,19 @@ def _run_staged_evaluation_tasks(
     thread_phase = "eval" if phase == "evaluation" else phase
     if not tasks:
         return {}
+    task_keys = tuple(str(task.key) for task in tasks)
+    if len(set(task_keys)) != len(task_keys):
+        duplicates = sorted(
+            key for key, count in Counter(task_keys).items() if count > 1
+        )
+        raise CampaignCliError(
+            f"{phase.capitalize()} staged execution received duplicate logical task "
+            f"identities: {duplicates[:6]}."
+        )
     policy = _inference_concurrency_policy(cfg, phase)
+    accelerator_task_count = sum(
+        1 for task in tasks if bool(task.accelerator_possible)
+    )
     try:
         resources = detect_system_resources(
             cpu_fraction=float(_cfg(cfg, "performance", "cpu_fraction", 0.90)),
@@ -13550,7 +13576,7 @@ def _run_staged_evaluation_tasks(
     gpu_sample = query_gpu_telemetry(device)
     try:
         plan = build_inference_concurrency_plan(
-            task_count=len(tasks), device=device, resources=resources,
+            task_count=accelerator_task_count, device=device, resources=resources,
             policy=policy, gpu_sample=gpu_sample, cpu_sample=cpu_sample,
         )
     except ValueError as exc:
@@ -13686,7 +13712,11 @@ def _run_staged_evaluation_tasks(
             else int(default_bytes),
         )
 
-    estimated_worker_bytes = max(1, int(plan.estimated_ram_bytes_per_job))
+    estimated_worker_bytes = (
+        max(1, int(plan.estimated_ram_bytes_per_job))
+        if accelerator_task_count
+        else 64 * 1024**2
+    )
     prepare_reservation = _working_reservation("prepare", estimated_worker_bytes)
     inference_reservation = _working_reservation(
         "inference", estimated_worker_bytes * joint_model_jobs
@@ -13701,7 +13731,8 @@ def _run_staged_evaluation_tasks(
         raise CampaignCliError(
             f"[execution].{phase}_shared_runtime_residency_mib must be nonnegative."
         )
-    shared_residency = int(shared_residency_mib * 1024**2)
+    runtime_shared_residency = max(0, int(shared_residency_bytes))
+    shared_residency = int(shared_residency_mib * 1024**2) + runtime_shared_residency
     ledger = _PipelineByteLedger(pipeline_ram_budget)
     if shared_residency:
         ledger.reserve("shared:runtime-residency", shared_residency)
@@ -13719,7 +13750,8 @@ def _run_staged_evaluation_tasks(
         f"{phase} pipeline: "
         f"{plan.summary()}; CPU prepare={prepare_workers}, "
         f"CPU finalize={finalize_workers}, prepared buffer={pipeline_buffer}, "
-        f"pipeline RAM={'unknown' if pipeline_ram_budget is None else _format_bytes_gib(pipeline_ram_budget)}"
+        f"pipeline RAM={'unknown' if pipeline_ram_budget is None else _format_bytes_gib(pipeline_ram_budget)}, "
+        f"shared resident={_format_bytes_gib(shared_residency)}"
     )
 
     pending = deque(tasks)
@@ -13735,6 +13767,7 @@ def _run_staged_evaluation_tasks(
         Future[Any], tuple[_StagedEvaluationTask, _StagedEvaluationTiming, int]
     ] = {}
     results: dict[str, Any] = {}
+    accepted_results: set[str] = set()
     failures: list[str] = []
     stop_scheduling = False
     cancel_event = threading.Event()
@@ -13756,9 +13789,18 @@ def _run_staged_evaluation_tasks(
             )
 
     def execute_prepare(task: _StagedEvaluationTask, timing: _StagedEvaluationTiming) -> Any:
+        def update_phase(stage: str) -> None:
+            with stage_events_lock:
+                stage_events.append((task.label, f"CPU prepare: {stage}"))
+
         started = time.monotonic()
         try:
-            return task.prepare()
+            with inference_start_signal(
+                lambda: None,
+                phase_callback=update_phase,
+                cancellation_requested=cancel_event.is_set,
+            ):
+                return task.prepare()
         finally:
             timing.prepared_seconds += time.monotonic() - started
 
@@ -13817,6 +13859,10 @@ def _run_staged_evaluation_tasks(
         inference_result: Any | None,
         timing: _StagedEvaluationTiming,
     ) -> Any:
+        def update_phase(stage: str) -> None:
+            with stage_events_lock:
+                stage_events.append((task.label, f"CPU finalize: {stage}"))
+
         started = time.monotonic()
         try:
             # A cache-only prepared evaluation intentionally bypasses accelerator
@@ -13831,7 +13877,12 @@ def _run_staged_evaluation_tasks(
                 if inference_result is None
                 else inference_result
             )
-            return task.finalize(prepared, active_result)
+            with inference_start_signal(
+                lambda: None,
+                phase_callback=update_phase,
+                cancellation_requested=cancel_event.is_set,
+            ):
+                return task.finalize(prepared, active_result)
         finally:
             timing.finalized_seconds += time.monotonic() - started
 
@@ -13861,6 +13912,8 @@ def _run_staged_evaluation_tasks(
             active_prepare[future] = (task, timing)
 
     def launch_finalize(pool: ThreadPoolExecutor) -> None:
+        if stop_scheduling:
+            return
         while (
             waiting_finalize
             and len(active_finalize) < finalize_workers
@@ -13974,7 +14027,13 @@ def _run_staged_evaluation_tasks(
                             else _evaluation_payload_bytes(prepared)
                         )
                         ledger.reserve(f"prepared:{task.key}", prepared_bytes)
-                        if task.requires_inference(prepared):
+                        requires_inference = bool(task.requires_inference(prepared))
+                        if requires_inference and not task.accelerator_possible:
+                            raise CampaignCliError(
+                                f"{task.label} declared accelerator_possible=False but "
+                                "its prepared payload requires accelerator inference."
+                            )
+                        if requires_inference:
                             ready_inference.append((task, prepared, timing))
                         else:
                             waiting_finalize.append((task, prepared, None, timing))
@@ -14059,6 +14118,7 @@ def _run_staged_evaluation_tasks(
                 try:
                     if task.on_success is not None:
                         task.on_success(result)
+                    accepted_results.add(task.key)
                     wall = time.monotonic() - timing.started
                     progress.item_done(
                         task.display_index,
@@ -14068,6 +14128,7 @@ def _run_staged_evaluation_tasks(
                         + f"prepare {_ProgressReporter._duration(timing.prepared_seconds)}, "
                         + f"infer {_ProgressReporter._duration(timing.inference_seconds)}, "
                         + f"finalize {_ProgressReporter._duration(timing.finalized_seconds)}",
+                        completed_count=len(accepted_results),
                     )
                 except Exception as exc:
                     failures.append(
@@ -14075,6 +14136,7 @@ def _run_staged_evaluation_tasks(
                     )
                     _fail(failures[-1])
                     stop_scheduling = True
+                    cancel_event.set()
 
             now = time.monotonic()
             workload_active_jobs = sum(
@@ -14133,7 +14195,7 @@ def _run_staged_evaluation_tasks(
                 )
                 print(
                     f"[{phase.upper()} scheduler] status=concurrency-change; "
-                    f"progress={format_progress_fraction(len(results), len(tasks))}; "
+                    f"progress={format_progress_fraction(len(accepted_results), len(tasks))}; "
                     f"elapsed={format_progress_time(now - pipeline_started)}; eta=--:--:--; "
                     f"workers={decision.previous_target}->{decision.target_jobs}; reason={decision.reason}; "
                     f"projected_memory={projected_memory}; projected_utilization={projected_util}",
@@ -14154,7 +14216,7 @@ def _run_staged_evaluation_tasks(
                     )
                 print(
                     f"[{phase.upper()} pipeline] status=running; "
-                    f"progress={format_progress_fraction(len(results), len(tasks))}; "
+                    f"progress={format_progress_fraction(len(accepted_results), len(tasks))}; "
                     f"elapsed={format_progress_time(now - pipeline_started)}; eta=--:--:--; "
                     f"prepare={len(active_prepare)}; ready={len(ready_inference)}; "
                     f"infer={len(active_inference)}/{controller.target_jobs}; "
@@ -19907,6 +19969,20 @@ def _eval2_run_record_for_completed_train2_run(
 
 
 
+@dataclass(frozen=True)
+class _TargetSizeEval2EndpointResult:
+    """One authenticated terminal target-size endpoint produced by the pipeline."""
+
+    outcome: Any
+    evaluation_key: str | None = None
+    evaluation_record: Any | None = None
+    metric_key: str | None = None
+    metric_record: Any | None = None
+    checkpoint_key: str | None = None
+    checkpoint_record: Any | None = None
+    cache_reused: bool = False
+
+
 def _eval2_target_size_endpoint_evidence(
     *,
     cfg: Mapping[str, Any],
@@ -19922,12 +19998,14 @@ def _eval2_target_size_endpoint_evidence(
     model_dtype: str,
     local_wrappers: Mapping[str, Path],
 ) -> tuple[Any, ...]:
-    """Reduce the exact current paired-seed TRAIN2 population to stage outcomes.
+    """Reduce the exact paired-seed TRAIN2 population through OPT-EVAL4.
 
-    A required trajectory contributes exactly one authenticated outcome: either
-    a strict successful endpoint or an explicit TRAIN2/EVAL2 numerical failure.
-    Ordinary execution, lineage, and infrastructure failures remain campaign
-    errors and are never converted into target-size scientific evidence.
+    Every required ``(size, seed)`` endpoint becomes one immutable staged task.
+    Worker threads may authenticate/prepare computational inputs, run inference,
+    and reduce typed records, but the parent scheduler is the only owner that
+    publishes durable EVAL2 scientific records.  Target-size ranking is reached
+    only after the complete expected endpoint key set has authenticated terminal
+    outcomes.
     """
 
     import mdstats
@@ -19939,15 +20017,22 @@ def _eval2_target_size_endpoint_evidence(
             f"Target-size evidence requested from non-trainable state {target_size_study.outcome}."
         )
     expected_sizes = tuple(int(v) for v in target_size_study.next_training_sizes)
-    screening_seeds = tuple(int(v) for v in target_size_study.policy.screening_optimizer_seeds)
-    expected_keys = tuple((size, seed) for size in expected_sizes for seed in screening_seeds)
+    screening_seeds = tuple(
+        int(v) for v in target_size_study.policy.screening_optimizer_seeds
+    )
+    expected_keys = tuple(
+        (size, seed) for size in expected_sizes for seed in screening_seeds
+    )
     runs = [
-        run for run in campaign.runs
+        run
+        for run in campaign.runs
         if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
         and run.seed in set(screening_seeds)
         and run.selection_size in expected_sizes
     ]
-    run_by_key = {(int(run.selection_size), int(run.seed)): run for run in runs}
+    run_by_key = {
+        (int(run.selection_size), int(run.seed)): run for run in runs
+    }
     if set(run_by_key) != set(expected_keys) or len(run_by_key) != len(expected_keys):
         missing = sorted(set(expected_keys) - set(run_by_key))
         extra = sorted(set(run_by_key) - set(expected_keys))
@@ -19959,13 +20044,30 @@ def _eval2_target_size_endpoint_evidence(
     if stage == mdstats.STAGE_COARSE:
         parent_by_key: dict[tuple[int, int], Any] = {}
     elif stage == mdstats.STAGE_SHORT:
-        parent_by_key = {item.key: item.success for item in target_size_study.coarse_outcomes}
+        parent_by_key = {
+            item.key: item.success for item in target_size_study.coarse_outcomes
+        }
     else:
-        parent_by_key = {item.key: item.success for item in target_size_study.short_outcomes}
+        parent_by_key = {
+            item.key: item.success for item in target_size_study.short_outcomes
+        }
 
-    outcomes: list[Any] = []
-    for key in expected_keys:
+    # Parent-side intake authenticates the exact population and resolves all
+    # scientific authority before worker execution starts.  Dict descriptors are
+    # runtime-only implementation mechanics; all durable identity remains in the
+    # frozen mdstats records referenced below.
+    planning_progress = _ProgressReporter(
+        f"TARGET-EVAL-{str(stage).upper()}-PLAN", len(expected_keys)
+    )
+    descriptors: list[dict[str, Any]] = []
+    shared_specs: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for display_index, key in enumerate(expected_keys, start=1):
         run = run_by_key[key]
+        planning_progress.item_start(
+            display_index,
+            f"n={run.selection_size}, seed={run.seed}",
+            f"authenticate exact {stage} endpoint at epoch {epoch}",
+        )
         bundle, job, root = jobs[run.mace_job_artifact_digest]
         execution = store.get_record_optional(
             f"execution:{run.run_id}", mdstats.TrainingRunExecutionRecord
@@ -19985,13 +20087,26 @@ def _eval2_target_size_endpoint_evidence(
         candidate = target_size_study.candidate(run.selection_size)
         training_policy_digest = _train2_policy_set_digest(job.protocol)
         schedule_digest = job.protocol.learning_rate_schedule_policy.policy_digest
+        parent = parent_by_key.get(key)
+        if stage != mdstats.STAGE_COARSE and parent is None:
+            raise CampaignCliError(
+                f"n={run.selection_size}, seed={run.seed} lost its authenticated "
+                "semantic-screen continuation parent."
+            )
 
+        # TRAIN2 scientific failure is already one authenticated terminal
+        # endpoint.  Keep it in the same logical population/progress scheduler as
+        # successful endpoints, but it performs no accelerator work.
         scientific_attempts = [
-            attempt for attempt in execution.attempts
+            attempt
+            for attempt in execution.attempts
             if attempt.scientific_failure_code is not None
         ]
         if scientific_attempts:
-            if len(scientific_attempts) != 1 or scientific_attempts[0] is not execution.attempts[-1]:
+            if (
+                len(scientific_attempts) != 1
+                or scientific_attempts[0] is not execution.attempts[-1]
+            ):
                 raise CampaignCliError(
                     f"Target-size-v5 run {run.run_id} has invalid scientific-failure attempt provenance."
                 )
@@ -20004,7 +20119,11 @@ def _eval2_target_size_endpoint_evidence(
             failure = mdstats.load_train2_numerical_failure(
                 paths.runs / run.run_id / "checkpoints"
             )
-            if failure is None or failure.content_digest != attempt.scientific_failure_evidence_digest:
+            if (
+                failure is None
+                or failure.content_digest
+                != attempt.scientific_failure_evidence_digest
+            ):
                 raise CampaignCliError(
                     f"TRAIN2 numerical-failure evidence for {run.run_id} is missing or unauthenticated."
                 )
@@ -20017,30 +20136,47 @@ def _eval2_target_size_endpoint_evidence(
                     f"TRAIN2 numerical failure for {run.run_id} belongs to epoch limit "
                     f"{failure.execution_epoch_limit}, expected {epoch}."
                 )
-            outcomes.append(
-                mdstats.TargetSizeStageOutcome(
-                    failure=mdstats.TargetSizeTrajectoryFailureEvidence(
-                        stage=stage,
-                        target_size=run.selection_size,
-                        optimizer_seed=run.seed,
-                        failure_phase=mdstats.FAILURE_PHASE_TRAIN,
-                        failure_code=failure.failure_code,
-                        failure_reasons=(failure.reason,),
-                        target_size_study_policy_digest=target_size_study.policy.policy_digest,
-                        training_run_digest=run.content_digest,
-                        candidate_data_digest=candidate.candidate_data_digest,
-                        training_policy_digest=training_policy_digest,
-                        schedule_digest=schedule_digest,
-                        execution_record_digest=execution.content_digest,
-                        execution_attempt_digest=attempt.content_digest,
-                        completed_epochs=min(int(epoch), int(failure.failed_epoch) + 1),
-                        optimizer_update_count=failure.completed_updates,
-                    )
+            outcome = mdstats.TargetSizeStageOutcome(
+                failure=mdstats.TargetSizeTrajectoryFailureEvidence(
+                    stage=stage,
+                    target_size=run.selection_size,
+                    optimizer_seed=run.seed,
+                    failure_phase=mdstats.FAILURE_PHASE_TRAIN,
+                    failure_code=failure.failure_code,
+                    failure_reasons=(failure.reason,),
+                    target_size_study_policy_digest=target_size_study.policy.policy_digest,
+                    training_run_digest=run.content_digest,
+                    candidate_data_digest=candidate.candidate_data_digest,
+                    training_policy_digest=training_policy_digest,
+                    schedule_digest=schedule_digest,
+                    execution_record_digest=execution.content_digest,
+                    execution_attempt_digest=attempt.content_digest,
+                    completed_epochs=min(int(epoch), int(failure.failed_epoch) + 1),
+                    optimizer_update_count=failure.completed_updates,
                 )
             )
+            descriptors.append(
+                {
+                    "display_index": display_index,
+                    "key": key,
+                    "run": run,
+                    "terminal": _TargetSizeEval2EndpointResult(outcome=outcome),
+                    "label": f"n={run.selection_size}, seed={run.seed}",
+                }
+            )
+            planning_progress.item_done(
+                display_index,
+                f"n={run.selection_size}, seed={run.seed}",
+                "authenticated terminal TRAIN2 scientific failure",
+            )
             continue
+
         if execution.state is not mdstats.TrainingRunState.SUCCEEDED:
-            reason = None if not execution.attempts else execution.attempts[-1].failure_reason
+            reason = (
+                None
+                if not execution.attempts
+                else execution.attempts[-1].failure_reason
+            )
             raise CampaignCliError(
                 f"Target-size-v5 run {run.run_id} failed for a non-scientific execution reason; "
                 f"it cannot be converted to size evidence: {reason}"
@@ -20058,13 +20194,25 @@ def _eval2_target_size_endpoint_evidence(
                 f"{run.run_id} is not the exact {stage} boundary endpoint {epoch}."
             )
         target_role = _eval2_target_role_for_run(
-            store=store, target_size_study=target_size_study, repair2=repair2,
+            store=store,
+            target_size_study=target_size_study,
+            repair2=repair2,
             role_freeze=role_freeze,
             target_materialization_resolver=target_materialization_resolver,
-            bundle=bundle, run=run,
+            bundle=bundle,
+            run=run,
         )
+        if getattr(target_role, "role_kind", None) != "size_development_complement":
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 target-only EVAL2 resolved a non-complement target role."
+            )
         target_artifact, target_path = _eval2_target_artifact_for_run(
-            paths=paths, store=store, bundle=bundle, job=job, root=root, role=target_role
+            paths=paths,
+            store=store,
+            bundle=bundle,
+            job=job,
+            root=root,
+            role=target_role,
         )
         catalog = _evaluation_checkpoint_catalog(store, run.run_id, execution)
         points = mdstats.read_train2_trajectory_points(
@@ -20072,96 +20220,679 @@ def _eval2_target_size_endpoint_evidence(
             checkpoint_catalog=catalog,
             target_head_name=job.protocol.checkpoint_control_policy.target_head_name,
         )
-        matches = [point for point in points if int(point.epoch) == int(epoch) - 1]
+        matches = [
+            point for point in points if int(point.epoch) == int(epoch) - 1
+        ]
         if len(matches) != 1:
             raise CampaignCliError(
                 f"{run.run_id} lacks its exact epoch-{epoch} checkpoint."
             )
         point = matches[0]
         checkpoint = next(
-            (value for value in catalog.checkpoints if value.sha256 == point.checkpoint_sha256),
+            (
+                value
+                for value in catalog.checkpoints
+                if value.sha256 == point.checkpoint_sha256
+            ),
             None,
         )
         if checkpoint is None:
             raise CampaignCliError(
                 f"{run.run_id} endpoint checkpoint is absent from its frozen catalog."
             )
-        try:
-            record = _eval2_full_checkpoint(
-                cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
-                execution=execution, checkpoint=checkpoint, point=point,
-                target_role=target_role, target_artifact=target_artifact, target_path=target_path,
-                true_replay_resolution=None, baseline_model=baseline_model, model_dtype=model_dtype,
-                local_wrappers=local_wrappers,
-                shortlist_reasons=(f"target_size_v5_epoch_{epoch}_exact_endpoint",),
-                full_evaluation_rank=1, include_replay=False,
+        admissibility = job.protocol.checkpoint_admissibility_policy
+        if admissibility is None:
+            raise CampaignCliError(
+                "EVAL2 checkpoint is missing TRAIN2 admissibility authority."
             )
-        except mdstats.Eval2NumericalEvaluationError as exc:
-            if exc.target_role_digest != target_role.content_digest:
-                raise CampaignCliError(
-                    f"EVAL2 numerical-failure role provenance mismatch for {run.run_id}."
-                ) from exc
-            successful_attempt = execution.attempts[execution.successful_attempt_index - 1]
-            outcomes.append(
-                mdstats.TargetSizeStageOutcome(
-                    failure=mdstats.TargetSizeTrajectoryFailureEvidence(
-                        stage=stage,
-                        target_size=run.selection_size,
-                        optimizer_seed=run.seed,
-                        failure_phase=mdstats.FAILURE_PHASE_TARGET_EVALUATION,
-                        failure_code=exc.failure_code,
-                        failure_reasons=(exc.reason,),
-                        target_size_study_policy_digest=target_size_study.policy.policy_digest,
-                        training_run_digest=run.content_digest,
-                        candidate_data_digest=candidate.candidate_data_digest,
-                        training_policy_digest=training_policy_digest,
-                        schedule_digest=schedule_digest,
-                        execution_record_digest=execution.content_digest,
-                        execution_attempt_digest=successful_attempt.content_digest,
-                        checkpoint_digest=checkpoint.sha256,
-                        evaluation_role_digest=target_role.content_digest,
-                        target_evaluation_digest=exc.content_digest,
-                        completed_epochs=runtime.completed_epochs,
-                        optimizer_update_count=runtime.completed_updates,
-                    )
+        evaluation_policy = _eval2_evaluation_policy(
+            cfg, paths, job, model_dtype=model_dtype
+        )
+        execution_plan = _evaluation_inference_execution_plan(
+            cfg,
+            store=store,
+            record_key=(
+                f"inference_execution_plan:{run.run_id}:{checkpoint.sha256}"
+            ),
+        )
+        replay_mode_key = "target-only"
+        eval_key = (
+            f"eval2_evaluation:{replay_mode_key}:{run.run_id}:"
+            f"{target_role.content_digest}:{checkpoint.sha256}"
+        )
+        metric_key = (
+            f"eval2_target_metric:{replay_mode_key}:{run.run_id}:"
+            f"{target_role.content_digest}:{checkpoint.sha256}"
+        )
+        checkpoint_key = (
+            f"eval2_checkpoint:{run.run_id}:{target_role.content_digest}:"
+            f"{checkpoint.sha256}"
+        )
+        cached_eval = store.get_record_optional(
+            eval_key, mdstats.CheckpointEvaluationRecord
+        )
+        cached_metric = store.get_record_optional(
+            metric_key, mdstats.Eval2TargetMetricRecord
+        )
+        reusable = bool(
+            cached_eval is not None
+            and cached_metric is not None
+            and cached_eval.run_plan_digest == run.content_digest
+            and cached_eval.checkpoint_sha256 == checkpoint.sha256
+            and cached_eval.evaluation_policy_digest == evaluation_policy.policy_digest
+            and cached_eval.target_monitor_artifact_digest
+            == target_artifact.content_digest
+            and cached_eval.target_monitor_sha256 == target_artifact.sha256
+            and cached_metric.target_role_digest == target_role.content_digest
+            and cached_eval.target_candidate_prediction_digest
+            == cached_metric.prediction_digest
+            and cached_eval.replay_monitor_artifact_digest is None
+            and cached_eval.replay_monitor_sha256 is None
+            and "evaluation_scope:authorized_target_only"
+            in cached_eval.metric_record.evaluation_notes
+        )
+        source: Path | None = None
+        capsule: Any | None = None
+        if not reusable:
+            if cached_eval is not None:
+                store.delete_record(eval_key)
+            if cached_metric is not None:
+                store.delete_record(metric_key)
+            source, capsule = _checkpoint_source_for_evaluation(
+                paths,
+                store,
+                run.run_id,
+                checkpoint,
+                execution.checkpoint_catalog,
+            )
+
+        shared_key = None
+        if not reusable:
+            # Scientific role authority remains explicit while computational
+            # target data are shared by authenticated bytes.  Job-local artifact
+            # records with the same role/bytes are admitted individually below
+            # rather than multiplying one resident parsed target in RAM.
+            shared_key = (
+                target_role.content_digest,
+                target_artifact.sha256,
+                evaluation_policy.policy_digest,
+            )
+            shared_spec = shared_specs.setdefault(
+                shared_key,
+                {
+                    "path": target_path,
+                    "artifact": target_artifact,
+                    "policy": evaluation_policy,
+                    "execution_plan": execution_plan,
+                    "authority_scope_digest": target_role.content_digest,
+                    "compatible_artifact_digests": set(),
+                },
+            )
+            shared_spec["compatible_artifact_digests"].add(
+                target_artifact.content_digest
+            )
+        descriptors.append(
+            {
+                "display_index": display_index,
+                "key": key,
+                "run": run,
+                "bundle": bundle,
+                "job": job,
+                "root": root,
+                "execution": execution,
+                "candidate": candidate,
+                "training_policy_digest": training_policy_digest,
+                "schedule_digest": schedule_digest,
+                "runtime": runtime,
+                "parent": parent,
+                "target_role": target_role,
+                "target_artifact": target_artifact,
+                "target_path": target_path,
+                "point": point,
+                "checkpoint": checkpoint,
+                "admissibility": admissibility,
+                "evaluation_policy": evaluation_policy,
+                "execution_plan": execution_plan,
+                "eval_key": eval_key,
+                "metric_key": metric_key,
+                "checkpoint_key": checkpoint_key,
+                "cached_eval": cached_eval if reusable else None,
+                "cached_metric": cached_metric if reusable else None,
+                "source": source,
+                "capsule": capsule,
+                "shared_key": shared_key,
+                "label": f"n={run.selection_size}, seed={run.seed}",
+            }
+        )
+        planning_progress.item_done(
+            display_index,
+            f"n={run.selection_size}, seed={run.seed}",
+            (
+                "authenticated target-only EVAL2 cache reuse"
+                if reusable
+                else "authenticated checkpoint + target authority"
+            ),
+        )
+
+    # Materialize each scientifically compatible target context exactly once.
+    # This is parent-owned, observable setup; no worker publishes authority.
+    shared_contexts: dict[tuple[str, str, str], Any] = {}
+    if shared_specs:
+        shared_progress = _ProgressReporter(
+            f"TARGET-EVAL-{str(stage).upper()}-DATA", len(shared_specs)
+        )
+        for shared_index, (shared_key, spec) in enumerate(
+            sorted(shared_specs.items(), key=lambda item: item[0]), start=1
+        ):
+            label = f"target-{spec['artifact'].sha256[:12]}"
+            shared_progress.item_start(
+                shared_index,
+                label,
+                "authenticate + parse immutable target context",
+            )
+
+            def shared_phase(message: str, *, active_label: str = label) -> None:
+                print(
+                    f"[TARGET-EVAL target] status=phase; item={active_label}; phase={message}",
+                    flush=True,
+                )
+
+            with inference_start_signal(
+                lambda: None, phase_callback=shared_phase
+            ):
+                context = mdstats.prepare_shared_target_evaluation_context(
+                    spec["path"],
+                    spec["artifact"],
+                    policy=spec["policy"],
+                    execution_plan=spec["execution_plan"],
+                    authority_scope_digest=spec["authority_scope_digest"],
+                    compatible_target_monitor_artifact_digests=tuple(
+                        sorted(spec["compatible_artifact_digests"])
+                    ),
+                )
+            shared_contexts[shared_key] = context
+            shared_progress.item_done(
+                shared_index,
+                label,
+                f"resident={_format_reclaimed_bytes(context.retained_bytes)}",
+            )
+
+    progress = _ProgressReporter(
+        f"TARGET-EVAL-{str(stage).upper()}@{epoch}", len(expected_keys)
+    )
+    tasks: list[_StagedEvaluationTask] = []
+
+    def publish_result(result: _TargetSizeEval2EndpointResult) -> None:
+        """Parent-publish one authenticated endpoint under deterministic keys.
+
+        Arrival order is intentionally irrelevant: scientific records are keyed
+        by immutable run/role/checkpoint authority, while reducer ordering is
+        reconstructed from ``expected_keys`` after the complete population
+        reaches terminal state.  Publishing each accepted endpoint immediately
+        preserves useful restart evidence if a sibling fails later.
+        """
+
+        if result.evaluation_record is not None:
+            assert result.evaluation_key is not None
+            store.put_record(result.evaluation_key, result.evaluation_record)
+        if result.metric_record is not None:
+            assert result.metric_key is not None
+            store.put_record(result.metric_key, result.metric_record)
+        if result.checkpoint_record is not None:
+            assert result.checkpoint_key is not None
+            store.put_record(result.checkpoint_key, result.checkpoint_record)
+
+    for descriptor in descriptors:
+        display_index = int(descriptor["display_index"])
+        run = descriptor["run"]
+        key = descriptor["key"]
+        label = descriptor["label"]
+        terminal = descriptor.get("terminal")
+        if terminal is not None:
+            tasks.append(
+                _StagedEvaluationTask(
+                    display_index=display_index,
+                    key=(
+                        f"target-size:{target_size_study.content_digest}:{stage}:{epoch}:"
+                        f"{run.selection_size}:{run.seed}:{run.content_digest}:train-failure"
+                    ),
+                    label=label,
+                    start_detail="authenticated TRAIN2 scientific failure",
+                    prepare=lambda active=terminal: active,
+                    requires_inference=lambda _prepared: False,
+                    infer=lambda active: active,
+                    finalize=lambda prepared, _result: prepared,
+                    cached_result=lambda prepared: prepared,
+                    done_detail=lambda _result, wall: (
+                        f"terminal TRAIN2 scientific failure; elapsed={format_progress_time(wall)}"
+                    ),
+                    on_success=publish_result,
+                    accelerator_possible=False,
                 )
             )
             continue
 
-        parent = parent_by_key.get(key)
-        if stage != mdstats.STAGE_COARSE and parent is None:
-            raise CampaignCliError(
-                f"n={run.selection_size}, seed={run.seed} lost its authenticated "
-                "semantic-screen continuation parent."
-            )
-        wall_time = sum(float(attempt.elapsed_seconds) for attempt in execution.attempts)
-        success = mdstats.TargetSizeStudyTrainingEvidence(
-            stage=stage,
-            target_size=run.selection_size,
-            optimizer_seed=run.seed,
-            completed_epochs=runtime.completed_epochs,
-            optimizer_update_count=runtime.completed_updates,
-            structures_presented=runtime.structures_presented,
-            instantaneous_learning_rate=runtime.instantaneous_learning_rate,
-            wall_time_seconds=wall_time,
-            target_force_score_mev_per_a=record.target_metrics.force_component_rmse_ev_per_angstrom * 1000.0,
-            foundation_identity_digest=job.protocol.foundation_checkpoint.canonical_content_digest,
-            evaluation_role_digest=target_role.content_digest,
-            training_policy_digest=training_policy_digest,
-            target_size_study_policy_digest=target_size_study.policy.policy_digest,
-            training_run_digest=run.content_digest,
-            candidate_data_digest=candidate.candidate_data_digest,
-            checkpoint_digest=point.checkpoint_sha256,
-            schedule_digest=schedule_digest,
-            optimizer_state_digest=runtime.optimizer_state_digest,
-            rng_state_digest=runtime.rng_state_digest,
-            target_evaluation_digest=record.target_metrics.content_digest,
-            parent_checkpoint_digest=None if parent is None else parent.checkpoint_digest,
-            parent_optimizer_state_digest=None if parent is None else parent.optimizer_state_digest,
-            parent_rng_state_digest=None if parent is None else parent.rng_state_digest,
+        bundle = descriptor["bundle"]
+        job = descriptor["job"]
+        root = descriptor["root"]
+        execution = descriptor["execution"]
+        candidate = descriptor["candidate"]
+        training_policy_digest = descriptor["training_policy_digest"]
+        schedule_digest = descriptor["schedule_digest"]
+        runtime = descriptor["runtime"]
+        parent = descriptor["parent"]
+        target_role = descriptor["target_role"]
+        target_artifact = descriptor["target_artifact"]
+        target_path = descriptor["target_path"]
+        point = descriptor["point"]
+        checkpoint = descriptor["checkpoint"]
+        admissibility = descriptor["admissibility"]
+        evaluation_policy = descriptor["evaluation_policy"]
+        execution_plan = descriptor["execution_plan"]
+        eval_key = descriptor["eval_key"]
+        metric_key = descriptor["metric_key"]
+        checkpoint_key = descriptor["checkpoint_key"]
+        cached_eval = descriptor["cached_eval"]
+        cached_metric = descriptor["cached_metric"]
+        source = descriptor["source"]
+        capsule = descriptor["capsule"]
+        successful_attempt = execution.attempts[
+            execution.successful_attempt_index - 1
+        ]
+        wall_time = sum(
+            float(attempt.elapsed_seconds) for attempt in execution.attempts
         )
-        outcomes.append(mdstats.TargetSizeStageOutcome(success=success))
+
+        def build_success_outcome(
+            checkpoint_record: Any,
+            *,
+            active_run: Any = run,
+            active_job: Any = job,
+            active_candidate: Any = candidate,
+            active_runtime: Any = runtime,
+            active_parent: Any = parent,
+            active_target_role: Any = target_role,
+            active_point: Any = point,
+            active_training_policy_digest: str = training_policy_digest,
+            active_schedule_digest: str = schedule_digest,
+            active_wall_time: float = wall_time,
+        ) -> Any:
+            success = mdstats.TargetSizeStudyTrainingEvidence(
+                stage=stage,
+                target_size=active_run.selection_size,
+                optimizer_seed=active_run.seed,
+                completed_epochs=active_runtime.completed_epochs,
+                optimizer_update_count=active_runtime.completed_updates,
+                structures_presented=active_runtime.structures_presented,
+                instantaneous_learning_rate=active_runtime.instantaneous_learning_rate,
+                wall_time_seconds=active_wall_time,
+                target_force_score_mev_per_a=(
+                    checkpoint_record.target_metrics.force_component_rmse_ev_per_angstrom
+                    * 1000.0
+                ),
+                foundation_identity_digest=(
+                    active_job.protocol.foundation_checkpoint.canonical_content_digest
+                ),
+                evaluation_role_digest=active_target_role.content_digest,
+                training_policy_digest=active_training_policy_digest,
+                target_size_study_policy_digest=(
+                    target_size_study.policy.policy_digest
+                ),
+                training_run_digest=active_run.content_digest,
+                candidate_data_digest=active_candidate.candidate_data_digest,
+                checkpoint_digest=active_point.checkpoint_sha256,
+                schedule_digest=active_schedule_digest,
+                optimizer_state_digest=active_runtime.optimizer_state_digest,
+                rng_state_digest=active_runtime.rng_state_digest,
+                target_evaluation_digest=checkpoint_record.target_metrics.content_digest,
+                parent_checkpoint_digest=(
+                    None
+                    if active_parent is None
+                    else active_parent.checkpoint_digest
+                ),
+                parent_optimizer_state_digest=(
+                    None
+                    if active_parent is None
+                    else active_parent.optimizer_state_digest
+                ),
+                parent_rng_state_digest=(
+                    None if active_parent is None else active_parent.rng_state_digest
+                ),
+            )
+            return mdstats.TargetSizeStageOutcome(success=success)
+
+        def build_numerical_failure(
+            exc: Any,
+            *,
+            active_run: Any = run,
+            active_candidate: Any = candidate,
+            active_runtime: Any = runtime,
+            active_target_role: Any = target_role,
+            active_checkpoint: Any = checkpoint,
+            active_attempt: Any = successful_attempt,
+            active_execution: Any = execution,
+            active_training_policy_digest: str = training_policy_digest,
+            active_schedule_digest: str = schedule_digest,
+        ) -> _TargetSizeEval2EndpointResult:
+            if exc.target_role_digest != active_target_role.content_digest:
+                raise CampaignCliError(
+                    f"EVAL2 numerical-failure role provenance mismatch for {active_run.run_id}."
+                ) from exc
+            return _TargetSizeEval2EndpointResult(
+                outcome=mdstats.TargetSizeStageOutcome(
+                    failure=mdstats.TargetSizeTrajectoryFailureEvidence(
+                        stage=stage,
+                        target_size=active_run.selection_size,
+                        optimizer_seed=active_run.seed,
+                        failure_phase=mdstats.FAILURE_PHASE_TARGET_EVALUATION,
+                        failure_code=exc.failure_code,
+                        failure_reasons=(exc.reason,),
+                        target_size_study_policy_digest=(
+                            target_size_study.policy.policy_digest
+                        ),
+                        training_run_digest=active_run.content_digest,
+                        candidate_data_digest=active_candidate.candidate_data_digest,
+                        training_policy_digest=active_training_policy_digest,
+                        schedule_digest=active_schedule_digest,
+                        execution_record_digest=active_execution.content_digest,
+                        execution_attempt_digest=active_attempt.content_digest,
+                        checkpoint_digest=active_checkpoint.sha256,
+                        evaluation_role_digest=active_target_role.content_digest,
+                        target_evaluation_digest=exc.content_digest,
+                        completed_epochs=active_runtime.completed_epochs,
+                        optimizer_update_count=active_runtime.completed_updates,
+                    )
+                )
+            )
+
+        if cached_eval is not None and cached_metric is not None:
+            def prepare_cached(
+                *, active_eval: Any = cached_eval, active_metric: Any = cached_metric
+            ) -> tuple[Any, Any]:
+                report_inference_worker_phase(
+                    "validating cached target-only EVAL2 records"
+                )
+                return active_eval, active_metric
+
+            def finalize_cached(
+                prepared: tuple[Any, Any],
+                _prediction: Any,
+                *,
+                active_point: Any = point,
+                active_admissibility: Any = admissibility,
+                active_checkpoint_key: str = checkpoint_key,
+                active_build_success: Callable[[Any], Any] = build_success_outcome,
+            ) -> _TargetSizeEval2EndpointResult:
+                active_eval, active_metric = prepared
+                checkpoint_record = mdstats.assess_eval2_checkpoint(
+                    active_point,
+                    evaluation_record_digest=active_eval.content_digest,
+                    target_metrics=active_metric,
+                    admissibility_policy=active_admissibility,
+                    replay_candidate_force_rmse_ev_per_angstrom=None,
+                    replay_foundation_force_rmse_ev_per_angstrom=None,
+                    replay_label_mode=None,
+                    shortlist_reasons=(
+                        f"target_size_v5_epoch_{epoch}_exact_endpoint",
+                    ),
+                    full_evaluation_rank=1,
+                )
+                return _TargetSizeEval2EndpointResult(
+                    outcome=active_build_success(checkpoint_record),
+                    checkpoint_key=active_checkpoint_key,
+                    checkpoint_record=checkpoint_record,
+                    cache_reused=True,
+                )
+
+            tasks.append(
+                _StagedEvaluationTask(
+                    display_index=display_index,
+                    key=(
+                        f"target-size:{target_size_study.content_digest}:{stage}:{epoch}:"
+                        f"{run.selection_size}:{run.seed}:{run.content_digest}:"
+                        f"{target_role.content_digest}:{checkpoint.sha256}"
+                    ),
+                    label=label,
+                    start_detail="authenticated target-only EVAL2 cache reuse",
+                    prepare=prepare_cached,
+                    requires_inference=lambda _prepared: False,
+                    infer=lambda prepared: prepared,
+                    finalize=finalize_cached,
+                    cached_result=lambda prepared: prepared,
+                    done_detail=lambda result, wall: (
+                        f"cached; force={result.outcome.success.target_force_score_mev_per_a:.1f} meV/A; "
+                        f"elapsed={format_progress_time(wall)}"
+                    ),
+                    on_success=publish_result,
+                    accelerator_possible=False,
+                )
+            )
+            continue
+
+        shared_context = shared_contexts[descriptor["shared_key"]]
+        if (
+            str(shared_context.authority_scope_digest)
+            != str(target_role.content_digest)
+        ):
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 shared target context crossed scientific role authority."
+            )
+        assert source is not None
+        job_root = (Path(root) / job.relative_directory).resolve()
+        config_path = (Path(root) / job.config_relative_path).resolve()
+        checkpoint_model_cache = paths.runs / run.run_id / "checkpoint-model-cache"
+
+        def prepare_endpoint(
+            *,
+            active_run: Any = run,
+            active_checkpoint: Any = checkpoint,
+            active_source: Path = source,
+            active_capsule: Any = capsule,
+            active_target_path: Path = target_path,
+            active_target_artifact: Any = target_artifact,
+            active_policy: Any = evaluation_policy,
+            active_execution_plan: Any = execution_plan,
+            active_shared_context: Any = shared_context,
+        ) -> Any:
+            return mdstats.prepare_mace_checkpoint_evaluation(
+                active_run,
+                active_checkpoint,
+                candidate_model_path=active_source,
+                evaluation_state_capsule=active_capsule,
+                target_monitor_path=active_target_path,
+                target_monitor_artifact=active_target_artifact,
+                policy=active_policy,
+                execution_plan=active_execution_plan,
+                prediction_cache_directory=paths.internal / "evaluation-predictions",
+                graph_cache_directory=paths.internal / "evaluation-graphs",
+                shared_target_context=active_shared_context,
+                allow_target_monitor_override=(
+                    active_target_artifact.content_digest
+                    != active_run.target_monitor_artifact_digest
+                ),
+                allow_replay_without_training_lineage=False,
+                allow_target_only_evaluation=True,
+            )
+
+        def infer_endpoint(
+            prepared: Any,
+            *,
+            active_checkpoint: Any = checkpoint,
+            active_source: Path = source,
+            active_capsule: Any = capsule,
+            active_config_path: Path = config_path,
+            active_job_root: Path = job_root,
+            active_checkpoint_model_cache: Path = checkpoint_model_cache,
+        ) -> Any:
+            calculator_model = None
+            try:
+                if prepared.requires_candidate_inference:
+                    calculator_model = mdstats.materialize_mace_checkpoint_model(
+                        active_checkpoint,
+                        active_source,
+                        mace_config_path=active_config_path,
+                        job_working_directory=active_job_root,
+                        cache_directory=active_checkpoint_model_cache,
+                        wrapper_path=local_wrappers["mdstats-mace-train"],
+                        allow_checkpoint_dtype_template_cast=False,
+                        evaluation_state_capsule=active_capsule,
+                    )
+                return mdstats.run_prepared_mace_checkpoint_inference(
+                    prepared, calculator_model_path=calculator_model
+                )
+            finally:
+                if (
+                    calculator_model is not None
+                    and Path(calculator_model).resolve()
+                    != Path(active_source).resolve()
+                ):
+                    mdstats.remove_materialized_mace_checkpoint_model(
+                        calculator_model
+                    )
+
+        def finalize_endpoint(
+            prepared: Any,
+            predictions: Any,
+            *,
+            active_point: Any = point,
+            active_admissibility: Any = admissibility,
+            active_target_role: Any = target_role,
+            active_eval_key: str = eval_key,
+            active_metric_key: str = metric_key,
+            active_checkpoint_key: str = checkpoint_key,
+            active_build_success: Callable[[Any], Any] = build_success_outcome,
+            active_build_failure: Callable[[Any], _TargetSizeEval2EndpointResult] = build_numerical_failure,
+        ) -> _TargetSizeEval2EndpointResult:
+            try:
+                evaluation_record = mdstats.finalize_prepared_mace_checkpoint_evaluation(
+                    prepared, predictions
+                )
+                prediction_digest = (
+                    evaluation_record.target_candidate_prediction_digest
+                )
+                if prediction_digest is None:
+                    raise CampaignCliError(
+                        "EVAL2 target prediction identity was not persisted."
+                    )
+                metric_record = mdstats.eval2_target_metrics_from_prediction_view(
+                    prepared.target_view,
+                    predictions.target_candidate_predictions,
+                    block_ids=active_target_role.correlation_block_ids,
+                    target_role_digest=active_target_role.content_digest,
+                    prediction_digest=prediction_digest,
+                )
+                checkpoint_record = mdstats.assess_eval2_checkpoint(
+                    active_point,
+                    evaluation_record_digest=evaluation_record.content_digest,
+                    target_metrics=metric_record,
+                    admissibility_policy=active_admissibility,
+                    replay_candidate_force_rmse_ev_per_angstrom=None,
+                    replay_foundation_force_rmse_ev_per_angstrom=None,
+                    replay_label_mode=None,
+                    shortlist_reasons=(
+                        f"target_size_v5_epoch_{epoch}_exact_endpoint",
+                    ),
+                    full_evaluation_rank=1,
+                )
+            except mdstats.Eval2NumericalEvaluationError as exc:
+                return active_build_failure(exc)
+            return _TargetSizeEval2EndpointResult(
+                outcome=active_build_success(checkpoint_record),
+                evaluation_key=active_eval_key,
+                evaluation_record=evaluation_record,
+                metric_key=active_metric_key,
+                metric_record=metric_record,
+                checkpoint_key=active_checkpoint_key,
+                checkpoint_record=checkpoint_record,
+                cache_reused=False,
+            )
+
+        tasks.append(
+            _StagedEvaluationTask(
+                display_index=display_index,
+                key=(
+                    f"target-size:{target_size_study.content_digest}:{stage}:{epoch}:"
+                    f"{run.selection_size}:{run.seed}:{run.content_digest}:"
+                    f"{target_role.content_digest}:{checkpoint.sha256}"
+                ),
+                label=label,
+                start_detail=(
+                    f"exact {stage} boundary epoch {epoch}; target-only EVAL2"
+                ),
+                prepare=prepare_endpoint,
+                requires_inference=lambda prepared: bool(
+                    prepared.requires_model_inference
+                ),
+                infer=infer_endpoint,
+                finalize=finalize_endpoint,
+                done_detail=lambda result, wall: (
+                    (
+                        f"failure={result.outcome.failure.failure_code}"
+                        if result.outcome.failure is not None
+                        else (
+                            f"force={result.outcome.success.target_force_score_mev_per_a:.1f} meV/A"
+                        )
+                    )
+                    + f"; {'cache' if result.cache_reused else 'computed'}; elapsed={format_progress_time(wall)}"
+                ),
+                on_success=publish_result,
+            )
+        )
+
+    shared_residency_bytes = sum(
+        int(context.retained_bytes) for context in shared_contexts.values()
+    )
+    evaluation_devices = {
+        str(descriptor["evaluation_policy"].device)
+        for descriptor in descriptors
+        if descriptor.get("evaluation_policy") is not None
+    }
+    if len(evaluation_devices) > 1:
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 endpoint population resolved multiple evaluation "
+            f"devices under one staged resource owner: {sorted(evaluation_devices)}."
+        )
+    evaluation_device = next(
+        iter(evaluation_devices),
+        str(
+            _cfg(
+                cfg,
+                "evaluation",
+                "device",
+                _cfg(cfg, "training", "device", "cuda"),
+            )
+        ),
+    )
+    results = _run_staged_evaluation_tasks(
+        tasks,
+        cfg=cfg,
+        device=evaluation_device,
+        progress=progress,
+        phase="evaluation",
+        shared_residency_bytes=shared_residency_bytes,
+    )
+    if len(results) != len(expected_keys):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 returned an incomplete terminal endpoint population."
+        )
+
+    # Hard terminal-state barrier: only now may the caller feed the reducer.
+    task_key_by_index = {int(task.display_index): task.key for task in tasks}
+    outcomes: list[Any] = []
+    for descriptor in descriptors:
+        task_key = task_key_by_index[int(descriptor["display_index"])]
+        terminal = results.get(task_key)
+        if not isinstance(terminal, _TargetSizeEval2EndpointResult):
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 produced an invalid endpoint result type."
+            )
+        if terminal.outcome.success is None and terminal.outcome.failure is None:
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 endpoint has no terminal scientific state."
+            )
+        outcomes.append(terminal.outcome)
     return tuple(outcomes)
+
 def _command_evaluate_train2(
     args: argparse.Namespace,
     *,
