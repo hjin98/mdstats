@@ -13799,6 +13799,11 @@ def _run_staged_evaluation_tasks(
     active_finalize: dict[
         Future[Any], tuple[_StagedEvaluationTask, _StagedEvaluationTiming, int]
     ] = {}
+    # The scheduler materializes this owner when an admitted payload is about
+    # to become inference-ready, then transfers it to real inference.  Earlier
+    # unclassified admission stays conservative because a prepared payload can
+    # be larger than its working reservation.
+    progress_owner = "progress:minimum-inference"
     results: dict[str, Any] = {}
     accepted_results: set[str] = set()
     failures: list[str] = []
@@ -13928,6 +13933,37 @@ def _run_staged_evaluation_tasks(
         finally:
             timing.finalized_seconds += time.monotonic() - started
 
+    def _needs_progress_envelope() -> bool:
+        """Whether currently admitted work still needs J=1 cover.
+
+        Merely queued work has not consumed any pipeline payload capacity yet;
+        the one-at-a-time unclassified admission claim protects that first
+        transition.  The guard is needed once an active preparation or an
+        inference-ready retained payload exists.
+        """
+
+        return bool(active_prepare or ready_inference)
+
+    def _ensure_progress_envelope() -> bool:
+        """Own the prospective J=1 envelope unless an inference owns it already."""
+
+        if active_inference or not _needs_progress_envelope():
+            return True
+        if progress_owner in ledger.reservations:
+            return True
+        if not ledger.can_reserve(minimum_inference_reservation):
+            return False
+        ledger.reserve(progress_owner, minimum_inference_reservation)
+        return True
+
+    def _release_unused_progress_envelope() -> None:
+        if (
+            progress_owner in ledger.reservations
+            and not active_inference
+            and not _needs_progress_envelope()
+        ):
+            ledger.release(progress_owner)
+
     def launch_prepare(pool: ThreadPoolExecutor) -> None:
         if stop_scheduling:
             return
@@ -13940,21 +13976,26 @@ def _run_staged_evaluation_tasks(
             buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
             if buffered >= pipeline_buffer:
                 break
-            # A prepared task cannot be authoritatively classified until its
-            # preparation completes.  Preserve one J=1 envelope before launching
-            # any such work, not merely after ready_inference becomes nonempty.
-            # An active inference reservation already owns that envelope.
-            # One active preparation is itself a releaser: after it is classified,
-            # its conservative working reservation is released before its retained
-            # payload is charged.  A second unclassified preparation is not safe
-            # unless the J=1 envelope remains available prospectively.
-            requires_prospective_headroom = (
-                not active_inference and (active_prepare or ready_inference)
-            )
-            if requires_prospective_headroom and not ledger.can_reserve(
-                prepare_reservation + minimum_inference_reservation
-            ):
-                break
+            # Payload growth is not knowable until production preparation has
+            # completed.  Until an actual inference reservation exists, only
+            # one such unclassified transition may be outstanding.  This is
+            # the scheduler's prospective admission claim: it avoids inventing
+            # a retained-size contract while preserving prepare/infer overlap
+            # as soon as the first real inference owner is active.
+            if not active_inference:
+                if ready_inference or waiting_finalize or active_finalize:
+                    break
+                if active_prepare and not ledger.can_reserve(
+                    prepare_reservation + 2 * minimum_inference_reservation
+                ):
+                    # With no retained-size contract, concurrent
+                    # unclassified preparation needs an additional minimum
+                    # envelope beyond the one used for its own eventual J=1
+                    # launch.  This leaves ordinary high-headroom pipelines
+                    # work-conserving while safely sequencing tight ones.
+                    break
+            # Preparation remains conservatively inference-capable until its
+            # production classification has completed.
             if not ledger.can_reserve(prepare_reservation):
                 break
             task = pending.popleft()
@@ -13998,6 +14039,11 @@ def _run_staged_evaluation_tasks(
                 break
             if len(waiting_finalize) + len(active_finalize) >= finalize_backlog_limit:
                 break
+            # Materialize the prospective admission claim as an owned ledger
+            # reservation immediately before a prepared payload becomes an
+            # inference owner.  It is transferred below, never double-booked.
+            if not _ensure_progress_envelope():
+                break
             # Choose the largest launch-local width J in [1, joint_model_jobs]
             # whose inference working-memory reservation the current ledger
             # admits.  For automatic accounting this descends from the
@@ -14008,12 +14054,20 @@ def _run_staged_evaluation_tasks(
             # the theoretical ceiling then remains only an upper bound.
             selected_jobs: int | None = None
             selected_reservation: int | None = None
+            progress_bytes = ledger.reservations.get(progress_owner, 0)
             if joint_authority_owns_model_jobs:
                 for jobs in range(max(1, int(joint_model_jobs)), 0, -1):
                     reservation = _working_reservation(
                         "inference", estimated_worker_bytes * jobs
                     )
-                    if ledger.can_reserve(reservation):
+                    # The prospective envelope transfers into this real
+                    # inference reservation.  Test admission in that final
+                    # coordinate so the same J=1 bytes are not double-booked.
+                    if (
+                        ledger.budget_bytes is None
+                        or ledger.total_bytes - progress_bytes + reservation
+                        <= ledger.budget_bytes
+                    ):
                         selected_jobs = jobs
                         selected_reservation = reservation
                         break
@@ -14026,6 +14080,8 @@ def _run_staged_evaluation_tasks(
                 # causal RAM-admission error from the stall handler.
                 break
             task, prepared, timing = ready_inference.popleft()
+            if progress_bytes:
+                ledger.release(progress_owner)
             ledger.reserve(f"inference:{task.key}", selected_reservation)
             lease = (
                 InferenceLease(
@@ -14090,8 +14146,11 @@ def _run_staged_evaluation_tasks(
                         f"{len(ready_inference)} queued inference task(s): "
                         f"{controller.admission_blocked_reason}."
                     )
-                if ready_inference and not ledger.can_reserve(
-                    minimum_inference_reservation
+                progress_bytes = ledger.reservations.get(progress_owner, 0)
+                if ready_inference and (
+                    ledger.budget_bytes is not None
+                    and ledger.total_bytes - progress_bytes
+                    + minimum_inference_reservation > ledger.budget_bytes
                 ):
                     # A known byte-ledger/RAM block must never collapse into the
                     # generic stall.  Expose the failed admission equation so the
@@ -14168,6 +14227,7 @@ def _run_staged_evaluation_tasks(
                             ready_inference.append((task, prepared, timing))
                         else:
                             waiting_finalize.append((task, prepared, None, timing))
+                        _release_unused_progress_envelope()
                     except Exception as exc:
                         failures.append(
                             f"{task.label}: {type(exc).__name__}: {exc} (stage=CPU preparation)"
@@ -14186,6 +14246,11 @@ def _run_staged_evaluation_tasks(
                             else _evaluation_payload_bytes(inference_result)
                         )
                         ledger.release(f"inference:{task.key}")
+                        # If another task can still require inference, retain
+                        # J=1 cover while this completed inference is converted
+                        # to its retained result payload.  A concurrently active
+                        # inference already provides that cover.
+                        _ensure_progress_envelope()
                         ledger.reserve(f"result:{task.key}", result_bytes)
                         waiting_finalize.append(
                             (task, prepared, inference_result, timing)

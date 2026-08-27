@@ -2227,6 +2227,90 @@ def test_multi_prepare_prospectively_preserves_cache_to_uncached_progress(
     assert inferred == ["uncached-a"]
 
 
+@pytest.mark.parametrize(
+    "payload_mib",
+    ((1.5, 1.5), (1.25, 1.75)),
+)
+def test_prepare_retained_growth_cannot_consume_persistent_j1_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+    payload_mib: tuple[float, float],
+) -> None:
+    """REVIEW2/O4: the real scheduler owns J=1 across preparation growth.
+
+    With a 3 MiB ledger, 1 MiB prepare working reservation, and 1 MiB J=1
+    inference reservation, the old launch-time-only check admitted both
+    prepares.  Their larger retained payloads then filled the ledger and
+    manufactured a false irreducible admission failure.  A persistent ledger
+    owner sequences the preparations and completes both tasks instead.
+    """
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=6 * _ONE_MIB,  # auto pipeline budget = 3 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+    leases: list[InferenceLease | None] = []
+    reservations: list[str] = []
+    releases: list[str] = []
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def observe_reserve(self, owner: str, amount: int) -> None:
+        reservations.append(owner)
+        original_reserve(self, owner, amount)
+
+    def observe_release(self, owner: str) -> None:
+        releases.append(owner)
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "reserve", observe_reserve)
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", observe_release)
+
+    def task(index: int, retained_mib: float) -> campaign_cli._StagedEvaluationTask:
+        payload_bytes = int(retained_mib * _ONE_MIB)
+        payload = np.zeros(payload_bytes, dtype=np.uint8)
+
+        def infer(_prepared):
+            leases.append(current_inference_lease())
+            return index
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"retained-growth-{index}",
+            label=f"retained-growth-{index}",
+            start_detail="retained-growth-progress-envelope",
+            prepare=lambda payload=payload: payload,
+            requires_inference=lambda _prepared: True,
+            infer=infer,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared, payload_bytes=payload_bytes: payload_bytes,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tuple(task(index, retained_mib) for index, retained_mib in enumerate(payload_mib)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert results == {"retained-growth-0": 0, "retained-growth-1": 1}
+    assert [lease.maximum_model_jobs for lease in leases if lease is not None] == [1, 1]
+    # The prospective J=1 owner is transferred into each real inference owner;
+    # it is not left behind as a second reservation after successful completion.
+    assert reservations.count("progress:minimum-inference") == 2
+    assert releases.count("progress:minimum-inference") == 2
+
+
 def test_keyboard_interrupt_releases_scheduler_owned_inference_reservations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
