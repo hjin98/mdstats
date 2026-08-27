@@ -3,8 +3,8 @@
   "renderer": {
     "from": "markdown+tex_math_single_backslash+tex_math_dollars",
     "pdf_engine": "typst",
-    "papersize": "us-letter",
     "margin": "0.75in",
+    "papersize": "us-letter",
     "typst_binary": "mace-dependencies/typst-x86_64-unknown-linux-musl.tar.xz"
   },
   "direct": [],
