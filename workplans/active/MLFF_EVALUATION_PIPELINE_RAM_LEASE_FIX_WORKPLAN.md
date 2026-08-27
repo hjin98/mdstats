@@ -8,11 +8,18 @@ protocol_version: 5.8.0
 
 ## Current status
 
-**REWORK REQUIRED after REVIEW3 independent Software Design review.**
+**R1–R3 closed by commit `9bde51f` on branch `workplan/eval-pipeline-ram-lease-fix`; awaiting REVIEW4 acceptance.**
 
 The implementation series through commit `8b3c34e99559350718f574e709c9884f29a1b90d` preserves the accepted one-outer-owner RAM-lease architecture and closes the original 3 MiB retained-growth fixture, but REVIEW3 found that the implementation still substitutes a fixed `2 * minimum_inference_reservation` admission heuristic for a real bound on unknown prepare -> retained-payload growth. That heuristic is not invariant-preserving and can still manufacture avoidable J=1 admission failures under larger but feasible retained-growth geometries.
 
-REVIEW3 also confirms that the nested lease binding remains directionally correct, the authentic target-size cache-only -> uncached integration path is substantially closed, and no target-size scientific/persistence drift is evident. Remaining acceptance work is limited to: (1) the producer/backpressure invariant, (2) explicit RAM-coordinate profile re-clamp evidence, (3) progress-owner lifecycle evidence on all required terminal paths, and (4) executed final regression/repository checks.
+REVIEW3 also confirms that the nested lease binding remains directionally correct, the authentic target-size cache-only -> uncached integration path is substantially closed, and no target-size scientific/persistence drift is evident.
+
+## Closure evidence (`9bde51f`)
+
+- **O4 — producer/backpressure:** `_unclassified_prepare_admissible` replaces the `2 * J1` heuristic; `test_review3_5mib_retained_growth_geometry_sequences_and_completes` fails on `8b3c34e` (observed `prepared:review3-1` charge against `ledger_owned=3407872 / budget=5242880`) and passes after repair with no simultaneous retained charge (`retained_peak == 1`); `test_bounded_retained_upper_bound_preserves_multi_prepare_overlap` proves overlap survives when a sound bound exists. REVIEW2 `(1.5, 1.5)` / `(1.25, 1.75)` and cache-only -> uncached cases retained.
+- **O3 — RAM-coordinate re-clamp:** `test_staged_lease_ram_reclamp_excludes_out_of_lease_profile_evidence` proves prior 60 000-byte evidence is excluded under a later 25 000-byte lease (selection-level, not constructor-field inspection).
+- **O6 — lifecycle:** `test_success_reuses_released_inference_reservation_in_same_invocation`, `test_bounded_oom_inference_terminal_failure_releases_ledger`, `test_all_cache_only_terminal_state_releases_unused_progress_owner` added; existing ordinary-failure / KeyboardInterrupt / sibling-cancellation coverage retained.
+- **O9/O10 — regression:** affected-surface regression green — **267 passed, 1 skipped** across `test_mlff_opt_eval4_staged_evaluation_pipeline.py`, `test_mlff_static_mace_inference.py`, `test_mlff_target_size_v5_topology.py`, `test_mlff_inference_parallel_scheduler.py`, `test_mlff_dyn_verify2.py`, `test_mlff_campaign_cli.py`, `test_mlff_target_size_study_v5.py`, `test_mlff_target_size_repair1_real_owner.py` (skip = `real LTA training root not supplied`). Two **pre-existing, unrelated** failures remain in `test_mlff_opt_eval4_specification.py` (stale `0.20.140a0` version pin; missing `OPT-EVAL4` architecture-manual heading), outside this workplan's frozen scope.
 
 The accepted architecture remains valid. Do not reopen target-size science, flexible fidelity, one-outer-owner evaluation, or static-inference architecture unless a stated redesign trigger fires.
 
