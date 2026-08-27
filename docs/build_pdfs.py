@@ -244,13 +244,22 @@ def _command_version(name: str) -> str:
     return cp.stdout.splitlines()[0].strip()
 
 
+def _renderer_metadata(config: dict, output: Path) -> Path:
+    margin = config["renderer"].get("margin")
+    metadata = output.with_name(output.name + ".metadata.json")
+    data = {"margin": {"x": margin, "y": margin}} if margin else {}
+    metadata.write_text(json.dumps(data), encoding="utf-8")
+    return metadata
+
+
 def _renderer_args(config: dict, source: Path, output: Path) -> list[str]:
     r = config["renderer"]
     return [
         "pandoc", str(source), "-o", str(output),
         "--from", r["from"], "--pdf-engine", r["pdf_engine"],
         "--resource-path", os.pathsep.join((str(source.parent), str(ROOT / "docs"), str(ROOT))),
-        "-V", f"papersize:{r['papersize']}", "-V", f"margin:{r['margin']}",
+        "-V", f"papersize:{r['papersize']}",
+        "--metadata-file", str(_renderer_metadata(config, output)),
     ]
 
 
