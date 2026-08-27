@@ -13520,13 +13520,29 @@ class _PipelineByteLedger:
         if not self.can_reserve(value):
             raise CampaignCliError(
                 "Pipeline RAM cannot admit one required payload/worker: "
-                f"owner={owner}; payload={value} bytes; retained={self.total_bytes} bytes; "
+                f"owner={owner}; payload={value} bytes; ledger_owned={self.total_bytes} bytes; "
                 f"budget={self.budget_bytes} bytes."
             )
         self.reservations[owner] = value
 
     def release(self, owner: str) -> None:
         self.reservations.pop(owner, None)
+
+    @property
+    def retained_payload_bytes(self) -> int:
+        """Bytes held by completed stage payloads, excluding working reservations."""
+
+        return sum(
+            value
+            for owner, value in self.reservations.items()
+            if owner.startswith(("prepared:", "result:"))
+        )
+
+    def release_all(self) -> None:
+        """Release every owner individually so terminal cleanup remains observable."""
+
+        for owner in tuple(self.reservations):
+            self.release(owner)
 
 
 def _run_staged_evaluation_tasks(
@@ -13743,6 +13759,16 @@ def _run_staged_evaluation_tasks(
     ledger = _PipelineByteLedger(pipeline_ram_budget)
     if shared_residency:
         ledger.reserve("shared:runtime-residency", shared_residency)
+
+    @contextmanager
+    def release_ledger_on_terminal_exception() -> Iterable[None]:
+        try:
+            yield
+        except BaseException:
+            # Future.result() can propagate KeyboardInterrupt, which bypasses the
+            # ordinary scheduler failure bookkeeping below.
+            ledger.release_all()
+            raise
     if not ledger.can_reserve(prepare_reservation):
         raise CampaignCliError(
             "Evaluation pipeline RAM cannot admit one CPU preparation reservation: "
@@ -13914,13 +13940,18 @@ def _run_staged_evaluation_tasks(
             buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
             if buffered >= pipeline_buffer:
                 break
-            # Once inference-ready work exists, further preparation must not
-            # consume the RAM that a minimum J=1 inference reservation still
-            # requires for forward progress.  This sequences additional
-            # preparation until the ready inference acquires a valid lease (or
-            # an active owner releases enough bytes), while leaving full
-            # prepare/infer/finalize overlap intact whenever headroom permits.
-            if ready_inference and not ledger.can_reserve(
+            # A prepared task cannot be authoritatively classified until its
+            # preparation completes.  Preserve one J=1 envelope before launching
+            # any such work, not merely after ready_inference becomes nonempty.
+            # An active inference reservation already owns that envelope.
+            # One active preparation is itself a releaser: after it is classified,
+            # its conservative working reservation is released before its retained
+            # payload is charged.  A second unclassified preparation is not safe
+            # unless the J=1 envelope remains available prospectively.
+            requires_prospective_headroom = (
+                not active_inference and (active_prepare or ready_inference)
+            )
+            if requires_prospective_headroom and not ledger.can_reserve(
                 prepare_reservation + minimum_inference_reservation
             ):
                 break
@@ -14013,6 +14044,7 @@ def _run_staged_evaluation_tasks(
             active_inference[future] = (task, prepared, timing, status)
 
     with (
+        release_ledger_on_terminal_exception(),
         ThreadPoolExecutor(
             max_workers=max(1, prepare_workers),
                 thread_name_prefix=f"mdstats-{thread_phase}-prepare",
@@ -14070,9 +14102,29 @@ def _run_staged_evaluation_tasks(
                         "minimum inference reservation (J=1) cannot fit the "
                         f"pipeline byte budget; queued={len(ready_inference)}; "
                         f"minimum_reservation={minimum_inference_reservation} bytes; "
-                        f"retained={ledger.total_bytes} bytes; "
+                        f"ledger_owned={ledger.total_bytes} bytes; "
+                        f"retained_payload={ledger.retained_payload_bytes} bytes; "
                         f"joint_model_cap={joint_model_jobs}; "
                         f"pipeline_budget="
+                        + ("unknown" if ledger.budget_bytes is None else f"{ledger.budget_bytes} bytes")
+                        + "."
+                    )
+                if pending and not ledger.can_reserve(
+                    prepare_reservation + minimum_inference_reservation
+                ):
+                    cancel_event.set()
+                    raise CampaignCliError(
+                        f"{phase.capitalize()} staged RAM admission blocked: "
+                        "cannot admit one required payload/worker while preserving "
+                        "the minimum inference reservation (J=1) for one "
+                        "unclassified preparation in the pipeline byte budget; "
+                        f"pending={len(pending)}; "
+                        f"minimum_reservation={minimum_inference_reservation} bytes; "
+                        f"prepare_reservation={prepare_reservation} bytes; "
+                        f"ledger_owned={ledger.total_bytes} bytes; "
+                        f"retained_payload={ledger.retained_payload_bytes} bytes; "
+                        f"joint_model_cap={joint_model_jobs}; "
+                        "pipeline_budget="
                         + ("unknown" if ledger.budget_bytes is None else f"{ledger.budget_bytes} bytes")
                         + "."
                     )
@@ -14316,7 +14368,7 @@ def _run_staged_evaluation_tasks(
             ledger.release(f"result:{task.key}")
     ledger.release("shared:runtime-residency")
     leaked_reservations = dict(ledger.reservations)
-    ledger.reservations.clear()
+    ledger.release_all()
     if not failures and leaked_reservations:
         raise CampaignCliError(
             "Pipeline RAM reservation leak after successful execution: "

@@ -1202,19 +1202,41 @@ def test_auto_execution_path_persists_and_reuses_compatible_profile(
         if point.feasible
     )
 
+    captured: dict[str, StaticInferenceRuntimeAuthority] = {}
+    real_init = StaticInferenceRuntimeAuthority.__init__
+
+    def capture_init(self, **kwargs):
+        captured["authority"] = self
+        real_init(self, **kwargs)
+
+    monkeypatch.setattr(StaticInferenceRuntimeAuthority, "__init__", capture_init)
     reused_provider = Provider()
-    reused = campaign_execution._predict_model_on_atoms(
-        model,
-        atoms,
-        head=None,
-        policy=policy,
-        execution_plan=plan,
-        provider=reused_provider,
-        graph_cache_directory=graph_cache,
+    from mdstats.training_data.inference_parallel import (
+        InferenceLease,
+        inference_start_signal,
     )
+
+    # Reuse the profile produced under the large process-wide cap, but execute
+    # through the actual prediction path under a narrower current stage lease.
+    with inference_start_signal(
+        lambda: None,
+        lease=InferenceLease(maximum_model_jobs=1, ram_allowance_bytes=1 << 30),
+    ):
+        reused = campaign_execution._predict_model_on_atoms(
+            model,
+            atoms,
+            head=None,
+            policy=policy,
+            execution_plan=plan,
+            provider=reused_provider,
+            graph_cache_directory=graph_cache,
+        )
 
     assert reused_provider.calls
     assert reused_provider.calls[0][0] == profile.selected_batch_size
+    assert captured["authority"].reused_compatible_profile
+    assert captured["authority"].maximum_concurrent_model_jobs == 1
+    assert captured["authority"].profile().selected_concurrent_model_jobs == 1
     assert len(reused) == len(first) == len(atoms)
     np.testing.assert_allclose(
         [value.energy_ev for value in reused],

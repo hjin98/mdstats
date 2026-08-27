@@ -886,6 +886,8 @@ def test_target_size_real_campaign_store_restart_reuses_success_and_completes_re
     import numpy as np
     from ase import Atoms
     from ase.io import write
+    from mdstats.training_data import _campaign_cli_core
+    from mdstats.training_data.inference_parallel import current_inference_lease
     from mdstats.training_data.model_features import AtomicModelPrediction
 
     repair, study = _direct_study()
@@ -1053,12 +1055,26 @@ def test_target_size_real_campaign_store_restart_reuses_success_and_completes_re
     failing_run = run_by_key[failing_key]
     publication_complete = threading.Event()
     inference_calls = {run.run_id: 0 for run in runs}
+    observed_leases = []
+    inference_reservations = []
+    original_reserve = _campaign_cli_core._PipelineByteLedger.reserve
+
+    def record_reserve(self, owner, amount):
+        if owner.startswith("inference:"):
+            inference_reservations.append(owner)
+        original_reserve(self, owner, amount)
+
+    monkeypatch.setattr(
+        _campaign_cli_core._PipelineByteLedger, "reserve", record_reserve
+    )
     fail_once = {"enabled": True}
 
     def infer(prepared, *, calculator_model_path=None, **_kwargs):
         del calculator_model_path
         run_id = prepared.run_plan.run_id
         inference_calls[run_id] += 1
+        observed_leases.append(current_inference_lease())
+        assert observed_leases[-1] is not None
         if fail_once["enabled"] and run_id == failing_run.run_id:
             assert publication_complete.wait(timeout=5.0)
             raise RuntimeError("controlled sibling infrastructure failure")
@@ -1166,6 +1182,10 @@ def test_target_size_real_campaign_store_restart_reuses_success_and_completes_re
     assert len(outcomes) == len(expected_order)
     assert inference_calls[first_run.run_id] == 1
     assert inference_calls[failing_run.run_id] == 2
+    # The first endpoint is cache-only on restart, so it neither calls the
+    # inference owner again nor obtains a staged inference reservation.
+    assert len(inference_reservations) == sum(inference_calls.values())
+    assert all(lease is not None for lease in observed_leases)
     assert all(item.success is not None for item in outcomes)
     reduced = mdstats.attach_coarse_outcomes(study, outcomes)
     assert len(reduced.coarse_outcomes) == len(expected_order)

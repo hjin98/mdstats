@@ -2170,3 +2170,104 @@ def test_preparation_does_not_starve_ready_inference_of_progress_headroom(
     # Cache-only items bypass inference; only the uncached items are inferred.
     assert inferred == ["uncached-2", "uncached-3"]
     assert sorted(finalized) == ["task-0", "task-1", "task-2", "task-3"]
+
+
+def test_multi_prepare_prospectively_preserves_cache_to_uncached_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O4: two prepare workers cannot consume J=1 headroom before classification."""
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=4 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+    inferred: list[str] = []
+
+    def task(key: str, *, cache_only: bool, payload_bytes: int):
+        payload = np.zeros(payload_bytes, dtype=np.uint8)
+        return campaign_cli._StagedEvaluationTask(
+            display_index=len(inferred) + 1,
+            key=key,
+            label=key,
+            start_detail="prospective-headroom",
+            prepare=lambda payload=payload: payload,
+            requires_inference=lambda _prepared, cache_only=cache_only: not cache_only,
+            infer=lambda _prepared, key=key: inferred.append(key) or key,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared, payload_bytes=payload_bytes: payload_bytes,
+            cached_result=(lambda prepared: prepared) if cache_only else None,
+            accelerator_possible=not cache_only,
+        )
+
+    # On 6435898, the first two preparations consume the entire 2 MiB ledger
+    # before either can be classified.  The cache-only predecessor then cannot
+    # finalize and the uncached item cannot obtain J=1 inference headroom.
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (
+            task("cached", cache_only=True, payload_bytes=_ONE_MIB),
+            task("uncached-a", cache_only=False, payload_bytes=_ONE_MIB),
+        ),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert set(results) == {"cached", "uncached-a"}
+    assert inferred == ["uncached-a"]
+
+
+def test_keyboard_interrupt_releases_scheduler_owned_inference_reservations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: terminal interrupts release the current scheduler ledger in place."""
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=8 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    released: list[str] = []
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def record_release(self, owner: str) -> None:
+        released.append(owner)
+        original_release(self, owner)
+
+    monkeypatch.setattr(
+        campaign_cli._core._PipelineByteLedger, "release", record_release
+    )
+    interrupted = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="interrupt",
+        label="interrupt",
+        start_detail="interrupt-cleanup",
+        prepare=lambda: 1,
+        requires_inference=lambda _prepared: True,
+        infer=lambda _prepared: (_ for _ in ()).throw(KeyboardInterrupt()),
+        finalize=lambda _prepared, result: result,
+        done_detail=lambda _result, _wall: "done",
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        campaign_cli._run_staged_evaluation_tasks(
+            [interrupted],
+            cfg=cfg,
+            phase="evaluation",
+            device="cpu",
+            progress=_Progress(),
+        )
+
+    assert "inference:interrupt" in released
+    assert "prepared:interrupt" in released
