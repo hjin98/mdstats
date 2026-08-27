@@ -1,0 +1,50 @@
+name: Diagnose documentation page variables
+
+on:
+  push:
+    branches:
+      - ci/incremental-doc-pdf-autosync
+    paths:
+      - '.github/workflows/docs-render-pagevar-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: pagevar-${{ matrix.case }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [papersize, margin]
+    env:
+      DOC_TOOLCHAIN_SHA: c5411e5c0d8ffa390f0979660c592725f9dca6f8
+      TARGET_MD: docs/specs/documentation/architecture_manual_ownership_spec.md
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p .doc-tools
+          base="https://raw.githubusercontent.com/hjin98/mace-dependencies/${DOC_TOOLCHAIN_SHA}"
+          curl -fsSL "${base}/pandoc-3.10.2-linux-amd64.tar.gz" -o /tmp/pandoc.tar.gz
+          curl -fsSL "${base}/typst-x86_64-unknown-linux-musl.tar.xz" -o /tmp/typst.tar.xz
+          tar -xzf /tmp/pandoc.tar.gz -C .doc-tools --strip-components=1
+          tar -xf /tmp/typst.tar.xz -C .doc-tools
+          find .doc-tools -type f -name pandoc -exec chmod +x {} \;
+          find .doc-tools -type f -name typst -exec chmod +x {} \;
+          find .doc-tools -type f -name pandoc -exec dirname {} \; >> "$GITHUB_PATH"
+          find .doc-tools -type f -name typst -exec dirname {} \; >> "$GITHUB_PATH"
+      - name: Render page variable
+        env:
+          CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          args=("$TARGET_MD" -o /tmp/out.pdf --pdf-engine=typst)
+          case "$CASE" in
+            papersize) args+=(-V papersize:us-letter) ;;
+            margin) args+=(-V margin:0.75in) ;;
+          esac
+          pandoc "${args[@]}"
+          test -s /tmp/out.pdf
