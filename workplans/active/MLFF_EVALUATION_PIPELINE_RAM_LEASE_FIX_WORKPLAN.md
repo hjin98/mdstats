@@ -8,251 +8,229 @@ protocol_version: 5.8.0
 
 ## Current status
 
-**REWORK REQUIRED after REVIEW2 independent Software Design review.**
+**REWORK REQUIRED after REVIEW3 independent Software Design review.**
 
-The implementation series through commit `4d01520c6cc6c5841b530d0daac84097a8f7c25a` correctly establishes the core launch-local RAM lease architecture, largest-admissible inner-width selection, nested static-inference lease propagation, improved RAM diagnostics, and observable terminal cleanup. REVIEW2 nevertheless found one remaining blocking forward-progress defect plus incomplete acceptance evidence for profile RAM re-clamping, lifecycle closure, and final executed regression evidence.
+The implementation series through commit `8b3c34e99559350718f574e709c9884f29a1b90d` preserves the accepted one-outer-owner RAM-lease architecture and closes the original 3 MiB retained-growth fixture, but REVIEW3 found that the implementation still substitutes a fixed `2 * minimum_inference_reservation` admission heuristic for a real bound on unknown prepare -> retained-payload growth. That heuristic is not invariant-preserving and can still manufacture avoidable J=1 admission failures under larger but feasible retained-growth geometries.
 
-The accepted architecture remains valid. Rework is restricted to the scheduler progress-envelope ownership invariant and the still-open acceptance surfaces below. The implementation must not be treated as closed until Gates R1-R3 pass on the final assembled candidate.
+REVIEW3 also confirms that the nested lease binding remains directionally correct, the authentic target-size cache-only -> uncached integration path is substantially closed, and no target-size scientific/persistence drift is evident. Remaining acceptance work is limited to: (1) the producer/backpressure invariant, (2) explicit RAM-coordinate profile re-clamp evidence, (3) progress-owner lifecycle evidence on all required terminal paths, and (4) executed final regression/repository checks.
+
+The accepted architecture remains valid. Do not reopen target-size science, flexible fidelity, one-outer-owner evaluation, or static-inference architecture unless a stated redesign trigger fires.
 
 ## Objective and protected concerns
 
-Repair the deterministic staged-evaluation resource-admission deadlock introduced by the PERF1 nested inference topology without weakening bounded-memory execution, static-inference optimization, target-size scientific behavior, or the one-outer-owner evaluation architecture.
+Repair the staged-evaluation resource-admission deadlock introduced by the PERF1 nested inference topology without weakening bounded-memory execution, static-inference optimization, target-size scientific behavior, or the one-outer-owner evaluation architecture.
 
-The original production failure is not a TARGET-SIZE-V5 ranking/checkpoint defect. In `_run_staged_evaluation_tasks(...)`, evaluation intentionally collapses the outer inference scheduler to one owner while assigning that owner an inner `joint_model_jobs` ceiling derived from the pre-collapse concurrency plan. Before this work, the staged byte ledger treated that theoretical ceiling as mandatory working-memory preallocation. Under the reported geometry, the global RAM budget is about 37.2 GiB, the automatic staged-pipeline budget is about 18.6 GiB, the default estimate is 4 GiB/job, and the theoretical joint ceiling is 8 jobs. A fixed 32 GiB inference reservation therefore cannot fit.
+The original production failure is not a TARGET-SIZE-V5 ranking/checkpoint defect. `_run_staged_evaluation_tasks(...)` intentionally collapses evaluation to one outer inference owner while allowing that owner a theoretical inner `joint_model_jobs` ceiling. Under the reported production geometry, a fixed reservation for all theoretical inner jobs exceeds the staged RAM sub-budget. The accepted correction is launch-local selection of the widest currently admissible inner width plus a scoped incremental RAM lease consumed by nested static inference.
 
-The implementation now correctly descends from the theoretical job ceiling to the largest launch-local width whose inference reservation fits the current ledger and propagates a scoped RAM/job lease into nested static inference. REVIEW1 then identified a producer-side starvation hole before `ready_inference` existed. REVIEW2 finds the remaining version of that same invariant: the current implementation only checks prospective J=1 headroom when launching a concurrent preparation. It does not keep that envelope owned when a completed preparation releases its fixed working reservation and replaces it with a larger actual retained prepared-payload charge. Thus an already-admitted preparation can consume the headroom after launch and manufacture a false irreducible J=1 failure.
+The remaining REVIEW3 defect is producer-side: retained prepared-payload size is not generally known before preparation, yet the current implementation permits concurrent unclassified preparation based on a fixed multiple of minimum inference memory. Because retained growth is not bounded by that multiple, concurrency can still create a state that safe sequencing would avoid.
 
 Protected concerns:
 
-- Preserve exactly one outer evaluation inference owner; do not restore parallel outer checkpoint/model owners as a workaround.
-- Preserve the existing joint static-inference batch/model-shell optimizer and its RAM/VRAM/OOM learning.
-- Preserve the global RAM policy and stricter staged-pipeline RAM sub-budget; do not widen or disable either bound.
-- Preserve real retained prepared/finalize/shared-residency accounting and bounded pipeline backpressure.
-- Preserve preparation -> inference -> finalization overlap whenever resources genuinely permit it.
-- Preserve cache-only bypass and restart/reuse behavior.
-- Preserve target-size ranking, target/replay semantics, seed policy, flexible fidelity boundaries, screen/production horizons, checkpoint authority, metrics, numerical/scientific policies, data identity, and persisted campaign authority.
-- Preserve dynamics staged-pipeline behavior except where the shared scheduler must enforce the same forward-progress/resource truth more correctly.
-- Do not add a second persistent resource authority, public buffering contract, or new persisted lease/profile identity solely to repair this local scheduler ownership defect.
-- Full long-running production GPU qualification remains separate from functional acceptance and is deferred to FINAL-GPU1; bounded CUDA-path regression/smoke coverage remains required only if affected.
+- Preserve exactly one outer evaluation inference owner.
+- Preserve the existing joint static-inference batch/model-shell optimizer and RAM/VRAM/OOM learning.
+- Preserve global RAM policy and the stricter staged-pipeline RAM sub-budget; do not widen or disable either bound.
+- Preserve real shared-residency, working-reservation, retained prepared/result, and finalization accounting.
+- Preserve preparation -> inference -> finalization overlap whenever resource feasibility is actually provable.
+- Preserve cache-only bypass, restart/reuse, and authentic publication behavior.
+- Preserve target-size ranking, target/replay semantics, seeds, flexible-fidelity boundaries, screen/production horizons, checkpoint authority, metrics, numerical/scientific policy, data identity, and persisted campaign authority.
+- Preserve dynamics staged-pipeline semantics except where shared scheduler accounting must be corrected consistently.
+- Do not add a second persistent resource authority, public buffering contract, or persisted lease/profile identity merely to repair this local scheduler defect.
+- Full production GPU qualification remains deferred to FINAL-GPU1; only bounded functional accelerator checks are part of ordinary acceptance if affected.
 
-## Engineering envelope and product design
+## Engineering envelope and frozen product design
 
 ### 1. Single RAM owner and forward-progress invariant
 
-The staged pipeline owns its RAM sub-budget. Nested static inference consumes an explicit runtime lease from that owner and must never independently assume that the whole process-global RAM budget is available.
+The staged pipeline owns its RAM sub-budget. Nested static inference consumes a scoped lease from that owner and must never assume the whole process-global RAM budget is available.
 
-For every nonterminal scheduler state that contains work which may still require inference, the scheduler must preserve a path to at least one minimum runnable inference operation. Once inference-ready work exists, exactly one of the following must be true:
+For every nonterminal state containing work that may require inference, the scheduler must preserve a path to at least one minimum runnable J=1 inference. Once inference-ready work exists, exactly one of these must be true:
 
 1. an admissible inference owner can launch;
-2. an active owned operation exists whose completion can release the blocking resource while the scheduler waits; or
-3. the scheduler terminates with a specific causal resource-admission error representing a genuinely irreducible state.
+2. an active owned operation exists whose completion can genuinely release the blocking resource; or
+3. execution terminates with a causal resource-admission error representing a genuinely irreducible state.
 
-The scheduler itself must not create case (3) by over-admitting earlier preparation. A known byte-ledger/resource block must never collapse into the generic pipeline-stall invariant error.
+The scheduler must never create case (3) by over-admitting earlier work.
 
 ### 2. Exact RAM-lease coordinate
 
-The **outer inference lease** is the incremental RAM envelope available to the inference stage inside the already-accounted staged pipeline. It covers the inference working set owned by the staged inference reservation, including incremental private-provider-pool growth and inference execution/transient memory.
+The outer inference lease is the incremental inference-stage RAM envelope inside the staged ledger. It includes incremental private-provider-pool growth and inference execution/transient memory.
 
-It does **not** include:
+It excludes:
 
-- shared/base runtime residency already charged once as staged shared residency;
-- prepared payload bytes charged separately by the ledger;
-- finalize payload/working reservations charged separately; or
-- other concurrently owned stage reservations already present in the ledger.
+- shared/base runtime residency already charged once by the staged ledger;
+- prepared payload bytes charged separately;
+- finalize payload/working reservations charged separately; and
+- other concurrently owned stage reservations.
 
-The existing static executor distinguishes private-provider pool residency from the caller-owned slot-zero/base provider. Preserve that coordinate. Do not re-charge the base provider merely to satisfy this repair.
-
-The existing automatic inference reservation remains conservative. Do not introduce a new public memory decomposition unless a stated redesign trigger fires.
+Do not re-charge base-provider residency merely to satisfy this repair. Preserve the existing automatic inference-reservation semantics and the positive explicit `evaluation_inference_working_memory_mib` meaning as total inference-stage working memory.
 
 ### 3. Joint-model width remains a ceiling
 
-For evaluation, pre-collapse `joint_model_jobs` remains the theoretical inner concurrency ceiling, not mandatory preallocation.
+For evaluation, `joint_model_jobs` remains a theoretical inner concurrency ceiling, not mandatory preallocation.
 
-For automatic inference working-memory accounting, choose the largest launch-local width `J >= 1` from the theoretical ceiling downward whose existing inference reservation policy fits the current staged ledger:
+For automatic inference working-memory accounting, choose the largest launch-local width `J >= 1` whose existing reservation policy fits the current staged ledger:
 
 ```text
 for J = theoretical_joint_cap ... 1:
     reservation(J) = existing inference working-reservation policy
-                     with automatic default = estimated_worker_bytes * J
     choose first J admitted by the current ledger
 ```
 
-A positive explicit `evaluation_inference_working_memory_mib` retains its established meaning as a **total inference-stage working-memory override**. It is not reinterpreted per model. If that override makes outer reservation independent of `J`, the nested runtime may still choose a smaller inner operating point from provider/transient evidence; the outer RAM lease remains a hard cap and theoretical `J` remains only an upper bound.
+A positive explicit inference working-memory override remains total-stage memory, not per-model memory.
 
 ### 4. Nested static-inference authority consumes the lease
 
-The assembled prediction path must bind nested `StaticInferenceRuntimeAuthority` to the launch-local lease while retaining live global RAM/VRAM re-clamping and OOM learning:
+The assembled prediction path must bind `StaticInferenceRuntimeAuthority` to the current outer lease:
 
 ```text
-maximum_concurrent_model_jobs <= outer leased/candidate J ceiling
+maximum_concurrent_model_jobs <= current outer leased J ceiling
 live incremental RAM allowance <= min(current safe process-global allowance,
-                                      outer inference lease RAM)
+                                      current outer inference lease RAM)
 ```
 
-VRAM remains governed by existing live VRAM authority; this RAM repair does not introduce a staged VRAM lease.
+VRAM remains governed by existing live VRAM authority. The lease is runtime-only and must not change scientific identity, checkpoint/cache identity, campaign persistence, or runtime-profile compatibility identity.
 
-The lease is ephemeral orchestration/runtime state only. It must not change scientific identity, checkpoint/cache identity, serialized campaign state, or static-runtime-profile compatibility identity.
+Compatible persisted runtime-profile evidence may be reused only after re-clamping against both current job-width and current RAM lease coordinates on every invocation.
 
-Compatible persisted runtime-profile evidence remains reusable, but **every invocation must re-clamp the reused evidence to the current leased J and RAM envelope before selection or execution**. Evidence produced under a larger previous cap may remain stored but must be ineligible while outside the current lease.
+### 5. Provable retained-growth admission — REVIEW3 correction
 
-### 5. Persistent prospective progress-envelope ownership — REVIEW2 correction
-
-A launch-time `can_reserve(prepare_reservation + minimum_inference_reservation)` check is not sufficient. Preparation working memory and completed prepared-payload retention are different ledger coordinates, and the retained payload may be larger than the working reservation used for admission.
-
-The scheduler must therefore protect one **minimum inference progress envelope as an owned accounting invariant** while work remains unclassified or known inference-requiring and no actual inference reservation already owns that envelope.
+REVIEW3 establishes that a fixed multiplier such as `prepare_reservation + 2 * minimum_inference_reservation` is **not** a valid proxy for unknown prepared-payload growth. If no authoritative pre-prepare bound relates the future retained payload to that quantity, the multiplier has no safety meaning.
 
 Frozen behavior:
 
-- Before launching potentially inference-requiring/unclassified preparation, the staged ledger must leave or explicitly own at least `minimum_inference_reservation` for one future inference owner.
-- That protection must survive the complete unclassified preparation lifecycle, including the transition from `prepare:<task>` working reservation to `prepared:<task>` retained-payload ownership.
-- Replacing a preparation working reservation with a larger actual retained payload may not silently consume the protected inference envelope. If the retained payload would invade the envelope, the scheduler must have prevented the unsafe concurrent admission earlier or must otherwise preserve an equivalent owned credit/reservation without overbooking.
-- Unclassified work is conservatively treated as potentially inference-requiring until the production `requires_inference(prepared)` decision proves it cache-only.
-- Concurrent preparation is allowed only when the scheduler can prove that current owned state, the proposed preparation lifecycle, and one protected minimum inference envelope remain feasible under the pipeline budget. Do not globally serialize preparation when the live equation permits safe concurrency.
-- A cache-only result may bypass inference and proceed toward finalization. If all remaining work is authoritatively cache-only, the unused inference progress envelope may be released.
-- When an inference owner launches, the protected envelope must be **transferred/consumed into the real inference reservation without double-counting**. The scheduler must not book both a permanent guard and the same bytes again as inference working memory.
-- When an inference owner is active, its real inference reservation is the progress envelope; an additional synthetic minimum guard is not required for that same owner.
-- Completed or active preparation may delay inference only while it still owns resources and its completion can genuinely release enough memory. Once no such releaser exists, the state must either launch inference or fail causally.
-- The mechanism may be a synthetic ledger reservation, a transferable progress credit, a scheduler-local admission claim coupled to retained-payload accounting, or another equivalent realization. The material requirement is persistent ownership across state transitions, not a particular helper name.
+- The scheduler must protect one minimum J=1 inference envelope while admitted work is unclassified or known inference-requiring and no real inference reservation already supplies that envelope.
+- A prepare-working reservation and the future retained prepared payload are distinct accounting coordinates. The future retained payload may exceed the preparation working reservation.
+- Concurrent unclassified preparation is allowed only when the scheduler has a **sound prospective upper bound** for the retained transition(s) being admitted and the complete worst-case admission equation fits the staged budget while preserving one J=1 envelope.
+- A sound bound must come from authoritative pre-prepare information already available to the production scheduler/task contract. Do not invent a constant multiple of J=1, preparation working memory, or another unrelated estimate merely to retain concurrency.
+- If no sound retained-payload upper bound exists for an unclassified task, the scheduler must conservatively sequence that unknown transition. At minimum, do not admit another unbounded unclassified transition whose eventual retained growth cannot be proven coexistible with already-owned retained/working/inference state plus one J=1 envelope.
+- Conservative sequencing is not considered an illicit global serialization workaround when the live equation cannot prove concurrent safety. Multi-prepare overlap remains required where a real bound or already-resolved retained size makes safety provable.
+- Once a retained payload is known and authoritatively charged, normal overlap may resume whenever the live ledger equation permits it.
+- A cache-only classification may bypass inference. If no remaining admitted/pending work can require inference, unused prospective headroom may be released.
+- The prospective J=1 envelope must transfer into the real inference reservation without transient overbooking or double-counting.
+- When inference is active, its real reservation is the progress envelope for that owner; do not add a duplicate synthetic J=1 guard for the same inference.
+- If a single task's actual retained payload plus minimum J=1 genuinely cannot fit even when safely isolated from avoidable concurrent producers, fail causally as an irreducible task geometry rather than misclassifying a scheduler-created conflict.
 
-The REVIEW2 counterexample that the repaired scheduler must handle is:
+The implementation must not preserve the REVIEW3 `2 * J1` heuristic unless independent evidence proves it is derived from a real retained-size upper bound for every affected production task. In the currently reviewed code, no such contract is established.
+
+Required REVIEW3 counterexample:
 
 ```text
-pipeline budget             = 3.0 MiB
-prepare working reservation = 1.0 MiB
-minimum inference J=1       = 1.0 MiB
-prepare workers             = 2
-prepared payload A          = 1.5 MiB
-prepared payload B          = 1.5 MiB
+pipeline budget              = 5.0 MiB
+prepare working reservation  = 1.0 MiB
+minimum inference J=1        = 1.0 MiB
+prepare workers              = 2
+prepared payload A           = 2.25 MiB
+prepared payload B           = 2.75 MiB
 ```
 
-The current `4d01520...` implementation may admit both preparations because the second launch sees `1 + 1 + 1 = 3 MiB`. If A and B then each replace a 1 MiB working reservation with a 1.5 MiB retained payload, the ledger can reach 3 MiB with no active releaser and J=1 can no longer launch. Yet the workload is feasible when preparation is sequenced safely because `1.5 MiB retained + 1.0 MiB inference = 2.5 MiB <= 3.0 MiB`.
+A fixed `2 * J1` launch heuristic may admit both preparations even though their later retained transitions can fill or exceed the ledger while J=1 is required. Yet safe sequencing is feasible because each retained payload individually coexists with J=1:
 
-The scheduler must not manufacture that false irreducible state. Prefer a regression with unequal retained payloads as well (for example 1.25 MiB and 1.75 MiB) so the test proves lifecycle accounting rather than equality-specific arithmetic.
+```text
+2.25 + 1.0 <= 5.0 MiB
+2.75 + 1.0 <= 5.0 MiB
+```
+
+The scheduler must complete this geometry by safe admission/ordering rather than manufacture a false irreducible failure.
 
 ### 6. Causal admission diagnostics
 
-Distinguish at least:
+Distinguish controller admission, staged byte-ledger/RAM admission, and true invariant stall. A RAM admission failure must truthfully report enough of the failed equation to diagnose it, including relevant queued/ready counts, pipeline budget, total ledger-owned bytes, retained payload bytes/reservations where available, minimum inference reservation, and relevant job ceiling/selected width.
 
-- adaptive/controller admission blocked;
-- staged byte-ledger/RAM admission blocked, including minimum J=1 unsatisfied; and
-- true unexpected scheduler invariant stall.
+Do not label aggregate ledger ownership as merely `retained`.
 
-A RAM-admission error must expose enough correctly named values to diagnose the failed equation without source inspection:
+### 7. Lease/progress lifecycle
 
-- queued/ready count;
-- pipeline budget;
-- current total ledger-owned bytes;
-- relevant retained-payload bytes and/or stage reservations when available;
-- minimum required inference reservation;
-- relevant model-job ceiling/selected width when known.
+Every inference lease, inference reservation, prospective progress owner/credit, and any retained-growth admission token introduced by this repair must be transferred or released exactly once on all terminal paths: success, ordinary stage failure, sibling cancellation, bounded OOM terminal failure, `KeyboardInterrupt`, and propagated exceptions.
 
-Do not label aggregate `ledger.total_bytes` as merely `retained` if it includes working/stage reservations. Diagnostic names must reflect the actual accounting coordinate. Do not print secrets or unbounded payload detail.
-
-### 7. Lease and reservation lifecycle
-
-A launch-local lease and every scheduler-owned reservation/guard supporting it must be released exactly once on every terminal path owned by that launch: success, stage failure, cancellation, `KeyboardInterrupt`, bounded OOM terminal failure, or other propagated exception.
-
-Cache-only bypass must not acquire an inference lease. Task-local/context-local lease state must not survive into later work. A prospective progress guard/credit must also not leak or remain double-booked after transfer to inference or after all remaining work becomes authoritatively cache-only.
-
-Lifecycle acceptance must establish scheduler-owned cleanup in the same scheduler ownership domain, not merely that a completely new scheduler invocation starts with a fresh ledger.
+Cache-only bypass must not acquire an inference lease. Task/context-local lease state must not leak into later work. An all-cache-only terminal state must not leave a stale progress owner.
 
 ## Implementation obligations
 
-### O1 — Production-geometry reproducer
+### O1 — Production geometry
 
-**Required end state:** A deterministic bounded test exercises the real `_run_staged_evaluation_tasks()` owner using production-equivalent arithmetic without allocating production-scale RAM.
+A deterministic bounded real-scheduler test must retain the production-equivalent J=8 / ~4 GiB-per-job / ~18.6 GiB staged-budget arithmetic and prove descent to the widest admissible J with one outer inference owner.
 
-**Acceptance:** The theoretical J=8 / 4 GiB-per-job / ~18.6 GiB pipeline geometry descends to the widest admissible J and completes with one outer inference owner.
+### O2 — Launch-local RAM-aware inner width
 
-### O2 — Launch-local RAM-aware joint-width admission
+Preserve largest-safe-J, exact-fit, one-unit-over-boundary, J=1 minimum, explicit-override semantics, and outer peak=1 evidence through the real scheduler.
 
-**Required end state:** Automatic evaluation admission chooses the largest current-ledger-admissible `J >= 1`; the theoretical joint width remains only an upper bound.
+### O3 — Nested-runtime lease binding and RAM/job profile re-clamp
 
-**Preserve:** explicit total-stage inference-memory override semantics; pipeline/global RAM bounds; one outer evaluation owner.
+**Required end state:** nested static inference receives no larger job ceiling or incremental RAM allowance than the current outer lease while retaining live global RAM/VRAM clamping and OOM learning.
 
-**Acceptance:** largest-safe-J, exact-fit, one-unit-over-boundary, J=1 minimum, and outer peak=1 tests through the real scheduler.
+**Still open after REVIEW3:** the current reused-profile test proves job-width narrowing but does not prove RAM-coordinate exclusion.
 
-### O3 — Nested-runtime lease binding and profile re-clamp
+**Required acceptance:** exercise the actual `_predict_model_on_atoms` / static-executor path with a compatible prior profile containing at least one previously feasible operating point whose RAM requirement exceeds the later smaller `InferenceLease.ram_allowance_bytes`. Under that smaller lease, prove the out-of-lease RAM point is not selected or attempted, while job-width re-clamping also remains enforced. Constructor-field inspection or a numerically large lease that all old evidence already fits is insufficient.
 
-**Required end state:** Nested static inference receives no larger job ceiling or incremental RAM allowance than the outer lease while retaining existing live global RAM/VRAM clamping and OOM learning.
+### O4 — Provable starvation-proof producer/backpressure policy
 
-**Profile requirement:** A compatible profile generated under a larger prior cap cannot select or attempt an operating point outside a smaller current outer lease, on either job-width or RAM coordinates.
+**Required end state:** no prepare admission or prepare -> retained transition may consume the future J=1 progress path when safe sequencing could avoid the conflict.
 
-**Acceptance:** Exercise the actual `_predict_model_on_atoms` / static-executor path with a compatible prior profile containing at least one previously feasible operating point whose RAM requirement exceeds the later smaller `InferenceLease.ram_allowance_bytes`. Then invoke under that smaller lease and assert both attempted/selected job width and RAM-admitted operating points remain within the current lease. Constructor-field inspection or merely setting a numerically large lease that all profile evidence already fits does not close the RAM-reclamp claim.
+Required consequences:
 
-### O4 — Persistent starvation-proof producer/backpressure policy
-
-**Concern:** REVIEW1 found that `ready_inference`-conditional protection was too late; REVIEW2 found that a launch-time-only prospective check still loses the envelope when prepare working memory is replaced by a larger retained payload.
-
-**Required end state:** Preparation admission and prepare->retained transition accounting cannot consume the minimum future inference envelope before cache/inference classification is resolved.
-
-**Required consequences:**
-
-- own one minimum inference envelope prospectively across the full unclassified lifecycle;
-- treat unclassified work as potentially inference-requiring;
-- preserve the envelope when working reservation is replaced by actual retained payload, including retained growth beyond the preparation reservation;
-- transfer the protected envelope into the actual inference reservation without double-counting;
-- preserve work-conserving multi-prepare and stage overlap whenever the RAM equation proves it safe;
+- remove or justify with a real retained-size contract any fixed `N * J1` proxy used as a retained-growth safety bound;
+- use an authoritative prospective retained upper bound when one exists;
+- otherwise sequence unbounded unclassified retained transitions conservatively;
+- preserve one J=1 envelope across unresolved classification/retention;
+- transfer that envelope into inference without double-counting;
+- resume multi-prepare/stage overlap whenever retained sizes/bounds make the equation provably safe;
 - preserve cache-only bypass.
 
-**Required REVIEW2 regression — must fail on commit `4d01520c6cc6c5841b530d0daac84097a8f7c25a`:** run the real staged scheduler with at least two preparation workers, a 3 MiB-equivalent pipeline budget, 1 MiB preparation reservation, 1 MiB minimum J=1 inference reservation, and prepared payloads whose retained sizes grow beyond their preparation reservations (for example 1.5 MiB + 1.5 MiB, preferably also an unequal variant). Prove the scheduler preserves forward progress instead of admitting both and later manufacturing a false irreducible-RAM error.
+**Required REVIEW3 regression — must fail on `8b3c34e99559350718f574e709c9884f29a1b90d`:** exercise the real staged scheduler with the 5 MiB / 1 MiB prepare / 1 MiB J=1 / 2.25+2.75 MiB retained geometry above and at least two configured preparation workers. Prove the scheduler does not admit work into an avoidable retained-growth collision and completes both tasks through a feasible safe ordering.
 
-Also retain the cache-only -> uncached ordering regression through the same real scheduler. A test in which every retained payload exactly equals the preparation working reservation does **not** close this obligation.
+Retain the REVIEW2 3 MiB `(1.5, 1.5)` and heterogeneous `(1.25, 1.75)` regressions as useful boundary coverage, but they no longer constitute sufficient proof by themselves.
 
-### O5 — Genuine irreducible admission error and truthful diagnostics
+Also retain a cache-only -> uncached ordering case through the real scheduler.
 
-**Required end state:** If the minimum J=1 inference plus already-required retained/owned state genuinely cannot fit and no active owner can release sufficient memory, fail immediately with a causal `CampaignCliError`; retain the generic pipeline stall only for an actual invariant/programming failure.
+### O5 — Genuine irreducible admission and truthful diagnostics
 
-**Acceptance:**
+A task is irreducible only after avoidable producer-created conflicts are excluded. Required acceptance includes:
 
-- explicit genuine-J=1-impossible case;
-- separate avoidable multi-prepare retained-growth case that must now progress;
-- assertions on diagnostically correct budget/ledger/minimum-reservation terminology and values.
+- a single-task retained payload + J=1 geometry that genuinely cannot fit and fails causally;
+- the REVIEW3 avoidable multi-prepare retained-growth geometry, which must progress;
+- truthful diagnostic terminology/values for genuine failures.
 
-### O6 — Lease, progress-envelope, cleanup, and cancellation correctness
+### O6 — Lease, progress, retained-growth admission, cleanup, and cancellation
 
-**Required end state:** Every acquired inference lease, inference reservation, and prospective progress-envelope owner/credit is released or transferred exactly once and nested runtime state clears on every terminal path.
+**Still open after REVIEW3.** Successful progress-owner transfer evidence and the existing KeyboardInterrupt observation are useful but incomplete.
 
-**Acceptance must cover scheduler ownership directly:**
+Required same-owner/call-through evidence through the real scheduler must cover:
 
-- successful inference where later work in the **same scheduler invocation** can reuse the released capacity;
+- success where later work in the same scheduler invocation reuses released capacity;
 - ordinary inference/stage exception;
-- bounded OOM terminal failure path where applicable to the touched runtime;
+- bounded OOM terminal failure where applicable to touched runtime behavior;
 - sibling failure/cancellation;
 - `KeyboardInterrupt`;
-- cache-only bypass proves no inference lease was acquired;
-- progress guard/credit transfer to inference proves no double-counting and no stale guard remains;
-- all-cache-only terminal state proves unused prospective headroom is released when no longer required.
+- cache-only bypass with no inference lease;
+- progress guard/credit -> inference transfer with no double-counting or stale guard;
+- all-cache-only terminal state releasing unused progress ownership;
+- any new retained-bound/admission token introduced by REVIEW3, on success and exceptional exits.
 
-Tests may instrument ledger `reserve`/`release` or lease context through call-through observation, but must not replace/reimplement scheduler logic. After each terminal path, observed inference/progress ownership must return to the expected retained baseline and task-local lease state must be clear. Starting a wholly new scheduler invocation alone is insufficient proof of old-ledger cleanup.
+Tests may observe real ledger/context operations by call-through instrumentation but may not replace scheduler decisions. Starting a new scheduler invocation is not evidence that the prior scheduler cleaned up its owners.
 
 ### O7 — Scientific, persistence, and identity non-regression
 
 No target-size decision rule, epoch boundary, seed semantics, training/evaluation metric, target/replay membership, checkpoint identity, persisted authority, prediction-cache identity, runtime-profile compatibility identity, or screen/production horizon semantics may change.
 
-**Acceptance:** affected target-size/evaluation regression plus structural diff review for unauthorized identity/schema changes.
+Run affected target-size/evaluation regression and structurally inspect the final diff for unauthorized schema/identity/scientific changes.
 
 ### O8 — Shared staged-runner compatibility
 
-Evaluation-specific joint RAM leasing and any scheduler-local progress-envelope machinery must not accidentally change dynamics job-count/resource semantics. Shared logic must remain correct for dynamics and authenticated-receipt/cache-only bypass.
-
-**Acceptance:** dynamics overlap, authenticated-receipt bypass, failure cancellation, interruption, low-CPU/serial, and any newly affected multi-prepare shared-runner tests.
+Evaluation-specific RAM leasing and producer/backpressure changes must not alter dynamics job-count/resource semantics. Preserve dynamics overlap, authenticated-receipt/cache-only bypass, failure cancellation, interruption, low-CPU/serial behavior, and any shared multi-prepare paths affected by the final scheduler change.
 
 ### O9 — Authentic assembled cache-only -> uncached target-size/evaluation path
 
-**Required end state:** A bounded authentic target-size/evaluation caller invocation reaches the real staged scheduler with at least one authoritatively cache-only/reused evaluation followed by at least one inference-requiring evaluation, then completes finalization/publication.
+**Semantically closed by REVIEW3, subject to final rerun after R1 changes.**
 
-**Semantic owner boundary:** the real target-size/evaluation orchestration and real `_run_staged_evaluation_tasks()` must execute. The production cache-bypass decision, scheduler admission/lease decision, and publication/finalization transition may not be patched or reimplemented.
+The existing bounded integration exercises the real target-size/evaluation orchestration, real SQLite restart/reuse, real staged scheduler, production cache-bypass decision, lease acquisition for missing work, publication, and final reduction while faking expensive numerical inference below the semantic-owner boundary.
 
-**Allowed doubles:** expensive MACE numerical prediction, accelerator execution, and large datasets may be replaced below that boundary with deterministic bounded fixtures.
-
-**Acceptance:** prove the cached endpoint bypasses inference/lease acquisition, the uncached endpoint obtains the current lease through the real scheduler, and both reach the authentic publication/result path without the old stall.
+Do not weaken that test. Because R1 will change scheduler behavior again, rerun this assembled path on the final candidate as part of R3.
 
 ### O10 — Final regression/check evidence
 
-Repository/project-required checks and the complete affected-surface regression must actually execute on the final assembled candidate. A missing GitHub status by itself does not require CI if equivalent repository-approved local checks exist, but an unexecuted required check is not a pass.
+Repository/project-required checks and the complete affected-surface regression must execute on the final assembled commit. Missing GitHub CI is not itself a failure if equivalent repository-approved local commands execute and their results are recorded, but an unexecuted required check is not a pass.
 
-Record enough command/CI result evidence to identify what ran, against which final commit, and whether it passed. Semantic review, source inspection, or a production run cannot substitute for missing regression/integration coverage.
+Record commands/CI, final commit identity, and pass/fail results. Source review or a production run cannot substitute for missing regression/integration evidence.
 
 ## Implementation authority
 
@@ -261,143 +239,146 @@ Record enough command/CI result evidence to identify what ran, against which fin
 - One outer evaluation inference owner.
 - Theoretical joint-model width is an upper bound, not mandatory preallocation.
 - The staged pipeline owns its RAM sub-budget; nested static inference consumes a scoped incremental RAM lease.
-- Shared/base residency already charged once by the staged ledger is outside the incremental inference lease; private provider-pool growth and inference execution/transient memory are inside it.
+- Shared/base residency already charged once is outside the incremental inference lease; private provider-pool growth and inference transient memory are inside it.
 - Automatic inference reservation retains existing conservative semantics; explicit inference working-memory overrides remain total-stage overrides.
 - No widening/removal of RAM bounds and no deletion of provider/job RAM accounting as a shortcut.
-- **One minimum inference progress envelope is owned prospectively across the full unclassified preparation lifecycle, including prepare-working -> retained-payload growth.**
-- The protected envelope is transferred into an actual inference reservation without double-counting.
-- The scheduler may not create a false irreducible J=1 state by over-admitting preparation.
-- Forward-progress and causal-resource-failure semantics.
-- Runtime-only lease/progress ownership; no scientific/persisted/profile-compatibility identity change.
-- Compatible static-inference profiles are re-clamped to current job-width **and RAM** lease coordinates on every invocation.
-- Lease/reservation/progress-envelope cleanup on every terminal path.
-- Full production GPU qualification deferred; bounded functional CUDA checks only if affected.
+- One minimum J=1 progress path must remain feasible across unclassified preparation and retained-payload transitions.
+- **No fixed multiplier of J=1 or preparation working memory may be treated as a retained-payload upper bound unless an authoritative production contract actually establishes that relationship.**
+- Concurrent unclassified preparation requires a sound prospective retained upper bound; absent such a bound, conservative sequencing is required until the unknown retained transition is resolved.
+- Progress ownership transfers into real inference without double-counting.
+- The scheduler may not create false irreducible states by over-admitting producer work.
+- Compatible static-inference profiles re-clamp to current job-width and RAM lease coordinates on every invocation.
+- Lease/reservation/progress/admission cleanup on every terminal path.
+- Runtime-only resource ownership; no scientific/persisted/profile-compatibility identity changes.
+- Full production GPU qualification remains deferred.
 
 ### Delegated
 
-- Exact helper/data-structure names for the progress guard/credit and lease.
-- Whether progress headroom is represented as a synthetic ledger owner, transferable credit, admission token, or another scheduler-local mechanism with identical accounting semantics.
-- Exact atomic transfer mechanics from prospective progress ownership to actual inference reservation, provided no transient overbooking or double-counting occurs.
-- How the scheduler predicts or bounds retained-payload growth, provided the implementation does not require an impossible exact pre-prepare payload size and still prevents unsafe concurrent admission. Conservative sequencing is acceptable only where the actual live equation cannot prove concurrency safe.
-- Local refactoring that centralizes duplicated admission arithmetic without expanding public surface.
-- Exact diagnostic formatting, provided accounting labels remain truthful and required values are present.
+- Exact helper/data-structure names for progress ownership, retained-bound claims, or admission tokens.
+- Whether a real retained upper bound is derived from existing task metadata, input geometry, a production size estimator already owned by the task, or another authoritative pre-prepare source.
+- Exact transfer mechanics between progress ownership and inference reservation, provided no transient overbooking/double-counting occurs.
+- Conservative sequencing mechanics when no retained upper bound exists.
+- Local refactoring that centralizes admission arithmetic without expanding public surface.
+- Exact diagnostic formatting provided accounting coordinates remain truthful.
 
 ### Reopen only on evidence
 
-Reopen only the affected design surface if implementation evidence proves one of the following:
+Reopen only the affected accounting surface if implementation proves one of the following:
 
-1. `selected_concurrent_model_jobs` is semantically an exact required width rather than an upper bound in a production consumer.
-2. Caller-owned/base-provider residency cannot be separated from incremental private-provider/transient accounting without changing the established static-inference evidence model.
-3. The existing explicit inference working-memory override has an authoritative semantic other than total inference-stage working memory.
-4. Normal supported automatic configuration makes genuine J=1 execution falsely impossible solely because conservative accounting materially double-counts a component and a decomposition redesign is required.
-5. Correct persistent prospective progress protection cannot be represented inside the existing staged-ledger/scheduler ownership model without a public buffering/configuration contract change.
-6. The production `requires_inference` classification can be authoritatively known before preparation for all relevant task types; only then may the conservative unclassified-work rule be narrowed without weakening the invariant.
-7. There is no bounded truthful way to preserve progress across retained-payload growth without introducing a separately governed retained-size contract; if this is proven, reopen only that accounting surface rather than target-size or static-inference architecture.
+1. `selected_concurrent_model_jobs` is an exact required width rather than a ceiling in a production consumer.
+2. Base-provider residency cannot be separated from incremental private-provider/transient accounting without changing the established evidence model.
+3. Explicit inference working-memory override semantics differ authoritatively from total inference-stage memory.
+4. Normal supported automatic configuration makes genuine J=1 falsely impossible solely because unavoidable accounting double-counts a material component.
+5. Correct retained-growth/progress protection cannot be represented inside the existing staged-ledger scheduler without a public buffering/configuration contract change.
+6. Production `requires_inference` classification can be authoritatively known before preparation for all affected task types.
+7. Product requirements demand concurrent unclassified preparation even when no sound retained upper bound exists; this would require an explicit retained-size/resource contract redesign rather than another heuristic.
 
 Do not reopen target-size scientific architecture, flexible fidelity, production horizon semantics, or unrelated PERF1 machinery absent independent evidence.
 
 ## Expected affected surface
 
-Re-derive from the final diff, but initially expect:
+Re-derive from the final diff. Initially expect:
 
-- `mdstats/training_data/_campaign_cli_core.py` — persistent progress-envelope ownership/admission, prepare->retained transition accounting, guard-to-lease transfer, causal diagnostics, cleanup.
-- `mdstats/training_data/campaign_execution.py` — only if profile/lease RAM re-clamp requires correction; core lease binding is directionally correct.
-- `mdstats/training_data/inference_parallel.py` — only if task-local lease/progress lifecycle requires correction; ContextVar transport is directionally correct.
-- `mdstats/training_data/model_features.py` — only if actual static-profile selection/executor admission violates current RAM/job lease; no redesign expected.
-- `tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py` — retained-growth multi-prepare reproducer, cache-only -> uncached progression, truthful diagnostics, same-owner cleanup.
-- `tests/test_mlff_static_mace_inference.py` — larger-prior-profile -> smaller-current-job-and-RAM-lease execution test.
-- target-size/evaluation topology/integration tests — authentic cache-only -> uncached assembled owner path.
+- `mdstats/training_data/_campaign_cli_core.py` — producer admission, retained-growth feasibility, progress ownership, guard-to-lease transfer, diagnostics, cleanup.
+- `campaign_execution.py` / `model_features.py` only if actual RAM-coordinate profile re-clamp is defective; no redesign expected.
+- `inference_parallel.py` only if lease/context lifecycle needs correction.
+- `tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py` — REVIEW3 retained-growth reproducer, prior REVIEW2 boundaries, genuine irreducible case, lifecycle and shared-runner regressions.
+- `tests/test_mlff_static_mace_inference.py` — prior-larger-RAM-profile -> smaller-current-RAM-lease execution evidence.
+- target-size/evaluation topology/integration tests — preserve and rerun the authentic cache-only -> uncached assembled path.
 - shared dynamics staged-runner regressions.
 
 Do not modify target-size scientific decision logic or persistence schemas as part of this rework.
 
 ## Task-specific acceptance matrix
 
-1. Production geometry: theoretical J=8, ~4 GiB/job, ~18.6 GiB staged budget; largest safe J launches without large allocation.
-2. Largest-safe-J exact fit and one-unit-over boundary.
-3. One outer evaluation owner remains peak=1 while inner selected cap is propagated.
-4. Outer RAM lease hard-bounds nested incremental RAM and model-job width.
-5. Compatible runtime profile produced under a larger prior cap is actually re-clamped during execution under a smaller current lease, including evidence whose RAM requirement exceeds the smaller lease.
-6. Cache-only tasks acquire no inference lease and do not contaminate inference calibration/admission.
-7. Two-or-more concurrent preparation workers under a tight budget cannot consume the protected J=1 progress envelope before classification.
-8. **Prepare-working -> retained-payload growth cannot consume the protected J=1 envelope after launch.** The REVIEW2 3 MiB / 1 MiB prepare / 1 MiB J=1 / >1 MiB retained-payload geometry must progress when a feasible safe ordering exists.
-9. Heterogeneous prepared payloads plus cache-only -> uncached ordering make forward progress through the real scheduler.
-10. Genuine J=1 impossibility fails causally; avoidable producer-created impossibility does not.
-11. Explicit `evaluation_inference_working_memory_mib` retains total-stage semantics.
-12. Progress guard/credit and actual inference reservation are never double-counted or simultaneously leaked.
-13. Lease/reservation/progress cleanup is demonstrated on success, exception, bounded OOM, sibling cancellation, and `KeyboardInterrupt`, with same-owner/observational evidence rather than only a fresh invocation.
-14. Serial/low-CPU and dynamics shared-runner behavior remain valid.
-15. Authentic target-size/evaluation caller executes cache-only -> uncached through the real staged scheduler and publication path.
-16. Diagnostic fields accurately distinguish aggregate ledger-owned bytes from retained payload bytes/reservations.
-17. If CUDA-specific behavior changed, run bounded CUDA-labelled/fake-provider or available non-production accelerator smoke/equivalence checks; no long target-machine qualification.
-18. Final assembled affected regression plus repository-required checks execute and pass, or any unavailable required check remains explicitly blocking.
+1. Production J=8 / ~4 GiB/job / ~18.6 GiB staged geometry selects the largest safe J.
+2. Largest-safe-J exact fit and one-unit-over boundaries pass.
+3. One outer evaluation owner remains peak=1.
+4. Outer RAM/job lease hard-bounds nested static inference.
+5. A compatible profile containing RAM evidence above a later smaller lease is actually re-clamped; the out-of-lease RAM point is not selected/attempted.
+6. Cache-only tasks acquire no inference lease.
+7. REVIEW2 3 MiB retained-growth cases remain green.
+8. **REVIEW3 5 MiB / 2.25+2.75 MiB retained-growth geometry progresses by safe ordering and fails on `8b3c34e...`.**
+9. No arbitrary `N * J1` heuristic can admit an unbounded retained transition unless backed by an authoritative retained-size bound.
+10. When no bound exists, unclassified transitions are conservatively sequenced; when a bound exists and fits, multi-prepare overlap remains available.
+11. Genuine single-task J=1 impossibility fails causally; producer-created impossibility does not.
+12. Explicit inference-memory override retains total-stage semantics.
+13. Progress/inference/admission owners are never double-counted or leaked.
+14. Cleanup is demonstrated on success, ordinary exception, bounded OOM, sibling cancellation, KeyboardInterrupt, cache-only, and all-cache-only termination.
+15. Serial/low-CPU and dynamics shared-runner behavior remain valid.
+16. Authentic target-size/evaluation cache-only -> uncached restart/reuse path reruns successfully on the final candidate.
+17. Diagnostics distinguish aggregate ledger ownership from retained payload/reservations.
+18. If CUDA-specific behavior changes, bounded functional accelerator checks run; no long production qualification.
+19. Complete final affected regression and repository-required checks execute and pass, or unavailable required checks remain explicitly blocking.
 
-The principal semantic owner remains the real staged evaluation scheduler as invoked by real evaluation/target-size orchestration. Direct helper tests, patched scheduler/ledger decisions, or harness reimplementation cannot close owner-level claims. Call-through instrumentation that observes ownership without replacing production decisions is allowed.
+The principal semantic owner is the real staged evaluation scheduler as invoked by real evaluation/target-size orchestration. Direct helper tests or patched scheduler decisions cannot close owner-level claims. Call-through instrumentation is allowed only for observation.
 
-Production qualification remains **deferred**. Long real-data GPU performance/RAM/VRAM qualification remains part of FINAL-GPU1 on the target machine.
+Production qualification remains **deferred**. Long real-data GPU performance/RAM/VRAM qualification remains FINAL-GPU1 work on the target machine.
 
 ## Rework implementation sequence
 
-### Gate R1 — Persistent progress ownership and focused scheduler closure
+### Gate R1 — REVIEW3 producer-admission closure
 
 Repair O4/O5/O6 as one coherent scheduler stage:
 
-- replace launch-time-only prospective checking with persistent progress-envelope ownership across unclassified preparation and prepare->retained transition;
-- prevent retained-payload growth from invading the protected J=1 envelope;
-- transfer protected headroom into launch-local inference reservation without double-counting;
-- preserve largest-safe-J selection and work-conserving overlap whenever the RAM equation permits it;
-- preserve truthful RAM diagnostic terminology;
-- establish exact reservation/lease/progress cleanup.
+- remove the fixed `2 * J1` retained-growth heuristic unless it is proved to arise from an authoritative retained upper bound;
+- locate/reuse a sound pre-prepare retained upper bound if one already exists;
+- otherwise conservatively sequence unbounded unclassified retained transitions;
+- preserve the J=1 progress path through retained transitions;
+- transfer progress ownership to inference without double-counting;
+- preserve largest-safe-J and work-conserving overlap where safety is provable;
+- close progress/admission-owner lifecycle on all terminal paths.
 
-Required stage-local evidence before dependent work:
+Required stage-local evidence before R2/R3 closure:
 
-- REVIEW2 reproducer that fails on `4d01520...` and uses retained payloads larger than their preparation working reservations;
-- a heterogeneous retained-payload variant;
-- cache-only -> uncached multi-prepare forward-progress test;
-- production geometry and J-boundary tests;
-- genuine irreducible J=1 test;
-- same-owner success/exception/OOM/cancellation/KeyboardInterrupt cleanup evidence;
-- existing staged scheduler and shared dynamics affected regression.
+- REVIEW3 5 MiB / 2.25+2.75 MiB real-scheduler reproducer failing on `8b3c34e...` and passing after repair;
+- REVIEW2 retained-growth and cache-only -> uncached scheduler regressions;
+- a positive high-headroom/bounded-retained case proving multi-prepare overlap is not gratuitously disabled when safety is provable;
+- genuine irreducible single-task J=1 case;
+- production geometry and J boundaries;
+- same-owner success/exception/OOM/cancellation/KeyboardInterrupt/cache-only/all-cache-only cleanup evidence;
+- staged scheduler and shared dynamics affected regression.
 
-### Gate R2 — Nested profile RAM/job re-clamp and assembled target-size/evaluation closure
+### Gate R2 — Profile RAM/job evidence closure
 
-Close O3 and O9:
+Close the remaining O3 evidence gap:
 
-- execute a compatible larger-cap profile under a smaller current lease and prove an operating point whose prior RAM evidence exceeds the new lease is not selected or attempted;
-- separately prove current job-width cap propagation remains enforced;
-- execute authentic cache-only -> uncached target-size/evaluation orchestration through the real staged scheduler and publication path.
+- execute a compatible larger-cap profile under a smaller current RAM/job lease;
+- ensure at least one prior feasible RAM operating point exceeds the new lease;
+- prove that point is not selected or attempted;
+- retain job-width cap propagation evidence.
 
-Cheap deterministic numerical doubles are allowed only below the frozen semantic-owner boundaries.
+O9 assembled integration is already semantically credited, but must be rerun after R1 because scheduler changes can invalidate its execution evidence.
 
 ### Gate R3 — Final assembled closure
 
 After all executable edits:
 
-1. reconcile every frozen obligation and REVIEW1/REVIEW2 finding against the assembled candidate;
+1. reconcile every frozen obligation and REVIEW1/REVIEW2/REVIEW3 finding against the assembled candidate;
 2. re-derive the final affected behavioral surface from the final diff;
-3. run the complete affected regression set, including target-size/evaluation, static inference, staged scheduler, shared dynamics, cleanup/failure paths, and low-resource paths;
-4. run repository/project-required checks;
-5. record commands/CI and pass/fail evidence against the final commit; any unavailable required check remains blocking;
-6. perform a final structural review confirming no target-size science, identity, persistence, or configuration-semantics drift.
+3. run complete affected regression across target-size/evaluation, static inference, staged scheduler, shared dynamics, cleanup/failure, cache/restart, and low-resource paths;
+4. rerun the authentic target-size cache-only -> uncached integration path;
+5. run repository/project-required checks;
+6. record commands/CI, final commit identity, and pass/fail results; an unavailable required check remains blocking;
+7. structurally confirm no target-size science, identity, persistence, or configuration-semantics drift.
 
 Only after R1-R3 close may this workplan be marked complete/archived.
 
 ## Relationship to active workplans
 
-This workplan repairs a PERF1 staged-evaluation scheduler/resource-authority regression surfaced by target-size screening. On `fix/target-size-exact-boundary-screening`, the controlling target-size scientific/campaign correction is `MLFF_TARGET_SIZE_EXACT_BOUNDARY_SCREENING_REWORK_WORKPLAN.md` (with its active amendments). This RAM-lease plan is orthogonal resource-authority/backpressure work required for uncached staged evaluation to execute reliably; it does not supersede or reopen the exact-boundary scientific design.
+This workplan repairs a PERF1 staged-evaluation scheduler/resource-authority regression surfaced by target-size screening. On `fix/target-size-exact-boundary-screening`, the controlling target-size scientific/campaign correction remains `MLFF_TARGET_SIZE_EXACT_BOUNDARY_SCREENING_REWORK_WORKPLAN.md` with its active amendments. This RAM-lease plan is orthogonal resource-authority/backpressure work required for reliable uncached staged evaluation and does not supersede or reopen the exact-boundary scientific design.
 
-`MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_FINAL_CLOSURE_WORKPLAN.md` and the older Repair1 chain are archived historical material on this branch and impose no active gates. Where their historical evidence remains technically relevant, it may be reused only if the current changes cannot plausibly invalidate it.
+`MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_FINAL_CLOSURE_WORKPLAN.md` and the older Repair1 chain remain archived historical material and impose no active gates.
 
-## REVIEW2 handoff closure
+## REVIEW3 handoff closure
 
-Independent review after commit `4d01520c6cc6c5841b530d0daac84097a8f7c25a` preserves the accepted architecture and reopens only bounded rework:
+Independent review after `8b3c34e99559350718f574e709c9884f29a1b90d` preserves the accepted architecture and routes bounded rework as follows:
 
-1. **Blocking implementation nonconformance — persistent prospective forward progress:** launch-time `can_reserve(...)` is insufficient. The J=1 envelope must remain owned when preparation working reservations become larger retained payloads; the scheduler may not manufacture a false irreducible state after an apparently safe launch.
-2. **Required regression strengthening:** add the 3 MiB-equivalent retained-growth counterexample (and preferably unequal retained sizes) through the real staged scheduler; exact prepare-reservation-sized payloads are insufficient evidence.
-3. **Acceptance strengthening — profile RAM reuse:** the reused-profile test must contain prior evidence that exceeds the later RAM lease and prove the actual runtime does not select/attempt it; job-count-only re-clamping is insufficient.
-4. **Acceptance strengthening — lifecycle:** retain the new KeyboardInterrupt observation, but also close same-owner success, ordinary failure, bounded OOM, sibling cancellation, progress-guard transfer, and cache-only release behavior.
-5. **Acceptance strengthening — assembled integration:** retain authentic cache-only -> uncached target-size/evaluation orchestration through the real staged scheduler and publication path.
-6. **Final evidence:** execute and record the complete affected regression/repository-required checks against the final assembled candidate; absence of CI is not itself a failure if equivalent approved local checks actually ran, but unexecuted required checks block closure.
-7. **Lifecycle/workplan reconciliation:** the exact-boundary rework remains the active target-size authority; archived final-closure/Repair1 plans are historical only.
+1. **Blocking implementation nonconformance — retained-growth safety:** a fixed `2 * J1` admission heuristic is not a retained-payload bound. Concurrency requires an authoritative prospective retained upper bound; absent one, conservatively sequence the unresolved transition.
+2. **Required reproducer:** add the 5 MiB / 1 MiB prepare / 1 MiB J=1 / 2.25+2.75 MiB retained geometry that defeats the current heuristic while remaining feasible under safe ordering.
+3. **O3 evidence blocker:** prove actual RAM-coordinate profile re-clamping with prior evidence above the later lease, not merely job-width narrowing.
+4. **O6 evidence blocker:** prove progress/admission-owner cleanup on success, ordinary failure, bounded OOM, sibling cancellation, KeyboardInterrupt, cache-only, and all-cache-only paths.
+5. **O9 credited:** the authentic target-size cache-only -> uncached restart/reuse integration is materially adequate, subject to final rerun after scheduler changes.
+6. **R3 evidence blocker:** execute and record complete affected regression/repository checks on the final assembled commit.
 
-No evidence currently requires reopening one-outer-owner evaluation, the launch-local lease coordinate, nested static-inference architecture, target-size science, flexible fidelity/horizon semantics, or persistence identity. The remaining work is therefore a localized scheduler ownership correction plus acceptance closure, not an architectural redesign.
+No current evidence requires reopening one-outer-owner evaluation, the launch-local lease coordinate, nested static-inference architecture, target-size science, flexible-fidelity/horizon semantics, or persistence identity.
