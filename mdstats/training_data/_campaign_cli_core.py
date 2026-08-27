@@ -13435,6 +13435,11 @@ class _StagedEvaluationTask:
     inference_result_bytes: Callable[[Any], int] | None = None
     cached_result: Callable[[Any], Any] | None = None
     accelerator_possible: bool = True
+    # Authoritative pre-prepare upper bound (bytes) on the retained prepared
+    # payload.  ``None`` means the retained growth is unbounded/unknown: the
+    # scheduler conservatively sequences its unclassified transition rather than
+    # assuming it can coexist with other inference-requiring work (REVIEW3).
+    retained_upper_bound: int | None = None
 
 
 @dataclass
@@ -13964,6 +13969,77 @@ def _run_staged_evaluation_tasks(
         ):
             ledger.release(progress_owner)
 
+    def _unclassified_prepare_admissible(task: _StagedEvaluationTask) -> bool:
+        """Whether one more unclassified transition may be admitted right now.
+
+        REVIEW3 established that a fixed multiple of ``minimum_inference_reservation``
+        is not a retained-payload bound: a prepared payload may retain far more
+        than its preparation working reservation.  Under an unbounded staged
+        ledger there is no arithmetic to protect and the historical
+        work-conserving overlap is retained.  Otherwise a new unclassified
+        prepare may overlap other inference-requiring work only when its
+        prospective retained growth is soundly bounded (and so is every other
+        outstanding unclassified transition) and the complete worst-case
+        coexistibility equation fits the staged budget while preserving one J=1
+        envelope.  An unbounded transition is conservatively sequenced: it is
+        admitted only while no other inference-requiring state is outstanding,
+        so any later retained-charge failure is a genuine irreducible geometry
+        rather than a producer-created conflict.
+        """
+
+        if ledger.budget_bytes is None:
+            return True
+
+        # Outstanding inference-requiring state that the new transition's
+        # retained payload must coexist with (worst case) before being
+        # finalized away.  Merely queued (``pending``) work holds no ledger
+        # bytes yet and does not constrain admission.
+        outstanding_unclassified = [
+            task for task, _timing in active_prepare.values()
+        ]
+        has_outstanding_work = bool(
+            active_prepare
+            or ready_inference
+            or active_inference
+            or waiting_finalize
+            or active_finalize
+        )
+        if not has_outstanding_work:
+            # First/only inference-requiring transition: admit it.  Its retained
+            # payload is charged at completion; if it alone plus minimum J=1
+            # cannot fit, that is reported causally as an irreducible geometry.
+            return True
+
+        # Overlapping other inference-requiring work requires a sound prospective
+        # retained upper bound on the new transition and on every other still-
+        # unclassified transition.  Absent a bound the worst-case coexistibility
+        # is unprovable and the transition must be sequenced.
+        bound = task.retained_upper_bound
+        if bound is None:
+            return False
+        bounds = [max(0, int(bound))]
+        for other in outstanding_unclassified:
+            if other.retained_upper_bound is None:
+                return False
+            bounds.append(max(0, int(other.retained_upper_bound)))
+
+        # Worst-case retained footprint once every outstanding unclassified
+        # transition (including this one) settles into its retained payload,
+        # coexisting with already-charged retained payloads and any active
+        # inference reservation.  One further J=1 envelope is required only when
+        # no active inference reservation already supplies the progress path.
+        already_retained = ledger.retained_payload_bytes
+        active_inference_bytes = sum(
+            value
+            for owner, value in ledger.reservations.items()
+            if owner.startswith("inference:")
+        )
+        envelope = minimum_inference_reservation if not active_inference_bytes else 0
+        worst_case = (
+            already_retained + active_inference_bytes + sum(bounds) + envelope
+        )
+        return worst_case <= ledger.budget_bytes
+
     def launch_prepare(pool: ThreadPoolExecutor) -> None:
         if stop_scheduling:
             return
@@ -13976,24 +14052,28 @@ def _run_staged_evaluation_tasks(
             buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
             if buffered >= pipeline_buffer:
                 break
-            # Payload growth is not knowable until production preparation has
-            # completed.  Until an actual inference reservation exists, only
-            # one such unclassified transition may be outstanding.  This is
-            # the scheduler's prospective admission claim: it avoids inventing
-            # a retained-size contract while preserving prepare/infer overlap
-            # as soon as the first real inference owner is active.
-            if not active_inference:
-                if ready_inference or waiting_finalize or active_finalize:
+            if not pending:
+                break
+            next_task = pending[0]
+            if joint_authority_owns_model_jobs:
+                # Evaluation: retained growth is unknown until preparation
+                # completes.  A new unclassified transition may overlap other
+                # inference-requiring work only when its prospective retained
+                # growth is soundly bounded and the complete worst-case equation
+                # fits while preserving one J=1 envelope; otherwise the unknown
+                # transition is conservatively sequenced (REVIEW3).
+                if not _unclassified_prepare_admissible(next_task):
                     break
-                if active_prepare and not ledger.can_reserve(
-                    prepare_reservation + 2 * minimum_inference_reservation
-                ):
-                    # With no retained-size contract, concurrent
-                    # unclassified preparation needs an additional minimum
-                    # envelope beyond the one used for its own eventual J=1
-                    # launch.  This leaves ordinary high-headroom pipelines
-                    # work-conserving while safely sequencing tight ones.
-                    break
+            else:
+                # Dynamics: preserve the historical distinct staged-runner
+                # admission semantics unchanged (O8).
+                if not active_inference:
+                    if ready_inference or waiting_finalize or active_finalize:
+                        break
+                    if active_prepare and not ledger.can_reserve(
+                        prepare_reservation + 2 * minimum_inference_reservation
+                    ):
+                        break
             # Preparation remains conservatively inference-capable until its
             # production classification has completed.
             if not ledger.can_reserve(prepare_reservation):

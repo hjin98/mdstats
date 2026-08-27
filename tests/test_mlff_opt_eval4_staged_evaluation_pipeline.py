@@ -312,6 +312,10 @@ def test_staged_runner_overlaps_prepare_and_finalize_with_single_inference_slot(
             finalize=finalize,
             done_detail=lambda result, wall: str(result),
             on_success=lambda result: callback_threads.append(threading.get_ident()),
+            # The prepared payload is a single scalar int; declare its sound
+            # retained upper bound so the scheduler may prove prepare/infer
+            # overlap instead of conservatively sequencing the transition.
+            retained_upper_bound=1024,
         )
 
     results = campaign_cli._run_staged_evaluation_tasks(
@@ -1698,6 +1702,10 @@ def test_staged_progress_counts_accepted_completion_not_display_index(
             finalize=finalize,
             done_detail=lambda result, wall: "done",
             accelerator_possible=False,
+            # The prepared payload is a single scalar int; declare its sound
+            # retained upper bound so the two cache-only tasks may prepare and
+            # finalize concurrently.
+            retained_upper_bound=1024,
         )
 
     campaign_cli._run_staged_evaluation_tasks(
@@ -2311,6 +2319,156 @@ def test_prepare_retained_growth_cannot_consume_persistent_j1_envelope(
     assert releases.count("progress:minimum-inference") == 2
 
 
+def test_review3_5mib_retained_growth_geometry_sequences_and_completes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW3 blocking reproducer: a fixed ``2 * J1`` heuristic admitted both
+    preparations even though their later retained transitions (``2.25 + 2.75``
+    MiB) fill the 5 MiB ledger and leave no J=1 headroom.  The sound scheduler
+    must not admit work into the avoidable retained-growth collision: it
+    conservatively sequences the two unbounded transitions so that at no point
+    are both retained payloads charged simultaneously, and both tasks complete."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=10 * _ONE_MIB,  # auto pipeline sub-budget = 5 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+
+    retained_concurrent = 0
+    retained_peak = 0
+    lock = threading.Lock()
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def observe_reserve(self, owner: str, amount: int) -> None:
+        nonlocal retained_concurrent, retained_peak
+        if owner.startswith("prepared:"):
+            with lock:
+                retained_concurrent += 1
+                retained_peak = max(retained_peak, retained_concurrent)
+        original_reserve(self, owner, amount)
+
+    def observe_release(self, owner: str) -> None:
+        nonlocal retained_concurrent
+        if owner.startswith("prepared:"):
+            with lock:
+                retained_concurrent -= 1
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "reserve", observe_reserve)
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", observe_release)
+
+    def task(index: int, retained_mib: float) -> campaign_cli._StagedEvaluationTask:
+        payload_bytes = int(retained_mib * _ONE_MIB)
+        payload = np.zeros(payload_bytes, dtype=np.uint8)
+
+        def infer(_prepared):
+            return index
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"review3-{index}",
+            label=f"review3-{index}",
+            start_detail="review3-5mib-retained-growth",
+            prepare=lambda payload=payload: payload,
+            requires_inference=lambda _prepared: True,
+            infer=infer,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared, payload_bytes=payload_bytes: payload_bytes,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (task(0, 2.25), task(1, 2.75)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert results == {"review3-0": 0, "review3-1": 1}
+    # The avoidable collision was avoided: the two retained payloads were never
+    # charged simultaneously (2.25 + 2.75 = 5.0 MiB would leave no J=1 headroom).
+    assert retained_peak == 1
+
+
+def test_bounded_retained_upper_bound_preserves_multi_prepare_overlap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW3 positive case: when a task declares a sound prospective retained
+    upper bound, the worst-case equation is provable and multi-prepare overlap is
+    not gratuitously disabled by conservative sequencing."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=8 * _ONE_MIB,  # auto pipeline sub-budget = 4 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+
+    active_prepares = 0
+    prepare_peak = 0
+    lock = threading.Lock()
+
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        payload = np.zeros(int(0.1 * _ONE_MIB), dtype=np.uint8)
+
+        def prepare():
+            nonlocal active_prepares, prepare_peak
+            with lock:
+                active_prepares += 1
+                prepare_peak = max(prepare_peak, active_prepares)
+            time.sleep(0.05)
+            with lock:
+                active_prepares -= 1
+            return payload
+
+        def infer(_prepared):
+            return index
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"bounded-{index}",
+            label=f"bounded-{index}",
+            start_detail="bounded-multi-prepare-overlap",
+            prepare=prepare,
+            requires_inference=lambda _prepared: True,
+            infer=infer,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared: int(0.1 * _ONE_MIB),
+            # Sound prospective upper bound (actual retained is 0.1 MiB).
+            retained_upper_bound=int(0.5 * _ONE_MIB),
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (task(0), task(1)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert results == {"bounded-0": 0, "bounded-1": 1}
+    # With a sound bound and a fitting worst-case equation, two unclassified
+    # transitions are admitted concurrently (prepare overlap is preserved).
+    assert prepare_peak == 2
+
+
 def test_keyboard_interrupt_releases_scheduler_owned_inference_reservations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2355,3 +2513,195 @@ def test_keyboard_interrupt_releases_scheduler_owned_inference_reservations(
 
     assert "inference:interrupt" in released
     assert "prepared:interrupt" in released
+
+
+def test_success_reuses_released_inference_reservation_in_same_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: on success, a completed inference's reservation and the prospective
+    progress owner are released so a later task in the SAME invocation reuses
+    that capacity, with no double-counting or leaked progress ownership."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=4 * _ONE_MIB,  # auto sub-budget = 2 MiB -> only J=1 fits
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 4
+
+    events: list[tuple[str, str]] = []
+    lock = threading.Lock()
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def record_reserve(self, owner: str, amount: int) -> None:
+        with lock:
+            events.append(("reserve", owner))
+        original_reserve(self, owner, amount)
+
+    def record_release(self, owner: str) -> None:
+        with lock:
+            events.append(("release", owner))
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "reserve", record_reserve)
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", record_release)
+
+    observed_jobs: list[int] = []
+    state: dict = {"active": 0, "peak": 0}
+    tasks = tuple(
+        _joint_task(
+            i,
+            infer=lambda prepared: True,
+            observed_jobs=observed_jobs,
+            lock=lock,
+            state=state,
+        )
+        for i in range(2)
+    )
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+
+    assert results == {"0": True, "1": True}
+    assert all(jobs == 1 for jobs in observed_jobs)
+    # Each inference reservation is acquired exactly once and released exactly
+    # once, and task 0's reservation is released before task 1's is admitted —
+    # proof that successful completion recycles capacity within one invocation.
+    for key in ("inference:0", "inference:1"):
+        assert events.count(("reserve", key)) == 1
+        assert events.count(("release", key)) == 1
+    assert events.index(("release", "inference:0")) < events.index(("reserve", "inference:1"))
+    # The prospective progress owner is fully balanced (no stale guard).
+    assert events.count(("reserve", "progress:minimum-inference")) == events.count(
+        ("release", "progress:minimum-inference")
+    )
+
+
+def test_bounded_oom_inference_terminal_failure_releases_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: a MemoryError (bounded OOM) during inference is a terminal failure that
+    releases the inference reservation and the prepared payload so a later
+    independent invocation is admissible (no leak)."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=8 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    released: list[str] = []
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def record_release(self, owner: str) -> None:
+        released.append(owner)
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", record_release)
+
+    oom_task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="oom",
+        label="oom",
+        start_detail="oom-terminal-cleanup",
+        prepare=lambda: 1,
+        requires_inference=lambda _prepared: True,
+        infer=lambda _prepared: (_ for _ in ()).throw(MemoryError("bounded OOM")),
+        finalize=lambda _prepared, result: result,
+        done_detail=lambda _result, _wall: "done",
+    )
+    with pytest.raises(campaign_cli.CampaignCliError, match="MemoryError"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [oom_task], cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+        )
+
+    assert "inference:oom" in released
+    assert "prepared:oom" in released
+    # A subsequent fresh invocation with the same budget must be admissible.
+    good = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="recovered",
+        label="recovered",
+        start_detail="oom-recovery",
+        prepare=lambda: 1,
+        requires_inference=lambda _prepared: True,
+        infer=lambda _prepared: True,
+        finalize=lambda _prepared, result: result,
+        done_detail=lambda _result, _wall: "done",
+    )
+    assert campaign_cli._run_staged_evaluation_tasks(
+        [good], cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    ) == {"recovered": True}
+
+
+def test_all_cache_only_terminal_state_releases_unused_progress_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: an all-cache-only terminal state acquires no inference lease, takes no
+    inference reservation, and releases the unused prospective progress owner."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=4 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 4
+
+    acquired_leases: list[object] = []
+    original_signal = campaign_cli._core.inference_start_signal
+
+    def record_lease(*args, **kwargs):
+        if kwargs.get("lease") is not None:
+            acquired_leases.append(kwargs["lease"])
+        return original_signal(*args, **kwargs)
+
+    monkeypatch.setattr(campaign_cli._core, "inference_start_signal", record_lease)
+
+    events: list[tuple[str, str]] = []
+    lock = threading.Lock()
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def record_reserve(self, owner: str, amount: int) -> None:
+        with lock:
+            events.append(("reserve", owner))
+        original_reserve(self, owner, amount)
+
+    def record_release(self, owner: str) -> None:
+        with lock:
+            events.append(("release", owner))
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "reserve", record_reserve)
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", record_release)
+
+    def cache_task(index: int) -> campaign_cli._StagedEvaluationTask:
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"cache-{index}",
+            label=f"cache-{index}",
+            start_detail="all-cache-only",
+            prepare=lambda index=index: index,
+            requires_inference=lambda _prepared: False,
+            infer=lambda prepared: prepared,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            cached_result=lambda prepared: prepared,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (cache_task(0), cache_task(1)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert results == {"cache-0": 0, "cache-1": 1}
+    # Cache-only bypass acquires no inference lease and no inference reservation.
+    assert acquired_leases == []
+    assert not any(owner.startswith("inference:") for op, owner in events)
+    # The unused prospective progress owner is balanced (released, not retained).
+    assert events.count(("reserve", "progress:minimum-inference")) == events.count(
+        ("release", "progress:minimum-inference")
+    )

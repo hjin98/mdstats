@@ -1451,3 +1451,123 @@ def test_staged_lease_clamps_nested_static_inference_authority(
     )
     assert captured["authority"].maximum_concurrent_model_jobs == 8
     assert captured["authority"].initial_incremental_ram_cap_bytes == snapshot.ram_budget_bytes
+
+
+def test_staged_lease_ram_reclamp_excludes_out_of_lease_profile_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    """O3: prior profile evidence above the later lease is actually excluded.
+
+    A compatible runtime profile carrying a fast but RAM-heavy feasible point
+    above the later stage lease must not survive the real execution path: the
+    RAM coordinate is re-clamped so only the below-lease point is selected.
+    This proves the re-clamp is a selection-level exclusion of prior evidence,
+    not merely a constructor field narrowed in passing.
+    """
+    import json
+
+    import mdstats
+    from mdstats.training_data import campaign_execution, model_features, resources
+    from mdstats.training_data.inference_parallel import (
+        InferenceLease,
+        inference_start_signal,
+    )
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    snapshot = SystemResourceSnapshot(
+        cpu_threads_available=8,
+        cpu_fraction=0.90,
+        cpu_threads_budget=7,
+        ram_available_bytes=1 << 40,
+        ram_fraction=0.80,
+        ram_budget_bytes=1 << 39,
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+    monkeypatch.setattr(resources, "detect_system_resources", lambda **kwargs: snapshot)
+
+    class Provider(_Provider):
+        def set_head(self, head):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        model_features.MaceCalculatorProvider,
+        "from_model_path",
+        classmethod(lambda cls, *args, **kwargs: Provider()),
+    )
+
+    model = tmp_path / "ram-reclamp-model.pt"
+    model.write_bytes(b"ram-reclamp-fixture")
+    graph_cache = tmp_path / "ram-reclamp-graphs"
+    atoms = _atoms(32)
+    plan = mdstats.InferenceExecutionPlan(
+        batch_policy="auto",
+        selected_batch_size=8,
+        maximum_batch_size=16,
+        selected_concurrent_model_jobs=1,
+    )
+    policy = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), device="cpu", default_dtype="float64"
+    )
+
+    # First pass (no lease) materializes a compatible profile on disk.
+    campaign_execution._predict_model_on_atoms(
+        model,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=Provider(),
+        graph_cache_directory=graph_cache,
+    )
+    profiles_dir = graph_cache.resolve().parent / "static-inference-runtime-profiles"
+    profile_path = next(iter(profiles_dir.glob("*.json")))
+    original = json.loads(profile_path.read_text(encoding="utf-8"))
+
+    # Inject prior evidence: a fast RAM-heavy feasible point ABOVE the later
+    # lease (60_000 bytes) and a slower RAM-frugal point BELOW it (10_000 bytes).
+    fast = _measured_point(16, 1, 300.0, 60_000, None)
+    slow = _measured_point(8, 1, 100.0, 10_000, None)
+    fabricated = StaticInferenceRuntimeProfile(
+        compatibility_digest=original["compatibility_digest"],
+        selected_batch_size=16,
+        selected_concurrent_model_jobs=1,
+        learned_safe_batch_ceiling=16,
+        evidence=(fast, slow),
+    )
+    profile_path.write_text(json.dumps(fabricated.to_dict()), encoding="utf-8")
+
+    captured: dict = {}
+    real_init = StaticInferenceRuntimeAuthority.__init__
+
+    def capture_init(self, **kwargs):
+        captured["authority"] = self
+        real_init(self, **kwargs)
+
+    monkeypatch.setattr(StaticInferenceRuntimeAuthority, "__init__", capture_init)
+
+    lease = InferenceLease(maximum_model_jobs=1, ram_allowance_bytes=25_000)
+    with inference_start_signal(lambda: None, lease=lease):
+        campaign_execution._predict_model_on_atoms(
+            model,
+            atoms,
+            head=None,
+            policy=policy,
+            execution_plan=plan,
+            provider=Provider(),
+            graph_cache_directory=graph_cache,
+        )
+
+    authority = captured["authority"]
+    assert authority.reused_compatible_profile
+    # The RAM coordinate is re-clamped: the 60_000-byte point is excluded and
+    # only the 10_000-byte point survives selection.
+    assert not authority._safe(fast)
+    assert authority._safe(slow)
+    assert authority.selected_point is not None
+    assert authority.selected_point.peak_ram_bytes == 10_000
+    assert authority.selected_point.structures_per_second == 100.0
+    assert authority.initial_incremental_ram_cap_bytes == 25_000
