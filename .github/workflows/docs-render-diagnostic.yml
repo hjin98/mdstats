@@ -1,0 +1,72 @@
+name: Diagnose documentation PDF rendering
+
+on:
+  push:
+    branches:
+      - ci/incremental-doc-pdf-autosync
+    paths:
+      - '.github/workflows/docs-render-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      DOC_TOOLCHAIN_SHA: c5411e5c0d8ffa390f0979660c592725f9dca6f8
+      TARGET_MD: docs/specs/documentation/architecture_manual_ownership_spec.md
+      TARGET_PDF: docs/specs/documentation/architecture_manual_ownership_spec.pdf
+    steps:
+      - name: Checkout mdstats
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pinned documentation toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p .doc-tools
+          base="https://raw.githubusercontent.com/hjin98/mace-dependencies/${DOC_TOOLCHAIN_SHA}"
+          curl -fsSL "${base}/pandoc-3.10.2-linux-amd64.tar.gz" -o /tmp/pandoc.tar.gz
+          curl -fsSL "${base}/typst-x86_64-unknown-linux-musl.tar.xz" -o /tmp/typst.tar.xz
+          tar -xzf /tmp/pandoc.tar.gz -C .doc-tools --strip-components=1
+          tar -xf /tmp/typst.tar.xz -C .doc-tools
+          find .doc-tools -type f -name pandoc -exec chmod +x {} \;
+          find .doc-tools -type f -name typst -exec chmod +x {} \;
+          find .doc-tools -type f -name pandoc -exec dirname {} \; >> "$GITHUB_PATH"
+          find .doc-tools -type f -name typst -exec dirname {} \; >> "$GITHUB_PATH"
+
+      - name: Validate toolchain
+        run: |
+          set -euo pipefail
+          pandoc --version
+          typst --version
+
+      - name: Render with legacy command
+        run: |
+          set -euo pipefail
+          pandoc "$TARGET_MD" -o /tmp/legacy.pdf --pdf-engine=typst
+          test -s /tmp/legacy.pdf
+
+      - name: Render with generalized command
+        run: |
+          set -euo pipefail
+          pandoc "$TARGET_MD" -o /tmp/generalized.pdf \
+            --from markdown+tex_math_single_backslash+tex_math_dollars \
+            --pdf-engine typst \
+            --resource-path "$(dirname "$TARGET_MD"):$PWD/docs:$PWD" \
+            -V papersize:us-letter -V margin:0.75in
+          test -s /tmp/generalized.pdf
+
+      - name: Render through production builder
+        run: |
+          set -euo pipefail
+          python3 docs/build_pdfs.py build --target "$TARGET_PDF" --report /tmp/builder.json
+          test -s "$TARGET_PDF"
+          test -s /tmp/builder.json
+
+      - name: Fingerprint production target
+        run: |
+          set -euo pipefail
+          python3 docs/build_pdfs.py fingerprint --target "$TARGET_PDF" --ref HEAD
