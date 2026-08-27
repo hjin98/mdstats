@@ -9,8 +9,6 @@ date: "2026-07-26"
 This specification defines ownership, cross-reference, and generated-PDF parity
 for the framework-topology and statistical-site architecture manuals.
 
-**Temporary DOCS-INCREMENTAL-PDF-AUTOSYNC1 disjoint-target CI marker.**
-
 # Manual partition
 
 The architecture is split into two normative parts plus one descriptive status appendix.

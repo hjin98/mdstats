@@ -10,8 +10,6 @@ fontsize: 10pt
 
 This runbook describes the current one-shot FINAL-GPU1 handoff for the target-size-v5 software generation. It is intentionally independent of the retired SIZE-FIDELITY2/MVMIGRATE1 activation workflow. Target-size v5 is already the production architecture; FINAL-GPU1 qualifies accelerator execution and release performance only.
 
-**Temporary DOCS-INCREMENTAL-PDF-AUTOSYNC1 CI publication marker.**
-
 # 1. Inputs
 
 Prepare one workstation directory containing:
