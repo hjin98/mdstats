@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "renderer": {
+    "from": "markdown+tex_math_single_backslash+tex_math_dollars",
+    "pdf_engine": "typst",
+    "papersize": "us-letter",
+    "margin": "0.75in",
+    "typst_binary": "mace-dependencies/typst-x86_64-unknown-linux-musl.tar.xz"
+  },
+  "direct": [],
+  "composite": [
+    {
+      "id": "mlff_training_data_architecture",
+      "source": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "target": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "dependencies": [
+        "docs/arch_manuals/mlff_training_data/00_front_matter.md",
+        "docs/arch_manuals/mlff_training_data/10_foundations.md",
+        "docs/arch_manuals/mlff_training_data/20_data_contracts.md",
+        "docs/arch_manuals/mlff_training_data/30_statistical_design.md",
+        "docs/arch_manuals/mlff_training_data/40_training_evaluation.md",
+        "docs/arch_manuals/mlff_training_data/50_target_multiview.md",
+        "docs/arch_manuals/mlff_training_data/60_execution_performance.md",
+        "docs/arch_manuals/mlff_training_data/80_ownership_and_decisions.md",
+        "docs/arch_manuals/mlff_training_data/90_references.md"
+      ],
+      "assembler": [
+        "python3",
+        "tools/build_mlff_architecture_manual.py"
+      ],
+      "generated_sources": [
+        "docs/arch_manuals/mlff_training_data_architecture.md"
+      ],
+      "manifest": "docs/arch_manuals/mlff_training_data_architecture.pdf.manifest.json"
+    }
+  ]
+}

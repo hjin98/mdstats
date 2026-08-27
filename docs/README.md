@@ -13,6 +13,29 @@ The documentation tree is organized by artifact responsibility:
 
 Permanent specification/manual Markdown is kept synchronized with its repository PDF/provenance artifacts where that document family uses them.
 
+## PDF publication
+
+Tracked Markdown/PDF sibling pairs under `docs/` are ordinary PDF publications. A pushed Markdown change rebuilds only the publication targets that depend on the changed source; README/index/other Markdown without a declared PDF publication remains Markdown-only.
+
+`docs/build_pdfs.py` is the publication driver. It discovers existing direct `X.md` -> `X.pdf` pairs and reads `docs/pdf_publications.json` for new publications and nontrivial source graphs. To introduce a PDF before its sibling PDF exists, declare that source/target explicitly in `pdf_publications.json`.
+
+The MLFF architecture is composite rather than a direct editable pair: canonical chapter sources under `arch_manuals/mlff_training_data/` are assembled by `tools/build_mlff_architecture_manual.py`, then the derived `arch_manuals/mlff_training_data_architecture.md` is rendered to PDF. Derived Markdown/PDF outputs must not be edited independently.
+
+Local maintenance commands include:
+
+```bash
+# Preview publications affected by a Git range.
+python3 docs/build_pdfs.py plan --before <base> --after HEAD
+
+# Rebuild all declared/discovered PDF publications.
+python3 docs/build_pdfs.py build --all --report build/docs/publications.json
+
+# Rebuild one publication target.
+python3 docs/build_pdfs.py build --target docs/guides/mlff_campaign_cli_user_guide.pdf
+```
+
+GitHub Actions runs the same driver for pushed documentation changes on every branch and writes validated generated publications back to that branch when repository policy permits. Build-system changes deliberately use a full publication-consistency rebuild. The workflow renders transactionally and refuses stale output when a newer push changes the same publication inputs.
+
 ## MLFF data preparation and fine-tuning
 
 - `arch_manuals/mlff_training_data_architecture.{md,pdf}` is the current normative MLFF architecture. It is assembled from indexed current-state chapter sources under `arch_manuals/mlff_training_data/` by `tools/build_mlff_architecture_manual.py`.
