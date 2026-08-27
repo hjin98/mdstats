@@ -61,16 +61,25 @@ PERF-P5 adds an **optional** same-architecture model-state reload interface. A r
 
 1. it was created from an unaccelerated, uncompiled candidate model;
 2. it is not a source-foundation-bound provider;
-3. source and resident model classes match exactly;
-4. state keys match exactly;
-5. every tensor shape and dtype matches exactly; and
-6. `load_state_dict(..., strict=True)` succeeds.
+3. the incoming checkpoint's canonical execution-architecture digest equals the retained shell's canonical execution-architecture digest (the primary compatibility gate; see 3.1);
+4. source and resident model classes match exactly;
+5. state keys match exactly;
+6. every tensor shape and dtype matches exactly; and
+7. `load_state_dict(..., strict=True)` succeeds.
 
 PyTorch defines `state_dict`/`load_state_dict` as the standard module-state persistence interface; strict loading requires matching state keys.[^pytorch-state]
 
 The shell is mutable execution state and must never be shared across concurrent inference workers. The normal full-reconstruction path remains the default and exact fallback.
 
-On the CPU development host, shell reload was **6.49% slower** than fresh `MACECalculator` construction for the supplied MH-1 model (median 105.28 ms versus 98.86 ms, three paired repetitions), although predictions were byte-identical. Therefore shell reuse is implemented but **not promoted as a CPU default**. It may be reconsidered only in `FINAL-GPU1`, where avoiding repeated accelerator conversion could change the cost balance.
+On the CPU development host, shell reload was **6.49% slower** than fresh `MACECalculator` construction for the supplied MH-1 model (median 105.28 ms versus 98.86 ms, three paired repetitions), although predictions were byte-identical. Therefore shell reuse is implemented but **not promoted as a CPU default**. It may be reconsidered only in `FINAL-GPU1`, where avoiding repeated accelerator conversion could change the cost balance. That comparison exercised provider-shell reuse together with graph-cache and calibration-profile reuse; it is not an isolated provider-shell speedup claim.
+
+## 3.1 Canonical execution-architecture identity (G6/G7 requalification)
+
+Items 4-6 above establish state-structure compatibility, but state-structure equality is not, by itself, proof that two MACE checkpoints share the same execution architecture: a retained `MACECalculator` caches non-state configuration (for example the cutoff radius used to build its neighbor list) at construction time that plain `load_state_dict` never refreshes. Two checkpoints with identical model class, state-key set, tensor shapes, and tensor dtypes can still differ in `r_max` and therefore in scientific execution behavior.
+
+The admissibility gate is therefore layered: a canonical, versioned execution-architecture descriptor is derived independently for the incoming checkpoint and the retained shell *before* any mutation, covering model family/class, cutoff/neighbor-radius semantics, the species/atomic-number table and its ordering, head/model structure, radial/cutoff-function construction, interaction/product architecture, and dtype/precision -- while excluding checkpoint-specific calibration constants (atomic reference energies, scale/shift) that legitimately differ between same-architecture checkpoints. Hot-swap is rejected outright if these digests differ, regardless of state-structure equality. Only when the canonical digests match do the state-key/shape/dtype checks and strict `load_state_dict` apply, as a secondary mutation-safety guard.
+
+State replacement is a transaction on the single retained provider: any failure once mutation has begun -- a raised `load_state_dict`, or a failed post-swap architecture-invariant check -- poisons the shell so it can never be returned to inference; the caller must reconstruct a fresh provider from the authenticated checkpoint. `runtime_architecture_digest` and the graph-policy cache key used for R19-governed graph-cache compatibility are both canonical projections of this same authority, so a graph-affecting architecture change (for example a changed cutoff) necessarily changes graph-cache compatibility as well.
 
 # 4. DATA8 and dataset-format audit
 

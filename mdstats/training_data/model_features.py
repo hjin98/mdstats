@@ -61,6 +61,13 @@ MACE_DESCRIPTOR_POLICY_VERSION = "mdstats.mlff-data6.mace-descriptor.2026-08.v2"
 MACE_ADAPTER_VERSION = "mdstats.mlff-data6.mace-calculator.2026-08.v2"
 MACE_MONITOR_GRAPH_CACHE_SCHEMA = "mdstats.mace-monitor-graph-cache.v1"
 MACE_MONITOR_GRAPH_POLICY_VERSION = "mdstats.mlff-opt-eval3.graph.2026-08.v1"
+# G6/G7 requalification amendment (R17A): one canonical, versioned execution-
+# architecture authority.  Bumping any of these schema strings deliberately
+# invalidates every persisted digest/profile/graph-policy identity that was
+# computed under the prior (weaker) definition.
+MACE_MODEL_EXECUTION_ARCHITECTURE_SCHEMA = "mdstats.mace-model-execution-architecture.v1"
+MACE_PROVIDER_SHELL_EXECUTION_POLICY_SCHEMA = "mdstats.mace-provider-shell-execution-policy.v1"
+MACE_RUNTIME_ARCHITECTURE_SCHEMA = "mdstats.mace-runtime-architecture.v2"
 STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA = "mdstats.static-inference-runtime-profile.v6"
 STATIC_INFERENCE_EVIDENCE_SEMANTICS = (
     "persistent-provider-required-residency-plus-2d-failure-learning.v6"
@@ -138,11 +145,199 @@ def _graph_tensor_bytes(value: Any) -> int:
     return max(total, 1)
 
 
+# --- R17A canonical execution-architecture identity --------------------
+#
+# One canonical authority determines both hot-swap eligibility and every
+# downstream compatibility projection (runtime-architecture digest,
+# calibration-profile identity, graph-policy identity).  It is layered:
+#
+#   1. model execution architecture (`_mace_model_execution_architecture_descriptor`)
+#      -- scientific/forward-pass structure independent of learned weights;
+#   2. provider/shell execution policy (`_mace_provider_shell_execution_policy_descriptor`)
+#      -- calculator/runtime settings that can alter the executable shell.
+#
+# Buffers registered on a real MACE ``torch.nn.Module`` are the model's own
+# non-learned, architecture-derived tensors (cutoff radius, atomic-number
+# table/order, radial-basis and cutoff-function construction, symmetric-
+# contraction matrices, structural masks) and are therefore bound by VALUE.
+# ``torch.nn.Parameter`` tensors are the excluded learned weights and are
+# bound only by structure (name/shape/dtype) so genuinely same-architecture
+# checkpoints with different weights remain hot-swap eligible.  A small,
+# explicit set of MACE blocks stores dataset/training calibration constants
+# (E0 atomic-energy references, energy scale/shift) as buffers rather than
+# parameters purely because they are not updated by backprop; those buffers
+# are checkpoint-specific like weights and are therefore also excluded from
+# value comparison, bound only by structure.
+_MACE_CALIBRATION_BUFFER_BLOCK_TYPES = frozenset(
+    {
+        "mace.modules.blocks.AtomicEnergiesBlock",
+        "mace.modules.blocks.ScaleShiftBlock",
+    }
+)
+
+
+def _mace_buffer_value_digest(tensor: Any) -> str:
+    array = (
+        tensor.detach().contiguous().cpu().numpy()
+        if hasattr(tensor, "detach")
+        else np.asarray(tensor)
+    )
+    return _array_content_digest(np.ascontiguousarray(array))
+
+
+def _mace_model_execution_architecture_descriptor(model: Any) -> dict[str, Any]:
+    """Canonical, weight-independent execution-architecture descriptor.
+
+    Binds every property capable of changing forward computation, graph
+    construction, or retained-shell execution semantics -- exact model class,
+    cutoff/neighbor-radius semantics, species/atomic-number table and order,
+    head structure, radial-basis/embedding and cutoff-function construction,
+    interaction-block architecture/count, product/correlation architecture,
+    readout structure, and precision/dtype -- while deliberately excluding
+    learned parameter values (and checkpoint-specific calibration buffer
+    values) so same-architecture checkpoints with different weights remain
+    hot-swap eligible.  Unknown/unsupported model objects fail closed rather
+    than silently reporting an empty descriptor.
+    """
+
+    if not hasattr(model, "named_parameters") or not hasattr(model, "named_modules"):
+        raise TrainingDataInputError(
+            "MACE execution architecture identity requires a torch model."
+        )
+    parameters = [
+        {
+            "name": str(name),
+            "shape": [int(value) for value in tensor.shape],
+            "dtype": str(tensor.dtype),
+        }
+        for name, tensor in sorted(model.named_parameters(), key=lambda item: item[0])
+    ]
+    buffers: list[dict[str, Any]] = []
+    for module_name, submodule in sorted(model.named_modules(), key=lambda item: item[0]):
+        owner_type = f"{type(submodule).__module__}.{type(submodule).__qualname__}"
+        value_excluded = owner_type in _MACE_CALIBRATION_BUFFER_BLOCK_TYPES
+        for leaf_name, tensor in submodule.named_buffers(recurse=False):
+            full_name = f"{module_name}.{leaf_name}" if module_name else str(leaf_name)
+            entry: dict[str, Any] = {
+                "name": full_name,
+                "shape": [int(value) for value in tensor.shape],
+                "dtype": str(tensor.dtype),
+            }
+            if not value_excluded:
+                entry["value"] = _mace_buffer_value_digest(tensor)
+            buffers.append(entry)
+    buffers.sort(key=lambda item: item["name"])
+    modules_census = [
+        (str(name), f"{type(submodule).__module__}.{type(submodule).__qualname__}")
+        for name, submodule in sorted(model.named_modules(), key=lambda item: item[0])
+    ]
+    interaction_avg_num_neighbors = [
+        float(getattr(interaction, "avg_num_neighbors", float("nan")))
+        for interaction in getattr(model, "interactions", ())
+    ]
+    heads = [str(value) for value in getattr(model, "heads", ())]
+    primary_dtype = ""
+    for _, tensor in model.named_parameters():
+        primary_dtype = str(tensor.dtype)
+        break
+    return {
+        "schema": MACE_MODEL_EXECUTION_ARCHITECTURE_SCHEMA,
+        "model_class": f"{type(model).__module__}.{type(model).__qualname__}",
+        "primary_dtype": primary_dtype,
+        "heads": heads,
+        "interaction_avg_num_neighbors": interaction_avg_num_neighbors,
+        "modules": modules_census,
+        "parameters": parameters,
+        "buffers": buffers,
+    }
+
+
+def _mace_provider_shell_execution_policy_descriptor(calculator: Any) -> dict[str, Any]:
+    """Canonical calculator/runtime shell-policy layer of the execution identity.
+
+    Covers calculator-level settings that can alter the executable shell or
+    its graph/compiled behavior without necessarily changing model state:
+    compile mode and equivariant-acceleration backend (CuEq/OEq) policy.
+    """
+
+    return {
+        "schema": MACE_PROVIDER_SHELL_EXECUTION_POLICY_SCHEMA,
+        "calculator_class": f"{type(calculator).__module__}.{type(calculator).__qualname__}",
+        "model_type": str(getattr(calculator, "model_type", "")),
+        "default_dtype": str(getattr(calculator, "default_dtype", "")),
+        "use_compile": bool(getattr(calculator, "use_compile", False)),
+        "enable_cueq": bool(getattr(calculator, "_enable_cueq", False)),
+        "enable_oeq": bool(getattr(calculator, "_enable_oeq", False)),
+        "pad_num_atoms": int(getattr(calculator, "pad_num_atoms", 0)),
+        "pad_num_edges": int(getattr(calculator, "pad_num_edges", 0)),
+        "num_models": int(getattr(calculator, "num_models", 0) or 0),
+        "available_heads": [str(value) for value in getattr(calculator, "available_heads", ())],
+    }
+
+
+def _mace_provider_execution_architecture_descriptor(
+    calculator: Any, *, model_version: str, adapter_version: str
+) -> dict[str, Any]:
+    """Composed canonical execution-architecture authority for one provider."""
+
+    models = getattr(calculator, "models", None)
+    if not isinstance(models, (tuple, list)) or not models:
+        raise TrainingDataInputError(
+            "MACE runtime architecture identity requires calculator model state."
+        )
+    try:
+        import torch as _torch_runtime
+
+        torch_version = str(getattr(_torch_runtime, "__version__", ""))
+    except ModuleNotFoundError:  # pragma: no cover - provider already requires torch
+        torch_version = ""
+    return {
+        "schema": MACE_RUNTIME_ARCHITECTURE_SCHEMA,
+        "adapter_version": str(adapter_version),
+        "model_version": str(model_version),
+        "torch_version": torch_version,
+        "models": [
+            _mace_model_execution_architecture_descriptor(model) for model in models
+        ],
+        "shell_policy": _mace_provider_shell_execution_policy_descriptor(calculator),
+    }
+
+
+def _mace_graph_affecting_model_projection(model: Any) -> tuple[float, tuple[int, ...]]:
+    """Cutoff/species projection derived from the canonical architecture authority.
+
+    Graph/neighbor-list construction is governed by the model's own cutoff and
+    atomic-number-table buffers -- the same source the canonical descriptor
+    reads -- rather than a separately cached calculator attribute that can go
+    stale after a checkpoint state replacement.
+    """
+
+    r_max_buffer = getattr(model, "r_max", None)
+    r_max = (
+        float(r_max_buffer.item())
+        if hasattr(r_max_buffer, "item")
+        else float(r_max_buffer or 0.0)
+    )
+    atomic_numbers_buffer = getattr(model, "atomic_numbers", None)
+    atomic_numbers = (
+        tuple(int(value) for value in atomic_numbers_buffer.tolist())
+        if hasattr(atomic_numbers_buffer, "tolist")
+        else tuple(int(value) for value in (atomic_numbers_buffer or ()))
+    )
+    return r_max, atomic_numbers
+
+
 def _mace_graph_policy_key(calc: Any) -> tuple[Any, ...]:
-    z_values = tuple(int(value) for value in getattr(getattr(calc, "z_table", None), "zs", ()))
+    models = getattr(calc, "models", None)
+    primary_model = models[0] if isinstance(models, (tuple, list)) and models else None
+    if primary_model is not None:
+        r_max, z_values = _mace_graph_affecting_model_projection(primary_model)
+    else:
+        r_max = float(getattr(calc, "r_max", 0.0))
+        z_values = tuple(int(value) for value in getattr(getattr(calc, "z_table", None), "zs", ()))
     return (
         f"{type(calc).__module__}.{type(calc).__qualname__}",
-        float(calc.r_max),
+        r_max,
         str(calc.default_dtype),
         str(calc.head),
         z_values,
@@ -1427,83 +1622,58 @@ class MaceCalculatorProvider:
         self._descriptor_adapter_cache: _MaceDescriptorAdapter | None = None
         self._runtime_architecture_digest_cache: str | None = None
         self._state_hot_swap_qualified = False
+        # R17A 3.5 hot-swap transaction: a failed/partial state replacement
+        # must never leave a contaminated shell available for later
+        # inference.  ``_poisoned`` is permanent for this instance; recovery
+        # is safe reconstruction from an authenticated checkpoint, never an
+        # ad hoc reverse mutation of this provider.
+        self._poisoned = False
+        self._poison_reason: str | None = None
 
     @property
     def checkpoint_identity(self) -> ModelCheckpointIdentity:
         return self._checkpoint_identity
 
-    @property
-    def runtime_architecture_digest(self) -> str:
-        """Return weight-independent execution architecture identity.
+    def _raise_if_poisoned(self) -> None:
+        if self._poisoned:
+            raise MaceModelStateCompatibilityError(
+                "MACE provider shell is poisoned after a failed checkpoint "
+                f"state transaction and cannot be reused: {self._poison_reason}"
+            )
 
-        Static inference calibration characterizes tensor/graph execution shape,
-        not scientific checkpoint weights.  The digest therefore binds model
-        classes, state keys/shapes/dtypes, calculator graph policy, element
-        table, and MACE adapter version while deliberately excluding parameter
-        values and checkpoint SHA.  Hardware, head, precision, acceleration,
-        and workload shape remain separate compatibility-key dimensions at the
-        runtime-authority owner.
-        """
-
-        cached = self._runtime_architecture_digest_cache
-        if cached is not None:
-            return cached
+    def _execution_architecture_descriptor(self) -> dict[str, Any]:
         calculator = self._calculator
         if calculator is None:
             raise TrainingDataInputError(
                 "Closed MACE provider has no runtime architecture identity."
             )
-        models = getattr(calculator, "models", None)
-        if not isinstance(models, (tuple, list)) or not models:
-            raise TrainingDataInputError(
-                "MACE runtime architecture identity requires calculator model state."
-            )
-        model_payload = []
-        for model in models:
-            if not hasattr(model, "state_dict"):
-                raise TrainingDataInputError(
-                    "MACE runtime architecture identity requires torch model state."
-                )
-            state = model.state_dict()
-            model_payload.append(
-                {
-                    "model_class": f"{type(model).__module__}.{type(model).__qualname__}",
-                    "state": [
-                        {
-                            "key": str(key),
-                            "shape": [int(value) for value in tensor.shape],
-                            "dtype": str(tensor.dtype),
-                        }
-                        for key, tensor in sorted(state.items())
-                    ],
-                }
-            )
-        z_table = getattr(calculator, "z_table", None)
-        z_values = tuple(int(value) for value in getattr(z_table, "zs", ()))
-        try:
-            import torch as _torch_runtime
-            torch_version = str(getattr(_torch_runtime, "__version__", ""))
-        except ModuleNotFoundError:  # pragma: no cover - provider already requires torch
-            torch_version = ""
-        cached = digest(
-            {
-                "schema": "mdstats.mace-runtime-architecture.v1",
-                "adapter_version": MACE_ADAPTER_VERSION,
-                "model_version": self._checkpoint_identity.model_version,
-                "torch_version": torch_version,
-                "calculator_class": f"{type(calculator).__module__}.{type(calculator).__qualname__}",
-                "model_type": str(getattr(calculator, "model_type", "")),
-                "models": model_payload,
-                "r_max": float(getattr(calculator, "r_max", 0.0)),
-                "atomic_numbers": list(z_values),
-                "available_heads": [
-                    str(value) for value in getattr(calculator, "available_heads", ())
-                ],
-                "use_compile": bool(getattr(calculator, "use_compile", False)),
-                "pad_num_atoms": int(getattr(calculator, "pad_num_atoms", 0)),
-                "pad_num_edges": int(getattr(calculator, "pad_num_edges", 0)),
-            }
+        return _mace_provider_execution_architecture_descriptor(
+            calculator,
+            model_version=self._checkpoint_identity.model_version,
+            adapter_version=MACE_ADAPTER_VERSION,
         )
+
+    @property
+    def runtime_architecture_digest(self) -> str:
+        """Return weight-independent execution architecture identity.
+
+        This is the same canonical R17A execution-architecture authority used
+        to gate checkpoint hot swapping (``load_compatible_model_state``).
+        Static inference calibration and graph-policy identity characterize
+        tensor/graph execution shape, not scientific checkpoint weights: the
+        digest binds exact model class, cutoff/species/head/radial/cutoff-
+        function/interaction/product/readout architecture, dtype, and
+        calculator shell policy (compile/CuEq/OEq) while deliberately
+        excluding learned parameter values and checkpoint SHA.  Hardware,
+        head selection, precision policy, and workload shape remain separate
+        compatibility-key dimensions at the runtime-authority owner.
+        """
+
+        cached = self._runtime_architecture_digest_cache
+        if cached is not None:
+            return cached
+        self._raise_if_poisoned()
+        cached = digest(self._execution_architecture_descriptor())
         self._runtime_architecture_digest_cache = cached
         return cached
 
@@ -1836,6 +2006,7 @@ class MaceCalculatorProvider:
     def set_head(self, head: str | None) -> None:
         """Select a MACE head without reloading the checkpoint weights."""
 
+        self._raise_if_poisoned()
         if head is None:
             return
         requested = str(head)
@@ -1864,15 +2035,25 @@ class MaceCalculatorProvider:
         *,
         expected_sha256: str | None = None,
     ) -> ModelCheckpointIdentity:
-        """Load one exact same-architecture model into this validated shell.
+        """Load one canonically same-architecture model into this validated shell.
 
         PERF-P5 keeps this optimization deliberately narrow: it is enabled only
         for providers constructed from an unaccelerated deployable MACE model,
         never for canonical source-foundation providers and never for CuEq/OEq/
-        compiled calculator shells.  Keys, shapes, dtypes, model class, and
-        ensemble cardinality must match before ``load_state_dict`` is allowed.
+        compiled calculator shells.
+
+        R17A requires proving equality of the complete forward/graph-affecting
+        execution architecture -- not merely state-key/shape/dtype structure --
+        before any retained shell is mutated (see
+        ``_mace_model_execution_architecture_descriptor``).  State-structure
+        equality remains a secondary mutation-safety guard applied after that
+        primary architecture-identity gate.  The replacement itself is a
+        transaction (R17A 3.5): any failure after mutation has begun poisons
+        this shell so it can never be returned to inference, and the caller
+        must reconstruct a fresh provider from an authenticated checkpoint.
         """
 
+        self._raise_if_poisoned()
         if not self._state_hot_swap_qualified or self._checkpoint_identity.foundation_bound:
             raise MaceModelStateCompatibilityError(
                 "This MACE provider is not qualified for checkpoint state hot swapping."
@@ -1880,6 +2061,8 @@ class MaceCalculatorProvider:
         path = Path(model_path).resolve()
         if not path.is_file():
             raise TrainingDataInputError(f"MACE checkpoint does not exist: {path!s}.")
+        # Step 1: authenticate the incoming checkpoint under the existing
+        # checkpoint authority path before anything is derived from it.
         observed_sha = _sha256_file(path)
         if expected_sha256 is not None and observed_sha != validate_digest(
             expected_sha256, name="expected_sha256"
@@ -1903,6 +2086,27 @@ class MaceCalculatorProvider:
         if not isinstance(target_models, (tuple, list)) or len(target_models) != 1:
             raise MaceModelStateCompatibilityError("Checkpoint hot swapping requires exactly one calculator model.")
         target = target_models[0]
+
+        # Step 2/3: derive the canonical execution-architecture descriptor for
+        # the incoming checkpoint (loaded in isolation, target not yet
+        # touched) and for the currently retained shell.
+        incoming_descriptor = _mace_model_execution_architecture_descriptor(source)
+        retained_descriptor = _mace_model_execution_architecture_descriptor(target)
+        incoming_architecture_digest = digest(incoming_descriptor)
+        retained_architecture_digest = digest(retained_descriptor)
+
+        # Step 4: compare the complete canonical execution identity.  Any
+        # difference -- including a cutoff/`r_max` difference invisible to
+        # state-key/shape/dtype structure -- rejects the hot swap outright.
+        # Unknown/unprovable compatibility must never fail open.
+        if incoming_architecture_digest != retained_architecture_digest:
+            raise MaceModelStateCompatibilityError(
+                "Checkpoint hot-swap execution-architecture identity differs from the "
+                "validated model shell; safe reconstruction is required."
+            )
+
+        # Step 5: existing exact model-class/state-key/shape/dtype guards
+        # remain as a secondary mutation-safety guard.
         source_type = f"{type(source).__module__}.{type(source).__qualname__}"
         target_type = f"{type(target).__module__}.{type(target).__qualname__}"
         if source_type != target_type:
@@ -1920,13 +2124,40 @@ class MaceCalculatorProvider:
                 raise MaceModelStateCompatibilityError(f"Checkpoint hot-swap shape mismatch for state key {key!r}.")
             if incoming.dtype != resident.dtype:
                 raise MaceModelStateCompatibilityError(f"Checkpoint hot-swap dtype mismatch for state key {key!r}.")
-        target.load_state_dict(source_state, strict=True)
+
+        # Step 6: the mutation transaction.  No concurrent inference may
+        # observe the shell during replacement; this provider is single-owner
+        # for the duration of one hot-swap call.  Any failure from here on
+        # poisons the shell rather than returning a partially mutated one.
+        try:
+            target.load_state_dict(source_state, strict=True)
+            post_swap_digest = digest(_mace_model_execution_architecture_descriptor(target))
+            if post_swap_digest != incoming_architecture_digest:
+                raise MaceModelStateCompatibilityError(
+                    "Post-swap execution-architecture invariant failed: the mutated "
+                    "shell no longer matches the incoming checkpoint architecture."
+                )
+        except Exception as exc:
+            self._poisoned = True
+            self._poison_reason = str(exc)
+            self._descriptor_adapter_cache = None
+            self._runtime_architecture_digest_cache = None
+            raise MaceModelStateCompatibilityError(
+                "Checkpoint hot-swap transaction failed after mutation began; the "
+                "shell is poisoned and must be discarded and reconstructed from an "
+                f"authenticated checkpoint: {exc}"
+            ) from exc
+
         self._checkpoint_identity = replace(
             self._checkpoint_identity,
             checkpoint_locator=str(path),
             checkpoint_sha256=observed_sha,
         )
         self._descriptor_adapter_cache = None
+        # Same-architecture weight swaps deliberately exclude weight values
+        # from the digest, so the cached digest remains valid; clear it
+        # anyway so any future divergence is recomputed rather than trusted.
+        self._runtime_architecture_digest_cache = None
         return self._checkpoint_identity
 
     @classmethod
@@ -2054,6 +2285,7 @@ class MaceCalculatorProvider:
         return result
 
     def get_descriptors(self, atoms: Any, policy: MaceDescriptorPolicy) -> np.ndarray:
+        self._raise_if_poisoned()
         kwargs: dict[str, Any] = {"invariants_only": policy.invariants_only}
         if policy.num_layers is not None:
             kwargs["num_layers"] = policy.num_layers
@@ -2077,6 +2309,7 @@ class MaceCalculatorProvider:
         return np.ascontiguousarray(descriptor)
 
     def predict(self, atoms: Any) -> AtomicModelPrediction:
+        self._raise_if_poisoned()
         local = atoms.copy()
         local.calc = self._calculator
         energy = float(local.get_potential_energy())
@@ -2224,6 +2457,7 @@ class MaceCalculatorProvider:
     ) -> tuple[np.ndarray, ...]:
         """Extract descriptors in one graph batch when MACE 0.3.16 permits it."""
 
+        self._raise_if_poisoned()
         if len(atoms_batch) <= 1 or not self._native_batch_supported():
             return tuple(self.get_descriptors(atoms, policy) for atoms in atoms_batch)
         try:
@@ -2968,10 +3202,18 @@ class StaticInferenceRuntimeAuthority:
 
     @staticmethod
     def compatibility_key(payload: Mapping[str, Any]) -> str:
-        """Hash conservative hardware/runtime/model/workload-shape identity."""
+        """Hash conservative hardware/runtime/model/workload-shape identity.
+
+        Bumped to v4 for the G6/G7 requalification amendment (R18A): the
+        embedded ``runtime_architecture_identity`` now derives from the
+        strengthened canonical execution-architecture authority
+        (``MACE_RUNTIME_ARCHITECTURE_SCHEMA`` v2), so persisted profiles
+        computed under the legacy weaker digest are deliberately unreachable
+        even if their other payload fields happen to coincide.
+        """
 
         return digest({
-            "schema": "mdstats.static-inference-compatibility.v3",
+            "schema": "mdstats.static-inference-compatibility.v4",
             "evidence_semantics": STATIC_INFERENCE_EVIDENCE_SEMANTICS,
             **dict(payload),
         })

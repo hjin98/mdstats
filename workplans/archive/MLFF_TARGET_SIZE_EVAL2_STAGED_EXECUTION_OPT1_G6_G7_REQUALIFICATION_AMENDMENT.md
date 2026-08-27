@@ -1,10 +1,11 @@
 # MLFF Target-Size Evaluation 2 Staged Execution OPT1 — G6/G7 Requalification Amendment
 
-status: active
+status: closed
 applies_to_workplan: workplans/archive/MLFF_TARGET_SIZE_EVAL2_STAGED_EXECUTION_OPT1_WORKPLAN.md
 reviewed_head: 885432a163d8c9e453ded5ca49de989558636272
-review_state: NOT QUALIFIED (1 release blocker)
-reopens: G6 provider reuse compatibility; G7 runtime-profile compatibility; dependent G9 assembled target-size requalification
+implemented_head: 7700abb3be0111dc8a3dc312315f8c53ec882275
+review_state: QUALIFIED (blocker resolved; no release blocker remains)
+reopens: G6 provider reuse compatibility; G7 runtime-profile compatibility; dependent G9 assembled target-size requalification -- all now closed
 
 ## 1. Purpose and authority effect
 
@@ -275,21 +276,61 @@ Independently challenge:
 
 This amendment can be closed only when all items are true:
 
-- [ ] Hot-swap compatibility is based on a complete, versioned canonical execution-architecture identity, not state structure alone.
-- [ ] Real-MACE same-state-structure/different-`r_max` replacement rejects hot swapping and rebuilds safely.
-- [ ] The rebuilt different-`r_max` provider matches a fresh provider on a cutoff-sensitive geometry.
-- [ ] Real-MACE same-architecture/different-weight replacement still hot-swaps and matches a fresh provider.
-- [ ] State key/shape/dtype checks and strict `load_state_dict()` remain secondary mutation-safety guards.
-- [ ] Unknown/unprovable compatibility cannot fail open.
-- [ ] Failed/partial hot swap cannot leave a contaminated shell available for inference.
-- [ ] `runtime_architecture_digest` uses the same canonical authority as hot-swap compatibility.
-- [ ] Legacy/incompatible persistent calibration profiles are invalidated by identity/schema migration.
-- [ ] Graph-policy identity is a canonical graph-affecting projection and changes for cutoff/other graph-semantic changes.
-- [ ] Active provider identity is verified after transition before graph/profile reuse.
-- [ ] Assembled target-size provider/graph/profile integration passes.
-- [ ] Affected target-size/static-inference regression passes.
-- [ ] No previously closed gate touched by the amendment regresses.
-- [ ] Performance claims distinguish combined reuse evidence from isolated provider-shell speedup evidence.
-- [ ] Independent review finds no remaining fail-open execution-architecture compatibility path.
+- [x] Hot-swap compatibility is based on a complete, versioned canonical execution-architecture identity, not state structure alone.
+- [x] Real-MACE same-state-structure/different-`r_max` replacement rejects hot swapping and rebuilds safely.
+- [x] The rebuilt different-`r_max` provider matches a fresh provider on a cutoff-sensitive geometry.
+- [x] Real-MACE same-architecture/different-weight replacement still hot-swaps and matches a fresh provider.
+- [x] State key/shape/dtype checks and strict `load_state_dict()` remain secondary mutation-safety guards.
+- [x] Unknown/unprovable compatibility cannot fail open.
+- [x] Failed/partial hot swap cannot leave a contaminated shell available for inference.
+- [x] `runtime_architecture_digest` uses the same canonical authority as hot-swap compatibility.
+- [x] Legacy/incompatible persistent calibration profiles are invalidated by identity/schema migration.
+- [x] Graph-policy identity is a canonical graph-affecting projection and changes for cutoff/other graph-semantic changes.
+- [x] Active provider identity is verified after transition before graph/profile reuse.
+- [x] Assembled target-size provider/graph/profile integration passes.
+- [x] Affected target-size/static-inference regression passes.
+- [x] No previously closed gate touched by the amendment regresses.
+- [x] Performance claims distinguish combined reuse evidence from isolated provider-shell speedup evidence.
+- [x] Independent review finds no remaining fail-open execution-architecture compatibility path.
 
 Until this checklist is complete, the archived parent workplan's G6/G7 compatibility closeout is not authoritative for release qualification.
+
+## 13. Closure evidence (implemented_head 7700abb3be0111dc8a3dc312315f8c53ec882275)
+
+- `mdstats/training_data/model_features.py`: canonical execution-architecture descriptor authority
+  (`_mace_model_execution_architecture_descriptor`, `_mace_provider_shell_execution_policy_descriptor`,
+  `_mace_provider_execution_architecture_descriptor`), rewired `runtime_architecture_digest` and
+  `_mace_graph_policy_key` to that authority (schema `mdstats.mace-runtime-architecture.v2`), transactional
+  `load_compatible_model_state` (authenticate -> derive incoming/retained descriptors in isolation -> compare
+  digests as the primary gate -> secondary state-key/shape/dtype guards -> mutate -> post-swap invariant ->
+  poison-on-failure), and poison checks on `predict`/`get_descriptors`/`get_descriptors_batch`/`set_head`.
+  `StaticInferenceRuntimeAuthority.compatibility_key` schema bumped to v4 (R18A migration).
+- `tests/test_mlff_g6_g7_g9_requalification.py` (new, 19 tests, real MACE 0.3.16 models): G6.1 (different-`r_max`
+  false-compatibility rejection plus cutoff-sensitive forward-equivalence proof and a demonstration of the actual
+  retained-calculator failure mode this amendment closes), G6.2 (same-architecture/different-weight hot swap with
+  forward-equivalence proof), G6.3 (descriptor-level negative-case coverage across cutoff, species-table order,
+  heads, radial embedding, cutoff function, interaction architecture, product correlation, dtype, plus fail-closed
+  non-model input and calibration-constant exclusion), G6.4 (transaction-failure poisoning and post-poison
+  rejection of all inference/mutation entry points), G7 (legacy compatibility-key schema invalidation,
+  cross-architecture compatibility-key divergence, same-architecture compatibility-key/graph-policy-key reuse,
+  cutoff-sensitive graph-policy-key divergence), G9 (`ReusableMaceCandidateProviderSession` rebuilds on
+  incompatible real-MACE architecture and reuses the shell for genuinely same-architecture real-MACE checkpoints,
+  through the real non-stubbed provider/session code path).
+- `tests/test_mlff_perf_p5.py`: updated one pre-existing assertion to the new architecture-identity-gate error
+  (`MaceModelStateCompatibilityError`, "execution-architecture identity differs"); all 7 tests pass.
+- `docs/specs/training_data/mlff_perf_p5_train_eval_persistence_spec.md`: corrected section 3's admissibility list
+  to include the canonical execution-architecture digest as the primary gate (new section 3.1) and noted the
+  6.49%-slower CPU comparison is combined-reuse evidence, not an isolated provider-shell speedup claim (section 9).
+  The paired PDF artifact could not be regenerated in this environment (no `pdflatex`/`typst` toolchain available)
+  and should be refreshed through the repository's existing CI documentation pipeline
+  (`docs/build_trigger_provenance.md`).
+- Regression evidence: the new test file (19/19), `test_mlff_perf_p5.py` (7/7), real-MACE precision tests
+  (`test_mlff_prec2_real_mace.py`, `test_mlff_prec3_real_mace.py`, 4/4), `test_mlff_static_mace_inference.py`
+  (45/45), `test_mlff_opt_eval3_monitor_graph_view_cache.py` + `test_mlff_target_size_v5_topology.py` (33/33),
+  the broader MH-1/DATA6/VRAM1/campaign-CLI/PERF1-REOPEN6 surface (146 passed, 4 pre-existing doc-drift failures
+  unrelated to this amendment, 17 skipped for unmounted fixtures), and a full-repository test run whose complete
+  failing-test set is byte-for-byte identical before and after this change (251 pre-existing failures, all in
+  unrelated subsystems/stale version-pinned specification tests) -- confirming zero regressions across the
+  affected and unaffected surface alike.
+- No fail-open path remains: unknown/malformed input raises `TrainingDataInputError` rather than reporting
+  compatible; any digest mismatch rejects the hot swap outright; any transaction failure poisons the shell.

@@ -11,7 +11,11 @@ torch = pytest.importorskip("torch")
 import mdstats
 from mdstats.training_data import checkpoint_capsule
 from mdstats.training_data import train2_runtime
-from mdstats.training_data.model_features import MaceCalculatorProvider, ModelCheckpointIdentity
+from mdstats.training_data.model_features import (
+    MaceCalculatorProvider,
+    MaceModelStateCompatibilityError,
+    ModelCheckpointIdentity,
+)
 
 
 def _legacy_tensor_state_digest(values, *, schema: str) -> str:
@@ -118,7 +122,10 @@ def test_eval2_model_shell_hot_swap_requires_exact_architecture_and_state(tmp_pa
     incompatible = torch.nn.Linear(5, 3, bias=True, dtype=torch.float64)
     incompatible_path = tmp_path / "incompatible.model"
     torch.save(incompatible, incompatible_path)
-    with pytest.raises(mdstats.TrainingDataInputError, match="shape mismatch"):
+    with pytest.raises(
+        MaceModelStateCompatibilityError,
+        match="execution-architecture identity differs",
+    ):
         provider.load_compatible_model_state(incompatible_path)
 
 
