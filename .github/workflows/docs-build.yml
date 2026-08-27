@@ -2,32 +2,37 @@ name: Build documentation PDFs
 
 on:
   push:
-    branches:
-      - docs/mlff-architecture-reset
     paths:
-      - 'docs/**'
+      - 'docs/**/*.md'
+      - '!docs/arch_manuals/mlff_training_data_architecture.md'
+      - 'docs/build_pdfs.py'
+      - 'docs/pdf_publications.json'
+      - 'docs/build_architecture_pdf.sh'
+      - 'tools/build_mlff_architecture_manual.py'
       - '.github/workflows/docs-build.yml'
-  pull_request:
-    paths:
-      - 'docs/**'
-      - '.github/workflows/docs-build.yml'
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   docs:
     runs-on: ubuntu-latest
+    env:
+      DOC_TOOLCHAIN_SHA: c5411e5c0d8ffa390f0979660c592725f9dca6f8
     steps:
       - name: Checkout mdstats
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install pinned documentation toolchain
         run: |
           set -euo pipefail
           mkdir -p .doc-tools
-          curl -fsSL https://raw.githubusercontent.com/hjin98/mace-dependencies/main/pandoc-3.10.2-linux-amd64.tar.gz -o /tmp/pandoc.tar.gz
-          curl -fsSL https://raw.githubusercontent.com/hjin98/mace-dependencies/main/typst-x86_64-unknown-linux-musl.tar.xz -o /tmp/typst.tar.xz
+          base="https://raw.githubusercontent.com/hjin98/mace-dependencies/${DOC_TOOLCHAIN_SHA}"
+          curl -fsSL "${base}/pandoc-3.10.2-linux-amd64.tar.gz" -o /tmp/pandoc.tar.gz
+          curl -fsSL "${base}/typst-x86_64-unknown-linux-musl.tar.xz" -o /tmp/typst.tar.xz
           tar -xzf /tmp/pandoc.tar.gz -C .doc-tools --strip-components=1
           tar -xf /tmp/typst.tar.xz -C .doc-tools
           find .doc-tools -type f -name pandoc -exec chmod +x {} \;
@@ -42,37 +47,190 @@ jobs:
           command -v typst
           pandoc --version
           typst --version
+          echo "toolchain source commit: ${DOC_TOOLCHAIN_SHA}"
 
-      - name: Build architecture PDF
+      - name: Run documentation builder regression tests
         run: |
-          test -f docs/build_architecture_pdf.sh
-          bash docs/build_architecture_pdf.sh
+          set -euo pipefail
+          python3 -m unittest -v tests.test_docs_pdf_builder
 
-      - name: Publish build provenance
-        if: always()
+      - name: Build affected documentation publications
+        id: build
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          mkdir -p docs/.ci
-          {
-            echo "# Documentation build status"
-            echo
-            echo "- commit: $GITHUB_SHA"
-            echo "- workflow: $GITHUB_WORKFLOW"
-            echo "- run: $GITHUB_RUN_ID"
-            echo "- status: ${{ job.status }}"
-            echo "- generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            if [ -f build/docs/mlff_training_data_architecture.pdf.sha256 ]; then
-              echo
-              echo "## PDF checksum"
-              cat build/docs/mlff_training_data_architecture.pdf.sha256
+          set -euo pipefail
+          mkdir -p .doc-build/payload
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            python3 docs/build_pdfs.py build --all --report .doc-build/report.json
+          else
+            python3 docs/build_pdfs.py build \
+              --before "$BEFORE_SHA" --after "$AFTER_SHA" \
+              --report .doc-build/report.json
+          fi
+          python3 - <<'PY'
+          import json, pathlib, shutil, subprocess
+          root = pathlib.Path('.')
+          payload = root / '.doc-build' / 'payload'
+          report = json.loads((root / '.doc-build' / 'report.json').read_text())
+          meta = {'targets': [], 'deletion_records': report.get('deletion_records', [])}
+          for item in report.get('built', []):
+              target = item['target']
+              fp = subprocess.check_output([
+                  'python3', 'docs/build_pdfs.py', 'fingerprint',
+                  '--target', target, '--ref', 'HEAD'
+              ], text=True).strip()
+              outputs = []
+              for rel in item['outputs']:
+                  src = root / rel
+                  if src.exists():
+                      dst = payload / rel
+                      dst.parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copy2(src, dst)
+                      outputs.append(rel)
+              meta['targets'].append({'target': target, 'fingerprint': fp, 'outputs': outputs})
+          (root / '.doc-build' / 'publication.json').write_text(
+              json.dumps(meta, indent=2, sort_keys=True) + '\n'
+          )
+          PY
+
+      - name: Verify representative deterministic rendering
+        if: always() && steps.build.outcome == 'success'
+        run: |
+          set -euo pipefail
+          reason=$(python3 - <<'PY'
+          import json
+          print(json.load(open('.doc-build/report.json'))['reason'])
+          PY
+          )
+          case "$reason" in
+            full-*) ;;
+            *) echo "Incremental build: determinism probe not required."; exit 0 ;;
+          esac
+          direct="docs/guides/mlff_final_gpu1_workstation_runbook.pdf"
+          composite="docs/arch_manuals/mlff_training_data_architecture.pdf"
+          for target in "$direct" "$composite"; do
+            if git cat-file -e "HEAD:${target}" 2>/dev/null; then
+              python3 docs/build_pdfs.py build --target "$target" --report /tmp/doc-first.json
+              first=$(sha256sum "$target" | awk '{print $1}')
+              python3 docs/build_pdfs.py build --target "$target" --report /tmp/doc-second.json
+              second=$(sha256sum "$target" | awk '{print $1}')
+              test "$first" = "$second"
+              echo "deterministic: $target $first"
             fi
-          } > docs/.ci/latest_documentation_build.md
+          done
 
-      - name: Upload documentation artifacts
+      - name: Reconcile and publish generated documentation
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.build.outcome == 'success'
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            git fetch origin "$BRANCH"
+            remote="origin/$BRANCH"
+            git reset --hard "$remote"
+
+            python3 - <<'PY'
+          import json, pathlib, shutil, subprocess
+          root = pathlib.Path('.')
+          meta = json.loads((root / '.doc-build' / 'publication.json').read_text())
+          payload = root / '.doc-build' / 'payload'
+          safe_outputs = []
+          skipped = []
+          for item in meta['targets']:
+              try:
+                  current = subprocess.check_output([
+                      'python3', 'docs/build_pdfs.py', 'fingerprint',
+                      '--target', item['target'], '--ref', 'HEAD'
+                  ], text=True, stderr=subprocess.STDOUT).strip()
+              except subprocess.CalledProcessError:
+                  skipped.append({'target': item['target'], 'reason': 'publication-no-longer-exists'})
+                  continue
+              if current != item['fingerprint']:
+                  skipped.append({'target': item['target'], 'reason': 'newer-source-or-build-input'})
+                  continue
+              for rel in item['outputs']:
+                  src = payload / rel
+                  if not src.exists():
+                      continue
+                  dst = root / rel
+                  dst.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(src, dst)
+                  safe_outputs.append(rel)
+
+          safe_deletions = []
+          for record in meta.get('deletion_records', []):
+              source = root / record['source']
+              current_publication = subprocess.run([
+                  'python3', 'docs/build_pdfs.py', 'fingerprint',
+                  '--target', record['target'], '--ref', 'HEAD'
+              ], text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+              if current_publication or source.exists():
+                  skipped.append({'target': record['target'], 'reason': 'publication-restored-or-replaced'})
+                  continue
+              for rel in record['outputs']:
+                  path = root / rel
+                  if path.exists():
+                      path.unlink()
+                  safe_deletions.append(rel)
+
+          result = {
+              'safe_outputs': sorted(set(safe_outputs)),
+              'safe_deletions': sorted(set(safe_deletions)),
+              'skipped_stale': skipped,
+          }
+          (root / '.doc-build' / 'reconcile.json').write_text(
+              json.dumps(result, indent=2, sort_keys=True) + '\n'
+          )
+          PY
+
+            mapfile -t stage_paths < <(python3 - <<'PY'
+          import json
+          d=json.load(open('.doc-build/reconcile.json'))
+          for p in d['safe_outputs'] + d['safe_deletions']:
+              print(p)
+          PY
+            )
+            if ((${#stage_paths[@]})); then
+              git add -- "${stage_paths[@]}"
+            fi
+            if git diff --cached --quiet; then
+              echo "No non-stale generated documentation changes to publish."
+              exit 0
+            fi
+
+            git commit -m "docs: regenerate affected PDFs [skip ci]"
+            if git push origin "HEAD:$BRANCH"; then
+              exit 0
+            fi
+
+            local_head=$(git rev-parse HEAD)
+            git fetch origin "$BRANCH"
+            remote_head=$(git rev-parse "origin/$BRANCH")
+            if git merge-base --is-ancestor "$remote_head" "$local_head"; then
+              echo "Push was rejected without a remote-advance race; refusing blind retry." >&2
+              exit 1
+            fi
+            echo "Remote advanced during publication; re-evaluating target fingerprints (attempt $attempt)."
+          done
+          echo "Documentation publication did not converge after bounded retries." >&2
+          exit 1
+
+      - name: Upload documentation build evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: documentation-pdf-${{ github.sha }}
           path: |
-            build/docs/**/*.pdf
-            build/docs/**/*.sha256
-            docs/.ci/latest_documentation_build.md
-          if-no-files-found: error
+            .doc-build/report.json
+            .doc-build/publication.json
+            .doc-build/reconcile.json
+            .doc-build/payload/**/*.pdf
+            .doc-build/payload/**/*.json
+          if-no-files-found: warn
