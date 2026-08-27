@@ -1,0 +1,55 @@
+name: Diagnose delayed PDF determinism
+
+on:
+  push:
+    branches:
+      - ci/incremental-doc-pdf-autosync
+    paths:
+      - '.github/workflows/docs-delayed-determinism-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  direct:
+    name: delayed-epoch-${{ matrix.epoch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        epoch: [unset, zero]
+    env:
+      DOC_TOOLCHAIN_SHA: c5411e5c0d8ffa390f0979660c592725f9dca6f8
+      TARGET: docs/guides/mlff_final_gpu1_workstation_runbook.pdf
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install pinned documentation toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p .doc-tools
+          base="https://raw.githubusercontent.com/hjin98/mace-dependencies/${DOC_TOOLCHAIN_SHA}"
+          curl -fsSL "${base}/pandoc-3.10.2-linux-amd64.tar.gz" -o /tmp/pandoc.tar.gz
+          curl -fsSL "${base}/typst-x86_64-unknown-linux-musl.tar.xz" -o /tmp/typst.tar.xz
+          tar -xzf /tmp/pandoc.tar.gz -C .doc-tools --strip-components=1
+          tar -xf /tmp/typst.tar.xz -C .doc-tools
+          find .doc-tools -type f -name pandoc -exec chmod +x {} \;
+          find .doc-tools -type f -name typst -exec chmod +x {} \;
+          find .doc-tools -type f -name pandoc -exec dirname {} \; >> "$GITHUB_PATH"
+          find .doc-tools -type f -name typst -exec dirname {} \; >> "$GITHUB_PATH"
+      - name: Render across time boundary and compare
+        env:
+          EPOCH_CASE: ${{ matrix.epoch }}
+        run: |
+          set -euo pipefail
+          if [[ "$EPOCH_CASE" == zero ]]; then
+            export SOURCE_DATE_EPOCH=0
+          else
+            unset SOURCE_DATE_EPOCH || true
+          fi
+          python3 docs/build_pdfs.py build --target "$TARGET" --report /tmp/first.json
+          cp "$TARGET" /tmp/first.pdf
+          sleep 2
+          python3 docs/build_pdfs.py build --target "$TARGET" --report /tmp/second.json
+          cmp -s /tmp/first.pdf "$TARGET"
