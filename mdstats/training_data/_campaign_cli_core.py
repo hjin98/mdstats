@@ -16197,6 +16197,8 @@ def _checkpoint_source_for_evaluation(
     run_id: str,
     checkpoint: Any,
     catalog: Any,
+    *,
+    authenticate_bytes: bool = True,
 ) -> tuple[Path, Any | None]:
     """Resolve raw checkpoint bytes or a qualified STOR2 evaluation capsule.
 
@@ -16215,7 +16217,7 @@ def _checkpoint_source_for_evaluation(
             f"Checkpoint path escaped its catalog root for {run_id}: {raw}"
         ) from exc
     if raw.is_file():
-        if _sha256(raw) != checkpoint.sha256:
+        if authenticate_bytes and _sha256(raw) != checkpoint.sha256:
             raise CampaignCliError(
                 f"Checkpoint bytes no longer match the frozen inventory: {run_id} epoch {checkpoint.epoch}."
             )
@@ -16243,9 +16245,13 @@ def _checkpoint_source_for_evaluation(
         raise CampaignCliError(
             f"STOR2 capsule lineage mismatch for {run_id} epoch {checkpoint.epoch}."
         )
-    if not capsule.is_file() or _sha256(capsule) != record.capsule_sha256:
+    if not capsule.is_file():
         raise CampaignCliError(
-            f"STOR2 capsule bytes are missing or changed for {run_id} epoch {checkpoint.epoch}."
+            f"STOR2 capsule bytes are missing for {run_id} epoch {checkpoint.epoch}."
+        )
+    if authenticate_bytes and _sha256(capsule) != record.capsule_sha256:
+        raise CampaignCliError(
+            f"STOR2 capsule bytes changed for {run_id} epoch {checkpoint.epoch}."
         )
     return capsule, record
 
@@ -19980,7 +19986,267 @@ class _TargetSizeEval2EndpointResult:
     metric_record: Any | None = None
     checkpoint_key: str | None = None
     checkpoint_record: Any | None = None
+    failure_key: str | None = None
+    failure_record: Any | None = None
     cache_reused: bool = False
+
+
+@dataclass(frozen=True)
+class _TargetSizeEval2EndpointAuthority:
+    """Parent-owned immutable authority for one exact target-size EVAL2 endpoint."""
+
+    logical_key: tuple[int, int]
+    stage: str
+    target_size_study_policy_digest: str
+    training_run_digest: str
+    candidate_data_digest: str
+    training_policy_digest: str
+    schedule_digest: str
+    execution_record_digest: str
+    execution_attempt_digest: str
+    checkpoint_sha256: str
+    evaluation_role_digest: str
+    target_monitor_artifact_digest: str
+    target_monitor_sha256: str
+    evaluation_policy_digest: str
+    evaluation_key: str
+    metric_key: str
+    checkpoint_key: str
+    failure_key: str
+
+
+def _target_size_eval2_incremental_prepared_bytes(
+    prepared: Any,
+    shared_target_context: Any,
+) -> int:
+    """Count one prepared payload without recharging stage-owned target data."""
+
+    shared_seen = {
+        id(shared_target_context.target_atoms),
+        id(shared_target_context.target_view),
+    }
+    return _evaluation_payload_bytes(prepared, seen=shared_seen)
+
+
+def _validate_target_size_eval2_failure_authority(
+    failure: Any,
+    authority: _TargetSizeEval2EndpointAuthority,
+) -> None:
+    """Fail closed when terminal scientific failure provenance is mis-bound."""
+
+    expected_size, expected_seed = authority.logical_key
+    checks = (
+        (str(failure.stage), str(authority.stage), "stage"),
+        (int(failure.target_size), int(expected_size), "target size"),
+        (int(failure.optimizer_seed), int(expected_seed), "optimizer seed"),
+        (
+            str(failure.target_size_study_policy_digest),
+            str(authority.target_size_study_policy_digest),
+            "target-size policy",
+        ),
+        (
+            str(failure.training_run_digest),
+            str(authority.training_run_digest),
+            "training run",
+        ),
+        (
+            str(failure.candidate_data_digest),
+            str(authority.candidate_data_digest),
+            "candidate data",
+        ),
+        (
+            str(failure.training_policy_digest),
+            str(authority.training_policy_digest),
+            "training policy",
+        ),
+        (
+            str(failure.schedule_digest),
+            str(authority.schedule_digest),
+            "schedule",
+        ),
+        (
+            str(failure.execution_record_digest),
+            str(authority.execution_record_digest),
+            "execution record",
+        ),
+        (
+            str(failure.execution_attempt_digest),
+            str(authority.execution_attempt_digest),
+            "execution attempt",
+        ),
+    )
+    for observed, expected, label in checks:
+        if observed != expected:
+            raise CampaignCliError(
+                f"TARGET-SIZE-V5 EVAL2 terminal failure {label} authority mismatch."
+            )
+    if str(failure.failure_phase) == "target_evaluation":
+        if str(failure.checkpoint_digest) != str(authority.checkpoint_sha256):
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 terminal failure checkpoint authority mismatch."
+            )
+        if str(failure.evaluation_role_digest) != str(authority.evaluation_role_digest):
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 terminal failure role authority mismatch."
+            )
+        if failure.target_evaluation_digest is None:
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 terminal failure lacks failed-evaluation identity."
+            )
+
+
+def _target_size_eval2_publication_records(
+    authority: _TargetSizeEval2EndpointAuthority,
+    result: _TargetSizeEval2EndpointResult,
+    *,
+    cached_evaluation_record: Any | None = None,
+    cached_metric_record: Any | None = None,
+) -> dict[str, Any]:
+    """Validate one worker result against parent authority and derive durable writes.
+
+    Worker-supplied keys are treated only as consistency evidence.  The parent
+    always publishes under keys re-derived from its immutable endpoint authority.
+    """
+
+    outcome = result.outcome
+    if tuple(outcome.key) != tuple(authority.logical_key):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 worker result crossed endpoint candidate authority."
+        )
+    if str(outcome.stage) != str(authority.stage):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 worker result crossed endpoint stage authority."
+        )
+
+    supplied_keys = (
+        (result.evaluation_key, authority.evaluation_key, "evaluation"),
+        (result.metric_key, authority.metric_key, "target metric"),
+        (result.checkpoint_key, authority.checkpoint_key, "checkpoint"),
+        (result.failure_key, authority.failure_key, "failure"),
+    )
+    for supplied, expected, label in supplied_keys:
+        if supplied is not None and str(supplied) != str(expected):
+            raise CampaignCliError(
+                f"TARGET-SIZE-V5 EVAL2 worker supplied a forged {label} publication key."
+            )
+
+    if outcome.failure is not None:
+        _validate_target_size_eval2_failure_authority(outcome.failure, authority)
+        if str(outcome.failure.failure_phase) == "target_evaluation":
+            failure_record = result.failure_record or outcome.failure
+            if failure_record.content_digest != outcome.failure.content_digest:
+                raise CampaignCliError(
+                    "TARGET-SIZE-V5 EVAL2 worker failure record disagrees with terminal outcome."
+                )
+            return {authority.failure_key: failure_record}
+        return {}
+
+    success = outcome.success
+    if success is None:
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 worker result has no terminal scientific state."
+        )
+    success_checks = (
+        (str(success.stage), str(authority.stage), "stage"),
+        (tuple(success.key), tuple(authority.logical_key), "candidate"),
+        (
+            str(success.target_size_study_policy_digest),
+            str(authority.target_size_study_policy_digest),
+            "target-size policy",
+        ),
+        (
+            str(success.training_run_digest),
+            str(authority.training_run_digest),
+            "training run",
+        ),
+        (
+            str(success.candidate_data_digest),
+            str(authority.candidate_data_digest),
+            "candidate data",
+        ),
+        (
+            str(success.training_policy_digest),
+            str(authority.training_policy_digest),
+            "training policy",
+        ),
+        (str(success.schedule_digest), str(authority.schedule_digest), "schedule"),
+        (
+            str(success.checkpoint_digest),
+            str(authority.checkpoint_sha256),
+            "checkpoint",
+        ),
+        (
+            str(success.evaluation_role_digest),
+            str(authority.evaluation_role_digest),
+            "evaluation role",
+        ),
+    )
+    for observed, expected, label in success_checks:
+        if observed != expected:
+            raise CampaignCliError(
+                f"TARGET-SIZE-V5 EVAL2 success {label} authority mismatch."
+            )
+
+    evaluation_record = result.evaluation_record or cached_evaluation_record
+    metric_record = result.metric_record or cached_metric_record
+    checkpoint_record = result.checkpoint_record
+    if evaluation_record is None or metric_record is None or checkpoint_record is None:
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 success is missing records required for parent validation."
+        )
+    if evaluation_record.run_plan_digest != authority.training_run_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 evaluation run authority mismatch.")
+    if evaluation_record.checkpoint_sha256 != authority.checkpoint_sha256:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 evaluation checkpoint authority mismatch.")
+    if evaluation_record.evaluation_policy_digest != authority.evaluation_policy_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 evaluation policy authority mismatch.")
+    if evaluation_record.target_monitor_artifact_digest != authority.target_monitor_artifact_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 target-artifact authority mismatch.")
+    if evaluation_record.target_monitor_sha256 != authority.target_monitor_sha256:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 target-byte authority mismatch.")
+    if (
+        evaluation_record.replay_monitor_artifact_digest is not None
+        or evaluation_record.replay_monitor_sha256 is not None
+    ):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 target-only result unexpectedly contains replay authority."
+        )
+    prediction_digest = evaluation_record.target_candidate_prediction_digest
+    if prediction_digest is None:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 result lacks target prediction identity.")
+    if "evaluation_scope:authorized_target_only" not in evaluation_record.metric_record.evaluation_notes:
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 result lacks authorized target-only provenance."
+        )
+    if metric_record.target_role_digest != authority.evaluation_role_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 target metric role authority mismatch.")
+    if metric_record.prediction_digest != prediction_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 prediction/metric lineage mismatch.")
+    if checkpoint_record.trajectory_point.checkpoint_sha256 != authority.checkpoint_sha256:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 checkpoint assessment authority mismatch.")
+    if checkpoint_record.evaluation_record_digest != evaluation_record.content_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 checkpoint/evaluation lineage mismatch.")
+    if checkpoint_record.target_metrics.content_digest != metric_record.content_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 checkpoint/metric lineage mismatch.")
+    if any(
+        value is not None
+        for value in (
+            checkpoint_record.replay_candidate_force_rmse_ev_per_angstrom,
+            checkpoint_record.replay_foundation_force_rmse_ev_per_angstrom,
+            checkpoint_record.replay_degradation_ev_per_angstrom,
+            checkpoint_record.replay_label_mode,
+        )
+    ):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 checkpoint assessment unexpectedly contains replay evidence."
+        )
+
+    records: dict[str, Any] = {authority.checkpoint_key: checkpoint_record}
+    if result.evaluation_record is not None:
+        records[authority.evaluation_key] = evaluation_record
+    if result.metric_record is not None:
+        records[authority.metric_key] = metric_record
+    return records
 
 
 def _eval2_target_size_endpoint_evidence(
@@ -20268,12 +20534,75 @@ def _eval2_target_size_endpoint_evidence(
             f"eval2_checkpoint:{run.run_id}:{target_role.content_digest}:"
             f"{checkpoint.sha256}"
         )
+        failure_key = (
+            f"target_size_eval2_failure:{stage}:{epoch}:{run.run_id}:"
+            f"{target_role.content_digest}:{checkpoint.sha256}"
+        )
+        successful_attempt = execution.attempts[
+            execution.successful_attempt_index - 1
+        ]
+        authority = _TargetSizeEval2EndpointAuthority(
+            logical_key=key,
+            stage=str(stage),
+            target_size_study_policy_digest=target_size_study.policy.policy_digest,
+            training_run_digest=run.content_digest,
+            candidate_data_digest=candidate.candidate_data_digest,
+            training_policy_digest=training_policy_digest,
+            schedule_digest=schedule_digest,
+            execution_record_digest=execution.content_digest,
+            execution_attempt_digest=successful_attempt.content_digest,
+            checkpoint_sha256=checkpoint.sha256,
+            evaluation_role_digest=target_role.content_digest,
+            target_monitor_artifact_digest=target_artifact.content_digest,
+            target_monitor_sha256=target_artifact.sha256,
+            evaluation_policy_digest=evaluation_policy.policy_digest,
+            evaluation_key=eval_key,
+            metric_key=metric_key,
+            checkpoint_key=checkpoint_key,
+            failure_key=failure_key,
+        )
         cached_eval = store.get_record_optional(
             eval_key, mdstats.CheckpointEvaluationRecord
         )
         cached_metric = store.get_record_optional(
             metric_key, mdstats.Eval2TargetMetricRecord
         )
+        cached_failure = store.get_record_optional(
+            failure_key, mdstats.TargetSizeTrajectoryFailureEvidence
+        )
+        if cached_failure is not None:
+            _validate_target_size_eval2_failure_authority(
+                cached_failure, authority
+            )
+            if str(cached_failure.failure_phase) != mdstats.FAILURE_PHASE_TARGET_EVALUATION:
+                raise CampaignCliError(
+                    "TARGET-SIZE-V5 EVAL2 durable endpoint-failure record has the wrong failure phase."
+                )
+            if cached_eval is not None or cached_metric is not None:
+                raise CampaignCliError(
+                    "TARGET-SIZE-V5 EVAL2 endpoint has conflicting durable success and failure evidence."
+                )
+            descriptors.append(
+                {
+                    "display_index": display_index,
+                    "key": key,
+                    "run": run,
+                    "authority": authority,
+                    "terminal": _TargetSizeEval2EndpointResult(
+                        outcome=mdstats.TargetSizeStageOutcome(failure=cached_failure),
+                        failure_key=failure_key,
+                        failure_record=cached_failure,
+                        cache_reused=True,
+                    ),
+                    "label": f"n={run.selection_size}, seed={run.seed}",
+                }
+            )
+            planning_progress.item_done(
+                display_index,
+                f"n={run.selection_size}, seed={run.seed}",
+                "authenticated terminal target-evaluation scientific failure",
+            )
+            continue
         reusable = bool(
             cached_eval is not None
             and cached_metric is not None
@@ -20304,6 +20633,7 @@ def _eval2_target_size_endpoint_evidence(
                 run.run_id,
                 checkpoint,
                 execution.checkpoint_catalog,
+                authenticate_bytes=False,
             )
 
         shared_key = None
@@ -20356,6 +20686,8 @@ def _eval2_target_size_endpoint_evidence(
                 "eval_key": eval_key,
                 "metric_key": metric_key,
                 "checkpoint_key": checkpoint_key,
+                "failure_key": failure_key,
+                "authority": authority,
                 "cached_eval": cached_eval if reusable else None,
                 "cached_metric": cached_metric if reusable else None,
                 "source": source,
@@ -20400,6 +20732,7 @@ def _eval2_target_size_endpoint_evidence(
             with inference_start_signal(
                 lambda: None, phase_callback=shared_phase
             ):
+                shared_started = time.monotonic()
                 context = mdstats.prepare_shared_target_evaluation_context(
                     spec["path"],
                     spec["artifact"],
@@ -20414,33 +20747,37 @@ def _eval2_target_size_endpoint_evidence(
             shared_progress.item_done(
                 shared_index,
                 label,
-                f"resident={_format_reclaimed_bytes(context.retained_bytes)}",
+                (
+                    f"resident={_format_reclaimed_bytes(context.retained_bytes)}; "
+                    f"target_prepare={time.monotonic() - shared_started:.3f}s"
+                ),
             )
 
     progress = _ProgressReporter(
         f"TARGET-EVAL-{str(stage).upper()}@{epoch}", len(expected_keys)
     )
     tasks: list[_StagedEvaluationTask] = []
+    from .campaign_execution import ReusableMaceCandidateProviderSession
 
-    def publish_result(result: _TargetSizeEval2EndpointResult) -> None:
-        """Parent-publish one authenticated endpoint under deterministic keys.
+    candidate_provider_session = ReusableMaceCandidateProviderSession()
 
-        Arrival order is intentionally irrelevant: scientific records are keyed
-        by immutable run/role/checkpoint authority, while reducer ordering is
-        reconstructed from ``expected_keys`` after the complete population
-        reaches terminal state.  Publishing each accepted endpoint immediately
-        preserves useful restart evidence if a sibling fails later.
-        """
+    def publish_result(
+        authority: _TargetSizeEval2EndpointAuthority,
+        result: _TargetSizeEval2EndpointResult,
+        *,
+        cached_evaluation_record: Any | None = None,
+        cached_metric_record: Any | None = None,
+    ) -> None:
+        """Parent-validate and publish one exact endpoint deterministically."""
 
-        if result.evaluation_record is not None:
-            assert result.evaluation_key is not None
-            store.put_record(result.evaluation_key, result.evaluation_record)
-        if result.metric_record is not None:
-            assert result.metric_key is not None
-            store.put_record(result.metric_key, result.metric_record)
-        if result.checkpoint_record is not None:
-            assert result.checkpoint_key is not None
-            store.put_record(result.checkpoint_key, result.checkpoint_record)
+        records = _target_size_eval2_publication_records(
+            authority,
+            result,
+            cached_evaluation_record=cached_evaluation_record,
+            cached_metric_record=cached_metric_record,
+        )
+        if records:
+            store.put_records(records)
 
     for descriptor in descriptors:
         display_index = int(descriptor["display_index"])
@@ -20449,6 +20786,7 @@ def _eval2_target_size_endpoint_evidence(
         label = descriptor["label"]
         terminal = descriptor.get("terminal")
         if terminal is not None:
+            terminal_authority = descriptor.get("authority")
             tasks.append(
                 _StagedEvaluationTask(
                     display_index=display_index,
@@ -20464,9 +20802,17 @@ def _eval2_target_size_endpoint_evidence(
                     finalize=lambda prepared, _result: prepared,
                     cached_result=lambda prepared: prepared,
                     done_detail=lambda _result, wall: (
-                        f"terminal TRAIN2 scientific failure; elapsed={format_progress_time(wall)}"
+                        f"terminal scientific failure; elapsed={format_progress_time(wall)}"
                     ),
-                    on_success=publish_result,
+                    on_success=(
+                        None
+                        if terminal_authority is None
+                        else (
+                            lambda result, active_authority=terminal_authority: publish_result(
+                                active_authority, result
+                            )
+                        )
+                    ),
                     accelerator_possible=False,
                 )
             )
@@ -20494,8 +20840,18 @@ def _eval2_target_size_endpoint_evidence(
         checkpoint_key = descriptor["checkpoint_key"]
         cached_eval = descriptor["cached_eval"]
         cached_metric = descriptor["cached_metric"]
+        failure_key = descriptor["failure_key"]
+        authority = descriptor["authority"]
         source = descriptor["source"]
         capsule = descriptor["capsule"]
+        endpoint_timing: dict[str, Any] = {
+            "prepare_seconds": 0.0,
+            "materialize_seconds": 0.0,
+            "prediction_seconds": 0.0,
+            "finalize_seconds": 0.0,
+            "prediction_cache_hit": False,
+            "provider_shell_reused": False,
+        }
         successful_attempt = execution.attempts[
             execution.successful_attempt_index - 1
         ]
@@ -20573,36 +20929,38 @@ def _eval2_target_size_endpoint_evidence(
             active_execution: Any = execution,
             active_training_policy_digest: str = training_policy_digest,
             active_schedule_digest: str = schedule_digest,
+            active_failure_key: str = failure_key,
         ) -> _TargetSizeEval2EndpointResult:
             if exc.target_role_digest != active_target_role.content_digest:
                 raise CampaignCliError(
                     f"EVAL2 numerical-failure role provenance mismatch for {active_run.run_id}."
                 ) from exc
+            failure = mdstats.TargetSizeTrajectoryFailureEvidence(
+                stage=stage,
+                target_size=active_run.selection_size,
+                optimizer_seed=active_run.seed,
+                failure_phase=mdstats.FAILURE_PHASE_TARGET_EVALUATION,
+                failure_code=exc.failure_code,
+                failure_reasons=(exc.reason,),
+                target_size_study_policy_digest=(
+                    target_size_study.policy.policy_digest
+                ),
+                training_run_digest=active_run.content_digest,
+                candidate_data_digest=active_candidate.candidate_data_digest,
+                training_policy_digest=active_training_policy_digest,
+                schedule_digest=active_schedule_digest,
+                execution_record_digest=active_execution.content_digest,
+                execution_attempt_digest=active_attempt.content_digest,
+                checkpoint_digest=active_checkpoint.sha256,
+                evaluation_role_digest=active_target_role.content_digest,
+                target_evaluation_digest=exc.content_digest,
+                completed_epochs=active_runtime.completed_epochs,
+                optimizer_update_count=active_runtime.completed_updates,
+            )
             return _TargetSizeEval2EndpointResult(
-                outcome=mdstats.TargetSizeStageOutcome(
-                    failure=mdstats.TargetSizeTrajectoryFailureEvidence(
-                        stage=stage,
-                        target_size=active_run.selection_size,
-                        optimizer_seed=active_run.seed,
-                        failure_phase=mdstats.FAILURE_PHASE_TARGET_EVALUATION,
-                        failure_code=exc.failure_code,
-                        failure_reasons=(exc.reason,),
-                        target_size_study_policy_digest=(
-                            target_size_study.policy.policy_digest
-                        ),
-                        training_run_digest=active_run.content_digest,
-                        candidate_data_digest=active_candidate.candidate_data_digest,
-                        training_policy_digest=active_training_policy_digest,
-                        schedule_digest=active_schedule_digest,
-                        execution_record_digest=active_execution.content_digest,
-                        execution_attempt_digest=active_attempt.content_digest,
-                        checkpoint_digest=active_checkpoint.sha256,
-                        evaluation_role_digest=active_target_role.content_digest,
-                        target_evaluation_digest=exc.content_digest,
-                        completed_epochs=active_runtime.completed_epochs,
-                        optimizer_update_count=active_runtime.completed_updates,
-                    )
-                )
+                outcome=mdstats.TargetSizeStageOutcome(failure=failure),
+                failure_key=active_failure_key,
+                failure_record=failure,
             )
 
         if cached_eval is not None and cached_metric is not None:
@@ -20663,7 +21021,17 @@ def _eval2_target_size_endpoint_evidence(
                         f"cached; force={result.outcome.success.target_force_score_mev_per_a:.1f} meV/A; "
                         f"elapsed={format_progress_time(wall)}"
                     ),
-                    on_success=publish_result,
+                    on_success=(
+                        lambda result,
+                        active_authority=authority,
+                        active_eval=cached_eval,
+                        active_metric=cached_metric: publish_result(
+                            active_authority,
+                            result,
+                            cached_evaluation_record=active_eval,
+                            cached_metric_record=active_metric,
+                        )
+                    ),
                     accelerator_possible=False,
                 )
             )
@@ -20693,26 +21061,33 @@ def _eval2_target_size_endpoint_evidence(
             active_policy: Any = evaluation_policy,
             active_execution_plan: Any = execution_plan,
             active_shared_context: Any = shared_context,
+            active_timing: dict[str, Any] = endpoint_timing,
         ) -> Any:
-            return mdstats.prepare_mace_checkpoint_evaluation(
-                active_run,
-                active_checkpoint,
-                candidate_model_path=active_source,
-                evaluation_state_capsule=active_capsule,
-                target_monitor_path=active_target_path,
-                target_monitor_artifact=active_target_artifact,
-                policy=active_policy,
-                execution_plan=active_execution_plan,
-                prediction_cache_directory=paths.internal / "evaluation-predictions",
-                graph_cache_directory=paths.internal / "evaluation-graphs",
-                shared_target_context=active_shared_context,
-                allow_target_monitor_override=(
-                    active_target_artifact.content_digest
-                    != active_run.target_monitor_artifact_digest
-                ),
-                allow_replay_without_training_lineage=False,
-                allow_target_only_evaluation=True,
+            started = time.monotonic()
+            prepared = mdstats.prepare_mace_checkpoint_evaluation(
+                    active_run,
+                    active_checkpoint,
+                    candidate_model_path=active_source,
+                    evaluation_state_capsule=active_capsule,
+                    target_monitor_path=active_target_path,
+                    target_monitor_artifact=active_target_artifact,
+                    policy=active_policy,
+                    execution_plan=active_execution_plan,
+                    prediction_cache_directory=paths.internal / "evaluation-predictions",
+                    graph_cache_directory=paths.internal / "evaluation-graphs",
+                    shared_target_context=active_shared_context,
+                    allow_target_monitor_override=(
+                        active_target_artifact.content_digest
+                        != active_run.target_monitor_artifact_digest
+                    ),
+                    allow_replay_without_training_lineage=False,
+                    allow_target_only_evaluation=True,
+                )
+            active_timing["prepare_seconds"] = time.monotonic() - started
+            active_timing["prediction_cache_hit"] = bool(
+                getattr(prepared, "target_candidate_cache_hit", False)
             )
+            return prepared
 
         def infer_endpoint(
             prepared: Any,
@@ -20723,10 +21098,12 @@ def _eval2_target_size_endpoint_evidence(
             active_config_path: Path = config_path,
             active_job_root: Path = job_root,
             active_checkpoint_model_cache: Path = checkpoint_model_cache,
+            active_timing: dict[str, Any] = endpoint_timing,
         ) -> Any:
             calculator_model = None
             try:
                 if prepared.requires_candidate_inference:
+                    materialize_started = time.monotonic()
                     calculator_model = mdstats.materialize_mace_checkpoint_model(
                         active_checkpoint,
                         active_source,
@@ -20737,9 +21114,23 @@ def _eval2_target_size_endpoint_evidence(
                         allow_checkpoint_dtype_template_cast=False,
                         evaluation_state_capsule=active_capsule,
                     )
-                return mdstats.run_prepared_mace_checkpoint_inference(
-                    prepared, calculator_model_path=calculator_model
+                    active_timing["materialize_seconds"] = (
+                        time.monotonic() - materialize_started
+                    )
+                prediction_started = time.monotonic()
+                reuse_before = candidate_provider_session.reuse_count
+                result = mdstats.run_prepared_mace_checkpoint_inference(
+                    prepared,
+                    calculator_model_path=calculator_model,
+                    candidate_provider_session=candidate_provider_session,
                 )
+                active_timing["provider_shell_reused"] = bool(
+                    candidate_provider_session.reuse_count > reuse_before
+                )
+                active_timing["prediction_seconds"] = (
+                    time.monotonic() - prediction_started
+                )
+                return result
             finally:
                 if (
                     calculator_model is not None
@@ -20762,7 +21153,9 @@ def _eval2_target_size_endpoint_evidence(
             active_checkpoint_key: str = checkpoint_key,
             active_build_success: Callable[[Any], Any] = build_success_outcome,
             active_build_failure: Callable[[Any], _TargetSizeEval2EndpointResult] = build_numerical_failure,
+            active_timing: dict[str, Any] = endpoint_timing,
         ) -> _TargetSizeEval2EndpointResult:
+            finalize_started = time.monotonic()
             try:
                 evaluation_record = mdstats.finalize_prepared_mace_checkpoint_evaluation(
                     prepared, predictions
@@ -20795,8 +21188,10 @@ def _eval2_target_size_endpoint_evidence(
                     full_evaluation_rank=1,
                 )
             except mdstats.Eval2NumericalEvaluationError as exc:
-                return active_build_failure(exc)
-            return _TargetSizeEval2EndpointResult(
+                result = active_build_failure(exc)
+                active_timing["finalize_seconds"] = time.monotonic() - finalize_started
+                return result
+            result = _TargetSizeEval2EndpointResult(
                 outcome=active_build_success(checkpoint_record),
                 evaluation_key=active_eval_key,
                 evaluation_record=evaluation_record,
@@ -20806,6 +21201,8 @@ def _eval2_target_size_endpoint_evidence(
                 checkpoint_record=checkpoint_record,
                 cache_reused=False,
             )
+            active_timing["finalize_seconds"] = time.monotonic() - finalize_started
+            return result
 
         tasks.append(
             _StagedEvaluationTask(
@@ -20825,7 +21222,7 @@ def _eval2_target_size_endpoint_evidence(
                 ),
                 infer=infer_endpoint,
                 finalize=finalize_endpoint,
-                done_detail=lambda result, wall: (
+                done_detail=lambda result, wall, active_timing=endpoint_timing: (
                     (
                         f"failure={result.outcome.failure.failure_code}"
                         if result.outcome.failure is not None
@@ -20833,9 +21230,29 @@ def _eval2_target_size_endpoint_evidence(
                             f"force={result.outcome.success.target_force_score_mev_per_a:.1f} meV/A"
                         )
                     )
-                    + f"; {'cache' if result.cache_reused else 'computed'}; elapsed={format_progress_time(wall)}"
+                    + (
+                        f"; {'cache' if result.cache_reused else 'computed'}; "
+                        f"prepare={active_timing['prepare_seconds']:.3f}s; "
+                        f"materialize={active_timing['materialize_seconds']:.3f}s; "
+                        f"predict={active_timing['prediction_seconds']:.3f}s; "
+                        f"finalize={active_timing['finalize_seconds']:.3f}s; "
+                        f"prediction_cache={'hit' if active_timing['prediction_cache_hit'] else 'miss'}; "
+                        f"provider_shell={'reused' if active_timing['provider_shell_reused'] else 'fresh'}; "
+                        f"elapsed={format_progress_time(wall)}"
+                    )
                 ),
-                on_success=publish_result,
+                on_success=(
+                    lambda result, active_authority=authority: publish_result(
+                        active_authority, result
+                    )
+                ),
+                prepared_bytes=(
+                    lambda prepared, active_shared_context=shared_context: (
+                        _target_size_eval2_incremental_prepared_bytes(
+                            prepared, active_shared_context
+                        )
+                    )
+                ),
             )
         )
 
@@ -20863,14 +21280,17 @@ def _eval2_target_size_endpoint_evidence(
             )
         ),
     )
-    results = _run_staged_evaluation_tasks(
-        tasks,
-        cfg=cfg,
-        device=evaluation_device,
-        progress=progress,
-        phase="evaluation",
-        shared_residency_bytes=shared_residency_bytes,
-    )
+    try:
+        results = _run_staged_evaluation_tasks(
+            tasks,
+            cfg=cfg,
+            device=evaluation_device,
+            progress=progress,
+            phase="evaluation",
+            shared_residency_bytes=shared_residency_bytes,
+        )
+    finally:
+        candidate_provider_session.close()
     if len(results) != len(expected_keys):
         raise CampaignCliError(
             "TARGET-SIZE-V5 EVAL2 returned an incomplete terminal endpoint population."

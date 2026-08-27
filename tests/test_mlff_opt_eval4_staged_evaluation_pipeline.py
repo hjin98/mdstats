@@ -1706,3 +1706,101 @@ def test_staged_progress_counts_accepted_completion_not_display_index(
 
     assert progress.done[0] == (2, 1)
     assert progress.done[1] == (1, 2)
+
+
+def test_target_size_prepared_payload_excludes_stage_shared_target_from_each_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "shared-accounting.extxyz"
+    write(target, [_frame()], format="extxyz")
+    artifact = _target_artifact(target)
+    candidate = tmp_path / "candidate-accounting.pt"
+    candidate.write_bytes(b"candidate-accounting")
+    run, checkpoint = _run_checkpoint(artifact, candidate)
+    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=())
+    execution_plan = mdstats.InferenceExecutionPlan(
+        batch_policy="fixed", selected_batch_size=1, maximum_batch_size=1
+    )
+    context = mdstats.prepare_shared_target_evaluation_context(
+        target,
+        artifact,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=_h("shared-accounting-role"),
+    )
+    prepared = mdstats.prepare_mace_checkpoint_evaluation(
+        run,
+        checkpoint,
+        candidate_model_path=candidate,
+        target_monitor_path=target,
+        target_monitor_artifact=artifact,
+        policy=policy,
+        execution_plan=execution_plan,
+        shared_target_context=context,
+    )
+
+    full_bytes = campaign_cli._core._evaluation_payload_bytes(prepared)
+    incremental_bytes = campaign_cli._core._target_size_eval2_incremental_prepared_bytes(
+        prepared, context
+    )
+    assert context.retained_bytes > 0
+    assert incremental_bytes >= 0
+    assert incremental_bytes < full_bytes
+
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    reservations: list[tuple[str, int]] = []
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+
+    def recording_reserve(self, owner: str, amount: int) -> None:
+        reservations.append((owner, int(amount)))
+        original_reserve(self, owner, amount)
+
+    monkeypatch.setattr(
+        campaign_cli._core._PipelineByteLedger, "reserve", recording_reserve
+    )
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "evaluation_pipeline_buffer_mib": 32.0,
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+
+    tasks = [
+        campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"real-shared-{index}",
+            label=f"real-shared-{index}",
+            start_detail="shared-accounting",
+            prepare=lambda prepared=prepared: prepared,
+            requires_inference=lambda _prepared: False,
+            infer=lambda value: value,
+            finalize=lambda value, _inferred: value,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda value, context=context: (
+                campaign_cli._core._target_size_eval2_incremental_prepared_bytes(
+                    value, context
+                )
+            ),
+            accelerator_possible=False,
+        )
+        for index in range(2)
+    ]
+    campaign_cli._run_staged_evaluation_tasks(
+        tasks,
+        cfg=cfg,
+        device="cpu",
+        progress=_Progress(),
+        shared_residency_bytes=context.retained_bytes,
+    )
+
+    shared = [amount for owner, amount in reservations if owner == "shared:runtime-residency"]
+    prepared_reservations = [
+        amount for owner, amount in reservations if owner.startswith("prepared:real-shared-")
+    ]
+    assert shared == [context.retained_bytes]
+    assert prepared_reservations == [incremental_bytes, incremental_bytes]

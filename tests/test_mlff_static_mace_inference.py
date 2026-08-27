@@ -72,6 +72,23 @@ def test_static_executor_surfaces_batch_one_oom() -> None:
         executor.predict(_atoms(1))
 
 
+def test_static_executor_honors_staged_cancellation_before_next_batch() -> None:
+    from mdstats.training_data.inference_parallel import inference_start_signal
+
+    provider = _Provider()
+    executor = StaticMaceInferenceExecutor(provider, batch_size=2)
+    phases: list[str] = []
+    with inference_start_signal(
+        lambda: None,
+        phase_callback=phases.append,
+        cancellation_requested=lambda: True,
+    ):
+        with pytest.raises(InterruptedError, match="cancelled"):
+            executor.predict(_atoms(4))
+    assert provider.calls == []
+    assert any("cancelled before static inference batch" in phase for phase in phases)
+
+
 def test_static_executor_prohibits_concurrent_model_shell_sharing() -> None:
     import threading
 
@@ -1205,3 +1222,119 @@ def test_auto_execution_path_persists_and_reuses_compatible_profile(
         rtol=0.0,
         atol=0.0,
     )
+
+
+def test_auto_profile_reuses_runtime_architecture_across_checkpoint_weights(
+    tmp_path, monkeypatch
+) -> None:
+    """Calibration compatibility is execution-structural, not checkpoint-weight identity."""
+
+    import mdstats
+    from types import SimpleNamespace
+    from mdstats.training_data import campaign_execution, model_features, resources
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    snapshot = SystemResourceSnapshot(
+        cpu_threads_available=8,
+        cpu_fraction=0.90,
+        cpu_threads_budget=7,
+        ram_available_bytes=1 << 60,
+        ram_fraction=0.80,
+        ram_budget_bytes=1 << 59,
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+    monkeypatch.setattr(resources, "detect_system_resources", lambda **kwargs: snapshot)
+
+    class Provider(_Provider):
+        def __init__(self, *, exact_identity: str, runtime_architecture: str):
+            super().__init__()
+            self.checkpoint_identity = SimpleNamespace(content_digest=exact_identity)
+            self.runtime_architecture_digest = runtime_architecture
+
+        def set_head(self, head):
+            pass
+
+        def close(self):
+            pass
+
+    architecture = digest({"fixture": "same-runtime-architecture"})
+    model_a = tmp_path / "model-a.pt"
+    model_b = tmp_path / "model-b.pt"
+    model_a.write_bytes(b"checkpoint-a-weights")
+    model_b.write_bytes(b"checkpoint-b-weights")
+    atoms = _atoms(24)
+    geometry_ids = tuple(digest({"geometry": index}) for index in range(len(atoms)))
+    plan = mdstats.InferenceExecutionPlan(
+        batch_policy="auto",
+        selected_batch_size=2,
+        maximum_batch_size=8,
+        selected_concurrent_model_jobs=1,
+    )
+    policy = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), device="cpu", default_dtype="float64"
+    )
+    graph_cache = tmp_path / "evaluation-graphs"
+
+    first_provider = Provider(
+        exact_identity=digest({"checkpoint": "a"}),
+        runtime_architecture=architecture,
+    )
+    first = campaign_execution._predict_model_on_atoms(
+        model_a,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=first_provider,
+        geometry_identities=geometry_ids,
+        graph_cache_directory=graph_cache,
+    )
+    profiles = tuple((tmp_path / "static-inference-runtime-profiles").glob("*.json"))
+    assert len(profiles) == 1
+    profile = StaticInferenceRuntimeProfile.from_dict(
+        __import__("json").loads(profiles[0].read_text(encoding="utf-8"))
+    )
+
+    second_provider = Provider(
+        exact_identity=digest({"checkpoint": "b"}),
+        runtime_architecture=architecture,
+    )
+    second = campaign_execution._predict_model_on_atoms(
+        model_b,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=second_provider,
+        geometry_identities=geometry_ids,
+        graph_cache_directory=graph_cache,
+    )
+    # Different scientific checkpoint identities share exactly one runtime
+    # profile only because their explicit execution architecture identity agrees.
+    assert first_provider.checkpoint_identity.content_digest != second_provider.checkpoint_identity.content_digest
+    assert len(tuple((tmp_path / "static-inference-runtime-profiles").glob("*.json"))) == 1
+    assert second_provider.calls
+    assert second_provider.calls[0][0] == profile.selected_batch_size
+    np.testing.assert_allclose(
+        [value.energy_ev for value in second],
+        [value.energy_ev for value in first],
+        rtol=0.0,
+        atol=0.0,
+    )
+
+    incompatible_provider = Provider(
+        exact_identity=digest({"checkpoint": "c"}),
+        runtime_architecture=digest({"fixture": "different-runtime-architecture"}),
+    )
+    campaign_execution._predict_model_on_atoms(
+        model_b,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=incompatible_provider,
+        geometry_identities=geometry_ids,
+        graph_cache_directory=graph_cache,
+    )
+    assert len(tuple((tmp_path / "static-inference-runtime-profiles").glob("*.json"))) == 2

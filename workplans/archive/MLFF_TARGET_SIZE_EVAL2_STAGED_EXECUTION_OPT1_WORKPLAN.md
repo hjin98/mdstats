@@ -2,12 +2,14 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-TARGET-SIZE-EVAL2-STAGED-EXECUTION-OPT1
 protocol_version: 5.7.0
-status: active
+status: completed
+completed_date: 2026-08-26
 created_date: 2026-08-26
 initial_reviewed_head: 31133d75b53817cdd63857ba2a93e603507aacef
 reviewed_head: 9170557bd01ca9a0c2a55d4cfb89fed2dc8d17e5
 implementation_review_date: 2026-08-26
-implementation_review_disposition: reopened
+implementation_review_disposition: closed_after_rework
+gpu_qualification_disposition: deferred_to_FINAL-GPU1
 controlling_workplan: workplans/active/MLFF_TARGET_SIZE_EXACT_BOUNDARY_SCREENING_REWORK_WORKPLAN.md
 ---
 

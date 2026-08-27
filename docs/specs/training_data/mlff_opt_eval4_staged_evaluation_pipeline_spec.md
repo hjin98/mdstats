@@ -35,7 +35,7 @@ bounded prepared queue
 accelerator stage
   - materialize the candidate checkpoint model only when candidate inference is needed
   - serialize CuEq/OEq/PyTorch-FX conversions through the existing process-wide guard
-  - construct a private calculator per active checkpoint worker
+  - construct or acquire a worker-private calculator/provider under the compatibility rules below
   - execute target/replay model forwards under adaptive CPU/GPU admission
         |
         v
@@ -54,6 +54,15 @@ parent-thread durable commit / run selection / selected-model publication
 Preparation for later checkpoints and finalization for completed checkpoints should be
 able to overlap inference.  A completed accelerator slot shall be refilled before
 parent-side run selection/model publication callbacks execute.
+
+TARGET-SIZE-V5 exact-boundary EVAL2 is a required consumer of this pipeline.  Its parent
+constructs immutable authority-rich endpoint descriptors, may bind one authenticated
+shared target context for compatible endpoints, and validates every returned endpoint
+against the expected run/size/seed/checkpoint/target-role/prediction/metric authority before
+writing `CampaignStore`.  Worker-supplied keys are not publication authority.  Shared
+target atoms/evaluation views are reserved once in the stage RAM ledger and excluded from
+per-task incremental prepared-state accounting.  Cached and fresh results traverse the
+same parent validation path before the deterministic terminal-population barrier/reducer.
 
 ## 3. Compatibility API
 
@@ -80,8 +89,14 @@ been pruned, as established by OPT-EVAL2.
 
 ## 5. Accelerator ownership and safety
 
-A MACE calculator/provider is private to one active inference worker.  No calculator may
-be passed to a sibling worker or to CPU finalization.
+A MACE calculator/provider is private to one active inference owner.  No calculator may
+be passed to a sibling worker or to CPU finalization.  A serial TARGET-SIZE-V5 accelerator
+lane may retain one provider shell across endpoint checkpoints only when authenticated
+checkpoint loading proves exact model-class/state-key/state-shape/state-dtype compatibility
+and the provider has been explicitly qualified for weight replacement.  Foundation-model,
+CuEq/OEq, compiled, or otherwise unqualified providers rebuild instead.  Incompatible
+shells rebuild; corruption or authority mismatch fails closed.  Weight-dependent adapter
+or calculator state is invalidated when weights change.
 
 Candidate checkpoint materialization is part of the admitted accelerator stage rather
 than the unmetered CPU preparation stage.  This is required because direct restoration of
@@ -122,12 +137,18 @@ fresh prediction arrays cannot accumulate without limit.
 
 ## 8. Failure and restart semantics
 
-A failure in any stage stops admission of new work.  Already-active stage work may finish,
-but the command fails without marking incomplete checkpoints as evaluated.
+A failure in any stage stops admission of new work.  Active evaluation work polls the
+stage cancellation signal at safe preparation, model-materialization, inference-wave, and
+finalization boundaries.  Owned legacy reconstruction subprocesses are terminated on
+cancellation/timeout with attempt-local cleanup.  The command fails without marking
+incomplete checkpoints as evaluated.
 
 Durable prediction artifacts and evaluation records keep their existing OPT-EVAL2/3
 identities.  No new scientific-record schema is required merely for pipeline scheduling.
-A restart may therefore reuse 0.20.99/0.20.100 campaign state and prediction/graph caches.
+TARGET-SIZE-V5 additionally persists deterministic typed terminal EVAL2 scientific-failure
+evidence so a sibling infrastructure failure does not force already authenticated terminal
+work to repeat.  A restart revalidates success/failure authority before reuse; conflicting
+success and failure evidence fails closed.
 
 ## 9. Progress and observability
 
@@ -139,8 +160,17 @@ Campaign output shall distinguish pipeline stages.  At minimum it should expose:
 - active/ready/finalization-backlog counts in periodic scheduler reporting.
 
 Per-checkpoint completion should report total wall time and the accumulated prepare,
-inference, and finalization times.  These timings are diagnostics and do not enter any
-scientific digest or acceptance decision.
+inference, and finalization times.  Target-size execution additionally exposes low-overhead
+phase timing sufficient to distinguish target preparation, model/provider materialization,
+static-inference calibration, production inference, graph/prediction reuse, and
+finalization/persistence.  These timings are diagnostics and do not enter any scientific
+digest or acceptance decision.
+
+Static-inference calibration profiles may cross checkpoint-weight identity only when a
+weight-independent runtime-architecture digest and exact authenticated geometry identities
+are available and the device/dtype/head/acceleration/precision/hardware/workload contract
+matches.  Otherwise profile compatibility remains checkpoint-exact.  Reused profiles are
+still live-clamped to current resource evidence and retain OOM learning/backoff behavior.
 
 ## 10. Acceptance tests
 
@@ -157,4 +187,14 @@ OPT-EVAL4 is complete only if all of the following hold:
 6. CuEq/OEq conversion guards and checkpoint materialization tests remain green;
 7. true-label replay and persistent prediction-cache regressions remain green;
 8. the existing adaptive inference controller tests remain green;
-9. exact source-patch and isolated-wheel smoke tests pass before release.
+9. exact source-patch and isolated-wheel smoke tests pass before release;
+10. TARGET-SIZE-V5 uses the real staged scheduler and parent authority validator, with
+    successful durable publication, typed scientific-failure restart reuse, and reducer
+    completion exercised through a real `CampaignStore`;
+11. stage-shared target atoms/views are RAM-accounted once while per-task accounting charges
+    only incremental prepared state;
+12. compatible target-size checkpoint weights may reuse one private provider shell only
+    when hot-swapped forward output matches a freshly loaded compatible model, and
+    incompatible shells rebuild;
+13. cross-checkpoint calibration-profile and geometry-graph reuse is exercised through the
+    assembled target-size owner without weakening checkpoint scientific identity.

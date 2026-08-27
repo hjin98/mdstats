@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+import pytest
 import torch
 import yaml
 
@@ -92,6 +93,67 @@ def test_raw_mace_checkpoint_is_reconstructed_and_cached(tmp_path: Path) -> None
     mdstats.remove_materialized_mace_checkpoint_model(second)
     assert not second.exists()
     assert not second.with_suffix(".json").exists()
+
+
+def test_legacy_checkpoint_reconstruction_child_is_terminated_on_staged_cancellation(
+    tmp_path: Path,
+) -> None:
+    from mdstats.training_data.inference_parallel import inference_start_signal
+
+    checkpoint = tmp_path / "old-name_epoch-3.pt"
+    torch.save(
+        {
+            "model": {"weight": torch.tensor([1.0])},
+            "optimizer": {},
+            "lr_scheduler": {},
+        },
+        checkpoint,
+    )
+    record = _record(checkpoint)
+    job_root = tmp_path / "job"
+    job_root.mkdir()
+    config = job_root / "config.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "name": "qualified-model",
+                "seed": 17,
+                "heads": {"target_head": {}, "replay_head": {}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    marker = tmp_path / "wrapper-started.txt"
+    wrapper = tmp_path / "slow-mace-train"
+    wrapper.write_text(
+        "#!/usr/bin/env python\n"
+        "import pathlib, time\n"
+        f"pathlib.Path({str(marker)!r}).write_text('started')\n"
+        "time.sleep(30.0)\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    cache = tmp_path / "cache"
+    phases: list[str] = []
+
+    with inference_start_signal(
+        lambda: None,
+        phase_callback=phases.append,
+        cancellation_requested=marker.exists,
+    ):
+        with pytest.raises(InterruptedError, match="cancelled"):
+            mdstats.materialize_mace_checkpoint_model(
+                record,
+                checkpoint,
+                mace_config_path=config,
+                job_working_directory=job_root,
+                cache_directory=cache,
+                wrapper_path=wrapper,
+            )
+
+    assert marker.read_text() == "started"
+    assert any("cancelled before legacy checkpoint reconstruction completion" in phase for phase in phases)
+    assert not list(cache.glob(".*.staging-*"))
 
 
 def test_deployable_model_is_used_without_reconstruction(tmp_path: Path) -> None:

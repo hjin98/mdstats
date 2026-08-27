@@ -1412,6 +1412,10 @@ class _MaceDescriptorAdapter:
         return np.ascontiguousarray(value)
 
 
+class MaceModelStateCompatibilityError(TrainingDataInputError):
+    """A model cannot safely reuse an existing mutable MACE shell."""
+
+
 class MaceCalculatorProvider:
     """Lazy optional adapter around a MACE ASE calculator."""
 
@@ -1421,11 +1425,87 @@ class MaceCalculatorProvider:
         self._calculator = calculator
         self._checkpoint_identity = checkpoint_identity
         self._descriptor_adapter_cache: _MaceDescriptorAdapter | None = None
+        self._runtime_architecture_digest_cache: str | None = None
         self._state_hot_swap_qualified = False
 
     @property
     def checkpoint_identity(self) -> ModelCheckpointIdentity:
         return self._checkpoint_identity
+
+    @property
+    def runtime_architecture_digest(self) -> str:
+        """Return weight-independent execution architecture identity.
+
+        Static inference calibration characterizes tensor/graph execution shape,
+        not scientific checkpoint weights.  The digest therefore binds model
+        classes, state keys/shapes/dtypes, calculator graph policy, element
+        table, and MACE adapter version while deliberately excluding parameter
+        values and checkpoint SHA.  Hardware, head, precision, acceleration,
+        and workload shape remain separate compatibility-key dimensions at the
+        runtime-authority owner.
+        """
+
+        cached = self._runtime_architecture_digest_cache
+        if cached is not None:
+            return cached
+        calculator = self._calculator
+        if calculator is None:
+            raise TrainingDataInputError(
+                "Closed MACE provider has no runtime architecture identity."
+            )
+        models = getattr(calculator, "models", None)
+        if not isinstance(models, (tuple, list)) or not models:
+            raise TrainingDataInputError(
+                "MACE runtime architecture identity requires calculator model state."
+            )
+        model_payload = []
+        for model in models:
+            if not hasattr(model, "state_dict"):
+                raise TrainingDataInputError(
+                    "MACE runtime architecture identity requires torch model state."
+                )
+            state = model.state_dict()
+            model_payload.append(
+                {
+                    "model_class": f"{type(model).__module__}.{type(model).__qualname__}",
+                    "state": [
+                        {
+                            "key": str(key),
+                            "shape": [int(value) for value in tensor.shape],
+                            "dtype": str(tensor.dtype),
+                        }
+                        for key, tensor in sorted(state.items())
+                    ],
+                }
+            )
+        z_table = getattr(calculator, "z_table", None)
+        z_values = tuple(int(value) for value in getattr(z_table, "zs", ()))
+        try:
+            import torch as _torch_runtime
+            torch_version = str(getattr(_torch_runtime, "__version__", ""))
+        except ModuleNotFoundError:  # pragma: no cover - provider already requires torch
+            torch_version = ""
+        cached = digest(
+            {
+                "schema": "mdstats.mace-runtime-architecture.v1",
+                "adapter_version": MACE_ADAPTER_VERSION,
+                "model_version": self._checkpoint_identity.model_version,
+                "torch_version": torch_version,
+                "calculator_class": f"{type(calculator).__module__}.{type(calculator).__qualname__}",
+                "model_type": str(getattr(calculator, "model_type", "")),
+                "models": model_payload,
+                "r_max": float(getattr(calculator, "r_max", 0.0)),
+                "atomic_numbers": list(z_values),
+                "available_heads": [
+                    str(value) for value in getattr(calculator, "available_heads", ())
+                ],
+                "use_compile": bool(getattr(calculator, "use_compile", False)),
+                "pad_num_atoms": int(getattr(calculator, "pad_num_atoms", 0)),
+                "pad_num_edges": int(getattr(calculator, "pad_num_edges", 0)),
+            }
+        )
+        self._runtime_architecture_digest_cache = cached
+        return cached
 
     @property
     def closed(self) -> bool:
@@ -1794,7 +1874,7 @@ class MaceCalculatorProvider:
         """
 
         if not self._state_hot_swap_qualified or self._checkpoint_identity.foundation_bound:
-            raise TrainingDataInputError(
+            raise MaceModelStateCompatibilityError(
                 "This MACE provider is not qualified for checkpoint state hot swapping."
             )
         path = Path(model_path).resolve()
@@ -1815,31 +1895,31 @@ class MaceCalculatorProvider:
             source = torch.load(path, map_location="cpu")
         if isinstance(source, (tuple, list)):
             if len(source) != 1:
-                raise TrainingDataInputError("Checkpoint hot swapping does not support model ensembles.")
+                raise MaceModelStateCompatibilityError("Checkpoint hot swapping does not support model ensembles.")
             source = source[0]
         if not hasattr(source, "state_dict"):
-            raise TrainingDataInputError("Hot-swap source is not a deployable torch model.")
+            raise MaceModelStateCompatibilityError("Hot-swap source is not a deployable torch model.")
         target_models = getattr(self._calculator, "models", None)
         if not isinstance(target_models, (tuple, list)) or len(target_models) != 1:
-            raise TrainingDataInputError("Checkpoint hot swapping requires exactly one calculator model.")
+            raise MaceModelStateCompatibilityError("Checkpoint hot swapping requires exactly one calculator model.")
         target = target_models[0]
         source_type = f"{type(source).__module__}.{type(source).__qualname__}"
         target_type = f"{type(target).__module__}.{type(target).__qualname__}"
         if source_type != target_type:
-            raise TrainingDataInputError(
+            raise MaceModelStateCompatibilityError(
                 f"Checkpoint hot-swap model class mismatch: {source_type!r} != {target_type!r}."
             )
         source_state = source.state_dict()
         target_state = target.state_dict()
         if set(source_state) != set(target_state):
-            raise TrainingDataInputError("Checkpoint hot-swap state keys differ from the validated model shell.")
+            raise MaceModelStateCompatibilityError("Checkpoint hot-swap state keys differ from the validated model shell.")
         for key in sorted(source_state):
             incoming = source_state[key]
             resident = target_state[key]
             if tuple(incoming.shape) != tuple(resident.shape):
-                raise TrainingDataInputError(f"Checkpoint hot-swap shape mismatch for state key {key!r}.")
+                raise MaceModelStateCompatibilityError(f"Checkpoint hot-swap shape mismatch for state key {key!r}.")
             if incoming.dtype != resident.dtype:
-                raise TrainingDataInputError(f"Checkpoint hot-swap dtype mismatch for state key {key!r}.")
+                raise MaceModelStateCompatibilityError(f"Checkpoint hot-swap dtype mismatch for state key {key!r}.")
         target.load_state_dict(source_state, strict=True)
         self._checkpoint_identity = replace(
             self._checkpoint_identity,
@@ -2029,6 +2109,8 @@ class MaceCalculatorProvider:
         graph_cache_directory: str | Path | None = None,
     ) -> tuple[Any, np.ndarray]:
         """Construct/reuse one native MACE graph batch on CPU only."""
+        from .inference_parallel import report_inference_worker_phase
+
         if not atoms_batch:
             raise TrainingDataInputError("MACE batch must contain at least one structure.")
         if geometry_identities is not None and len(geometry_identities) != len(atoms_batch):
@@ -2049,16 +2131,19 @@ class MaceCalculatorProvider:
             stable_token, stable_policy_digest = _mace_monitor_graph_token(calc, geometry_identities)
             cached = _monitor_graph_memory_get_cpu(stable_token)
             if cached is not None:
+                report_inference_worker_phase("graph cache hit: memory")
                 return cached
             cached = _load_persistent_monitor_graph_cpu(
                 graph_cache_directory, token=stable_token,
                 policy_digest=stable_policy_digest, geometry_identities=geometry_identities,
             )
             if cached is not None:
+                report_inference_worker_phase("graph cache hit: persistent")
                 return cached
         else:
             cached = _cached_graph_batch_cpu(calc, atoms_batch)
             if cached is not None:
+                report_inference_worker_phase("graph cache hit: calculator-local")
                 return cached
 
         lock = _monitor_graph_key_lock(stable_token) if stable_token is not None else _MACE_GRAPH_BATCH_CACHE_LOCK
@@ -2072,7 +2157,9 @@ class MaceCalculatorProvider:
                         geometry_identities=geometry_identities or (),
                     )
                 if cached is not None:
+                    report_inference_worker_phase("graph cache hit: synchronized")
                     return cached
+            report_inference_worker_phase("graph cache miss: building CPU monitor graphs")
             keyspec = mace_data.KeySpecification(
                 info_keys=calc.info_keys, arrays_keys=calc.arrays_keys
             )
@@ -2884,7 +2971,7 @@ class StaticInferenceRuntimeAuthority:
         """Hash conservative hardware/runtime/model/workload-shape identity."""
 
         return digest({
-            "schema": "mdstats.static-inference-compatibility.v2",
+            "schema": "mdstats.static-inference-compatibility.v3",
             "evidence_semantics": STATIC_INFERENCE_EVIDENCE_SEMANTICS,
             **dict(payload),
         })
@@ -3099,6 +3186,19 @@ class StaticInferenceRuntimeAuthority:
         )
 
 
+def _raise_if_static_inference_cancelled(phase: str) -> None:
+    """Poll staged-evaluation cancellation between safe static-inference units."""
+
+    from .inference_parallel import (
+        inference_cancellation_requested,
+        report_inference_worker_phase,
+    )
+
+    if inference_cancellation_requested():
+        report_inference_worker_phase(f"cancelled before {phase}")
+        raise InterruptedError(f"Static inference cancelled before {phase}.")
+
+
 class StaticMaceInferenceExecutor:
     """Canonical deterministic batched prediction owner with bounded OOM learning."""
 
@@ -3281,6 +3381,7 @@ class StaticMaceInferenceExecutor:
         attempt_provider: Any | None = None
         try:
             while len(self._provider_pool) < target:
+                _raise_if_static_inference_cancelled("private provider construction")
                 if admit_next_slot is not None and not admit_next_slot():
                     raise TrainingDataInputError(
                         "Live RAM/VRAM headroom does not admit the next private provider slot."
@@ -3357,6 +3458,7 @@ class StaticMaceInferenceExecutor:
         result: list[AtomicModelPrediction] = []
         position = 0
         while position < len(values):
+            _raise_if_static_inference_cancelled("static inference batch")
             remaining = len(values) - position
             batch_size = min(self.learned_safe_batch_size, remaining)
             if self.runtime_authority is not None:
@@ -3457,6 +3559,7 @@ class StaticMaceInferenceExecutor:
         """Run one steady-state wave using stable worker-private provider slots."""
 
         batch, jobs = int(batch_size), int(concurrent_jobs)
+        _raise_if_static_inference_cancelled("joint static-inference wave")
         if batch <= 0 or jobs <= 0 or len(values) != batch * jobs:
             raise TrainingDataInputError("Joint static inference wave dimensions are invalid.")
         if len(self._provider_pool) < jobs:
@@ -3547,6 +3650,8 @@ class StaticMaceInferenceExecutor:
     ) -> tuple[AtomicModelPrediction, ...]:
         authority = self.runtime_authority
         assert authority is not None
+        from .inference_parallel import report_inference_worker_phase
+
         values = tuple(atoms)
         identities = None if geometry_identities is None else tuple(map(str, geometry_identities))
         if not values:
@@ -3673,11 +3778,14 @@ class StaticMaceInferenceExecutor:
 
         reclamp_live()
 
+        calibration_started = time.perf_counter()
         if not authority.reused_compatible_profile:
+            report_inference_worker_phase("static inference calibration: start")
             for batch, jobs in authority.candidate_operating_points(
                 available_structures=len(values),
                 concurrency_available=self.provider_factory is not None,
             ):
+                _raise_if_static_inference_cancelled("static inference calibration wave")
                 if batch > authority.learned_safe_batch_ceiling:
                     continue
                 count = batch * jobs
@@ -3722,6 +3830,12 @@ class StaticMaceInferenceExecutor:
                         execution_peak_vram_bytes=execution_vram,
                     )
                 )
+            report_inference_worker_phase(
+                "static inference calibration: complete "
+                f"({time.perf_counter() - calibration_started:.3f}s)"
+            )
+        else:
+            report_inference_worker_phase("static inference calibration: reused compatible profile (0.000s)")
 
         def select_available(
             excluded: set[tuple[int, int]], remaining: int
@@ -3750,10 +3864,14 @@ class StaticMaceInferenceExecutor:
 
         result: list[AtomicModelPrediction] = []
         position = 0
+        production_started = time.perf_counter()
+        report_inference_worker_phase("static inference production: start")
         while position < len(values):
+            _raise_if_static_inference_cancelled("static inference production wave")
             remaining = len(values) - position
             excluded: set[tuple[int, int]] = set()
             while True:
+                _raise_if_static_inference_cancelled("static inference operating-point admission")
                 selected = select_available(excluded, remaining)
                 if selected is None:
                     raise TrainingDataInputError(
@@ -3825,6 +3943,10 @@ class StaticMaceInferenceExecutor:
                 result.extend(predicted)
                 position += jobs * selected.batch_size
                 break
+        report_inference_worker_phase(
+            "static inference production: complete "
+            f"({time.perf_counter() - production_started:.3f}s)"
+        )
         return tuple(result)
 
     def predict(
