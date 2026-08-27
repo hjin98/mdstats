@@ -1828,10 +1828,15 @@ def test_target_size_real_owner_reuses_graph_cache_across_checkpoint_providers(
                 "parallel_evaluation_prepare_jobs": 1,
                 "parallel_evaluation_finalize_jobs": 1,
                 "evaluation_pipeline_buffer_jobs": 2,
-                "evaluation_pipeline_buffer_mib": 32.0,
+                "evaluation_pipeline_buffer_mib": 128.0,
                 "evaluation_estimated_ram_mib_per_job": 8.0,
                 "evaluation_prepare_working_memory_mib": 1.0,
-                "evaluation_inference_working_memory_mib": 1.0,
+                # The explicit inference working-memory override is now also the
+                # nested runtime authority's hard incremental RAM cap, so it must
+                # exceed the ~26 MiB measured real-MACE transient rather than the
+                # former 1 MiB ledger-only booking (which would reject every
+                # measured operating point).
+                "evaluation_inference_working_memory_mib": 64.0,
                 "evaluation_finalize_working_memory_mib": 1.0,
                 "parallel_evaluation_monitor_interval_seconds": 0.01,
             },

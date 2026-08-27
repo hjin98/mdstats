@@ -1338,3 +1338,94 @@ def test_auto_profile_reuses_runtime_architecture_across_checkpoint_weights(
         graph_cache_directory=graph_cache,
     )
     assert len(tuple((tmp_path / "static-inference-runtime-profiles").glob("*.json"))) == 2
+
+
+def test_staged_lease_clamps_nested_static_inference_authority(
+    tmp_path, monkeypatch
+) -> None:
+    """O3: the nested static-inference authority consumes the outer lease.
+
+    A scoped inference lease must bound ``maximum_concurrent_model_jobs`` and
+    ``live_ram_budget_bytes`` even when the freshly rediscovered process-global
+    resources (and the persisted execution plan) are much larger.
+    """
+    import mdstats
+    from mdstats.training_data import campaign_execution, model_features, resources
+    from mdstats.training_data.inference_parallel import (
+        InferenceLease,
+        inference_start_signal,
+    )
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    snapshot = SystemResourceSnapshot(
+        cpu_threads_available=8,
+        cpu_fraction=0.90,
+        cpu_threads_budget=7,
+        ram_available_bytes=1 << 40,
+        ram_fraction=0.80,
+        ram_budget_bytes=1 << 39,
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+    monkeypatch.setattr(resources, "detect_system_resources", lambda **kwargs: snapshot)
+
+    class Provider(_Provider):
+        def set_head(self, head):
+            pass
+
+        def close(self):
+            pass
+
+    model = tmp_path / "lease-model.pt"
+    model.write_bytes(b"nested-lease-fixture")
+    atoms = _atoms(16)
+    plan = mdstats.InferenceExecutionPlan(
+        batch_policy="auto",
+        selected_batch_size=4,
+        maximum_batch_size=16,
+        selected_concurrent_model_jobs=8,
+    )
+    policy = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), device="cpu", default_dtype="float64"
+    )
+
+    captured: dict = {}
+    real_init = StaticInferenceRuntimeAuthority.__init__
+
+    def capture_init(self, **kwargs):
+        captured["authority"] = self
+        real_init(self, **kwargs)
+
+    monkeypatch.setattr(StaticInferenceRuntimeAuthority, "__init__", capture_init)
+
+    lease = InferenceLease(maximum_model_jobs=2, ram_allowance_bytes=25_000)
+    with inference_start_signal(lambda: None, lease=lease):
+        campaign_execution._predict_model_on_atoms(
+            model,
+            atoms,
+            head=None,
+            policy=policy,
+            execution_plan=plan,
+            provider=Provider(),
+            graph_cache_directory=tmp_path,
+        )
+
+    assert captured["authority"].maximum_concurrent_model_jobs == 2
+    # ``initial_incremental_ram_cap_bytes`` preserves the constructor value;
+    # ``live_ram_budget_bytes`` is later re-clamped against live telemetry.
+    assert captured["authority"].initial_incremental_ram_cap_bytes == 25_000
+
+    # Without a lease, the authority rediscovers the full process-global budget
+    # and the plan's own (larger) job ceiling.
+    captured.clear()
+    campaign_execution._predict_model_on_atoms(
+        model,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=Provider(),
+        graph_cache_directory=tmp_path,
+    )
+    assert captured["authority"].maximum_concurrent_model_jobs == 8
+    assert captured["authority"].initial_incremental_ram_cap_bytes == snapshot.ram_budget_bytes

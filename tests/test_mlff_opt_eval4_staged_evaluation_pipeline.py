@@ -16,6 +16,9 @@ import mdstats
 from mdstats.training_data import campaign_cli, campaign_execution
 from mdstats.training_data.inference_parallel import (
     CpuTelemetrySample,
+    InferenceLease,
+    current_inference_lease,
+    inference_start_signal,
     report_inference_worker_phase,
 )
 from mdstats.training_data.model_features import AtomicModelPrediction, MaceCalculatorProvider
@@ -1804,3 +1807,366 @@ def test_target_size_prepared_payload_excludes_stage_shared_target_from_each_tas
     ]
     assert shared == [context.retained_bytes]
     assert prepared_reservations == [incremental_bytes, incremental_bytes]
+
+
+# ---------------------------------------------------------------------------
+# MLFF-EVAL-PIPELINE-RAM-LEASE-FIX focused regressions (O1--O6)
+# ---------------------------------------------------------------------------
+
+_ONE_MIB = 1024**2
+
+_GIB = 1024**3
+
+
+def _joint_resources(
+    *,
+    ram_budget_bytes: int,
+    cpu_threads_budget: int = 24,
+    cpu_threads_available: int | None = None,
+) -> SystemResourceSnapshot:
+    cpu = cpu_threads_available if cpu_threads_available is not None else cpu_threads_budget
+    return SystemResourceSnapshot(
+        cpu_threads_available=cpu,
+        cpu_fraction=0.90,
+        cpu_threads_budget=cpu_threads_budget,
+        ram_available_bytes=ram_budget_bytes,
+        ram_fraction=0.80,
+        ram_budget_bytes=ram_budget_bytes,
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+
+
+def _joint_task(
+    index: int,
+    *,
+    infer,
+    observed_jobs: list[int],
+    lock: threading.Lock,
+    state: dict,
+    requires_inference: bool = True,
+    prepared_bytes: int | None = None,
+) -> campaign_cli._StagedEvaluationTask:
+    class Prepared:
+        def __init__(self):
+            self.execution_plan = mdstats.InferenceExecutionPlan(
+                batch_policy="auto", selected_batch_size=8, maximum_batch_size=32
+            )
+
+    def prepare():
+        return Prepared()
+
+    def _infer(prepared):
+        observed_jobs.append(prepared.execution_plan.selected_concurrent_model_jobs)
+        with lock:
+            state["active"] += 1
+            state["peak"] = max(state["peak"], state["active"])
+        try:
+            return infer(prepared)
+        finally:
+            with lock:
+                state["active"] -= 1
+
+    return campaign_cli._StagedEvaluationTask(
+        display_index=index + 1,
+        key=str(index),
+        label=f"joint-{index}",
+        start_detail="joint-lease",
+        prepare=prepare,
+        requires_inference=lambda prepared: requires_inference,
+        infer=_infer,
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "done",
+        prepared_bytes=(lambda prepared: prepared_bytes) if prepared_bytes is not None else None,
+    )
+
+
+def _configure_joint_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    ram_budget_bytes: int,
+    estimated_ram_mib: float,
+    requested_jobs: int,
+    cpu_threads_budget: int = 24,
+    pipeline_buffer_mib: float | None = None,
+) -> dict:
+    monkeypatch.setattr(
+        campaign_cli._core,
+        "detect_system_resources",
+        lambda **kwargs: _joint_resources(
+            ram_budget_bytes=ram_budget_bytes,
+            cpu_threads_budget=cpu_threads_budget,
+        ),
+    )
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_jobs"] = requested_jobs
+    cfg["execution"]["evaluation_estimated_ram_mib_per_job"] = estimated_ram_mib
+    if pipeline_buffer_mib is not None:
+        cfg["execution"]["evaluation_pipeline_buffer_mib"] = pipeline_buffer_mib
+    return cfg
+
+
+def _run_joint_observation(monkeypatch, *, n_tasks, **cfg_kwargs):
+    """Run n inference-requiring tasks and return (results, observed_jobs, peak)."""
+    cfg = _configure_joint_pipeline(monkeypatch, **cfg_kwargs)
+    observed_jobs: list[int] = []
+    lock = threading.Lock()
+    state: dict = {"active": 0, "peak": 0}
+
+    def infer(prepared):
+        time.sleep(0.01)
+        return True
+
+    tasks = tuple(
+        _joint_task(
+            i, infer=infer, observed_jobs=observed_jobs, lock=lock, state=state
+        )
+        for i in range(n_tasks)
+    )
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+    return results, observed_jobs, state["peak"]
+
+
+def test_production_geometry_ram_lease_launches_largest_admissible_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O1: a 4 GiB/job / 8-job / ~18.6 GiB sub-budget reproduces the reported
+    arithmetic without allocating production RAM.  The old fixed full-width
+    reservation (32 GiB) can never fit; the repaired scheduler descends to the
+    widest coexistible width (J=4) and completes instead of stalling."""
+    # 37.2 GiB global budget -> ram_limit = floor(37.2 / 4) = 9 >= 8 jobs and
+    # automatic staged sub-budget = 37.2 / 2 ~= 18.6 GiB.
+    global_budget = int(37.2 * _GIB)
+    results, observed_jobs, peak = _run_joint_observation(
+        monkeypatch,
+        n_tasks=8,
+        ram_budget_bytes=global_budget,
+        estimated_ram_mib=4096.0,
+        requested_jobs=8,
+    )
+    assert results == {str(i): True for i in range(8)}
+    assert peak == 1
+    assert observed_jobs == [4] * 8
+
+
+def test_joint_width_exact_fit_reserves_full_theoretical_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O2: budget == J * estimate fits the full theoretical width exactly."""
+    # estimate = 1 MiB; joint cap = 4; budget = 4 MiB so J=4*1MiB fits exactly.
+    results, observed_jobs, peak = _run_joint_observation(
+        monkeypatch,
+        n_tasks=4,
+        ram_budget_bytes=8 * _ONE_MIB,  # auto sub-budget = 4 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=4,
+    )
+    assert results == {str(i): True for i in range(4)}
+    assert observed_jobs == [4] * 4
+
+
+def test_joint_width_one_byte_over_boundary_descends_one_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O2: budget == J * estimate - 1 byte descends from J=4 to J=3."""
+    # auto sub-budget = ram_budget // 2.  Set ram_budget = 2*(4 MiB - 1) so the
+    # sub-budget is exactly 4 MiB - 1 byte: J=4 no longer fits, J=3 does.
+    ram_budget = 2 * (4 * _ONE_MIB - 1)
+    results, observed_jobs, peak = _run_joint_observation(
+        monkeypatch,
+        n_tasks=4,
+        ram_budget_bytes=ram_budget,
+        estimated_ram_mib=1.0,
+        requested_jobs=4,
+    )
+    assert results == {str(i): True for i in range(4)}
+    assert observed_jobs == [3] * 4
+
+
+def test_joint_width_minimum_j1_still_launches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O2: a budget that admits only J=1 still launches and completes."""
+    # sub-budget = 1.5 MiB (ram_budget = 3 MiB) -> only J=1 (1 MiB) fits.
+    results, observed_jobs, peak = _run_joint_observation(
+        monkeypatch,
+        n_tasks=4,
+        ram_budget_bytes=3 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=4,
+    )
+    assert results == {str(i): True for i in range(4)}
+    assert all(jobs == 1 for jobs in observed_jobs)
+
+
+def test_irreducible_j1_impossibility_fails_with_causal_ram_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O5: when minimum J=1 plus retained state cannot fit and no active owner
+    can release memory, terminate with a causal RAM-admission error (not the
+    generic stall)."""
+    # estimate = 1 MiB -> prepare = 1 MiB, minimum inference = 1 MiB.  Budget of
+    # 1.5 MiB cannot hold a 1 MiB prepared payload plus a 1 MiB inference.
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=3 * _ONE_MIB,  # auto sub-budget = 1.5 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    big = np.zeros(_ONE_MIB, dtype=np.uint8)  # 1 MiB retained prepared payload
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="irreducible",
+        label="irreducible",
+        start_detail="irreducible",
+        prepare=lambda: big,
+        requires_inference=lambda prepared: True,
+        infer=lambda prepared: True,
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "done",
+    )
+    with pytest.raises(
+        campaign_cli.CampaignCliError,
+        match="staged RAM admission blocked.*minimum inference reservation",
+    ):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task], cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+        )
+
+
+def test_inference_lease_is_task_scoped_and_released_even_on_exception() -> None:
+    """O6: the lease transport is task-scoped and cleared on every terminal path."""
+    assert current_inference_lease() is None
+    lease = InferenceLease(maximum_model_jobs=3, ram_allowance_bytes=12345)
+    with inference_start_signal(lambda: None, lease=lease):
+        assert current_inference_lease() is lease
+    assert current_inference_lease() is None
+
+    # A propagated exception must also clear the lease.
+    try:
+        with inference_start_signal(lambda: None, lease=lease):
+            raise RuntimeError("boom")
+    except RuntimeError:
+        pass
+    assert current_inference_lease() is None
+
+
+def test_inference_lease_reservation_released_after_inference_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: a failing inference stage releases its reservation so a later
+    independent invocation can be admitted without a leaked-reservation error."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=8 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    failing = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="failing-infer",
+        label="failing-infer",
+        start_detail="failure-cleanup",
+        prepare=lambda: 1,
+        requires_inference=lambda prepared: True,
+        infer=lambda prepared: (_ for _ in ()).throw(RuntimeError("infer exploded")),
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "done",
+    )
+    with pytest.raises(campaign_cli.CampaignCliError, match="infer exploded"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [failing], cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+        )
+    # A subsequent fresh invocation with the same budget must be admissible.
+    observed_jobs: list[int] = []
+    lock = threading.Lock()
+    state: dict = {"active": 0, "peak": 0}
+    good = tuple(
+        _joint_task(
+            i,
+            infer=lambda prepared: True,
+            observed_jobs=observed_jobs,
+            lock=lock,
+            state=state,
+        )
+        for i in range(2)
+    )
+    results = campaign_cli._run_staged_evaluation_tasks(
+        good, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+    assert results == {"0": True, "1": True}
+
+
+def test_preparation_does_not_starve_ready_inference_of_progress_headroom(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O4: cache-only predecessors followed by uncached work, with heterogeneous
+    retained payloads under a tight budget, still make forward progress: the
+    cache-only items re finalize directly to release memory, and the ready
+    uncached inference always keeps its minimum-J=1 headroom instead of being
+    starved by additional preparation."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=4 * _ONE_MIB,  # auto sub-budget = 2 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 8
+
+    inferred: list[str] = []
+    finalized: list[str] = []
+    lock = threading.Lock()
+
+    def make_task(
+        index: int,
+        *,
+        cache_only: bool,
+        payload_mib: float,
+    ) -> campaign_cli._StagedEvaluationTask:
+        payload = np.zeros(int(payload_mib * _ONE_MIB), dtype=np.uint8)
+
+        def prepare():
+            return payload
+
+        def infer(prepared):
+            with lock:
+                inferred.append(f"uncached-{index}")
+            return prepared
+
+        def finalize(prepared, result):
+            with lock:
+                finalized.append(f"task-{index}")
+            return result
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"o4-{index}",
+            label=f"o4-{index}",
+            start_detail="o4-forward-progress",
+            prepare=prepare,
+            requires_inference=lambda prepared: not cache_only,
+            infer=infer,
+            finalize=finalize,
+            done_detail=lambda result, wall: "done",
+            cached_result=(lambda prepared: prepared) if cache_only else None,
+        )
+
+    # Heterogeneous retained payloads: two cache-only (bypass inference) then
+    # two uncached inference-requiring items.
+    tasks = (
+        make_task(0, cache_only=True, payload_mib=0.5),
+        make_task(1, cache_only=True, payload_mib=0.25),
+        make_task(2, cache_only=False, payload_mib=0.1),
+        make_task(3, cache_only=False, payload_mib=0.1),
+    )
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+    assert set(results) == {"o4-0", "o4-1", "o4-2", "o4-3"}
+    # Cache-only items bypass inference; only the uncached items are inferred.
+    assert inferred == ["uncached-2", "uncached-3"]
+    assert sorted(finalized) == ["task-0", "task-1", "task-2", "task-3"]

@@ -2649,7 +2649,10 @@ def _predict_model_on_atoms(
 ) -> tuple[Any, ...]:
     """Run only model inference; reference labels and metric policy are irrelevant."""
 
-    from .inference_parallel import mark_inference_workload_started
+    from .inference_parallel import (
+        current_inference_lease,
+        mark_inference_workload_started,
+    )
 
     mark_inference_workload_started()
     if not atoms_list:
@@ -2783,15 +2786,27 @@ def _predict_model_on_atoms(
             compatible_profile = StaticInferenceRuntimeProfile.load_compatible(
                 runtime_profile_path, compatibility_digest=compatibility
             )
+        # Under staged evaluation the nested authority must consume the scoped
+        # outer inference lease rather than rediscover the whole process-global
+        # RAM budget.  The lease is runtime-only transport: it never alters the
+        # persisted runtime-profile compatibility identity, which already
+        # re-clamps every compatible point against these live limits on load.
+        outer_lease = current_inference_lease()
+        model_job_cap = int(active_execution.selected_concurrent_model_jobs)
+        live_ram_cap_bytes = int(resources.ram_budget_bytes)
+        if outer_lease is not None:
+            model_job_cap = min(model_job_cap, int(outer_lease.maximum_model_jobs))
+            if outer_lease.ram_allowance_bytes is not None:
+                live_ram_cap_bytes = min(
+                    live_ram_cap_bytes, int(outer_lease.ram_allowance_bytes)
+                )
         runtime_authority = StaticInferenceRuntimeAuthority(
             compatibility_digest=compatibility,
             maximum_batch_size=min(
                 int(active_execution.maximum_batch_size), len(atoms_list)
             ),
-            maximum_concurrent_model_jobs=int(
-                active_execution.selected_concurrent_model_jobs
-            ),
-            live_ram_budget_bytes=int(resources.ram_budget_bytes),
+            maximum_concurrent_model_jobs=model_job_cap,
+            live_ram_budget_bytes=live_ram_cap_bytes,
             live_vram_budget_bytes=(
                 resources.gpu.budget_bytes if uses_cuda else None
             ),

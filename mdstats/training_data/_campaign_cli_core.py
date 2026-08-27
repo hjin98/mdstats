@@ -91,6 +91,7 @@ from .inference_parallel import (
     AdaptiveInferenceConcurrency,
     CpuTelemetryProbe,
     InferenceConcurrencyPolicy,
+    InferenceLease,
     build_inference_concurrency_plan,
     inference_start_signal,
     inference_cancellation_requested,
@@ -13721,6 +13722,12 @@ def _run_staged_evaluation_tasks(
     inference_reservation = _working_reservation(
         "inference", estimated_worker_bytes * joint_model_jobs
     )
+    # Smallest runnable inference reservation (J=1).  Used to (a) select a
+    # launch-local admissible width and (b) guarantee forward-progress headroom
+    # and causal fail-fast admission diagnostics.
+    minimum_inference_reservation = _working_reservation(
+        "inference", estimated_worker_bytes
+    )
     finalize_reservation = _working_reservation(
         "finalize", max(1, estimated_worker_bytes // 4)
     )
@@ -13809,6 +13816,7 @@ def _run_staged_evaluation_tasks(
         prepared: Any,
         timing: _StagedEvaluationTiming,
         status: _InferenceWorkerStatus,
+        lease: InferenceLease | None,
     ) -> Any:
         def update_phase(stage: str) -> None:
             if status.set_phase(stage):
@@ -13819,11 +13827,18 @@ def _run_staged_evaluation_tasks(
         try:
             active_execution_plan = getattr(prepared, "execution_plan", None)
             if active_execution_plan is not None:
+                # The launch-local lease carries the largest width that the
+                # current staged ledger admitted (<= the theoretical joint
+                # ceiling).  Bind that ceiling and the scoped RAM envelope to
+                # the nested runtime authority via the worker-local context.
+                model_job_cap = (
+                    lease.maximum_model_jobs
+                    if lease is not None
+                    else max(1, int(joint_model_jobs))
+                )
                 prepared.execution_plan = replace(
                     active_execution_plan,
-                    selected_concurrent_model_jobs=max(
-                        1, int(joint_model_jobs)
-                    ),
+                    selected_concurrent_model_jobs=max(1, int(model_job_cap)),
                     rationale=tuple(active_execution_plan.rationale)
                     + ("canonical_joint_runtime_authority_owns_model_jobs",),
                     provider_residency_ram_bytes=int(plan.estimated_ram_bytes_per_job),
@@ -13833,6 +13848,7 @@ def _run_staged_evaluation_tasks(
                 status.mark_workload_started,
                 phase_callback=update_phase,
                 cancellation_requested=cancel_event.is_set,
+                lease=lease,
             ):
                 update_phase("accelerator model conversion / inference")
                 if not str(device).startswith("cuda"):
@@ -13898,6 +13914,16 @@ def _run_staged_evaluation_tasks(
             buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
             if buffered >= pipeline_buffer:
                 break
+            # Once inference-ready work exists, further preparation must not
+            # consume the RAM that a minimum J=1 inference reservation still
+            # requires for forward progress.  This sequences additional
+            # preparation until the ready inference acquires a valid lease (or
+            # an active owner releases enough bytes), while leaving full
+            # prepare/infer/finalize overlap intact whenever headroom permits.
+            if ready_inference and not ledger.can_reserve(
+                prepare_reservation + minimum_inference_reservation
+            ):
+                break
             if not ledger.can_reserve(prepare_reservation):
                 break
             task = pending.popleft()
@@ -13941,14 +13967,49 @@ def _run_staged_evaluation_tasks(
                 break
             if len(waiting_finalize) + len(active_finalize) >= finalize_backlog_limit:
                 break
-            if not ledger.can_reserve(inference_reservation):
+            # Choose the largest launch-local width J in [1, joint_model_jobs]
+            # whose inference working-memory reservation the current ledger
+            # admits.  For automatic accounting this descends from the
+            # theoretical joint ceiling so an otherwise impossible full-width
+            # reservation collapses to the widest coexistible operating point.
+            # An explicit inference working-memory override keeps its total-stage
+            # meaning and therefore produces the same reservation for every J;
+            # the theoretical ceiling then remains only an upper bound.
+            selected_jobs: int | None = None
+            selected_reservation: int | None = None
+            if joint_authority_owns_model_jobs:
+                for jobs in range(max(1, int(joint_model_jobs)), 0, -1):
+                    reservation = _working_reservation(
+                        "inference", estimated_worker_bytes * jobs
+                    )
+                    if ledger.can_reserve(reservation):
+                        selected_jobs = jobs
+                        selected_reservation = reservation
+                        break
+            else:
+                selected_jobs = max(1, int(joint_model_jobs))
+                selected_reservation = inference_reservation
+            if selected_reservation is None:
+                # Even J=1 cannot be admitted right now.  The scheduler either
+                # waits for an active owner to release bytes or fails with a
+                # causal RAM-admission error from the stall handler.
                 break
             task, prepared, timing = ready_inference.popleft()
-            ledger.reserve(f"inference:{task.key}", inference_reservation)
+            ledger.reserve(f"inference:{task.key}", selected_reservation)
+            lease = (
+                InferenceLease(
+                    maximum_model_jobs=int(selected_jobs),
+                    ram_allowance_bytes=int(selected_reservation),
+                )
+                if joint_authority_owns_model_jobs
+                else None
+            )
             status = _InferenceWorkerStatus()
             if str(device).startswith("cuda"):
                 controller.start_calibration(now=time.monotonic())
-            future = pool.submit(execute_inference, task, prepared, timing, status)
+            future = pool.submit(
+                execute_inference, task, prepared, timing, status, lease
+            )
             active_inference[future] = (task, prepared, timing, status)
 
     with (
@@ -13996,6 +14057,24 @@ def _run_staged_evaluation_tasks(
                         f"{phase.capitalize()} resource admission blocked with "
                         f"{len(ready_inference)} queued inference task(s): "
                         f"{controller.admission_blocked_reason}."
+                    )
+                if ready_inference and not ledger.can_reserve(
+                    minimum_inference_reservation
+                ):
+                    # A known byte-ledger/RAM block must never collapse into the
+                    # generic stall.  Expose the failed admission equation so the
+                    # cause is diagnosable without source inspection.
+                    cancel_event.set()
+                    raise CampaignCliError(
+                        f"{phase.capitalize()} staged RAM admission blocked: "
+                        "minimum inference reservation (J=1) cannot fit the "
+                        f"pipeline byte budget; queued={len(ready_inference)}; "
+                        f"minimum_reservation={minimum_inference_reservation} bytes; "
+                        f"retained={ledger.total_bytes} bytes; "
+                        f"joint_model_cap={joint_model_jobs}; "
+                        f"pipeline_budget="
+                        + ("unknown" if ledger.budget_bytes is None else f"{ledger.budget_bytes} bytes")
+                        + "."
                     )
                 cancel_event.set()
                 raise CampaignCliError(
