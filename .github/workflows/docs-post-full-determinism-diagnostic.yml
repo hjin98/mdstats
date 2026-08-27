@@ -1,0 +1,58 @@
+name: Diagnose post-full-build determinism
+
+on:
+  push:
+    branches:
+      - ci/incremental-doc-pdf-autosync
+    paths:
+      - '.github/workflows/docs-post-full-determinism-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      DOC_TOOLCHAIN_SHA: c5411e5c0d8ffa390f0979660c592725f9dca6f8
+      DIRECT: docs/guides/mlff_final_gpu1_workstation_runbook.pdf
+      COMPOSITE: docs/arch_manuals/mlff_training_data_architecture.pdf
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install pinned documentation toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p .doc-tools
+          base="https://raw.githubusercontent.com/hjin98/mace-dependencies/${DOC_TOOLCHAIN_SHA}"
+          curl -fsSL "${base}/pandoc-3.10.2-linux-amd64.tar.gz" -o /tmp/pandoc.tar.gz
+          curl -fsSL "${base}/typst-x86_64-unknown-linux-musl.tar.xz" -o /tmp/typst.tar.xz
+          tar -xzf /tmp/pandoc.tar.gz -C .doc-tools --strip-components=1
+          tar -xf /tmp/typst.tar.xz -C .doc-tools
+          find .doc-tools -type f -name pandoc -exec chmod +x {} \;
+          find .doc-tools -type f -name typst -exec chmod +x {} \;
+          find .doc-tools -type f -name pandoc -exec dirname {} \; >> "$GITHUB_PATH"
+          find .doc-tools -type f -name typst -exec dirname {} \; >> "$GITHUB_PATH"
+      - name: Full publication build
+        run: |
+          set -euo pipefail
+          python3 docs/build_pdfs.py build --all --report /tmp/full.json
+      - name: Direct post-full determinism
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python3 docs/build_pdfs.py build --target "$DIRECT" --report /tmp/direct-first.json
+          first=$(sha256sum "$DIRECT" | awk '{print $1}')
+          python3 docs/build_pdfs.py build --target "$DIRECT" --report /tmp/direct-second.json
+          second=$(sha256sum "$DIRECT" | awk '{print $1}')
+          test "$first" = "$second"
+      - name: Composite post-full determinism
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python3 docs/build_pdfs.py build --target "$COMPOSITE" --report /tmp/composite-first.json
+          first=$(sha256sum "$COMPOSITE" | awk '{print $1}')
+          python3 docs/build_pdfs.py build --target "$COMPOSITE" --report /tmp/composite-second.json
+          second=$(sha256sum "$COMPOSITE" | awk '{print $1}')
+          test "$first" = "$second"
