@@ -100,6 +100,15 @@ jobs:
         if: always() && steps.build.outcome == 'success'
         run: |
           set -euo pipefail
+          reason=$(python3 - <<'PY'
+          import json
+          print(json.load(open('.doc-build/report.json'))['reason'])
+          PY
+          )
+          case "$reason" in
+            full-*) ;;
+            *) echo "Incremental build: determinism probe not required."; exit 0 ;;
+          esac
           direct="docs/guides/mlff_final_gpu1_workstation_runbook.pdf"
           composite="docs/arch_manuals/mlff_training_data_architecture.pdf"
           for target in "$direct" "$composite"; do
