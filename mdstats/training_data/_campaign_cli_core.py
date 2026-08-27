@@ -13278,7 +13278,18 @@ def _run_adaptive_inference_tasks(
                     now=now,
                     last_sample_monotonic=last_gpu_poll,
                 )
-                controller.complete_first_cuda_job(gpu_sample=final_sample, now=now)
+                boundary_decision = controller.complete_first_cuda_job(
+                    gpu_sample=final_sample, now=now
+                )
+                # Calibration classification is a material admission event even
+                # when the serial target stays one; report it explicitly so
+                # serial-fallback operation remains visible to operators.
+                print(
+                    f"[{phase.upper()} scheduler] status=cuda-calibration; "
+                    f"workers={boundary_decision.previous_target}->{boundary_decision.target_jobs}; "
+                    f"reason={boundary_decision.reason}",
+                    flush=True,
+                )
 
             # Pop the whole completed wave before doing any parent-side result
             # work, then refill every newly empty slot at once.  This matters
@@ -14386,7 +14397,18 @@ def _run_staged_evaluation_tasks(
                     now=now,
                     last_sample_monotonic=last_gpu_poll,
                 )
-                controller.complete_first_cuda_job(gpu_sample=final_sample, now=now)
+                boundary_decision = controller.complete_first_cuda_job(
+                    gpu_sample=final_sample, now=now
+                )
+                # Calibration classification is a material admission event even
+                # when the serial target stays one; report it explicitly so
+                # serial-fallback operation remains visible to operators.
+                print(
+                    f"[{phase.upper()} scheduler] status=cuda-calibration; "
+                    f"workers={boundary_decision.previous_target}->{boundary_decision.target_jobs}; "
+                    f"reason={boundary_decision.reason}",
+                    flush=True,
+                )
 
             # Refill GPU and CPU stage slots before parent-side publication or
             # SQLite callbacks. This preserves work conservation even if the last

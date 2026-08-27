@@ -411,3 +411,31 @@ When all gates pass and the implementation is accepted:
 2. move durable chronology/evidence to the repository's appropriate history/audit locations if needed;
 3. archive this workplan under `workplans/archive/` when useful as lineage;
 4. defer full production GPU/resource/performance qualification to final release closeout rather than inserting iterative hardware qualification into this implementation cycle.
+
+## Implementation record
+
+**Branch baseline:** `fix/mlff-eval2-admission-serial-floor@3b7124879cda6d82ddcea90e60ecf10cb80e2ab6`, based on local `main@d718d6ce52406fd38a02a45d3fde9bc53e031a74` (newer than the referenced `main@efa8b1b`; accepted reconciliation — the workplan's base reference predates subsequent accepted main work, and implementation intentionally starts from the newer main tip with the frozen workplan commit on top).
+
+### G0 — affected-surface inventory (confirmed)
+
+Production consumers:
+
+- `mdstats/training_data/inference_parallel.py`: `build_inference_concurrency_plan` (CUDA preflight), `AdaptiveInferenceConcurrency` (`_finish_cuda_calibration`, `_observe_cuda` early classification + live-VRAM branches, `complete_first_cuda_job`), `admission_blocked_reason` (only remaining setter: host-RAM live re-clamp in `observe`).
+- `mdstats/training_data/_campaign_cli_core.py`: `_run_adaptive_inference_tasks` (`launch`/`fail_if_zero_admission`, one-slot boundary finalization), `_run_staged_evaluation_tasks` (EVAL2 staged loop, `launch_inference`, fatal admission/stall checks, one-slot boundary finalization).
+- `mdstats/training_data/deploy_verify.py`: static probe admission via `build_inference_concurrency_plan(task_count=1, ...)` — compatible with the repaired preflight (no API change; covered by `test_mlff_deploy_verify1.py`).
+
+The MACE-training runner and its plan builder are a separate admission path and are unaffected.
+
+No warm/prewarm observation paths exist in current source; the corresponding invariant is vacuously satisfied. Cached tasks bypass the inference pool entirely and never start or complete calibration (`complete_first_cuda_job` remains gated on the first real CUDA job completion; proven by the staged EVAL2 regression).
+
+Failure edge confirmed: staged EVAL2 one-slot plan (`maximum_jobs==1` joint authority) + successful high-demand calibration -> `_finish_cuda_calibration` computed `safe_jobs==0` -> `target_jobs=0` + `admission_blocked_reason` -> scheduler fatal "resource admission blocked ... no future inference job is admissible". Preflight soft-VRAM rejection path confirmed in `build_inference_concurrency_plan`.
+
+### Stage log
+
+- G1 (controller serial floor): preflight soft-VRAM crossing now selects the one-slot calibration posture instead of raising; `safe_jobs` floors at 1; early classification, live-VRAM override, external-baseline re-clamp, and graduated re-clamp never set target zero or a blocked reason. Host-RAM safeguard unchanged. Diagnostics reason strings distinguish serial fallback and transient saturation. Stage regression: `tests/test_mlff_inference_parallel_scheduler.py` 44 passed.
+- G2 (scheduler transient-vs-terminal): scheduler fatal paths now reachable only from genuine host-RAM terminal evidence; one-slot calibration boundary now prints `status=cuda-calibration` so serial classification remains visible. Exact EVAL2 reproducer added through the real staged orchestration owner (`test_eval2_cached_prefix_then_high_demand_calibration_continues_serially`): cached n512 prefix -> high-demand n1024-seed1 calibration -> n1024-seed2 serial continuation, no admission error.
+- G3 (non-regression): covered by retained green tests — low-demand promotion (target 3), live-VRAM re-clamp at promoted concurrency, downshift with active jobs (active=2 -> target 1, no cancellation), replacement/refill admission, plus new idle-saturation and missing-telemetry non-regression tests.
+- G5 (compatibility/diagnostics): plan summary wording corrected to "admission envelope"; spec `mlff_mixed_stage_admission_progress_spec.md` section 4, user guide, and architecture chapter `60_execution_performance.md` (plus its derived assembled manual) reconciled with the serial-floor semantics. `no future inference job is admissible` is no longer present in production code and is unreachable from soft telemetry.
+- G6 (final regression): complete affected-module suite (8 modules, 206 tests) green. No production GPU qualification performed or claimed, per the workplan qualification policy.
+
+PDF/provenance note: pandoc/typst are unavailable in the implementation environment; per `docs/README.md` the pushed-Markdown publication driver (CI) rebuilds affected PDF targets on push.

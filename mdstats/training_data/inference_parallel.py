@@ -389,9 +389,9 @@ class InferenceConcurrencyPlan:
         ]
         if self.uses_cuda:
             if self.gpu_memory_budget_bytes is not None:
-                pieces.append(f"VRAM admission ceiling={self.gpu_memory_budget_bytes / _GIB:.1f} GiB")
+                pieces.append(f"VRAM admission envelope={self.gpu_memory_budget_bytes / _GIB:.1f} GiB")
             if self.gpu_utilization_budget_percent is not None:
-                pieces.append(f"GPU-utilization admission ceiling={self.gpu_utilization_budget_percent:.0f}%")
+                pieces.append(f"GPU-utilization admission envelope={self.gpu_utilization_budget_percent:.0f}%")
         else:
             pieces.append(f"CPU-utilization admission ceiling={self.cpu_utilization_budget_percent:.0f}%")
         pieces.append(self.reason)
@@ -479,10 +479,24 @@ def build_inference_concurrency_plan(
             one_job_projection = baseline_gpu_used + math.ceil(
                 estimated_gpu * float(policy.observed_memory_growth_margin)
             )
+            # The fractional VRAM ceiling is a soft parallel-expansion envelope,
+            # not physical device-memory proof.  A pre-calibration one-job
+            # estimate crossing it therefore selects the conservative one-slot
+            # calibration posture instead of rejecting the plan; the real CUDA
+            # execution remains authoritative for genuine one-job infeasibility
+            # (a true OOM surfaces as an execution failure).
             if one_job_projection > gpu_budget:
-                raise ValueError(
-                    "Inference VRAM admission cannot fit one job: "
-                    f"projected={one_job_projection} bytes, ceiling={gpu_budget} bytes."
+                reason = (
+                    "estimated one-job VRAM exceeds the soft VRAM admission "
+                    f"envelope (projected={one_job_projection} bytes, "
+                    f"ceiling={gpu_budget} bytes); CUDA still starts one "
+                    "calibration job because actual execution, not the soft "
+                    "fractional envelope, is authoritative for one-job viability"
+                )
+            else:
+                reason = (
+                    "CUDA starts one job for fixed single-job GPU/VRAM calibration; "
+                    f"remaining concurrency is projected below {gpu_util_budget:.0f}% ceilings from measured per-job demand"
                 )
             # Do not use the configured per-job VRAM guess as a pre-calibration
             # concurrency cap. CUDA runs exactly one job until the measured
@@ -493,10 +507,6 @@ def build_inference_concurrency_plan(
             threads_per_job = max(1, resources.cpu_threads_budget // maximum)
             estimated_cpu_per_job = 100.0 * threads_per_job / max(1, resources.cpu_threads_available)
             initial = 1
-            reason = (
-                "CUDA starts one job for fixed single-job GPU/VRAM calibration; "
-                f"remaining concurrency is projected below {gpu_util_budget:.0f}% ceilings from measured per-job demand"
-            )
     else:
         if baseline_cpu is None:
             initial = maximum
@@ -743,9 +753,13 @@ class AdaptiveInferenceConcurrency:
 
         memory_budget = int(self.plan.gpu_memory_budget_bytes)
         util_budget = float(self.plan.gpu_utilization_budget_percent)
-        safe_jobs = 0
+        # The completed one-slot calibration is direct evidence that serial
+        # execution of this job/resource profile is viable.  Soft GPU-utilization
+        # and fractional-VRAM envelopes regulate additional concurrency above
+        # that serial floor; they can never reduce the target below one.
+        safe_jobs = 1
         safe_memory, safe_util = self._cuda_projection_for_jobs(1)
-        for jobs in range(1, int(self.plan.maximum_jobs) + 1):
+        for jobs in range(2, int(self.plan.maximum_jobs) + 1):
             predicted_memory, predicted_util = self._cuda_projection_for_jobs(jobs)
             if predicted_memory < memory_budget and predicted_util < util_budget:
                 safe_jobs = jobs
@@ -754,12 +768,12 @@ class AdaptiveInferenceConcurrency:
             break
 
         previous = self.target_jobs
-        self.target_jobs = max(0, min(int(self.plan.maximum_jobs), safe_jobs))
-        if self.target_jobs == 0:
-            self._admission_blocked_reason = (
-                "measured single-job CUDA demand exceeds the configured VRAM or "
-                "GPU-utilization envelope; no future inference job is admissible"
-            )
+        self.target_jobs = max(1, min(int(self.plan.maximum_jobs), safe_jobs))
+        serial_fallback = (
+            self.target_jobs == 1
+            and int(self.plan.maximum_jobs) > 1
+            and (safe_memory >= memory_budget or safe_util >= util_budget)
+        )
         util_count = len(self._gpu_util_samples)
         memory_count = len(self._gpu_memory_samples)
         fallback_bits: list[str] = []
@@ -784,6 +798,11 @@ class AdaptiveInferenceConcurrency:
             f"fixed projection permits {self.target_jobs} concurrent job(s)"
             + fallback
         )
+        if serial_fallback:
+            reason += (
+                "; soft GPU envelope does not permit parallel expansion, so CUDA "
+                "admission falls back to serial execution (target one, never zero)"
+            )
         return InferenceConcurrencyDecision(
             previous,
             self.target_jobs,
@@ -848,22 +867,27 @@ class AdaptiveInferenceConcurrency:
                     and incremental_memory > 0
                     and measured_one_job > memory_budget
                 ):
+                    # The measured peak crosses the soft VRAM envelope, so no
+                    # further parallel expansion is admitted; the running job
+                    # itself remains viable evidence, so the serial floor keeps
+                    # the target at one instead of blocking the queue.
                     previous = self.target_jobs
                     self._gpu_estimated_memory_bytes_per_job = incremental_memory
                     self._gpu_estimated_utilization_per_job = max(
                         threshold_percent, incremental_util
                     )
                     self._gpu_calibrated = True
-                    self.target_jobs = 0
-                    self._admission_blocked_reason = (
+                    self.target_jobs = 1
+                    reason = (
                         "measured single-job VRAM peak exceeds the configured ceiling; "
-                        f"projected={measured_one_job} bytes, ceiling={memory_budget} bytes"
+                        f"projected={measured_one_job} bytes, ceiling={memory_budget} bytes; "
+                        "CUDA admission falls back to serial execution (target one, never zero)"
                     )
                     return InferenceConcurrencyDecision(
                         previous,
-                        0,
-                        previous != 0,
-                        self._admission_blocked_reason,
+                        1,
+                        previous != 1,
+                        reason,
                         measured_one_job,
                         self._cuda_projection_for_jobs(1)[1],
                     )
@@ -916,20 +940,19 @@ class AdaptiveInferenceConcurrency:
             memory_budget = int(self.plan.gpu_memory_budget_bytes)
             live_used = int(gpu_sample.used_bytes)
             if live_used >= memory_budget:
+                # Soft-envelope saturation: active jobs occupy the available
+                # capacity, so additional launches are throttled.  Active jobs
+                # survive the downshift and the serial floor keeps the target at
+                # one, so an idle queue can always still admit one job.
                 previous = self.target_jobs
-                self.target_jobs = max(0, active - 1)
-                if self.target_jobs == 0:
-                    self._admission_blocked_reason = (
-                        "live aggregate VRAM reached the configured ceiling and no "
-                        "future inference job is admissible"
-                    )
+                self.target_jobs = max(1, active - 1)
                 return InferenceConcurrencyDecision(
                     previous,
                     self.target_jobs,
                     self.target_jobs != previous,
-                    self._admission_blocked_reason
-                    or "live VRAM safety override: aggregate VRAM reached the configured "
-                    "ceiling; future replacements throttled",
+                    "live VRAM safety override: aggregate VRAM reached the configured "
+                    "ceiling; additional CUDA launches are throttled until active "
+                    "jobs drain below the concurrency target",
                     live_used,
                     self._cuda_projection_for_jobs(self.target_jobs)[1],
                 )
@@ -943,18 +966,20 @@ class AdaptiveInferenceConcurrency:
                 per_job * margin
             )
             if replacement_projection > memory_budget:
+                # Zero *additional* capacity while active jobs occupy the
+                # target is ordinary saturation; the serial floor keeps an idle
+                # queue launchable, so this soft-envelope re-clamp never sets a
+                # terminal zero-target state.
                 previous = self.target_jobs
-                self.target_jobs = 0
-                self._admission_blocked_reason = (
-                    "live external VRAM baseline leaves insufficient capacity for one "
-                    f"calibrated inference job; projected={replacement_projection} bytes, "
-                    f"ceiling={memory_budget} bytes"
-                )
+                self.target_jobs = max(1, active)
                 return InferenceConcurrencyDecision(
                     previous,
-                    0,
-                    previous != 0,
-                    self._admission_blocked_reason,
+                    self.target_jobs,
+                    self.target_jobs != previous,
+                    "live external VRAM baseline leaves insufficient headroom for an "
+                    f"additional calibrated inference job; projected={replacement_projection} "
+                    f"bytes, ceiling={memory_budget} bytes; queued CUDA work continues "
+                    "once active jobs drain below the concurrency target",
                     replacement_projection,
                     self._cuda_projection_for_jobs(1)[1],
                 )
@@ -968,7 +993,16 @@ class AdaptiveInferenceConcurrency:
                 break
             if live_limit < self.target_jobs:
                 previous = self.target_jobs
-                self.target_jobs = live_limit
+                self.target_jobs = max(1, live_limit)
+                if self.target_jobs == previous:
+                    predicted_memory, predicted_util = self._cuda_projection_for_jobs(
+                        self.target_jobs
+                    )
+                    return self._hold(
+                        "live VRAM re-clamp holds the serial floor for queued CUDA work",
+                        predicted_memory=predicted_memory,
+                        predicted_utilization=predicted_util,
+                    )
                 return InferenceConcurrencyDecision(
                     previous,
                     live_limit,

@@ -23,6 +23,7 @@ from mdstats.training_data.inference_parallel import (
 )
 from mdstats.training_data.model_features import AtomicModelPrediction, MaceCalculatorProvider
 from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+from mdstats.training_data.training_parallel import GpuTelemetrySample
 
 
 def _h(text: str) -> str:
@@ -267,6 +268,115 @@ def test_staged_eval_has_one_outer_owner_and_binds_joint_model_job_cap(
     assert results == {"0": True, "1": True}
     assert peak == 1
     assert observed_jobs == [2, 2]
+
+
+def test_eval2_cached_prefix_then_high_demand_calibration_continues_serially(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Exact EVAL2 admission reproducer through the real staged orchestration.
+
+    Cached n512 seeds are reused without counting as CUDA calibration; the
+    first uncached n1024 task launches alone, completes successfully while its
+    measured demand exceeds the soft GPU-utilization envelope, and the queued
+    n1024-seed2 task must launch serially afterward instead of the scheduler
+    aborting with the historical "resource admission blocked" fatal error.
+    """
+    monkeypatch.setattr(
+        campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources()
+    )
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+
+    gib = 1024**3
+    baseline_sample = GpuTelemetrySample(
+        sampled_monotonic=time.monotonic(),
+        device_index=0,
+        utilization_percent=2.0,
+        used_bytes=1 * gib,
+        total_bytes=24 * gib,
+    )
+    high_sample = GpuTelemetrySample(
+        sampled_monotonic=time.monotonic(),
+        device_index=0,
+        utilization_percent=97.0,
+        used_bytes=10 * gib,
+        total_bytes=24 * gib,
+    )
+    inference_active = {"count": 0}
+
+    def fake_gpu_telemetry(device: str) -> GpuTelemetrySample:
+        return high_sample if inference_active["count"] else baseline_sample
+
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", fake_gpu_telemetry)
+
+    events: list[str] = []
+    lock = threading.Lock()
+
+    class Prepared:
+        def __init__(self):
+            self.execution_plan = mdstats.InferenceExecutionPlan(
+                batch_policy="auto", selected_batch_size=8,
+                maximum_batch_size=32,
+            )
+
+    def make_task(index: int, key: str, *, cached: bool) -> campaign_cli._StagedEvaluationTask:
+        def infer(prepared):
+            with lock:
+                inference_active["count"] += 1
+            events.append(f"start:{key}")
+            time.sleep(0.05)
+            with lock:
+                inference_active["count"] -= 1
+            events.append(f"end:{key}")
+            return True
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=key,
+            label=key,
+            start_detail="eval2",
+            prepare=Prepared,
+            requires_inference=lambda prepared: not cached,
+            infer=infer,
+            finalize=lambda prepared, result: result,
+            done_detail=lambda result, wall: "done",
+            cached_result=(lambda prepared: "cached") if cached else None,
+        )
+
+    tasks = (
+        make_task(0, "n512-seed1", cached=True),
+        make_task(1, "n512-seed2", cached=True),
+        make_task(2, "n1024-seed1", cached=False),
+        make_task(3, "n1024-seed2", cached=False),
+    )
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_jobs"] = 4
+    # Keep the calibration window open across the short simulated job so the
+    # completion-boundary finalization classifies the complete first job.
+    cfg["execution"]["parallel_evaluation_stabilization_seconds"] = 300.0
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cuda:0", progress=_Progress()
+    )
+
+    assert results == {
+        "n512-seed1": "cached",
+        "n512-seed2": "cached",
+        "n1024-seed1": True,
+        "n1024-seed2": True,
+    }
+    # Serial continuation: the queued n1024-seed2 task launches only after the
+    # high-demand calibration job completed, and never concurrently.
+    assert events == [
+        "start:n1024-seed1",
+        "end:n1024-seed1",
+        "start:n1024-seed2",
+        "end:n1024-seed2",
+    ]
+    output = capsys.readouterr().out
+    assert "resource admission blocked" not in output
+    assert "single-job calibration complete" in output
+    assert "fixed projection permits 1 concurrent job(s)" in output
 
 
 def test_staged_runner_overlaps_prepare_and_finalize_with_single_inference_slot(
