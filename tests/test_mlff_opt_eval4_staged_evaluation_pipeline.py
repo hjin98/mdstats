@@ -2469,6 +2469,144 @@ def test_bounded_retained_upper_bound_preserves_multi_prepare_overlap(
     assert prepare_peak == 2
 
 
+def test_review4_shared_residency_is_preserved_in_bounded_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW4: shared residency cannot disappear from bounded admission.
+
+    The partial projection admitted 2 MiB + 2 MiB retained bounds plus J=1
+    into a 5 MiB budget, while omitting the live 1 MiB shared reservation.
+    The complete ledger projection sequences the preparations; each task still
+    completes because its individual shared + retained + J=1 geometry fits.
+    """
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=10 * _ONE_MIB,  # auto pipeline budget = 5 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+    active_prepares = 0
+    prepare_peak = 0
+    lock = threading.Lock()
+
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        payload = np.zeros(2 * _ONE_MIB, dtype=np.uint8)
+
+        def prepare():
+            nonlocal active_prepares, prepare_peak
+            with lock:
+                active_prepares += 1
+                prepare_peak = max(prepare_peak, active_prepares)
+            try:
+                time.sleep(0.03)
+                return payload
+            finally:
+                with lock:
+                    active_prepares -= 1
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"review4-shared-{index}",
+            label=f"review4-shared-{index}",
+            start_detail="review4-complete-ledger-projection",
+            prepare=prepare,
+            requires_inference=lambda _prepared: True,
+            infer=lambda _prepared, index=index: index,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared: 2 * _ONE_MIB,
+            retained_upper_bound=2 * _ONE_MIB,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (task(0), task(1)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+        shared_residency_bytes=_ONE_MIB,
+    )
+
+    assert results == {"review4-shared-0": 0, "review4-shared-1": 1}
+    assert prepare_peak == 1
+
+
+def test_review4_bounded_overlap_remains_available_when_shared_ledger_fits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW4 positive companion: nonzero shared residency is compatible with
+    concurrent preparation when the complete prospective equation fits."""
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        # The 7 MiB pipeline budget admits shared 1 + two bounded retained 2
+        # + J=1 1, with headroom for the first tiny retained inference result
+        # before its finalizer releases the completed payload.
+        ram_budget_bytes=14 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+    active_prepares = 0
+    prepare_peak = 0
+    lock = threading.Lock()
+
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        payload = np.zeros(2 * _ONE_MIB, dtype=np.uint8)
+
+        def prepare():
+            nonlocal active_prepares, prepare_peak
+            with lock:
+                active_prepares += 1
+                prepare_peak = max(prepare_peak, active_prepares)
+            try:
+                time.sleep(0.03)
+                return payload
+            finally:
+                with lock:
+                    active_prepares -= 1
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"review4-fit-{index}",
+            label=f"review4-fit-{index}",
+            start_detail="review4-complete-ledger-positive",
+            prepare=prepare,
+            requires_inference=lambda _prepared: True,
+            infer=lambda _prepared, index=index: index,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared: 2 * _ONE_MIB,
+            retained_upper_bound=2 * _ONE_MIB,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (task(0), task(1)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+        shared_residency_bytes=_ONE_MIB,
+    )
+
+    assert results == {"review4-fit-0": 0, "review4-fit-1": 1}
+    assert prepare_peak == 2
+
+
 def test_keyboard_interrupt_releases_scheduler_owned_inference_reservations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

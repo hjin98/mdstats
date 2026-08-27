@@ -14023,22 +14023,27 @@ def _run_staged_evaluation_tasks(
                 return False
             bounds.append(max(0, int(other.retained_upper_bound)))
 
-        # Worst-case retained footprint once every outstanding unclassified
-        # transition (including this one) settles into its retained payload,
-        # coexisting with already-charged retained payloads and any active
-        # inference reservation.  One further J=1 envelope is required only when
-        # no active inference reservation already supplies the progress path.
-        already_retained = ledger.retained_payload_bytes
+        # Project from the actual ledger coordinate.  The active prepare working
+        # reservations are the only owners represented by the prospective
+        # retained bounds, so replace exactly those owners and preserve every
+        # other live charge (shared residency, retained payloads, finalization,
+        # active inference, and any future owner class) unchanged.
+        projected_owned = ledger.total_bytes
+        for other in outstanding_unclassified:
+            projected_owned -= ledger.reservations.get(f"prepare:{other.key}", 0)
         active_inference_bytes = sum(
             value
             for owner, value in ledger.reservations.items()
             if owner.startswith("inference:")
         )
-        envelope = minimum_inference_reservation if not active_inference_bytes else 0
-        worst_case = (
-            already_retained + active_inference_bytes + sum(bounds) + envelope
-        )
-        return worst_case <= ledger.budget_bytes
+        if not active_inference_bytes:
+            # A materialized guard is replaced by the same J=1 envelope below,
+            # not charged a second time.  (Normally it is absent while prepare
+            # work is active, but keep the projection correct for all states.)
+            projected_owned -= ledger.reservations.get(progress_owner, 0)
+            projected_owned += minimum_inference_reservation
+        projected_owned += sum(bounds)
+        return projected_owned <= ledger.budget_bytes
 
     def launch_prepare(pool: ThreadPoolExecutor) -> None:
         if stop_scheduling:
