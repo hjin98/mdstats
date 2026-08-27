@@ -44,7 +44,6 @@ def _study(outcome: str, *, selected: int | None = None) -> SimpleNamespace:
         policy=SimpleNamespace(
             screening_optimizer_seeds=(1, 2), fidelity_epochs=DEFAULT_FIDELITY
         ),
-        screening_horizon_epochs=DEFAULT_FIDELITY[-1],
         candidate_authority_digest="a" * 64,
         content_digest="b" * 64,
     )
@@ -325,6 +324,11 @@ def test_screening_preflight_remains_bound_across_halving_when_matrix_is_unchang
     store = SimpleNamespace(
         has_record=lambda key: key == "preflight_smoke",
         get_payload=lambda _key: {"passed": True, "data8_matrix_digest": "matrix-digest"},
+        get_payload_optional=lambda key: (
+            {"schema": cli.PREPARE_RESTART_RECEIPT_SCHEMA}
+            if key == "prepare_restart_receipt"
+            else None
+        ),
     )
     monkeypatch.setattr(cli, "_effective_stage", lambda *_args: (cli.StageState.COMPLETE, "passed"))
 
@@ -347,10 +351,29 @@ def test_preflight_fails_closed_when_current_matrix_changes(monkeypatch: pytest.
     store = SimpleNamespace(
         has_record=lambda key: key == "preflight_smoke",
         get_payload=lambda _key: {"passed": True, "data8_matrix_digest": "old-matrix"},
+        get_payload_optional=lambda key: (
+            {"schema": cli.PREPARE_RESTART_RECEIPT_SCHEMA}
+            if key == "prepare_restart_receipt"
+            else None
+        ),
     )
     with pytest.raises(cli.CampaignCliError, match="changed after preflight"):
         cli._require_train2_preflight_authorization(
             _cfg(), _paths(), store, _study(mdstats.OUTCOME_AWAITING_SHORT_SCREEN)
+        )
+
+
+def test_preflight_rejects_pre_exact_boundary_prepare_generation() -> None:
+    store = SimpleNamespace(
+        get_payload_optional=lambda key: (
+            {"schema": cli._HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA}
+            if key == "prepare_restart_receipt"
+            else None
+        )
+    )
+    with pytest.raises(cli.CampaignCliError, match="current prepare restart generation"):
+        cli._require_train2_preflight_authorization(
+            _cfg(), _paths(), store, _study(mdstats.OUTCOME_AWAITING_COARSE_SCREEN)
         )
 
 

@@ -49,15 +49,16 @@ The CPU/control-plane implementation may be released and used to prepare the fin
 - coarse survivor limit: 4;
 - short survivor limit: 2;
 - short boundary: screen `n2`;
-- final-screen boundary and screen schedule horizon: `n3`; and
+- final-screen boundary: `n3`; and
 - full-reference boundary: TRAIN2 horizon `n`.
 
 These values are a compatibility grid, not calibrated defaults.
 
 `build_perf_p2r_stage_plan()` converts the current target-size authority into
-exactly one authorized work stage. Screen plans derive their horizon from the
-study; the fresh production plan must receive the separately owned production
-horizon only after selection. Campaign dispatch must not duplicate independent
+exactly one authorized work stage. Screen plans derive any required trajectory
+schedule extent from the terminal boundary tuple, while their execution stop is
+the active boundary; the fresh production plan receives its separately owned
+maximum only after selection. Campaign dispatch must not duplicate independent
 numeric-boundary branches.
 
 # P2R-2: exact continuation and no repaid prefix

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import mdstats
+from mdstats.training_data import _campaign_cli_core as campaign_core
 from mdstats.training_data.model_features import AtomicModelPrediction
 from mdstats.training_data._common import digest
 
@@ -334,14 +335,22 @@ class _FakeRoleFreeze:
 
 class _FakeRepair:
     dataset_id = "dataset"
-    def __init__(self, frames):
+    def __init__(
+        self,
+        frames,
+        *,
+        label_domain_id: str = "target",
+        reference_domain_digest: str | None = None,
+    ):
         self._domain = SimpleNamespace(
-            label_domain_id="target", repaired_master_order=tuple(frames)
+            label_domain_id=label_domain_id,
+            repaired_master_order=tuple(frames),
+            reference_domain_digest=reference_domain_digest,
         )
         self.domains = (self._domain,)
         self.content_digest = digest({"repair": list(frames)})
     def domain(self, label_domain_id):
-        if label_domain_id != "target":
+        if label_domain_id != self._domain.label_domain_id:
             raise KeyError(label_domain_id)
         return self._domain
 
@@ -380,6 +389,85 @@ def test_eval2_size_role_is_common_development_complement_and_cv_role_is_authori
     assert cv.target_size_study_digest is None
     assert cv.evaluation_frame_uids == freeze._domain.size_development_frame_uids[:150]
     assert set(cv.correlation_block_ids) == {"a" * 64}
+
+
+def test_eval2_size_role_separates_data2a_and_repair2_domain_namespaces():
+    freeze = _FakeRoleFreeze()
+    repair2_label = "target::final_development:final:repair2-authority"
+    repair = _FakeRepair(
+        freeze._domain.size_development_frame_uids,
+        label_domain_id=repair2_label,
+    )
+    study = mdstats.build_target_size_study(repair, _FakeQual(repair, (128, 256)))
+    role = mdstats.build_eval2_size_study_target_role(
+        freeze,
+        repair,
+        study,
+        label_domain_id="target",
+        repair2_label_domain_id=repair2_label,
+        maximum_training_size=256,
+    )
+    assert role.label_domain_id == "target"
+    assert role.excluded_training_frame_uids == freeze._domain.size_development_frame_uids[:256]
+    assert role.evaluation_frame_uids == freeze._domain.size_development_frame_uids[256:]
+
+
+def test_eval2_orchestrator_bridges_data2a_source_label_to_repair2_authority() -> None:
+    freeze = _FakeRoleFreeze()
+    source_label = "target"
+    repair2_label = "target::final_development:final:repair2-authority"
+    coverage_digest = digest({"coverage": repair2_label})
+    repair = _FakeRepair(
+        freeze._domain.size_development_frame_uids,
+        label_domain_id=repair2_label,
+        reference_domain_digest=coverage_digest,
+    )
+    study = mdstats.build_target_size_study(repair, _FakeQual(repair, (128, 256)))
+    coverage = SimpleNamespace(
+        label_domain_id=repair2_label,
+        source_label_domain_id=source_label,
+        training_domain_kind="final_development",
+        training_domain_digest=digest({"training": repair2_label}),
+        content_digest=coverage_digest,
+    )
+    resolver = campaign_core._TargetSizeMaterializationResolver(
+        SimpleNamespace(domains=(coverage,)),
+        study,
+        repair,
+    )
+
+    class Store:
+        def __init__(self):
+            self.records = {}
+
+        def get_record_optional(self, key, _record_type):
+            return self.records.get(key)
+
+        def delete_record(self, key):
+            self.records.pop(key, None)
+
+        def put_record(self, key, value):
+            self.records[key] = value
+
+    store = Store()
+    bundle = SimpleNamespace(
+        mlcv_role_catalog=SimpleNamespace(label_domain_id=source_label),
+        fold_evaluation_artifacts=(),
+    )
+    role = campaign_core._eval2_target_role_for_run(
+        store=store,
+        target_size_study=study,
+        repair2=repair,
+        role_freeze=freeze,
+        target_materialization_resolver=resolver,
+        bundle=bundle,
+        run=SimpleNamespace(kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT),
+    )
+
+    assert role.label_domain_id == source_label
+    assert role.excluded_training_frame_uids == freeze._domain.size_development_frame_uids[:256]
+    assert role.evaluation_frame_uids == freeze._domain.size_development_frame_uids[256:]
+    assert store.records[f"eval2_target_role:{role.content_digest}"] == role
 
 
 def test_eval2_coarse_size_role_is_fixed_deterministic_balanced_subset():

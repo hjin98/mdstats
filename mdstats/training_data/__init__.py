@@ -1373,6 +1373,7 @@ from .campaign_execution import (
     CheckpointEvaluationRecord,
     PreparedCheckpointEvaluation,
     CheckpointEvaluationPredictionBundle,
+    SharedTargetEvaluationContext,
     ModelDatasetMetricRecord,
     ProtocolVariantAggregate,
     ProtocolFamilyAggregate,
@@ -1387,6 +1388,7 @@ from .campaign_execution import (
     EvaluationActivationDecision,
     execute_training_run,
     prepare_mace_checkpoint_evaluation,
+    prepare_shared_target_evaluation_context,
     run_prepared_mace_checkpoint_inference,
     finalize_prepared_mace_checkpoint_evaluation,
     evaluate_mace_checkpoint,
@@ -1788,6 +1790,7 @@ from .train2_runtime import (
     Train2NumericalFailure,
     Train2NumericalFailureRecord,
     build_train2_runtime_plan,
+    validate_train2_runtime_continuation_artifacts,
     load_train2_runtime_summary,
     load_train2_numerical_failure,
 )

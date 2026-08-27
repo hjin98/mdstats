@@ -21,7 +21,7 @@ final screen:   n3
 full reference: n
 ```
 
-`n1 < n2 < n3 < n`. `TargetSizeStudyPolicy` owns the three screen boundaries
+`0 < n1 < n2 < n3` and `n > 0`. `TargetSizeStudyPolicy` owns the three screen boundaries
 and the paired-screening seed identity used by the ordinary target-size study;
 the separate production/reference budget owns `n` for this calibration. The
 generated default is screen `(1, 3, 10)` with production/reference `30`, but
@@ -135,8 +135,9 @@ When `n3 == n`, one physical checkpoint/evaluation serves both roles. The
 qualification record nevertheless retains two semantic roles and verifies their
 agreement; physical deduplication does not erase the final-screen check.
 
-When `n3 < n`, the final screen and full reference are distinct authenticated
-metrics from the same uninterrupted trajectory.
+When `n3` and `n` differ, the final screen and full reference are distinct
+authenticated metrics from their role-specific trajectories. Neither ordering
+is required: target-size screening and production are independent authorities.
 
 ## 9. Persistence and failure behavior
 

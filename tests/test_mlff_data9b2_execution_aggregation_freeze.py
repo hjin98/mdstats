@@ -354,6 +354,24 @@ def test_interruption_preserves_checkpoint_and_does_not_consume_retry_budget(tmp
 
     checkpoint = checkpoints / "model_epoch-0.pt"
     original_checkpoint = checkpoint.read_bytes()
+    checkpoint.unlink()
+    with pytest.raises(
+        mdstats.TrainingDataInputError,
+        match="checkpoint bytes are now missing before continuation",
+    ):
+        mdstats.execute_training_run(
+            run,
+            job,
+            data8_root=tmp_path,
+            execution_root=output,
+            checkpoint_directory=checkpoints,
+            policy=policy,
+            environment={"CHECKPOINT_DIR": str(checkpoints)},
+            wrapper_path=wrapper,
+            prior_record=interrupted,
+        )
+    checkpoint.write_bytes(original_checkpoint)
+
     checkpoint.write_bytes(b"changed-after-interruption")
     with pytest.raises(
         mdstats.TrainingDataInputError,
@@ -386,6 +404,72 @@ def test_interruption_preserves_checkpoint_and_does_not_consume_retry_budget(tmp
     assert resumed.state is mdstats.TrainingRunState.SUCCEEDED
     assert len(resumed.attempts) == 2
     assert "--restart_latest" in resumed.attempts[-1].command
+
+
+def test_interruption_before_first_checkpoint_is_durable_and_restarts_fresh(tmp_path: Path) -> None:
+    """A cooperative stop before epoch zero must not construct an empty catalog."""
+
+    import threading
+
+    job, run, _ = _job(tmp_path)
+    wrapper = tmp_path / "mdstats-mace-train"
+    marker = tmp_path / "first-attempt.marker"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        "mkdir -p \"$CHECKPOINT_DIR\"\n"
+        "if [ -f \"$ATTEMPT_MARKER\" ]; then\n"
+        "  printf final > \"$CHECKPOINT_DIR/model_epoch-0.pt\"\n"
+        "  exit 0\n"
+        "fi\n"
+        "touch \"$ATTEMPT_MARKER\"\n"
+        "while true; do sleep 1; done\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    output = tmp_path / "execution"
+    checkpoints = tmp_path / "checkpoints"
+    stop = threading.Event()
+    threading.Timer(0.2, stop.set).start()
+    policy = mdstats.TrainingExecutionPolicy(
+        max_attempts=1, checkpoint_glob="*epoch*.pt", terminate_grace_seconds=1.0
+    )
+    interrupted = mdstats.execute_training_run(
+        run,
+        job,
+        data8_root=tmp_path,
+        execution_root=output,
+        checkpoint_directory=checkpoints,
+        policy=policy,
+        environment={
+            "CHECKPOINT_DIR": str(checkpoints),
+            "ATTEMPT_MARKER": str(marker),
+        },
+        wrapper_path=wrapper,
+        progress_interval_seconds=0.05,
+        stop_requested=stop.is_set,
+    )
+    assert interrupted.state is mdstats.TrainingRunState.INTERRUPTED
+    assert interrupted.checkpoint_catalog is None
+
+    resumed = mdstats.execute_training_run(
+        run,
+        job,
+        data8_root=tmp_path,
+        execution_root=output,
+        checkpoint_directory=checkpoints,
+        policy=policy,
+        environment={
+            "CHECKPOINT_DIR": str(checkpoints),
+            "ATTEMPT_MARKER": str(marker),
+        },
+        wrapper_path=wrapper,
+        prior_record=interrupted,
+    )
+    assert resumed.state is mdstats.TrainingRunState.SUCCEEDED
+    assert len(resumed.attempts) == 2
+    assert "--restart_latest" not in resumed.attempts[-1].command
+    assert resumed.checkpoint_catalog is not None
+    assert resumed.checkpoint_catalog.checkpoints[0].epoch == 0
 
 
 def test_interrupted_checkpoint_catalog_survives_store_reopen_before_restart(tmp_path: Path) -> None:

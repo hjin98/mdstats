@@ -78,7 +78,7 @@ def study(qualified=FIXED_TARGET_SIZES, lengths=(20000, 20000), *, policy=None):
     repair = Repair(lengths)
     qual = Qual(repair, qualified)
     policy = policy or TargetSizeStudyPolicy(fidelity_epochs=(3, 10, 30))
-    return repair, qual, build_target_size_study(repair, qual, policy=policy, training_horizon_epochs=30)
+    return repair, qual, build_target_size_study(repair, qual, policy=policy)
 
 
 def test_bulk_candidate_prefix_materialization_is_exported_from_top_level():
@@ -133,10 +133,8 @@ def evidence(
         target_size=size,
         optimizer_seed=seed,
         completed_epochs=epoch,
-        planned_epochs=30,
         optimizer_update_count=epoch * 10,
         structures_presented=epoch * size,
-        normalized_schedule_progress={3: 0.1, 10: 1.0 / 3.0, 30: 1.0}[epoch],
         instantaneous_learning_rate=1.0e-3,
         wall_time_seconds=float(epoch),
         target_force_score_mev_per_a=score,

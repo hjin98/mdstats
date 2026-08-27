@@ -930,16 +930,15 @@ def test_mace_training_progress_probe_reports_exact_gradient_percentage(tmp_path
 
 
 @pytest.mark.parametrize(
-    ("screen_boundary", "schedule_horizon", "expected_phase"),
+    ("screen_boundary", "expected_phase"),
     [
-        (1, 30, "phase=screen epoch 1/1; schedule epoch 1/30"),
-        (3, 30, "phase=screen epoch 1/3; schedule epoch 1/30"),
+        (1, "phase=epoch 1/1"),
+        (3, "phase=epoch 1/3"),
     ],
 )
 def test_train2_progress_reports_active_screen_boundary_and_full_schedule(
     tmp_path: Path,
     screen_boundary: int,
-    schedule_horizon: int,
     expected_phase: str,
 ) -> None:
     logs = tmp_path / "logs"
@@ -955,8 +954,6 @@ def test_train2_progress_reports_active_screen_boundary_and_full_schedule(
         expected_updates=8,
         device="cpu",
         max_epochs=screen_boundary,
-        screen_boundary_epochs=screen_boundary,
-        schedule_horizon_epochs=schedule_horizon,
     )
     assert expected_phase in probe()
 

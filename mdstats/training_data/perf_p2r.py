@@ -18,7 +18,7 @@ from ._common import (
 )
 
 PERF_P2R_PARAMETER_GRID_SCHEMA = "mdstats.perf-p2r-parameter-grid.flexible-fidelity.v3"
-PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.decoupled-screen.v5"
+PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.exact-boundary-screen.v6"
 PERF_P2R_EXPOSURE_SCHEMA = "mdstats.perf-p2r-exposure.v2"
 
 
@@ -124,7 +124,7 @@ class PerfP2RStagePlan:
     candidate_sizes: tuple[int, ...]
     start_epoch: int
     target_epoch: int
-    schedule_horizon_epoch: int
+    trajectory_schedule_extent_epoch: int
     screening_optimizer_seeds: tuple[int, ...]
     continuation_required: bool
     target_only_evaluation: bool
@@ -150,8 +150,8 @@ class PerfP2RStagePlan:
             raise TrainingDataInputError("PERF-P2R stage requires positive candidate sizes.")
         start = int(self.start_epoch)
         target = int(self.target_epoch)
-        horizon = int(self.schedule_horizon_epoch)
-        if start < 0 or target <= start or horizon < target:
+        schedule_extent = int(self.trajectory_schedule_extent_epoch)
+        if start < 0 or target <= start or schedule_extent < target:
             raise TrainingDataInputError("PERF-P2R stage epoch geometry is invalid.")
         if bool(self.continuation_required) != (start > 0):
             raise TrainingDataInputError(
@@ -169,7 +169,7 @@ class PerfP2RStagePlan:
         object.__setattr__(self, "candidate_sizes", sizes)
         object.__setattr__(self, "start_epoch", start)
         object.__setattr__(self, "target_epoch", target)
-        object.__setattr__(self, "schedule_horizon_epoch", horizon)
+        object.__setattr__(self, "trajectory_schedule_extent_epoch", schedule_extent)
         seeds = tuple(int(v) for v in self.screening_optimizer_seeds)
         if stage == "production":
             if seeds:
@@ -194,7 +194,7 @@ class PerfP2RStagePlan:
             "candidate_sizes": list(self.candidate_sizes),
             "start_epoch": self.start_epoch,
             "target_epoch": self.target_epoch,
-            "schedule_horizon_epoch": self.schedule_horizon_epoch,
+            "trajectory_schedule_extent_epoch": self.trajectory_schedule_extent_epoch,
             "screening_optimizer_seeds": list(self.screening_optimizer_seeds),
             "continuation_required": self.continuation_required,
             "target_only_evaluation": self.target_only_evaluation,
@@ -219,7 +219,7 @@ class PerfP2RStagePlan:
             candidate_sizes=tuple(int(v) for v in payload["candidate_sizes"]),
             start_epoch=int(payload["start_epoch"]),
             target_epoch=int(payload["target_epoch"]),
-            schedule_horizon_epoch=int(payload["schedule_horizon_epoch"]),
+            trajectory_schedule_extent_epoch=int(payload["trajectory_schedule_extent_epoch"]),
             screening_optimizer_seeds=tuple(
                 int(v) for v in payload.get("screening_optimizer_seeds", ())
             ),
@@ -246,12 +246,9 @@ def build_perf_p2r_stage_plan(
     outcome = str(study.outcome)
     policy = study.policy
     coarse_epoch, short_epoch, final_screen_epoch = (int(v) for v in policy.fidelity_epochs)
-    screening_horizon = int(
-        getattr(study, "screening_horizon_epochs", final_screen_epoch)
-    )
     common = dict(
         target_size_study_digest=str(study.content_digest),
-        schedule_horizon_epoch=screening_horizon,
+        trajectory_schedule_extent_epoch=final_screen_epoch,
     )
     if outcome == "awaiting_coarse_screen":
         return PerfP2RStagePlan(
@@ -285,13 +282,11 @@ def build_perf_p2r_stage_plan(
                 "PERF-P2R production planning requires the separately owned production horizon."
             )
         production_horizon = int(production_horizon_epochs)
-        if production_horizon <= screening_horizon:
-            raise TrainingDataInputError(
-                "Production horizon must remain strictly greater than the completed screen horizon."
-            )
+        if production_horizon <= 0:
+            raise TrainingDataInputError("Production horizon must be positive.")
         return PerfP2RStagePlan(
             target_size_study_digest=str(study.content_digest),
-            schedule_horizon_epoch=production_horizon,
+            trajectory_schedule_extent_epoch=production_horizon,
             stage="production", candidate_sizes=(int(study.selected_target_size),),
             start_epoch=0, target_epoch=production_horizon, screening_optimizer_seeds=(),
             continuation_required=False, target_only_evaluation=False,

@@ -219,6 +219,202 @@ def test_train2b_restart_rejects_changed_lr_authority(tmp_path: Path) -> None:
         )
 
 
+def test_train2b_authenticated_continuation_rejects_tampered_companion(tmp_path: Path) -> None:
+    """A raw checkpoint plus summary is not resumable without its companion."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4)
+    runtime = runtime_mod._Train2Runtime(
+        _plan(limit=3),
+        model=model,
+        optimizer=optimizer,
+        lr_scheduler=_Scheduler(),
+        ema=ExponentialMovingAverage(model.parameters(), decay=0.9),
+        train_loader=[object()],
+        current_epoch=0,
+        checkpoint_handler=SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir))),
+        logger_path=str(metrics),
+        rank=0,
+    )
+    _step(model, optimizer, runtime.ema)
+    _raw_checkpoint(checkpoint_dir, 0)
+    summary = runtime.persist_epoch(epoch=0)
+    assert summary is not None
+
+    companion = checkpoint_dir / runtime_mod.TRAIN2_RUNTIME_COMPANION_FILENAME
+    companion.write_bytes(b"not an authenticated torch companion")
+    with pytest.raises((mdstats.TrainingDataInputError, mdstats.TrainingDataSerializationError), match="companion"):
+        mdstats.validate_train2_runtime_continuation_artifacts(
+            checkpoint_dir,
+            training_protocol_digest=summary.training_protocol_digest,
+            optimizer_policy_digest=summary.optimizer_policy_digest,
+            budget_policy=_plan(limit=3).budget_policy,
+            learning_rate_policy=_plan(limit=3).learning_rate_policy,
+            structures_per_epoch=17,
+        )
+
+
+def _authentic_runtime_and_summary(
+    checkpoint_dir: Path, metrics: Path, *, limit: int = 3
+) -> tuple[runtime_mod._Train2Runtime, mdstats.Train2RuntimeSummary]:
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4)
+    runtime = runtime_mod._Train2Runtime(
+        _plan(limit=limit),
+        model=model,
+        optimizer=optimizer,
+        lr_scheduler=_Scheduler(),
+        ema=ExponentialMovingAverage(model.parameters(), decay=0.9),
+        train_loader=[object()],
+        current_epoch=0,
+        checkpoint_handler=SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir))),
+        logger_path=str(metrics),
+        rank=0,
+    )
+    _step(model, optimizer, runtime.ema)
+    _raw_checkpoint(checkpoint_dir, 0)
+    summary = runtime.persist_epoch(epoch=0)
+    assert summary is not None
+    return runtime, summary
+
+
+def _load_companion(checkpoint_dir: Path) -> dict:
+    return torch.load(
+        checkpoint_dir / runtime_mod.TRAIN2_RUNTIME_COMPANION_FILENAME,
+        map_location="cpu",
+        weights_only=False,
+    )
+
+
+def _save_companion(checkpoint_dir: Path, payload: dict) -> None:
+    torch.save(payload, checkpoint_dir / runtime_mod.TRAIN2_RUNTIME_COMPANION_FILENAME)
+
+
+def _validate(checkpoint_dir: Path, summary) -> mdstats.Train2RuntimeSummary:
+    return mdstats.validate_train2_runtime_continuation_artifacts(
+        checkpoint_dir,
+        training_protocol_digest=summary.training_protocol_digest,
+        optimizer_policy_digest=summary.optimizer_policy_digest,
+        budget_policy=_plan(limit=3).budget_policy,
+        learning_rate_policy=_plan(limit=3).learning_rate_policy,
+        structures_per_epoch=17,
+    )
+
+
+def test_train2b_scheduler_validator_rejects_tampered_live_parameter_value(tmp_path: Path) -> None:
+    """A syntactically valid companion with one modified live-parameter value fails closed."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    _, summary = _authentic_runtime_and_summary(checkpoint_dir, metrics)
+
+    payload = _load_companion(checkpoint_dir)
+    payload["live_parameters"][0] = payload["live_parameters"][0] + 1.0
+    _save_companion(checkpoint_dir, payload)
+
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="live-parameter"):
+        _validate(checkpoint_dir, summary)
+
+
+def test_train2b_scheduler_validator_rejects_tampered_ema_state_value(tmp_path: Path) -> None:
+    """A syntactically valid companion with one modified EMA tensor value fails closed."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    _, summary = _authentic_runtime_and_summary(checkpoint_dir, metrics)
+
+    payload = _load_companion(checkpoint_dir)
+    payload["ema_state"]["shadow_params"][0] = payload["ema_state"]["shadow_params"][0] + 1.0
+    _save_companion(checkpoint_dir, payload)
+
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="EMA"):
+        _validate(checkpoint_dir, summary)
+
+
+def test_train2b_scheduler_validator_rejects_tampered_rng_state_value(tmp_path: Path) -> None:
+    """A syntactically valid companion with one modified RNG state value fails closed."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    _, summary = _authentic_runtime_and_summary(checkpoint_dir, metrics)
+
+    payload = _load_companion(checkpoint_dir)
+    payload["rng_state"]["python"]["state"][0] = int(payload["rng_state"]["python"]["state"][0]) + 1
+    _save_companion(checkpoint_dir, payload)
+
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="RNG"):
+        _validate(checkpoint_dir, summary)
+
+
+def test_train2b_restart_activation_rejects_tampered_live_parameter_before_applying_state(
+    tmp_path: Path,
+) -> None:
+    """`_restore_continuation` itself must authenticate content, not only the scheduler validator."""
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    _authentic_runtime_and_summary(checkpoint_dir, metrics, limit=10)
+
+    payload = _load_companion(checkpoint_dir)
+    payload["live_parameters"][0] = payload["live_parameters"][0] + 1.0
+    _save_companion(checkpoint_dir, payload)
+
+    resumed_model = torch.nn.Linear(1, 1)
+    original_parameters = [p.detach().clone() for p in resumed_model.parameters()]
+    resumed_optimizer = torch.optim.SGD(resumed_model.parameters(), lr=1.0e-4)
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="live-parameter"):
+        runtime_mod._Train2Runtime(
+            _plan(limit=10),
+            model=resumed_model,
+            optimizer=resumed_optimizer,
+            lr_scheduler=_Scheduler(),
+            ema=ExponentialMovingAverage(resumed_model.parameters(), decay=0.9),
+            train_loader=[object()],
+            current_epoch=1,
+            checkpoint_handler=SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir))),
+            logger_path=str(metrics),
+            rank=0,
+        )
+    # The rejected companion must never have mutated the resumed model.
+    for actual, original in zip(resumed_model.parameters(), original_parameters):
+        torch.testing.assert_close(actual.detach(), original)
+
+
+def test_train2b_activation_rejects_restored_epoch_beyond_active_boundary(tmp_path: Path) -> None:
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4)
+
+    with pytest.raises(mdstats.TrainingDataInputError, match="exceeds its active execution boundary"):
+        runtime_mod._Train2Runtime(
+            _plan(limit=3),
+            model=model,
+            optimizer=optimizer,
+            lr_scheduler=_Scheduler(),
+            ema=ExponentialMovingAverage(model.parameters(), decay=0.9),
+            train_loader=[object()],
+            current_epoch=4,
+            checkpoint_handler=SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir))),
+            logger_path=str(metrics),
+            rank=0,
+        )
+
+
 def test_train2b_restart_rejects_changed_full_horizon(tmp_path: Path) -> None:
     checkpoint_dir = tmp_path / "checkpoints"
     checkpoint_dir.mkdir()
@@ -290,8 +486,9 @@ def test_train2b_source_qualified_mace_loop_patch_installs(monkeypatch: pytest.M
         mace_tools.train = original
         runtime_mod._ACTIVE_RUNTIME = None
 
-def test_train2b_patched_mace_loop_runs_exact_10_epoch_pause_without_patience_stop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("execution_epoch_limit", [1, 10])
+def test_train2b_patched_mace_loop_runs_exact_boundary_pause_without_patience_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, execution_epoch_limit: int
 ) -> None:
     import mace.tools as mace_tools
 
@@ -300,7 +497,7 @@ def test_train2b_patched_mace_loop_runs_exact_10_epoch_pause_without_patience_st
     checkpoint_dir.mkdir()
     metrics = tmp_path / "metrics.jsonl"
     metrics.write_text("", encoding="utf-8")
-    plan = _plan(limit=10)
+    plan = _plan(limit=execution_epoch_limit)
     monkeypatch.setenv(mdstats.TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE, json.dumps(plan.to_dict()))
 
     class Handler:
@@ -377,22 +574,23 @@ def test_train2b_patched_mace_loop_runs_exact_10_epoch_pause_without_patience_st
             train_sampler=None,
             rank=0,
         )
-        assert epochs_seen == list(range(10))
+        assert epochs_seen == list(range(execution_epoch_limit))
         assert scheduler.calls == 0
         summary = mdstats.load_train2_runtime_summary(checkpoint_dir)
-        assert summary.completed_epochs == 10
-        assert summary.completed_updates == 20
+        assert summary.completed_epochs == execution_epoch_limit
+        assert summary.completed_updates == execution_epoch_limit * 2
         assert summary.planned_updates == 60
-        assert summary.execution_epoch_limit == 10
+        assert summary.execution_epoch_limit == execution_epoch_limit
         assert not summary.complete_budget
         history = [json.loads(line) for line in (checkpoint_dir / "train2_history.jsonl").read_text().splitlines()]
-        assert len(history) == 10
-        assert history[-1]["phase"] == plan.learning_rate_policy.phase(19 / 59)
+        assert len(history) == execution_epoch_limit
+        final_update_index = execution_epoch_limit * 2 - 1
+        assert history[-1]["phase"] == plan.learning_rate_policy.phase(final_update_index / 59)
         persistence = [
             json.loads(line)
             for line in (checkpoint_dir / "train2_persistence.jsonl").read_text().splitlines()
         ]
-        assert len(persistence) == 10
+        assert len(persistence) == execution_epoch_limit
         assert persistence[-1]["schema"] == "mdstats.train2-persistence-telemetry.v1"
         assert persistence[-1]["hash_transport"] == "python-buffer-protocol-chunked-v1"
         assert persistence[-1]["total_persistence_seconds"] >= 0.0

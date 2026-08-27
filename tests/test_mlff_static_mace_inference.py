@@ -72,6 +72,23 @@ def test_static_executor_surfaces_batch_one_oom() -> None:
         executor.predict(_atoms(1))
 
 
+def test_static_executor_honors_staged_cancellation_before_next_batch() -> None:
+    from mdstats.training_data.inference_parallel import inference_start_signal
+
+    provider = _Provider()
+    executor = StaticMaceInferenceExecutor(provider, batch_size=2)
+    phases: list[str] = []
+    with inference_start_signal(
+        lambda: None,
+        phase_callback=phases.append,
+        cancellation_requested=lambda: True,
+    ):
+        with pytest.raises(InterruptedError, match="cancelled"):
+            executor.predict(_atoms(4))
+    assert provider.calls == []
+    assert any("cancelled before static inference batch" in phase for phase in phases)
+
+
 def test_static_executor_prohibits_concurrent_model_shell_sharing() -> None:
     import threading
 
@@ -1185,19 +1202,41 @@ def test_auto_execution_path_persists_and_reuses_compatible_profile(
         if point.feasible
     )
 
+    captured: dict[str, StaticInferenceRuntimeAuthority] = {}
+    real_init = StaticInferenceRuntimeAuthority.__init__
+
+    def capture_init(self, **kwargs):
+        captured["authority"] = self
+        real_init(self, **kwargs)
+
+    monkeypatch.setattr(StaticInferenceRuntimeAuthority, "__init__", capture_init)
     reused_provider = Provider()
-    reused = campaign_execution._predict_model_on_atoms(
-        model,
-        atoms,
-        head=None,
-        policy=policy,
-        execution_plan=plan,
-        provider=reused_provider,
-        graph_cache_directory=graph_cache,
+    from mdstats.training_data.inference_parallel import (
+        InferenceLease,
+        inference_start_signal,
     )
+
+    # Reuse the profile produced under the large process-wide cap, but execute
+    # through the actual prediction path under a narrower current stage lease.
+    with inference_start_signal(
+        lambda: None,
+        lease=InferenceLease(maximum_model_jobs=1, ram_allowance_bytes=1 << 30),
+    ):
+        reused = campaign_execution._predict_model_on_atoms(
+            model,
+            atoms,
+            head=None,
+            policy=policy,
+            execution_plan=plan,
+            provider=reused_provider,
+            graph_cache_directory=graph_cache,
+        )
 
     assert reused_provider.calls
     assert reused_provider.calls[0][0] == profile.selected_batch_size
+    assert captured["authority"].reused_compatible_profile
+    assert captured["authority"].maximum_concurrent_model_jobs == 1
+    assert captured["authority"].profile().selected_concurrent_model_jobs == 1
     assert len(reused) == len(first) == len(atoms)
     np.testing.assert_allclose(
         [value.energy_ev for value in reused],
@@ -1205,3 +1244,330 @@ def test_auto_execution_path_persists_and_reuses_compatible_profile(
         rtol=0.0,
         atol=0.0,
     )
+
+
+def test_auto_profile_reuses_runtime_architecture_across_checkpoint_weights(
+    tmp_path, monkeypatch
+) -> None:
+    """Calibration compatibility is execution-structural, not checkpoint-weight identity."""
+
+    import mdstats
+    from types import SimpleNamespace
+    from mdstats.training_data import campaign_execution, model_features, resources
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    snapshot = SystemResourceSnapshot(
+        cpu_threads_available=8,
+        cpu_fraction=0.90,
+        cpu_threads_budget=7,
+        ram_available_bytes=1 << 60,
+        ram_fraction=0.80,
+        ram_budget_bytes=1 << 59,
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+    monkeypatch.setattr(resources, "detect_system_resources", lambda **kwargs: snapshot)
+
+    class Provider(_Provider):
+        def __init__(self, *, exact_identity: str, runtime_architecture: str):
+            super().__init__()
+            self.checkpoint_identity = SimpleNamespace(content_digest=exact_identity)
+            self.runtime_architecture_digest = runtime_architecture
+
+        def set_head(self, head):
+            pass
+
+        def close(self):
+            pass
+
+    architecture = digest({"fixture": "same-runtime-architecture"})
+    model_a = tmp_path / "model-a.pt"
+    model_b = tmp_path / "model-b.pt"
+    model_a.write_bytes(b"checkpoint-a-weights")
+    model_b.write_bytes(b"checkpoint-b-weights")
+    atoms = _atoms(24)
+    geometry_ids = tuple(digest({"geometry": index}) for index in range(len(atoms)))
+    plan = mdstats.InferenceExecutionPlan(
+        batch_policy="auto",
+        selected_batch_size=2,
+        maximum_batch_size=8,
+        selected_concurrent_model_jobs=1,
+    )
+    policy = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), device="cpu", default_dtype="float64"
+    )
+    graph_cache = tmp_path / "evaluation-graphs"
+
+    first_provider = Provider(
+        exact_identity=digest({"checkpoint": "a"}),
+        runtime_architecture=architecture,
+    )
+    first = campaign_execution._predict_model_on_atoms(
+        model_a,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=first_provider,
+        geometry_identities=geometry_ids,
+        graph_cache_directory=graph_cache,
+    )
+    profiles = tuple((tmp_path / "static-inference-runtime-profiles").glob("*.json"))
+    assert len(profiles) == 1
+    profile = StaticInferenceRuntimeProfile.from_dict(
+        __import__("json").loads(profiles[0].read_text(encoding="utf-8"))
+    )
+
+    second_provider = Provider(
+        exact_identity=digest({"checkpoint": "b"}),
+        runtime_architecture=architecture,
+    )
+    second = campaign_execution._predict_model_on_atoms(
+        model_b,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=second_provider,
+        geometry_identities=geometry_ids,
+        graph_cache_directory=graph_cache,
+    )
+    # Different scientific checkpoint identities share exactly one runtime
+    # profile only because their explicit execution architecture identity agrees.
+    assert first_provider.checkpoint_identity.content_digest != second_provider.checkpoint_identity.content_digest
+    assert len(tuple((tmp_path / "static-inference-runtime-profiles").glob("*.json"))) == 1
+    assert second_provider.calls
+    assert second_provider.calls[0][0] == profile.selected_batch_size
+    np.testing.assert_allclose(
+        [value.energy_ev for value in second],
+        [value.energy_ev for value in first],
+        rtol=0.0,
+        atol=0.0,
+    )
+
+    incompatible_provider = Provider(
+        exact_identity=digest({"checkpoint": "c"}),
+        runtime_architecture=digest({"fixture": "different-runtime-architecture"}),
+    )
+    campaign_execution._predict_model_on_atoms(
+        model_b,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=incompatible_provider,
+        geometry_identities=geometry_ids,
+        graph_cache_directory=graph_cache,
+    )
+    assert len(tuple((tmp_path / "static-inference-runtime-profiles").glob("*.json"))) == 2
+
+
+def test_staged_lease_clamps_nested_static_inference_authority(
+    tmp_path, monkeypatch
+) -> None:
+    """O3: the nested static-inference authority consumes the outer lease.
+
+    A scoped inference lease must bound ``maximum_concurrent_model_jobs`` and
+    ``live_ram_budget_bytes`` even when the freshly rediscovered process-global
+    resources (and the persisted execution plan) are much larger.
+    """
+    import mdstats
+    from mdstats.training_data import campaign_execution, model_features, resources
+    from mdstats.training_data.inference_parallel import (
+        InferenceLease,
+        inference_start_signal,
+    )
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    snapshot = SystemResourceSnapshot(
+        cpu_threads_available=8,
+        cpu_fraction=0.90,
+        cpu_threads_budget=7,
+        ram_available_bytes=1 << 40,
+        ram_fraction=0.80,
+        ram_budget_bytes=1 << 39,
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+    monkeypatch.setattr(resources, "detect_system_resources", lambda **kwargs: snapshot)
+
+    class Provider(_Provider):
+        def set_head(self, head):
+            pass
+
+        def close(self):
+            pass
+
+    model = tmp_path / "lease-model.pt"
+    model.write_bytes(b"nested-lease-fixture")
+    atoms = _atoms(16)
+    plan = mdstats.InferenceExecutionPlan(
+        batch_policy="auto",
+        selected_batch_size=4,
+        maximum_batch_size=16,
+        selected_concurrent_model_jobs=8,
+    )
+    policy = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), device="cpu", default_dtype="float64"
+    )
+
+    captured: dict = {}
+    real_init = StaticInferenceRuntimeAuthority.__init__
+
+    def capture_init(self, **kwargs):
+        captured["authority"] = self
+        real_init(self, **kwargs)
+
+    monkeypatch.setattr(StaticInferenceRuntimeAuthority, "__init__", capture_init)
+
+    lease = InferenceLease(maximum_model_jobs=2, ram_allowance_bytes=25_000)
+    with inference_start_signal(lambda: None, lease=lease):
+        campaign_execution._predict_model_on_atoms(
+            model,
+            atoms,
+            head=None,
+            policy=policy,
+            execution_plan=plan,
+            provider=Provider(),
+            graph_cache_directory=tmp_path,
+        )
+
+    assert captured["authority"].maximum_concurrent_model_jobs == 2
+    # ``initial_incremental_ram_cap_bytes`` preserves the constructor value;
+    # ``live_ram_budget_bytes`` is later re-clamped against live telemetry.
+    assert captured["authority"].initial_incremental_ram_cap_bytes == 25_000
+
+    # Without a lease, the authority rediscovers the full process-global budget
+    # and the plan's own (larger) job ceiling.
+    captured.clear()
+    campaign_execution._predict_model_on_atoms(
+        model,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=Provider(),
+        graph_cache_directory=tmp_path,
+    )
+    assert captured["authority"].maximum_concurrent_model_jobs == 8
+    assert captured["authority"].initial_incremental_ram_cap_bytes == snapshot.ram_budget_bytes
+
+
+def test_staged_lease_ram_reclamp_excludes_out_of_lease_profile_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    """O3: prior profile evidence above the later lease is actually excluded.
+
+    A compatible runtime profile carrying a fast but RAM-heavy feasible point
+    above the later stage lease must not survive the real execution path: the
+    RAM coordinate is re-clamped so only the below-lease point is selected.
+    This proves the re-clamp is a selection-level exclusion of prior evidence,
+    not merely a constructor field narrowed in passing.
+    """
+    import json
+
+    import mdstats
+    from mdstats.training_data import campaign_execution, model_features, resources
+    from mdstats.training_data.inference_parallel import (
+        InferenceLease,
+        inference_start_signal,
+    )
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    snapshot = SystemResourceSnapshot(
+        cpu_threads_available=8,
+        cpu_fraction=0.90,
+        cpu_threads_budget=7,
+        ram_available_bytes=1 << 40,
+        ram_fraction=0.80,
+        ram_budget_bytes=1 << 39,
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+    monkeypatch.setattr(resources, "detect_system_resources", lambda **kwargs: snapshot)
+
+    class Provider(_Provider):
+        def set_head(self, head):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        model_features.MaceCalculatorProvider,
+        "from_model_path",
+        classmethod(lambda cls, *args, **kwargs: Provider()),
+    )
+
+    model = tmp_path / "ram-reclamp-model.pt"
+    model.write_bytes(b"ram-reclamp-fixture")
+    graph_cache = tmp_path / "ram-reclamp-graphs"
+    atoms = _atoms(32)
+    plan = mdstats.InferenceExecutionPlan(
+        batch_policy="auto",
+        selected_batch_size=8,
+        maximum_batch_size=16,
+        selected_concurrent_model_jobs=1,
+    )
+    policy = mdstats.CheckpointEvaluationPolicy(
+        condition_keys=(), device="cpu", default_dtype="float64"
+    )
+
+    # First pass (no lease) materializes a compatible profile on disk.
+    campaign_execution._predict_model_on_atoms(
+        model,
+        atoms,
+        head=None,
+        policy=policy,
+        execution_plan=plan,
+        provider=Provider(),
+        graph_cache_directory=graph_cache,
+    )
+    profiles_dir = graph_cache.resolve().parent / "static-inference-runtime-profiles"
+    profile_path = next(iter(profiles_dir.glob("*.json")))
+    original = json.loads(profile_path.read_text(encoding="utf-8"))
+
+    # Inject prior evidence: a fast RAM-heavy feasible point ABOVE the later
+    # lease (60_000 bytes) and a slower RAM-frugal point BELOW it (10_000 bytes).
+    fast = _measured_point(16, 1, 300.0, 60_000, None)
+    slow = _measured_point(8, 1, 100.0, 10_000, None)
+    fabricated = StaticInferenceRuntimeProfile(
+        compatibility_digest=original["compatibility_digest"],
+        selected_batch_size=16,
+        selected_concurrent_model_jobs=1,
+        learned_safe_batch_ceiling=16,
+        evidence=(fast, slow),
+    )
+    profile_path.write_text(json.dumps(fabricated.to_dict()), encoding="utf-8")
+
+    captured: dict = {}
+    real_init = StaticInferenceRuntimeAuthority.__init__
+
+    def capture_init(self, **kwargs):
+        captured["authority"] = self
+        real_init(self, **kwargs)
+
+    monkeypatch.setattr(StaticInferenceRuntimeAuthority, "__init__", capture_init)
+
+    lease = InferenceLease(maximum_model_jobs=1, ram_allowance_bytes=25_000)
+    with inference_start_signal(lambda: None, lease=lease):
+        campaign_execution._predict_model_on_atoms(
+            model,
+            atoms,
+            head=None,
+            policy=policy,
+            execution_plan=plan,
+            provider=Provider(),
+            graph_cache_directory=graph_cache,
+        )
+
+    authority = captured["authority"]
+    assert authority.reused_compatible_profile
+    # The RAM coordinate is re-clamped: the 60_000-byte point is excluded and
+    # only the 10_000-byte point survives selection.
+    assert not authority._safe(fast)
+    assert authority._safe(slow)
+    assert authority.selected_point is not None
+    assert authority.selected_point.peak_ram_bytes == 10_000
+    assert authority.selected_point.structures_per_second == 100.0
+    assert authority.initial_incremental_ram_cap_bytes == 25_000

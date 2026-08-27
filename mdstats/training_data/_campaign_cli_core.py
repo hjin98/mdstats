@@ -91,6 +91,7 @@ from .inference_parallel import (
     AdaptiveInferenceConcurrency,
     CpuTelemetryProbe,
     InferenceConcurrencyPolicy,
+    InferenceLease,
     build_inference_concurrency_plan,
     inference_start_signal,
     inference_cancellation_requested,
@@ -125,11 +126,14 @@ _LEGACY_CAMPAIGN_CLI_SCHEMA = "mdstats.mlff-campaign-cli.v1"
 FOUNDATION_CONFIG_CONTRACT_SCHEMA = "mdstats.mlff-foundation-config-contract.v2"
 CAMPAIGN_STATE_SCHEMA = "mdstats.mlff-campaign-state.v2"
 EXTERNAL_RECORD_POINTER_SCHEMA = "mdstats.mlff-campaign-external-record.v1"
-PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v3"
-# v2 and schema-less receipts authenticated the full TOML file as a preparation
-# input. They remain admissible only through the explicit migration check
-# below; new writes always use the dependency-scoped v3 receipt.
-_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v2"
+PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v4"
+# v3 is dependency-scoped upstream evidence from the pre-exact-boundary
+# screening generation.  v2/schema-less receipts additionally authenticated
+# the full TOML file as a preparation input.  All remain admissible only
+# through the explicit migration check below; new writes use v4 so downstream
+# TRAIN2 execution from the older screen generation cannot survive unnoticed.
+_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v3"
+_OLDER_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v2"
 # Scientific/materialization contract. Target-size v5 is a hard derived-state
 # cut: independently valid upstream authorities may be reused, but legacy
 # ladder/migration/rescue/convergence receipts cannot authenticate this contract.
@@ -1678,6 +1682,22 @@ def _train2_policy_set(
         replay_label_requirement="true_dft",
         required_physical_gates=(),
     )
+    target_data = cfg.get("target_data", {})
+    size_cfg = (
+        target_data.get("size_convergence", {})
+        if isinstance(target_data, Mapping)
+        else {}
+    )
+    # `_train2_policy_set` is also the generic policy factory used by
+    # low-level callers.  Only target-size orchestration requires the full
+    # three-boundary policy; preserve the same scalar selection authority for
+    # a compact, already-normalized policy fixture that does not model a
+    # screen lifecycle.
+    practical_equivalence_mev_per_a = float(
+        size_cfg.get("practical_equivalence_mev_per_a", 1.0)
+        if isinstance(size_cfg, Mapping)
+        else 1.0
+    )
     selection = mdstats.CheckpointSelectionPolicy(
         primary_target_metric=str(
             _cfg(cfg, "evaluation", "primary_target_metric", "target_force_rmse_ev_per_angstrom")
@@ -1686,9 +1706,7 @@ def _train2_policy_set(
         refinement_reserved_candidates=int(
             _cfg(cfg, "evaluation", "refinement_reserved_candidates", 2)
         ),
-        practical_equivalence_ev_per_angstrom=(
-            float(_target_size_study_policy(cfg).practical_equivalence_mev_per_a) / 1000.0
-        ),
+        practical_equivalence_ev_per_angstrom=practical_equivalence_mev_per_a / 1000.0,
         bootstrap_replicates=int(_cfg(cfg, "evaluation", "bootstrap_replicates", 2000)),
         bootstrap_confidence=float(_cfg(cfg, "evaluation", "bootstrap_confidence", 0.95)),
         bootstrap_min_independent_blocks=int(
@@ -2176,19 +2194,43 @@ def _has_authoritative_protocol_freeze(store: "CampaignStore") -> bool:
     return _protocol_freeze_authority(store) is not None
 
 
-def _campaign_training_policy_family(campaign: Any) -> str:
-    """Classify immutable run protocols without reinterpreting historical evidence."""
+def _campaign_training_policy_family(
+    campaign: Any, jobs: Mapping[str, tuple[Any, Any, Path]] | None = None,
+) -> str:
+    """Classify current campaigns from DATA8 jobs and retained historical plans locally."""
 
     runs = tuple(getattr(campaign, "runs", ()))
     if not runs:
         return "historical"
+    if jobs is None:
+        # Pre-DATA8 historical migration records retained their own protocol
+        # payload. They are never used to authorize current TRAIN2 execution.
+        protocols = [getattr(run, "protocol", None) for run in runs]
+    else:
+        protocols = []
+        for run in runs:
+            entry = jobs.get(run.mace_job_artifact_digest)
+            if entry is None:
+                raise CampaignCliError(
+                    f"Campaign run {run.run_id} references an unresolved DATA8 MaceJobArtifact."
+                )
+            _bundle, job, _root = entry
+            if job.content_digest != run.mace_job_artifact_digest:
+                raise CampaignCliError(
+                    f"Campaign run {run.run_id} DATA8 job digest does not match its run reference."
+                )
+            if job.job_id != run.job_id or job.protocol.content_digest != run.protocol_digest:
+                raise CampaignCliError(
+                    f"Campaign run {run.run_id} does not match its authoritative DATA8 job protocol."
+                )
+            protocols.append(job.protocol)
     adaptive = tuple(
-        getattr(getattr(run, "protocol", None), "adaptive_stop_policy", None) is not None
-        for run in runs
+        getattr(protocol, "adaptive_stop_policy", None) is not None
+        for protocol in protocols
     )
     train2 = tuple(
-        getattr(getattr(run, "protocol", None), "training_budget_policy", None) is not None
-        for run in runs
+        getattr(protocol, "training_budget_policy", None) is not None
+        for protocol in protocols
     )
     if any(a and t for a, t in zip(adaptive, train2)):
         raise CampaignCliError("A run cannot carry both adaptive-stop and TRAIN2 authority.")
@@ -2203,10 +2245,12 @@ def _campaign_training_policy_family(campaign: Any) -> str:
     return next(iter(families))
 
 
-def _campaign_uses_adaptive_training(campaign: Any) -> bool:
+def _campaign_uses_adaptive_training(
+    campaign: Any, jobs: Mapping[str, tuple[Any, Any, Path]] | None = None,
+) -> bool:
     """Compatibility helper for the historical ADAPT/MLCV lifecycle."""
 
-    return _campaign_training_policy_family(campaign) == "adaptive_stop_v3"
+    return _campaign_training_policy_family(campaign, jobs) == "adaptive_stop_v3"
 
 
 def _enforce_evaluation_migration_boundary(
@@ -3667,23 +3711,35 @@ class _ProgressReporter:
             flush=True,
         )
 
-    def item_done(self, index: int, name: str, detail: str = "", *, force: bool = True) -> None:
+    def item_done(
+        self,
+        index: int,
+        name: str,
+        detail: str = "",
+        *,
+        force: bool = True,
+        completed_count: int | None = None,
+    ) -> None:
         now = time.monotonic()
-        if not force and index < self.total and now - self.last_printed < self.minimum_interval_seconds:
+        completed = (
+            int(index) if completed_count is None else int(completed_count)
+        )
+        completed = max(0, min(self.total, completed))
+        if not force and completed < self.total and now - self.last_printed < self.minimum_interval_seconds:
             return
         elapsed = now - self.started
         # Completed/recovered work reported immediately after reporter creation
         # is not a sample of current execution speed.  Move the rate baseline
         # past that startup burst.
-        if elapsed <= self._startup_baseline_seconds and index < self.total:
-            self._rate_tracker.reset(completed=index, now=now)
+        if elapsed <= self._startup_baseline_seconds and completed < self.total:
+            self._rate_tracker.reset(completed=completed, now=now)
         timing = self._rate_tracker.snapshot(
-            completed=index, total=self.total, now=now
+            completed=completed, total=self.total, now=now
         )
         suffix = f"; detail={detail}" if detail else ""
         print(
             f"[{self.label} {index:>3}/{self.total}] {name}; status=complete; "
-            f"progress={format_progress_fraction(index, self.total)}; "
+            f"progress={format_progress_fraction(completed, self.total)}; "
             f"elapsed={format_progress_time(elapsed)}; "
             f"eta={format_progress_time(timing.eta_seconds)}{suffix}",
             flush=True,
@@ -4494,6 +4550,38 @@ class _TargetSizeMaterializationResolver:
     def cached_prefix_count(self) -> int:
         return len(self._prefixes)
 
+    def repair2_label_domain_id_for_source_label(self, source_label_domain_id: str) -> str:
+        """Resolve one DATA2A source label to its final-development REPAIR2 authority."""
+
+        source_label = str(source_label_domain_id)
+        coverage = self._final_by_source_label.get(source_label)
+        if coverage is None:
+            raise CampaignCliError(
+                "Target-size coverage authority has no unique final-development domain for "
+                f"source label {source_label!r}."
+            )
+        repair2_label = str(coverage.label_domain_id)
+        try:
+            repair_domain = self._repair2.domain(repair2_label)
+        except KeyError:
+            available = tuple(
+                str(domain.label_domain_id) for domain in getattr(self._repair2, "domains", ())
+            )
+            raise CampaignCliError(
+                "EVAL2 final-development namespace mismatch: authenticated TARGET-DATA2B "
+                f"maps source label {source_label!r} to REPAIR2 domain {repair2_label!r}, "
+                "but that domain is absent from the current REPAIR2 authority "
+                f"{getattr(self._repair2, 'content_digest', '<unknown>')}. "
+                f"available_domains={list(available[:6])}."
+            ) from None
+        if str(repair_domain.reference_domain_digest) != str(coverage.content_digest):
+            raise CampaignCliError(
+                "EVAL2 final-development namespace mismatch: REPAIR2/reference lineage "
+                f"disagrees for source label {source_label!r} and authority domain "
+                f"{repair2_label!r}."
+            )
+        return repair2_label
+
     def _coverage_for_domain(self, feature_domain: Any) -> Any:
         try:
             coverage = self._by_training_digest[feature_domain.content_digest]
@@ -4575,6 +4663,31 @@ class _TargetSizeMaterializationResolver:
             for domain in feature_domains
             if domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
         }
+
+
+def _load_target_size_materialization_resolver(
+    store: CampaignStore, target_size_study: Any, repair2: Any
+) -> _TargetSizeMaterializationResolver:
+    """Restore the exact coverage namespace bound into the active REPAIR2 authority."""
+
+    import mdstats
+
+    coverage_reference = store.get_record(
+        "target_coverage_reference", mdstats.TargetCoverageReference
+    )
+    if str(repair2.target_coverage_reference_digest) != str(coverage_reference.content_digest):
+        raise CampaignCliError(
+            "Target-size REPAIR2 authority is bound to a different TARGET-DATA2B coverage "
+            "reference; rerun `prepare` before EVAL2/verification."
+        )
+    if str(target_size_study.repair2_authority_digest) != str(repair2.content_digest):
+        raise CampaignCliError(
+            "Target-size study is bound to a different REPAIR2 authority; rerun `prepare`."
+        )
+    return _TargetSizeMaterializationResolver(
+        coverage_reference, target_size_study, repair2
+    )
+
 
 def _ensure_target_coverage_reference(
     store: CampaignStore,
@@ -4896,9 +5009,9 @@ def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
     if not isinstance(training, Mapping):
         raise CampaignCliError("[training] must be a TOML table.")
     configured_epochs = int(training.get("max_num_epochs", 30))
-    if policy.fidelity_epochs[-1] >= configured_epochs:
+    if configured_epochs <= 0:
         raise CampaignCliError(
-            "Target-size fidelity_epochs must satisfy 0 < n1 < n2 < n3 < [training].max_num_epochs."
+            "[training].max_num_epochs must be positive."
         )
     return policy
 
@@ -5039,16 +5152,16 @@ def _train2_data8_schedule_matches_config(
         if protocol is None or optimizer is None:
             return False
         require_replay = str(getattr(protocol.training_mode, "value", protocol.training_mode)) == "multihead_replay"
-        expected_horizon = (
-            int(study.screening_horizon_epochs)
+        screening_schedule_extent = (
+            int(study.policy.fidelity_epochs[-1])
             if study is not None and getattr(study, "outcome", None) != "selected"
             else None
         )
-        cache_key = (require_replay, expected_horizon)
+        cache_key = (require_replay, screening_schedule_extent)
         expected = expected_cache.get(cache_key)
         if expected is None:
             expected = _train2_policy_set(
-                cfg, require_replay=require_replay, planned_epochs=expected_horizon
+                cfg, require_replay=require_replay, planned_epochs=screening_schedule_extent
             )
             expected_cache[cache_key] = expected
         expected_budget, expected_lr, expected_admissibility, expected_selection = expected
@@ -5079,7 +5192,7 @@ def _train2_data8_schedule_matches_config(
             cfg,
             seed=int(getattr(optimizer, "seed", -1)),
             num_workers=expected_loader_workers,
-            planned_epochs=expected_horizon,
+            planned_epochs=screening_schedule_extent,
         )
         if optimizer.policy_digest != expected_optimizer.policy_digest:
             return False
@@ -9420,6 +9533,7 @@ def _try_reuse_completed_prepare(
         if receipt_schema not in {
             PREPARE_RESTART_RECEIPT_SCHEMA,
             _HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
+            _OLDER_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
             None,
         }:
             return False
@@ -9429,9 +9543,12 @@ def _try_reuse_completed_prepare(
 
         sources = store.get_record("source_catalog", mdstats.TrainingDataSourceCatalog)
         refresh_receipt = False
-        if receipt_schema == PREPARE_RESTART_RECEIPT_SCHEMA:
+        if receipt_schema in {
+            PREPARE_RESTART_RECEIPT_SCHEMA,
+            _HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA,
+        }:
             if receipt.get("preparation_config_digest") != _preparation_config_digest(cfg):
-                # A v3 receipt written before the positive projection repair
+                # A dependency-scoped receipt written before the positive projection repair
                 # has no safe way to classify a changed TOML.  Reuse it only
                 # when the complete bytes are unchanged, then re-authenticate
                 # and rewrite the receipt with the repaired semantic digest.
@@ -9485,12 +9602,18 @@ def _try_reuse_completed_prepare(
                 previous_study is not None
                 and previous_study.policy.policy_digest != study.policy.policy_digest
             )
-            if fidelity_changed:
+            if fidelity_changed or historical_generation_upgrade:
                 screening_phase = getattr(study, "outcome", None) != mdstats.OUTCOME_SELECTED
+                reason = (
+                    "TRAIN2 exact-boundary screening generation changed; historical screen "
+                    "execution/evidence was reset while reusable preparation was preserved"
+                    if historical_generation_upgrade and not fidelity_changed
+                    else "TRAIN2 screen fidelity boundaries changed; target-size evidence and dependent training/evaluation state were reset"
+                )
                 _invalidate_train2_downstream_state(
                     store,
                     paths,
-                    reason="TRAIN2 screen fidelity boundaries changed; target-size evidence and dependent training/evaluation state were reset",
+                    reason=reason,
                     preserve_preflight=screening_phase,
                 )
             if (
@@ -9568,7 +9691,7 @@ def _try_reuse_completed_prepare(
             bundles=[entry.bundle for entry in ordered_entries],
         )
         _ok(
-            "migrated validated historical prepare receipt to dependency-scoped v3; "
+            "migrated validated historical prepare receipt to exact-boundary dependency-scoped v4; "
             "upstream DATA2-DATA9A artifacts were reused"
         )
     _ok(
@@ -10124,7 +10247,7 @@ def _prepare_materialization(
         if policy_generation == "train2":
             screen_phase = target_size_study.outcome != mdstats.OUTCOME_SELECTED
             role_budget = (
-                int(target_size_study.screening_horizon_epochs)
+                int(target_size_study.policy.fidelity_epochs[-1])
                 if screen_phase else int(_cfg(cfg, "training", "max_num_epochs", 30))
             )
             (
@@ -10202,7 +10325,7 @@ def _prepare_materialization(
             optimizer_policy=_optimizer_policy(
                 cfg, seed=seed, num_workers=loader_workers,
                 planned_epochs=(
-                    int(target_size_study.screening_horizon_epochs)
+                    int(target_size_study.policy.fidelity_epochs[-1])
                     if policy_generation == "train2"
                     and target_size_study.outcome != mdstats.OUTCOME_SELECTED
                     else None
@@ -11099,12 +11222,21 @@ def _require_train2_preflight_authorization(
 ) -> tuple[list[_Data8RuntimeEntry], str]:
     """Require a passed smoke bound to the exact active TRAIN2 DATA8 matrix."""
 
+    receipt = store.get_payload_optional("prepare_restart_receipt")
+    receipt_schema = None if not isinstance(receipt, Mapping) else receipt.get("schema")
+    if receipt_schema != PREPARE_RESTART_RECEIPT_SCHEMA:
+        raise CampaignCliError(
+            "TRAIN2 exact-boundary screening requires the current prepare restart generation. "
+            "Run `prepare` once to authenticate/reuse compatible upstream artifacts and invalidate "
+            "pre-exact-boundary screen execution state; rerun `preflight` only if prepare marks it stale."
+        )
+
     entries, phase = _validate_train2_data8_matrix(cfg, store, study)
     # Matrix membership alone is not enough: a DATA8 bundle carries the
     # scheduler, LR, checkpoint, and optimizer authority that the shared
     # TRAIN2 engine will consume.  In particular, a historical screen bundle
     # can retain the same candidate corpus/matrix while carrying a different
-    # screen horizon.  Reject it here, before either public screen or
+    # boundary-derived runtime schedule extent. Reject it here, before either public screen or
     # production training can treat an old smoke receipt as authorization.
     if not _train2_data8_schedule_matches_config(cfg, entries, study=study):
         raise CampaignCliError(
@@ -11480,8 +11612,6 @@ class _MaceTrainingProgressProbe:
     expected_updates: int | None
     device: str
     max_epochs: int = 1
-    schedule_horizon_epochs: int | None = None
-    screen_boundary_epochs: int | None = None
     stage_name: str | None = None
     checkpoint_dir: Path | None = None
     epoch_activity_timeout_seconds: float = 120.0
@@ -11502,27 +11632,12 @@ class _MaceTrainingProgressProbe:
         # appends a fresh optimizer row.
         self._refresh_gradient_updates(mark_activity=False)
         self._primed = True
-        horizon = self.max_epochs if self.schedule_horizon_epochs is None else int(self.schedule_horizon_epochs)
-        if int(self.max_epochs) <= 0 or horizon < int(self.max_epochs):
-            raise CampaignCliError("Training progress endpoint/horizon geometry is invalid.")
+        if int(self.max_epochs) <= 0:
+            raise CampaignCliError("Training progress endpoint is invalid.")
         self.max_epochs = int(self.max_epochs)
-        self.schedule_horizon_epochs = horizon
-        boundary = self.max_epochs if self.screen_boundary_epochs is None else int(
-            self.screen_boundary_epochs
-        )
-        if boundary <= 0 or boundary > self.schedule_horizon_epochs:
-            raise CampaignCliError("Training progress screen-boundary geometry is invalid.")
-        self.screen_boundary_epochs = boundary
 
     def _epoch_phase(self, epoch: int, suffix: str = "") -> str:
-        """Render screen and full-schedule progress without conflating them."""
-
-        if self.screen_boundary_epochs == self.schedule_horizon_epochs:
-            return f"epoch {epoch}/{self.max_epochs}{suffix}"
-        return (
-            f"screen epoch {epoch}/{self.screen_boundary_epochs}; "
-            f"schedule epoch {epoch}/{self.schedule_horizon_epochs}{suffix}"
-        )
+        return f"epoch {epoch}/{self.max_epochs}{suffix}"
 
     def _log_tail(self) -> str:
         candidates = [path for path in self.log_dir.glob("*.log") if "_debug" not in path.name]
@@ -11731,7 +11846,7 @@ class _MaceTrainingProgressProbe:
         else:
             progress = f"progress={state.updates:,}; unit=gradient-update"
         telemetry = _gpu_telemetry(self.device)
-        stage = None if self.stage_name is None else f"stage={self.stage_name}; schedule_horizon={self.schedule_horizon_epochs}"
+        stage = None if self.stage_name is None else f"stage={self.stage_name}"
         return "; ".join(
             item for item in (stage, f"phase={state.phase}", progress, telemetry) if item
         )
@@ -13319,6 +13434,12 @@ class _StagedEvaluationTask:
     prepared_bytes: Callable[[Any], int] | None = None
     inference_result_bytes: Callable[[Any], int] | None = None
     cached_result: Callable[[Any], Any] | None = None
+    accelerator_possible: bool = True
+    # Authoritative pre-prepare upper bound (bytes) on the retained prepared
+    # payload.  ``None`` means the retained growth is unbounded/unknown: the
+    # scheduler conservatively sequences its unclassified transition rather than
+    # assuming it can coexist with other inference-requiring work (REVIEW3).
+    retained_upper_bound: int | None = None
 
 
 @dataclass
@@ -13404,13 +13525,29 @@ class _PipelineByteLedger:
         if not self.can_reserve(value):
             raise CampaignCliError(
                 "Pipeline RAM cannot admit one required payload/worker: "
-                f"owner={owner}; payload={value} bytes; retained={self.total_bytes} bytes; "
+                f"owner={owner}; payload={value} bytes; ledger_owned={self.total_bytes} bytes; "
                 f"budget={self.budget_bytes} bytes."
             )
         self.reservations[owner] = value
 
     def release(self, owner: str) -> None:
         self.reservations.pop(owner, None)
+
+    @property
+    def retained_payload_bytes(self) -> int:
+        """Bytes held by completed stage payloads, excluding working reservations."""
+
+        return sum(
+            value
+            for owner, value in self.reservations.items()
+            if owner.startswith(("prepared:", "result:"))
+        )
+
+    def release_all(self) -> None:
+        """Release every owner individually so terminal cleanup remains observable."""
+
+        for owner in tuple(self.reservations):
+            self.release(owner)
 
 
 def _run_staged_evaluation_tasks(
@@ -13420,6 +13557,7 @@ def _run_staged_evaluation_tasks(
     device: str,
     progress: Any,
     phase: str = "evaluation",
+    shared_residency_bytes: int = 0,
 ) -> dict[str, Any]:
     """Run evaluation as a bounded CPU -> accelerator -> CPU pipeline.
 
@@ -13433,7 +13571,19 @@ def _run_staged_evaluation_tasks(
     thread_phase = "eval" if phase == "evaluation" else phase
     if not tasks:
         return {}
+    task_keys = tuple(str(task.key) for task in tasks)
+    if len(set(task_keys)) != len(task_keys):
+        duplicates = sorted(
+            key for key, count in Counter(task_keys).items() if count > 1
+        )
+        raise CampaignCliError(
+            f"{phase.capitalize()} staged execution received duplicate logical task "
+            f"identities: {duplicates[:6]}."
+        )
     policy = _inference_concurrency_policy(cfg, phase)
+    accelerator_task_count = sum(
+        1 for task in tasks if bool(task.accelerator_possible)
+    )
     try:
         resources = detect_system_resources(
             cpu_fraction=float(_cfg(cfg, "performance", "cpu_fraction", 0.90)),
@@ -13448,7 +13598,7 @@ def _run_staged_evaluation_tasks(
     gpu_sample = query_gpu_telemetry(device)
     try:
         plan = build_inference_concurrency_plan(
-            task_count=len(tasks), device=device, resources=resources,
+            task_count=accelerator_task_count, device=device, resources=resources,
             policy=policy, gpu_sample=gpu_sample, cpu_sample=cpu_sample,
         )
     except ValueError as exc:
@@ -13584,10 +13734,20 @@ def _run_staged_evaluation_tasks(
             else int(default_bytes),
         )
 
-    estimated_worker_bytes = max(1, int(plan.estimated_ram_bytes_per_job))
+    estimated_worker_bytes = (
+        max(1, int(plan.estimated_ram_bytes_per_job))
+        if accelerator_task_count
+        else 64 * 1024**2
+    )
     prepare_reservation = _working_reservation("prepare", estimated_worker_bytes)
     inference_reservation = _working_reservation(
         "inference", estimated_worker_bytes * joint_model_jobs
+    )
+    # Smallest runnable inference reservation (J=1).  Used to (a) select a
+    # launch-local admissible width and (b) guarantee forward-progress headroom
+    # and causal fail-fast admission diagnostics.
+    minimum_inference_reservation = _working_reservation(
+        "inference", estimated_worker_bytes
     )
     finalize_reservation = _working_reservation(
         "finalize", max(1, estimated_worker_bytes // 4)
@@ -13599,10 +13759,21 @@ def _run_staged_evaluation_tasks(
         raise CampaignCliError(
             f"[execution].{phase}_shared_runtime_residency_mib must be nonnegative."
         )
-    shared_residency = int(shared_residency_mib * 1024**2)
+    runtime_shared_residency = max(0, int(shared_residency_bytes))
+    shared_residency = int(shared_residency_mib * 1024**2) + runtime_shared_residency
     ledger = _PipelineByteLedger(pipeline_ram_budget)
     if shared_residency:
         ledger.reserve("shared:runtime-residency", shared_residency)
+
+    @contextmanager
+    def release_ledger_on_terminal_exception() -> Iterable[None]:
+        try:
+            yield
+        except BaseException:
+            # Future.result() can propagate KeyboardInterrupt, which bypasses the
+            # ordinary scheduler failure bookkeeping below.
+            ledger.release_all()
+            raise
     if not ledger.can_reserve(prepare_reservation):
         raise CampaignCliError(
             "Evaluation pipeline RAM cannot admit one CPU preparation reservation: "
@@ -13617,7 +13788,8 @@ def _run_staged_evaluation_tasks(
         f"{phase} pipeline: "
         f"{plan.summary()}; CPU prepare={prepare_workers}, "
         f"CPU finalize={finalize_workers}, prepared buffer={pipeline_buffer}, "
-        f"pipeline RAM={'unknown' if pipeline_ram_budget is None else _format_bytes_gib(pipeline_ram_budget)}"
+        f"pipeline RAM={'unknown' if pipeline_ram_budget is None else _format_bytes_gib(pipeline_ram_budget)}, "
+        f"shared resident={_format_bytes_gib(shared_residency)}"
     )
 
     pending = deque(tasks)
@@ -13632,7 +13804,13 @@ def _run_staged_evaluation_tasks(
     active_finalize: dict[
         Future[Any], tuple[_StagedEvaluationTask, _StagedEvaluationTiming, int]
     ] = {}
+    # The scheduler materializes this owner when an admitted payload is about
+    # to become inference-ready, then transfers it to real inference.  Earlier
+    # unclassified admission stays conservative because a prepared payload can
+    # be larger than its working reservation.
+    progress_owner = "progress:minimum-inference"
     results: dict[str, Any] = {}
+    accepted_results: set[str] = set()
     failures: list[str] = []
     stop_scheduling = False
     cancel_event = threading.Event()
@@ -13654,9 +13832,18 @@ def _run_staged_evaluation_tasks(
             )
 
     def execute_prepare(task: _StagedEvaluationTask, timing: _StagedEvaluationTiming) -> Any:
+        def update_phase(stage: str) -> None:
+            with stage_events_lock:
+                stage_events.append((task.label, f"CPU prepare: {stage}"))
+
         started = time.monotonic()
         try:
-            return task.prepare()
+            with inference_start_signal(
+                lambda: None,
+                phase_callback=update_phase,
+                cancellation_requested=cancel_event.is_set,
+            ):
+                return task.prepare()
         finally:
             timing.prepared_seconds += time.monotonic() - started
 
@@ -13665,6 +13852,7 @@ def _run_staged_evaluation_tasks(
         prepared: Any,
         timing: _StagedEvaluationTiming,
         status: _InferenceWorkerStatus,
+        lease: InferenceLease | None,
     ) -> Any:
         def update_phase(stage: str) -> None:
             if status.set_phase(stage):
@@ -13675,11 +13863,18 @@ def _run_staged_evaluation_tasks(
         try:
             active_execution_plan = getattr(prepared, "execution_plan", None)
             if active_execution_plan is not None:
+                # The launch-local lease carries the largest width that the
+                # current staged ledger admitted (<= the theoretical joint
+                # ceiling).  Bind that ceiling and the scoped RAM envelope to
+                # the nested runtime authority via the worker-local context.
+                model_job_cap = (
+                    lease.maximum_model_jobs
+                    if lease is not None
+                    else max(1, int(joint_model_jobs))
+                )
                 prepared.execution_plan = replace(
                     active_execution_plan,
-                    selected_concurrent_model_jobs=max(
-                        1, int(joint_model_jobs)
-                    ),
+                    selected_concurrent_model_jobs=max(1, int(model_job_cap)),
                     rationale=tuple(active_execution_plan.rationale)
                     + ("canonical_joint_runtime_authority_owns_model_jobs",),
                     provider_residency_ram_bytes=int(plan.estimated_ram_bytes_per_job),
@@ -13689,6 +13884,7 @@ def _run_staged_evaluation_tasks(
                 status.mark_workload_started,
                 phase_callback=update_phase,
                 cancellation_requested=cancel_event.is_set,
+                lease=lease,
             ):
                 update_phase("accelerator model conversion / inference")
                 if not str(device).startswith("cuda"):
@@ -13715,6 +13911,10 @@ def _run_staged_evaluation_tasks(
         inference_result: Any | None,
         timing: _StagedEvaluationTiming,
     ) -> Any:
+        def update_phase(stage: str) -> None:
+            with stage_events_lock:
+                stage_events.append((task.label, f"CPU finalize: {stage}"))
+
         started = time.monotonic()
         try:
             # A cache-only prepared evaluation intentionally bypasses accelerator
@@ -13729,9 +13929,121 @@ def _run_staged_evaluation_tasks(
                 if inference_result is None
                 else inference_result
             )
-            return task.finalize(prepared, active_result)
+            with inference_start_signal(
+                lambda: None,
+                phase_callback=update_phase,
+                cancellation_requested=cancel_event.is_set,
+            ):
+                return task.finalize(prepared, active_result)
         finally:
             timing.finalized_seconds += time.monotonic() - started
+
+    def _needs_progress_envelope() -> bool:
+        """Whether currently admitted work still needs J=1 cover.
+
+        Merely queued work has not consumed any pipeline payload capacity yet;
+        the one-at-a-time unclassified admission claim protects that first
+        transition.  The guard is needed once an active preparation or an
+        inference-ready retained payload exists.
+        """
+
+        return bool(active_prepare or ready_inference)
+
+    def _ensure_progress_envelope() -> bool:
+        """Own the prospective J=1 envelope unless an inference owns it already."""
+
+        if active_inference or not _needs_progress_envelope():
+            return True
+        if progress_owner in ledger.reservations:
+            return True
+        if not ledger.can_reserve(minimum_inference_reservation):
+            return False
+        ledger.reserve(progress_owner, minimum_inference_reservation)
+        return True
+
+    def _release_unused_progress_envelope() -> None:
+        if (
+            progress_owner in ledger.reservations
+            and not active_inference
+            and not _needs_progress_envelope()
+        ):
+            ledger.release(progress_owner)
+
+    def _unclassified_prepare_admissible(task: _StagedEvaluationTask) -> bool:
+        """Whether one more unclassified transition may be admitted right now.
+
+        REVIEW3 established that a fixed multiple of ``minimum_inference_reservation``
+        is not a retained-payload bound: a prepared payload may retain far more
+        than its preparation working reservation.  Under an unbounded staged
+        ledger there is no arithmetic to protect and the historical
+        work-conserving overlap is retained.  Otherwise a new unclassified
+        prepare may overlap other inference-requiring work only when its
+        prospective retained growth is soundly bounded (and so is every other
+        outstanding unclassified transition) and the complete worst-case
+        coexistibility equation fits the staged budget while preserving one J=1
+        envelope.  An unbounded transition is conservatively sequenced: it is
+        admitted only while no other inference-requiring state is outstanding,
+        so any later retained-charge failure is a genuine irreducible geometry
+        rather than a producer-created conflict.
+        """
+
+        if ledger.budget_bytes is None:
+            return True
+
+        # Outstanding inference-requiring state that the new transition's
+        # retained payload must coexist with (worst case) before being
+        # finalized away.  Merely queued (``pending``) work holds no ledger
+        # bytes yet and does not constrain admission.
+        outstanding_unclassified = [
+            task for task, _timing in active_prepare.values()
+        ]
+        has_outstanding_work = bool(
+            active_prepare
+            or ready_inference
+            or active_inference
+            or waiting_finalize
+            or active_finalize
+        )
+        if not has_outstanding_work:
+            # First/only inference-requiring transition: admit it.  Its retained
+            # payload is charged at completion; if it alone plus minimum J=1
+            # cannot fit, that is reported causally as an irreducible geometry.
+            return True
+
+        # Overlapping other inference-requiring work requires a sound prospective
+        # retained upper bound on the new transition and on every other still-
+        # unclassified transition.  Absent a bound the worst-case coexistibility
+        # is unprovable and the transition must be sequenced.
+        bound = task.retained_upper_bound
+        if bound is None:
+            return False
+        bounds = [max(0, int(bound))]
+        for other in outstanding_unclassified:
+            if other.retained_upper_bound is None:
+                return False
+            bounds.append(max(0, int(other.retained_upper_bound)))
+
+        # Project from the actual ledger coordinate.  The active prepare working
+        # reservations are the only owners represented by the prospective
+        # retained bounds, so replace exactly those owners and preserve every
+        # other live charge (shared residency, retained payloads, finalization,
+        # active inference, and any future owner class) unchanged.
+        projected_owned = ledger.total_bytes
+        for other in outstanding_unclassified:
+            projected_owned -= ledger.reservations.get(f"prepare:{other.key}", 0)
+        active_inference_bytes = sum(
+            value
+            for owner, value in ledger.reservations.items()
+            if owner.startswith("inference:")
+        )
+        if not active_inference_bytes:
+            # A materialized guard is replaced by the same J=1 envelope below,
+            # not charged a second time.  (Normally it is absent while prepare
+            # work is active, but keep the projection correct for all states.)
+            projected_owned -= ledger.reservations.get(progress_owner, 0)
+            projected_owned += minimum_inference_reservation
+        projected_owned += sum(bounds)
+        return projected_owned <= ledger.budget_bytes
 
     def launch_prepare(pool: ThreadPoolExecutor) -> None:
         if stop_scheduling:
@@ -13745,6 +14057,30 @@ def _run_staged_evaluation_tasks(
             buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
             if buffered >= pipeline_buffer:
                 break
+            if not pending:
+                break
+            next_task = pending[0]
+            if joint_authority_owns_model_jobs:
+                # Evaluation: retained growth is unknown until preparation
+                # completes.  A new unclassified transition may overlap other
+                # inference-requiring work only when its prospective retained
+                # growth is soundly bounded and the complete worst-case equation
+                # fits while preserving one J=1 envelope; otherwise the unknown
+                # transition is conservatively sequenced (REVIEW3).
+                if not _unclassified_prepare_admissible(next_task):
+                    break
+            else:
+                # Dynamics: preserve the historical distinct staged-runner
+                # admission semantics unchanged (O8).
+                if not active_inference:
+                    if ready_inference or waiting_finalize or active_finalize:
+                        break
+                    if active_prepare and not ledger.can_reserve(
+                        prepare_reservation + 2 * minimum_inference_reservation
+                    ):
+                        break
+            # Preparation remains conservatively inference-capable until its
+            # production classification has completed.
             if not ledger.can_reserve(prepare_reservation):
                 break
             task = pending.popleft()
@@ -13759,6 +14095,8 @@ def _run_staged_evaluation_tasks(
             active_prepare[future] = (task, timing)
 
     def launch_finalize(pool: ThreadPoolExecutor) -> None:
+        if stop_scheduling:
+            return
         while (
             waiting_finalize
             and len(active_finalize) < finalize_workers
@@ -13786,17 +14124,68 @@ def _run_staged_evaluation_tasks(
                 break
             if len(waiting_finalize) + len(active_finalize) >= finalize_backlog_limit:
                 break
-            if not ledger.can_reserve(inference_reservation):
+            # Materialize the prospective admission claim as an owned ledger
+            # reservation immediately before a prepared payload becomes an
+            # inference owner.  It is transferred below, never double-booked.
+            if not _ensure_progress_envelope():
+                break
+            # Choose the largest launch-local width J in [1, joint_model_jobs]
+            # whose inference working-memory reservation the current ledger
+            # admits.  For automatic accounting this descends from the
+            # theoretical joint ceiling so an otherwise impossible full-width
+            # reservation collapses to the widest coexistible operating point.
+            # An explicit inference working-memory override keeps its total-stage
+            # meaning and therefore produces the same reservation for every J;
+            # the theoretical ceiling then remains only an upper bound.
+            selected_jobs: int | None = None
+            selected_reservation: int | None = None
+            progress_bytes = ledger.reservations.get(progress_owner, 0)
+            if joint_authority_owns_model_jobs:
+                for jobs in range(max(1, int(joint_model_jobs)), 0, -1):
+                    reservation = _working_reservation(
+                        "inference", estimated_worker_bytes * jobs
+                    )
+                    # The prospective envelope transfers into this real
+                    # inference reservation.  Test admission in that final
+                    # coordinate so the same J=1 bytes are not double-booked.
+                    if (
+                        ledger.budget_bytes is None
+                        or ledger.total_bytes - progress_bytes + reservation
+                        <= ledger.budget_bytes
+                    ):
+                        selected_jobs = jobs
+                        selected_reservation = reservation
+                        break
+            else:
+                selected_jobs = max(1, int(joint_model_jobs))
+                selected_reservation = inference_reservation
+            if selected_reservation is None:
+                # Even J=1 cannot be admitted right now.  The scheduler either
+                # waits for an active owner to release bytes or fails with a
+                # causal RAM-admission error from the stall handler.
                 break
             task, prepared, timing = ready_inference.popleft()
-            ledger.reserve(f"inference:{task.key}", inference_reservation)
+            if progress_bytes:
+                ledger.release(progress_owner)
+            ledger.reserve(f"inference:{task.key}", selected_reservation)
+            lease = (
+                InferenceLease(
+                    maximum_model_jobs=int(selected_jobs),
+                    ram_allowance_bytes=int(selected_reservation),
+                )
+                if joint_authority_owns_model_jobs
+                else None
+            )
             status = _InferenceWorkerStatus()
             if str(device).startswith("cuda"):
                 controller.start_calibration(now=time.monotonic())
-            future = pool.submit(execute_inference, task, prepared, timing, status)
+            future = pool.submit(
+                execute_inference, task, prepared, timing, status, lease
+            )
             active_inference[future] = (task, prepared, timing, status)
 
     with (
+        release_ledger_on_terminal_exception(),
         ThreadPoolExecutor(
             max_workers=max(1, prepare_workers),
                 thread_name_prefix=f"mdstats-{thread_phase}-prepare",
@@ -13842,6 +14231,47 @@ def _run_staged_evaluation_tasks(
                         f"{len(ready_inference)} queued inference task(s): "
                         f"{controller.admission_blocked_reason}."
                     )
+                progress_bytes = ledger.reservations.get(progress_owner, 0)
+                if ready_inference and (
+                    ledger.budget_bytes is not None
+                    and ledger.total_bytes - progress_bytes
+                    + minimum_inference_reservation > ledger.budget_bytes
+                ):
+                    # A known byte-ledger/RAM block must never collapse into the
+                    # generic stall.  Expose the failed admission equation so the
+                    # cause is diagnosable without source inspection.
+                    cancel_event.set()
+                    raise CampaignCliError(
+                        f"{phase.capitalize()} staged RAM admission blocked: "
+                        "minimum inference reservation (J=1) cannot fit the "
+                        f"pipeline byte budget; queued={len(ready_inference)}; "
+                        f"minimum_reservation={minimum_inference_reservation} bytes; "
+                        f"ledger_owned={ledger.total_bytes} bytes; "
+                        f"retained_payload={ledger.retained_payload_bytes} bytes; "
+                        f"joint_model_cap={joint_model_jobs}; "
+                        f"pipeline_budget="
+                        + ("unknown" if ledger.budget_bytes is None else f"{ledger.budget_bytes} bytes")
+                        + "."
+                    )
+                if pending and not ledger.can_reserve(
+                    prepare_reservation + minimum_inference_reservation
+                ):
+                    cancel_event.set()
+                    raise CampaignCliError(
+                        f"{phase.capitalize()} staged RAM admission blocked: "
+                        "cannot admit one required payload/worker while preserving "
+                        "the minimum inference reservation (J=1) for one "
+                        "unclassified preparation in the pipeline byte budget; "
+                        f"pending={len(pending)}; "
+                        f"minimum_reservation={minimum_inference_reservation} bytes; "
+                        f"prepare_reservation={prepare_reservation} bytes; "
+                        f"ledger_owned={ledger.total_bytes} bytes; "
+                        f"retained_payload={ledger.retained_payload_bytes} bytes; "
+                        f"joint_model_cap={joint_model_jobs}; "
+                        "pipeline_budget="
+                        + ("unknown" if ledger.budget_bytes is None else f"{ledger.budget_bytes} bytes")
+                        + "."
+                    )
                 cancel_event.set()
                 raise CampaignCliError(
                     f"{phase.capitalize()} pipeline stalled with queued work but no active stage."
@@ -13872,10 +14302,17 @@ def _run_staged_evaluation_tasks(
                             else _evaluation_payload_bytes(prepared)
                         )
                         ledger.reserve(f"prepared:{task.key}", prepared_bytes)
-                        if task.requires_inference(prepared):
+                        requires_inference = bool(task.requires_inference(prepared))
+                        if requires_inference and not task.accelerator_possible:
+                            raise CampaignCliError(
+                                f"{task.label} declared accelerator_possible=False but "
+                                "its prepared payload requires accelerator inference."
+                            )
+                        if requires_inference:
                             ready_inference.append((task, prepared, timing))
                         else:
                             waiting_finalize.append((task, prepared, None, timing))
+                        _release_unused_progress_envelope()
                     except Exception as exc:
                         failures.append(
                             f"{task.label}: {type(exc).__name__}: {exc} (stage=CPU preparation)"
@@ -13894,6 +14331,11 @@ def _run_staged_evaluation_tasks(
                             else _evaluation_payload_bytes(inference_result)
                         )
                         ledger.release(f"inference:{task.key}")
+                        # If another task can still require inference, retain
+                        # J=1 cover while this completed inference is converted
+                        # to its retained result payload.  A concurrently active
+                        # inference already provides that cover.
+                        _ensure_progress_envelope()
                         ledger.reserve(f"result:{task.key}", result_bytes)
                         waiting_finalize.append(
                             (task, prepared, inference_result, timing)
@@ -13957,6 +14399,7 @@ def _run_staged_evaluation_tasks(
                 try:
                     if task.on_success is not None:
                         task.on_success(result)
+                    accepted_results.add(task.key)
                     wall = time.monotonic() - timing.started
                     progress.item_done(
                         task.display_index,
@@ -13966,6 +14409,7 @@ def _run_staged_evaluation_tasks(
                         + f"prepare {_ProgressReporter._duration(timing.prepared_seconds)}, "
                         + f"infer {_ProgressReporter._duration(timing.inference_seconds)}, "
                         + f"finalize {_ProgressReporter._duration(timing.finalized_seconds)}",
+                        completed_count=len(accepted_results),
                     )
                 except Exception as exc:
                     failures.append(
@@ -13973,6 +14417,7 @@ def _run_staged_evaluation_tasks(
                     )
                     _fail(failures[-1])
                     stop_scheduling = True
+                    cancel_event.set()
 
             now = time.monotonic()
             workload_active_jobs = sum(
@@ -14031,7 +14476,7 @@ def _run_staged_evaluation_tasks(
                 )
                 print(
                     f"[{phase.upper()} scheduler] status=concurrency-change; "
-                    f"progress={format_progress_fraction(len(results), len(tasks))}; "
+                    f"progress={format_progress_fraction(len(accepted_results), len(tasks))}; "
                     f"elapsed={format_progress_time(now - pipeline_started)}; eta=--:--:--; "
                     f"workers={decision.previous_target}->{decision.target_jobs}; reason={decision.reason}; "
                     f"projected_memory={projected_memory}; projected_utilization={projected_util}",
@@ -14052,7 +14497,7 @@ def _run_staged_evaluation_tasks(
                     )
                 print(
                     f"[{phase.upper()} pipeline] status=running; "
-                    f"progress={format_progress_fraction(len(results), len(tasks))}; "
+                    f"progress={format_progress_fraction(len(accepted_results), len(tasks))}; "
                     f"elapsed={format_progress_time(now - pipeline_started)}; eta=--:--:--; "
                     f"prepare={len(active_prepare)}; ready={len(ready_inference)}; "
                     f"infer={len(active_inference)}/{controller.target_jobs}; "
@@ -14073,7 +14518,7 @@ def _run_staged_evaluation_tasks(
             ledger.release(f"result:{task.key}")
     ledger.release("shared:runtime-residency")
     leaked_reservations = dict(ledger.reservations)
-    ledger.reservations.clear()
+    ledger.release_all()
     if not failures and leaked_reservations:
         raise CampaignCliError(
             "Pipeline RAM reservation leak after successful execution: "
@@ -14591,6 +15036,85 @@ def _is_target_size_scientific_execution_failure(
     )
 
 
+def _reset_target_size_screen_execution(
+    *,
+    campaign: Any,
+    store: CampaignStore,
+    paths: CampaignPaths,
+    target_size_study: Any,
+    policy_family: str,
+    forensic_namespace: str,
+    reason: str,
+    preserve_preflight: bool,
+    error_message: str,
+) -> None:
+    """Invalidate current target-screen execution/evidence and restore coarse authority."""
+
+    import mdstats
+
+    if policy_family != "train2" or target_size_study.outcome == mdstats.OUTCOME_SELECTED:
+        raise CampaignCliError("Target-size screen reset was requested outside screening.")
+    previous_payload = store.get_payload_optional("target_size_study")
+    if previous_payload is not None:
+        previous_digest = str(store.record_digest("target_size_study"))
+        store.put_record(
+            f"historical:{forensic_namespace}:{previous_digest}", previous_payload
+        )
+    for campaign_run in campaign.runs:
+        _archive_obsolete_training_runtime(
+            (paths.runs / campaign_run.run_id).resolve(), target_size_study.content_digest,
+        )
+    repair2 = store.get_record(
+        "target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2
+    )
+    mvqual2 = store.get_record(
+        "target_multi_view_qualification_v2", mdstats.TargetMultiViewQualificationPlanV2
+    )
+    replacement = mdstats.build_target_size_study(
+        repair2, mvqual2, policy=target_size_study.policy
+    )
+    store.put_record("target_size_study", replacement)
+    _invalidate_train2_downstream_state(
+        store,
+        paths,
+        reason=reason,
+        preserve_preflight=preserve_preflight,
+    )
+    raise CampaignCliError(error_message)
+
+
+def _invalidate_overshot_target_size_screen(
+    *,
+    campaign: Any,
+    store: CampaignStore,
+    paths: CampaignPaths,
+    target_size_study: Any,
+    policy_family: str,
+    run_id: str,
+    completed_epochs: int,
+    boundary: int,
+) -> None:
+    """Invalidate unauthorized target-screen progress and restore coarse authority."""
+
+    _reset_target_size_screen_execution(
+        campaign=campaign,
+        store=store,
+        paths=paths,
+        target_size_study=target_size_study,
+        policy_family=policy_family,
+        forensic_namespace="target-size-overshoot",
+        reason=(
+            f"target-size run {run_id} reached epoch {completed_epochs} beyond active "
+            f"boundary {boundary}; screening evidence was invalidated and restarted at coarse"
+        ),
+        preserve_preflight=False,
+        error_message=(
+            f"Target-size screening overshot active boundary {boundary} in {run_id}; "
+            "unauthorized evidence was invalidated. Run `prepare`, `preflight`, then `select-target-size`."
+        ),
+    )
+
+
 def _execute_train_current_authority(args: argparse.Namespace) -> int:
     import mdstats
 
@@ -14641,6 +15165,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
     )
     _print_cleanup_report(cleanup_report)
     data8_entries = _current_data8_entries(store)
+    jobs = _job_lookup(data8_entries)
     data8_bundles = [entry.bundle for entry in data8_entries]
     transitional_jobs: list[str] = []
     for bundle in data8_bundles:
@@ -14664,7 +15189,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         )
     campaign = _build_campaign(cfg, store, data8_bundles)
     store.put_record("training_campaign", campaign)
-    policy_family = _campaign_training_policy_family(campaign)
+    policy_family = _campaign_training_policy_family(campaign, jobs)
     train2_execution_epoch_limit: int | None = None
     train2_allow_successful_continuation = False
     train2_stage_label: str | None = None
@@ -14694,7 +15219,7 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             train2_allow_successful_continuation = study.next_training_stage != mdstats.STAGE_COARSE
             train2_stage_label = (
                 f"target-size exact continuation to {study.next_training_stage} endpoint "
-                f"{train2_execution_epoch_limit}/{study.screening_horizon_epochs}"
+                f"epoch {train2_execution_epoch_limit}"
             )
             allowed_sizes = set(int(v) for v in study.next_training_sizes)
             screening_seeds = set(int(v) for v in study.policy.screening_optimizer_seeds)
@@ -14730,7 +15255,19 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         if train2_execution_epoch_limit is None:
             raise CampaignCliError("TRAIN2B stage is missing its execution epoch limit.")
         try:
-            summary = mdstats.load_train2_runtime_summary(run_root / "checkpoints")
+            if job.protocol.training_budget_policy is None or job.protocol.learning_rate_schedule_policy is None:
+                raise CampaignCliError(f"TRAIN2B run {job.job_id} is missing its frozen budget/LR authorities.")
+            summary = mdstats.validate_train2_runtime_continuation_artifacts(
+                run_root / "checkpoints",
+                training_protocol_digest=job.protocol.content_digest,
+                optimizer_policy_digest=job.protocol.optimizer_policy.policy_digest,
+                budget_policy=job.protocol.training_budget_policy,
+                learning_rate_policy=job.protocol.learning_rate_schedule_policy,
+                structures_per_epoch=(
+                    int(job.loader_dry_run.target_train_count_effective)
+                    + int(job.loader_dry_run.replay_train_count_effective)
+                ),
+            )
         except Exception as exc:
             raise CampaignCliError(
                 f"TRAIN2B run {job.job_id} has successful/recoverable MACE artifacts but no valid "
@@ -14740,8 +15277,6 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             raise CampaignCliError(f"TRAIN2B runtime summary for {job.job_id} belongs to a different protocol.")
         if summary.optimizer_policy_digest != job.protocol.optimizer_policy.policy_digest:
             raise CampaignCliError(f"TRAIN2B runtime summary for {job.job_id} belongs to a different optimizer policy.")
-        if job.protocol.training_budget_policy is None or job.protocol.learning_rate_schedule_policy is None:
-            raise CampaignCliError(f"TRAIN2B run {job.job_id} is missing its frozen budget/LR authorities.")
         if summary.budget_policy_digest != job.protocol.training_budget_policy.policy_digest:
             raise CampaignCliError(f"TRAIN2B runtime summary for {job.job_id} changed its training-budget policy.")
         if summary.lr_policy_digest != job.protocol.learning_rate_schedule_policy.policy_digest:
@@ -14761,12 +15296,117 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
         ):
             raise CampaignCliError(f"TRAIN2B runtime summary for {job.job_id} changed its structures-presented geometry.")
         if summary.completed_epochs > int(train2_execution_epoch_limit):
+            if target_size_study is not None and target_size_study.outcome != mdstats.OUTCOME_SELECTED:
+                _invalidate_overshot_target_size_screen(
+                    campaign=campaign,
+                    store=store,
+                    paths=paths,
+                    target_size_study=target_size_study,
+                    policy_family=policy_family,
+                    run_id=run_id,
+                    completed_epochs=int(summary.completed_epochs),
+                    boundary=int(train2_execution_epoch_limit),
+                )
             raise CampaignCliError(
                 f"TRAIN2B run {job.job_id} is already at epoch {summary.completed_epochs}, beyond the "
                 f"current {train2_stage_label} boundary {train2_execution_epoch_limit}."
             )
         store.put_record(f"train2_runtime:{run_id}", summary)
         return summary
+
+    def _reconcile_train2_runtime_before_disposition(
+        run_root: Path, job: Any, run_id: str, previous: Any | None,
+    ) -> Any | None:
+        """Authenticate durable TRAIN2 state before any scheduler disposition.
+
+        An interrupted parent does not make persisted child progress harmless:
+        if a restartable runtime exists, it is current target-screen state and
+        must be checked against the active boundary before it can be skipped,
+        recovered, retried, or resumed.
+        """
+
+        if policy_family != "train2":
+            return None
+        checkpoint_directory = run_root / "checkpoints"
+        from .train2_runtime import (
+            TRAIN2_NUMERICAL_FAILURE_FILENAME,
+            TRAIN2_RUNTIME_COMPANION_FILENAME,
+            TRAIN2_RUNTIME_HISTORY_FILENAME,
+            TRAIN2_RUNTIME_SUMMARY_FILENAME,
+        )
+
+        runtime_markers = (
+            TRAIN2_RUNTIME_SUMMARY_FILENAME,
+            TRAIN2_RUNTIME_COMPANION_FILENAME,
+            TRAIN2_RUNTIME_HISTORY_FILENAME,
+            TRAIN2_NUMERICAL_FAILURE_FILENAME,
+        )
+        has_checkpoint = (
+            checkpoint_directory.is_dir()
+            and any(path.is_file() for path in checkpoint_directory.rglob("*.pt"))
+        )
+        has_runtime_artifact = has_checkpoint or any(
+            (checkpoint_directory / marker).exists() for marker in runtime_markers
+        )
+        if not has_runtime_artifact:
+            if (
+                previous is not None
+                and previous.state is mdstats.TrainingRunState.INTERRUPTED
+                and previous.checkpoint_catalog is not None
+                and target_size_study is not None
+                and target_size_study.outcome != mdstats.OUTCOME_SELECTED
+            ):
+                # The durable execution record says this interrupted screen had
+                # a resumable checkpoint, while the complete runtime namespace
+                # now contains neither raw checkpoint bytes nor a TRAIN2
+                # continuation marker.  Continuing with the stale record reaches
+                # CandidateCheckpointCatalog's intentional non-empty invariant;
+                # silently starting the survivor from scratch would be worse at
+                # later rungs because it would break checkpoint/optimizer/RNG
+                # ancestry.  Reset the screen authority to coarse and preserve
+                # current preflight, because the DATA8 matrix itself remains
+                # authenticated and no stale runtime bytes can be discovered.
+                _reset_target_size_screen_execution(
+                    campaign=campaign,
+                    store=store,
+                    paths=paths,
+                    target_size_study=target_size_study,
+                    policy_family=policy_family,
+                    forensic_namespace="target-size-missing-continuation",
+                    reason=(
+                        f"interrupted target-size run {run_id} recorded checkpoint evidence but "
+                        "its runtime checkpoint/continuation bytes are absent; screen execution "
+                        "was invalidated and restarted at coarse"
+                    ),
+                    preserve_preflight=True,
+                    error_message=(
+                        f"Target-size continuation bytes are missing for interrupted run {run_id}. "
+                        "The stale screen execution was invalidated and coarse authority restored; "
+                        "rerun `select-target-size`."
+                    ),
+                )
+            return None
+        summary_path = checkpoint_directory / TRAIN2_RUNTIME_SUMMARY_FILENAME
+        companion_path = checkpoint_directory / TRAIN2_RUNTIME_COMPANION_FILENAME
+        if not summary_path.is_file() or not companion_path.is_file():
+            if (
+                (checkpoint_directory / TRAIN2_NUMERICAL_FAILURE_FILENAME).is_file()
+                and _is_target_size_scientific_execution_failure(
+                    previous,
+                    policy_family=policy_family,
+                    target_size_study=target_size_study,
+                )
+            ):
+                # Numerical-failure persistence deliberately has no restart
+                # companion: it is terminal candidate evidence, not resumable
+                # execution. EVAL2 authenticates its dedicated sidecar.
+                return None
+            raise CampaignCliError(
+                f"TRAIN2B run {job.job_id} has recoverable-looking runtime artifacts but lacks "
+                "an authenticated summary/continuation companion. Refusing a fresh or resumed child; "
+                "restore the exact runtime state or rerun `prepare`, `preflight`, then `select-target-size`."
+            )
+        return _train2_stage_summary(run_root, job, run_id)
 
     _reconcile_mlcv_lifecycle_authority(
         campaign, data8_bundles, store,
@@ -14957,6 +15597,10 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             previous = None
             store.delete_record(key)
 
+        reconciled_train2_summary = _reconcile_train2_runtime_before_disposition(
+            run_root, job, run.run_id, previous
+        )
+
         if _is_target_size_scientific_execution_failure(
             previous, policy_family=policy_family, target_size_study=target_size_study
         ):
@@ -14968,10 +15612,11 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
             )
             continue
 
-        train2_existing_summary = None
+        train2_existing_summary = reconciled_train2_summary
         train2_needs_continuation = False
         if previous is not None and previous.state is mdstats.TrainingRunState.SUCCEEDED and policy_family == "train2":
-            train2_existing_summary = _train2_stage_summary(run_root, job, run.run_id)
+            if train2_existing_summary is None:
+                train2_existing_summary = _train2_stage_summary(run_root, job, run.run_id)
             train2_needs_continuation = (
                 train2_existing_summary.completed_epochs < int(train2_execution_epoch_limit)
             )
@@ -15111,10 +15756,19 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                 else int(train2_existing_summary.completed_epochs)
             )
             authorized_epochs = int(train2_execution_epoch_limit) - completed_epochs
-        if authorized_epochs <= 0:
+        if authorized_epochs < 0:
             raise CampaignCliError(
                 f"TRAIN2 progress geometry for {run.run_id} has no authorized remaining epochs."
             )
+        if authorized_epochs == 0 and policy_family != "train2":
+            raise CampaignCliError(
+                f"Training progress geometry for {run.run_id} has no authorized remaining epochs."
+            )
+        # A child interrupted after persisting exactly the active boundary has
+        # no optimizer work left, but still needs one authenticated child
+        # completion/recovery pass to commit its ordinary execution record and
+        # checkpoint catalog.  Enqueue that handoff without extending the
+        # runtime plan: Train2Runtime refuses every epoch above this limit.
         expected_training_updates = max(
             1,
             (effective_per_epoch // optimizer.batch_size) * authorized_epochs,
@@ -15145,12 +15799,6 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
                         train2_execution_epoch_limit
                         if policy_family == "train2" and train2_execution_epoch_limit is not None
                         else optimizer.max_num_epochs
-                    ),
-                    schedule_horizon_epochs=optimizer.max_num_epochs,
-                    screen_boundary_epochs=(
-                        train2_execution_epoch_limit
-                        if policy_family == "train2" and train2_execution_epoch_limit is not None
-                        else None
                     ),
                     stage_name=(
                         train2_stage_label if policy_family == "train2" else None
@@ -15752,7 +16400,6 @@ def command_select_target_size(args: argparse.Namespace) -> int:
     print(
         "TARGET-SIZE-V5 effective configuration: "
         f"fidelity_epochs={list(study.policy.fidelity_epochs)}; "
-        f"screen_schedule_horizon={study.screening_horizon_epochs}; "
         f"active_boundary={study.next_training_epoch}; "
         f"future_production_horizon={int(_cfg(cfg, 'training', 'max_num_epochs', 30))}",
         flush=True,
@@ -15764,7 +16411,7 @@ def command_select_target_size(args: argparse.Namespace) -> int:
         sizes = tuple(int(value) for value in study.next_training_sizes)
         print(
             f"\nTARGET-SIZE-V5 boundary epoch {boundary}: "
-            f"screen_boundary={boundary}; screen_schedule_horizon={study.screening_horizon_epochs}; "
+            f"boundary={boundary}; "
             f"sizes={list(sizes)}; seeds={list(study.policy.screening_optimizer_seeds)}",
             flush=True,
         )
@@ -15831,6 +16478,8 @@ def _checkpoint_source_for_evaluation(
     run_id: str,
     checkpoint: Any,
     catalog: Any,
+    *,
+    authenticate_bytes: bool = True,
 ) -> tuple[Path, Any | None]:
     """Resolve raw checkpoint bytes or a qualified STOR2 evaluation capsule.
 
@@ -15849,7 +16498,7 @@ def _checkpoint_source_for_evaluation(
             f"Checkpoint path escaped its catalog root for {run_id}: {raw}"
         ) from exc
     if raw.is_file():
-        if _sha256(raw) != checkpoint.sha256:
+        if authenticate_bytes and _sha256(raw) != checkpoint.sha256:
             raise CampaignCliError(
                 f"Checkpoint bytes no longer match the frozen inventory: {run_id} epoch {checkpoint.epoch}."
             )
@@ -15877,9 +16526,13 @@ def _checkpoint_source_for_evaluation(
         raise CampaignCliError(
             f"STOR2 capsule lineage mismatch for {run_id} epoch {checkpoint.epoch}."
         )
-    if not capsule.is_file() or _sha256(capsule) != record.capsule_sha256:
+    if not capsule.is_file():
         raise CampaignCliError(
-            f"STOR2 capsule bytes are missing or changed for {run_id} epoch {checkpoint.epoch}."
+            f"STOR2 capsule bytes are missing for {run_id} epoch {checkpoint.epoch}."
+        )
+    if authenticate_bytes and _sha256(capsule) != record.capsule_sha256:
+        raise CampaignCliError(
+            f"STOR2 capsule bytes changed for {run_id} epoch {checkpoint.epoch}."
         )
     return capsule, record
 
@@ -18984,11 +19637,32 @@ def _train2_policy_set_digest(protocol: Any) -> str:
 
 def _eval2_label_domain_id(bundle: Any, role_freeze: Any) -> str:
     catalog = getattr(bundle, "mlcv_role_catalog", None)
-    if catalog is not None and str(getattr(catalog, "label_domain_id", "")).strip():
-        return str(catalog.label_domain_id)
+    catalog_label = (
+        ""
+        if catalog is None
+        else str(getattr(catalog, "label_domain_id", "")).strip()
+    )
+    observed = {
+        uid
+        for artifact in getattr(bundle, "fold_evaluation_artifacts", ())
+        for uid in artifact.frame_uids
+    }
+    if catalog_label:
+        try:
+            frozen = role_freeze.domain(catalog_label)
+        except KeyError:
+            raise CampaignCliError(
+                "EVAL2 DATA8 role catalog references unknown TARGET-DATA2A source label "
+                f"{catalog_label!r}."
+            ) from None
+        if observed and observed != set(frozen.size_development_frame_uids):
+            raise CampaignCliError(
+                "EVAL2 DATA8 role catalog and fold-evaluation artifacts disagree on the "
+                f"TARGET-DATA2A source label {catalog_label!r}."
+            )
+        return catalog_label
     # Compatibility fallback: CV evaluation artifacts partition the entire
     # TARGET-DATA2A development domain exactly once.
-    observed = {uid for artifact in bundle.fold_evaluation_artifacts for uid in artifact.frame_uids}
     matches = [
         domain.label_domain_id
         for domain in role_freeze.domains
@@ -19005,6 +19679,7 @@ def _eval2_target_role_for_run(
     target_size_study: Any,
     repair2: Any,
     role_freeze: Any,
+    target_materialization_resolver: _TargetSizeMaterializationResolver,
     bundle: Any,
     run: Any,
     coarse: bool = False,
@@ -19022,6 +19697,11 @@ def _eval2_target_role_for_run(
             role_freeze, label_domain_id=label_domain_id, fold_index=int(run.fold_index)
         )
     else:
+        repair2_label_domain_id = (
+            target_materialization_resolver.repair2_label_domain_id_for_source_label(
+                label_domain_id
+            )
+        )
         maximum_training_size = (
             int(target_size_study.selected_target_size)
             if target_size_study.outcome == mdstats.OUTCOME_SELECTED
@@ -19031,6 +19711,7 @@ def _eval2_target_role_for_run(
             role_freeze, repair2, target_size_study,
             label_domain_id=label_domain_id,
             maximum_training_size=maximum_training_size,
+            repair2_label_domain_id=repair2_label_domain_id,
         )
     key = f"eval2_target_role:{role.content_digest}"
     existing = store.get_record_optional(key, mdstats.Eval2TargetRole)
@@ -19321,6 +20002,12 @@ def _eval2_full_checkpoint(
     admissibility = job.protocol.checkpoint_admissibility_policy
     if admissibility is None:
         raise CampaignCliError("EVAL2 checkpoint is missing TRAIN2 admissibility authority.")
+    target_only_authorized = not include_replay
+    if target_only_authorized and getattr(target_role, "role_kind", None) != "size_development_complement":
+        raise CampaignCliError(
+            "EVAL2 target-only checkpoint evaluation is reserved for the "
+            "TARGET-SIZE-V5 development-complement role."
+        )
     evaluation_policy = _eval2_evaluation_policy(cfg, paths, job, model_dtype=model_dtype)
     execution_plan = _evaluation_inference_execution_plan(
         cfg,
@@ -19365,6 +20052,11 @@ def _eval2_full_checkpoint(
         and cached_eval.target_candidate_prediction_digest == cached_metric.prediction_digest
         and cached_eval.replay_monitor_artifact_digest == (None if replay_artifact is None else replay_artifact.content_digest)
         and cached_eval.replay_monitor_sha256 == (None if replay_artifact is None else replay_artifact.sha256)
+        and (
+            not target_only_authorized
+            or "evaluation_scope:authorized_target_only"
+            in cached_eval.metric_record.evaluation_notes
+        )
     )
     if not reusable:
         if cached_eval is not None:
@@ -19395,6 +20087,7 @@ def _eval2_full_checkpoint(
             graph_cache_directory=paths.internal / "evaluation-graphs",
             allow_target_monitor_override=(target_artifact.content_digest != run.target_monitor_artifact_digest),
             allow_replay_without_training_lineage=False,
+            allow_target_only_evaluation=target_only_authorized,
         )
         calculator_model = None
         try:
@@ -19468,6 +20161,7 @@ def _eval2_run_record_for_completed_train2_run(
     target_size_study: Any,
     repair2: Any,
     role_freeze: Any,
+    target_materialization_resolver: _TargetSizeMaterializationResolver,
     true_replay_resolution: Any | None,
     baseline_model: Path | None,
     model_dtype: str,
@@ -19477,6 +20171,7 @@ def _eval2_run_record_for_completed_train2_run(
 
     target_role = _eval2_target_role_for_run(
         store=store, target_size_study=target_size_study, repair2=repair2, role_freeze=role_freeze,
+        target_materialization_resolver=target_materialization_resolver,
         bundle=bundle, run=run,
     )
     target_artifact, target_path = _eval2_target_artifact_for_run(
@@ -19561,6 +20256,280 @@ def _eval2_run_record_for_completed_train2_run(
 
 
 
+@dataclass(frozen=True)
+class _TargetSizeEval2EndpointResult:
+    """One authenticated terminal target-size endpoint produced by the pipeline."""
+
+    outcome: Any
+    evaluation_key: str | None = None
+    evaluation_record: Any | None = None
+    metric_key: str | None = None
+    metric_record: Any | None = None
+    checkpoint_key: str | None = None
+    checkpoint_record: Any | None = None
+    failure_key: str | None = None
+    failure_record: Any | None = None
+    cache_reused: bool = False
+
+
+@dataclass(frozen=True)
+class _TargetSizeEval2EndpointAuthority:
+    """Parent-owned immutable authority for one exact target-size EVAL2 endpoint."""
+
+    logical_key: tuple[int, int]
+    stage: str
+    target_size_study_policy_digest: str
+    training_run_digest: str
+    candidate_data_digest: str
+    training_policy_digest: str
+    schedule_digest: str
+    execution_record_digest: str
+    execution_attempt_digest: str
+    checkpoint_sha256: str
+    evaluation_role_digest: str
+    target_monitor_artifact_digest: str
+    target_monitor_sha256: str
+    evaluation_policy_digest: str
+    evaluation_key: str
+    metric_key: str
+    checkpoint_key: str
+    failure_key: str
+
+
+def _target_size_eval2_incremental_prepared_bytes(
+    prepared: Any,
+    shared_target_context: Any,
+) -> int:
+    """Count one prepared payload without recharging stage-owned target data."""
+
+    shared_seen = {
+        id(shared_target_context.target_atoms),
+        id(shared_target_context.target_view),
+    }
+    return _evaluation_payload_bytes(prepared, seen=shared_seen)
+
+
+def _validate_target_size_eval2_failure_authority(
+    failure: Any,
+    authority: _TargetSizeEval2EndpointAuthority,
+) -> None:
+    """Fail closed when terminal scientific failure provenance is mis-bound."""
+
+    expected_size, expected_seed = authority.logical_key
+    checks = (
+        (str(failure.stage), str(authority.stage), "stage"),
+        (int(failure.target_size), int(expected_size), "target size"),
+        (int(failure.optimizer_seed), int(expected_seed), "optimizer seed"),
+        (
+            str(failure.target_size_study_policy_digest),
+            str(authority.target_size_study_policy_digest),
+            "target-size policy",
+        ),
+        (
+            str(failure.training_run_digest),
+            str(authority.training_run_digest),
+            "training run",
+        ),
+        (
+            str(failure.candidate_data_digest),
+            str(authority.candidate_data_digest),
+            "candidate data",
+        ),
+        (
+            str(failure.training_policy_digest),
+            str(authority.training_policy_digest),
+            "training policy",
+        ),
+        (
+            str(failure.schedule_digest),
+            str(authority.schedule_digest),
+            "schedule",
+        ),
+        (
+            str(failure.execution_record_digest),
+            str(authority.execution_record_digest),
+            "execution record",
+        ),
+        (
+            str(failure.execution_attempt_digest),
+            str(authority.execution_attempt_digest),
+            "execution attempt",
+        ),
+    )
+    for observed, expected, label in checks:
+        if observed != expected:
+            raise CampaignCliError(
+                f"TARGET-SIZE-V5 EVAL2 terminal failure {label} authority mismatch."
+            )
+    if str(failure.failure_phase) == "target_evaluation":
+        if str(failure.checkpoint_digest) != str(authority.checkpoint_sha256):
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 terminal failure checkpoint authority mismatch."
+            )
+        if str(failure.evaluation_role_digest) != str(authority.evaluation_role_digest):
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 terminal failure role authority mismatch."
+            )
+        if failure.target_evaluation_digest is None:
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 terminal failure lacks failed-evaluation identity."
+            )
+
+
+def _target_size_eval2_publication_records(
+    authority: _TargetSizeEval2EndpointAuthority,
+    result: _TargetSizeEval2EndpointResult,
+    *,
+    cached_evaluation_record: Any | None = None,
+    cached_metric_record: Any | None = None,
+) -> dict[str, Any]:
+    """Validate one worker result against parent authority and derive durable writes.
+
+    Worker-supplied keys are treated only as consistency evidence.  The parent
+    always publishes under keys re-derived from its immutable endpoint authority.
+    """
+
+    outcome = result.outcome
+    if tuple(outcome.key) != tuple(authority.logical_key):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 worker result crossed endpoint candidate authority."
+        )
+    if str(outcome.stage) != str(authority.stage):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 worker result crossed endpoint stage authority."
+        )
+
+    supplied_keys = (
+        (result.evaluation_key, authority.evaluation_key, "evaluation"),
+        (result.metric_key, authority.metric_key, "target metric"),
+        (result.checkpoint_key, authority.checkpoint_key, "checkpoint"),
+        (result.failure_key, authority.failure_key, "failure"),
+    )
+    for supplied, expected, label in supplied_keys:
+        if supplied is not None and str(supplied) != str(expected):
+            raise CampaignCliError(
+                f"TARGET-SIZE-V5 EVAL2 worker supplied a forged {label} publication key."
+            )
+
+    if outcome.failure is not None:
+        _validate_target_size_eval2_failure_authority(outcome.failure, authority)
+        if str(outcome.failure.failure_phase) == "target_evaluation":
+            failure_record = result.failure_record or outcome.failure
+            if failure_record.content_digest != outcome.failure.content_digest:
+                raise CampaignCliError(
+                    "TARGET-SIZE-V5 EVAL2 worker failure record disagrees with terminal outcome."
+                )
+            return {authority.failure_key: failure_record}
+        return {}
+
+    success = outcome.success
+    if success is None:
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 worker result has no terminal scientific state."
+        )
+    success_checks = (
+        (str(success.stage), str(authority.stage), "stage"),
+        (tuple(success.key), tuple(authority.logical_key), "candidate"),
+        (
+            str(success.target_size_study_policy_digest),
+            str(authority.target_size_study_policy_digest),
+            "target-size policy",
+        ),
+        (
+            str(success.training_run_digest),
+            str(authority.training_run_digest),
+            "training run",
+        ),
+        (
+            str(success.candidate_data_digest),
+            str(authority.candidate_data_digest),
+            "candidate data",
+        ),
+        (
+            str(success.training_policy_digest),
+            str(authority.training_policy_digest),
+            "training policy",
+        ),
+        (str(success.schedule_digest), str(authority.schedule_digest), "schedule"),
+        (
+            str(success.checkpoint_digest),
+            str(authority.checkpoint_sha256),
+            "checkpoint",
+        ),
+        (
+            str(success.evaluation_role_digest),
+            str(authority.evaluation_role_digest),
+            "evaluation role",
+        ),
+    )
+    for observed, expected, label in success_checks:
+        if observed != expected:
+            raise CampaignCliError(
+                f"TARGET-SIZE-V5 EVAL2 success {label} authority mismatch."
+            )
+
+    evaluation_record = result.evaluation_record or cached_evaluation_record
+    metric_record = result.metric_record or cached_metric_record
+    checkpoint_record = result.checkpoint_record
+    if evaluation_record is None or metric_record is None or checkpoint_record is None:
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 success is missing records required for parent validation."
+        )
+    if evaluation_record.run_plan_digest != authority.training_run_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 evaluation run authority mismatch.")
+    if evaluation_record.checkpoint_sha256 != authority.checkpoint_sha256:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 evaluation checkpoint authority mismatch.")
+    if evaluation_record.evaluation_policy_digest != authority.evaluation_policy_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 evaluation policy authority mismatch.")
+    if evaluation_record.target_monitor_artifact_digest != authority.target_monitor_artifact_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 target-artifact authority mismatch.")
+    if evaluation_record.target_monitor_sha256 != authority.target_monitor_sha256:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 target-byte authority mismatch.")
+    if (
+        evaluation_record.replay_monitor_artifact_digest is not None
+        or evaluation_record.replay_monitor_sha256 is not None
+    ):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 target-only result unexpectedly contains replay authority."
+        )
+    prediction_digest = evaluation_record.target_candidate_prediction_digest
+    if prediction_digest is None:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 result lacks target prediction identity.")
+    if "evaluation_scope:authorized_target_only" not in evaluation_record.metric_record.evaluation_notes:
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 result lacks authorized target-only provenance."
+        )
+    if metric_record.target_role_digest != authority.evaluation_role_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 target metric role authority mismatch.")
+    if metric_record.prediction_digest != prediction_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 prediction/metric lineage mismatch.")
+    if checkpoint_record.trajectory_point.checkpoint_sha256 != authority.checkpoint_sha256:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 checkpoint assessment authority mismatch.")
+    if checkpoint_record.evaluation_record_digest != evaluation_record.content_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 checkpoint/evaluation lineage mismatch.")
+    if checkpoint_record.target_metrics.content_digest != metric_record.content_digest:
+        raise CampaignCliError("TARGET-SIZE-V5 EVAL2 checkpoint/metric lineage mismatch.")
+    if any(
+        value is not None
+        for value in (
+            checkpoint_record.replay_candidate_force_rmse_ev_per_angstrom,
+            checkpoint_record.replay_foundation_force_rmse_ev_per_angstrom,
+            checkpoint_record.replay_degradation_ev_per_angstrom,
+            checkpoint_record.replay_label_mode,
+        )
+    ):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 checkpoint assessment unexpectedly contains replay evidence."
+        )
+
+    records: dict[str, Any] = {authority.checkpoint_key: checkpoint_record}
+    if result.evaluation_record is not None:
+        records[authority.evaluation_key] = evaluation_record
+    if result.metric_record is not None:
+        records[authority.metric_key] = metric_record
+    return records
+
+
 def _eval2_target_size_endpoint_evidence(
     *,
     cfg: Mapping[str, Any],
@@ -19571,16 +20540,19 @@ def _eval2_target_size_endpoint_evidence(
     target_size_study: Any,
     repair2: Any,
     role_freeze: Any,
+    target_materialization_resolver: _TargetSizeMaterializationResolver,
     baseline_model: Path | None,
     model_dtype: str,
     local_wrappers: Mapping[str, Path],
 ) -> tuple[Any, ...]:
-    """Reduce the exact current paired-seed TRAIN2 population to stage outcomes.
+    """Reduce the exact paired-seed TRAIN2 population through OPT-EVAL4.
 
-    A required trajectory contributes exactly one authenticated outcome: either
-    a strict successful endpoint or an explicit TRAIN2/EVAL2 numerical failure.
-    Ordinary execution, lineage, and infrastructure failures remain campaign
-    errors and are never converted into target-size scientific evidence.
+    Every required ``(size, seed)`` endpoint becomes one immutable staged task.
+    Worker threads may authenticate/prepare computational inputs, run inference,
+    and reduce typed records, but the parent scheduler is the only owner that
+    publishes durable EVAL2 scientific records.  Target-size ranking is reached
+    only after the complete expected endpoint key set has authenticated terminal
+    outcomes.
     """
 
     import mdstats
@@ -19592,15 +20564,22 @@ def _eval2_target_size_endpoint_evidence(
             f"Target-size evidence requested from non-trainable state {target_size_study.outcome}."
         )
     expected_sizes = tuple(int(v) for v in target_size_study.next_training_sizes)
-    screening_seeds = tuple(int(v) for v in target_size_study.policy.screening_optimizer_seeds)
-    expected_keys = tuple((size, seed) for size in expected_sizes for seed in screening_seeds)
+    screening_seeds = tuple(
+        int(v) for v in target_size_study.policy.screening_optimizer_seeds
+    )
+    expected_keys = tuple(
+        (size, seed) for size in expected_sizes for seed in screening_seeds
+    )
     runs = [
-        run for run in campaign.runs
+        run
+        for run in campaign.runs
         if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
         and run.seed in set(screening_seeds)
         and run.selection_size in expected_sizes
     ]
-    run_by_key = {(int(run.selection_size), int(run.seed)): run for run in runs}
+    run_by_key = {
+        (int(run.selection_size), int(run.seed)): run for run in runs
+    }
     if set(run_by_key) != set(expected_keys) or len(run_by_key) != len(expected_keys):
         missing = sorted(set(expected_keys) - set(run_by_key))
         extra = sorted(set(run_by_key) - set(expected_keys))
@@ -19612,13 +20591,30 @@ def _eval2_target_size_endpoint_evidence(
     if stage == mdstats.STAGE_COARSE:
         parent_by_key: dict[tuple[int, int], Any] = {}
     elif stage == mdstats.STAGE_SHORT:
-        parent_by_key = {item.key: item.success for item in target_size_study.coarse_outcomes}
+        parent_by_key = {
+            item.key: item.success for item in target_size_study.coarse_outcomes
+        }
     else:
-        parent_by_key = {item.key: item.success for item in target_size_study.short_outcomes}
+        parent_by_key = {
+            item.key: item.success for item in target_size_study.short_outcomes
+        }
 
-    outcomes: list[Any] = []
-    for key in expected_keys:
+    # Parent-side intake authenticates the exact population and resolves all
+    # scientific authority before worker execution starts.  Dict descriptors are
+    # runtime-only implementation mechanics; all durable identity remains in the
+    # frozen mdstats records referenced below.
+    planning_progress = _ProgressReporter(
+        f"TARGET-EVAL-{str(stage).upper()}-PLAN", len(expected_keys)
+    )
+    descriptors: list[dict[str, Any]] = []
+    shared_specs: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for display_index, key in enumerate(expected_keys, start=1):
         run = run_by_key[key]
+        planning_progress.item_start(
+            display_index,
+            f"n={run.selection_size}, seed={run.seed}",
+            f"authenticate exact {stage} endpoint at epoch {epoch}",
+        )
         bundle, job, root = jobs[run.mace_job_artifact_digest]
         execution = store.get_record_optional(
             f"execution:{run.run_id}", mdstats.TrainingRunExecutionRecord
@@ -19638,13 +20634,26 @@ def _eval2_target_size_endpoint_evidence(
         candidate = target_size_study.candidate(run.selection_size)
         training_policy_digest = _train2_policy_set_digest(job.protocol)
         schedule_digest = job.protocol.learning_rate_schedule_policy.policy_digest
+        parent = parent_by_key.get(key)
+        if stage != mdstats.STAGE_COARSE and parent is None:
+            raise CampaignCliError(
+                f"n={run.selection_size}, seed={run.seed} lost its authenticated "
+                "semantic-screen continuation parent."
+            )
 
+        # TRAIN2 scientific failure is already one authenticated terminal
+        # endpoint.  Keep it in the same logical population/progress scheduler as
+        # successful endpoints, but it performs no accelerator work.
         scientific_attempts = [
-            attempt for attempt in execution.attempts
+            attempt
+            for attempt in execution.attempts
             if attempt.scientific_failure_code is not None
         ]
         if scientific_attempts:
-            if len(scientific_attempts) != 1 or scientific_attempts[0] is not execution.attempts[-1]:
+            if (
+                len(scientific_attempts) != 1
+                or scientific_attempts[0] is not execution.attempts[-1]
+            ):
                 raise CampaignCliError(
                     f"Target-size-v5 run {run.run_id} has invalid scientific-failure attempt provenance."
                 )
@@ -19657,7 +20666,11 @@ def _eval2_target_size_endpoint_evidence(
             failure = mdstats.load_train2_numerical_failure(
                 paths.runs / run.run_id / "checkpoints"
             )
-            if failure is None or failure.content_digest != attempt.scientific_failure_evidence_digest:
+            if (
+                failure is None
+                or failure.content_digest
+                != attempt.scientific_failure_evidence_digest
+            ):
                 raise CampaignCliError(
                     f"TRAIN2 numerical-failure evidence for {run.run_id} is missing or unauthenticated."
                 )
@@ -19670,30 +20683,47 @@ def _eval2_target_size_endpoint_evidence(
                     f"TRAIN2 numerical failure for {run.run_id} belongs to epoch limit "
                     f"{failure.execution_epoch_limit}, expected {epoch}."
                 )
-            outcomes.append(
-                mdstats.TargetSizeStageOutcome(
-                    failure=mdstats.TargetSizeTrajectoryFailureEvidence(
-                        stage=stage,
-                        target_size=run.selection_size,
-                        optimizer_seed=run.seed,
-                        failure_phase=mdstats.FAILURE_PHASE_TRAIN,
-                        failure_code=failure.failure_code,
-                        failure_reasons=(failure.reason,),
-                        target_size_study_policy_digest=target_size_study.policy.policy_digest,
-                        training_run_digest=run.content_digest,
-                        candidate_data_digest=candidate.candidate_data_digest,
-                        training_policy_digest=training_policy_digest,
-                        schedule_digest=schedule_digest,
-                        execution_record_digest=execution.content_digest,
-                        execution_attempt_digest=attempt.content_digest,
-                        completed_epochs=min(int(epoch), int(failure.failed_epoch) + 1),
-                        optimizer_update_count=failure.completed_updates,
-                    )
+            outcome = mdstats.TargetSizeStageOutcome(
+                failure=mdstats.TargetSizeTrajectoryFailureEvidence(
+                    stage=stage,
+                    target_size=run.selection_size,
+                    optimizer_seed=run.seed,
+                    failure_phase=mdstats.FAILURE_PHASE_TRAIN,
+                    failure_code=failure.failure_code,
+                    failure_reasons=(failure.reason,),
+                    target_size_study_policy_digest=target_size_study.policy.policy_digest,
+                    training_run_digest=run.content_digest,
+                    candidate_data_digest=candidate.candidate_data_digest,
+                    training_policy_digest=training_policy_digest,
+                    schedule_digest=schedule_digest,
+                    execution_record_digest=execution.content_digest,
+                    execution_attempt_digest=attempt.content_digest,
+                    completed_epochs=min(int(epoch), int(failure.failed_epoch) + 1),
+                    optimizer_update_count=failure.completed_updates,
                 )
             )
+            descriptors.append(
+                {
+                    "display_index": display_index,
+                    "key": key,
+                    "run": run,
+                    "terminal": _TargetSizeEval2EndpointResult(outcome=outcome),
+                    "label": f"n={run.selection_size}, seed={run.seed}",
+                }
+            )
+            planning_progress.item_done(
+                display_index,
+                f"n={run.selection_size}, seed={run.seed}",
+                "authenticated terminal TRAIN2 scientific failure",
+            )
             continue
+
         if execution.state is not mdstats.TrainingRunState.SUCCEEDED:
-            reason = None if not execution.attempts else execution.attempts[-1].failure_reason
+            reason = (
+                None
+                if not execution.attempts
+                else execution.attempts[-1].failure_reason
+            )
             raise CampaignCliError(
                 f"Target-size-v5 run {run.run_id} failed for a non-scientific execution reason; "
                 f"it cannot be converted to size evidence: {reason}"
@@ -19706,17 +20736,30 @@ def _eval2_target_size_endpoint_evidence(
             runtime = mdstats.load_train2_runtime_summary(
                 paths.runs / run.run_id / "checkpoints"
             )
-        if runtime.completed_epochs != epoch or runtime.planned_epochs != target_size_study.screening_horizon_epochs:
+        if runtime.completed_epochs != epoch:
             raise CampaignCliError(
-                f"{run.run_id} is not the exact {stage} endpoint on the "
-                f"{target_size_study.screening_horizon_epochs}-epoch screen schedule."
+                f"{run.run_id} is not the exact {stage} boundary endpoint {epoch}."
             )
         target_role = _eval2_target_role_for_run(
-            store=store, target_size_study=target_size_study, repair2=repair2,
-            role_freeze=role_freeze, bundle=bundle, run=run,
+            store=store,
+            target_size_study=target_size_study,
+            repair2=repair2,
+            role_freeze=role_freeze,
+            target_materialization_resolver=target_materialization_resolver,
+            bundle=bundle,
+            run=run,
         )
+        if getattr(target_role, "role_kind", None) != "size_development_complement":
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 target-only EVAL2 resolved a non-complement target role."
+            )
         target_artifact, target_path = _eval2_target_artifact_for_run(
-            paths=paths, store=store, bundle=bundle, job=job, root=root, role=target_role
+            paths=paths,
+            store=store,
+            bundle=bundle,
+            job=job,
+            root=root,
+            role=target_role,
         )
         catalog = _evaluation_checkpoint_catalog(store, run.run_id, execution)
         points = mdstats.read_train2_trajectory_points(
@@ -19724,98 +20767,833 @@ def _eval2_target_size_endpoint_evidence(
             checkpoint_catalog=catalog,
             target_head_name=job.protocol.checkpoint_control_policy.target_head_name,
         )
-        matches = [point for point in points if int(point.epoch) == int(epoch) - 1]
+        matches = [
+            point for point in points if int(point.epoch) == int(epoch) - 1
+        ]
         if len(matches) != 1:
             raise CampaignCliError(
                 f"{run.run_id} lacks its exact epoch-{epoch} checkpoint."
             )
         point = matches[0]
         checkpoint = next(
-            (value for value in catalog.checkpoints if value.sha256 == point.checkpoint_sha256),
+            (
+                value
+                for value in catalog.checkpoints
+                if value.sha256 == point.checkpoint_sha256
+            ),
             None,
         )
         if checkpoint is None:
             raise CampaignCliError(
                 f"{run.run_id} endpoint checkpoint is absent from its frozen catalog."
             )
-        try:
-            record = _eval2_full_checkpoint(
-                cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
-                execution=execution, checkpoint=checkpoint, point=point,
-                target_role=target_role, target_artifact=target_artifact, target_path=target_path,
-                true_replay_resolution=None, baseline_model=baseline_model, model_dtype=model_dtype,
-                local_wrappers=local_wrappers,
-                shortlist_reasons=(f"target_size_v5_epoch_{epoch}_exact_endpoint",),
-                full_evaluation_rank=1, include_replay=False,
+        admissibility = job.protocol.checkpoint_admissibility_policy
+        if admissibility is None:
+            raise CampaignCliError(
+                "EVAL2 checkpoint is missing TRAIN2 admissibility authority."
             )
-        except mdstats.Eval2NumericalEvaluationError as exc:
-            if exc.target_role_digest != target_role.content_digest:
+        evaluation_policy = _eval2_evaluation_policy(
+            cfg, paths, job, model_dtype=model_dtype
+        )
+        execution_plan = _evaluation_inference_execution_plan(
+            cfg,
+            store=store,
+            record_key=(
+                f"inference_execution_plan:{run.run_id}:{checkpoint.sha256}"
+            ),
+        )
+        replay_mode_key = "target-only"
+        eval_key = (
+            f"eval2_evaluation:{replay_mode_key}:{run.run_id}:"
+            f"{target_role.content_digest}:{checkpoint.sha256}"
+        )
+        metric_key = (
+            f"eval2_target_metric:{replay_mode_key}:{run.run_id}:"
+            f"{target_role.content_digest}:{checkpoint.sha256}"
+        )
+        checkpoint_key = (
+            f"eval2_checkpoint:{run.run_id}:{target_role.content_digest}:"
+            f"{checkpoint.sha256}"
+        )
+        failure_key = (
+            f"target_size_eval2_failure:{stage}:{epoch}:{run.run_id}:"
+            f"{target_role.content_digest}:{checkpoint.sha256}"
+        )
+        successful_attempt = execution.attempts[
+            execution.successful_attempt_index - 1
+        ]
+        authority = _TargetSizeEval2EndpointAuthority(
+            logical_key=key,
+            stage=str(stage),
+            target_size_study_policy_digest=target_size_study.policy.policy_digest,
+            training_run_digest=run.content_digest,
+            candidate_data_digest=candidate.candidate_data_digest,
+            training_policy_digest=training_policy_digest,
+            schedule_digest=schedule_digest,
+            execution_record_digest=execution.content_digest,
+            execution_attempt_digest=successful_attempt.content_digest,
+            checkpoint_sha256=checkpoint.sha256,
+            evaluation_role_digest=target_role.content_digest,
+            target_monitor_artifact_digest=target_artifact.content_digest,
+            target_monitor_sha256=target_artifact.sha256,
+            evaluation_policy_digest=evaluation_policy.policy_digest,
+            evaluation_key=eval_key,
+            metric_key=metric_key,
+            checkpoint_key=checkpoint_key,
+            failure_key=failure_key,
+        )
+        cached_eval = store.get_record_optional(
+            eval_key, mdstats.CheckpointEvaluationRecord
+        )
+        cached_metric = store.get_record_optional(
+            metric_key, mdstats.Eval2TargetMetricRecord
+        )
+        cached_failure = store.get_record_optional(
+            failure_key, mdstats.TargetSizeTrajectoryFailureEvidence
+        )
+        if cached_failure is not None:
+            _validate_target_size_eval2_failure_authority(
+                cached_failure, authority
+            )
+            if str(cached_failure.failure_phase) != mdstats.FAILURE_PHASE_TARGET_EVALUATION:
                 raise CampaignCliError(
-                    f"EVAL2 numerical-failure role provenance mismatch for {run.run_id}."
-                ) from exc
-            successful_attempt = execution.attempts[execution.successful_attempt_index - 1]
-            outcomes.append(
-                mdstats.TargetSizeStageOutcome(
-                    failure=mdstats.TargetSizeTrajectoryFailureEvidence(
-                        stage=stage,
-                        target_size=run.selection_size,
-                        optimizer_seed=run.seed,
-                        failure_phase=mdstats.FAILURE_PHASE_TARGET_EVALUATION,
-                        failure_code=exc.failure_code,
-                        failure_reasons=(exc.reason,),
-                        target_size_study_policy_digest=target_size_study.policy.policy_digest,
-                        training_run_digest=run.content_digest,
-                        candidate_data_digest=candidate.candidate_data_digest,
-                        training_policy_digest=training_policy_digest,
-                        schedule_digest=schedule_digest,
-                        execution_record_digest=execution.content_digest,
-                        execution_attempt_digest=successful_attempt.content_digest,
-                        checkpoint_digest=checkpoint.sha256,
-                        evaluation_role_digest=target_role.content_digest,
-                        target_evaluation_digest=exc.content_digest,
-                        completed_epochs=runtime.completed_epochs,
-                        optimizer_update_count=runtime.completed_updates,
-                    )
+                    "TARGET-SIZE-V5 EVAL2 durable endpoint-failure record has the wrong failure phase."
+                )
+            if cached_eval is not None or cached_metric is not None:
+                raise CampaignCliError(
+                    "TARGET-SIZE-V5 EVAL2 endpoint has conflicting durable success and failure evidence."
+                )
+            descriptors.append(
+                {
+                    "display_index": display_index,
+                    "key": key,
+                    "run": run,
+                    "authority": authority,
+                    "terminal": _TargetSizeEval2EndpointResult(
+                        outcome=mdstats.TargetSizeStageOutcome(failure=cached_failure),
+                        failure_key=failure_key,
+                        failure_record=cached_failure,
+                        cache_reused=True,
+                    ),
+                    "label": f"n={run.selection_size}, seed={run.seed}",
+                }
+            )
+            planning_progress.item_done(
+                display_index,
+                f"n={run.selection_size}, seed={run.seed}",
+                "authenticated terminal target-evaluation scientific failure",
+            )
+            continue
+        reusable = bool(
+            cached_eval is not None
+            and cached_metric is not None
+            and cached_eval.run_plan_digest == run.content_digest
+            and cached_eval.checkpoint_sha256 == checkpoint.sha256
+            and cached_eval.evaluation_policy_digest == evaluation_policy.policy_digest
+            and cached_eval.target_monitor_artifact_digest
+            == target_artifact.content_digest
+            and cached_eval.target_monitor_sha256 == target_artifact.sha256
+            and cached_metric.target_role_digest == target_role.content_digest
+            and cached_eval.target_candidate_prediction_digest
+            == cached_metric.prediction_digest
+            and cached_eval.replay_monitor_artifact_digest is None
+            and cached_eval.replay_monitor_sha256 is None
+            and "evaluation_scope:authorized_target_only"
+            in cached_eval.metric_record.evaluation_notes
+        )
+        source: Path | None = None
+        capsule: Any | None = None
+        if not reusable:
+            if cached_eval is not None:
+                store.delete_record(eval_key)
+            if cached_metric is not None:
+                store.delete_record(metric_key)
+            source, capsule = _checkpoint_source_for_evaluation(
+                paths,
+                store,
+                run.run_id,
+                checkpoint,
+                execution.checkpoint_catalog,
+                authenticate_bytes=False,
+            )
+
+        shared_key = None
+        if not reusable:
+            # Scientific role authority remains explicit while computational
+            # target data are shared by authenticated bytes.  Job-local artifact
+            # records with the same role/bytes are admitted individually below
+            # rather than multiplying one resident parsed target in RAM.
+            shared_key = (
+                target_role.content_digest,
+                target_artifact.sha256,
+                evaluation_policy.policy_digest,
+            )
+            shared_spec = shared_specs.setdefault(
+                shared_key,
+                {
+                    "path": target_path,
+                    "artifact": target_artifact,
+                    "policy": evaluation_policy,
+                    "execution_plan": execution_plan,
+                    "authority_scope_digest": target_role.content_digest,
+                    "compatible_artifact_digests": set(),
+                },
+            )
+            shared_spec["compatible_artifact_digests"].add(
+                target_artifact.content_digest
+            )
+        descriptors.append(
+            {
+                "display_index": display_index,
+                "key": key,
+                "run": run,
+                "bundle": bundle,
+                "job": job,
+                "root": root,
+                "execution": execution,
+                "candidate": candidate,
+                "training_policy_digest": training_policy_digest,
+                "schedule_digest": schedule_digest,
+                "runtime": runtime,
+                "parent": parent,
+                "target_role": target_role,
+                "target_artifact": target_artifact,
+                "target_path": target_path,
+                "point": point,
+                "checkpoint": checkpoint,
+                "admissibility": admissibility,
+                "evaluation_policy": evaluation_policy,
+                "execution_plan": execution_plan,
+                "eval_key": eval_key,
+                "metric_key": metric_key,
+                "checkpoint_key": checkpoint_key,
+                "failure_key": failure_key,
+                "authority": authority,
+                "cached_eval": cached_eval if reusable else None,
+                "cached_metric": cached_metric if reusable else None,
+                "source": source,
+                "capsule": capsule,
+                "shared_key": shared_key,
+                "label": f"n={run.selection_size}, seed={run.seed}",
+            }
+        )
+        planning_progress.item_done(
+            display_index,
+            f"n={run.selection_size}, seed={run.seed}",
+            (
+                "authenticated target-only EVAL2 cache reuse"
+                if reusable
+                else "authenticated checkpoint + target authority"
+            ),
+        )
+
+    # Materialize each scientifically compatible target context exactly once.
+    # This is parent-owned, observable setup; no worker publishes authority.
+    shared_contexts: dict[tuple[str, str, str], Any] = {}
+    if shared_specs:
+        shared_progress = _ProgressReporter(
+            f"TARGET-EVAL-{str(stage).upper()}-DATA", len(shared_specs)
+        )
+        for shared_index, (shared_key, spec) in enumerate(
+            sorted(shared_specs.items(), key=lambda item: item[0]), start=1
+        ):
+            label = f"target-{spec['artifact'].sha256[:12]}"
+            shared_progress.item_start(
+                shared_index,
+                label,
+                "authenticate + parse immutable target context",
+            )
+
+            def shared_phase(message: str, *, active_label: str = label) -> None:
+                print(
+                    f"[TARGET-EVAL target] status=phase; item={active_label}; phase={message}",
+                    flush=True,
+                )
+
+            with inference_start_signal(
+                lambda: None, phase_callback=shared_phase
+            ):
+                shared_started = time.monotonic()
+                context = mdstats.prepare_shared_target_evaluation_context(
+                    spec["path"],
+                    spec["artifact"],
+                    policy=spec["policy"],
+                    execution_plan=spec["execution_plan"],
+                    authority_scope_digest=spec["authority_scope_digest"],
+                    compatible_target_monitor_artifact_digests=tuple(
+                        sorted(spec["compatible_artifact_digests"])
+                    ),
+                )
+            shared_contexts[shared_key] = context
+            shared_progress.item_done(
+                shared_index,
+                label,
+                (
+                    f"resident={_format_reclaimed_bytes(context.retained_bytes)}; "
+                    f"target_prepare={time.monotonic() - shared_started:.3f}s"
+                ),
+            )
+
+    progress = _ProgressReporter(
+        f"TARGET-EVAL-{str(stage).upper()}@{epoch}", len(expected_keys)
+    )
+    tasks: list[_StagedEvaluationTask] = []
+    from .campaign_execution import ReusableMaceCandidateProviderSession
+
+    candidate_provider_session = ReusableMaceCandidateProviderSession()
+
+    def publish_result(
+        authority: _TargetSizeEval2EndpointAuthority,
+        result: _TargetSizeEval2EndpointResult,
+        *,
+        cached_evaluation_record: Any | None = None,
+        cached_metric_record: Any | None = None,
+    ) -> None:
+        """Parent-validate and publish one exact endpoint deterministically."""
+
+        records = _target_size_eval2_publication_records(
+            authority,
+            result,
+            cached_evaluation_record=cached_evaluation_record,
+            cached_metric_record=cached_metric_record,
+        )
+        if records:
+            store.put_records(records)
+
+    for descriptor in descriptors:
+        display_index = int(descriptor["display_index"])
+        run = descriptor["run"]
+        key = descriptor["key"]
+        label = descriptor["label"]
+        terminal = descriptor.get("terminal")
+        if terminal is not None:
+            terminal_authority = descriptor.get("authority")
+            tasks.append(
+                _StagedEvaluationTask(
+                    display_index=display_index,
+                    key=(
+                        f"target-size:{target_size_study.content_digest}:{stage}:{epoch}:"
+                        f"{run.selection_size}:{run.seed}:{run.content_digest}:train-failure"
+                    ),
+                    label=label,
+                    start_detail="authenticated TRAIN2 scientific failure",
+                    prepare=lambda active=terminal: active,
+                    requires_inference=lambda _prepared: False,
+                    infer=lambda active: active,
+                    finalize=lambda prepared, _result: prepared,
+                    cached_result=lambda prepared: prepared,
+                    done_detail=lambda _result, wall: (
+                        f"terminal scientific failure; elapsed={format_progress_time(wall)}"
+                    ),
+                    on_success=(
+                        None
+                        if terminal_authority is None
+                        else (
+                            lambda result, active_authority=terminal_authority: publish_result(
+                                active_authority, result
+                            )
+                        )
+                    ),
+                    accelerator_possible=False,
                 )
             )
             continue
 
-        parent = parent_by_key.get(key)
-        if stage != mdstats.STAGE_COARSE and parent is None:
-            raise CampaignCliError(
-                f"n={run.selection_size}, seed={run.seed} lost its authenticated "
-                "semantic-screen continuation parent."
-            )
-        wall_time = sum(float(attempt.elapsed_seconds) for attempt in execution.attempts)
-        success = mdstats.TargetSizeStudyTrainingEvidence(
-            stage=stage,
-            target_size=run.selection_size,
-            optimizer_seed=run.seed,
-            completed_epochs=runtime.completed_epochs,
-            planned_epochs=runtime.planned_epochs,
-            optimizer_update_count=runtime.completed_updates,
-            structures_presented=runtime.structures_presented,
-            normalized_schedule_progress=runtime.normalized_progress,
-            instantaneous_learning_rate=runtime.instantaneous_learning_rate,
-            wall_time_seconds=wall_time,
-            target_force_score_mev_per_a=record.target_metrics.force_component_rmse_ev_per_angstrom * 1000.0,
-            foundation_identity_digest=job.protocol.foundation_checkpoint.canonical_content_digest,
-            evaluation_role_digest=target_role.content_digest,
-            training_policy_digest=training_policy_digest,
-            target_size_study_policy_digest=target_size_study.policy.policy_digest,
-            training_run_digest=run.content_digest,
-            candidate_data_digest=candidate.candidate_data_digest,
-            checkpoint_digest=point.checkpoint_sha256,
-            schedule_digest=schedule_digest,
-            optimizer_state_digest=runtime.optimizer_state_digest,
-            rng_state_digest=runtime.rng_state_digest,
-            target_evaluation_digest=record.target_metrics.content_digest,
-            parent_checkpoint_digest=None if parent is None else parent.checkpoint_digest,
-            parent_optimizer_state_digest=None if parent is None else parent.optimizer_state_digest,
-            parent_rng_state_digest=None if parent is None else parent.rng_state_digest,
+        bundle = descriptor["bundle"]
+        job = descriptor["job"]
+        root = descriptor["root"]
+        execution = descriptor["execution"]
+        candidate = descriptor["candidate"]
+        training_policy_digest = descriptor["training_policy_digest"]
+        schedule_digest = descriptor["schedule_digest"]
+        runtime = descriptor["runtime"]
+        parent = descriptor["parent"]
+        target_role = descriptor["target_role"]
+        target_artifact = descriptor["target_artifact"]
+        target_path = descriptor["target_path"]
+        point = descriptor["point"]
+        checkpoint = descriptor["checkpoint"]
+        admissibility = descriptor["admissibility"]
+        evaluation_policy = descriptor["evaluation_policy"]
+        execution_plan = descriptor["execution_plan"]
+        eval_key = descriptor["eval_key"]
+        metric_key = descriptor["metric_key"]
+        checkpoint_key = descriptor["checkpoint_key"]
+        cached_eval = descriptor["cached_eval"]
+        cached_metric = descriptor["cached_metric"]
+        failure_key = descriptor["failure_key"]
+        authority = descriptor["authority"]
+        source = descriptor["source"]
+        capsule = descriptor["capsule"]
+        endpoint_timing: dict[str, Any] = {
+            "prepare_seconds": 0.0,
+            "materialize_seconds": 0.0,
+            "prediction_seconds": 0.0,
+            "finalize_seconds": 0.0,
+            "prediction_cache_hit": False,
+            "provider_shell_reused": False,
+        }
+        successful_attempt = execution.attempts[
+            execution.successful_attempt_index - 1
+        ]
+        wall_time = sum(
+            float(attempt.elapsed_seconds) for attempt in execution.attempts
         )
-        outcomes.append(mdstats.TargetSizeStageOutcome(success=success))
+
+        def build_success_outcome(
+            checkpoint_record: Any,
+            *,
+            active_run: Any = run,
+            active_job: Any = job,
+            active_candidate: Any = candidate,
+            active_runtime: Any = runtime,
+            active_parent: Any = parent,
+            active_target_role: Any = target_role,
+            active_point: Any = point,
+            active_training_policy_digest: str = training_policy_digest,
+            active_schedule_digest: str = schedule_digest,
+            active_wall_time: float = wall_time,
+        ) -> Any:
+            success = mdstats.TargetSizeStudyTrainingEvidence(
+                stage=stage,
+                target_size=active_run.selection_size,
+                optimizer_seed=active_run.seed,
+                completed_epochs=active_runtime.completed_epochs,
+                optimizer_update_count=active_runtime.completed_updates,
+                structures_presented=active_runtime.structures_presented,
+                instantaneous_learning_rate=active_runtime.instantaneous_learning_rate,
+                wall_time_seconds=active_wall_time,
+                target_force_score_mev_per_a=(
+                    checkpoint_record.target_metrics.force_component_rmse_ev_per_angstrom
+                    * 1000.0
+                ),
+                foundation_identity_digest=(
+                    active_job.protocol.foundation_checkpoint.canonical_content_digest
+                ),
+                evaluation_role_digest=active_target_role.content_digest,
+                training_policy_digest=active_training_policy_digest,
+                target_size_study_policy_digest=(
+                    target_size_study.policy.policy_digest
+                ),
+                training_run_digest=active_run.content_digest,
+                candidate_data_digest=active_candidate.candidate_data_digest,
+                checkpoint_digest=active_point.checkpoint_sha256,
+                schedule_digest=active_schedule_digest,
+                optimizer_state_digest=active_runtime.optimizer_state_digest,
+                rng_state_digest=active_runtime.rng_state_digest,
+                target_evaluation_digest=checkpoint_record.target_metrics.content_digest,
+                parent_checkpoint_digest=(
+                    None
+                    if active_parent is None
+                    else active_parent.checkpoint_digest
+                ),
+                parent_optimizer_state_digest=(
+                    None
+                    if active_parent is None
+                    else active_parent.optimizer_state_digest
+                ),
+                parent_rng_state_digest=(
+                    None if active_parent is None else active_parent.rng_state_digest
+                ),
+            )
+            return mdstats.TargetSizeStageOutcome(success=success)
+
+        def build_numerical_failure(
+            exc: Any,
+            *,
+            active_run: Any = run,
+            active_candidate: Any = candidate,
+            active_runtime: Any = runtime,
+            active_target_role: Any = target_role,
+            active_checkpoint: Any = checkpoint,
+            active_attempt: Any = successful_attempt,
+            active_execution: Any = execution,
+            active_training_policy_digest: str = training_policy_digest,
+            active_schedule_digest: str = schedule_digest,
+            active_failure_key: str = failure_key,
+        ) -> _TargetSizeEval2EndpointResult:
+            if exc.target_role_digest != active_target_role.content_digest:
+                raise CampaignCliError(
+                    f"EVAL2 numerical-failure role provenance mismatch for {active_run.run_id}."
+                ) from exc
+            failure = mdstats.TargetSizeTrajectoryFailureEvidence(
+                stage=stage,
+                target_size=active_run.selection_size,
+                optimizer_seed=active_run.seed,
+                failure_phase=mdstats.FAILURE_PHASE_TARGET_EVALUATION,
+                failure_code=exc.failure_code,
+                failure_reasons=(exc.reason,),
+                target_size_study_policy_digest=(
+                    target_size_study.policy.policy_digest
+                ),
+                training_run_digest=active_run.content_digest,
+                candidate_data_digest=active_candidate.candidate_data_digest,
+                training_policy_digest=active_training_policy_digest,
+                schedule_digest=active_schedule_digest,
+                execution_record_digest=active_execution.content_digest,
+                execution_attempt_digest=active_attempt.content_digest,
+                checkpoint_digest=active_checkpoint.sha256,
+                evaluation_role_digest=active_target_role.content_digest,
+                target_evaluation_digest=exc.content_digest,
+                completed_epochs=active_runtime.completed_epochs,
+                optimizer_update_count=active_runtime.completed_updates,
+            )
+            return _TargetSizeEval2EndpointResult(
+                outcome=mdstats.TargetSizeStageOutcome(failure=failure),
+                failure_key=active_failure_key,
+                failure_record=failure,
+            )
+
+        if cached_eval is not None and cached_metric is not None:
+            def prepare_cached(
+                *, active_eval: Any = cached_eval, active_metric: Any = cached_metric
+            ) -> tuple[Any, Any]:
+                report_inference_worker_phase(
+                    "validating cached target-only EVAL2 records"
+                )
+                return active_eval, active_metric
+
+            def finalize_cached(
+                prepared: tuple[Any, Any],
+                _prediction: Any,
+                *,
+                active_point: Any = point,
+                active_admissibility: Any = admissibility,
+                active_checkpoint_key: str = checkpoint_key,
+                active_build_success: Callable[[Any], Any] = build_success_outcome,
+            ) -> _TargetSizeEval2EndpointResult:
+                active_eval, active_metric = prepared
+                checkpoint_record = mdstats.assess_eval2_checkpoint(
+                    active_point,
+                    evaluation_record_digest=active_eval.content_digest,
+                    target_metrics=active_metric,
+                    admissibility_policy=active_admissibility,
+                    replay_candidate_force_rmse_ev_per_angstrom=None,
+                    replay_foundation_force_rmse_ev_per_angstrom=None,
+                    replay_label_mode=None,
+                    shortlist_reasons=(
+                        f"target_size_v5_epoch_{epoch}_exact_endpoint",
+                    ),
+                    full_evaluation_rank=1,
+                )
+                return _TargetSizeEval2EndpointResult(
+                    outcome=active_build_success(checkpoint_record),
+                    checkpoint_key=active_checkpoint_key,
+                    checkpoint_record=checkpoint_record,
+                    cache_reused=True,
+                )
+
+            tasks.append(
+                _StagedEvaluationTask(
+                    display_index=display_index,
+                    key=(
+                        f"target-size:{target_size_study.content_digest}:{stage}:{epoch}:"
+                        f"{run.selection_size}:{run.seed}:{run.content_digest}:"
+                        f"{target_role.content_digest}:{checkpoint.sha256}"
+                    ),
+                    label=label,
+                    start_detail="authenticated target-only EVAL2 cache reuse",
+                    prepare=prepare_cached,
+                    requires_inference=lambda _prepared: False,
+                    infer=lambda prepared: prepared,
+                    finalize=finalize_cached,
+                    cached_result=lambda prepared: prepared,
+                    done_detail=lambda result, wall: (
+                        f"cached; force={result.outcome.success.target_force_score_mev_per_a:.1f} meV/A; "
+                        f"elapsed={format_progress_time(wall)}"
+                    ),
+                    on_success=(
+                        lambda result,
+                        active_authority=authority,
+                        active_eval=cached_eval,
+                        active_metric=cached_metric: publish_result(
+                            active_authority,
+                            result,
+                            cached_evaluation_record=active_eval,
+                            cached_metric_record=active_metric,
+                        )
+                    ),
+                    accelerator_possible=False,
+                )
+            )
+            continue
+
+        shared_context = shared_contexts[descriptor["shared_key"]]
+        if (
+            str(shared_context.authority_scope_digest)
+            != str(target_role.content_digest)
+        ):
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 shared target context crossed scientific role authority."
+            )
+        assert source is not None
+        job_root = (Path(root) / job.relative_directory).resolve()
+        config_path = (Path(root) / job.config_relative_path).resolve()
+        checkpoint_model_cache = paths.runs / run.run_id / "checkpoint-model-cache"
+
+        def prepare_endpoint(
+            *,
+            active_run: Any = run,
+            active_checkpoint: Any = checkpoint,
+            active_source: Path = source,
+            active_capsule: Any = capsule,
+            active_target_path: Path = target_path,
+            active_target_artifact: Any = target_artifact,
+            active_policy: Any = evaluation_policy,
+            active_execution_plan: Any = execution_plan,
+            active_shared_context: Any = shared_context,
+            active_timing: dict[str, Any] = endpoint_timing,
+        ) -> Any:
+            started = time.monotonic()
+            prepared = mdstats.prepare_mace_checkpoint_evaluation(
+                    active_run,
+                    active_checkpoint,
+                    candidate_model_path=active_source,
+                    evaluation_state_capsule=active_capsule,
+                    target_monitor_path=active_target_path,
+                    target_monitor_artifact=active_target_artifact,
+                    policy=active_policy,
+                    execution_plan=active_execution_plan,
+                    prediction_cache_directory=paths.internal / "evaluation-predictions",
+                    graph_cache_directory=paths.internal / "evaluation-graphs",
+                    shared_target_context=active_shared_context,
+                    allow_target_monitor_override=(
+                        active_target_artifact.content_digest
+                        != active_run.target_monitor_artifact_digest
+                    ),
+                    allow_replay_without_training_lineage=False,
+                    allow_target_only_evaluation=True,
+                )
+            active_timing["prepare_seconds"] = time.monotonic() - started
+            active_timing["prediction_cache_hit"] = bool(
+                getattr(prepared, "target_candidate_cache_hit", False)
+            )
+            return prepared
+
+        def infer_endpoint(
+            prepared: Any,
+            *,
+            active_checkpoint: Any = checkpoint,
+            active_source: Path = source,
+            active_capsule: Any = capsule,
+            active_config_path: Path = config_path,
+            active_job_root: Path = job_root,
+            active_checkpoint_model_cache: Path = checkpoint_model_cache,
+            active_timing: dict[str, Any] = endpoint_timing,
+        ) -> Any:
+            calculator_model = None
+            try:
+                if prepared.requires_candidate_inference:
+                    materialize_started = time.monotonic()
+                    calculator_model = mdstats.materialize_mace_checkpoint_model(
+                        active_checkpoint,
+                        active_source,
+                        mace_config_path=active_config_path,
+                        job_working_directory=active_job_root,
+                        cache_directory=active_checkpoint_model_cache,
+                        wrapper_path=local_wrappers["mdstats-mace-train"],
+                        allow_checkpoint_dtype_template_cast=False,
+                        evaluation_state_capsule=active_capsule,
+                    )
+                    active_timing["materialize_seconds"] = (
+                        time.monotonic() - materialize_started
+                    )
+                prediction_started = time.monotonic()
+                reuse_before = candidate_provider_session.reuse_count
+                result = mdstats.run_prepared_mace_checkpoint_inference(
+                    prepared,
+                    calculator_model_path=calculator_model,
+                    candidate_provider_session=candidate_provider_session,
+                )
+                active_timing["provider_shell_reused"] = bool(
+                    candidate_provider_session.reuse_count > reuse_before
+                )
+                active_timing["prediction_seconds"] = (
+                    time.monotonic() - prediction_started
+                )
+                return result
+            finally:
+                if (
+                    calculator_model is not None
+                    and Path(calculator_model).resolve()
+                    != Path(active_source).resolve()
+                ):
+                    mdstats.remove_materialized_mace_checkpoint_model(
+                        calculator_model
+                    )
+
+        def finalize_endpoint(
+            prepared: Any,
+            predictions: Any,
+            *,
+            active_point: Any = point,
+            active_admissibility: Any = admissibility,
+            active_target_role: Any = target_role,
+            active_eval_key: str = eval_key,
+            active_metric_key: str = metric_key,
+            active_checkpoint_key: str = checkpoint_key,
+            active_build_success: Callable[[Any], Any] = build_success_outcome,
+            active_build_failure: Callable[[Any], _TargetSizeEval2EndpointResult] = build_numerical_failure,
+            active_timing: dict[str, Any] = endpoint_timing,
+        ) -> _TargetSizeEval2EndpointResult:
+            finalize_started = time.monotonic()
+            try:
+                evaluation_record = mdstats.finalize_prepared_mace_checkpoint_evaluation(
+                    prepared, predictions
+                )
+                prediction_digest = (
+                    evaluation_record.target_candidate_prediction_digest
+                )
+                if prediction_digest is None:
+                    raise CampaignCliError(
+                        "EVAL2 target prediction identity was not persisted."
+                    )
+                metric_record = mdstats.eval2_target_metrics_from_prediction_view(
+                    prepared.target_view,
+                    predictions.target_candidate_predictions,
+                    block_ids=active_target_role.correlation_block_ids,
+                    target_role_digest=active_target_role.content_digest,
+                    prediction_digest=prediction_digest,
+                )
+                checkpoint_record = mdstats.assess_eval2_checkpoint(
+                    active_point,
+                    evaluation_record_digest=evaluation_record.content_digest,
+                    target_metrics=metric_record,
+                    admissibility_policy=active_admissibility,
+                    replay_candidate_force_rmse_ev_per_angstrom=None,
+                    replay_foundation_force_rmse_ev_per_angstrom=None,
+                    replay_label_mode=None,
+                    shortlist_reasons=(
+                        f"target_size_v5_epoch_{epoch}_exact_endpoint",
+                    ),
+                    full_evaluation_rank=1,
+                )
+            except mdstats.Eval2NumericalEvaluationError as exc:
+                result = active_build_failure(exc)
+                active_timing["finalize_seconds"] = time.monotonic() - finalize_started
+                return result
+            result = _TargetSizeEval2EndpointResult(
+                outcome=active_build_success(checkpoint_record),
+                evaluation_key=active_eval_key,
+                evaluation_record=evaluation_record,
+                metric_key=active_metric_key,
+                metric_record=metric_record,
+                checkpoint_key=active_checkpoint_key,
+                checkpoint_record=checkpoint_record,
+                cache_reused=False,
+            )
+            active_timing["finalize_seconds"] = time.monotonic() - finalize_started
+            return result
+
+        tasks.append(
+            _StagedEvaluationTask(
+                display_index=display_index,
+                key=(
+                    f"target-size:{target_size_study.content_digest}:{stage}:{epoch}:"
+                    f"{run.selection_size}:{run.seed}:{run.content_digest}:"
+                    f"{target_role.content_digest}:{checkpoint.sha256}"
+                ),
+                label=label,
+                start_detail=(
+                    f"exact {stage} boundary epoch {epoch}; target-only EVAL2"
+                ),
+                prepare=prepare_endpoint,
+                requires_inference=lambda prepared: bool(
+                    prepared.requires_model_inference
+                ),
+                infer=infer_endpoint,
+                finalize=finalize_endpoint,
+                done_detail=lambda result, wall, active_timing=endpoint_timing: (
+                    (
+                        f"failure={result.outcome.failure.failure_code}"
+                        if result.outcome.failure is not None
+                        else (
+                            f"force={result.outcome.success.target_force_score_mev_per_a:.1f} meV/A"
+                        )
+                    )
+                    + (
+                        f"; {'cache' if result.cache_reused else 'computed'}; "
+                        f"prepare={active_timing['prepare_seconds']:.3f}s; "
+                        f"materialize={active_timing['materialize_seconds']:.3f}s; "
+                        f"predict={active_timing['prediction_seconds']:.3f}s; "
+                        f"finalize={active_timing['finalize_seconds']:.3f}s; "
+                        f"prediction_cache={'hit' if active_timing['prediction_cache_hit'] else 'miss'}; "
+                        f"provider_shell={'reused' if active_timing['provider_shell_reused'] else 'fresh'}; "
+                        f"elapsed={format_progress_time(wall)}"
+                    )
+                ),
+                on_success=(
+                    lambda result, active_authority=authority: publish_result(
+                        active_authority, result
+                    )
+                ),
+                prepared_bytes=(
+                    lambda prepared, active_shared_context=shared_context: (
+                        _target_size_eval2_incremental_prepared_bytes(
+                            prepared, active_shared_context
+                        )
+                    )
+                ),
+            )
+        )
+
+    shared_residency_bytes = sum(
+        int(context.retained_bytes) for context in shared_contexts.values()
+    )
+    evaluation_devices = {
+        str(descriptor["evaluation_policy"].device)
+        for descriptor in descriptors
+        if descriptor.get("evaluation_policy") is not None
+    }
+    if len(evaluation_devices) > 1:
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 endpoint population resolved multiple evaluation "
+            f"devices under one staged resource owner: {sorted(evaluation_devices)}."
+        )
+    evaluation_device = next(
+        iter(evaluation_devices),
+        str(
+            _cfg(
+                cfg,
+                "evaluation",
+                "device",
+                _cfg(cfg, "training", "device", "cuda"),
+            )
+        ),
+    )
+    try:
+        results = _run_staged_evaluation_tasks(
+            tasks,
+            cfg=cfg,
+            device=evaluation_device,
+            progress=progress,
+            phase="evaluation",
+            shared_residency_bytes=shared_residency_bytes,
+        )
+    finally:
+        candidate_provider_session.close()
+    if len(results) != len(expected_keys):
+        raise CampaignCliError(
+            "TARGET-SIZE-V5 EVAL2 returned an incomplete terminal endpoint population."
+        )
+
+    # Hard terminal-state barrier: only now may the caller feed the reducer.
+    task_key_by_index = {int(task.display_index): task.key for task in tasks}
+    outcomes: list[Any] = []
+    for descriptor in descriptors:
+        task_key = task_key_by_index[int(descriptor["display_index"])]
+        terminal = results.get(task_key)
+        if not isinstance(terminal, _TargetSizeEval2EndpointResult):
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 produced an invalid endpoint result type."
+            )
+        if terminal.outcome.success is None and terminal.outcome.failure is None:
+            raise CampaignCliError(
+                "TARGET-SIZE-V5 EVAL2 endpoint has no terminal scientific state."
+            )
+        outcomes.append(terminal.outcome)
     return tuple(outcomes)
+
 def _command_evaluate_train2(
     args: argparse.Namespace,
     *,
@@ -19836,6 +21614,9 @@ def _command_evaluate_train2(
         "target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2
     )
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
+    target_materialization_resolver = _load_target_size_materialization_resolver(
+        store, study, repair2
+    )
     baseline_model = _path_cfg(cfg, paths, "foundation_model")
     local_wrappers = _ensure_local_wrappers(paths)
 
@@ -19852,7 +21633,9 @@ def _command_evaluate_train2(
         outcomes = _eval2_target_size_endpoint_evidence(
             cfg=cfg, paths=paths, store=store, campaign=campaign, jobs=jobs,
             target_size_study=study, repair2=repair2,
-            role_freeze=role_freeze, baseline_model=baseline_model, model_dtype=model_dtype,
+            role_freeze=role_freeze,
+            target_materialization_resolver=target_materialization_resolver,
+            baseline_model=baseline_model, model_dtype=model_dtype,
             local_wrappers=local_wrappers,
         )
         if study.next_training_stage == mdstats.STAGE_COARSE:
@@ -19964,6 +21747,7 @@ def _command_evaluate_train2(
             cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
             execution=execution_records[run.content_digest], target_size_study=study,
             repair2=repair2, role_freeze=role_freeze,
+            target_materialization_resolver=target_materialization_resolver,
             true_replay_resolution=true_replay_resolution, baseline_model=baseline_model,
             model_dtype=model_dtype, local_wrappers=local_wrappers,
         )
@@ -19994,7 +21778,8 @@ def _execute_evaluate_current_authority(args: argparse.Namespace) -> int:
     store = CampaignStore(paths.state_db)
     stored_campaign_digest = store.record_digest("training_campaign")
     campaign = store.get_record("training_campaign", mdstats.TrainingCampaignPlan)
-    if _campaign_training_policy_family(campaign) == "train2":
+    jobs = _job_lookup(_current_data8_entries(store))
+    if _campaign_training_policy_family(campaign, jobs) == "train2":
         return _command_evaluate_train2(
             args, cfg=cfg, paths=paths, store=store, campaign=campaign, model_dtype=model_dtype
         )
@@ -22829,6 +24614,7 @@ def _deploy_verify_one_train2_run(
     target_size_study: Any,
     repair2: Any,
     role_freeze: Any,
+    target_materialization_resolver: _TargetSizeMaterializationResolver,
     policy: Any,
     model_dtype: str,
     local_wrappers: Mapping[str, Path],
@@ -22843,6 +24629,7 @@ def _deploy_verify_one_train2_run(
         target_size_study=target_size_study,
         repair2=repair2,
         role_freeze=role_freeze,
+        target_materialization_resolver=target_materialization_resolver,
         bundle=bundle,
         run=run,
     )
@@ -23232,11 +25019,15 @@ def _pes_verify_common_target(
     bundle, job, root = jobs[run.mace_job_artifact_digest]
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
     repair2 = store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
+    target_materialization_resolver = _load_target_size_materialization_resolver(
+        store, target_size_study, repair2
+    )
     role = _eval2_target_role_for_run(
         store=store,
         target_size_study=target_size_study,
         repair2=repair2,
         role_freeze=role_freeze,
+        target_materialization_resolver=target_materialization_resolver,
         bundle=bundle,
         run=run,
     )
@@ -24707,6 +26498,9 @@ def _command_verify_train2_deploy(
     executions = _available_successful_executions(cfg, paths, store, campaign, jobs)
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
     repair2 = store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
+    target_materialization_resolver = _load_target_size_materialization_resolver(
+        store, target_size_study, repair2
+    )
     policy = _deploy_verify_policy(cfg, model_dtype=model_dtype)
     local_wrappers = _ensure_local_wrappers(paths)
     _mark_stage(store, paths, "verify", StageState.RUNNING, "running DEPLOY-VERIFY1 deployment parity")
@@ -24729,6 +26523,7 @@ def _command_verify_train2_deploy(
                 target_size_study=target_size_study,
                 repair2=repair2,
                 role_freeze=role_freeze,
+                target_materialization_resolver=target_materialization_resolver,
                 policy=policy,
                 model_dtype=model_dtype,
                 local_wrappers=local_wrappers,
@@ -24770,7 +26565,9 @@ def command_verify(args: argparse.Namespace) -> int:
             "training_campaign", mdstats.TrainingCampaignPlan
         )
     mlcv_authority = None
-    if campaign_for_migration is not None and _campaign_training_policy_family(campaign_for_migration) == "train2":
+    if campaign_for_migration is not None and _campaign_training_policy_family(
+        campaign_for_migration, _job_lookup(_current_data8_entries(store))
+    ) == "train2":
         deploy_authority = _current_train2_deploy_authority(
             cfg, store=store, campaign=campaign_for_migration, model_dtype=model_dtype
         )
@@ -27112,9 +28909,9 @@ structural_workers = 0
 # Target-size has one fixed candidate universe:
 # 128, 256, 512, 1024, 2048, 4096, 8192, 16384.
 # REPAIR2-prefix materializability plus MVQUAL2 hard admission defines Q.
-# These are the three screening boundaries and the screen scheduler horizon is
-# the final boundary n3 (=10 by default). [training].max_num_epochs is the
-# separate future production budget and must remain strictly greater than n3.
+# These are the three exact screening boundaries. Their terminal boundary may
+# be derived internally for the continuous screen trajectory. [training].max_num_epochs
+# is the independent future production maximum and has no required ordering against n3.
 # No generated/rescue sizes and no ceiling above 16384 are permitted.
 fidelity_epochs = [1, 3, 10]
 coarse_practical_equivalence_mev_per_a = 1.0

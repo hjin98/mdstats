@@ -155,6 +155,18 @@ Runtime concurrency never enters the scientific checkpoint score or admissibilit
 
 Positive accelerator qualification is evidence. The architecture does not assume an accelerator path is correct merely because it is available.
 
+### Canonical staged checkpoint evaluation and target-size reuse
+
+OPT-EVAL4 owns checkpoint-evaluation execution as a bounded CPU-prepare -> accelerator -> CPU-finalize pipeline. TARGET-SIZE-V5 exact-boundary EVAL2 uses this same scheduler rather than a private checkpoint loop. The target-size parent enumerates and authenticates scientific endpoint authority, the staged workers perform computational preparation/inference/finalization, and the parent validates returned run/checkpoint/target-role/prediction/metric identities before any durable endpoint publication. Cache-only and freshly computed endpoints converge through that same parent validation path, and the target-size reducer cannot run until the complete expected `(size, seed)` population has authenticated terminal evidence in deterministic order.
+
+One compatible target role may expose a stage-resident immutable target context. Reuse is content-addressed for computation but never substitutes byte identity for scientific authority: every contributing artifact lineage is authenticated against the role and exact frame-UID sequence. The stage RAM ledger charges shared target atoms/evaluation views once; per-endpoint admission charges only incremental prepared state. Downstream mutation requires a private copy rather than mutating the shared context.
+
+The accelerator stage retains one resource owner. A TARGET-SIZE-V5 population may serially reuse one worker-private MACE provider/model shell when checkpoint bytes authenticate and exact model class/state key/shape/dtype plus runtime-architecture policy prove weight replacement compatible. Foundation-model providers, CuEq/OEq transforms, compiled providers, structural incompatibility, or other unqualified shells rebuild normally. Corruption or authority mismatch remains fatal rather than falling back. Weight-dependent calculator/descriptor state is invalidated on replacement; geometry graph caches remain separately governed by geometry/policy identity.
+
+Static-inference calibration is execution state, not scientific model identity. A calibrated runtime profile may be reused across checkpoint weights only when the provider exposes the same authenticated weight-independent runtime-architecture digest and the exact authenticated geometry workload, device, dtype, head, acceleration/precision policy, and relevant hardware identity match. Without stable geometry identities, compatibility remains checkpoint-exact. Every use still applies live RAM/VRAM clamping and existing OOM/backoff policy.
+
+Cancellation stops new staged admission and is polled at safe preparation/materialization/inference/finalization boundaries. Owned legacy checkpoint-reconstruction subprocesses are monitored so cancellation or timeout terminates the owned process group and cleans attempt-local staging without publishing partial scientific state. Already authenticated terminal evidence remains restartable.
+
 ## Memory and storage budget
 
 Long stages account for persistent and transient memory:

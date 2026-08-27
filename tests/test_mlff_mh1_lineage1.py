@@ -196,13 +196,14 @@ def test_lineage1_reference_fit_v3_and_v2_preserve_correct_authority() -> None:
     )
 
 
-def _training_evidence(*, identity: str) -> mdstats.TargetSizeTrainingEvidence:
-    return mdstats.TargetSizeTrainingEvidence(
-        stage="coarse", target_size=128, optimizer_seed=1, completed_epochs=3, planned_epochs=30,
-        optimizer_update_count=30, structures_presented=384, normalized_schedule_progress=0.1,
+def _training_evidence(*, identity: str) -> mdstats.TargetSizeStudyTrainingEvidence:
+    return mdstats.TargetSizeStudyTrainingEvidence(
+        stage="coarse", target_size=128, optimizer_seed=1, completed_epochs=3,
+        optimizer_update_count=30, structures_presented=384,
         instantaneous_learning_rate=1e-4, wall_time_seconds=1.0, target_force_score_mev_per_a=20.0,
-        numerical_valid=True, target_hard_gates_passed=True, foundation_identity_digest=identity,
-        evaluation_role_digest=_d("8"), training_policy_digest=_d("9"), training_run_digest=_d("a"),
+        foundation_identity_digest=identity, evaluation_role_digest=_d("8"), training_policy_digest=_d("9"),
+        target_size_study_policy_digest=_d("0"), training_run_digest=_d("a"),
+        candidate_data_digest=_d("1"),
         checkpoint_digest=_d("b"), schedule_digest=_d("c"), optimizer_state_digest=_d("d"),
         rng_state_digest=_d("f"), target_evaluation_digest=_d("e"),
     )
@@ -213,7 +214,6 @@ def test_lineage1_target_size_evidence_v3_binds_head_qualified_identity() -> Non
     omol = _mh1("omol")
     a = _training_evidence(identity=omat.canonical_content_digest)
     b = _training_evidence(identity=omol.canonical_content_digest)
-    assert a.to_dict()["schema"] == "mdstats.target-size-training-evidence.v3"
+    assert a.to_dict()["schema"] == "mdstats.target-size-training-evidence.v10"
     assert a.to_dict()["content_digest"] != b.to_dict()["content_digest"]
-    assert mdstats.TargetSizeTrainingEvidence.from_dict(a.to_dict()).to_dict() == a.to_dict()
-
+    assert mdstats.TargetSizeStudyTrainingEvidence.from_dict(a.to_dict()).to_dict() == a.to_dict()

@@ -212,6 +212,73 @@ def _tensor_state_digest(values: Sequence[Any], *, schema: str) -> str:
     return h.hexdigest()
 
 
+def _verify_train2_continuation_content_digests(
+    payload: Mapping[str, Any], summary: "Train2RuntimeSummary"
+) -> None:
+    """Authenticate live-parameter/EMA/RNG companion content against its summary.
+
+    Shape/type/metadata checks alone cannot detect a syntactically valid
+    companion whose scientific continuation content (model parameters, EMA
+    shadow/collected state, or RNG state) was modified while its metadata was
+    left untouched.  This recomputes the same canonical digests used at
+    persistence time and fails closed on any mismatch.
+    """
+
+    live = payload.get("live_parameters")
+    if not isinstance(live, list) or not live:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion live-parameter state is incomplete."
+        )
+    live_digest = _tensor_state_digest(live, schema="mdstats.train2-live-parameters.v1")
+    if live_digest != summary.live_parameter_digest:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion live-parameter content does not match "
+            "its authenticated summary digest."
+        )
+    ema_state = payload.get("ema_state")
+    if summary.ema_state_digest is None:
+        if ema_state is not None:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion carries EMA state but its authenticated "
+                "summary records none."
+            )
+    else:
+        if not isinstance(ema_state, Mapping):
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion EMA state is missing."
+            )
+        shadow = ema_state.get("shadow_params")
+        if not isinstance(shadow, list) or not shadow:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion EMA shadow-parameter state is incomplete."
+            )
+        ema_values = list(shadow)
+        collected = ema_state.get("collected_params")
+        if collected is not None:
+            if not isinstance(collected, list):
+                raise TrainingDataSerializationError(
+                    "TRAIN2 continuation companion EMA collected-parameter state is invalid."
+                )
+            ema_values.extend(collected)
+        ema_digest = _tensor_state_digest(ema_values, schema="mdstats.train2-ema-state.v1")
+        if ema_digest != summary.ema_state_digest:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion EMA content does not match its "
+                "authenticated summary digest."
+            )
+    rng_state = payload.get("rng_state")
+    if not isinstance(rng_state, Mapping):
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion RNG state is incomplete."
+        )
+    rng_digest = digest(rng_state)
+    if rng_digest != summary.rng_state_digest:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion RNG content does not match its "
+            "authenticated summary digest."
+        )
+
+
 def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
     matches = []
     for item in directory.glob("*.pt"):
@@ -510,6 +577,11 @@ class _Train2Runtime:
         self.ema = ema
         self.train_loader = train_loader
         self.current_epoch = int(current_epoch)
+        if self.current_epoch > int(plan.execution_epoch_limit):
+            raise TrainingDataInputError(
+                "TRAIN2 continuation epoch exceeds its active execution boundary; "
+                "refusing to perform another optimizer update."
+            )
         self.checkpoint_directory = Path(checkpoint_handler.io.directory).resolve()
         self.logger_path = Path(logger_path).resolve()
         self.rank = int(rank)
@@ -632,6 +704,11 @@ class _Train2Runtime:
             raise TrainingDataSerializationError("TRAIN2 continuation companion structures-presented geometry changed across restart.")
         if payload.get("raw_checkpoint_sha256") != summary.raw_checkpoint_sha256:
             raise TrainingDataSerializationError("TRAIN2 continuation companion checkpoint digest mismatch.")
+        # Metadata/shape identity alone cannot detect a syntactically valid
+        # companion whose live/EMA/RNG content was modified in place.  Recompute
+        # and compare canonical content digests before any restart state is
+        # applied to the resumed model/process.
+        _verify_train2_continuation_content_digests(payload, summary)
         live = payload.get("live_parameters")
         parameters = list(self.model.parameters())
         if not isinstance(live, list) or len(live) != len(parameters):
@@ -971,6 +1048,85 @@ def train2_runtime_should_pause_after_epoch(epoch: int) -> bool:
     return bool(_ACTIVE_RUNTIME is not None and _ACTIVE_RUNTIME.should_pause_after_epoch(epoch))
 
 
+def validate_train2_runtime_continuation_artifacts(
+    checkpoint_directory: str | Path,
+    *,
+    training_protocol_digest: str,
+    optimizer_policy_digest: str,
+    budget_policy: TrainingBudgetPolicy,
+    learning_rate_policy: LearningRateSchedulePolicy,
+    structures_per_epoch: int,
+) -> Train2RuntimeSummary:
+    """Authenticate durable TRAIN2 state before a campaign decides to resume it.
+
+    The pause limit is intentionally excluded: a survivor may restore a
+    boundary companion under a later execution limit while retaining the same
+    scientific budget and LR trajectory.
+    """
+
+    import torch
+
+    root = Path(checkpoint_directory).resolve()
+    summary = load_train2_runtime_summary(root)
+    expected_structures = int(structures_per_epoch)
+    if expected_structures <= 0:
+        raise TrainingDataInputError("TRAIN2 continuation structures-per-epoch must be positive.")
+    expected_updates = int(summary.updates_per_epoch) * int(budget_policy.planned_epochs)
+    expected_presented = expected_structures * int(budget_policy.planned_epochs)
+    if (
+        summary.training_protocol_digest != training_protocol_digest
+        or summary.optimizer_policy_digest != optimizer_policy_digest
+        or summary.budget_policy_digest != budget_policy.policy_digest
+        or summary.lr_policy_digest != learning_rate_policy.policy_digest
+        or summary.planned_epochs != int(budget_policy.planned_epochs)
+        or summary.planned_updates != expected_updates
+        or summary.structures_per_epoch != expected_structures
+        or summary.planned_structures_presented != expected_presented
+        or summary.completed_updates != summary.completed_epochs * summary.updates_per_epoch
+        or summary.structures_presented != summary.completed_epochs * expected_structures
+        or summary.last_update_index != summary.completed_updates - 1
+    ):
+        raise TrainingDataInputError("TRAIN2 runtime summary is incompatible with its frozen continuation authority.")
+    if summary.completed_epochs <= 0 or summary.completed_epochs > summary.planned_epochs:
+        raise TrainingDataInputError("TRAIN2 runtime summary has an invalid completed epoch.")
+    raw = _checkpoint_for_epoch(root, int(summary.completed_epochs) - 1)
+    if summary.raw_checkpoint_epoch != int(summary.completed_epochs) - 1 or summary.raw_checkpoint_sha256 != _sha256(raw):
+        raise TrainingDataInputError("TRAIN2 runtime summary does not authenticate its latest raw checkpoint.")
+    companion_path = root / TRAIN2_RUNTIME_COMPANION_FILENAME
+    if not companion_path.is_file():
+        raise TrainingDataInputError("TRAIN2 restart checkpoint exists without its exact-continuation runtime companion.")
+    try:
+        payload = torch.load(companion_path, map_location="cpu", weights_only=False)
+    except Exception as exc:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion cannot be read as authenticated runtime state."
+        ) from exc
+    if not isinstance(payload, Mapping) or payload.get("schema") != TRAIN2_RUNTIME_COMPANION_SCHEMA:
+        raise TrainingDataSerializationError("Unsupported TRAIN2 continuation companion schema.")
+    if (
+        int(payload.get("epoch", -1)) != summary.raw_checkpoint_epoch
+        or payload.get("training_protocol_digest") != training_protocol_digest
+        or payload.get("optimizer_policy_digest") != optimizer_policy_digest
+        or payload.get("budget_policy_digest") != budget_policy.policy_digest
+        or payload.get("lr_policy_digest") != learning_rate_policy.policy_digest
+        or int(payload.get("completed_updates", -1)) != summary.completed_updates
+        or int(payload.get("planned_updates", -1)) != summary.planned_updates
+        or int(payload.get("updates_per_epoch", -1)) != summary.updates_per_epoch
+        or int(payload.get("structures_per_epoch", -1)) != expected_structures
+        or int(payload.get("structures_presented", -1)) != summary.structures_presented
+        or int(payload.get("planned_structures_presented", -1)) != summary.planned_structures_presented
+        or payload.get("raw_checkpoint_sha256") != summary.raw_checkpoint_sha256
+        or Path(str(payload.get("raw_checkpoint_name", ""))).name != raw.name
+    ):
+        raise TrainingDataSerializationError("TRAIN2 continuation companion disagrees with its runtime summary.")
+    # Metadata/shape/type agreement is insufficient: a syntactically valid
+    # companion can still carry modified live-parameter, EMA, or RNG values.
+    # Recompute the same canonical content digests used at persistence time
+    # and fail closed before the campaign may treat this state as resumable.
+    _verify_train2_continuation_content_digests(payload, summary)
+    return summary
+
+
 def load_train2_runtime_summary(checkpoint_directory: str | Path) -> Train2RuntimeSummary:
     path = Path(checkpoint_directory).resolve() / TRAIN2_RUNTIME_SUMMARY_FILENAME
     if not path.is_file():
@@ -1016,5 +1172,6 @@ __all__ = [
     "activate_train2_runtime",
     "persist_train2_runtime_epoch",
     "train2_runtime_should_pause_after_epoch",
+    "validate_train2_runtime_continuation_artifacts",
     "load_train2_runtime_summary",
 ]

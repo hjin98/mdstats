@@ -12,6 +12,8 @@ Training may emit inexpensive per-epoch validation summaries. Those summaries ma
 
 Every shortlisted checkpoint is reconstructed and evaluated on the current authenticated target/replay monitor evidence. The resulting authoritative metrics and mandatory constraints decide checkpoint admissibility.
 
+Checkpoint evaluation uses the canonical OPT-EVAL4 staged executor: bounded CPU preparation, one admitted accelerator owner, bounded CPU finalization, then parent-thread authority validation and durable commit. TARGET-SIZE-V5 exact-boundary evaluation is a consumer of that same path. Compatible endpoints may share authenticated immutable target parse/view state and serially reuse a qualified worker-private MACE provider shell or static-inference calibration profile under the strict compatibility rules in the OPT-EVAL4 specification; these are execution optimizations and never merge scientific checkpoint or target-role authority.
+
 A bounded shortlist is an evaluation budget, not an exhaustive scientific claim. A completed run with no admissible checkpoint records that result explicitly; it does not silently promote an unevaluated or constraint-violating checkpoint. When the current policy permits exhaustive evaluation, its explicit configuration changes the evaluation workload without changing metric semantics.
 
 ## Replay-label plane

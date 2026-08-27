@@ -11,7 +11,11 @@ torch = pytest.importorskip("torch")
 import mdstats
 from mdstats.training_data import checkpoint_capsule
 from mdstats.training_data import train2_runtime
-from mdstats.training_data.model_features import MaceCalculatorProvider, ModelCheckpointIdentity
+from mdstats.training_data.model_features import (
+    MaceCalculatorProvider,
+    MaceModelStateCompatibilityError,
+    ModelCheckpointIdentity,
+)
 
 
 def _legacy_tensor_state_digest(values, *, schema: str) -> str:
@@ -103,16 +107,25 @@ def test_eval2_model_shell_hot_swap_requires_exact_architecture_and_state(tmp_pa
 
     provider = MaceCalculatorProvider(_TinyCalculator(first), _identity(first_path))
     provider._state_hot_swap_qualified = True
+    probe = torch.arange(8, dtype=torch.float64).reshape(2, 4) / 7.0
+    first_output = provider._calculator.models[0](probe).detach().clone()
     expected_sha = hashlib.sha256(second_path.read_bytes()).hexdigest()
     new_identity = provider.load_compatible_model_state(second_path, expected_sha256=expected_sha)
     assert new_identity.checkpoint_sha256 == expected_sha
     for key, value in second.state_dict().items():
         assert torch.equal(provider._calculator.models[0].state_dict()[key], value)
+    swapped_output = provider._calculator.models[0](probe).detach()
+    fresh_output = second(probe).detach()
+    assert torch.equal(swapped_output, fresh_output)
+    assert not torch.equal(swapped_output, first_output)
 
     incompatible = torch.nn.Linear(5, 3, bias=True, dtype=torch.float64)
     incompatible_path = tmp_path / "incompatible.model"
     torch.save(incompatible, incompatible_path)
-    with pytest.raises(mdstats.TrainingDataInputError, match="shape mismatch"):
+    with pytest.raises(
+        MaceModelStateCompatibilityError,
+        match="execution-architecture identity differs",
+    ):
         provider.load_compatible_model_state(incompatible_path)
 
 
@@ -123,3 +136,56 @@ def test_eval2_model_shell_is_disabled_without_explicit_qualification(tmp_path: 
     provider = MaceCalculatorProvider(_TinyCalculator(model), _identity(path))
     with pytest.raises(mdstats.TrainingDataInputError, match="not qualified"):
         provider.load_compatible_model_state(path)
+
+
+def test_target_size_candidate_provider_session_rebuilds_incompatible_shell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+    from mdstats.training_data import campaign_execution
+    from mdstats.training_data.model_features import MaceModelStateCompatibilityError
+
+    first_path = tmp_path / "first.model"
+    second_path = tmp_path / "second.model"
+    first_path.write_bytes(b"first-shell")
+    second_path.write_bytes(b"second-shell-incompatible")
+    first_sha = hashlib.sha256(first_path.read_bytes()).hexdigest()
+    second_sha = hashlib.sha256(second_path.read_bytes()).hexdigest()
+
+    class Provider:
+        def __init__(self, sha: str, *, incompatible: bool = False) -> None:
+            self.checkpoint_identity = SimpleNamespace(checkpoint_sha256=sha)
+            self.incompatible = incompatible
+            self.closed = False
+            self.heads = []
+
+        def load_compatible_model_state(self, path, *, expected_sha256=None):
+            assert expected_sha256 == second_sha
+            if self.incompatible:
+                raise MaceModelStateCompatibilityError("incompatible fixture shell")
+            self.checkpoint_identity.checkpoint_sha256 = expected_sha256
+
+        def set_head(self, head):
+            self.heads.append(head)
+
+        def close(self):
+            self.closed = True
+
+    first = Provider(first_sha, incompatible=True)
+    rebuilt = Provider(second_sha)
+    providers = iter((first, rebuilt))
+    monkeypatch.setattr(
+        campaign_execution,
+        "_build_prepared_mace_candidate_provider",
+        lambda prepared, path: next(providers),
+    )
+    prepared = SimpleNamespace(policy=SimpleNamespace(target_head_name="target_head"))
+    session = campaign_execution.ReusableMaceCandidateProviderSession()
+    assert session.acquire(prepared, first_path) is first
+    assert session.acquire(prepared, second_path) is rebuilt
+    assert first.closed
+    assert session.rebuild_count == 2
+    assert session.reuse_count == 0
+    assert rebuilt.heads == ["target_head"]
+    session.close()
+    assert rebuilt.closed

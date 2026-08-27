@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -12,7 +14,13 @@ from ase.io import write
 
 import mdstats
 from mdstats.training_data import campaign_cli, campaign_execution
-from mdstats.training_data.inference_parallel import CpuTelemetrySample
+from mdstats.training_data.inference_parallel import (
+    CpuTelemetrySample,
+    InferenceLease,
+    current_inference_lease,
+    inference_start_signal,
+    report_inference_worker_phase,
+)
 from mdstats.training_data.model_features import AtomicModelPrediction, MaceCalculatorProvider
 from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
 
@@ -304,6 +312,10 @@ def test_staged_runner_overlaps_prepare_and_finalize_with_single_inference_slot(
             finalize=finalize,
             done_detail=lambda result, wall: str(result),
             on_success=lambda result: callback_threads.append(threading.get_ident()),
+            # The prepared payload is a single scalar int; declare its sound
+            # retained upper bound so the scheduler may prove prepare/infer
+            # overlap instead of conservatively sequencing the transition.
+            retained_upper_bound=1024,
         )
 
     results = campaign_cli._run_staged_evaluation_tasks(
@@ -508,6 +520,51 @@ def test_staged_runner_stage_failure_stops_new_work_without_deadlock(
             progress=_Progress(),
         )
     assert executed == ["prepare0"]
+
+
+def test_staged_runner_does_not_admit_queued_finalize_after_fatal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_prepare_jobs"] = 2
+    cfg["execution"]["parallel_evaluation_finalize_jobs"] = 1
+    cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 2
+    failure_started = threading.Event()
+    finalized: list[str] = []
+
+    def failing_prepare():
+        failure_started.set()
+        raise RuntimeError("fatal sibling")
+
+    def sibling_prepare():
+        assert failure_started.wait(timeout=1.0)
+        time.sleep(0.02)
+        return "prepared-sibling"
+
+    tasks = (
+        campaign_cli._StagedEvaluationTask(
+            display_index=1, key="fatal", label="fatal", start_detail="failure-test",
+            prepare=failing_prepare, requires_inference=lambda prepared: False,
+            infer=lambda prepared: prepared, finalize=lambda prepared, inferred: prepared,
+            done_detail=lambda result, wall: "done", accelerator_possible=False,
+        ),
+        campaign_cli._StagedEvaluationTask(
+            display_index=2, key="queued-finalize", label="queued-finalize",
+            start_detail="failure-test", prepare=sibling_prepare,
+            requires_inference=lambda prepared: False, infer=lambda prepared: prepared,
+            finalize=lambda prepared, inferred: finalized.append(prepared) or prepared,
+            done_detail=lambda result, wall: "done", accelerator_possible=False,
+        ),
+    )
+
+    with pytest.raises(campaign_cli.CampaignCliError, match="fatal sibling"):
+        campaign_cli._run_staged_evaluation_tasks(
+            tasks, cfg=cfg, device="cpu", progress=_Progress()
+        )
+    assert finalized == []
 
 
 def test_dynamics_sibling_failure_cancels_active_external_process_group(
@@ -753,16 +810,94 @@ def test_target_only_outer_cv_authorization_omits_run_replay_lineage(
     assert "evaluation_scope:authorized_target_only" in record.metric_record.evaluation_notes
 
 
-def test_target_only_evaluation_requires_explicit_target_override(tmp_path: Path) -> None:
+def test_target_only_evaluation_authorization_is_independent_of_target_override(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "target.extxyz"
+    write(target, [_frame()], format="extxyz")
+    artifact = _target_artifact(target)
+    candidate = tmp_path / "candidate.pt"
+    candidate.write_bytes(b"candidate")
+    run = mdstats.TrainingCampaignRunPlan(
+        run_id="opt-eval4-target-size-run",
+        data8_bundle_digest=_h("data8-target-size"),
+        mace_job_artifact_digest=_h("job-target-size"),
+        job_id="job-target-size",
+        kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
+        fold_index=None,
+        training_mode=mdstats.TrainingMode.MULTIHEAD_REPLAY,
+        selection_size=512,
+        seed=1,
+        protocol_family_digest=_h("family-target-size"),
+        protocol_variant_digest=_h("variant-target-size"),
+        protocol_digest=_h("protocol-target-size"),
+        checkpoint_metric_policy_digest=_h("metric-policy-target-size"),
+        target_monitor_artifact_digest=artifact.content_digest,
+        replay_monitor_artifact_digest=_h("training-replay-target-size"),
+        relative_output_directory="run-target-size",
+    )
+    checkpoint = mdstats.CheckpointFileRecord(
+        run_plan_digest=run.content_digest,
+        candidate_id="candidate",
+        epoch=1,
+        relative_path=candidate.name,
+        sha256=hashlib.sha256(candidate.read_bytes()).hexdigest(),
+        size_bytes=candidate.stat().st_size,
+    )
+    prepared = mdstats.prepare_mace_checkpoint_evaluation(
+        run,
+        checkpoint,
+        candidate_model_path=candidate,
+        calculator_model_path=candidate,
+        target_monitor_path=target,
+        target_monitor_artifact=artifact,
+        policy=mdstats.CheckpointEvaluationPolicy(condition_keys=()),
+        allow_target_only_evaluation=True,
+    )
+    assert prepared.target_only_evaluation_authorized
+    assert prepared.replay_monitor_artifact is None
+    assert prepared.baseline_model_path is None
+
+    with pytest.raises(
+        mdstats.TrainingDataInputError,
+        match="Target-only evaluation cannot also carry replay monitor inputs",
+    ):
+        mdstats.prepare_mace_checkpoint_evaluation(
+            run,
+            checkpoint,
+            candidate_model_path=candidate,
+            calculator_model_path=candidate,
+            target_monitor_path=target,
+            target_monitor_artifact=artifact,
+            policy=mdstats.CheckpointEvaluationPolicy(condition_keys=()),
+            replay_monitor_path=target,
+            allow_target_only_evaluation=True,
+        )
+
+
+def test_target_only_evaluation_does_not_authorize_target_monitor_override(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / "target.extxyz"
     write(target, [_frame()], format="extxyz")
     artifact = _target_artifact(target)
     candidate = tmp_path / "candidate.pt"
     candidate.write_bytes(b"candidate")
     run, checkpoint = _run_checkpoint(artifact, candidate)
+    run = replace(
+        run, target_monitor_artifact_digest=_h("different-target-monitor")
+    )
+    checkpoint = mdstats.CheckpointFileRecord(
+        run_plan_digest=run.content_digest,
+        candidate_id="candidate",
+        epoch=1,
+        relative_path=candidate.name,
+        sha256=hashlib.sha256(candidate.read_bytes()).hexdigest(),
+        size_bytes=candidate.stat().st_size,
+    )
     with pytest.raises(
         mdstats.TrainingDataInputError,
-        match="reserved for an explicit target-monitor override",
+        match="Target monitor artifact lineage does not match campaign run",
     ):
         mdstats.prepare_mace_checkpoint_evaluation(
             run,
@@ -773,6 +908,211 @@ def test_target_only_evaluation_requires_explicit_target_override(tmp_path: Path
             target_monitor_artifact=artifact,
             policy=mdstats.CheckpointEvaluationPolicy(condition_keys=()),
             allow_target_only_evaluation=True,
+        )
+
+
+def test_target_size_eval2_full_checkpoint_authorizes_frozen_target_only_monitor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "target-size.extxyz"
+    write(target, [_frame()], format="extxyz")
+    artifact = _target_artifact(target)
+    candidate = tmp_path / "candidate.pt"
+    candidate.write_bytes(b"candidate")
+    run = mdstats.TrainingCampaignRunPlan(
+        run_id="target-size-eval2-run",
+        data8_bundle_digest=_h("target-size-data8"),
+        mace_job_artifact_digest=_h("target-size-job"),
+        job_id="target-size-job",
+        kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
+        fold_index=None,
+        training_mode=mdstats.TrainingMode.MULTIHEAD_REPLAY,
+        selection_size=512,
+        seed=1,
+        protocol_family_digest=_h("target-size-family"),
+        protocol_variant_digest=_h("target-size-variant"),
+        protocol_digest=_h("target-size-protocol"),
+        checkpoint_metric_policy_digest=_h("target-size-metric-policy"),
+        target_monitor_artifact_digest=artifact.content_digest,
+        replay_monitor_artifact_digest=_h("target-size-training-replay"),
+        relative_output_directory="target-size-run",
+    )
+    checkpoint = mdstats.CheckpointFileRecord(
+        run_plan_digest=run.content_digest,
+        candidate_id="candidate",
+        epoch=1,
+        relative_path=candidate.name,
+        sha256=hashlib.sha256(candidate.read_bytes()).hexdigest(),
+        size_bytes=candidate.stat().st_size,
+    )
+    role = mdstats.Eval2TargetRole(
+        label_domain_id="label-domain-target-size",
+        role_kind="size_development_complement",
+        target_data_role_freeze_digest=_h("target-size-role-freeze"),
+        target_size_study_digest=_h("target-size-study"),
+        evaluation_frame_uids=artifact.frame_uids,
+        correlation_block_ids=(_h("target-size-block"),),
+        excluded_training_frame_uids=(_h("target-size-training-frame"),),
+    )
+    point = mdstats.Eval2TrajectoryPoint(
+        epoch=0,
+        checkpoint_sha256=checkpoint.sha256,
+        lightweight_target_score_ev_per_angstrom=0.01,
+        normalized_schedule_progress=0.1,
+        instantaneous_learning_rate=1.0e-3,
+        phase="adaptation",
+        runtime_summary_digest=_h("target-size-runtime"),
+        stable_candidate_identity="target-size-epoch-1",
+    )
+    job = SimpleNamespace(
+        relative_directory="job",
+        config_relative_path="job/config.yaml",
+        protocol=SimpleNamespace(
+            checkpoint_admissibility_policy=mdstats.CheckpointAdmissibilityPolicy()
+        ),
+    )
+    execution = SimpleNamespace(checkpoint_catalog=SimpleNamespace())
+    bundle = SimpleNamespace(
+        replay_plan=SimpleNamespace(
+            monitor_artifact=SimpleNamespace(
+                content_digest=run.replay_monitor_artifact_digest
+            )
+        )
+    )
+
+    class Store:
+        def __init__(self):
+            self.records = {}
+
+        def get_record_optional(self, key, _record_type):
+            return self.records.get(key)
+
+        def delete_record(self, key):
+            self.records.pop(key, None)
+
+        def put_record(self, key, value):
+            self.records[key] = value
+
+    store = Store()
+    paths = SimpleNamespace(internal=tmp_path / "internal", runs=tmp_path / "runs")
+    campaign_core = campaign_cli._core
+    monkeypatch.setattr(
+        campaign_core,
+        "_eval2_evaluation_policy",
+        lambda *_args, **_kwargs: mdstats.CheckpointEvaluationPolicy(condition_keys=()),
+    )
+    monkeypatch.setattr(
+        campaign_core,
+        "_evaluation_inference_execution_plan",
+        lambda *_args, **_kwargs: mdstats.InferenceExecutionPlan(
+            batch_policy="fixed", selected_batch_size=1, maximum_batch_size=1
+        ),
+    )
+    monkeypatch.setattr(
+        campaign_core,
+        "_checkpoint_source_for_evaluation",
+        lambda *_args, **_kwargs: (candidate, None),
+    )
+    monkeypatch.setattr(
+        mdstats, "materialize_mace_checkpoint_model", lambda *_args, **_kwargs: candidate
+    )
+    observed = {}
+
+    def infer(prepared, *, calculator_model_path=None, **_kwargs):
+        observed["target_only_authorized"] = prepared.target_only_evaluation_authorized
+        observed["target_monitor_override"] = (
+            prepared.target_monitor_artifact.content_digest
+            != prepared.run_plan.target_monitor_artifact_digest
+        )
+        return mdstats.CheckpointEvaluationPredictionBundle(
+            target_candidate_predictions=(
+                AtomicModelPrediction(
+                    energy_ev=-1.9,
+                    forces_ev_per_angstrom=np.full((2, 3), 0.01),
+                    stress_ev_per_angstrom3=np.zeros((3, 3)),
+                ),
+            ),
+            target_candidate_artifact=None,
+            target_foundation_predictions=None,
+            target_foundation_artifact=None,
+            replay_candidate_predictions=None,
+            replay_candidate_artifact=None,
+            replay_foundation_predictions=None,
+            replay_foundation_artifact=None,
+        )
+
+    monkeypatch.setattr(mdstats, "run_prepared_mace_checkpoint_inference", infer)
+    result = campaign_core._eval2_full_checkpoint(
+        cfg={},
+        paths=paths,
+        store=store,
+        run=run,
+        job=job,
+        bundle=bundle,
+        root=tmp_path,
+        execution=execution,
+        checkpoint=checkpoint,
+        point=point,
+        target_role=role,
+        target_artifact=artifact,
+        target_path=target,
+        true_replay_resolution=None,
+        baseline_model=None,
+        model_dtype="float32",
+        local_wrappers={"mdstats-mace-train": tmp_path / "unused-wrapper"},
+        shortlist_reasons=("target_size_v5_epoch_1_exact_endpoint",),
+        full_evaluation_rank=1,
+        include_replay=False,
+    )
+    assert observed == {
+        "target_only_authorized": True,
+        "target_monitor_override": False,
+    }
+    assert result.target_metrics.configuration_count == 1
+    assert result.replay_candidate_force_rmse_ev_per_angstrom is None
+    eval_key = (
+        f"eval2_evaluation:target-only:{run.run_id}:"
+        f"{role.content_digest}:{checkpoint.sha256}"
+    )
+    evaluation = store.records[eval_key]
+    assert evaluation.replay_monitor_artifact_digest is None
+    assert evaluation.replay_configuration_count == 0
+    assert evaluation.replay_baseline_model_path is None
+    assert (
+        "evaluation_scope:authorized_target_only"
+        in evaluation.metric_record.evaluation_notes
+    )
+
+
+def test_eval2_target_only_scope_is_not_a_generic_replay_bypass(tmp_path: Path) -> None:
+    job = SimpleNamespace(
+        protocol=SimpleNamespace(
+            checkpoint_admissibility_policy=mdstats.CheckpointAdmissibilityPolicy()
+        )
+    )
+    with pytest.raises(
+        campaign_cli._core.CampaignCliError,
+        match="reserved for the TARGET-SIZE-V5 development-complement role",
+    ):
+        campaign_cli._core._eval2_full_checkpoint(
+            cfg={},
+            paths=SimpleNamespace(),
+            store=SimpleNamespace(),
+            run=SimpleNamespace(),
+            job=job,
+            bundle=SimpleNamespace(),
+            root=tmp_path,
+            execution=SimpleNamespace(),
+            checkpoint=SimpleNamespace(),
+            point=SimpleNamespace(),
+            target_role=SimpleNamespace(role_kind="cv_checkpoint_monitor"),
+            target_artifact=SimpleNamespace(),
+            target_path=tmp_path / "unused.extxyz",
+            true_replay_resolution=None,
+            baseline_model=None,
+            model_dtype="float32",
+            local_wrappers={},
+            include_replay=False,
         )
 
 
@@ -1009,3 +1349,1497 @@ def test_ase_atoms_retained_bytes_include_array_storage() -> None:
     retained = campaign_cli._core._evaluation_payload_bytes(atoms)
     assert retained >= atoms.arrays["large"].nbytes + atoms.positions.nbytes
     assert retained > atoms.__sizeof__()
+
+
+def test_monitor_parse_cache_reuses_authenticated_identical_bytes_across_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import ase.io as ase_io
+
+    first = tmp_path / "first.extxyz"
+    second = tmp_path / "second.extxyz"
+    write(first, [_frame()], format="extxyz")
+    second.write_bytes(first.read_bytes())
+    sha = hashlib.sha256(first.read_bytes()).hexdigest()
+
+    campaign_execution._monitor_atoms_cache_clear()
+    original_read = ase_io.read
+    calls = {"read": 0}
+
+    def counting_read(*args, **kwargs):
+        calls["read"] += 1
+        return original_read(*args, **kwargs)
+
+    monkeypatch.setattr(ase_io, "read", counting_read)
+    parsed_first = campaign_execution._as_atoms_list(
+        first, expected_sha256=sha, use_cache=True
+    )
+    parsed_second = campaign_execution._as_atoms_list(
+        second, expected_sha256=sha, use_cache=True
+    )
+
+    assert calls["read"] == 1
+    assert parsed_first is parsed_second
+
+
+def test_shared_target_context_is_reused_by_checkpoint_preparation(tmp_path: Path) -> None:
+    target = tmp_path / "shared-target.extxyz"
+    write(target, [_frame()], format="extxyz")
+    artifact = _target_artifact(target)
+    candidate = tmp_path / "candidate.pt"
+    candidate.write_bytes(b"candidate")
+    run, checkpoint = _run_checkpoint(artifact, candidate)
+    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=())
+    execution_plan = mdstats.InferenceExecutionPlan(
+        batch_policy="fixed", selected_batch_size=1, maximum_batch_size=1
+    )
+    context = mdstats.prepare_shared_target_evaluation_context(
+        target,
+        artifact,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=_h("shared-target-role"),
+    )
+
+    prepared = mdstats.prepare_mace_checkpoint_evaluation(
+        run,
+        checkpoint,
+        candidate_model_path=candidate,
+        target_monitor_path=target,
+        target_monitor_artifact=artifact,
+        policy=policy,
+        execution_plan=execution_plan,
+        shared_target_context=context,
+    )
+
+    assert prepared.target_atoms is context.target_atoms
+    assert prepared.target_view is context.target_view
+    assert prepared.target_geometry_identities == context.target_geometry_identities
+    assert context.retained_bytes > 0
+
+
+def test_shared_target_context_admits_explicit_byte_equal_artifact_lineages(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "shared-target-a.extxyz"
+    second = tmp_path / "shared-target-b.extxyz"
+    write(first, [_frame()], format="extxyz")
+    second.write_bytes(first.read_bytes())
+    artifact_a = _target_artifact(first)
+    artifact_b = _target_artifact(second)
+    assert artifact_a.sha256 == artifact_b.sha256
+    assert artifact_a.content_digest != artifact_b.content_digest
+
+    candidate = tmp_path / "candidate.pt"
+    candidate.write_bytes(b"candidate")
+    run_b, checkpoint_b = _run_checkpoint(artifact_b, candidate)
+    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=())
+    execution_plan = mdstats.InferenceExecutionPlan(
+        batch_policy="fixed", selected_batch_size=1, maximum_batch_size=1
+    )
+    scope = _h("shared-target-role")
+    context = mdstats.prepare_shared_target_evaluation_context(
+        first,
+        artifact_a,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=scope,
+        compatible_target_monitor_artifact_digests=(artifact_b.content_digest,),
+    )
+
+    prepared = mdstats.prepare_mace_checkpoint_evaluation(
+        run_b,
+        checkpoint_b,
+        candidate_model_path=candidate,
+        target_monitor_path=second,
+        target_monitor_artifact=artifact_b,
+        policy=policy,
+        execution_plan=execution_plan,
+        shared_target_context=context,
+    )
+    assert prepared.target_atoms is context.target_atoms
+    assert set(context.compatible_target_monitor_artifact_digests) == {
+        artifact_a.content_digest,
+        artifact_b.content_digest,
+    }
+
+    strict_context = mdstats.prepare_shared_target_evaluation_context(
+        first,
+        artifact_a,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=scope,
+    )
+    with pytest.raises(
+        mdstats.TrainingDataInputError, match="does not match the requested target authority"
+    ):
+        mdstats.prepare_mace_checkpoint_evaluation(
+            run_b,
+            checkpoint_b,
+            candidate_model_path=candidate,
+            target_monitor_path=second,
+            target_monitor_artifact=artifact_b,
+            policy=policy,
+            execution_plan=execution_plan,
+            shared_target_context=strict_context,
+        )
+
+    incompatible_artifact = replace(
+        artifact_b, frame_uids=(_h("different-frame-identity"),)
+    )
+    incompatible_run, incompatible_checkpoint = _run_checkpoint(
+        incompatible_artifact, candidate
+    )
+    metadata_permissive_context = mdstats.prepare_shared_target_evaluation_context(
+        first,
+        artifact_a,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=scope,
+        compatible_target_monitor_artifact_digests=(
+            incompatible_artifact.content_digest,
+        ),
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="geometry identity"):
+        mdstats.prepare_mace_checkpoint_evaluation(
+            incompatible_run,
+            incompatible_checkpoint,
+            candidate_model_path=candidate,
+            target_monitor_path=second,
+            target_monitor_artifact=incompatible_artifact,
+            policy=policy,
+            execution_plan=execution_plan,
+            shared_target_context=metadata_permissive_context,
+        )
+
+
+def test_staged_runner_rejects_duplicate_logical_task_identity() -> None:
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index,
+            key="duplicate-authority",
+            label=f"duplicate-{index}",
+            start_detail="duplicate",
+            prepare=lambda: True,
+            requires_inference=lambda prepared: False,
+            infer=lambda prepared: prepared,
+            finalize=lambda prepared, inferred: inferred,
+            done_detail=lambda result, wall: "done",
+            accelerator_possible=False,
+        )
+
+    with pytest.raises(campaign_cli.CampaignCliError, match="duplicate logical task"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task(1), task(2)],
+            cfg=_pipeline_cfg(),
+            device="cpu",
+            progress=_Progress(),
+        )
+
+
+def test_staged_runner_rejects_cpu_only_task_that_requires_accelerator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="incorrect-cpu-only",
+        label="incorrect-cpu-only",
+        start_detail="guard",
+        prepare=lambda: True,
+        requires_inference=lambda prepared: True,
+        infer=lambda prepared: prepared,
+        finalize=lambda prepared, inferred: inferred,
+        done_detail=lambda result, wall: "done",
+        accelerator_possible=False,
+    )
+
+    with pytest.raises(campaign_cli.CampaignCliError, match="accelerator_possible=False"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task], cfg=cfg, device="cpu", progress=_Progress()
+        )
+
+
+def test_staged_runner_propagates_prepare_and_finalize_phase_context(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+
+    def prepare():
+        report_inference_worker_phase("prepare-inner-phase")
+        return "prepared"
+
+    def finalize(prepared, inferred):
+        report_inference_worker_phase("finalize-inner-phase")
+        return prepared
+
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="phase-context",
+        label="phase-context",
+        start_detail="phase",
+        prepare=prepare,
+        requires_inference=lambda prepared: False,
+        infer=lambda prepared: prepared,
+        finalize=finalize,
+        done_detail=lambda result, wall: "done",
+        accelerator_possible=False,
+    )
+    campaign_cli._run_staged_evaluation_tasks(
+        [task], cfg=cfg, device="cpu", progress=_Progress()
+    )
+    output = capsys.readouterr().out
+    assert "CPU prepare: prepare-inner-phase" in output
+    assert "CPU finalize: finalize-inner-phase" in output
+
+
+def test_staged_runner_accounts_shared_resident_memory_once_for_population(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "evaluation_pipeline_buffer_mib": 1.5,
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+
+    tasks = [
+        campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"shared-{index}",
+            label=f"shared-{index}",
+            start_detail="shared-resident",
+            prepare=lambda index=index: index,
+            requires_inference=lambda prepared: False,
+            infer=lambda prepared: prepared,
+            finalize=lambda prepared, inferred: prepared,
+            done_detail=lambda result, wall: "done",
+            accelerator_possible=False,
+        )
+        for index in range(2)
+    ]
+    # 0.8 MiB is a stage-wide resident object.  It must be admitted once, not
+    # once per endpoint; two copies plus working reservations would exceed the
+    # 1.5 MiB cap.
+    result = campaign_cli._run_staged_evaluation_tasks(
+        tasks,
+        cfg=cfg,
+        device="cpu",
+        progress=_Progress(),
+        shared_residency_bytes=int(0.8 * 1024**2),
+    )
+    assert result == {"shared-0": 0, "shared-1": 1}
+
+
+def test_staged_progress_counts_accepted_completion_not_display_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+
+    class Progress:
+        def __init__(self):
+            self.done: list[tuple[int, int | None]] = []
+
+        def item_start(self, *args, **kwargs):
+            pass
+
+        def item_done(self, index, name, detail="", *, completed_count=None, **kwargs):
+            self.done.append((int(index), completed_count))
+
+    progress = Progress()
+
+    def make_task(index: int, delay: float) -> campaign_cli._StagedEvaluationTask:
+        def finalize(prepared, inferred):
+            time.sleep(delay)
+            return prepared
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index,
+            key=f"accepted-{index}",
+            label=f"accepted-{index}",
+            start_detail="accepted-progress",
+            prepare=lambda index=index: index,
+            requires_inference=lambda prepared: False,
+            infer=lambda prepared: prepared,
+            finalize=finalize,
+            done_detail=lambda result, wall: "done",
+            accelerator_possible=False,
+            # The prepared payload is a single scalar int; declare its sound
+            # retained upper bound so the two cache-only tasks may prepare and
+            # finalize concurrently.
+            retained_upper_bound=1024,
+        )
+
+    campaign_cli._run_staged_evaluation_tasks(
+        [make_task(1, 0.08), make_task(2, 0.005)],
+        cfg=cfg,
+        device="cpu",
+        progress=progress,
+    )
+
+    assert progress.done[0] == (2, 1)
+    assert progress.done[1] == (1, 2)
+
+
+def test_target_size_prepared_payload_excludes_stage_shared_target_from_each_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "shared-accounting.extxyz"
+    write(target, [_frame()], format="extxyz")
+    artifact = _target_artifact(target)
+    candidate = tmp_path / "candidate-accounting.pt"
+    candidate.write_bytes(b"candidate-accounting")
+    run, checkpoint = _run_checkpoint(artifact, candidate)
+    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=())
+    execution_plan = mdstats.InferenceExecutionPlan(
+        batch_policy="fixed", selected_batch_size=1, maximum_batch_size=1
+    )
+    context = mdstats.prepare_shared_target_evaluation_context(
+        target,
+        artifact,
+        policy=policy,
+        execution_plan=execution_plan,
+        authority_scope_digest=_h("shared-accounting-role"),
+    )
+    prepared = mdstats.prepare_mace_checkpoint_evaluation(
+        run,
+        checkpoint,
+        candidate_model_path=candidate,
+        target_monitor_path=target,
+        target_monitor_artifact=artifact,
+        policy=policy,
+        execution_plan=execution_plan,
+        shared_target_context=context,
+    )
+
+    full_bytes = campaign_cli._core._evaluation_payload_bytes(prepared)
+    incremental_bytes = campaign_cli._core._target_size_eval2_incremental_prepared_bytes(
+        prepared, context
+    )
+    assert context.retained_bytes > 0
+    assert incremental_bytes >= 0
+    assert incremental_bytes < full_bytes
+
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    reservations: list[tuple[str, int]] = []
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+
+    def recording_reserve(self, owner: str, amount: int) -> None:
+        reservations.append((owner, int(amount)))
+        original_reserve(self, owner, amount)
+
+    monkeypatch.setattr(
+        campaign_cli._core._PipelineByteLedger, "reserve", recording_reserve
+    )
+    cfg = _pipeline_cfg()
+    cfg["execution"].update(
+        {
+            "evaluation_pipeline_buffer_mib": 32.0,
+            "evaluation_prepare_working_memory_mib": 0.1,
+            "evaluation_inference_working_memory_mib": 0.1,
+            "evaluation_finalize_working_memory_mib": 0.1,
+        }
+    )
+
+    tasks = [
+        campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"real-shared-{index}",
+            label=f"real-shared-{index}",
+            start_detail="shared-accounting",
+            prepare=lambda prepared=prepared: prepared,
+            requires_inference=lambda _prepared: False,
+            infer=lambda value: value,
+            finalize=lambda value, _inferred: value,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda value, context=context: (
+                campaign_cli._core._target_size_eval2_incremental_prepared_bytes(
+                    value, context
+                )
+            ),
+            accelerator_possible=False,
+        )
+        for index in range(2)
+    ]
+    campaign_cli._run_staged_evaluation_tasks(
+        tasks,
+        cfg=cfg,
+        device="cpu",
+        progress=_Progress(),
+        shared_residency_bytes=context.retained_bytes,
+    )
+
+    shared = [amount for owner, amount in reservations if owner == "shared:runtime-residency"]
+    prepared_reservations = [
+        amount for owner, amount in reservations if owner.startswith("prepared:real-shared-")
+    ]
+    assert shared == [context.retained_bytes]
+    assert prepared_reservations == [incremental_bytes, incremental_bytes]
+
+
+# ---------------------------------------------------------------------------
+# MLFF-EVAL-PIPELINE-RAM-LEASE-FIX focused regressions (O1--O6)
+# ---------------------------------------------------------------------------
+
+_ONE_MIB = 1024**2
+
+_GIB = 1024**3
+
+
+def _joint_resources(
+    *,
+    ram_budget_bytes: int,
+    cpu_threads_budget: int = 24,
+    cpu_threads_available: int | None = None,
+) -> SystemResourceSnapshot:
+    cpu = cpu_threads_available if cpu_threads_available is not None else cpu_threads_budget
+    return SystemResourceSnapshot(
+        cpu_threads_available=cpu,
+        cpu_fraction=0.90,
+        cpu_threads_budget=cpu_threads_budget,
+        ram_available_bytes=ram_budget_bytes,
+        ram_fraction=0.80,
+        ram_budget_bytes=ram_budget_bytes,
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+    )
+
+
+def _joint_task(
+    index: int,
+    *,
+    infer,
+    observed_jobs: list[int],
+    lock: threading.Lock,
+    state: dict,
+    requires_inference: bool = True,
+    prepared_bytes: int | None = None,
+) -> campaign_cli._StagedEvaluationTask:
+    class Prepared:
+        def __init__(self):
+            self.execution_plan = mdstats.InferenceExecutionPlan(
+                batch_policy="auto", selected_batch_size=8, maximum_batch_size=32
+            )
+
+    def prepare():
+        return Prepared()
+
+    def _infer(prepared):
+        observed_jobs.append(prepared.execution_plan.selected_concurrent_model_jobs)
+        with lock:
+            state["active"] += 1
+            state["peak"] = max(state["peak"], state["active"])
+        try:
+            return infer(prepared)
+        finally:
+            with lock:
+                state["active"] -= 1
+
+    return campaign_cli._StagedEvaluationTask(
+        display_index=index + 1,
+        key=str(index),
+        label=f"joint-{index}",
+        start_detail="joint-lease",
+        prepare=prepare,
+        requires_inference=lambda prepared: requires_inference,
+        infer=_infer,
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "done",
+        prepared_bytes=(lambda prepared: prepared_bytes) if prepared_bytes is not None else None,
+    )
+
+
+def _configure_joint_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    ram_budget_bytes: int,
+    estimated_ram_mib: float,
+    requested_jobs: int,
+    cpu_threads_budget: int = 24,
+    pipeline_buffer_mib: float | None = None,
+) -> dict:
+    monkeypatch.setattr(
+        campaign_cli._core,
+        "detect_system_resources",
+        lambda **kwargs: _joint_resources(
+            ram_budget_bytes=ram_budget_bytes,
+            cpu_threads_budget=cpu_threads_budget,
+        ),
+    )
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_jobs"] = requested_jobs
+    cfg["execution"]["evaluation_estimated_ram_mib_per_job"] = estimated_ram_mib
+    if pipeline_buffer_mib is not None:
+        cfg["execution"]["evaluation_pipeline_buffer_mib"] = pipeline_buffer_mib
+    return cfg
+
+
+def _run_joint_observation(monkeypatch, *, n_tasks, **cfg_kwargs):
+    """Run n inference-requiring tasks and return (results, observed_jobs, peak)."""
+    cfg = _configure_joint_pipeline(monkeypatch, **cfg_kwargs)
+    observed_jobs: list[int] = []
+    lock = threading.Lock()
+    state: dict = {"active": 0, "peak": 0}
+
+    def infer(prepared):
+        time.sleep(0.01)
+        return True
+
+    tasks = tuple(
+        _joint_task(
+            i, infer=infer, observed_jobs=observed_jobs, lock=lock, state=state
+        )
+        for i in range(n_tasks)
+    )
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+    return results, observed_jobs, state["peak"]
+
+
+def test_production_geometry_ram_lease_launches_largest_admissible_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O1: a 4 GiB/job / 8-job / ~18.6 GiB sub-budget reproduces the reported
+    arithmetic without allocating production RAM.  The old fixed full-width
+    reservation (32 GiB) can never fit; the repaired scheduler descends to the
+    widest coexistible width (J=4) and completes instead of stalling."""
+    # 37.2 GiB global budget -> ram_limit = floor(37.2 / 4) = 9 >= 8 jobs and
+    # automatic staged sub-budget = 37.2 / 2 ~= 18.6 GiB.
+    global_budget = int(37.2 * _GIB)
+    results, observed_jobs, peak = _run_joint_observation(
+        monkeypatch,
+        n_tasks=8,
+        ram_budget_bytes=global_budget,
+        estimated_ram_mib=4096.0,
+        requested_jobs=8,
+    )
+    assert results == {str(i): True for i in range(8)}
+    assert peak == 1
+    assert observed_jobs == [4] * 8
+
+
+def test_joint_width_exact_fit_reserves_full_theoretical_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O2: budget == J * estimate fits the full theoretical width exactly."""
+    # estimate = 1 MiB; joint cap = 4; budget = 4 MiB so J=4*1MiB fits exactly.
+    results, observed_jobs, peak = _run_joint_observation(
+        monkeypatch,
+        n_tasks=4,
+        ram_budget_bytes=8 * _ONE_MIB,  # auto sub-budget = 4 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=4,
+    )
+    assert results == {str(i): True for i in range(4)}
+    assert observed_jobs == [4] * 4
+
+
+def test_joint_width_one_byte_over_boundary_descends_one_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O2: budget == J * estimate - 1 byte descends from J=4 to J=3."""
+    # auto sub-budget = ram_budget // 2.  Set ram_budget = 2*(4 MiB - 1) so the
+    # sub-budget is exactly 4 MiB - 1 byte: J=4 no longer fits, J=3 does.
+    ram_budget = 2 * (4 * _ONE_MIB - 1)
+    results, observed_jobs, peak = _run_joint_observation(
+        monkeypatch,
+        n_tasks=4,
+        ram_budget_bytes=ram_budget,
+        estimated_ram_mib=1.0,
+        requested_jobs=4,
+    )
+    assert results == {str(i): True for i in range(4)}
+    assert observed_jobs == [3] * 4
+
+
+def test_joint_width_minimum_j1_still_launches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O2: a budget that admits only J=1 still launches and completes."""
+    # sub-budget = 1.5 MiB (ram_budget = 3 MiB) -> only J=1 (1 MiB) fits.
+    results, observed_jobs, peak = _run_joint_observation(
+        monkeypatch,
+        n_tasks=4,
+        ram_budget_bytes=3 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=4,
+    )
+    assert results == {str(i): True for i in range(4)}
+    assert all(jobs == 1 for jobs in observed_jobs)
+
+
+def test_irreducible_j1_impossibility_fails_with_causal_ram_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O5: when minimum J=1 plus retained state cannot fit and no active owner
+    can release memory, terminate with a causal RAM-admission error (not the
+    generic stall)."""
+    # estimate = 1 MiB -> prepare = 1 MiB, minimum inference = 1 MiB.  Budget of
+    # 1.5 MiB cannot hold a 1 MiB prepared payload plus a 1 MiB inference.
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=3 * _ONE_MIB,  # auto sub-budget = 1.5 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    big = np.zeros(_ONE_MIB, dtype=np.uint8)  # 1 MiB retained prepared payload
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="irreducible",
+        label="irreducible",
+        start_detail="irreducible",
+        prepare=lambda: big,
+        requires_inference=lambda prepared: True,
+        infer=lambda prepared: True,
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "done",
+    )
+    with pytest.raises(
+        campaign_cli.CampaignCliError,
+        match="staged RAM admission blocked.*minimum inference reservation",
+    ):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task], cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+        )
+
+
+def test_inference_lease_is_task_scoped_and_released_even_on_exception() -> None:
+    """O6: the lease transport is task-scoped and cleared on every terminal path."""
+    assert current_inference_lease() is None
+    lease = InferenceLease(maximum_model_jobs=3, ram_allowance_bytes=12345)
+    with inference_start_signal(lambda: None, lease=lease):
+        assert current_inference_lease() is lease
+    assert current_inference_lease() is None
+
+    # A propagated exception must also clear the lease.
+    try:
+        with inference_start_signal(lambda: None, lease=lease):
+            raise RuntimeError("boom")
+    except RuntimeError:
+        pass
+    assert current_inference_lease() is None
+
+
+def test_inference_lease_reservation_released_after_inference_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: a failing inference stage releases its reservation so a later
+    independent invocation can be admitted without a leaked-reservation error."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=8 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    failing = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="failing-infer",
+        label="failing-infer",
+        start_detail="failure-cleanup",
+        prepare=lambda: 1,
+        requires_inference=lambda prepared: True,
+        infer=lambda prepared: (_ for _ in ()).throw(RuntimeError("infer exploded")),
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "done",
+    )
+    with pytest.raises(campaign_cli.CampaignCliError, match="infer exploded"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [failing], cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+        )
+    # A subsequent fresh invocation with the same budget must be admissible.
+    observed_jobs: list[int] = []
+    lock = threading.Lock()
+    state: dict = {"active": 0, "peak": 0}
+    good = tuple(
+        _joint_task(
+            i,
+            infer=lambda prepared: True,
+            observed_jobs=observed_jobs,
+            lock=lock,
+            state=state,
+        )
+        for i in range(2)
+    )
+    results = campaign_cli._run_staged_evaluation_tasks(
+        good, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+    assert results == {"0": True, "1": True}
+
+
+def test_preparation_does_not_starve_ready_inference_of_progress_headroom(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O4: cache-only predecessors followed by uncached work, with heterogeneous
+    retained payloads under a tight budget, still make forward progress: the
+    cache-only items re finalize directly to release memory, and the ready
+    uncached inference always keeps its minimum-J=1 headroom instead of being
+    starved by additional preparation."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=4 * _ONE_MIB,  # auto sub-budget = 2 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 8
+
+    inferred: list[str] = []
+    finalized: list[str] = []
+    lock = threading.Lock()
+
+    def make_task(
+        index: int,
+        *,
+        cache_only: bool,
+        payload_mib: float,
+    ) -> campaign_cli._StagedEvaluationTask:
+        payload = np.zeros(int(payload_mib * _ONE_MIB), dtype=np.uint8)
+
+        def prepare():
+            return payload
+
+        def infer(prepared):
+            with lock:
+                inferred.append(f"uncached-{index}")
+            return prepared
+
+        def finalize(prepared, result):
+            with lock:
+                finalized.append(f"task-{index}")
+            return result
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"o4-{index}",
+            label=f"o4-{index}",
+            start_detail="o4-forward-progress",
+            prepare=prepare,
+            requires_inference=lambda prepared: not cache_only,
+            infer=infer,
+            finalize=finalize,
+            done_detail=lambda result, wall: "done",
+            cached_result=(lambda prepared: prepared) if cache_only else None,
+        )
+
+    # Heterogeneous retained payloads: two cache-only (bypass inference) then
+    # two uncached inference-requiring items.
+    tasks = (
+        make_task(0, cache_only=True, payload_mib=0.5),
+        make_task(1, cache_only=True, payload_mib=0.25),
+        make_task(2, cache_only=False, payload_mib=0.1),
+        make_task(3, cache_only=False, payload_mib=0.1),
+    )
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+    assert set(results) == {"o4-0", "o4-1", "o4-2", "o4-3"}
+    # Cache-only items bypass inference; only the uncached items are inferred.
+    assert inferred == ["uncached-2", "uncached-3"]
+    assert sorted(finalized) == ["task-0", "task-1", "task-2", "task-3"]
+
+
+def test_multi_prepare_prospectively_preserves_cache_to_uncached_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O4: two prepare workers cannot consume J=1 headroom before classification."""
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=4 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+    inferred: list[str] = []
+
+    def task(key: str, *, cache_only: bool, payload_bytes: int):
+        payload = np.zeros(payload_bytes, dtype=np.uint8)
+        return campaign_cli._StagedEvaluationTask(
+            display_index=len(inferred) + 1,
+            key=key,
+            label=key,
+            start_detail="prospective-headroom",
+            prepare=lambda payload=payload: payload,
+            requires_inference=lambda _prepared, cache_only=cache_only: not cache_only,
+            infer=lambda _prepared, key=key: inferred.append(key) or key,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared, payload_bytes=payload_bytes: payload_bytes,
+            cached_result=(lambda prepared: prepared) if cache_only else None,
+            accelerator_possible=not cache_only,
+        )
+
+    # On 6435898, the first two preparations consume the entire 2 MiB ledger
+    # before either can be classified.  The cache-only predecessor then cannot
+    # finalize and the uncached item cannot obtain J=1 inference headroom.
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (
+            task("cached", cache_only=True, payload_bytes=_ONE_MIB),
+            task("uncached-a", cache_only=False, payload_bytes=_ONE_MIB),
+        ),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert set(results) == {"cached", "uncached-a"}
+    assert inferred == ["uncached-a"]
+
+
+@pytest.mark.parametrize(
+    "payload_mib",
+    ((1.5, 1.5), (1.25, 1.75)),
+)
+def test_prepare_retained_growth_cannot_consume_persistent_j1_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+    payload_mib: tuple[float, float],
+) -> None:
+    """REVIEW2/O4: the real scheduler owns J=1 across preparation growth.
+
+    With a 3 MiB ledger, 1 MiB prepare working reservation, and 1 MiB J=1
+    inference reservation, the old launch-time-only check admitted both
+    prepares.  Their larger retained payloads then filled the ledger and
+    manufactured a false irreducible admission failure.  A persistent ledger
+    owner sequences the preparations and completes both tasks instead.
+    """
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=6 * _ONE_MIB,  # auto pipeline budget = 3 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+    leases: list[InferenceLease | None] = []
+    reservations: list[str] = []
+    releases: list[str] = []
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def observe_reserve(self, owner: str, amount: int) -> None:
+        reservations.append(owner)
+        original_reserve(self, owner, amount)
+
+    def observe_release(self, owner: str) -> None:
+        releases.append(owner)
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "reserve", observe_reserve)
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", observe_release)
+
+    def task(index: int, retained_mib: float) -> campaign_cli._StagedEvaluationTask:
+        payload_bytes = int(retained_mib * _ONE_MIB)
+        payload = np.zeros(payload_bytes, dtype=np.uint8)
+
+        def infer(_prepared):
+            leases.append(current_inference_lease())
+            return index
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"retained-growth-{index}",
+            label=f"retained-growth-{index}",
+            start_detail="retained-growth-progress-envelope",
+            prepare=lambda payload=payload: payload,
+            requires_inference=lambda _prepared: True,
+            infer=infer,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared, payload_bytes=payload_bytes: payload_bytes,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tuple(task(index, retained_mib) for index, retained_mib in enumerate(payload_mib)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert results == {"retained-growth-0": 0, "retained-growth-1": 1}
+    assert [lease.maximum_model_jobs for lease in leases if lease is not None] == [1, 1]
+    # The prospective J=1 owner is transferred into each real inference owner;
+    # it is not left behind as a second reservation after successful completion.
+    assert reservations.count("progress:minimum-inference") == 2
+    assert releases.count("progress:minimum-inference") == 2
+
+
+def test_review3_5mib_retained_growth_geometry_sequences_and_completes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW3 blocking reproducer: a fixed ``2 * J1`` heuristic admitted both
+    preparations even though their later retained transitions (``2.25 + 2.75``
+    MiB) fill the 5 MiB ledger and leave no J=1 headroom.  The sound scheduler
+    must not admit work into the avoidable retained-growth collision: it
+    conservatively sequences the two unbounded transitions so that at no point
+    are both retained payloads charged simultaneously, and both tasks complete."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=10 * _ONE_MIB,  # auto pipeline sub-budget = 5 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+
+    retained_concurrent = 0
+    retained_peak = 0
+    lock = threading.Lock()
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def observe_reserve(self, owner: str, amount: int) -> None:
+        nonlocal retained_concurrent, retained_peak
+        if owner.startswith("prepared:"):
+            with lock:
+                retained_concurrent += 1
+                retained_peak = max(retained_peak, retained_concurrent)
+        original_reserve(self, owner, amount)
+
+    def observe_release(self, owner: str) -> None:
+        nonlocal retained_concurrent
+        if owner.startswith("prepared:"):
+            with lock:
+                retained_concurrent -= 1
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "reserve", observe_reserve)
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", observe_release)
+
+    def task(index: int, retained_mib: float) -> campaign_cli._StagedEvaluationTask:
+        payload_bytes = int(retained_mib * _ONE_MIB)
+        payload = np.zeros(payload_bytes, dtype=np.uint8)
+
+        def infer(_prepared):
+            return index
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"review3-{index}",
+            label=f"review3-{index}",
+            start_detail="review3-5mib-retained-growth",
+            prepare=lambda payload=payload: payload,
+            requires_inference=lambda _prepared: True,
+            infer=infer,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared, payload_bytes=payload_bytes: payload_bytes,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (task(0, 2.25), task(1, 2.75)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert results == {"review3-0": 0, "review3-1": 1}
+    # The avoidable collision was avoided: the two retained payloads were never
+    # charged simultaneously (2.25 + 2.75 = 5.0 MiB would leave no J=1 headroom).
+    assert retained_peak == 1
+
+
+def test_bounded_retained_upper_bound_preserves_multi_prepare_overlap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW3 positive case: when a task declares a sound prospective retained
+    upper bound, the worst-case equation is provable and multi-prepare overlap is
+    not gratuitously disabled by conservative sequencing."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=8 * _ONE_MIB,  # auto pipeline sub-budget = 4 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+
+    active_prepares = 0
+    prepare_peak = 0
+    lock = threading.Lock()
+
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        payload = np.zeros(int(0.1 * _ONE_MIB), dtype=np.uint8)
+
+        def prepare():
+            nonlocal active_prepares, prepare_peak
+            with lock:
+                active_prepares += 1
+                prepare_peak = max(prepare_peak, active_prepares)
+            time.sleep(0.05)
+            with lock:
+                active_prepares -= 1
+            return payload
+
+        def infer(_prepared):
+            return index
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"bounded-{index}",
+            label=f"bounded-{index}",
+            start_detail="bounded-multi-prepare-overlap",
+            prepare=prepare,
+            requires_inference=lambda _prepared: True,
+            infer=infer,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared: int(0.1 * _ONE_MIB),
+            # Sound prospective upper bound (actual retained is 0.1 MiB).
+            retained_upper_bound=int(0.5 * _ONE_MIB),
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (task(0), task(1)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert results == {"bounded-0": 0, "bounded-1": 1}
+    # With a sound bound and a fitting worst-case equation, two unclassified
+    # transitions are admitted concurrently (prepare overlap is preserved).
+    assert prepare_peak == 2
+
+
+def test_review4_shared_residency_is_preserved_in_bounded_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW4: shared residency cannot disappear from bounded admission.
+
+    The partial projection admitted 2 MiB + 2 MiB retained bounds plus J=1
+    into a 5 MiB budget, while omitting the live 1 MiB shared reservation.
+    The complete ledger projection sequences the preparations; each task still
+    completes because its individual shared + retained + J=1 geometry fits.
+    """
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=10 * _ONE_MIB,  # auto pipeline budget = 5 MiB
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+    active_prepares = 0
+    prepare_peak = 0
+    lock = threading.Lock()
+
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        payload = np.zeros(2 * _ONE_MIB, dtype=np.uint8)
+
+        def prepare():
+            nonlocal active_prepares, prepare_peak
+            with lock:
+                active_prepares += 1
+                prepare_peak = max(prepare_peak, active_prepares)
+            try:
+                time.sleep(0.03)
+                return payload
+            finally:
+                with lock:
+                    active_prepares -= 1
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"review4-shared-{index}",
+            label=f"review4-shared-{index}",
+            start_detail="review4-complete-ledger-projection",
+            prepare=prepare,
+            requires_inference=lambda _prepared: True,
+            infer=lambda _prepared, index=index: index,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared: 2 * _ONE_MIB,
+            retained_upper_bound=2 * _ONE_MIB,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (task(0), task(1)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+        shared_residency_bytes=_ONE_MIB,
+    )
+
+    assert results == {"review4-shared-0": 0, "review4-shared-1": 1}
+    assert prepare_peak == 1
+
+
+def test_review4_bounded_overlap_remains_available_when_shared_ledger_fits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW4 positive companion: nonzero shared residency is compatible with
+    concurrent preparation when the complete prospective equation fits."""
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        # The 7 MiB pipeline budget admits shared 1 + two bounded retained 2
+        # + J=1 1, with headroom for the first tiny retained inference result
+        # before its finalizer releases the completed payload.
+        ram_budget_bytes=14 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"].update(
+        {
+            "parallel_evaluation_prepare_jobs": 2,
+            "parallel_evaluation_finalize_jobs": 2,
+            "evaluation_pipeline_buffer_jobs": 4,
+        }
+    )
+    active_prepares = 0
+    prepare_peak = 0
+    lock = threading.Lock()
+
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        payload = np.zeros(2 * _ONE_MIB, dtype=np.uint8)
+
+        def prepare():
+            nonlocal active_prepares, prepare_peak
+            with lock:
+                active_prepares += 1
+                prepare_peak = max(prepare_peak, active_prepares)
+            try:
+                time.sleep(0.03)
+                return payload
+            finally:
+                with lock:
+                    active_prepares -= 1
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"review4-fit-{index}",
+            label=f"review4-fit-{index}",
+            start_detail="review4-complete-ledger-positive",
+            prepare=prepare,
+            requires_inference=lambda _prepared: True,
+            infer=lambda _prepared, index=index: index,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            prepared_bytes=lambda _prepared: 2 * _ONE_MIB,
+            retained_upper_bound=2 * _ONE_MIB,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (task(0), task(1)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+        shared_residency_bytes=_ONE_MIB,
+    )
+
+    assert results == {"review4-fit-0": 0, "review4-fit-1": 1}
+    assert prepare_peak == 2
+
+
+def test_keyboard_interrupt_releases_scheduler_owned_inference_reservations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: terminal interrupts release the current scheduler ledger in place."""
+
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=8 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    released: list[str] = []
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def record_release(self, owner: str) -> None:
+        released.append(owner)
+        original_release(self, owner)
+
+    monkeypatch.setattr(
+        campaign_cli._core._PipelineByteLedger, "release", record_release
+    )
+    interrupted = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="interrupt",
+        label="interrupt",
+        start_detail="interrupt-cleanup",
+        prepare=lambda: 1,
+        requires_inference=lambda _prepared: True,
+        infer=lambda _prepared: (_ for _ in ()).throw(KeyboardInterrupt()),
+        finalize=lambda _prepared, result: result,
+        done_detail=lambda _result, _wall: "done",
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        campaign_cli._run_staged_evaluation_tasks(
+            [interrupted],
+            cfg=cfg,
+            phase="evaluation",
+            device="cpu",
+            progress=_Progress(),
+        )
+
+    assert "inference:interrupt" in released
+    assert "prepared:interrupt" in released
+
+
+def test_success_reuses_released_inference_reservation_in_same_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: on success, a completed inference's reservation and the prospective
+    progress owner are released so a later task in the SAME invocation reuses
+    that capacity, with no double-counting or leaked progress ownership."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=4 * _ONE_MIB,  # auto sub-budget = 2 MiB -> only J=1 fits
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 4
+
+    events: list[tuple[str, str]] = []
+    lock = threading.Lock()
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def record_reserve(self, owner: str, amount: int) -> None:
+        with lock:
+            events.append(("reserve", owner))
+        original_reserve(self, owner, amount)
+
+    def record_release(self, owner: str) -> None:
+        with lock:
+            events.append(("release", owner))
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "reserve", record_reserve)
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", record_release)
+
+    observed_jobs: list[int] = []
+    state: dict = {"active": 0, "peak": 0}
+    tasks = tuple(
+        _joint_task(
+            i,
+            infer=lambda prepared: True,
+            observed_jobs=observed_jobs,
+            lock=lock,
+            state=state,
+        )
+        for i in range(2)
+    )
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+
+    assert results == {"0": True, "1": True}
+    assert all(jobs == 1 for jobs in observed_jobs)
+    # Each inference reservation is acquired exactly once and released exactly
+    # once, and task 0's reservation is released before task 1's is admitted —
+    # proof that successful completion recycles capacity within one invocation.
+    for key in ("inference:0", "inference:1"):
+        assert events.count(("reserve", key)) == 1
+        assert events.count(("release", key)) == 1
+    assert events.index(("release", "inference:0")) < events.index(("reserve", "inference:1"))
+    # The prospective progress owner is fully balanced (no stale guard).
+    assert events.count(("reserve", "progress:minimum-inference")) == events.count(
+        ("release", "progress:minimum-inference")
+    )
+
+
+def test_bounded_oom_inference_terminal_failure_releases_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: a MemoryError (bounded OOM) during inference is a terminal failure that
+    releases the inference reservation and the prepared payload so a later
+    independent invocation is admissible (no leak)."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=8 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    released: list[str] = []
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def record_release(self, owner: str) -> None:
+        released.append(owner)
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", record_release)
+
+    oom_task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="oom",
+        label="oom",
+        start_detail="oom-terminal-cleanup",
+        prepare=lambda: 1,
+        requires_inference=lambda _prepared: True,
+        infer=lambda _prepared: (_ for _ in ()).throw(MemoryError("bounded OOM")),
+        finalize=lambda _prepared, result: result,
+        done_detail=lambda _result, _wall: "done",
+    )
+    with pytest.raises(campaign_cli.CampaignCliError, match="MemoryError"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [oom_task], cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+        )
+
+    assert "inference:oom" in released
+    assert "prepared:oom" in released
+    # A subsequent fresh invocation with the same budget must be admissible.
+    good = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="recovered",
+        label="recovered",
+        start_detail="oom-recovery",
+        prepare=lambda: 1,
+        requires_inference=lambda _prepared: True,
+        infer=lambda _prepared: True,
+        finalize=lambda _prepared, result: result,
+        done_detail=lambda _result, _wall: "done",
+    )
+    assert campaign_cli._run_staged_evaluation_tasks(
+        [good], cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    ) == {"recovered": True}
+
+
+def test_all_cache_only_terminal_state_releases_unused_progress_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O6: an all-cache-only terminal state acquires no inference lease, takes no
+    inference reservation, and releases the unused prospective progress owner."""
+    cfg = _configure_joint_pipeline(
+        monkeypatch,
+        ram_budget_bytes=4 * _ONE_MIB,
+        estimated_ram_mib=1.0,
+        requested_jobs=1,
+    )
+    cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 4
+
+    acquired_leases: list[object] = []
+    original_signal = campaign_cli._core.inference_start_signal
+
+    def record_lease(*args, **kwargs):
+        if kwargs.get("lease") is not None:
+            acquired_leases.append(kwargs["lease"])
+        return original_signal(*args, **kwargs)
+
+    monkeypatch.setattr(campaign_cli._core, "inference_start_signal", record_lease)
+
+    events: list[tuple[str, str]] = []
+    lock = threading.Lock()
+    original_reserve = campaign_cli._core._PipelineByteLedger.reserve
+    original_release = campaign_cli._core._PipelineByteLedger.release
+
+    def record_reserve(self, owner: str, amount: int) -> None:
+        with lock:
+            events.append(("reserve", owner))
+        original_reserve(self, owner, amount)
+
+    def record_release(self, owner: str) -> None:
+        with lock:
+            events.append(("release", owner))
+        original_release(self, owner)
+
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "reserve", record_reserve)
+    monkeypatch.setattr(campaign_cli._core._PipelineByteLedger, "release", record_release)
+
+    def cache_task(index: int) -> campaign_cli._StagedEvaluationTask:
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"cache-{index}",
+            label=f"cache-{index}",
+            start_detail="all-cache-only",
+            prepare=lambda index=index: index,
+            requires_inference=lambda _prepared: False,
+            infer=lambda prepared: prepared,
+            finalize=lambda _prepared, result: result,
+            done_detail=lambda _result, _wall: "done",
+            cached_result=lambda prepared: prepared,
+        )
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        (cache_task(0), cache_task(1)),
+        cfg=cfg,
+        phase="evaluation",
+        device="cpu",
+        progress=_Progress(),
+    )
+
+    assert results == {"cache-0": 0, "cache-1": 1}
+    # Cache-only bypass acquires no inference lease and no inference reservation.
+    assert acquired_leases == []
+    assert not any(owner.startswith("inference:") for op, owner in events)
+    # The unused prospective progress owner is balanced (released, not retained).
+    assert events.count(("reserve", "progress:minimum-inference")) == events.count(
+        ("release", "progress:minimum-inference")
+    )

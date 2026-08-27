@@ -37,6 +37,28 @@ _INFERENCE_PHASE_CALLBACK: ContextVar[Callable[[str], None] | None] = ContextVar
 _INFERENCE_CANCELLATION_CALLBACK: ContextVar[Callable[[], bool] | None] = ContextVar(
     "mdstats_inference_cancellation_callback", default=None
 )
+_INFERENCE_LEASE: ContextVar[InferenceLease | None] = ContextVar(
+    "mdstats_inference_lease", default=None
+)
+
+
+@dataclass(frozen=True, slots=True)
+class InferenceLease:
+    """Launch-local outer inference job/RAM envelope (orchestration state only).
+
+    The staged evaluation pipeline owns its RAM sub-budget and grants each
+    admitted inference owner a scoped lease.  The nested static-inference
+    runtime authority must re-clamp its maximum model-job ceiling and live
+    incremental RAM allowance against this lease instead of assuming the whole
+    process-global RAM budget is available to it.
+
+    The lease is never part of scientific, checkpoint/cache, persisted-campaign,
+    or static-inference runtime-profile compatibility identity.  It only bounds
+    the nested operating point for the duration of one admitted inference task.
+    """
+
+    maximum_model_jobs: int
+    ram_allowance_bytes: int | None = None
 
 
 @contextmanager
@@ -45,6 +67,7 @@ def inference_start_signal(
     *,
     phase_callback: Callable[[str], None] | None = None,
     cancellation_requested: Callable[[], bool] | None = None,
+    lease: InferenceLease | None = None,
 ) -> Iterator[None]:
     """Bind worker-local adaptive-telemetry and stage callbacks.
 
@@ -56,6 +79,10 @@ def inference_start_signal(
     isolate concurrent thread-pool workers without changing the public
     scientific APIs.  The historical function name is retained for backward
     compatibility.
+
+    ``lease`` transports a launch-local outer inference RAM/job lease to the
+    nested static-inference runtime authority and is cleared again when the
+    worker finishes, so no lease can leak across concurrent tasks.
     """
 
     token: Token[Callable[[], None] | None] = _INFERENCE_START_CALLBACK.set(
@@ -67,12 +94,25 @@ def inference_start_signal(
     cancellation_token: Token[Callable[[], bool] | None] = (
         _INFERENCE_CANCELLATION_CALLBACK.set(cancellation_requested)
     )
+    lease_token: Token[InferenceLease | None] = _INFERENCE_LEASE.set(lease)
     try:
         yield
     finally:
+        _INFERENCE_LEASE.reset(lease_token)
         _INFERENCE_CANCELLATION_CALLBACK.reset(cancellation_token)
         _INFERENCE_PHASE_CALLBACK.reset(phase_token)
         _INFERENCE_START_CALLBACK.reset(token)
+
+
+def current_inference_lease() -> InferenceLease | None:
+    """Return the launch-local outer inference lease bound in this worker/task.
+
+    Returns ``None`` outside a staged evaluation inference task, so ordinary
+    (non-staged) static inference and dynamics retain their historical
+    process-global resource semantics.
+    """
+
+    return _INFERENCE_LEASE.get()
 
 
 def inference_cancellation_requested() -> bool:

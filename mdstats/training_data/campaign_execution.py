@@ -114,6 +114,21 @@ def _sha256_file(path: Path) -> str:
     return sha256_file_cached(path)
 
 
+def _raise_if_inference_cancelled(phase: str) -> None:
+    """Abort one staged evaluation at a safe orchestration boundary."""
+
+    from .inference_parallel import (
+        inference_cancellation_requested,
+        report_inference_worker_phase,
+    )
+
+    if inference_cancellation_requested():
+        report_inference_worker_phase(f"cancelled before {phase}")
+        raise InterruptedError(
+            f"Staged checkpoint evaluation cancelled before {phase}."
+        )
+
+
 MACE_CHECKPOINT_MODEL_CACHE_SCHEMA = "mdstats.mace-checkpoint-model-cache.v2"
 MACE_CHECKPOINT_MODEL_CACHE_LEGACY_SCHEMA = "mdstats.mace-checkpoint-model-cache.v1"
 MACE_CHECKPOINT_MODEL_EXPORT_CONTRACT = "mace-0.3.16-direct-state-restore.v2"
@@ -619,6 +634,7 @@ def materialize_mace_checkpoint_model(
     )
 
     materialization_started = time.monotonic()
+    _raise_if_inference_cancelled("checkpoint materialization")
 
     # Checkpoint authentication is the first expensive per-candidate operation:
     # it hashes and deserializes a potentially multi-gigabyte artifact.  Start
@@ -635,6 +651,7 @@ def materialize_mace_checkpoint_model(
         raise TrainingDataInputError("Immutable DATA8 MACE job directory is missing.")
 
     report_inference_worker_phase("reading checkpoint payload")
+    _raise_if_inference_cancelled("checkpoint payload authentication")
     source_expected_sha256 = checkpoint.sha256
     if evaluation_state_capsule is None:
         if not source.is_file() or _sha256_file(source) != checkpoint.sha256:
@@ -686,6 +703,7 @@ def materialize_mace_checkpoint_model(
     cached_model = cache_root / f"{stem}.model"
     cached_sidecar = cache_root / f"{stem}.json"
     report_inference_worker_phase("checking deployable-model cache")
+    _raise_if_inference_cancelled("deployable-model cache lookup")
     if _validated_cached_checkpoint_model(
         cached_model,
         cached_sidecar,
@@ -695,6 +713,7 @@ def materialize_mace_checkpoint_model(
         return cached_model
 
     report_inference_worker_phase("checking completed training model template")
+    _raise_if_inference_cancelled("checkpoint state restoration")
     template = _training_whole_model_path(cache_root, name)
     if template is not None:
         report_inference_worker_phase("restoring checkpoint weights directly")
@@ -740,6 +759,7 @@ def materialize_mace_checkpoint_model(
         )
 
     report_inference_worker_phase("direct restoration unavailable; using legacy restart export")
+    _raise_if_inference_cancelled("legacy checkpoint reconstruction")
     executable = str(wrapper_path or shutil.which("mdstats-mace-train") or "")
     if not executable:
         raise TrainingDataInputError(
@@ -806,27 +826,73 @@ def materialize_mace_checkpoint_model(
     merged_env["MDSTATS_MACE_RESTART_EPOCH"] = str(checkpoint.epoch)
     merged_env.setdefault("PYTHONHASHSEED", str(seed))
     report_inference_worker_phase("reconstructing deployable MACE model")
-    try:
-        with stdout_path.open("wb") as stdout_handle, stderr_path.open("wb") as stderr_handle:
-            completed = subprocess.run(
-                command,
-                cwd=job_root,
-                env=merged_env,
-                stdout=stdout_handle,
-                stderr=stderr_handle,
-                check=False,
-                timeout=timeout,
-            )
-    except subprocess.TimeoutExpired as exc:
-        tail = stderr_path.read_text(encoding="utf-8", errors="replace")[-2000:]
-        shutil.rmtree(staging, ignore_errors=True)
-        raise TrainingDataInputError(
-            "Timed out while reconstructing a deployable MACE model from the "
-            f"selected checkpoint. Last stderr:\n{tail}"
-        ) from exc
-
+    _raise_if_inference_cancelled("legacy checkpoint reconstruction child launch")
+    completed_returncode: int | None = None
+    with stdout_path.open("wb") as stdout_handle, stderr_path.open("wb") as stderr_handle:
+        process = subprocess.Popen(
+            command,
+            cwd=job_root,
+            env=merged_env,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            start_new_session=(os.name == "posix"),
+        )
+        deadline = time.monotonic() + timeout
+        while True:
+            if process.poll() is not None:
+                completed_returncode = int(process.returncode)
+                break
+            if time.monotonic() >= deadline:
+                if os.name == "posix":
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                else:  # pragma: no cover - Windows fallback
+                    process.terminate()
+                try:
+                    process.wait(timeout=5.0)
+                except subprocess.TimeoutExpired:
+                    if os.name == "posix":
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    else:  # pragma: no cover - Windows fallback
+                        process.kill()
+                    process.wait()
+                tail = stderr_path.read_text(encoding="utf-8", errors="replace")[-2000:]
+                shutil.rmtree(staging, ignore_errors=True)
+                raise TrainingDataInputError(
+                    "Timed out while reconstructing a deployable MACE model from the "
+                    f"selected checkpoint. Last stderr:\n{tail}"
+                )
+            try:
+                _raise_if_inference_cancelled("legacy checkpoint reconstruction completion")
+            except InterruptedError:
+                if os.name == "posix":
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                else:  # pragma: no cover - Windows fallback
+                    process.terminate()
+                try:
+                    process.wait(timeout=5.0)
+                except subprocess.TimeoutExpired:
+                    if os.name == "posix":
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    else:  # pragma: no cover - Windows fallback
+                        process.kill()
+                    process.wait()
+                shutil.rmtree(staging, ignore_errors=True)
+                raise
+            time.sleep(min(_CANCELLATION_POLL_SECONDS, max(0.01, deadline - time.monotonic())))
     produced = model_dir / f"{name}.model"
-    if completed.returncode != 0 or not produced.is_file():
+    if completed_returncode != 0 or not produced.is_file():
         tail = stderr_path.read_text(encoding="utf-8", errors="replace")[-4000:]
         shutil.rmtree(staging, ignore_errors=True)
         raise TrainingDataInputError(
@@ -1473,12 +1539,32 @@ def execute_training_run(
     for directory in (model_dir, log_dir, result_dir, checkpoints):
         directory.mkdir(parents=True, exist_ok=True)
 
+    def _candidate_checkpoint_paths() -> tuple[Path, ...]:
+        """Return the current raw checkpoint population without constructing a catalog.
+
+        ``CandidateCheckpointCatalog`` is intentionally non-empty.  Restart and
+        interruption control flow must therefore distinguish "no durable
+        checkpoint yet" from a corrupt/non-empty catalog before calling the
+        inventory owner.
+        """
+
+        return tuple(
+            path
+            for path in sorted(checkpoints.rglob(policy.checkpoint_glob))
+            if path.is_file()
+        )
+
     if prior_record is not None:
         if prior_record.run_plan_digest != run_plan.content_digest:
             raise TrainingDataInputError("Prior execution record belongs to a different run.")
         if prior_record.execution_policy_digest != policy.policy_digest:
             raise TrainingDataInputError("Prior execution record uses a different policy.")
         if prior_record.state is TrainingRunState.SUCCEEDED:
+            if not _candidate_checkpoint_paths():
+                raise TrainingDataInputError(
+                    "Successful execution recorded checkpoint evidence, but the raw checkpoint "
+                    "bytes required for continuation are missing."
+                )
             catalog = inventory_mace_checkpoints(run_plan, checkpoints, pattern=policy.checkpoint_glob)
             if catalog.content_digest != prior_record.checkpoint_catalog.content_digest:
                 raise TrainingDataInputError("Successful execution checkpoint bytes changed after recording.")
@@ -1488,6 +1574,11 @@ def execute_training_run(
             prior_record.state is TrainingRunState.INTERRUPTED
             and prior_record.checkpoint_catalog is not None
         ):
+            if not _candidate_checkpoint_paths():
+                raise TrainingDataInputError(
+                    "Interrupted execution recorded resumable checkpoint evidence, but the "
+                    "checkpoint bytes are now missing before continuation."
+                )
             catalog = inventory_mace_checkpoints(
                 run_plan, checkpoints, pattern=policy.checkpoint_glob
             )
@@ -1791,7 +1882,7 @@ def execute_training_run(
         )
         if state is not TrainingRunState.SUCCEEDED:
             interrupted_catalog = None
-            if state is TrainingRunState.INTERRUPTED:
+            if state is TrainingRunState.INTERRUPTED and _candidate_checkpoint_paths():
                 interrupted_catalog = inventory_mace_checkpoints(
                     run_plan, checkpoints, pattern=policy.checkpoint_glob
                 )
@@ -1813,9 +1904,11 @@ def execute_training_run(
             ):
                 return interim
         if state is TrainingRunState.SUCCEEDED:
+            if policy.require_checkpoint_on_success and not _candidate_checkpoint_paths():
+                raise TrainingDataInputError(
+                    "Training command succeeded but produced no candidate checkpoint."
+                )
             catalog = inventory_mace_checkpoints(run_plan, checkpoints, pattern=policy.checkpoint_glob)
-            if policy.require_checkpoint_on_success and not catalog.checkpoints:
-                raise TrainingDataInputError("Training command succeeded but produced no candidate checkpoint.")
             record = TrainingRunExecutionRecord(
                 run_plan_digest=run_plan.content_digest,
                 mace_job_artifact_digest=job.content_digest,
@@ -2413,7 +2506,7 @@ def _path_cache_identity(path: Path, expected_sha256: str) -> tuple[str, int, in
     )
 
 
-_MONITOR_ATOMS_CACHE: "OrderedDict[tuple[str, int, int, int, str], tuple[tuple[Any, ...], int]]" = OrderedDict()
+_MONITOR_ATOMS_CACHE: "OrderedDict[str, tuple[tuple[Any, ...], int]]" = OrderedDict()
 _MONITOR_ATOMS_CACHE_BYTES = 0
 _MONITOR_ATOMS_CACHE_LOCK = RLock()
 _MONITOR_ATOMS_CACHE_MAX_BYTES = max(
@@ -2456,13 +2549,21 @@ def _monitor_atoms_cache_clear() -> None:
 def _as_atoms_tuple_cached(
     identity: tuple[str, int, int, int, str],
 ) -> tuple[Any, ...]:
-    """Load an extxyz monitor through a byte-budgeted authenticated LRU."""
+    """Load an extxyz monitor through a byte-budgeted content-addressed LRU.
+
+    ``identity`` still carries path/stat metadata so the caller can authenticate
+    the concrete source before entering this cache.  Once those bytes have been
+    authenticated, the immutable parsed representation is keyed by SHA256 rather
+    than path so byte-identical materializations do not consume duplicate RAM or
+    repeat ExtXYZ decoding.
+    """
 
     global _MONITOR_ATOMS_CACHE_BYTES
+    content_key = str(identity[-1])
     with _MONITOR_ATOMS_CACHE_LOCK:
-        cached = _MONITOR_ATOMS_CACHE.get(identity)
+        cached = _MONITOR_ATOMS_CACHE.get(content_key)
         if cached is not None:
-            _MONITOR_ATOMS_CACHE.move_to_end(identity)
+            _MONITOR_ATOMS_CACHE.move_to_end(content_key)
             return cached[0]
         # Keep the first authenticated parse inside the lock. Parallel checkpoint
         # evaluations otherwise decode the same multi-GB monitor simultaneously,
@@ -2479,10 +2580,10 @@ def _as_atoms_tuple_cached(
             or resident_bytes > _MONITOR_ATOMS_CACHE_MAX_BYTES
         ):
             return values
-        previous = _MONITOR_ATOMS_CACHE.pop(identity, None)
+        previous = _MONITOR_ATOMS_CACHE.pop(content_key, None)
         if previous is not None:
             _MONITOR_ATOMS_CACHE_BYTES -= previous[1]
-        _MONITOR_ATOMS_CACHE[identity] = (values, resident_bytes)
+        _MONITOR_ATOMS_CACHE[content_key] = (values, resident_bytes)
         _MONITOR_ATOMS_CACHE_BYTES += resident_bytes
         while (
             _MONITOR_ATOMS_CACHE
@@ -2506,6 +2607,15 @@ def _as_atoms_list(
     from ase.io import read
 
     if use_cache and expected_sha256 is not None:
+        # Content-addressed reuse is safe only after the concrete path is proven
+        # to contain the authority bytes.  Receipt-backed hashing makes this
+        # cheap on unchanged files while preventing stale-path cache aliasing.
+        if _sha256_file(path) != validate_digest(
+            expected_sha256, name="monitor_sha256"
+        ):
+            raise TrainingDataInputError(
+                "Evaluation monitor bytes do not match the authenticated cache identity."
+            )
         return _as_atoms_tuple_cached(_path_cache_identity(path, expected_sha256))
     result = read(path, index=":", format="extxyz")
     return tuple(result if isinstance(result, list) else [result])
@@ -2539,7 +2649,10 @@ def _predict_model_on_atoms(
 ) -> tuple[Any, ...]:
     """Run only model inference; reference labels and metric policy are irrelevant."""
 
-    from .inference_parallel import mark_inference_workload_started
+    from .inference_parallel import (
+        current_inference_lease,
+        mark_inference_workload_started,
+    )
 
     mark_inference_workload_started()
     if not atoms_list:
@@ -2614,16 +2727,35 @@ def _predict_model_on_atoms(
         model_identity = getattr(provider_identity, "content_digest", None)
         if model_identity is None:
             model_identity = _sha256_file(model_path)
+        runtime_architecture_identity = getattr(
+            provider, "runtime_architecture_digest", None
+        )
+        stable_geometry_identities = (
+            None
+            if geometry_identities is None
+            else tuple(str(value) for value in geometry_identities)
+        )
+        if runtime_architecture_identity is None or stable_geometry_identities is None:
+            # Cross-checkpoint calibration reuse is enabled only when both the
+            # provider exposes a validated structural identity and the workload
+            # has stable authenticated geometry identities.  Otherwise retain
+            # the historical exact-model relation.
+            runtime_architecture_identity = model_identity
         workload_shape_digest = digest(
             {
                 "atom_counts": [int(len(value)) for value in atoms_list],
                 "configuration_count": len(atoms_list),
+                "geometry_identities": (
+                    None
+                    if stable_geometry_identities is None
+                    else list(stable_geometry_identities)
+                ),
             }
         )
         compatibility = StaticInferenceRuntimeAuthority.compatibility_key(
             {
                 "adapter_version": MACE_ADAPTER_VERSION,
-                "model_identity": model_identity,
+                "runtime_architecture_identity": runtime_architecture_identity,
                 "device": str(policy.device),
                 "default_dtype": str(policy.default_dtype),
                 "head": None if head is None else str(head),
@@ -2654,15 +2786,27 @@ def _predict_model_on_atoms(
             compatible_profile = StaticInferenceRuntimeProfile.load_compatible(
                 runtime_profile_path, compatibility_digest=compatibility
             )
+        # Under staged evaluation the nested authority must consume the scoped
+        # outer inference lease rather than rediscover the whole process-global
+        # RAM budget.  The lease is runtime-only transport: it never alters the
+        # persisted runtime-profile compatibility identity, which already
+        # re-clamps every compatible point against these live limits on load.
+        outer_lease = current_inference_lease()
+        model_job_cap = int(active_execution.selected_concurrent_model_jobs)
+        live_ram_cap_bytes = int(resources.ram_budget_bytes)
+        if outer_lease is not None:
+            model_job_cap = min(model_job_cap, int(outer_lease.maximum_model_jobs))
+            if outer_lease.ram_allowance_bytes is not None:
+                live_ram_cap_bytes = min(
+                    live_ram_cap_bytes, int(outer_lease.ram_allowance_bytes)
+                )
         runtime_authority = StaticInferenceRuntimeAuthority(
             compatibility_digest=compatibility,
             maximum_batch_size=min(
                 int(active_execution.maximum_batch_size), len(atoms_list)
             ),
-            maximum_concurrent_model_jobs=int(
-                active_execution.selected_concurrent_model_jobs
-            ),
-            live_ram_budget_bytes=int(resources.ram_budget_bytes),
+            maximum_concurrent_model_jobs=model_job_cap,
+            live_ram_budget_bytes=live_ram_cap_bytes,
             live_vram_budget_bytes=(
                 resources.gpu.budget_bytes if uses_cuda else None
             ),
@@ -3495,6 +3639,153 @@ class CheckpointEvaluationPredictionBundle:
     replay_foundation_artifact: Any | None
 
 
+@dataclass(frozen=True, slots=True)
+class SharedTargetEvaluationContext:
+    """Authenticated immutable target data shared by compatible EVAL tasks.
+
+    This runtime-only object deliberately separates scientific authority
+    (``authority_scope_digest`` and the monitor artifact digest) from the
+    content-addressed computational representation.  ASE objects are retained
+    calculator-free; MACE prediction providers copy an ``Atoms`` object before
+    attaching calculators, while ``EvaluationDatasetView`` owns read-only NumPy
+    buffers.
+    """
+
+    authority_scope_digest: str
+    target_monitor_artifact_digest: str
+    target_monitor_sha256: str
+    source_path: Path
+    target_configuration_indices: tuple[int, ...]
+    target_atoms: tuple[Any, ...]
+    target_geometry_identities: tuple[str, ...]
+    target_view: Any
+    retained_bytes: int
+    compatible_target_monitor_artifact_digests: tuple[str, ...] = ()
+
+
+def _evaluation_view_resident_bytes(view: Any) -> int:
+    arrays = (
+        view.atom_counts,
+        view.force_offsets,
+        view.reference_energies,
+        view.reference_forces,
+        view.atomic_numbers,
+        view.condition_ids,
+        view.reference_stresses,
+        view.stress_present,
+    )
+    return max(
+        1,
+        sum(int(array.nbytes) for array in arrays)
+        + sum(len(value) for value in view.condition_labels)
+        + sum(
+            int(indices.nbytes)
+            for per_frame in view.focus_local_indices
+            for indices in per_frame
+        ),
+    )
+
+
+def prepare_shared_target_evaluation_context(
+    target_monitor_path: str | Path,
+    target_monitor_artifact: MaceExtxyzArtifact,
+    *,
+    policy: CheckpointEvaluationPolicy,
+    execution_plan: InferenceExecutionPlan,
+    authority_scope_digest: str,
+    target_configuration_indices: Sequence[int] | None = None,
+    compatible_target_monitor_artifact_digests: Sequence[str] = (),
+) -> SharedTargetEvaluationContext:
+    """Authenticate/parse one target monitor once for a staged population."""
+
+    from .evaluation_views import cached_evaluation_dataset_view
+    from .inference_parallel import report_inference_worker_phase
+
+    scope = validate_digest(authority_scope_digest, name="target_authority_scope_digest")
+    target = Path(target_monitor_path).resolve()
+    report_inference_worker_phase("authenticating shared target monitor")
+    if not target.is_file() or _sha256_file(target) != target_monitor_artifact.sha256:
+        raise TrainingDataInputError(
+            "Shared target monitor bytes do not match the frozen artifact."
+        )
+    report_inference_worker_phase("loading shared target monitor")
+    all_atoms = tuple(
+        _as_atoms_list(
+            target,
+            expected_sha256=target_monitor_artifact.sha256,
+            use_cache=execution_plan.monitor_cache_enabled,
+        )
+    )
+    if len(all_atoms) != target_monitor_artifact.configuration_count:
+        raise TrainingDataInputError(
+            "Shared target monitor configuration count changed after materialization."
+        )
+    if target_configuration_indices is None:
+        indices = tuple(range(len(all_atoms)))
+    else:
+        indices = tuple(int(value) for value in target_configuration_indices)
+        if not indices:
+            raise TrainingDataInputError(
+                "Shared target monitor configuration subset cannot be empty."
+            )
+        if any(value < 0 or value >= len(all_atoms) for value in indices):
+            raise TrainingDataInputError(
+                "Shared target monitor configuration subset is out of range."
+            )
+        if len(set(indices)) != len(indices):
+            raise TrainingDataInputError(
+                "Shared target monitor configuration subset contains duplicate indices."
+            )
+    atoms = tuple(all_atoms[index] for index in indices)
+    geometry_identities = tuple(
+        target_monitor_artifact.frame_uids[index] for index in indices
+    )
+    # Once target bytes are authenticated, computational view identity is
+    # content-addressed and policy-bound rather than path-bound.  Scientific
+    # role equivalence remains separately carried by ``authority_scope_digest``.
+    view = cached_evaluation_dataset_view(
+        (
+            "sha256",
+            target_monitor_artifact.sha256,
+            "subset",
+            digest({"indices": list(indices)}),
+        ),
+        atoms,
+        energy_key=policy.energy_key,
+        forces_key=policy.forces_key,
+        stress_key=policy.stress_key,
+        focus_atomic_numbers=policy.focus_atomic_numbers,
+        condition_keys=policy.condition_keys,
+    )
+    compatible_artifact_digests = tuple(
+        sorted(
+            {
+                validate_digest(
+                    target_monitor_artifact.content_digest,
+                    name="target_monitor_artifact_digest",
+                ),
+                *(
+                    validate_digest(value, name="target_monitor_artifact_digest")
+                    for value in compatible_target_monitor_artifact_digests
+                ),
+            }
+        )
+    )
+    retained = _atoms_tuple_resident_bytes(atoms) + _evaluation_view_resident_bytes(view)
+    return SharedTargetEvaluationContext(
+        authority_scope_digest=scope,
+        target_monitor_artifact_digest=target_monitor_artifact.content_digest,
+        target_monitor_sha256=target_monitor_artifact.sha256,
+        source_path=target,
+        target_configuration_indices=indices,
+        target_atoms=atoms,
+        target_geometry_identities=geometry_identities,
+        target_view=view,
+        retained_bytes=retained,
+        compatible_target_monitor_artifact_digests=compatible_artifact_digests,
+    )
+
+
 def _optional_cache_path(value: str | Path | None) -> Path | None:
     return None if value is None else Path(value).resolve()
 
@@ -3519,6 +3810,7 @@ def prepare_mace_checkpoint_evaluation(
     graph_cache_directory: str | Path | None = None,
     foundation_prediction_manifest: Any | None = None,
     foundation_prediction_root: str | Path | None = None,
+    shared_target_context: SharedTargetEvaluationContext | None = None,
     target_configuration_indices: Sequence[int] | None = None,
     replay_configuration_indices: Sequence[int] | None = None,
     allow_target_monitor_override: bool = False,
@@ -3536,6 +3828,7 @@ def prepare_mace_checkpoint_evaluation(
     from .evaluation_views import cached_evaluation_dataset_view
 
     report_inference_worker_phase("authenticating evaluation artifacts")
+    _raise_if_inference_cancelled("evaluation artifact authentication")
     active_execution = (
         _legacy_inference_execution_plan(policy)
         if execution_plan is None
@@ -3548,6 +3841,7 @@ def prepare_mace_checkpoint_evaluation(
     target = Path(target_monitor_path).resolve()
     candidate_checkpoint_available = candidate.is_file()
     if candidate_checkpoint_available:
+        _raise_if_inference_cancelled("candidate checkpoint byte authentication")
         if evaluation_state_capsule is None:
             if _sha256_file(candidate) != checkpoint.sha256:
                 raise TrainingDataInputError("Candidate model bytes do not match checkpoint inventory.")
@@ -3567,10 +3861,10 @@ def prepare_mace_checkpoint_evaluation(
     ):
         raise TrainingDataInputError("Target monitor artifact lineage does not match campaign run.")
     if allow_target_only_evaluation:
-        if not allow_target_monitor_override:
-            raise TrainingDataInputError(
-                "Target-only evaluation authorization is reserved for an explicit target-monitor override."
-            )
+        # Target-monitor override and target-only scope are independent
+        # authorizations.  A caller may deliberately evaluate only the run's
+        # frozen target monitor while retaining replay lineage in the training
+        # protocol (for example TARGET-SIZE-V5 screening).
         if any(
             value is not None
             for value in (
@@ -3599,32 +3893,71 @@ def prepare_mace_checkpoint_evaluation(
             raise TrainingDataInputError(f"{name} configuration subset contains duplicate indices.")
         return result
 
-    report_inference_worker_phase("loading target monitor")
-    target_all_atoms = tuple(
-        _as_atoms_list(
-            target,
-            expected_sha256=target_monitor_artifact.sha256,
-            use_cache=active_execution.monitor_cache_enabled,
+    if shared_target_context is None:
+        report_inference_worker_phase("loading target monitor")
+        target_all_atoms = tuple(
+            _as_atoms_list(
+                target,
+                expected_sha256=target_monitor_artifact.sha256,
+                use_cache=active_execution.monitor_cache_enabled,
+            )
         )
-    )
-    if len(target_all_atoms) != target_monitor_artifact.configuration_count:
-        raise TrainingDataInputError("Target monitor configuration count changed after materialization.")
-    target_indices = normalized_indices(
-        target_configuration_indices, len(target_all_atoms), name="Target monitor"
-    )
-    target_atoms = tuple(target_all_atoms[index] for index in target_indices)
-    target_geometry_identities = tuple(
-        target_monitor_artifact.frame_uids[index] for index in target_indices
-    )
-    target_view = cached_evaluation_dataset_view(
-        f"{_path_cache_identity(target, target_monitor_artifact.sha256)}:subset:{digest({'indices': list(target_indices)})}",
-        target_atoms,
-        energy_key=policy.energy_key,
-        forces_key=policy.forces_key,
-        stress_key=policy.stress_key,
-        focus_atomic_numbers=policy.focus_atomic_numbers,
-        condition_keys=policy.condition_keys,
-    )
+        if len(target_all_atoms) != target_monitor_artifact.configuration_count:
+            raise TrainingDataInputError("Target monitor configuration count changed after materialization.")
+        target_indices = normalized_indices(
+            target_configuration_indices, len(target_all_atoms), name="Target monitor"
+        )
+        target_atoms = tuple(target_all_atoms[index] for index in target_indices)
+        target_geometry_identities = tuple(
+            target_monitor_artifact.frame_uids[index] for index in target_indices
+        )
+        target_view = cached_evaluation_dataset_view(
+            (
+                "sha256",
+                target_monitor_artifact.sha256,
+                "subset",
+                digest({"indices": list(target_indices)}),
+            ),
+            target_atoms,
+            energy_key=policy.energy_key,
+            forces_key=policy.forces_key,
+            stress_key=policy.stress_key,
+            focus_atomic_numbers=policy.focus_atomic_numbers,
+            condition_keys=policy.condition_keys,
+        )
+    else:
+        report_inference_worker_phase("reusing shared target monitor")
+        compatible_artifacts = (
+            shared_target_context.compatible_target_monitor_artifact_digests
+            or (shared_target_context.target_monitor_artifact_digest,)
+        )
+        if (
+            target_monitor_artifact.content_digest not in compatible_artifacts
+            or shared_target_context.target_monitor_sha256 != target_monitor_artifact.sha256
+        ):
+            raise TrainingDataInputError(
+                "Shared target context does not match the requested target authority."
+            )
+        expected_indices = normalized_indices(
+            target_configuration_indices,
+            target_monitor_artifact.configuration_count,
+            name="Target monitor",
+        )
+        if expected_indices != shared_target_context.target_configuration_indices:
+            raise TrainingDataInputError(
+                "Shared target context configuration subset does not match this evaluation."
+            )
+        expected_geometry_identities = tuple(
+            target_monitor_artifact.frame_uids[index] for index in expected_indices
+        )
+        if expected_geometry_identities != shared_target_context.target_geometry_identities:
+            raise TrainingDataInputError(
+                "Shared target context geometry identity does not match the requested target authority."
+            )
+        target_indices = shared_target_context.target_configuration_indices
+        target_atoms = shared_target_context.target_atoms
+        target_geometry_identities = shared_target_context.target_geometry_identities
+        target_view = shared_target_context.target_view
 
     prediction_cache = (
         _optional_cache_path(prediction_cache_directory)
@@ -3913,7 +4246,109 @@ def prepare_mace_checkpoint_evaluation(
         raise TrainingDataInputError(
             "Candidate checkpoint bytes are unavailable and the required persistent prediction artifact is missing."
         )
+    _raise_if_inference_cancelled("prepared-evaluation handoff")
     return prepared
+
+
+def _build_prepared_mace_candidate_provider(
+    prepared: PreparedCheckpointEvaluation,
+    calculator_model_path: str | Path,
+) -> Any:
+    """Construct one candidate provider using the prepared evaluation policy."""
+
+    from .inference_parallel import mark_inference_workload_started
+    from .model_features import MaceCalculatorProvider
+
+    model_path = Path(calculator_model_path).resolve()
+    if not model_path.is_file():
+        raise TrainingDataInputError(
+            "Deployable MACE model for checkpoint evaluation is missing."
+        )
+    policy = prepared.policy
+    mark_inference_workload_started(
+        "loading candidate MACE model / accelerator conversion"
+    )
+    candidate_kwargs = (
+        dict(policy.acceleration_policy.calculator_kwargs())
+        if policy.resolved_acceleration_kernel_mode is None
+        else dict(
+            MaceAccelerationKernelMode(
+                policy.resolved_acceleration_kernel_mode
+            ).calculator_kwargs()
+        )
+    )
+    if policy.target_head_name is not None:
+        candidate_kwargs["head"] = policy.target_head_name
+    return MaceCalculatorProvider.from_model_path(
+        model_path,
+        device=policy.device,
+        default_dtype=policy.default_dtype,
+        critical_precision_policy=policy.active_critical_precision_policy,
+        **candidate_kwargs,
+    )
+
+
+class ReusableMaceCandidateProviderSession:
+    """Single-owner candidate shell reused across compatible staged endpoints.
+
+    The session is runtime-only.  It never changes scientific checkpoint or
+    prediction-cache identity; each new model is SHA-authenticated before a
+    same-architecture state replacement.  Unsupported/incompatible shells are
+    retired and rebuilt rather than coerced.
+    """
+
+    def __init__(self) -> None:
+        self._provider: Any | None = None
+        self.reuse_count = 0
+        self.rebuild_count = 0
+
+    @property
+    def provider(self) -> Any | None:
+        return self._provider
+
+    def acquire(
+        self,
+        prepared: PreparedCheckpointEvaluation,
+        calculator_model_path: str | Path,
+    ) -> Any:
+        from .inference_parallel import report_inference_worker_phase
+        from .model_features import MaceModelStateCompatibilityError
+
+        model_path = Path(calculator_model_path).resolve()
+        expected_sha = _sha256_file(model_path)
+        provider = self._provider
+        if provider is None:
+            provider = _build_prepared_mace_candidate_provider(prepared, model_path)
+            self._provider = provider
+            self.rebuild_count += 1
+            return provider
+        if provider.checkpoint_identity.checkpoint_sha256 != expected_sha:
+            try:
+                report_inference_worker_phase(
+                    "reusing candidate MACE shell with compatible checkpoint state"
+                )
+                provider.load_compatible_model_state(
+                    model_path, expected_sha256=expected_sha
+                )
+                self.reuse_count += 1
+            except MaceModelStateCompatibilityError:
+                report_inference_worker_phase(
+                    "candidate MACE shell incompatible; rebuilding provider"
+                )
+                provider.close()
+                provider = _build_prepared_mace_candidate_provider(
+                    prepared, model_path
+                )
+                self._provider = provider
+                self.rebuild_count += 1
+        provider.set_head(prepared.policy.target_head_name)
+        return provider
+
+    def close(self) -> None:
+        provider = self._provider
+        self._provider = None
+        if provider is not None:
+            provider.close()
 
 
 def run_prepared_mace_checkpoint_inference(
@@ -3921,14 +4356,16 @@ def run_prepared_mace_checkpoint_inference(
     *,
     calculator_model_path: str | Path | None = None,
     candidate_provider: Any | None = None,
+    candidate_provider_session: ReusableMaceCandidateProviderSession | None = None,
 ) -> CheckpointEvaluationPredictionBundle:
     """Run only missing model predictions for one CPU-prepared evaluation.
 
     Foundation calculators remain private to this invocation.  ``candidate_provider``
     may supply one PERF-P5-qualified unaccelerated model shell for serial checkpoint
-    evaluation; the next exact same-architecture state is loaded only after strict
-    key/shape/dtype/class validation.  Accelerated/compiled providers reject this
-    reuse path.  Independent concurrent workers must never share one mutable shell.
+    evaluation. ``candidate_provider_session`` is the staged single-owner form: it
+    reuses that shell across compatible endpoint invocations and rebuilds only when
+    strict model-state compatibility rejects replacement.  Independent concurrent
+    workers must never share one mutable shell.
     """
 
     from .inference_parallel import (
@@ -3936,6 +4373,8 @@ def run_prepared_mace_checkpoint_inference(
         report_inference_worker_phase,
     )
     from .model_features import MaceCalculatorProvider
+
+    _raise_if_inference_cancelled("checkpoint inference")
 
     policy = prepared.policy
     active_calculator_model = (
@@ -3963,24 +4402,19 @@ def run_prepared_mace_checkpoint_inference(
 
     def require_candidate_provider(head: str | None) -> Any:
         nonlocal active_candidate_provider
+        _raise_if_inference_cancelled("candidate provider construction")
         if not active_calculator_model.is_file():
             raise TrainingDataInputError("Deployable MACE model for checkpoint evaluation is missing.")
         if active_candidate_provider is None:
-            mark_inference_workload_started("loading candidate MACE model / accelerator conversion")
-            candidate_kwargs = (
-                dict(policy.acceleration_policy.calculator_kwargs())
-                if policy.resolved_acceleration_kernel_mode is None
-                else dict(MaceAccelerationKernelMode(policy.resolved_acceleration_kernel_mode).calculator_kwargs())
-            )
-            if head is not None:
-                candidate_kwargs["head"] = head
-            active_candidate_provider = MaceCalculatorProvider.from_model_path(
-                active_calculator_model,
-                device=policy.device,
-                default_dtype=policy.default_dtype,
-                critical_precision_policy=policy.active_critical_precision_policy,
-                **candidate_kwargs,
-            )
+            if candidate_provider_session is not None:
+                active_candidate_provider = candidate_provider_session.acquire(
+                    prepared, active_calculator_model
+                )
+            else:
+                active_candidate_provider = _build_prepared_mace_candidate_provider(
+                    prepared, active_calculator_model
+                )
+            active_candidate_provider.set_head(head)
         else:
             if candidate_shell_supplied:
                 expected_model_sha = _sha256_file(active_calculator_model)
@@ -3996,6 +4430,7 @@ def run_prepared_mace_checkpoint_inference(
 
     def require_baseline_provider(head: str | None) -> Any:
         nonlocal baseline_provider
+        _raise_if_inference_cancelled("foundation provider construction")
         baseline = prepared.baseline_model_path
         if baseline is None or not baseline.is_file():
             raise TrainingDataInputError("Foundation baseline model is missing.")
@@ -4022,6 +4457,7 @@ def run_prepared_mace_checkpoint_inference(
         return baseline_provider
 
     if target_candidate_predictions is None:
+        _raise_if_inference_cancelled("candidate target prediction")
         report_inference_worker_phase("GPU inference: candidate target monitor")
         target_candidate_predictions = _predict_model_on_monitor(
             active_calculator_model,
@@ -4035,6 +4471,7 @@ def run_prepared_mace_checkpoint_inference(
         )
 
     if policy.evaluate_foundation_on_target and target_foundation_predictions is None:
+        _raise_if_inference_cancelled("foundation target prediction")
         if prepared.baseline_sha256 is None:
             raise TrainingDataInputError("Foundation baseline identity is unavailable.")
         # Foundation inference is shared by all checkpoint tasks.  Hold the
@@ -4076,6 +4513,7 @@ def run_prepared_mace_checkpoint_inference(
         if prepared.replay_atoms is None:
             raise TrainingDataInputError("Prepared replay monitor is unavailable.")
         if replay_candidate_predictions is None:
+            _raise_if_inference_cancelled("candidate replay prediction")
             report_inference_worker_phase("GPU inference: candidate replay monitor")
             replay_candidate_predictions = _predict_model_on_monitor(
                 active_calculator_model,
@@ -4088,6 +4526,7 @@ def run_prepared_mace_checkpoint_inference(
                 graph_cache_directory=prepared.graph_cache_directory,
             )
         if replay_foundation_predictions is None:
+            _raise_if_inference_cancelled("foundation replay prediction")
             if prepared.baseline_sha256 is None:
                 raise TrainingDataInputError("Foundation baseline identity is unavailable.")
             with _BASELINE_METRIC_CACHE_LOCK:
@@ -4124,6 +4563,7 @@ def run_prepared_mace_checkpoint_inference(
 
     if target_candidate_predictions is None:
         raise TrainingDataInputError("Candidate target predictions are unavailable after inference stage.")
+    _raise_if_inference_cancelled("prediction bundle handoff")
     return CheckpointEvaluationPredictionBundle(
         target_candidate_predictions=target_candidate_predictions,
         target_candidate_artifact=target_candidate_artifact,
