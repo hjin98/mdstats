@@ -2152,4 +2152,36 @@ from .target_size_study import (
     attach_final_screen_evidence,
 )
 
+# Current-generation statistical experiment scaffold.  It remains unreachable
+# from campaign commands until the P4 atomic cutover.
+from .target_size_experiment import (
+    BoundaryOutcome,
+    NumericalFailureKind,
+    ReducerStatus,
+    ResolvedTargetSizePolicy,
+    TargetEvaluationOrder,
+    TargetSizeBoundaryMetric,
+    TargetSizeExperimentDefinition,
+    TargetSizeNumericalFailure,
+    TargetSizePopulation,
+    TargetSizePopulationFrame,
+    TargetSizePopulationSplit,
+    TargetSizeReducerState,
+    TargetSizeStatisticalAggregate,
+    TargetTrainingOrder,
+    advance_target_size_reducer,
+    bind_target_size_execution_context,
+    build_target_evaluation_order,
+    build_target_size_experiment_definition,
+    build_target_size_population,
+    build_target_size_statistical_aggregate,
+    build_target_training_order,
+    initial_target_size_reducer,
+    reference_exact_split_feasible,
+    resolve_target_size_policy,
+    resolve_target_size_policy_from_config,
+    split_target_size_population,
+    validate_target_size_reducer_state,
+)
+
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
