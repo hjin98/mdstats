@@ -1,59 +1,70 @@
 # MLFF_EVAL2_ADMISSION_SERIAL_FLOOR_FIX — MLFF EVAL2 adaptive-admission serial-floor fix
 
-**Status:** active  
-**Current authority:** `mdstats/training_data/inference_parallel.py`, `mdstats/training_data/_campaign_cli_core.py`, and the accepted MLFF architecture/specification set on `main`  
-**Target branch/base:** `fix/mlff-eval2-admission-serial-floor` from `main@efa8b1b206f75f687ec9b2fb738cfcc089401d68`  
+**Status:** active — independent review reopened bounded rework  
+**Current authority:** `mdstats/training_data/inference_parallel.py`, `mdstats/training_data/_campaign_cli_core.py`, and the accepted MLFF architecture/specification set  
+**Target branch:** `fix/mlff-eval2-admission-serial-floor`  
+**Current branch head before this workplan revision:** `7f0c3db910bcaff7eee5a0a26b7a3389d2052054`  
+**Implementation merge-base/provenance:** `7da80aec5fa7145fc1652bc7c0eb4c4a63527112` for the current implementation line; this supersedes the stale earlier `main@d718d6ce...` implementation-record statement  
 **Owner:** implementation agent  
 **Qualification policy:** implementation acceptance is functional unit/regression/integration evidence only. Full production GPU/resource/performance qualification remains release-closeout work and is not part of this implementation cycle.
 
 ## Objective
 
-Repair EVAL2 adaptive CUDA admission so that soft GPU-utilization and VRAM safety envelopes regulate **additional concurrency** without falsely proving that a successfully executable single inference job is globally inadmissible.
+Repair EVAL2 adaptive CUDA admission so that soft GPU-utilization and VRAM safety envelopes regulate **additional concurrency** without falsely proving that a viable single inference job is globally inadmissible.
 
-The observed failure occurs after an uncached one-slot CUDA calibration job completes successfully. Its measured demand crosses the configured 90% GPU-utilization and/or soft VRAM envelope, the controller converts that soft limit into target concurrency `0`, and the scheduler raises:
+The original failure occurred after an uncached one-slot CUDA calibration job completed successfully. Its measured demand crossed the configured 90% GPU-utilization and/or soft VRAM envelope, the controller converted that soft limit into target concurrency `0`, and the scheduler aborted the remaining queue. That is an ownership/semantic error: successful execution proves serial viability for the applicable job/resource profile, so a soft parallel-expansion ceiling may cap concurrency at one but cannot transform success into terminal infeasibility.
 
-> `Evaluation resource admission blocked with 1 queued inference task(s): measured single-job CUDA demand exceeds the configured VRAM or GPU-utilization envelope; no future inference job is admissible.`
-
-That is an ownership/semantic error. A completed CUDA job is direct evidence that serial execution of the applicable job/resource profile is viable. Crossing a soft parallel-expansion envelope should therefore cap concurrency at one, not transform successful execution into terminal infeasibility.
-
-The repair must establish a robust **serial floor** while preserving adaptive concurrency greater than one whenever measured headroom safely allows it.
+The implementation already repairs the principal post-calibration serial-floor defect. Independent review found one remaining blocking conformance gap: **absence of a live GPU telemetry sample is still treated as proof that the first CUDA job cannot be attempted**, even when CUDA/device availability is otherwise established. This workplan revision freezes the required correction and the evidence needed to close it.
 
 ## Current-state evidence and root cause
 
-The failing EVAL2 run has the following material sequence:
+The original failing EVAL2 run had this material sequence:
 
-1. CUDA resource policy reports an RTX 3090 with approximately 21.6 GiB VRAM admission budget, a 90% utilization ceiling, and an inferred worker ceiling of 24.
-2. Cached `n512-seed1` and `n512-seed2` results are reused.
-3. The first uncached `n1024-seed1` task launches alone as CUDA calibration and completes successfully after approximately 666.8 s with a valid RMSE result.
-4. Before `n1024-seed2` launches, adaptive admission reports no future job admissible and aborts the queue.
-5. The queued second task therefore never receives an execution attempt. Later TorchScript warnings are unrelated to this admission failure.
+1. CUDA resource policy reported an RTX 3090 with approximately 21.6 GiB soft VRAM admission budget, a 90% utilization ceiling, and an inferred worker ceiling of 24.
+2. Cached `n512-seed1` and `n512-seed2` results were reused.
+3. The first uncached `n1024-seed1` task launched alone as CUDA calibration and completed successfully with a valid result.
+4. Before `n1024-seed2` launched, adaptive admission reported that no future inference job was admissible and aborted the queue.
 
-The current `main` source confirms several distinct paths that conflate soft expansion limits with single-job execution viability:
+The accepted diagnosis remains:
 
-- `build_inference_concurrency_plan(...)` rejects a CUDA plan before calibration when `baseline_used + estimated_job * margin` exceeds the **fractional VRAM admission ceiling**, even though that ceiling is a soft concurrency/safety envelope rather than physical device-memory proof.
-- `_finish_cuda_calibration()` computes `safe_jobs` beginning at zero and can set `target_jobs = 0` after a successfully completed calibration solely because the one-job projection crosses a soft utilization or VRAM ceiling.
-- `_observe_cuda(...)` can set `target_jobs = 0` during calibration when measured one-job VRAM crosses the configured fractional ceiling.
-- Post-calibration live-VRAM logic can also set `target_jobs = 0` when live aggregate/reservation projections cross the same soft ceiling.
-- The scheduler subsequently interprets controller zero-capacity/blocked state as proof that **no future inference job** can run, rather than distinguishing temporary zero additional capacity from terminal execution infeasibility.
+- target/effective concurrency;
+- instantaneous **additional** launch capacity; and
+- actual execution/device failure
 
-The earliest violated invariant is therefore not scientific ranking logic. It is admission-state ownership: **target concurrency**, **instantaneous additional launch capacity**, and **actual execution failure** are being represented/interpreted as though they were the same state.
+are distinct states and must not be conflated.
 
-## Final design review and frozen corrections
+The implemented branch has already repaired the main soft-limit paths:
 
-The final review closes the following gaps before implementation:
+- one-job soft VRAM projection no longer hard-rejects solely because it exceeds the fractional envelope;
+- successful calibration retains a serial floor of one;
+- early measured-VRAM and post-calibration live-VRAM re-clamps throttle future launches rather than producing a soft target-zero terminal state;
+- the exact cached-`n512` -> high-demand `n1024-seed1` -> serial `n1024-seed2` staged EVAL2 reproducer passes;
+- safe low-demand calibration can still promote above one.
 
-1. A controller-global `HARD_BLOCKED` concept is rejected as too broad. Actual execution failure remains execution-owned and task/profile scoped unless current architecture demonstrably requires a typed scoped failure state.
-2. **Target/effective concurrency** is distinct from **instantaneous additional launch capacity**. Target `1` with one active job naturally means zero additional slots until that job completes.
-3. Zero additional capacity while work is active is ordinary saturation/backpressure, not terminal infeasibility.
-4. An explicit idle **serial-floor invariant** is required.
-5. `maximum_jobs == 1` is a first-class valid operating mode and must have dedicated regression coverage.
-6. Cached evaluation results alone do not establish current CUDA execution viability; the first real CUDA execution remains calibration authority unless an existing explicit warm-observation contract says otherwise.
-7. Downshift with multiple active jobs must not cancel already running work; only future launches are gated.
-8. Reservation/live-VRAM accounting must not create an idle self-deadlock.
-9. Public/test-facing `AdaptiveInferenceConcurrency` compatibility must be preserved where practical; do not force an API redesign merely to implement the semantic repair.
-10. Adaptive safe ramp above one must remain functional; this fix must not globally serialize EVAL2.
-11. A newly surfaced **preflight false-terminal path** must be repaired as part of the same change: a one-job estimate crossing the soft VRAM fraction cannot by itself prove CUDA execution impossible.
-12. Host-RAM admission semantics are not automatically softened by this design. Preserve existing genuine host-memory safeguards unless implementation inspection proves they are also merely parallel-expansion policy.
+### Remaining blocking defect found by independent review
+
+`build_inference_concurrency_plan(...)` still raises when `gpu_sample is None` with the semantic claim that live VRAM telemetry is required to prove one-job feasibility.
+
+That is too strong. `gpu_sample is None` can result from telemetry-path failure or unavailability — for example NVML initialization/query failure or an unavailable/failed `nvidia-smi` fallback — without proving that PyTorch/MACE CUDA execution itself is unavailable. A missing sample is therefore **absence of expansion/headroom evidence**, not by itself execution-failure evidence.
+
+The existing new regression that expects this preflight failure is incorrect and must be replaced.
+
+## Independent-review reopen and frozen corrections
+
+This is an **implementation nonconformance**, not a redesign of the accepted serial-floor architecture. Reopen only the affected surface.
+
+The revised implementation must preserve all previously accepted decisions and additionally satisfy these corrections:
+
+1. **Telemetry availability is distinct from CUDA/device availability.** A failed/missing telemetry sample does not by itself establish that CUDA execution is unavailable.
+2. When CUDA/device availability is independently established but no live GPU telemetry sample is available, the planner must enter a conservative **one-slot, no-evidence-for-parallel-expansion** posture rather than fail before the first execution attempt.
+3. The first real CUDA execution remains authoritative for true execution infeasibility. A genuine CUDA OOM/device execution error remains terminal/scoped under the existing execution-failure contract.
+4. Without telemetry evidence, the controller must not invent safe parallel headroom. Concurrency remains one until valid evidence supports expansion.
+5. If telemetry becomes available later, it may be incorporated under the existing calibration/live-reclamp policy without changing the serial-floor invariant.
+6. Genuine device absence/unavailability remains a hard failure. The implementation must distinguish that state using the existing resource/device authority rather than using `gpu_sample is None` as its proxy.
+7. The earlier post-calibration missing/stale-telemetry behavior remains conservative and nonterminal; the preflight path must now obey the same protected concern.
+8. The exact target-size integration acceptance in G4 must be executed and recorded explicitly; the prior implementation record skipped G4 and therefore did not establish that evidence.
+9. The implementation record must use current branch provenance rather than the stale earlier `main@d718d6ce...` statement.
+10. Previously valid evidence may be reused only where this change cannot plausibly invalidate it. Final G6 affected-surface regression/integration must be fresh after the repair.
 
 ## Governing invariants
 
@@ -65,285 +76,291 @@ The implementation is accepted only if all of the following hold:
 4. Successful calibration above a soft utilization or VRAM ceiling results in effective target concurrency `1`, never `0`.
 5. `additional_capacity == 0` while one or more jobs occupy the target is transient saturation and must cause wait/re-evaluation, not a terminal error.
 6. `maximum_jobs == 1` remains ordinary valid fixed-serial CUDA operation even when soft telemetry exceeds configured expansion thresholds.
-7. Terminal inference failure requires actual execution-failure evidence (for example CUDA OOM/device execution failure) or explicit device/resource unavailability, not soft headroom exhaustion.
-8. Failure evidence remains scoped to the failed task/profile unless current scheduler semantics already justify a broader scope; heterogeneous queued models must not be globally rejected from one profile's failure without evidence.
-9. Cached result reuse does not, by itself, prove current CUDA viability.
-10. Existing GPU-utilization and VRAM fraction values remain unchanged as expansion safety limits.
-11. Running jobs survive controller downshift. No new launch occurs until active count falls below the new target.
-12. Target-size scientific ranking, fidelity, checkpoint selection, and result semantics are unchanged.
-13. Live VRAM/reservation accounting cannot reduce an idle, execution-viable queue to a terminal zero-capacity state solely from the soft fractional envelope.
-14. Safe adaptive ramp above one remains available when calibration and live resource evidence support it.
-15. CPU fallback and existing host-RAM safety behavior remain unchanged unless directly required by evidence found at G0.
+7. Terminal inference failure requires actual execution-failure evidence or explicit device/resource unavailability, not soft headroom exhaustion and not mere telemetry absence.
+8. **`gpu_sample is None` is not equivalent to device unavailability.** If the device path is otherwise available, missing/stale telemetry yields conservative serial operation.
+9. Failure evidence remains scoped to the failed task/profile unless existing scheduler semantics independently justify a broader scope; heterogeneous queued models must not be globally rejected from one profile's failure without evidence.
+10. Cached result reuse does not, by itself, prove current CUDA viability.
+11. Existing GPU-utilization and VRAM fraction values remain unchanged as expansion safety limits.
+12. Running jobs survive controller downshift. No new launch occurs until active count falls below the new target.
+13. Target-size scientific ranking, fidelity, checkpoint selection, and result semantics are unchanged.
+14. Live VRAM/reservation accounting cannot reduce an idle, execution-viable queue to a terminal zero-capacity state solely from the soft fractional envelope.
+15. Safe adaptive ramp above one remains available when calibration and live resource evidence support it.
+16. CPU fallback and existing host-RAM safety behavior remain unchanged unless directly required by evidence.
+17. Missing telemetry cannot authorize parallel promotion; it can only force conservative serial behavior until evidence returns.
 
 ## Architecture and ownership contract
 
+### Resource/device authority
+
+Existing resource/device detection owns whether the requested CUDA path/device is actually available. Telemetry acquisition is a separate observation mechanism.
+
+Required distinction:
+
+- **device unavailable / invalid CUDA path** -> legitimate pre-execution hard failure under existing resource/device semantics;
+- **device available, telemetry unavailable** -> conservative serial planning, not terminal infeasibility;
+- **device available, telemetry present** -> normal one-slot calibration and adaptive expansion policy;
+- **actual CUDA execution/OOM/device error** -> execution-owned terminal/scoped failure.
+
+Do not add a second device-availability authority merely for this repair. Reuse the existing resource snapshot/device validation mechanism.
+
 ### `mdstats/training_data/inference_parallel.py`
 
-The adaptive controller owns:
+The adaptive controller/planner owns:
 
 - effective/target concurrency;
 - interpretation of soft GPU utilization and VRAM telemetry;
 - measured per-job estimates;
 - reservations/headroom accounting;
 - instantaneous **additional** launch capacity;
-- nonterminal reasons for holding, throttling, or serial fallback.
+- nonterminal reasons for holding, throttling, missing-evidence serial mode, or serial fallback.
 
-It does **not** own proof that a job that has never executed will necessarily OOM merely because a fractional safety envelope is crossed.
+It does **not** own proof that a job that has never executed will necessarily OOM merely because a fractional safety envelope is crossed or a telemetry sample is absent.
 
 Required behavior:
 
 - CUDA initial execution remains one-slot calibration.
-- On successful calibration, effective target is always at least one when `maximum_jobs >= 1` and no actual device/execution failure exists.
-- If one-job utilization/VRAM exceeds soft thresholds, calibration records that evidence and caps further expansion at one.
-- Pre-calibration one-job VRAM estimate crossing the fractional admission budget must select a conservative serial/calibration posture rather than throw solely on that soft fraction. Actual execution remains authoritative for true CUDA OOM.
-- Live VRAM/reservation checks apply to launching **additional** work. They may temporarily return zero additional slots while active work/reservations consume capacity, but cannot permanently self-block an idle queue solely from the soft fraction.
-- Warm/prewarmed observation paths, if retained, must obey the same serial-floor semantics and cannot set target zero solely from soft telemetry.
-- Low-utilization/headroom cases must still ramp toward `maximum_jobs` under the existing adaptive policy.
-- Preserve existing public properties/call shapes when feasible. A structured authoritative admission snapshot may be introduced only if it materially reduces duplicated interpretation while maintaining compatibility.
+- A soft one-job VRAM estimate crossing the fractional envelope selects conservative serial/calibration rather than hard failure.
+- If CUDA/device availability is established and `gpu_sample is None`, construct a valid one-slot plan with no telemetry-derived expansion claim.
+- In the no-telemetry preflight posture, do not fabricate GPU total, baseline usage, or utilization measurements. Represent their absence consistently with current public plan types/API; use configured estimates only where already permitted as conservative fallback.
+- On successful calibration, effective target remains at least one.
+- If one-job utilization/VRAM exceeds soft thresholds, cap further expansion at one.
+- Missing/stale telemetry after launch/calibration remains nonterminal and conservative.
+- Live VRAM/reservation checks regulate **additional** work and cannot self-block an idle serial queue solely from a soft fractional envelope.
+- Low-utilization/headroom cases still ramp above one when valid evidence supports it.
+- Preserve existing public properties/call shapes where practical.
 
 ### `mdstats/training_data/_campaign_cli_core.py`
 
-The EVAL2 scheduler owns:
+The scheduler owns:
 
 - queue lifecycle;
 - active task lifecycle;
 - waiting/re-evaluation after completions;
-- execution outcomes;
+- actual execution outcomes;
 - terminal/retry behavior under existing campaign semantics.
 
 Required behavior:
 
-- Distinguish `target full / no additional slot` from `no job can ever execute`.
-- If active jobs occupy the target, wait for completion and reevaluate.
-- If soft telemetry prevents another **concurrent** job, continue serially once the active slot is free.
-- If the queue is idle with queued CUDA work and no applicable actual execution failure, launch one.
-- `_ensure_schedulable` or equivalent logic must not raise the current "no future inference job is admissible" error solely from controller soft-limit state after successful calibration.
-- Actual job execution failure continues through existing terminal/retry semantics and must not be hidden by the serial-floor repair.
-- Where possible, consume one authoritative controller admission decision rather than independently reconstructing resource semantics from raw telemetry.
+- target-full/no-additional-slot is not global infeasibility;
+- soft telemetry limits continue serially once the active slot is free;
+- an idle queued CUDA workload with available device and no applicable execution failure launches one;
+- the same must hold when preflight GPU telemetry is unavailable;
+- actual job execution failure remains visible and follows existing failure/retry behavior;
+- if telemetry recovers, subsequent controller observations may use it under the existing adaptive policy.
 
 ## Failure semantics
 
-Do not predict a true CUDA OOM solely from the 90% utilization policy or fractional VRAM safety budget. These are preventive expansion limits.
+Do not predict true CUDA OOM solely from the 90% utilization policy, fractional VRAM safety budget, or absence of a telemetry sample.
 
-Actual CUDA allocation/OOM/device failures remain execution failures. The implementation must preserve the existing failure propagation/retry behavior for such cases. If failure typing is strengthened, it must be scoped to the failing task/resource profile and justified by current interfaces rather than introducing a controller-global terminal state by default.
+Actual CUDA allocation/OOM/device execution failures remain execution failures. A serial-floor attempt may therefore expose a genuine runtime OOM that conservative preflight could not prove. That is acceptable and preferable: runtime failure is authoritative evidence.
 
-A serial-floor attempt may therefore expose a genuine runtime OOM that previous soft preflight would have predicted. That is acceptable and preferable: the runtime failure is authoritative evidence, whereas the soft fractional threshold is not.
+Telemetry acquisition failure may be diagnostically reported as reduced observability/conservative serial mode, but must not be misreported as CUDA execution failure unless the actual device/resource authority also establishes device unavailability.
 
 ## Diagnostics contract
 
 Progress/error messages must distinguish at least:
 
-- serial fallback because the soft GPU-utilization/VRAM envelope does not permit safe parallel expansion;
+- serial fallback because soft GPU-utilization/VRAM evidence does not permit safe parallel expansion;
+- conservative serial mode because GPU telemetry is unavailable while the CUDA device path remains available;
 - temporary zero additional capacity because active jobs/reservations occupy available slots;
+- genuine device/resource unavailability;
 - actual CUDA execution/device failure.
 
-The phrase `no future inference job is admissible` may only remain reachable where real terminal evidence exists. It must not be emitted from soft telemetry alone.
+`no future inference job is admissible` must remain unreachable from soft telemetry or telemetry absence alone.
 
 ## Scope
 
 Expected directly affected production surface:
 
 - `mdstats/training_data/inference_parallel.py`
-- `mdstats/training_data/_campaign_cli_core.py`
+- `mdstats/training_data/_campaign_cli_core.py` if scheduler behavior/diagnostics require adjustment for no-telemetry plans
+- existing resource/device detection only as an authority to distinguish device availability from telemetry availability; do not redesign it without evidence
 
 Expected affected acceptance surface:
 
-- all tests consuming `build_inference_concurrency_plan`, `AdaptiveInferenceConcurrency`, calibration/finalization hooks, prewarm/warm observation, reservation/admission helpers, and scheduler schedulability logic;
-- EVAL2 cached + uncached queue integration;
-- target-size selection integration through EVAL2 far enough to prove ranking/materialization continues unchanged;
-- diagnostics/help/comments that currently describe the 90%/VRAM envelope as single-job execution prohibition.
-
-G0 must inventory the exact files/functions/tests before edits; this list is intentionally an affected-surface starting point, not permission to ignore discovered consumers.
+- all tests consuming `build_inference_concurrency_plan`, `AdaptiveInferenceConcurrency`, calibration/finalization, reservation/admission, and scheduler schedulability logic;
+- no-telemetry planner and scheduler paths;
+- EVAL2 cached + uncached integration;
+- target-size integration through EVAL2 to ranking/materialization;
+- CPU/host-RAM and deploy/static-probe consumers of the planner;
+- affected diagnostics/help/comments if they still equate telemetry with execution feasibility.
 
 ### Non-goals
 
-- Do not raise or remove the 90% GPU-utilization limit.
+- Do not raise/remove the 90% GPU-utilization limit.
 - Do not change default VRAM fraction values.
 - Do not change target-size ranking, scientific fidelity, checkpoint authority, or size-selection policy.
 - Do not redesign EVAL2 broadly.
 - Do not introduce a new inference batching strategy.
 - Do not rewrite the global resource model.
-- Do not globally serialize CUDA inference as a workaround.
-- Do not weaken host-RAM safeguards without evidence and explicit reconciliation.
+- Do not globally serialize CUDA inference.
+- Do not weaken host-RAM safeguards.
+- Do not treat missing telemetry as permission for parallel expansion.
 - Do not perform production-scale GPU performance/resource qualification during implementation.
 
 ## Implementation authority
 
 ### Frozen
 
-The objective, root cause, governing invariants, ownership split, soft-threshold semantics, serial-floor requirement, actual-failure semantics, scientific non-goals, and functional acceptance obligations in this workplan are frozen.
+The objective, ownership split, soft-threshold semantics, serial floor, missing-telemetry semantics, actual-failure semantics, scientific non-goals, and acceptance obligations in this revised workplan are frozen.
 
 ### Delegated
 
-Implementation-local mechanics are delegated where they preserve all frozen behavior. This includes helper naming, internal data representation, whether admission status is represented through existing properties or a backward-compatible structured decision, and exact test factoring.
+Implementation-local mechanics are delegated where they preserve all frozen behavior: helper naming, internal representation of missing telemetry, exact test factoring, and whether a backward-compatible decision/status object is useful.
 
 ### Reopen only on evidence
 
-Reopen only the affected design surface if current source inspection proves one of these frozen assumptions false:
+Reopen only the affected design surface if source evidence proves one of these assumptions false:
 
-- the scheduler has an independent hard resource contract that legitimately treats the fractional GPU envelope as physical single-job infeasibility;
-- a persisted/public API contract requires target zero to encode something materially different from soft admission;
-- host and GPU memory admission share an inseparable authority that cannot preserve host safety while repairing CUDA serial semantics;
-- a real production consumer depends on current zero-target semantics for correctness rather than merely for throttling.
+- the existing resource/device authority cannot establish CUDA-device availability independently of telemetry acquisition;
+- a persisted/public API contract makes a valid no-telemetry one-slot plan impossible without incompatible change;
+- a real production consumer requires live telemetry for a safety property stronger than the current soft parallel-expansion policy;
+- host/GPU admission authorities are inseparable in a way that prevents preserving host safety while allowing one serial CUDA attempt.
 
 Do not reopen unrelated MLFF architecture or scientific selection behavior.
 
 ## Gates
 
-### G0 — Baseline and affected-surface inventory
+### G0 — Rebind baseline and affected surface
 
-**Goal:** Bind implementation to the exact source candidate and recover all semantic consumers before editing.
+**Goal:** Bind rework to the current assembled candidate and correct provenance.
 
 **Work:**
 
-- Record the branch baseline SHA and confirm it remains based on `main@efa8b1b206f75f687ec9b2fb738cfcc089401d68` or explicitly rebase/reconcile if implementation intentionally starts from a newer `main`.
-- Inventory every production/test consumer of:
-  - `build_inference_concurrency_plan`;
-  - `AdaptiveInferenceConcurrency`;
-  - calibration start/finalization and warm/prewarm hooks;
-  - additional-admission/reservation helpers and `admission_blocked_reason`;
-  - scheduler `_ensure_schedulable` or equivalent queue-fatal logic.
-- Reproduce/trace the exact successful-calibration -> soft-zero-target -> scheduler-fatal edge in current source.
-- Identify current repository test commands and relevant test modules rather than inventing fixed commands in advance.
+- Record current branch head and implementation merge-base/provenance.
+- Re-derive all consumers of `build_inference_concurrency_plan`, `AdaptiveInferenceConcurrency`, telemetry acquisition, resource/device availability, scheduler admission, and deploy/static probe planning.
+- Trace how `gpu_sample=None` arises and prove which mechanism independently establishes device availability.
+- Identify which prior evidence remains valid and which must be rerun.
 
 **Acceptance:**
 
-- Exact affected surface and test surface are documented in implementation working state.
-- No known consumer of target/admission state is omitted.
-- The failure edge and preflight soft-VRAM rejection path are independently confirmed or the plan is reopened on contrary evidence.
+- No telemetry path is mistaken for device-availability authority.
+- Affected production/test surface is explicit.
+- Workplan implementation record no longer contains stale base provenance.
 
-### G1 — Repair CUDA preflight and controller serial semantics
+### G1 — Repair missing-telemetry preflight semantics
 
-**Goal:** Make serial viability and soft parallel-expansion headroom distinct throughout the controller.
+**Goal:** Make telemetry absence conservative rather than terminal when CUDA/device availability is independently established.
 
 **Work:**
 
-- Replace the soft-fraction one-job preflight hard rejection with conservative serial/calibration planning when a live CUDA device is otherwise available.
-- Preserve genuine device-unavailability and host-RAM guards.
-- Ensure every successful CUDA calibration/finalization path retains target concurrency `>= 1` for a viable one-slot plan.
-- Remove soft-telemetry transitions to target zero where the meaning is only "do not add another concurrent job".
-- Apply the same invariant to early calibration observations, warm/prewarm observations, live-VRAM re-clamping, and reservation accounting.
-- Preserve existing adaptive growth above one when safe headroom exists.
-- Preserve API compatibility where practical.
+- Remove the unconditional `gpu_sample is None -> ValueError` preflight behavior.
+- Reuse existing device/resource availability authority to decide whether a CUDA path is actually unavailable.
+- For available CUDA + missing telemetry, create a one-slot conservative calibration plan.
+- Do not claim safe parallel headroom until valid telemetry/calibration evidence supports it.
+- Preserve the already-repaired soft-VRAM serial floor and host-RAM safeguards.
+- Replace the regression that currently expects missing telemetry to fail preflight.
 
 **Acceptance:**
 
-Targeted controller/preflight regression proves all of the following:
+Targeted regression proves:
 
-1. Successful calibration at 95–100% GPU utilization -> target remains `1`; idle serial launch remains possible.
-2. Successful calibration beyond the soft VRAM fraction without actual OOM -> target remains `1`; serial remains possible.
-3. Estimated one-job VRAM above the fractional budget with a live CUDA device -> no planning failure solely from that soft fraction; conservative serial/calibration mode results.
-4. Low-utilization calibration -> ramp above one remains possible.
-5. `maximum_jobs == 1` plus soft-limit violation -> valid serial mode.
-6. Missing/stale telemetry -> conservative serial behavior rather than terminal soft block, consistent with existing device-telemetry requirements after reconciliation.
-7. Warm/prewarmed observation cannot set target zero solely from soft telemetry.
-8. Reservation/live-VRAM accounting cannot create idle self-deadlock.
-9. Existing host-RAM failure coverage remains green.
+1. CUDA/device available + `gpu_sample=None` -> valid plan, `initial_jobs == 1`.
+2. The plan does not invent telemetry-derived total/used/utilization evidence.
+3. Missing telemetry does not permit initial concurrency above one.
+4. Genuine device unavailability still fails under the existing device/resource contract.
+5. Existing soft-VRAM-over-envelope preflight -> one-slot calibration remains green.
+6. Existing host-RAM one-job failure remains green.
+7. Successful high-utilization/high-VRAM calibration still floors at one.
+8. Low-demand calibration with valid telemetry can still promote above one.
+9. `maximum_jobs == 1` remains valid serial operation.
+10. Post-calibration missing/stale telemetry remains nonterminal.
 
-Run stage-local affected regression before G2.
+Run focused and stage-local affected regression before G2.
 
-### G2 — Repair scheduler transient-versus-terminal handling
+### G2 — Prove scheduler execution with missing preflight telemetry
 
-**Goal:** Ensure scheduler state transitions respect the controller's serial floor and do not reinterpret zero additional capacity as global infeasibility.
+**Goal:** Establish the real semantic owner path: an available CUDA device must actually receive a first inference attempt even when preflight telemetry is unavailable.
 
 **Work:**
 
-- Update `_ensure_schedulable` and/or the queue launch loop so target saturation and soft no-additional-slot conditions wait for active work and reevaluate.
-- Ensure an idle queued CUDA workload with no applicable execution failure launches one job.
-- Preserve actual execution failure/retry behavior.
-- Add the exact EVAL2 regression sequence:
-  - `n512-seed1` cached;
-  - `n512-seed2` cached;
-  - `n1024-seed1` uncached calibration succeeds while exceeding a soft utilization/VRAM ceiling;
-  - `n1024-seed2` subsequently launches after the first job completes;
-  - remaining queue drains serially.
+- Add/repair scheduler integration through the real adaptive/staged execution owner.
+- Begin with `gpu_sample=None` while device availability remains established.
+- Prove one CUDA inference task launches.
+- If the task succeeds, prove queue progress continues serially unless later valid evidence permits expansion.
+- If telemetry recovers after launch/completion, prove it can be consumed without corrupting the serial-floor state.
+- Preserve actual execution-error propagation.
 
 **Acceptance:**
 
-- Exact regression emits no admission `RuntimeError` from soft telemetry.
-- Concurrency remains one after the high-demand calibration.
-- No second CUDA job launches concurrently when soft policy forbids expansion.
-- The next queued task launches after the active task completes.
-- Existing execution-failure tests still terminate/retry as previously specified.
+- No preflight admission exception occurs solely because telemetry is missing.
+- One and only one CUDA job launches initially.
+- Successful execution permits queued work to continue.
+- A real execution failure still propagates through existing scheduler semantics.
+- Test doubles may replace telemetry and inference execution, but the test must traverse the real scheduler/orchestration owner; a planner/controller-only unit test is insufficient.
 
-Run stage-local affected regression before G3.
+### G3 — Preserve already-valid adaptive concurrency behavior
 
-### G3 — Parallelism and dynamic-downshift non-regression
+**Goal:** Ensure the missing-telemetry correction does not regress the accepted serial-floor repair or safe parallelism.
 
-**Goal:** Prove the serial-floor fix has not converted adaptive admission into unconditional serialization or broken active-job handling.
+**Work / acceptance:**
 
-**Work:**
+- Retain exact cached `n512` -> high-demand `n1024-seed1` -> `n1024-seed2` serial continuation regression.
+- Retain low-demand promotion above one.
+- Retain reservation/live-VRAM re-clamp, downshift-with-active-jobs, no-cancellation, refill, idle self-deadlock, and `maximum_jobs==1` coverage.
+- Retain genuine host-RAM terminal evidence behavior.
 
-- Exercise a low-demand calibration that safely promotes above one.
-- Exercise reservation accounting and live-VRAM re-clamp at promoted concurrency.
-- Exercise downshift from `>1` to `1` while multiple jobs are already active.
-- Exercise concurrent completions and replacement admission.
+Prior evidence may be reused if G1/G2 edits cannot plausibly affect a scenario; otherwise rerun the affected scenario.
 
-**Acceptance:**
+### G4 — Explicit EVAL2 and target-size integration closure
 
-- Safe headroom still permits concurrency greater than one.
-- Reservations prevent unsafe overlaunch.
-- A downshift never cancels already running jobs.
-- No replacement launches until active count falls below the new target.
-- Once active count permits, serial/reduced-target progress resumes without terminal soft blocking.
-
-Run stage-local affected regression before G4.
-
-### G4 — EVAL2 and target-size integration
-
-**Goal:** Validate assembled functional behavior through the real consumer path without changing scientific selection semantics.
+**Goal:** Close the acceptance-evidence gap identified by review and prove scientific result flow is unchanged.
 
 **Work:**
 
-- Run relevant EVAL2 integration tests with cached + uncached mixtures.
+- Run relevant EVAL2 integration with cached + uncached mixtures.
 - Run target-size selection integration far enough through EVAL2 to prove evaluation results reach ranking/materialization.
-- Compare expected ranking/result identity against unchanged fixtures/oracles where available.
-- Verify CPU fallback/resource-governor paths remain unaffected.
+- Compare ranking/result identity against unchanged fixtures/oracles where available.
+- Include a no-telemetry-at-preflight variant if the existing integration harness can express it without replacing the real ranking/materialization owner.
+- Verify CPU/non-CUDA fallback and deploy/static-probe planner consumers remain unaffected.
 
 **Acceptance:**
 
-- EVAL2 queue reaches normal result collection/materialization with no soft-admission hard failure.
-- Target-size ranking/fidelity semantics remain unchanged.
-- CPU and non-CUDA affected tests remain green.
+- EVAL2 reaches normal result collection/materialization with no telemetry-derived hard admission failure.
+- Target-size ranking/fidelity/output identity is unchanged.
+- CPU/non-CUDA and deploy/static-probe affected tests remain green.
+- The implementation record names the concrete G4 tests/evidence; G4 may not be silently skipped or folded into an unlabeled aggregate count.
 
 ### G5 — Compatibility and diagnostics audit
 
-**Goal:** Close API/documentation/status drift after executable behavior is stable.
+**Goal:** Close status/API/documentation drift.
 
 **Work:**
 
-- Reinspect all controller/scheduler consumers found at G0.
-- Retain backward-compatible properties/call shapes unless a justified contract change was necessary.
-- Reconcile comments, status strings, help/specification text, and architecture text that describe soft GPU thresholds as single-job execution prohibition.
-- Ensure diagnostics distinguish serial fallback, temporary saturation, and actual terminal execution failure.
-- Confirm no duplicate resource authority was introduced.
+- Reinspect all consumers from G0.
+- Preserve backward-compatible call shapes where practical.
+- Ensure comments/status/help/specification text distinguish telemetry absence from device unavailability.
+- Confirm no duplicate resource/device authority was introduced.
 
 **Acceptance:**
 
-- No stale semantics remain in affected durable documentation/comments/help.
-- No consumer relies on an undocumented incompatible API change.
-- `no future inference job is admissible` is unreachable from soft telemetry alone.
+- No stale statement says live telemetry is required to prove single-job CUDA execution viability when the device is otherwise available.
+- No consumer depends on an undocumented incompatible API change.
+- Soft telemetry and missing telemetry cannot reach a false global-infeasibility diagnostic.
 
-### G6 — Final affected-surface regression and integration closure
+### G6 — Fresh final affected-surface regression and integration closure
 
-**Goal:** Establish functional closure of the assembled candidate.
+**Goal:** Establish functional closure after the reopened repair.
 
 **Work:**
 
-- Re-derive the affected surface from the final diff rather than relying only on G0 inventory.
-- Run focused tests for all changed mechanisms.
-- Run complete affected-module regression for every old or new module touched by the implementation.
-- Run relevant real-consumer integration tests across EVAL2/target-size orchestration.
+- Re-derive affected surface from the final diff.
+- Run focused checks for all changed mechanisms.
+- Run complete affected-module regression for every old/new module touched by G1/G2 changes.
+- Run real-consumer EVAL2 and target-size integration, including G4 evidence.
 - Run repository-required checks appropriate to the bounded diff; broaden if impact cannot be bounded confidently.
-- Reconcile every frozen workplan obligation against the assembled candidate and inspect for unintended target-zero paths, duplicated authority, stale diagnostics, and scientific drift.
+- Reconcile every frozen workplan obligation against the assembled candidate.
 
 **Acceptance:**
 
 - All focused, affected regression, integration, and repository-required checks pass.
-- No affected controller/scheduler code path can convert soft GPU utilization/VRAM headroom exhaustion into terminal idle queue infeasibility.
-- Adaptive `>1` concurrency remains demonstrably functional under safe headroom.
+- Available CUDA + missing telemetry no longer blocks the first serial execution attempt.
+- Genuine device unavailability remains terminal under the correct authority.
+- No soft GPU utilization/VRAM or telemetry-absence path can create terminal idle queue infeasibility.
+- Adaptive `>1` concurrency remains demonstrably functional under valid safe-headroom evidence.
 - Actual execution failure remains observable and correctly propagated.
-- No production GPU qualification claim is made from these tests.
+- Target-size result/ranking semantics remain unchanged.
+- No production GPU qualification claim is made.
 
 ## Required test scenarios
 
@@ -351,91 +368,96 @@ Implementation may factor these across existing/new test modules, but the behavi
 
 1. High-utilization successful calibration -> serial target one.
 2. High-soft-VRAM successful calibration -> serial target one.
-3. Preflight estimate above soft VRAM fraction -> conservative serial/calibration, not soft-fraction hard failure.
-4. Low-utilization calibration -> adaptive promotion greater than one.
-5. `maximum_jobs == 1` -> stable valid serial operation.
-6. Telemetry unavailable/stale -> conservative behavior without invented terminal evidence.
-7. Active jobs consume target -> zero **additional** capacity transiently; next launch occurs after completion.
-8. Downshift while multiple jobs active -> no cancellation; replacement throttling only.
-9. Reservations/live-VRAM bookkeeping -> no idle self-deadlock.
-10. Actual CUDA execution failure -> remains terminal/scoped according to existing campaign semantics.
-11. Cached-only prefix -> does not silently count as real CUDA calibration unless an explicit existing warm-authority contract permits it.
-12. Warm/prewarm telemetry -> cannot create target zero solely from soft limits.
-13. Exact cached `n512` -> successful high-demand `n1024-seed1` calibration -> `n1024-seed2` serial continuation reproducer.
-14. Multi-job EVAL2 -> reservations, ramp, live re-clamp, downshift, and concurrent completions remain functional.
-15. Target-size integration -> result/ranking identity remains unchanged.
+3. Preflight estimate above soft VRAM fraction -> serial/calibration, not hard failure.
+4. **Available CUDA + missing preflight telemetry -> serial plan, not hard failure.**
+5. **Real scheduler with available CUDA + missing preflight telemetry -> first CUDA job launches.**
+6. **Missing telemetry does not authorize parallel promotion.**
+7. **Genuine device unavailability remains a hard failure under device/resource authority.**
+8. Low-utilization calibration with valid evidence -> adaptive promotion greater than one.
+9. `maximum_jobs == 1` -> stable valid serial operation.
+10. Post-calibration telemetry unavailable/stale -> conservative behavior without invented terminal evidence.
+11. Active jobs consume target -> zero additional capacity transiently; next launch occurs after completion.
+12. Downshift while multiple jobs active -> no cancellation; replacement throttling only.
+13. Reservations/live-VRAM bookkeeping -> no idle self-deadlock.
+14. Actual CUDA execution failure -> remains terminal/scoped according to existing campaign semantics.
+15. Cached-only prefix -> does not silently count as real CUDA calibration.
+16. Exact cached `n512` -> successful high-demand `n1024-seed1` calibration -> `n1024-seed2` serial continuation.
+17. Multi-job EVAL2 -> reservations, ramp, live re-clamp, downshift, and concurrent completions remain functional.
+18. Target-size integration -> result/ranking identity remains unchanged and evidence is explicitly recorded under G4.
+19. CPU fallback, host-RAM guard, and deploy/static-probe affected consumers remain green.
 
 ## Verification strategy
 
-Use the current repository's actual test commands discovered at G0. Prefer targeted tests first, then stage-local affected regression, then final affected-surface regression and integration as required by the repository development policy.
+Use the repository's actual test commands discovered during G0. Prefer focused tests first, then stage-local affected regression, then final affected-surface regression/integration.
 
-Test doubles may supply deterministic GPU telemetry/controller inputs for unit-level state-machine coverage. However, scheduler acceptance must traverse the real EVAL2 orchestration owner sufficiently to prove that queue lifecycle and fatal/nonfatal interpretation are correct; a controller-only mock cannot establish that claim.
+Test doubles may provide deterministic telemetry and inference behavior at unit level. For the material missing-telemetry scheduler claim, acceptance must traverse the real orchestration owner sufficiently to prove queue lifecycle and fatal/nonfatal interpretation. A planner/controller-only proxy cannot establish that claim.
 
-Production-scale GPU performance/resource qualification is explicitly outside this implementation plan. Do not substitute a heavy production run for missing functional regression, and do not claim GPU qualification from mocked/synthetic tests.
+Likewise, G4 target-size acceptance must traverse the real target-size/EVAL2 result-flow owner far enough to establish ranking/materialization identity; controller tests or an unlabeled aggregate pytest count are insufficient evidence.
+
+Production-scale GPU performance/resource qualification remains outside this implementation cycle.
 
 ## Risks and mitigations
 
-### Risk: overcorrection disables useful parallelism
+### Risk: missing telemetry is confused with device absence
 
-**Mitigation:** mandatory low-demand promotion and multi-job reservation/downshift regressions in G3.
+**Mitigation:** use existing resource/device availability authority; keep telemetry as observational evidence only. Add paired tests for available-device/no-telemetry versus genuine device unavailable.
+
+### Risk: no-telemetry path accidentally permits unsafe parallelism
+
+**Mitigation:** freeze initial concurrency at one until valid calibration/live evidence supports promotion.
 
 ### Risk: serial floor attempts a job that truly cannot fit physical VRAM
 
-**Mitigation:** runtime CUDA OOM/device failure remains authoritative and terminal/scoped under existing execution semantics. Diagnostics must distinguish this from soft serial fallback.
+**Mitigation:** runtime CUDA OOM/device failure remains authoritative and terminal/scoped under existing semantics.
 
-### Risk: stale/prewarm telemetry becomes false execution proof
+### Risk: overcorrection disables useful parallelism
 
-**Mitigation:** cached result reuse is not calibration authority by default; audit every warm/prewarm path and require the same serial-floor invariants.
-
-### Risk: scheduler repair creates a busy loop while no slot is available
-
-**Mitigation:** tests must exercise wait-on-active-completion/re-evaluation rather than immediate spin/retry behavior.
+**Mitigation:** retain low-demand promotion and multi-job reservation/downshift regressions.
 
 ### Risk: host-RAM safety is weakened accidentally
 
-**Mitigation:** preserve host-RAM admission guards unless G0 evidence requires a separately reviewed change; include existing host-memory regressions in G1/G6.
+**Mitigation:** preserve host-RAM admission guards and include host-memory regression in G1/G6.
 
-### Risk: heterogeneous model footprints are globalized
+### Risk: acceptance is claimed from proxy or aggregate tests
 
-**Mitigation:** keep actual failure evidence task/profile scoped; do not let one failed profile prove unrelated queued work impossible without existing explicit authority.
+**Mitigation:** G2 requires the real scheduler owner; G4 requires explicit target-size/EVAL2 result-flow evidence; G6 records both.
 
 ## Rollback
 
-This transition should require no data migration, persisted-state schema change, or scientific result-format change. If implementation fails acceptance, revert the isolated branch commits. Do not retain partial controller/scheduler semantics that create two competing admission authorities.
+No data migration, persisted-state schema change, or scientific result-format change is intended. If the bounded repair fails acceptance, revert the rework commit(s) while retaining the previously accepted design record. Do not preserve partial semantics that make telemetry a second device-availability authority.
+
+## Implementation record and reopen state
+
+### Previous implementation evidence retained
+
+- Principal post-calibration serial-floor repair is present.
+- Soft preflight VRAM-fraction crossing selects one-slot calibration rather than hard failure.
+- Successful calibration floors target at one instead of zero.
+- Early/live VRAM soft limits throttle additional launches instead of creating a terminal soft target zero.
+- Exact staged EVAL2 cached-prefix/high-demand-calibration/serial-continuation regression exists and passed in the prior implementation run.
+- Safe low-demand promotion above one and dynamic downshift/reservation behaviors were covered by prior regression.
+- Prior implementation reported 206 affected-module tests green.
+
+### Independent review verdict
+
+**NO-PASS — one blocking implementation nonconformance:** preflight `gpu_sample is None` is still treated as proof that one CUDA job cannot run, and a regression currently codifies that behavior.
+
+Two nonblocking closeout gaps were also identified and are now mandatory closeout obligations:
+
+1. G4 target-size integration evidence must be explicit rather than absent from the stage log.
+2. branch provenance must be corrected; the stale earlier `main@d718d6ce...` statement is superseded by the current implementation line/merge-base recorded at the top of this workplan.
+
+### Evidence invalidation/reuse
+
+- **Reopened:** G1 missing-telemetry preflight semantics; G2 scheduler behavior insofar as it must prove first launch without preflight telemetry; G4 explicit target-size integration; G6 final assembled regression/integration.
+- **Conditionally reusable:** existing high-utilization/high-VRAM serial fallback, safe `>1` promotion, downshift, reservation, idle-self-deadlock, cached-prefix staged EVAL2, host-RAM, and documentation evidence, provided the rework diff cannot plausibly invalidate them.
+- **Must be fresh after rework:** final affected-surface derivation, missing-telemetry planner/scheduler tests, explicit G4 target-size integration evidence, and G6 closure.
 
 ## Closeout
 
-When all gates pass and the implementation is accepted:
+When all reopened gates pass and independent review is satisfied:
 
-1. reconcile permanent architecture/specification text with the accepted current admission semantics;
-2. move durable chronology/evidence to the repository's appropriate history/audit locations if needed;
-3. archive this workplan under `workplans/archive/` when useful as lineage;
-4. defer full production GPU/resource/performance qualification to final release closeout rather than inserting iterative hardware qualification into this implementation cycle.
-
-## Implementation record
-
-**Branch baseline:** `fix/mlff-eval2-admission-serial-floor@3b7124879cda6d82ddcea90e60ecf10cb80e2ab6`, based on local `main@d718d6ce52406fd38a02a45d3fde9bc53e031a74` (newer than the referenced `main@efa8b1b`; accepted reconciliation — the workplan's base reference predates subsequent accepted main work, and implementation intentionally starts from the newer main tip with the frozen workplan commit on top).
-
-### G0 — affected-surface inventory (confirmed)
-
-Production consumers:
-
-- `mdstats/training_data/inference_parallel.py`: `build_inference_concurrency_plan` (CUDA preflight), `AdaptiveInferenceConcurrency` (`_finish_cuda_calibration`, `_observe_cuda` early classification + live-VRAM branches, `complete_first_cuda_job`), `admission_blocked_reason` (only remaining setter: host-RAM live re-clamp in `observe`).
-- `mdstats/training_data/_campaign_cli_core.py`: `_run_adaptive_inference_tasks` (`launch`/`fail_if_zero_admission`, one-slot boundary finalization), `_run_staged_evaluation_tasks` (EVAL2 staged loop, `launch_inference`, fatal admission/stall checks, one-slot boundary finalization).
-- `mdstats/training_data/deploy_verify.py`: static probe admission via `build_inference_concurrency_plan(task_count=1, ...)` — compatible with the repaired preflight (no API change; covered by `test_mlff_deploy_verify1.py`).
-
-The MACE-training runner and its plan builder are a separate admission path and are unaffected.
-
-No warm/prewarm observation paths exist in current source; the corresponding invariant is vacuously satisfied. Cached tasks bypass the inference pool entirely and never start or complete calibration (`complete_first_cuda_job` remains gated on the first real CUDA job completion; proven by the staged EVAL2 regression).
-
-Failure edge confirmed: staged EVAL2 one-slot plan (`maximum_jobs==1` joint authority) + successful high-demand calibration -> `_finish_cuda_calibration` computed `safe_jobs==0` -> `target_jobs=0` + `admission_blocked_reason` -> scheduler fatal "resource admission blocked ... no future inference job is admissible". Preflight soft-VRAM rejection path confirmed in `build_inference_concurrency_plan`.
-
-### Stage log
-
-- G1 (controller serial floor): preflight soft-VRAM crossing now selects the one-slot calibration posture instead of raising; `safe_jobs` floors at 1; early classification, live-VRAM override, external-baseline re-clamp, and graduated re-clamp never set target zero or a blocked reason. Host-RAM safeguard unchanged. Diagnostics reason strings distinguish serial fallback and transient saturation. Stage regression: `tests/test_mlff_inference_parallel_scheduler.py` 44 passed.
-- G2 (scheduler transient-vs-terminal): scheduler fatal paths now reachable only from genuine host-RAM terminal evidence; one-slot calibration boundary now prints `status=cuda-calibration` so serial classification remains visible. Exact EVAL2 reproducer added through the real staged orchestration owner (`test_eval2_cached_prefix_then_high_demand_calibration_continues_serially`): cached n512 prefix -> high-demand n1024-seed1 calibration -> n1024-seed2 serial continuation, no admission error.
-- G3 (non-regression): covered by retained green tests — low-demand promotion (target 3), live-VRAM re-clamp at promoted concurrency, downshift with active jobs (active=2 -> target 1, no cancellation), replacement/refill admission, plus new idle-saturation and missing-telemetry non-regression tests.
-- G5 (compatibility/diagnostics): plan summary wording corrected to "admission envelope"; spec `mlff_mixed_stage_admission_progress_spec.md` section 4, user guide, and architecture chapter `60_execution_performance.md` (plus its derived assembled manual) reconciled with the serial-floor semantics. `no future inference job is admissible` is no longer present in production code and is unreachable from soft telemetry.
-- G6 (final regression): complete affected-module suite (8 modules, 206 tests) green. No production GPU qualification performed or claimed, per the workplan qualification policy.
-
-PDF/provenance note: pandoc/typst are unavailable in the implementation environment; per `docs/README.md` the pushed-Markdown publication driver (CI) rebuilds affected PDF targets on push.
+1. reconcile permanent architecture/specification text if the missing-telemetry distinction changes durable wording;
+2. record concrete G4 and G6 evidence in this workplan;
+3. archive under `workplans/archive/` after acceptance if useful for lineage;
+4. defer full production GPU/resource/performance qualification to final release closeout.
