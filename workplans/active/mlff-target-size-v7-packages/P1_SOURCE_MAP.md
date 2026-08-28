@@ -32,10 +32,13 @@ precise compatibility-neutral source facts + provenance
 ## Required distinctions
 
 - Provenance facts are descriptive/advisory by default.
-- Source authority retains real compatibility-neutral source facts needed by reused scientific algorithms; removing compatibility authority does not remove composition, ensemble, quality, source/control interpretation binding or other independent source truth.
-- Source authority deserialization must not synthesize missing authoritative facts from obsolete provisional payloads.
+- Source authority retains real compatibility-neutral source facts needed by reused scientific algorithms; removing compatibility authority does not remove composition, ensemble, quality, source/control interpretation binding, explicit companion bindings or other independent source truth.
+- Source authority deserialization must not synthesize missing authoritative facts from obsolete provisional payloads, uses `mdstats.source-record.v2`, and enforces strict status/outcome pair coherence.
 - Numerical label identity is independent of compatibility grouping and comes from actual normalized frame arrays.
 - Physical frame presence and geometry/source identity are distinguished from authoritative canonical label identity; missing configured-required labels prevent label and labeled-configuration authority while allowing physical diagnostics where needed.
+- Canonical label payload digest and labeled configuration fingerprint are an atomic, deterministic pair in all constructors and deserializers.
+- Any exported direct identity constructor (`build_canonical_frame_identity`) enforces the exact same required-label authority contract as the assembled owner.
+- Direct VASP canonical rebuild replays explicit manifest companion-file bindings (`source.companion_files`) and verifies exact source/control interpretation bindings.
 - Legacy DATA3 may coexist for old-runtime isolation but is not a required scientific parent of canonical frame authority.
 - Compatibility grouping is not a target-training eligibility or partition axis.
 - Material-profile rebinding is generic at the neutral-core boundary and provider-owned in scientific detail.

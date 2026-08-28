@@ -426,13 +426,35 @@ def test_p1b_source_facts_preservation(tmp_path: Path) -> None:
 
 
 def test_p1b_strict_deserialization_rejection(tmp_path: Path) -> None:
-    """P1-B: Deserialization rejects missing required fields without synthesizing defaults."""
+    """P1-B: Deserialization rejects missing required fields and schema v1 without synthesizing defaults."""
     _write(tmp_path, "run_strict", ("Li", "O"), n_frames=2)
     manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="strict")
     catalog = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
     authority = build_source_authority_from_data2_catalog(catalog)
     source = authority.source("run_strict")
     payload = source.to_dict()
+
+    assert payload["schema"] == "mdstats.source-record.v2"
+
+    # Reject missing quality_outcome key
+    bad = dict(payload)
+    del bad["quality_outcome"]
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'quality_outcome'"):
+        SourceRecord.from_dict(bad)
+
+    # Reject incoherent quality pair: completed with None outcome
+    bad = dict(payload)
+    bad["quality_assessment_status"] = "completed"
+    bad["quality_outcome"] = None
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="Completed quality assessment requires valid quality_outcome"):
+        SourceRecord.from_dict(bad)
+
+    # Reject incoherent quality pair: not_requested with non-None outcome
+    bad = dict(payload)
+    bad["quality_assessment_status"] = "not_requested"
+    bad["quality_outcome"] = "strictly_qualified"
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="quality_outcome must be None"):
+        SourceRecord.from_dict(bad)
 
     # Reject missing composition
     bad = dict(payload)
@@ -464,6 +486,12 @@ def test_p1b_strict_deserialization_rejection(tmp_path: Path) -> None:
     with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'ensemble_certificate_digest'"):
         SourceRecord.from_dict(bad)
 
+    # Reject old schema v1
+    bad = dict(payload)
+    bad["schema"] = "mdstats.source-record.v1"
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="Unsupported source-record schema"):
+        SourceRecord.from_dict(bad)
+
     # Reject invalid schema
     bad = dict(payload)
     bad["schema"] = "invalid.schema"
@@ -481,6 +509,318 @@ def test_p1b_strict_deserialization_rejection(tmp_path: Path) -> None:
 # =========================================================================
 # Pass P1-C: Canonical Label and Frame Authority Tests
 # =========================================================================
+
+
+def test_p1c_canonical_identity_and_record_atomicity_and_coherence() -> None:
+    """P1-C: Enforce label/fingerprint atomicity and deterministic coherence in CanonicalFrameIdentity and CanonicalFrameRecord."""
+    geom = _digest()
+    label = _digest()
+    expected_fingerprint = mdstats.training_data.identity.labeled_configuration_fingerprint(geom, label)
+    forged_fingerprint = _digest()
+
+    # 1. CanonicalFrameIdentity constructor invariants
+    # Valid atomic pair
+    ident_valid = CanonicalFrameIdentity(
+        frame_uid=_digest(),
+        run_id="test_run",
+        source_frame_index=0,
+        geometry_fingerprint=geom,
+        canonical_label_payload_digest=label,
+        labeled_configuration_fingerprint=expected_fingerprint,
+        electronic_structure_fingerprint_digest=_digest(),
+    )
+    assert ident_valid.has_authoritative_label is True
+
+    # Valid physical-only (both None)
+    ident_phys = CanonicalFrameIdentity(
+        frame_uid=_digest(),
+        run_id="test_run",
+        source_frame_index=0,
+        geometry_fingerprint=geom,
+        canonical_label_payload_digest=None,
+        labeled_configuration_fingerprint=None,
+        electronic_structure_fingerprint_digest=_digest(),
+    )
+    assert ident_phys.has_authoritative_label is False
+
+    # Label digest present, labeled fingerprint None -> reject
+    with pytest.raises(mdstats.TrainingDataInputError, match="must be either both present or both None"):
+        CanonicalFrameIdentity(
+            frame_uid=_digest(),
+            run_id="test_run",
+            source_frame_index=0,
+            geometry_fingerprint=geom,
+            canonical_label_payload_digest=label,
+            labeled_configuration_fingerprint=None,
+            electronic_structure_fingerprint_digest=_digest(),
+        )
+
+    # Label digest None, labeled fingerprint present -> reject
+    with pytest.raises(mdstats.TrainingDataInputError, match="must be either both present or both None"):
+        CanonicalFrameIdentity(
+            frame_uid=_digest(),
+            run_id="test_run",
+            source_frame_index=0,
+            geometry_fingerprint=geom,
+            canonical_label_payload_digest=None,
+            labeled_configuration_fingerprint=expected_fingerprint,
+            electronic_structure_fingerprint_digest=_digest(),
+        )
+
+    # Mismatched/forged labeled fingerprint -> reject
+    with pytest.raises(mdstats.TrainingDataInputError, match="labeled_configuration_fingerprint mismatch"):
+        CanonicalFrameIdentity(
+            frame_uid=_digest(),
+            run_id="test_run",
+            source_frame_index=0,
+            geometry_fingerprint=geom,
+            canonical_label_payload_digest=label,
+            labeled_configuration_fingerprint=forged_fingerprint,
+            electronic_structure_fingerprint_digest=_digest(),
+        )
+
+    # 2. CanonicalFrameIdentity deserialization invariants
+    payload_valid = ident_valid.to_dict()
+    bad_p1 = dict(payload_valid)
+    bad_p1["labeled_configuration_fingerprint"] = None
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="must be either both present or both None"):
+        CanonicalFrameIdentity.from_dict(bad_p1)
+
+    bad_p2 = dict(payload_valid)
+    bad_p2["canonical_label_payload_digest"] = None
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="must be either both present or both None"):
+        CanonicalFrameIdentity.from_dict(bad_p2)
+
+    bad_p3 = dict(payload_valid)
+    bad_p3["labeled_configuration_fingerprint"] = forged_fingerprint
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="labeled_configuration_fingerprint mismatch"):
+        CanonicalFrameIdentity.from_dict(bad_p3)
+
+    # 3. CanonicalFrameRecord constructor invariants
+    rec_valid = CanonicalFrameRecord(
+        frame_uid=_digest(),
+        run_id="test_run",
+        source_identity_signature=_digest(),
+        source_occurrence_signature=_digest(),
+        source_frame_index=0,
+        source_frame_id=0,
+        step=0,
+        time_ps=0.0,
+        atom_count=2,
+        atomic_numbers_digest=_digest(),
+        pbc=(True, True, True),
+        cell_matrix_angstrom=((10.0, 0.0, 0.0), (0.0, 10.0, 0.0), (0.0, 0.0, 10.0)),
+        cell_volume_angstrom3=1000.0,
+        selected_energy_channel="e_fr_energy",
+        energy_present=True,
+        forces_present=True,
+        stress_present=True,
+        instantaneous_temperature_kelvin=300.0,
+        temperature_condition_digest=_digest(),
+        geometry_fingerprint=geom,
+        canonical_label_payload_digest=label,
+        labeled_configuration_fingerprint=expected_fingerprint,
+        electronic_structure_fingerprint_digest=_digest(),
+    )
+    assert rec_valid.has_authoritative_label is True
+
+    # Label digest present, labeled fingerprint None -> reject
+    with pytest.raises(mdstats.TrainingDataInputError, match="must be either both present or both None"):
+        replace(rec_valid, labeled_configuration_fingerprint=None)
+
+    # Label digest None, labeled fingerprint present -> reject
+    with pytest.raises(mdstats.TrainingDataInputError, match="must be either both present or both None"):
+        replace(rec_valid, canonical_label_payload_digest=None)
+
+    # Mismatched/forged labeled fingerprint -> reject
+    with pytest.raises(mdstats.TrainingDataInputError, match="labeled_configuration_fingerprint mismatch"):
+        replace(rec_valid, labeled_configuration_fingerprint=forged_fingerprint)
+
+    # 4. CanonicalFrameRecord deserialization invariants
+    rec_payload = rec_valid.to_dict()
+    bad_rec1 = dict(rec_payload)
+    bad_rec1["labeled_configuration_fingerprint"] = None
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="must be either both present or both None"):
+        CanonicalFrameRecord.from_dict(bad_rec1)
+
+    bad_rec2 = dict(rec_payload)
+    bad_rec2["canonical_label_payload_digest"] = None
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="must be either both present or both None"):
+        CanonicalFrameRecord.from_dict(bad_rec2)
+
+    bad_rec3 = dict(rec_payload)
+    bad_rec3["labeled_configuration_fingerprint"] = forged_fingerprint
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="labeled_configuration_fingerprint mismatch"):
+        CanonicalFrameRecord.from_dict(bad_rec3)
+
+
+def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
+    """P1-C: build_canonical_frame_identity resolves required-label authority before granting canonical labels."""
+    numbers = [3, 8]
+    pbc = [True, True, True]
+    cell = 10.0 * np.eye(3)
+    positions = [[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]
+    forces = [[0.1, 0.0, 0.0], [-0.1, 0.0, 0.0]]
+    stress = -100.0 * np.eye(3)
+    es_digest = _digest()
+    deriv_digest = _digest()
+
+    # 1. Valid labels -> authoritative identity granted
+    ident = build_canonical_frame_identity(
+        run_id="run_test",
+        source_locator="run_test/vasprun.xml",
+        source_identity_signature=_digest(),
+        source_frame_index=0,
+        atomic_numbers=numbers,
+        pbc=pbc,
+        cell=cell,
+        fractional_positions=positions,
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role="free_energy",
+        energy_units="eV",
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        derivative_convention_digest=deriv_digest,
+        electronic_structure_fingerprint_digest=es_digest,
+    )
+    assert ident.has_authoritative_label is True
+    assert ident.canonical_label_payload_digest is not None
+    assert ident.labeled_configuration_fingerprint is not None
+
+    # 2. Missing energy -> physical-only identity (no authoritative label)
+    ident_no_e = build_canonical_frame_identity(
+        run_id="run_test",
+        source_locator="run_test/vasprun.xml",
+        source_identity_signature=_digest(),
+        source_frame_index=0,
+        atomic_numbers=numbers,
+        pbc=pbc,
+        cell=cell,
+        fractional_positions=positions,
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role="free_energy",
+        energy_units="eV",
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=None,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        derivative_convention_digest=deriv_digest,
+        electronic_structure_fingerprint_digest=es_digest,
+    )
+    assert ident_no_e.has_authoritative_label is False
+    assert ident_no_e.canonical_label_payload_digest is None
+    assert ident_no_e.labeled_configuration_fingerprint is None
+    assert ident_no_e.geometry_fingerprint == ident.geometry_fingerprint
+
+    # 3. Non-finite energy -> physical-only identity
+    ident_nan_e = build_canonical_frame_identity(
+        run_id="run_test",
+        source_locator="run_test/vasprun.xml",
+        source_identity_signature=_digest(),
+        source_frame_index=0,
+        atomic_numbers=numbers,
+        pbc=pbc,
+        cell=cell,
+        fractional_positions=positions,
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role="free_energy",
+        energy_units="eV",
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=float("nan"),
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        derivative_convention_digest=deriv_digest,
+        electronic_structure_fingerprint_digest=es_digest,
+    )
+    assert ident_nan_e.has_authoritative_label is False
+    assert ident_nan_e.canonical_label_payload_digest is None
+    assert ident_nan_e.labeled_configuration_fingerprint is None
+
+    # 4. Missing forces when forces required -> physical-only identity
+    ident_no_f = build_canonical_frame_identity(
+        run_id="run_test",
+        source_locator="run_test/vasprun.xml",
+        source_identity_signature=_digest(),
+        source_frame_index=0,
+        atomic_numbers=numbers,
+        pbc=pbc,
+        cell=cell,
+        fractional_positions=positions,
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role="free_energy",
+        energy_units="eV",
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=None,
+        stress_ev_per_angstrom3=stress,
+        derivative_convention_digest=deriv_digest,
+        electronic_structure_fingerprint_digest=es_digest,
+    )
+    assert ident_no_f.has_authoritative_label is False
+    assert ident_no_f.canonical_label_payload_digest is None
+    assert ident_no_f.labeled_configuration_fingerprint is None
+
+    # 5. Stress optional vs required
+    # Stress None with optional stress -> label authority granted
+    ident_opt_s = build_canonical_frame_identity(
+        run_id="run_test",
+        source_locator="run_test/vasprun.xml",
+        source_identity_signature=_digest(),
+        source_frame_index=0,
+        atomic_numbers=numbers,
+        pbc=pbc,
+        cell=cell,
+        fractional_positions=positions,
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role="free_energy",
+        energy_units="eV",
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=None,
+        derivative_convention_digest=deriv_digest,
+        electronic_structure_fingerprint_digest=es_digest,
+        eligibility_policy=mdstats.FrameEligibilityPolicy(
+            stress_requirement=mdstats.StressRequirement.OPTIONAL
+        ),
+    )
+    assert ident_opt_s.has_authoritative_label is True
+    assert ident_opt_s.canonical_label_payload_digest is not None
+
+    # Stress None with required stress -> label authority withheld
+    ident_req_s = build_canonical_frame_identity(
+        run_id="run_test",
+        source_locator="run_test/vasprun.xml",
+        source_identity_signature=_digest(),
+        source_frame_index=0,
+        atomic_numbers=numbers,
+        pbc=pbc,
+        cell=cell,
+        fractional_positions=positions,
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role="free_energy",
+        energy_units="eV",
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=None,
+        derivative_convention_digest=deriv_digest,
+        electronic_structure_fingerprint_digest=es_digest,
+        eligibility_policy=mdstats.FrameEligibilityPolicy(
+            stress_requirement=mdstats.StressRequirement.REQUIRED
+        ),
+    )
+    assert ident_req_s.has_authoritative_label is False
+    assert ident_req_s.canonical_label_payload_digest is None
+    assert ident_req_s.labeled_configuration_fingerprint is None
 
 
 def test_p1c_canonical_labels_ignore_provenance_and_grouping() -> None:
@@ -756,7 +1096,7 @@ def test_p1c_ensemble_and_quality_propagation(tmp_path: Path) -> None:
     # 2. Test quality status propagation
     source_auth_failed = replace(
         source_auth,
-        sources=(replace(source_auth.sources[0], quality_assessment_status="failed", quality_outcome="unqualified"),),
+        sources=(replace(source_auth.sources[0], quality_assessment_status="completed", quality_outcome="unqualified"),),
     )
     frame_auth_failed = build_canonical_frame_authority(source_auth_failed, frame_data)
     for dec in frame_auth_failed.eligibility.decisions:
@@ -1181,7 +1521,7 @@ def test_p1e_compatibility_policy_invariance_proof(tmp_path: Path) -> None:
 
 
 def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> None:
-    """P1-E3: Assembled numerical-change sensitivity proof through the real builder."""
+    """P1-E3: Assembled numerical/semantic/required-label sensitivity proof executing all 9 mandatory cases."""
     _manifest, sources, _frames, data4 = _data4_bundle(tmp_path, n_frames=48)
     source_auth = build_source_authority_from_data2_catalog(sources)
     frame_auth1 = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
@@ -1194,7 +1534,7 @@ def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> Non
     collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
     channel = bundle.energy_catalog.channel("e_fr_energy")
 
-    # 1. Mutate energy on frame 0
+    # Case 1: Mutate energy on frame 0
     energies_mod = channel.as_array().copy()
     energies_mod[0] = -99.9  # change frame 0 energy
     frame_data_e = {
@@ -1216,7 +1556,7 @@ def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> Non
     assert feature_ev1.content_digest != feature_ev_e.content_digest
     assert stat_base1.content_digest != stat_base_e.content_digest
 
-    # 2. Mutate forces on frame 0
+    # Case 2: Mutate forces on frame 0
     forces_mod = collection.forces.copy()
     forces_mod[0, 0, 0] += 2.5
     frame_data_f = {
@@ -1247,7 +1587,24 @@ def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> Non
     assert feature_ev1.content_digest != feature_ev_f.content_digest
     assert stat_base1.content_digest != stat_base_f.content_digest
 
-    # 3. Non-finite value: frame loses label authority while retaining geometry/physical identity
+    # Case 3: Mutate semantic/unit/convention input (energy_normalization="per_atom") through the real builder
+    frame_auth_per_atom = build_canonical_frame_authority(
+        source_auth,
+        {
+            "run": mdstats.FrameData.from_collection(
+                collection,
+                source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+                energies_ev=channel.as_array(),
+                scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+            )
+        },
+        energy_normalization="per_atom",
+    )
+    assert frame_auth_per_atom.frames[0].canonical_label_payload_digest != frame_auth1.frames[0].canonical_label_payload_digest
+    assert frame_auth_per_atom.frames[0].labeled_configuration_fingerprint != frame_auth1.frames[0].labeled_configuration_fingerprint
+    assert frame_auth_per_atom.content_digest != frame_auth1.content_digest
+
+    # Case 4: Non-finite required value (NaN in energy)
     energies_nan = channel.as_array().copy()
     energies_nan[0] = np.nan
     frame_data_nan = {
@@ -1265,6 +1622,172 @@ def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> Non
     assert frame_auth_nan.frames[0].geometry_fingerprint == frame_auth1.frames[0].geometry_fingerprint
     assert frame_auth_nan.frames[0].frame_uid == frame_auth1.frames[0].frame_uid
     assert frame_auth_nan.eligibility.for_frame(frame_auth_nan.frames[0].frame_uid).state == mdstats.FrameEligibilityState.INELIGIBLE
+    assert "nonfinite_energy" in frame_auth_nan.eligibility.for_frame(frame_auth_nan.frames[0].frame_uid).reason_codes
+
+    # Case 5: Genuinely missing configured-required energy (energies_ev=None)
+    frame_data_no_e = {
+        "run": mdstats.FrameData(
+            frame_ids=np.arange(collection.n_frames, dtype=np.int64),
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            steps=np.arange(collection.n_frames, dtype=np.int64),
+            times_ps=collection.times,
+            atomic_numbers=np.asarray([3, 8], dtype=np.int32),
+            pbc=np.asarray([True, True, True]),
+            cells_angstrom=collection.cells,
+            fractional_positions=collection.fractional_positions,
+            energies_ev=None,
+            forces_ev_per_angstrom=collection.forces,
+            stresses_ev_per_angstrom3=collection.stresses,
+            temperatures_kelvin=collection.temperatures,
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    frame_auth_no_e = build_canonical_frame_authority(source_auth, frame_data_no_e)
+    assert frame_auth_no_e.frames[0].has_authoritative_label is False
+    assert frame_auth_no_e.frames[0].canonical_label_payload_digest is None
+    assert frame_auth_no_e.frames[0].labeled_configuration_fingerprint is None
+    assert frame_auth_no_e.eligibility.for_frame(frame_auth_no_e.frames[0].frame_uid).state == mdstats.FrameEligibilityState.INELIGIBLE
+    assert "missing_energy" in frame_auth_no_e.eligibility.for_frame(frame_auth_no_e.frames[0].frame_uid).reason_codes
+
+    # Case 6: Genuinely missing configured-required forces (forces_ev_per_angstrom=None with require_forces=True)
+    frame_data_no_f = {
+        "run": mdstats.FrameData(
+            frame_ids=np.arange(collection.n_frames, dtype=np.int64),
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            steps=np.arange(collection.n_frames, dtype=np.int64),
+            times_ps=collection.times,
+            atomic_numbers=np.asarray([3, 8], dtype=np.int32),
+            pbc=np.asarray([True, True, True]),
+            cells_angstrom=collection.cells,
+            fractional_positions=collection.fractional_positions,
+            energies_ev=channel.as_array(),
+            forces_ev_per_angstrom=None,
+            stresses_ev_per_angstrom3=collection.stresses,
+            temperatures_kelvin=collection.temperatures,
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    frame_auth_no_f = build_canonical_frame_authority(source_auth, frame_data_no_f)
+    assert frame_auth_no_f.frames[0].has_authoritative_label is False
+    assert frame_auth_no_f.frames[0].canonical_label_payload_digest is None
+    assert frame_auth_no_f.frames[0].labeled_configuration_fingerprint is None
+
+    # Case 7: Stress absence in both required and optional modes
+    frame_data_no_s = {
+        "run": mdstats.FrameData(
+            frame_ids=np.arange(collection.n_frames, dtype=np.int64),
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            steps=np.arange(collection.n_frames, dtype=np.int64),
+            times_ps=collection.times,
+            atomic_numbers=np.asarray([3, 8], dtype=np.int32),
+            pbc=np.asarray([True, True, True]),
+            cells_angstrom=collection.cells,
+            fractional_positions=collection.fractional_positions,
+            energies_ev=channel.as_array(),
+            forces_ev_per_angstrom=collection.forces,
+            stresses_ev_per_angstrom3=None,
+            temperatures_kelvin=collection.temperatures,
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    # Stress optional -> label authority granted
+    frame_auth_opt_s = build_canonical_frame_authority(
+        source_auth,
+        frame_data_no_s,
+        eligibility_policy=mdstats.FrameEligibilityPolicy(stress_requirement=mdstats.StressRequirement.OPTIONAL),
+    )
+    assert frame_auth_opt_s.frames[0].has_authoritative_label is True
+    assert frame_auth_opt_s.frames[0].canonical_label_payload_digest is not None
+
+    # Stress required -> label authority withheld
+    frame_auth_req_s = build_canonical_frame_authority(
+        source_auth,
+        frame_data_no_s,
+        eligibility_policy=mdstats.FrameEligibilityPolicy(stress_requirement=mdstats.StressRequirement.REQUIRED),
+    )
+    assert frame_auth_req_s.frames[0].has_authoritative_label is False
+    assert frame_auth_req_s.frames[0].canonical_label_payload_digest is None
+
+    # Case 8: Physical-only frames duplicate behavior
+    # Frames 0 and 1 with identical geometry but missing energy
+    dup_pos = collection.fractional_positions.copy()
+    dup_pos[1] = dup_pos[0]  # Frame 1 identical geometry to Frame 0
+    dup_energies = channel.as_array().copy()
+    dup_energies[0] = np.nan
+    dup_energies[1] = np.nan
+    frame_data_phys_dup = {
+        "run": mdstats.FrameData(
+            frame_ids=np.arange(collection.n_frames, dtype=np.int64),
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            steps=np.arange(collection.n_frames, dtype=np.int64),
+            times_ps=collection.times,
+            atomic_numbers=np.asarray([3, 8], dtype=np.int32),
+            pbc=np.asarray([True, True, True]),
+            cells_angstrom=collection.cells,
+            fractional_positions=dup_pos,
+            energies_ev=dup_energies,
+            forces_ev_per_angstrom=collection.forces,
+            stresses_ev_per_angstrom3=collection.stresses,
+            temperatures_kelvin=collection.temperatures,
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    frame_auth_phys = build_canonical_frame_authority(source_auth, frame_data_phys_dup)
+    assert frame_auth_phys.frames[0].geometry_fingerprint == frame_auth_phys.frames[1].geometry_fingerprint
+    assert len(frame_auth_phys.duplicates.geometry_groups) == 1
+    assert frame_auth_phys.frames[0].frame_uid in frame_auth_phys.duplicates.geometry_groups[0].frame_uids
+    assert frame_auth_phys.frames[1].frame_uid in frame_auth_phys.duplicates.geometry_groups[0].frame_uids
+    assert len(frame_auth_phys.duplicates.labeled_groups) == 0
+    with pytest.raises(mdstats.TrainingDataInputError, match="Cannot construct FrameIdentity without authoritative label"):
+        frame_auth_phys.frames[0].as_duplicate_frame_identity()
+
+    # Case 9: Direct identity builder (build_canonical_frame_identity) contract
+    direct_valid = build_canonical_frame_identity(
+        run_id="run",
+        source_locator="run/vasprun.xml",
+        source_identity_signature=_digest(),
+        source_frame_index=0,
+        atomic_numbers=[3, 8],
+        pbc=[True, True, True],
+        cell=10.0 * np.eye(3),
+        fractional_positions=[[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]],
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role="free_energy",
+        energy_units="eV",
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=[[0.1, 0.0, 0.0], [-0.1, 0.0, 0.0]],
+        stress_ev_per_angstrom3=-100.0 * np.eye(3),
+        derivative_convention_digest=_digest(),
+        electronic_structure_fingerprint_digest=_digest(),
+    )
+    assert direct_valid.has_authoritative_label is True
+    assert direct_valid.canonical_label_payload_digest is not None
+
+    direct_no_e = build_canonical_frame_identity(
+        run_id="run",
+        source_locator="run/vasprun.xml",
+        source_identity_signature=_digest(),
+        source_frame_index=0,
+        atomic_numbers=[3, 8],
+        pbc=[True, True, True],
+        cell=10.0 * np.eye(3),
+        fractional_positions=[[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]],
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role="free_energy",
+        energy_units="eV",
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=None,
+        forces_ev_per_angstrom=[[0.1, 0.0, 0.0], [-0.1, 0.0, 0.0]],
+        stress_ev_per_angstrom3=-100.0 * np.eye(3),
+        derivative_convention_digest=_digest(),
+        electronic_structure_fingerprint_digest=_digest(),
+    )
+    assert direct_no_e.has_authoritative_label is False
+    assert direct_no_e.canonical_label_payload_digest is None
+    assert direct_no_e.labeled_configuration_fingerprint is None
 
 
 def test_p1e_unresolved_provenance_assembled_proof(tmp_path: Path) -> None:
@@ -1328,7 +1851,7 @@ def test_p1e_unresolved_provenance_assembled_proof(tmp_path: Path) -> None:
 
 
 def test_p1e_source_fact_preservation_proof(tmp_path: Path) -> None:
-    """P1-E4: Source-fact preservation proof: real NPT inference, real unqualified status, control binding, and composition mismatch."""
+    """P1-E4: Source-fact preservation proof: real NPT inference, real unqualified status, companion replay and mismatch, control binding, and composition mismatch."""
     # 1. Real VASP NPT ensemble inference end-to-end
     _write(tmp_path, "run_npt", ("Li", "O"), n_frames=8, isif=3, gamma_l=10.0, tebeg=750)
     manifest_npt = mdstats.TrainingDataManifest(
@@ -1383,13 +1906,46 @@ def test_p1e_source_fact_preservation_proof(tmp_path: Path) -> None:
         assert dec.state == mdstats.FrameEligibilityState.INELIGIBLE
         assert "source_trajectory_unqualified" in dec.reason_codes
 
-    # 3. Source control-binding mismatch rejection in direct rebuild
+    # 3. Explicit companion file binding replay and mismatch rejection
+    _write(tmp_path, "run_comp", ("Li", "O"), n_frames=4)
+    iconst_file = tmp_path / "run_comp/ICONST"
+    iconst_file.write_text("R 1 2 0\n", encoding="utf-8")
+    manifest_comp = mdstats.TrainingDataManifest(
+        dataset_id="comp-proof",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="run_comp",
+                vasprun="run_comp/vasprun.xml",
+                companion_files=(("constraint_definition", "run_comp/ICONST"),),
+                reference_group="bulk",
+                assertions=(("regime", "production"),),
+            ),
+        ),
+    )
+    catalog_comp = mdstats.build_training_data_source_catalog(manifest_comp, base_directory=tmp_path)
+    source_auth_comp = build_source_authority_from_data2_catalog(catalog_comp, manifest=manifest_comp)
+    assert source_auth_comp.source("run_comp").companion_files == (("constraint_definition", "run_comp/ICONST"),)
+
+    # Rebuild succeeds and faithfully reproduces source/control and ensemble certificate signatures
+    frame_auth_comp = build_vasp_canonical_frame_authority(source_auth_comp, base_directory=tmp_path)
+    assert len(frame_auth_comp.frames) == 4
+
+    # Tamper with companion file content -> direct rebuild rejects
+    iconst_file.write_text("R 1 2 5\n", encoding="utf-8")
+    with pytest.raises(mdstats.TrainingDataInputError, match="Source identity changed|Source control interpretation mismatch|Ensemble certificate interpretation mismatch"):
+        build_vasp_canonical_frame_authority(source_auth_comp, base_directory=tmp_path)
+
+    # Restore companion file
+    iconst_file.write_text("R 1 2 0\n", encoding="utf-8")
+
+    # 4. Source control-binding mismatch rejection in direct rebuild
     mismatched_source = replace(source_auth_npt.sources[0], source_control_digest=_digest())
     mismatched_auth = replace(source_auth_npt, sources=(mismatched_source,))
     with pytest.raises(mdstats.TrainingDataInputError, match="Source control interpretation mismatch"):
         build_vasp_canonical_frame_authority(mismatched_auth, base_directory=tmp_path)
 
-    # 4. Composition mismatch rejection
+    # 5. Composition mismatch rejection
     from mdstats.io import read_vasp_frames, read_vasp_run_controls
     path = tmp_path / "run_npt/vasprun.xml"
     collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)

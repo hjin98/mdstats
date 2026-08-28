@@ -113,6 +113,9 @@ def canonical_training_label_payload_digest(
     return digest(payload)
 
 
+from ..eligibility import FrameEligibilityPolicy, StressRequirement
+
+
 @dataclass(frozen=True, slots=True)
 class CanonicalFrameIdentity:
     """Occurrence, geometry, canonical labels, and separate provenance reference."""
@@ -144,6 +147,19 @@ class CanonicalFrameIdentity:
             val = getattr(self, name)
             if val is not None:
                 object.__setattr__(self, name, validate_digest(val, name=name))
+
+        if (self.canonical_label_payload_digest is None) != (self.labeled_configuration_fingerprint is None):
+            raise TrainingDataInputError(
+                "canonical_label_payload_digest and labeled_configuration_fingerprint must be either both present or both None."
+            )
+        if self.canonical_label_payload_digest is not None:
+            expected_fingerprint = labeled_configuration_fingerprint(
+                self.geometry_fingerprint, self.canonical_label_payload_digest
+            )
+            if self.labeled_configuration_fingerprint != expected_fingerprint:
+                raise TrainingDataInputError(
+                    f"labeled_configuration_fingerprint mismatch: expected {expected_fingerprint}, got {self.labeled_configuration_fingerprint}"
+                )
 
     @property
     def has_authoritative_label(self) -> bool:
@@ -188,21 +204,35 @@ class CanonicalFrameIdentity:
     def from_dict(cls, payload: Mapping[str, Any]) -> "CanonicalFrameIdentity":
         if payload.get("schema") != CANONICAL_FRAME_IDENTITY_SCHEMA:
             raise TrainingDataSerializationError("Unsupported canonical frame-identity schema.")
+        label_digest = (
+            None
+            if payload.get("canonical_label_payload_digest") is None
+            else str(payload["canonical_label_payload_digest"])
+        )
+        labeled_fingerprint = (
+            None
+            if payload.get("labeled_configuration_fingerprint") is None
+            else str(payload["labeled_configuration_fingerprint"])
+        )
+        geom_fingerprint = str(payload["geometry_fingerprint"])
+        if (label_digest is None) != (labeled_fingerprint is None):
+            raise TrainingDataSerializationError(
+                "canonical_label_payload_digest and labeled_configuration_fingerprint must be either both present or both None."
+            )
+        if label_digest is not None:
+            expected = labeled_configuration_fingerprint(geom_fingerprint, label_digest)
+            if labeled_fingerprint != expected:
+                raise TrainingDataSerializationError(
+                    f"labeled_configuration_fingerprint mismatch: expected {expected}, got {labeled_fingerprint}"
+                )
+
         result = cls(
             frame_uid=str(payload["frame_uid"]),
             run_id=str(payload["run_id"]),
             source_frame_index=int(payload["source_frame_index"]),
-            geometry_fingerprint=str(payload["geometry_fingerprint"]),
-            canonical_label_payload_digest=(
-                None
-                if payload.get("canonical_label_payload_digest") is None
-                else str(payload["canonical_label_payload_digest"])
-            ),
-            labeled_configuration_fingerprint=(
-                None
-                if payload.get("labeled_configuration_fingerprint") is None
-                else str(payload["labeled_configuration_fingerprint"])
-            ),
+            geometry_fingerprint=geom_fingerprint,
+            canonical_label_payload_digest=label_digest,
+            labeled_configuration_fingerprint=labeled_fingerprint,
             electronic_structure_fingerprint_digest=str(
                 payload["electronic_structure_fingerprint_digest"]
             ),
@@ -234,7 +264,11 @@ def build_canonical_frame_identity(
     electronic_structure_fingerprint_digest: str,
     geometry_policy: GeometryFingerprintPolicy | None = None,
     label_policy: LabelFingerprintPolicy | None = None,
+    eligibility_policy: FrameEligibilityPolicy | None = None,
 ) -> CanonicalFrameIdentity:
+    eligibility_active = (
+        FrameEligibilityPolicy() if eligibility_policy is None else eligibility_policy
+    )
     occurrence = source_occurrence_signature(
         run_id=run_id,
         source_locator=source_locator,
@@ -248,27 +282,74 @@ def build_canonical_frame_identity(
         fractional_positions,
         policy=geometry_policy,
     )
-    labels = canonical_training_label_payload_digest(
-        selected_energy_channel=selected_energy_channel,
-        energy_semantic_role=energy_semantic_role,
-        energy_units=energy_units,
-        energy_normalization=energy_normalization,
-        entropy_convention=entropy_convention,
-        energy_ev=energy_ev,
-        forces_ev_per_angstrom=forces_ev_per_angstrom,
-        stress_ev_per_angstrom3=stress_ev_per_angstrom3,
-        derivative_convention_digest=derivative_convention_digest,
-        policy=label_policy,
+
+    # Required-label validity evaluation:
+    has_energy = (energy_ev is not None) and np.isfinite(float(energy_ev))
+    energy_valid = (
+        has_energy
+        if eligibility_active.require_energy
+        else (energy_ev is None or np.isfinite(float(energy_ev)))
     )
+
+    n_atoms = len(np.asarray(atomic_numbers))
+    if forces_ev_per_angstrom is None:
+        has_forces = False
+        forces_valid = not eligibility_active.require_forces
+    else:
+        f_arr = np.asarray(forces_ev_per_angstrom, dtype=np.float64)
+        forces_valid = (f_arr.shape == (n_atoms, 3)) and np.all(np.isfinite(f_arr))
+        has_forces = forces_valid
+
+    if stress_ev_per_angstrom3 is None:
+        stress_valid = (
+            eligibility_active.stress_requirement is not StressRequirement.REQUIRED
+        )
+    else:
+        s_arr = np.asarray(stress_ev_per_angstrom3, dtype=np.float64)
+        stress_valid = (
+            eligibility_active.stress_requirement is not StressRequirement.FORBIDDEN
+            and s_arr.shape == (3, 3)
+            and np.all(np.isfinite(s_arr))
+            and np.allclose(
+                s_arr,
+                s_arr.T,
+                rtol=0.0,
+                atol=eligibility_active.stress_symmetry_tolerance,
+            )
+        )
+
+    label_authority_granted = (
+        energy_valid
+        and forces_valid
+        and stress_valid
+        and (has_energy or (not eligibility_active.require_energy and energy_ev is not None))
+    )
+
+    if label_authority_granted:
+        labels = canonical_training_label_payload_digest(
+            selected_energy_channel=selected_energy_channel,
+            energy_semantic_role=energy_semantic_role,
+            energy_units=energy_units,
+            energy_normalization=energy_normalization,
+            entropy_convention=entropy_convention,
+            energy_ev=energy_ev,
+            forces_ev_per_angstrom=forces_ev_per_angstrom,
+            stress_ev_per_angstrom3=stress_ev_per_angstrom3,
+            derivative_convention_digest=derivative_convention_digest,
+            policy=label_policy,
+        )
+        labeled_fingerprint = labeled_configuration_fingerprint(geometry, labels)
+    else:
+        labels = None
+        labeled_fingerprint = None
+
     return CanonicalFrameIdentity(
         frame_uid=uid,
         run_id=run_id,
         source_frame_index=int(source_frame_index),
         geometry_fingerprint=geometry,
         canonical_label_payload_digest=labels,
-        labeled_configuration_fingerprint=labeled_configuration_fingerprint(
-            geometry, labels
-        ),
+        labeled_configuration_fingerprint=labeled_fingerprint,
         electronic_structure_fingerprint_digest=validate_digest(
             electronic_structure_fingerprint_digest,
             name="electronic_structure_fingerprint_digest",

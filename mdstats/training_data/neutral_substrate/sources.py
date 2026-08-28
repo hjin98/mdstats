@@ -23,7 +23,7 @@ from ..labels import (
 )
 from ..sources import SourceComposition, TrainingDataSource, TrainingDataSourceCatalog
 
-SOURCE_RECORD_SCHEMA = "mdstats.source-record.v1"
+SOURCE_RECORD_SCHEMA = "mdstats.source-record.v2"
 PROVENANCE_DIAGNOSTICS_SCHEMA = "mdstats.provenance-diagnostics.v1"
 ADVISORY_COMPATIBILITY_REPORT_SCHEMA = "mdstats.advisory-compatibility-report.v1"
 SOURCE_AUTHORITY_SCHEMA = "mdstats.source-authority.v1"
@@ -80,6 +80,7 @@ class SourceRecord:
     assertions: tuple[tuple[str, Any], ...]
     target_usable: bool
     mechanical_rejection_codes: tuple[str, ...]
+    companion_files: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.run_id.strip() or not self.source_locator.strip():
@@ -99,6 +100,11 @@ class SourceRecord:
         object.__setattr__(self, "assertions", tuple(sorted((str(k), v) for k, v in self.assertions)))
         object.__setattr__(
             self,
+            "companion_files",
+            tuple(sorted((str(k), str(v)) for k, v in self.companion_files)),
+        )
+        object.__setattr__(
+            self,
             "mechanical_rejection_codes",
             tuple(str(code) for code in self.mechanical_rejection_codes),
         )
@@ -106,6 +112,23 @@ class SourceRecord:
             raise TrainingDataInputError("Usable sources cannot carry mechanical rejection codes.")
         if not self.target_usable and not self.mechanical_rejection_codes:
             raise TrainingDataInputError("Unusable sources require mechanical rejection codes.")
+
+        status = str(self.quality_assessment_status).lower()
+        if status not in {"not_requested", "completed", "unavailable", "failed"}:
+            raise TrainingDataInputError(f"Invalid quality_assessment_status: {self.quality_assessment_status!r}")
+        outcome = None if self.quality_outcome is None else str(self.quality_outcome).lower()
+        if status == "completed":
+            if outcome not in {"strictly_qualified", "degraded_quality", "unqualified"}:
+                raise TrainingDataInputError(
+                    f"Completed quality assessment requires valid quality_outcome, got {self.quality_outcome!r}"
+                )
+        else:
+            if outcome is not None:
+                raise TrainingDataInputError(
+                    f"quality_outcome must be None when quality_assessment_status is {status!r}, got {self.quality_outcome!r}"
+                )
+        object.__setattr__(self, "quality_assessment_status", status)
+        object.__setattr__(self, "quality_outcome", outcome)
 
     @property
     def composition_digest(self) -> str:
@@ -137,6 +160,7 @@ class SourceRecord:
             "reference_group": self.reference_group,
             "reference_run_id": self.reference_run_id,
             "assertions": dict(self.assertions),
+            "companion_files": dict(self.companion_files),
             "target_usable": self.target_usable,
             "mechanical_rejection_codes": list(self.mechanical_rejection_codes),
         }
@@ -166,6 +190,7 @@ class SourceRecord:
             "electronic_structure",
             "ensemble",
             "quality_assessment_status",
+            "quality_outcome",
             "target_usable",
         )
         for key in required_keys:
@@ -175,6 +200,30 @@ class SourceRecord:
         if not isinstance(comp_payload, Mapping):
             raise TrainingDataSerializationError("Source-record composition must be a mapping.")
         comp = SourceComposition.from_dict(comp_payload)
+        status = str(payload["quality_assessment_status"]).lower()
+        outcome_raw = payload["quality_outcome"]
+        outcome = None if outcome_raw is None else str(outcome_raw).lower()
+        if status not in {"not_requested", "completed", "unavailable", "failed"}:
+            raise TrainingDataSerializationError(f"Invalid quality_assessment_status: {status!r}")
+        if status == "completed":
+            if outcome not in {"strictly_qualified", "degraded_quality", "unqualified"}:
+                raise TrainingDataSerializationError(
+                    f"Completed quality assessment requires valid quality_outcome, got {outcome!r}"
+                )
+        else:
+            if outcome is not None:
+                raise TrainingDataSerializationError(
+                    f"quality_outcome must be None when quality_assessment_status is {status!r}"
+                )
+
+        companions_raw = payload.get("companion_files", {})
+        if isinstance(companions_raw, Mapping):
+            companions = tuple((str(k), str(v)) for k, v in companions_raw.items())
+        elif isinstance(companions_raw, Sequence):
+            companions = tuple((str(k), str(v)) for k, v in companions_raw)
+        else:
+            companions = ()
+
         result = cls(
             run_id=str(payload["run_id"]),
             source_locator=str(payload["source_locator"]),
@@ -190,8 +239,8 @@ class SourceRecord:
                 payload["electronic_structure"]
             ),
             ensemble=str(payload["ensemble"]),
-            quality_assessment_status=str(payload["quality_assessment_status"]),
-            quality_outcome=None if payload.get("quality_outcome") is None else str(payload["quality_outcome"]),
+            quality_assessment_status=status,
+            quality_outcome=outcome,
             timestep_fs=None if payload.get("timestep_fs") is None else float(payload["timestep_fs"]),
             replica_id=None if payload.get("replica_id") is None else str(payload["replica_id"]),
             reference_group=(
@@ -201,6 +250,7 @@ class SourceRecord:
                 None if payload.get("reference_run_id") is None else str(payload["reference_run_id"])
             ),
             assertions=tuple((str(k), v) for k, v in payload.get("assertions", {}).items()),
+            companion_files=companions,
             target_usable=bool(payload["target_usable"]),
             mechanical_rejection_codes=tuple(
                 str(code) for code in payload.get("mechanical_rejection_codes", ())
@@ -211,13 +261,23 @@ class SourceRecord:
         return result
 
 
-def source_record_from_data2(source: TrainingDataSource) -> SourceRecord:
+def source_record_from_data2(
+    source: TrainingDataSource,
+    companion_files: Sequence[tuple[str, str]] | Mapping[str, str] | None = None,
+) -> SourceRecord:
     usable, reasons = _source_is_mechanically_usable(source)
     quality_status = (
         source.quality_assessment_status.value
         if hasattr(source.quality_assessment_status, "value")
         else str(source.quality_assessment_status)
     )
+    if companion_files is None:
+        companions: tuple[tuple[str, str], ...] = ()
+    elif isinstance(companion_files, Mapping):
+        companions = tuple(sorted((str(k), str(v)) for k, v in companion_files.items()))
+    else:
+        companions = tuple(sorted((str(k), str(v)) for k, v in companion_files))
+
     return SourceRecord(
         run_id=source.run_id,
         source_locator=source.source_locator,
@@ -238,6 +298,7 @@ def source_record_from_data2(source: TrainingDataSource) -> SourceRecord:
         reference_group=source.reference_group,
         reference_run_id=source.reference_run_id,
         assertions=source.assertions,
+        companion_files=companions,
         target_usable=usable,
         mechanical_rejection_codes=reasons,
     )
@@ -524,10 +585,15 @@ def build_source_authority(
     dataset_id: str,
     manifest_digest: str,
     energy_policy_digest: str,
+    companion_files_by_run: Mapping[str, Sequence[tuple[str, str]]] | None = None,
     atomic_reference_policy: AtomicReferenceIdentifiabilityPolicy | None = None,
     advisory_compatibility_policy: LabelCompatibilityPolicy | None = None,
 ) -> SourceAuthority:
-    records = tuple(source_record_from_data2(item) for item in sources)
+    companions_map = companion_files_by_run or {}
+    records = tuple(
+        source_record_from_data2(item, companion_files=companions_map.get(item.run_id))
+        for item in sources
+    )
     if not records:
         raise TrainingDataInputError("Source authority requires at least one source.")
     source_by_id = {item.run_id: item for item in sources}
@@ -565,14 +631,20 @@ def build_source_authority(
 def build_source_authority_from_data2_catalog(
     catalog: TrainingDataSourceCatalog,
     *,
+    manifest: Any | None = None,
+    companion_files_by_run: Mapping[str, Sequence[tuple[str, str]]] | None = None,
     atomic_reference_policy: AtomicReferenceIdentifiabilityPolicy | None = None,
     advisory_compatibility_policy: LabelCompatibilityPolicy | None = None,
 ) -> SourceAuthority:
+    companions = companion_files_by_run
+    if companions is None and manifest is not None and hasattr(manifest, "runs"):
+        companions = {run.run_id: run.companion_files for run in manifest.runs}
     return build_source_authority(
         catalog.sources,
         dataset_id=catalog.dataset_id,
         manifest_digest=catalog.manifest_digest,
         energy_policy_digest=catalog.energy_policy_digest,
+        companion_files_by_run=companions,
         atomic_reference_policy=atomic_reference_policy,
         advisory_compatibility_policy=advisory_compatibility_policy,
     )

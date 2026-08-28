@@ -435,6 +435,7 @@ def build_vasp_canonical_frame_authority(
 ) -> CanonicalFrameAuthority:
     """Build CanonicalFrameAuthority directly from VASP sources bound by SourceAuthority."""
     from mdstats.io import read_vasp_frames, read_vasp_run_controls
+    from mdstats.io.vasp_ensemble import certify_vasp_simulation_controls
 
     frame_data: dict[str, FrameData] = {}
     targets: dict[str, TemperatureTargetEvidence] = {}
@@ -443,7 +444,11 @@ def build_vasp_canonical_frame_authority(
         path = Path(source.source_locator)
         if not path.is_absolute():
             path = base / path
-        bundle = read_vasp_run_controls(path)
+        companion_paths = {
+            role: (base / locator if not Path(locator).is_absolute() else Path(locator))
+            for role, locator in source.companion_files
+        }
+        bundle = read_vasp_run_controls(path, companion_files=companion_paths)
         if bundle.source_identity.signature != source.source_identity_signature:
             raise TrainingDataInputError(
                 f"Source identity changed for {source.run_id!r}."
@@ -451,6 +456,11 @@ def build_vasp_canonical_frame_authority(
         if bundle.signature != source.source_control_digest:
             raise TrainingDataInputError(
                 f"Source control interpretation mismatch for {source.run_id!r}."
+            )
+        certificate = certify_vasp_simulation_controls(bundle, companion_files=companion_paths)
+        if certificate.signature != source.ensemble_certificate_digest:
+            raise TrainingDataInputError(
+                f"Ensemble certificate interpretation mismatch for {source.run_id!r}."
             )
         channel = bundle.energy_catalog.channel(source.selected_energy_channel)
         if channel is None:
@@ -538,6 +548,18 @@ class CanonicalFrameRecord:
             val = getattr(self, name)
             if val is not None:
                 object.__setattr__(self, name, validate_digest(val, name=name))
+        if (self.canonical_label_payload_digest is None) != (self.labeled_configuration_fingerprint is None):
+            raise TrainingDataInputError(
+                "canonical_label_payload_digest and labeled_configuration_fingerprint must be either both present or both None."
+            )
+        if self.canonical_label_payload_digest is not None:
+            expected_fingerprint = labeled_configuration_fingerprint(
+                self.geometry_fingerprint, self.canonical_label_payload_digest
+            )
+            if self.labeled_configuration_fingerprint != expected_fingerprint:
+                raise TrainingDataInputError(
+                    f"labeled_configuration_fingerprint mismatch: expected {expected_fingerprint}, got {self.labeled_configuration_fingerprint}"
+                )
         if self.source_frame_index < 0 or self.atom_count <= 0:
             raise TrainingDataInputError("Frame indices and atom count are invalid.")
         if not self.run_id.strip() or not self.selected_energy_channel.strip():
@@ -633,6 +655,28 @@ class CanonicalFrameRecord:
     def from_dict(cls, payload: Mapping[str, Any]) -> "CanonicalFrameRecord":
         if payload.get("schema") != CANONICAL_FRAME_RECORD_SCHEMA:
             raise TrainingDataSerializationError("Unsupported canonical-frame-record schema.")
+        label_digest = (
+            None
+            if payload.get("canonical_label_payload_digest") is None
+            else str(payload["canonical_label_payload_digest"])
+        )
+        labeled_fingerprint = (
+            None
+            if payload.get("labeled_configuration_fingerprint") is None
+            else str(payload["labeled_configuration_fingerprint"])
+        )
+        geom_fingerprint = str(payload["geometry_fingerprint"])
+        if (label_digest is None) != (labeled_fingerprint is None):
+            raise TrainingDataSerializationError(
+                "canonical_label_payload_digest and labeled_configuration_fingerprint must be either both present or both None."
+            )
+        if label_digest is not None:
+            expected = labeled_configuration_fingerprint(geom_fingerprint, label_digest)
+            if labeled_fingerprint != expected:
+                raise TrainingDataSerializationError(
+                    f"labeled_configuration_fingerprint mismatch: expected {expected}, got {labeled_fingerprint}"
+                )
+
         result = cls(
             frame_uid=str(payload["frame_uid"]),
             run_id=str(payload["run_id"]),
@@ -659,17 +703,9 @@ class CanonicalFrameRecord:
                 else float(payload["instantaneous_temperature_kelvin"])
             ),
             temperature_condition_digest=str(payload["temperature_condition_digest"]),
-            geometry_fingerprint=str(payload["geometry_fingerprint"]),
-            canonical_label_payload_digest=(
-                None
-                if payload.get("canonical_label_payload_digest") is None
-                else str(payload["canonical_label_payload_digest"])
-            ),
-            labeled_configuration_fingerprint=(
-                None
-                if payload.get("labeled_configuration_fingerprint") is None
-                else str(payload["labeled_configuration_fingerprint"])
-            ),
+            geometry_fingerprint=geom_fingerprint,
+            canonical_label_payload_digest=label_digest,
+            labeled_configuration_fingerprint=labeled_fingerprint,
             electronic_structure_fingerprint_digest=str(
                 payload["electronic_structure_fingerprint_digest"]
             ),
