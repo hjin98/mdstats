@@ -1,11 +1,11 @@
 ---
 kind: implementation-workplan
-workplan_id: CODE-MLFF-TARGET-SIZE-TRAINING-PRIORITY-EVAL-LADDER-ARCH-RESET-V5
+workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V6
 protocol_version: 5.8.0
 status: active
 created_date: 2026-08-28
 reviewed_source_head: 6f0d34366ca954eabe21740ddda96357afc12eb1
-review_revision: 5
+review_revision: 6
 architecture_change: major
 compatibility_policy: destructive-generation-reset
 supersedes:
@@ -13,132 +13,99 @@ supersedes:
   - CODE-MLFF-TARGET-SIZE-TRAINING-PRIORITY-EVAL-LADDER-ARCH-RESET-V2
   - CODE-MLFF-TARGET-SIZE-TRAINING-PRIORITY-EVAL-LADDER-ARCH-RESET-V3
   - CODE-MLFF-TARGET-SIZE-TRAINING-PRIORITY-EVAL-LADDER-ARCH-RESET-V4
-  - all previously active target-size amendments and MLFF closeout workplans retired on 2026-08-28
+  - CODE-MLFF-TARGET-SIZE-TRAINING-PRIORITY-EVAL-LADDER-ARCH-RESET-V5
 ---
 
-# MLFF Target-Size Training-Priority Evaluation-Ladder Architecture Reset — V5 Freeze Candidate
+# MLFF target-size scientific simplification — V6
 
-## 0. Objective and frozen outcome
+## 0. Purpose
 
-V5 is the sole current implementation authority for this reset. It incorporates an implementation dry-run against current source head `6f0d34366ca954eabe21740ddda96357afc12eb1` and closes code-level ownership conflicts that were not visible from the abstract design.
+Rebuild target-size selection around the actual scientific question and delete historical machinery that obscures it.
 
-The new generation has exactly one target-size study:
+The question is one-dimensional:
 
-- one resolved target label compatibility identity;
-- one qualified population `U_size`;
-- one correlation-safe training pool `P_train`;
-- one correlation-safe target-size evaluation pool `P_eval`;
-- optional unused/reference-only qualified data `U_unused`;
-- one repaired training order `pi_train`;
-- one frozen evaluation order `pi_eval`;
-- one nested `M1 subset M2 subset M3` evaluation ladder;
-- one target-size evidence stream/reducer;
-- one `N_selected` and one exact `T_selected`;
-- post-selection CV only;
-- fresh final production only after CV accepts the frozen protocol.
+> For one fixed MLFF training protocol and one fixed target dataset construction policy, what is the smallest target-training size `N` beyond which increasing `N` no longer gives a practically meaningful accuracy improvement?
 
-There is no target-size domain fan-out. `LabelDomain` may remain an upstream compatibility/provenance concept, and metric internals may reduce by species/condition/block, but target-size authority never replicates candidates, M ladders, reducers, capacity, or selected N by domain.
+Target-size selection is therefore a **data-size convergence experiment**. Cross-validation is a separate **methodological validation experiment** performed only after the target size and exact selected dataset are frozen.
 
-Priority:
+The implementation must prefer the minimum scientific state necessary to answer those two separate questions.
 
-```text
-scientific/product correctness
-  > single-authority/simple architecture
-  > performance/resource efficiency
-  > development convenience / obsolete-state compatibility
-```
+## 1. Corrections relative to V5
 
-Derived old state is not migrated. Raw source data remain reusable. Full long GPU/target-machine qualification remains deferred to final release; functional regression/integration and bounded scientific sampling qualification remain mandatory as specified below.
+V5 overinterpreted several generic pipeline dependencies as scientific authorities. V6 freezes the following corrections.
 
-## 1. Dry-run implementation corrections
+1. **Electronic-structure provenance is descriptive, not a compatibility gate.** DFT, DFT+U, hybrid, smearing, PAW/pseudopotential, spin, numerical settings, software provenance and energy-reference details remain recorded precisely and systematically. They do not automatically split target training or block mixing.
+2. **No target-size LabelDomain fan-out.** Provenance groups may be reported, counted and diagnosed, but target-size owns one study over the user-authorized target data.
+3. **CV has no target-size role.** Do not use CV folds, CV evaluation, CV training-domain materializability, CV seeds or CV digests to qualify, rank or select target size.
+4. **CV is built after `T_selected`.** Its purpose is to test robustness/generalization of the selected dataset/training method, not to help choose `N`.
+5. **Hold preprocessing fixed across candidate sizes.** Size `N` must be the material experimental variable. Candidate-specific refits of E0, normalization, objective scaling or equivalent fitted training transforms are not introduced by this redesign. A common preprocessing/training-protocol identity is frozen across the entire size ladder, excluding target-size evaluation/held-out evidence.
+6. **Collapse target-training ordering machinery.** FEAS1/MVIDX1/MVSEL2/REPAIR2/MVSTATE2/MVQUAL may contribute optimized internal algorithms, but they no longer form a chain of independent public scientific authorities for target-size selection. The current generation owns one training-order object with diagnostics and one simple prefix-qualification contract.
+7. **Do not redesign DATA5/DATA6/DATA7 merely because they currently exist upstream.** Change them only where necessary to remove a real target-size/CV/provenance coupling or to expose the clean inputs required below.
 
-The dry-run inspected the current target-size policy/state, LabelDomain construction, DATA5/partition/leakage, TARGET-DATA roles, DATA6 difficulty/prediction domains, TargetCoverage, MVSEL2/REPAIR2/MVQUAL2, DATA7/feature-fit, production materialization, DATA8, EVAL2, online-monitor, MLCV roles, protocol state and current configuration surface. The following corrections are frozen:
+## 2. Scientific invariants
 
-1. **Exactly one participating target label compatibility identity.** Current LabelDomain already separates incompatible theory/energy-reference/derivative conventions. If target inputs resolve to more than one incompatible label domain/head, fail with a typed unsupported topology; do not merge/weight/replicate inside target-size.
-2. **DATA5 pre-target authority owns no CV.** Current DATA5 serializes CV plans and its leakage report binds CV digests, which would make CV configuration contaminate target-size identity. New current-generation DATA5 owns partition/correlation units, outer roles, blinding/sealed-role state and pre-target/outer leakage only.
-3. **Target allocation is pre-CV.** Replace the current TARGET-DATA role-freeze dependency on CV with a pre-CV role-allocation authority.
-4. **DATA6 base evidence is separated from role-dependent evidence.** Structural descriptors/raw frozen foundation predictions may be precomputed broadly when role-independent. Target-label/foundation-residual difficulty views used for target selection are derived after allocation and only on `P_train`. CV-specific views are post-selection descendants.
-5. **Selection preparation is not training preparation.** Current DATA7 fits feature metric, atomic E0 and weights over a whole canonical domain before applying a prescribed prefix. New selection-only fitted evidence may use `P_train`; membership-dependent training math must be fit from the exact gradient membership of each candidate/fold/final run.
-6. **Exact selected membership cannot be re-expanded through units.** Current helpers turn unit IDs back into every frame in the unit. Post-selection CV and downstream DATA7/DATA8 carry exact selected frame UIDs; inherited group IDs constrain correlation-safe assignment but never add unselected sibling frames.
-7. **Current target-size TargetCoverage/MVSEL/REPAIR/MVQUAL authority is single-study.** Per-domain collections/maps are removed from current persisted target-size topology. Lower-level single-study numerical kernels may be reused internally.
-8. **Outer target evidence is truly held out.** Current online target monitor consumes DATA5 outer-monitor data and can participate in checkpoint control. New generation forbids outer held-out target evidence from target-size/final checkpoint stop/rank/top-K. M-rung development evidence owns target-side selection; replay true-label evidence may remain admissibility-only.
-9. **Old SIZE-FIDELITY1 does not certify the new M ladder.** It is retired as current production qualification authority unless explicitly refactored/re-versioned for the new populations.
-10. **Training-harness validation is not presumed inert.** During exact target-size continuation, any harness-required target-valid/diagnostic artifact must be proven non-controlling: no effect on gradients, LR scheduling, generic early stop, pre-boundary checkpoint ranking or survivor decisions. Only exact-boundary EVAL2 on the authorized `M_i` controls the screen.
-11. **Configuration migration is end-to-end.** Current campaign config still describes target sizes as fixed. Parser/schema/default/example/roundtrip/resolved snapshot all move to the new power-based policy.
-12. **One screening training protocol/method owns N selection.** Extra ablation/comparison methods may consume the selected N later but may not independently select another N within this workflow.
+### 2.1 Independent variable
 
-## 2. Authoritative lifecycle
+The material variable tested by the target-size experiment is:
 
 ```text
-source / DATA4 partition-independent evidence / events
- -> DATA5 PRE-TARGET
-      partition/correlation units
-      outer roles
-      blinding/sealed-role metadata
-      pre-target/outer leakage audit
-      NO CV
- -> exactly one resolved target label compatibility identity
- -> U_size = eligible target-development configurations for that identity
- -> correlation/equivalence allocation
-      P_train / P_eval / optional U_unused
- -> protected train/eval support obligations
- -> reusable role-independent base evidence
- -> P_train-only selection evidence/preparation
- -> FEAS1 -> MVIDX1 -> single-study MVSEL -> REPAIR/MVSTATE -> MVQUAL
- -> pi_train -> exact T_N = pi_train[:N]
- -> P_eval-only pi_eval, frozen before candidate TRAIN2
- -> M1 subset M2 subset M3
- -> for each candidate/run:
-      exact training preparation on T_N
-      TRAIN2 exact continuation boundary
-      EVAL2 exact corresponding M_i
- -> freeze N_selected and exact T_selected
- -> post-selection exact-membership CV plan + separate CV leakage audit
- -> exact per-fold training preparation and CV validation
- -> exact full-T_selected final training preparation
- -> fresh final production
-      frozen M3 may control target-side final checkpoint/model selection
-      replay TRUE_DFT evidence may enforce admissibility only
- -> outer/held-out validation -> calibration -> locked tests
+N = number of target configurations used for gradient training
 ```
 
-No downstream CV/production/held-out/calibration/locked evidence feeds back into allocation, `pi_train`, `pi_eval`, survivors, or `N_selected`.
+Across target-size candidates hold fixed, as applicable:
 
-## 3. Pre-target DATA5 and CV split
+- foundation/model initialization;
+- model architecture/head policy;
+- replay source and replay exposure semantics;
+- target/replay loss definitions and property weights;
+- preprocessing/reference-energy/normalization policy;
+- optimizer and learning-rate schedule;
+- precision/backend;
+- batch/exposure semantics;
+- ordered optimizer seed set;
+- exact fidelity boundaries `(n1,n2,n3)`;
+- target-size evaluation population and metric policy.
 
-### 3.1 New current DATA5 scientific bundle
+If an implementation discovers a quantity that necessarily changes with `N`, it must be identified explicitly as part of the experiment rather than hidden inside generic preparation.
 
-Owns only:
+### 2.2 Evaluation independence
 
-- partition/correlation unit catalog;
-- outer-role partitions;
-- blinding/sealed-role state;
-- event/source/lineage correlation facts needed before target allocation;
-- pre-target/outer leakage audit.
+No frame used for target-size evaluation may enter any target-size candidate's gradient-training data.
 
-It does not contain/hash CV fold count/seed, CV plans, monitors, evaluation roles, purge assignments or CV leakage-plan digests.
+Use existing duplicate/correlation/decorrelation identities only to prevent obvious train/evaluation leakage. Do not create additional scientific incompatibility classes merely from different electronic-structure settings.
 
-The old CV-coupled DATA5 schema is a retired generation and is rejected in a new-generation workspace rather than migrated.
+### 2.3 Provenance observability, not enforcement
 
-### 3.2 Post-selection CV authority
+Preserve the existing decomposed electronic-structure metadata where useful:
 
-CV is a descendant of `selected_data_digest`. It owns exact fold memberships and a separate CV leakage audit. CV-only changes invalidate CV descendants only; they cannot invalidate/recompute target-size selection.
+- XC/theory family;
+- DFT+U settings;
+- hybrid/dispersion settings;
+- PAW/pseudopotential identities;
+- spin settings;
+- energy-reference and smearing conventions;
+- force/stress convention and units;
+- numerical-quality settings/k-points/SCF information;
+- source program/version/parser provenance.
 
-Generic multi-domain DATA5 utilities may remain for unrelated workflows if they cannot contaminate this current target-size dependency path.
+The current `ElectronicStructureFingerprint` is a useful basis for this record. The compatibility decision/domain machinery is not training eligibility authority in the new target-size generation.
 
-## 4. One target label universe
+Different fingerprints are allowed to coexist. Heterogeneity is reported as diagnostics such as counts by provenance fingerprint/group, unresolved fields and differing metadata dimensions. Warnings are advisory by default.
 
-Before target-size allocation:
+Hard rejection is limited to data that are mechanically/scientifically unusable for the configured training operation, for example:
 
-1. resolve the target training source records to the existing LabelDomain compatibility policy or a clean successor;
-2. require exactly one participating target label compatibility identity;
-3. define `U_size` from its eligible development configurations only;
-4. retain compatible numerical/software variants as provenance/quality evidence when existing compatibility policy permits them;
-5. fail if multiple incompatible target heads/protocols remain.
+- missing required labels;
+- non-finite/corrupt labels or geometry;
+- conventions/units that cannot be converted into the canonical training representation;
+- an explicit user exclusion/filter.
 
-Target-size current schemas may not expose `domains`, `domain_prefix_digests`, per-domain ladders/reducers or `D * ...` target-size workload/capacity semantics.
+Methodological differences such as DFT versus DFT+U versus hybrid are not automatic blockers.
 
-## 5. Canonical target/evaluation configuration
+## 3. Minimal target-size data model
+
+Let `U_size` be all user-authorized, usable target-development configurations after outer protected roles are excluded.
+
+Canonical configuration:
 
 ```toml
 [target_data.size_convergence]
@@ -151,512 +118,333 @@ fidelity_epochs = [1, 3, 10]
 Resolve once:
 
 ```text
-candidate_target_sizes = [2^p for p in pmin..pmax]
-Nmax = 2^pmax
-evaluation_sizes = [2^q for q in evaluation_size_powers]
-rungs = [(n1,m1),(n2,m2),(n3,m3)]
+candidate_sizes = [2^p for pmin..pmax]
+Nmax = max(candidate_sizes)
+(m1,m2,m3) = [2^q for q in evaluation_size_powers]
+(n1,n2,n3) = fidelity_epochs
 ```
 
-Validation:
-
-- integer nonnegative powers;
-- `pmin < pmax` and at least three target candidates under the current funnel;
-- exactly three strictly increasing evaluation powers;
-- exactly three strictly increasing positive fidelity boundaries;
-- derived counts fit owning integer/index/serialization types;
-- no scientific `<=16384` guard;
-- no rescue/intermediate non-policy sizes;
-- powers and readable sizes persisted;
-- all scientific values digest-bound;
-- old fixed/flexible aliases not silently reinterpreted.
-
-Defaults produce target sizes `128..16384` and eval sizes `[256,512,1024]`. If the largest configured target remains materially superior, return `nonconverged_at_configured_ceiling`; do not invent a rescue size.
-
-C1 includes parser/schema/default/CLI/API/config roundtrip, `campaign.toml.example`, resolved-config persistence and terminology cleanup. CV configuration remains downstream-only.
-
-## 6. Capacity and correlation-safe role allocation
-
-Because `M1` and `M2` are prefixes of `M3`, nominal target-size capacity is:
+Nominal capacity requirement:
 
 ```text
 |U_size| >= Nmax + m3
 ```
 
-Default example: `16384 + 1024 = 17408` configurations. This is config-derived, not fixed, not IID, and not multiplied by folds/domains/candidates/seeds/stages. Whole correlation groups/outer exclusions may require more raw source data.
+This count is not multiplied by label domains, CV folds, seeds or cumulative inference work. Real source-data requirements may be larger when duplicate/correlation exclusions reduce independent train/evaluation availability.
 
-Allocation groups close over applicable:
+## 4. One simple train/evaluation split
 
-- DATA5 correlation/partition units;
-- exact/near-duplicate geometry families;
-- declared correlation/active-learning families;
-- protected event-window linkage;
-- source/lineage relations that forbid train/eval splitting.
-
-Each group receives one role:
+Before candidate training, one deterministic owner constructs:
 
 ```text
-train_authorized | evaluation_authorized | unused_reference
+P_train  = target-size training-authorized configurations
+M3       = exact target-size evaluation reserve, |M3| = m3
 ```
 
 with:
 
 ```text
-P_train intersect P_eval = empty
+P_train intersect M3 = empty
 |P_train| >= Nmax
-|P_eval| >= m3
 ```
 
-Pools may exceed exact counts because groups are indivisible.
+Training has priority. The splitter should preserve rare/important structural, condition, event and composition support for `P_train` and draw `M3` preferentially from redundant residual data while respecting existing duplicate/correlation exclusion rules.
 
-Allocation uses only versioned split-safe structural/categorical/provenance evidence. It may not use candidate error/outcomes, role-local fitted transforms, role-dependent foundation residual/difficulty, fitted E0/normalization, CV/final/calibration/locked evidence.
+Do not build a large separate evaluation hierarchy or several allocation authorities. Persist the split, its deterministic policy identity, and concise support/correlation diagnostics.
 
-Allocation priorities:
-
-1. preserve unique/scarce training support;
-2. make exact Nmax materializable with required support;
-3. preserve disjoint capacity for exact M3 where feasible;
-4. select evaluation groups from redundant/correlation-distinct support;
-5. preserve representative eval support;
-6. deterministic tie-break;
-7. leave unnecessary surplus unused/reference-only.
-
-The allocator publishes training must-cover obligations and evaluation representative-support goals. `T_max` and `M3` must realize them where feasible; deficiencies are explicit, not repaired by post-freeze role stealing.
-
-## 7. Three evidence/preparation layers
-
-### 7.1 Role-independent base evidence
-
-May be computed before allocation when scientifically membership-independent:
-
-- structural/profile descriptors;
-- geometry/condition/provenance classifications;
-- frozen foundation raw predictions/descriptors;
-- immutable source/frame metadata.
-
-These caches do not depend on CV policy.
-
-### 7.2 P_train selection evidence/preparation
-
-After allocation, derive on `P_train` only:
-
-- target-label/tail coverage families;
-- foundation residual/difficulty families formed from frozen predictions + true target labels;
-- target coverage references;
-- selection-only fitted feature/scaling authority.
-
-This evidence may depend on all `P_train` because it chooses membership; it is non-gradient.
-
-TargetCoverage/FEAS/MVIDX/MVSEL/REPAIR/MVQUAL publish one current target study, not a collection of target domains. Reuse optimized internal numerical kernels if their public/current scientific topology remains one study.
-
-### 7.3 Exact gradient-bearing training preparation
-
-Any membership-dependent quantity affecting optimization/model math is derived from the exact target gradient membership:
+Order the exact evaluation reserve once:
 
 ```text
-candidate screen -> exact T_N
-CV fold          -> exact selected fold-training frames
-final production -> exact T_selected
-```
-
-This includes as applicable E0/reference fits, learned normalizations/statistics, global weight normalizations/fitted objective quantities and exact target training files/sidecars.
-
-Thus:
-
-- `P_train \ T_N` can influence selection of T_N but not candidate-N training math after membership freezes;
-- `P_eval`/M_i cannot influence training preparation;
-- unselected siblings in a correlation group never enter gradient preparation;
-- final production cannot inherit an all-development fitted core.
-
-Pointwise/membership-independent quantities may be reused. Exact prefix/fold sufficient statistics, subtractive identities, vectorization and caches are encouraged if reference tests prove exact equivalence and scientific identities bind the exact membership.
-
-## 8. Rich training order
-
-Only `P_train` enters:
-
-```text
-P_train selection prep
- -> FEAS1 -> MVIDX1 -> MVSEL -> REPAIR/MVSTATE -> MVQUAL -> pi_train
-```
-
-Required:
-
-- one repaired master order;
-- exact nested `T_N = pi_train[:N]`;
-- exact `T_max` cardinality Nmax;
-- one candidate-data identity per N;
-- allocation-protected support carried into hard coverage/repair/qualification;
-- scientifically valid target-label/foundation-residual weakness/diversity coverage retained;
-- no per-rung reselection/repair;
-- no eval/unused frame in candidates;
-- rich failure fails closed;
-- no downstream hardcoded fixed-size universe.
-
-## 9. Frozen evaluation ladder
-
-Build one deterministic `pi_eval` over `P_eval` after role allocation and before the first candidate TRAIN2 trajectory.
-
-Allowed ordering evidence: structural/condition/provenance evidence, target-label distribution information inside already-frozen P_eval, and residuals from an independent frozen foundation model.
-
-Forbidden: target-size candidate predictions/errors, survivor/ranking/N outcomes, final-production predictions, CV/calibration/locked evidence.
-
-Materialize:
-
-```text
+pi_eval = deterministic order over M3
 M1 = pi_eval[:m1]
 M2 = pi_eval[:m2]
 M3 = pi_eval[:m3]
-M1 subset M2 subset M3 subset P_eval
 ```
 
-M3 realizes representative residual-support goals where feasible. Persist correlation/effective-sample/support diagnostics. `P_eval \ M3`/unused data may support retrospective qualification but are not runtime fallbacks.
+`M1 subset M2 subset M3`. The order freezes before the first candidate TRAIN2 trajectory and cannot depend on candidate predictions or survivor outcomes.
 
-## 10. Exact screening and training-harness controls
+## 5. One target-training order
 
-Stages are exactly `(n1,M1) -> (n2,M2) -> (n3,M3)`.
-
-Funnel remains:
+The new generation exposes one scientific training-order authority:
 
 ```text
-q qualified sizes
- -> all q at n1
- -> min(q,4) at n2
- -> 2 finalists at n3
- -> 1 selected
+build_target_training_order(P_train, frozen_features, policy) -> pi_train + diagnostics
 ```
 
-with accepted minimum-qualified-size, paired optimizer seeds and practical-equivalence/smaller-size semantics.
+Its job is simply to produce a deterministic rich ordering of training configurations. It may reuse existing vectorized/indexed machinery for:
 
-Exactly one resolved training protocol/method owns target-size screening scientific policy and seeds. Other comparison methods do not independently select N.
+- structural/environmental diversity;
+- composition/condition/event coverage;
+- frozen foundation-model difficulty/residual information;
+- target-label tails or other explicitly accepted training-selection signals;
+- deterministic repair of obvious coverage holes.
 
-Continuation rules:
+But the current public/persisted scientific topology is one order, not a FEAS -> MVIDX -> MVSEL -> REPAIR -> MVQUAL authority chain.
 
-- boundaries are exact checkpoints, not generic horizons;
-- survivor continues from prior boundary checkpoint;
-- no epoch-0 restart;
-- evidence binds exact start/end/checkpoint identity;
-- exact checkpoints persist/restart;
-- ordinary success early stop cannot end screening before boundary;
-- production epoch maximum independent of n3.
-
-If MACE/training harness requires target-valid/monitor input during screen, it must be explicitly non-controlling: no effect on gradients, LR schedule, generic early stop, checkpoint rank/selection before boundary or survivor authorization. Use a gradient-authorized diagnostic subset or equivalent inert input. Never route `M_i`, outer held-out, calibration or locked data through a generic controlling training channel.
-
-At the boundary EVAL2 consumes exactly the corresponding frozen M_i. The reducer alone owns survivor/ranking decisions.
-
-Replay TRUE_DFT evidence may enforce hard checkpoint admissibility; target-side EVAL2 owns ordering. Replay score cannot become a secondary ranking objective.
-
-## 11. EVAL2 / OPT-EVAL4
-
-New target-size roles:
+Each candidate is exactly:
 
 ```text
-coarse -> M1
-short -> M2
-final_screen -> M3
+T_N = pi_train[:N]
 ```
 
-Retire `size_development_complement`, `size_development_coarse`, maximum-prefix subtraction, full-complement fallback, legacy population samplers used only by retired generations and per-domain target-size aggregation.
+Candidate qualification is intentionally simple:
 
-Preserve canonical target-force estimator and one-owner staged execution:
+- the prefix exists at exact size `N`;
+- all required labels are usable;
+- any explicitly configured hard support requirement is satisfied.
+
+Diagnostic diversity/coverage metrics may be rich without becoming multiple independent gate systems.
+
+Internal optimized kernels/classes from the old machinery may survive if they reduce implementation risk or preserve performance, provided they are implementation details behind the single current authority.
+
+## 6. Common training preparation across N
+
+Target-size convergence should compare data size, not a moving preprocessing target.
+
+Freeze one common target-size training-protocol/preparation identity before the candidate ladder runs. It may be derived from `P_train` or from the configured foundation/training protocol, but it must not consume `M1/M2/M3`, CV validation data, outer held-out data, calibration data or locked tests.
+
+The same identity is used for every candidate size unless the external training engine mathematically requires a size-dependent quantity. In that exceptional case the dependency must be explicit, deterministic and tested as part of target-size semantics.
+
+Do **not** introduce candidate-specific DATA7 E0/normalization/objective refits merely because a generic API can do so. Holding those choices fixed is the default scientific design.
+
+Candidate-specific state should primarily be:
+
+- exact `T_N` membership;
+- optimizer seed;
+- continuation/checkpoint state for the active fidelity boundary.
+
+## 7. Exact target-size screen
+
+Preserve the useful existing funnel:
 
 ```text
-parent/staged owner -> CPU prepare -> accelerator inference -> CPU finalize -> parent commit
+qualified q sizes
+ -> n1 on M1: q -> min(q,4)
+ -> n2 on M2: <=4 -> 2
+ -> n3 on M3: 2 -> 1
 ```
 
-Parent owns aggregate resource admission/lifetime; nested inference cannot reacquire aggregate RAM/VRAM or double-charge fixed overhead. Preserve existing optimized batching/cache/mmap/concurrency machinery unless evidence requires repair.
+Requirements:
 
-## 12. Freeze selected data
+- ordered paired optimizer seeds are identical across sizes;
+- survivor trajectories continue exactly from `n1` to `n2` to `n3`;
+- ordinary target-success early stop does not truncate the screening boundary;
+- target-side screening metric and practical-equivalence widths are fixed policy;
+- smaller `N` wins inside practical equivalence;
+- replay/physical/deployment/CV evidence does not rank target sizes;
+- no eliminated candidate receives later ordinary screen work;
+- no complement evaluation fallback;
+- configured largest size is the ceiling; material superiority at the ceiling yields typed non-convergence rather than a rescue size.
 
-Terminal selected outcome freezes:
+The target-size result freezes:
 
 ```text
-N_selected = N
-T_selected = pi_train[:N]
+N_selected
+T_selected = pi_train[:N_selected]
 ```
 
-Selected-data identity binds generation/policy, resolved target label identity, role allocation, pi_train/candidate identity, pi_eval/M ladder, exact continuation/paired-seed ancestry, N and exact ordered T_selected membership.
+## 8. CV is a separate post-selection experiment
 
-CV/final production cannot enlarge T_selected with P_train surplus, P_eval, M3 or unused data.
-
-## 13. Post-selection exact-membership CV
-
-CV consumes exact T_selected plus inherited correlation/equivalence group IDs.
-
-Each fold stores exact selected frame UIDs for gradient training, checkpoint selection/monitor, CV evaluation and purge, plus selected-data/group lineage. A group ID constrains assignment but never expands membership. Example invariant: if an upstream unit has 10 frames and T_selected contains 3, only those 3 can appear anywhere in CV; the remaining 7 are absent.
-
-A separate CV leakage audit proves:
-
-- every role subset is exact T_selected;
-- no unselected frame introduced;
-- prohibited groups do not cross incompatible roles;
-- fold roles are disjoint as required;
-- no P_eval/M/outer data becomes gradient data.
-
-CV is validation-only. It may block production; it cannot tune a material training policy and retain old target-size evidence. CV-only settings invalidate CV descendants only. Material screening/training policy changes invalidate target-size and descendants.
-
-Insufficient correlation-distinct support for requested CV topology fails after selection without changing N, stealing eval data, rerunning allocation or weakening leakage policy.
-
-Every fold gets training preparation fitted on exact fold gradient frames (or a mathematically exact equivalent sufficient-statistic computation). No whole-unit expansion or wider all-development fitted core.
-
-## 14. Fresh final production and held-out outer evidence
-
-After CV acceptance:
-
-- final training starts fresh from accepted initialization/foundation model;
-- gradient target data = exact T_selected;
-- membership-dependent preparation is fitted on exact T_selected;
-- production budget/adaptive policy independent of n3;
-- shared canonical TRAIN2 lifecycle owns execution/provenance.
-
-Frozen M3 may control final-development target checkpoint stop/rank/model selection. It stays non-gradient and immutable.
-
-Replay TRUE_DFT may remain a hard admissibility guard but cannot reorder target-side ranking.
-
-Outer target monitor/validation is held out: it cannot stop/rank/top-K target checkpoints if claimed as independent validation. Any training-internal target diagnostic monitor must come from gradient-authorized data and be explicitly non-controlling. Calibration/locked tests remain later and separate. M3 is never advertised as held-out after influencing size/checkpoint choice.
-
-## 15. DATA6 / DATA7 / DATA8 / MLCV contracts
-
-### DATA6
-
-Separate:
-
-1. pre-target role-independent base evidence;
-2. post-allocation P_train residual/difficulty/coverage views;
-3. post-selection exact-membership CV training/prediction views;
-4. separately authorized outer/calibration/locked evidence.
-
-CV-only policy cannot invalidate base evidence/target-size state.
-
-### DATA7
-
-Replace the monolithic canonical-DATA5-domain assumption with distinct current-generation identities/APIs for P_train selection preparation and exact-role training preparation. A prescribed prefix cannot merely filter after E0/normalization/objective fitting on a wider domain.
-
-### DATA8
-
-Fixed files/protocol identities consume exact role membership/preparation. Cache keys include exact membership and scientific preparation identity where values/weights/E0/config depend on them. No helper may recover wider membership by expanding upstream units.
-
-### MLCV roles
-
-Version/replace the unit-ID/DATA5-CV-bound catalog. New MLCV roles descend from selected-data + post-selection CV and carry exact selected-frame membership. Reuse role-operation checking only after semantics are updated. Outer held-out target role loses checkpoint-selection permissions in the new generation.
-
-## 16. Persistence/restart identity DAG
-
-New generation only; old fixed/complement/domain-prefix/CV-coupled derived state is rejected.
-
-**Pre-target/target-size identity** includes source/frame/DATA4; DATA5-without-CV; one target label identity; powers/boundaries/seeds/practical-equivalence; allocation/equivalence policy and support obligations; P_train/P_eval; base evidence; P_train selection prep; MVSEL/REPAIR/MVQUAL; frozen pi_eval policy.
-
-**Candidate identity** adds exact T_N membership/order; exact membership-dependent training-prep digest; training scientific policy; replay admissibility policy if used; continuation start/end/checkpoint identity.
-
-**Selected-data identity** adds terminal evidence, N_selected and exact T_selected digest.
-
-**CV identity** adds selected-data, exact fold memberships, CV policy and CV leakage audit. CV-only settings are absent from target-size identity.
-
-**Production identity** adds selected-data, required CV acceptance, exact final prep, production budget/adaptive policy and checkpoint-selection/admissibility policy.
-
-Execution-only worker/chunk/cache/batch/RAM/VRAM settings do not alter scientific identity when mathematics is unchanged.
-
-Restart acceptance proves deterministic identities; target-size policy changes invalidate target-size/descendants; CV-only changes preserve target-size/selected/base evidence; production-only changes preserve upstream; exact boundary restarts use authenticated checkpoint+M identity; pi_eval never rebuilt from candidate outcomes; old generations fail actionably.
-
-## 17. Destructive cleanup
-
-Remove/retire from reachable current execution as applicable:
-
-- fixed target-size/ceiling scientific authorities and <=16384 guard;
-- per-domain target-size candidates/prefixes/M ladders/reducers/fixed-size imports;
-- TARGET-DATA role freeze requiring pre-selection CV;
-- CV plans/digests in current DATA5 target-size lineage;
-- CV-specific DATA6 domains before selected-data freeze;
-- all-development DATA7 fitted cores used as training prep for exact prefixes;
-- whole-unit expansion as selected-data/CV membership authority;
-- complement/coarse target-size roles and fallback/subtraction evaluator;
-- obsolete fixed/flexible/TARGET-SIZE-V5 aliases denoting retired semantics;
-- old target-size migration/bridge/receipt code used only by retired generations;
-- duplicate training/resource owners;
-- outer-target checkpoint-control authority inconsistent with held-out validation;
-- duplicate final target checkpoint selectors after M3 consolidation;
-- tests whose sole purpose is retired behavior.
-
-SIZE-FIDELITY1 is historical unless re-versioned for the new M ladder; old evidence cannot certify new defaults.
-
-## 18. Preserved performance/lifecycle doctrine
-
-Preserve:
-
-- one shared TRAIN2 lifecycle for screening/CV/final;
-- `preflight -> resource acquire -> prepared execution -> checkpoint publish -> release`;
-- no direct/private/CLI alternate scientific lifecycle;
-- exact continuation first-class;
-- fresh final production;
-- one-owner OPT-EVAL4 resource admission;
-- immutable DATA7/8 cache/provenance machinery where compatible with exact membership;
-- existing vectorized/parallelized coverage/index/selection/batching/mmap/scheduler machinery.
-
-Do not replace optimized kernels with scalar/worse-scaling code unless correctness requires it. Exact prefix/fold sufficient-statistic acceleration is preferred where possible and reference-tested.
-
-## 19. Part 1 — docs/spec authority reset
-
-Execute first on implementation branch; do not merge future docs alone while executable main is old.
-
-Update architecture manuals, target-size/TARGET-DATA/DATA5/leakage/coverage/MVSEL/REPAIR/MVQUAL/EVAL2/OPT-EVAL4/CV/MLCV/DATA7/8/training-monitor/persistence specs, dependency graphs/source maps and campaign configuration docs/example.
-
-Required diagram:
+Only after `N_selected/T_selected` freeze:
 
 ```text
-DATA5 pre-target NO CV
- -> one target label universe
- -> P_train/P_eval
- -> P_train selection prep -> pi_train
- -> pi_eval/M ladder
- -> exact T_N training prep + screen
- -> T_selected
- -> exact-membership post-selection CV
- -> exact T_selected final prep/production
- -> held-out outer validation
+T_selected -> CV folds -> methodological validation
 ```
 
-Docs must distinguish selection preparation vs gradient-bearing training preparation and state group identity constrains roles but does not expand exact membership. Run repository docs build/lint/reference/PDF checks.
+CV owns its own fold count, partition seed, fold monitoring/evaluation policy and any fold-local preprocessing required by the CV methodology.
 
-## 20. Part 2 gates
+CV rules:
 
-### C1 — generation/config/single target study
+- folds are constructed from `T_selected`, not from the whole pre-selection development pool;
+- existing duplicate/correlation groups should not be split across incompatible CV roles when avoidable/required by the accepted leakage policy;
+- CV never changes `N_selected`;
+- CV failure is reported as a methodological-validation failure, not converted into a different target size;
+- a material change to the training method/protocol after CV failure requires a new target-size experiment because the method being converged has changed.
 
-Implement new semantic generation, power resolver/config surface, configured ceiling, exactly-one-target-label preflight and exactly-one-screening-protocol/method rule. Test default/nondefault powers, no hidden ceiling, ambiguous/multiple target domains/methods, serialization/config roundtrip.
+The current source already states that held-out CV evaluation cannot control target-size selection and that CV evaluates the already-frozen protocol. Remove the remaining historical coupling where CV **gradient-training domain identities** restrict target-size materializability/qualification.
 
-### C2 — DATA5 pre-target split
+Do not create target-size invalidation machinery around CV settings. Target-size simply does not depend on them.
 
-Remove CV ownership from current DATA5 scientific lineage; preserve outer/correlation/blinding/pre-target leakage. Replace CV-dependent TARGET-DATA freeze. Test CV-only digest invariance and rejection of old CV-coupled generation.
+## 9. Final production
 
-### C3 — allocation/evidence staging
+After CV accepts the selected method/protocol:
 
-Implement allocation groups, P_train/P_eval/U_unused, group-aware Nmax+m3 feasibility, protected support, base-vs-role-dependent DATA6 evidence. Test nominal-but-group-infeasible cases, deterministic allocation, support preservation, no post-freeze stealing, CV independence.
+- start a fresh final training run on full `T_selected`;
+- use the accepted common training protocol;
+- production epoch horizon remains independent of `n3`;
+- frozen `M3` may remain development/model-selection evidence for final target-side checkpoint selection if required by the accepted training protocol;
+- outer held-out/calibration/locked evidence remains downstream and is not retroactively called independent if it influenced model selection.
 
-### C4 — single-study selection + M ladder
+## 10. Ownership simplification
 
-Flatten TargetCoverage/FEAS/MVIDX/MVSEL/REPAIR/MVQUAL current topology; one pi_train and one pi_eval/M ladder. Test no current domain maps, exact nested T_N/M_i, protected support, eval-order independence from candidates, deterministic restart/performance/reference equivalence.
+The target-size subsystem should own only:
 
-### C5 — exact candidate prep + target-size orchestration
+1. power/fidelity/evaluation-size configuration resolution;
+2. one target-size train/evaluation split;
+3. one target-training order `pi_train`;
+4. one frozen evaluation order/ladders `M1/M2/M3`;
+5. successive-fidelity candidate evidence/reduction;
+6. frozen `N_selected/T_selected`.
 
-Refactor DATA7/production/DATA8 so candidate training preparation fits exact T_N while selection prep remains P_train-scoped. Integrate real owners:
+It should **not** own or depend on:
+
+- label compatibility domains as training partitions;
+- CV folds or CV validation state;
+- per-domain candidate-prefix maps;
+- multiple public selection/repair/qualification authorities;
+- complement evaluation populations;
+- production qualification or deployment evidence;
+- candidate-specific preprocessing refits added solely by this redesign.
+
+Generic DATA5/DATA6/DATA7/DATA8 utilities may continue to exist where useful, but they are support code. They do not define target-size scientific semantics merely because target-size calls them.
+
+## 11. Destructive cleanup
+
+Remove from the reachable current target-size path:
+
+- `LabelDomain` multiplicity as target-size study/cardinality authority;
+- target-size candidates with `domain_prefix_digests` or equivalent per-domain maps;
+- target-size materializability/qualification across CV training domains;
+- fixed-eight/fixed-ceiling constants as scientific authority; replace with configured powers/ceiling;
+- complement/coarse evaluation roles and fallback subtraction logic;
+- public/persisted FEAS1/MVIDX1/MVSEL2/REPAIR2/MVSTATE2/MVQUAL chain where its sole purpose is target-size ordering;
+- old candidate-authority/migration/receipt layers used only to preserve retired generations;
+- dead compatibility aliases and duplicate target-size reducers.
+
+Where an old optimized numerical kernel is still useful, keep/refactor it behind the new single owner instead of deleting performance for cosmetic reasons.
+
+## 12. Implementation gates
+
+### Gate A — documentation and source map
+
+Rewrite the target-size/CV/provenance architecture docs first on the implementation branch. Clearly state:
 
 ```text
-config -> DATA5 pre-target -> one target label -> allocation
- -> selection prep/pi_train -> pi_eval/M
- -> exact T_N training prep -> TRAIN2 continuation
- -> boundary checkpoint -> EVAL2 M_i/replay admissibility
- -> reducer -> selected/configured-ceiling -> T_selected
+provenance report
+ -> target-size data split
+ -> one training order + one M ladder
+ -> data-size convergence screen
+ -> freeze selected data
+ -> post-selection CV
+ -> final production
 ```
 
-Test exact preparation membership, excluded-frame non-influence, no P_eval influence, continuation, non-controlling harness valid input, eliminated-candidate no-work, no complement fallback.
+Document that provenance differences are advisory and CV is scientifically separate from target-size selection.
 
-### C6 — exact-membership post-selection CV
+### Gate B — provenance and configuration simplification
 
-Implement selected-data CV + leakage audit and re-version CV-specific DATA6/DATA7/8/MLCV. Test the 10-upstream-frames/3-selected scenario, group-split rejection, CV-only invalidation direction, exact fold prep, insufficient-group failure without changing N.
+- preserve systematic electronic-structure metadata;
+- demote compatibility/domain outcomes from target-training eligibility authority;
+- implement power-based target/evaluation configuration and configured ceiling;
+- regression-test mixed DFT/DFT+U/hybrid provenance without automatic target-size blocking.
 
-### C7 — final production/monitor roles
+### Gate C — single split and training-order authority
 
-Fresh exact-T_selected prep/training after CV. M3 target-side checkpoint control; replay admissibility only; outer target held out/non-controlling. Test exact final prep, fresh initialization, production budget independent of n3, M3 frozen/non-gradient, outer role authorization rejection.
+- implement one deterministic train/M3 split;
+- implement one current `pi_train` authority, reusing old optimized internals where justified;
+- persist concise diagnostics rather than a chain of scientific gate records;
+- test exact cardinality, disjointness, deterministic restart and support preservation.
 
-### C8 — destructive cleanup/resources/performance
+### Gate D — target-size screen
 
-Delete retired paths and preserve one TRAIN2/OPT-EVAL4 resource owner plus optimized kernels. Run structural absence/import/package/performance/reference/affected regression.
+Integrate real owners:
 
-### C9 — final functional closure
+```text
+config -> U_size -> train/M split -> pi_train/pi_eval
+ -> T_N -> TRAIN2 n1/M1 -> reduce
+ -> continue n2/M2 -> reduce
+ -> continue n3/M3 -> selected/configured-ceiling
+ -> freeze T_selected
+```
 
-Reconcile all obligations; re-derive final affected surface; run complete affected regression, real-owner assembled integration from config through selection/CV/final entry, broader/full suite where impact cannot be bounded, docs/PDF checks, deterministic/reference/performance checks and authority-uniqueness/retired-path inspection.
+Test paired seeds, practical equivalence, continuation, restart, eliminated-candidate no-work, non-default powers/rungs and no CV dependency.
 
-Full long GPU production qualification remains deferred.
+### Gate E — post-selection CV and production
 
-## 21. Mandatory regression/integration cases
+- build CV only from frozen `T_selected`;
+- verify CV settings/results cannot change target-size state;
+- fresh final production only after CV acceptance;
+- preserve downstream held-out/calibration/locked separation.
+
+### Gate F — structural cleanup and final regression
+
+- delete retired target-size authorities/aliases/reachable dead paths;
+- run affected regression after each material stage;
+- run final affected regression/integration through the real CLI/config/state/persistence owners;
+- broaden to the full suite where affected surface cannot be bounded;
+- preserve performance/resource machinery and run bounded performance/reference checks;
+- run documentation/PDF checks required by the repository.
+
+Full long GPU/production qualification remains deferred to the established final release phase.
+
+## 13. Mandatory acceptance cases
 
 At minimum prove:
 
-- default/nondefault target/eval powers/boundaries;
-- exactly one target label identity and typed failure for incompatible multiple domains;
-- one screening method/protocol;
-- DATA5 target-size digest invariant to CV-only config;
-- old CV-coupled DATA5 and old target-size generation rejected;
-- group-aware Nmax+m3 semantics;
-- no current per-domain target-size prefix/ladder/reducer authority;
-- exact T_N candidate membership and exact candidate training-prep membership;
-- changes in `P_train \ T_N` cannot change candidate training preparation/model input after T_N freezes;
-- P_eval/M/outer/calibration/locked cannot change candidate training prep;
-- exact nested M ladder and pre-TRAIN2 eval-order freeze;
-- exact continuation/restart at every boundary;
-- harness valid/diagnostic input non-controlling during screen;
-- replay admissibility separate from target ranking;
-- immutable selected-data freeze;
-- post-selection CV exact subset of T_selected and no unit expansion;
-- CV group-split rejection;
-- CV-only changes invalidate CV descendants only;
-- exact fold training preparation;
-- CV failure does not alter N or steal eval data;
-- final prep exactly T_selected and fresh production;
-- M3 authorized for final target checkpoint control;
-- outer held-out target evidence unauthorized for checkpoint stop/rank/top-K;
-- old SIZE-FIDELITY1 cannot masquerade as new M-ladder qualification;
-- no complement/fixed/domain fallback;
-- no duplicate aggregate training/evaluation resource ownership.
+- DFT, DFT+U, hybrid/smearing/provenance differences are recorded but do not automatically split or block target training;
+- unresolved/heterogeneous provenance is reported clearly;
+- mechanically unusable labels still fail cleanly;
+- exactly one target-size study exists regardless of provenance-group count;
+- target-size runs correctly with CV disabled/not yet constructed;
+- changing CV fold count/seed cannot alter target-size identity/result;
+- no CV training-domain materializability requirement remains;
+- default and non-default power configuration resolve correctly;
+- nominal capacity is `Nmax + m3`, with no domain/fold/seed multiplier;
+- one current training order exists and every `T_N` is its exact prefix;
+- old multi-authority selection intermediates are absent from the current target-size public/persisted topology;
+- common training preparation/protocol identity is the same across candidate sizes unless an explicitly justified size-dependent quantity exists;
+- `M1 subset M2 subset M3`, all disjoint from every `T_N`;
+- evaluation order freezes before candidate results;
+- exact `n1 -> n2 -> n3` continuation and paired-seed ranking work;
+- selected size is frozen before CV;
+- CV folds contain only frames from `T_selected`;
+- CV failure cannot select a different N;
+- final production is fresh and uses full `T_selected`;
+- no fixed/complement/domain/CV fallback authority remains reachable;
+- no material performance/resource regression from replacing optimized internals with slower scalar code.
 
-## 22. Scientific M-ladder qualification
+## 14. Scientific qualification
 
-Functional tests do not prove `[256,512,1024]` preserves target-size decisions. Provide reproducible retrospective/reference qualification against the largest practical residual/reference population using completed checkpoints/predictions or bounded representative runs, without tuning from held-out CV/calibration/locked evidence.
+Functional regression proves software correctness, not that default `M=[256,512,1024]` is statistically sufficient.
 
-Before defaults are called scientifically qualified, show:
+Retrospective/reference qualification should separately test whether the default M ladder preserves coarse survivors, finalists and the final selected N relative to a larger reference evaluation population. If representative evidence is unavailable, record `deferred/unavailable`; do not invent a pass.
 
-1. M1 does not falsely eliminate reference-competitive finalists;
-2. M2 preserves reference finalist population;
-3. M3 selects the same N under practical-equivalence/smaller-size rule;
-4. support/correlation diagnostics are adequate;
-5. M ladder is at least as effective as naive same-cardinality temporal/uniform baselines on important strata;
-6. real orchestration consumes exact M_i at exact n_i;
-7. allocation/training-prep/M evidence is leakage-clean;
-8. restart/cache/worker changes preserve scientific identity;
-9. evaluation work is materially reduced relative to full complement.
+Provenance heterogeneity is similarly reported, not converted into an automatic pass/fail compatibility judgement.
 
-If evidence unavailable: `deferred/unavailable`, not passed. If defaults fail, explicitly change policy identity and requalify; never silently expand runtime M.
-
-## 23. Frozen decisions / delegated details / reopen triggers
+## 15. Frozen / delegated / reopen
 
 ### Frozen
 
-- one target-size study, one resolved target label identity, no target-size domain fan-out;
-- DATA5 pre-target has no CV;
-- allocation before role-dependent target selection evidence;
-- base evidence separated from post-allocation residual and post-selection CV views;
-- selection fitting may use P_train; membership-dependent training prep uses exact gradient membership;
-- no unit/group expansion adds unselected frames;
-- one pi_train, one pi_eval, exact nested T_N/M_i;
-- eval order freezes before candidate TRAIN2;
-- post-selection exact-membership correlation-safe validation-only CV;
-- Nmax+m3 nominal capacity lower bound;
-- exact continuation, non-controlling screen diagnostics, fresh production;
-- target-side ranking, replay admissibility-only;
-- M3 may control final target checkpoint selection; outer target validation held out;
-- configured powers/ceiling and destructive reset;
-- EVAL2 metric/OPT-EVAL4 resource owner and one shared TRAIN2 lifecycle preserved;
-- long GPU qualification deferred.
+- provenance is precise and advisory by default;
+- one target-size study across user-authorized usable target data;
+- CV is completely outside target-size selection and occurs after selected-data freeze;
+- target-size variable is N; non-N training choices are held fixed as far as scientifically possible;
+- one training order, one M ladder, one reducer;
+- configured power ladders and configured ceiling;
+- nominal target-size capacity `Nmax + m3`;
+- exact continuation, paired seeds and practical-equivalence/smaller-size preference;
+- destructive cleanup of retired target-size complexity;
+- full GPU qualification deferred.
 
 ### Delegated
 
 - exact class/module/schema names;
-- internal sparse/vectorized data structures;
-- deterministic scoring/tolerances preserving frozen allocation priority;
-- exact sufficient-statistic vs direct recomputation strategy for exact training prep;
-- reuse/wrapping of old single-study numerical kernels;
-- local fixture/fake strategy below semantic owners;
-- generic non-target DATA5/CV utilities may survive if they cannot enter new target-size lineage.
+- internal vectorized/sparse/index structures;
+- deterministic training/evaluation ordering algorithms;
+- which old optimized kernels are reused behind the new owners;
+- exact provenance-report presentation;
+- CV-local fitting details, provided CV remains post-selection and cannot feed back into N.
 
 ### Reopen only on evidence
 
-1. allocation closure creates pathological giant groups/default infeasibility;
-2. split-safe evidence cannot protect required training edges;
-3. exact candidate-specific training preparation changes the scientific screening problem enough to require policy redesign;
-4. exact-membership post-selection CV cannot provide meaningful validation for representative selected datasets;
-5. M3 checkpoint reuse conflicts with a genuinely independent required model-selection authority;
-6. default M powers fail survivor/winner preservation;
-7. a real technical bound appears beyond default 16384;
-8. exact preparation is prohibitively expensive and no exact accelerated formulation exists;
-9. a real product requirement emerges for multiple incompatible target training studies.
+1. the training engine cannot consume mixed provenance even after canonical unit/convention conversion;
+2. a specific provenance difference is demonstrated to make labels mathematically unusable together rather than merely scientifically heterogeneous/noisy;
+3. one deterministic training order cannot preserve required target-data coverage without a materially different algorithm;
+4. the default M ladder fails decision-preservation qualification;
+5. a training transform is proven to require N-dependent fitting for correct target-size comparison;
+6. a real product requirement appears for genuinely separate target models/heads/studies rather than one mixed training corpus;
+7. a real implementation/performance limit invalidates the configured ladder design.
 
-## 24. Freeze verdict
+## 16. Freeze verdict
 
-The implementation dry-run exposed substantial current-code distance but no unresolved architecture question after these corrections. Once this V5 file is committed as the sole active target-size plan, the design is frozen for implementation. Further issues are conformance/debugging problems unless they meet an explicit reopen trigger above.
+V6 intentionally removes speculative authority layers instead of explaining them more carefully. The implementation target is now the smallest architecture that directly represents the scientific workflow: record provenance, choose disjoint training/evaluation data, order training data once, run a controlled convergence experiment in N, freeze the selected dataset, then run CV as a separate validation experiment.
