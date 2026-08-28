@@ -12,10 +12,11 @@ from mdstats.training_data.inference_parallel import (
 from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
 from mdstats.training_data.training_parallel import GpuTelemetrySample
 
+_MIB = 1024 ** 2
 _GIB = 1024 ** 3
 
 
-def _resources(*, cpu: int = 32, ram_gib: int = 128) -> SystemResourceSnapshot:
+def _resources(*, cpu: int = 32, ram_gib: int = 128, gpu_available: bool = True) -> SystemResourceSnapshot:
     return SystemResourceSnapshot(
         cpu_threads_available=cpu,
         cpu_fraction=0.90,
@@ -24,7 +25,16 @@ def _resources(*, cpu: int = 32, ram_gib: int = 128) -> SystemResourceSnapshot:
         ram_fraction=0.80,
         ram_budget_bytes=int(ram_gib * _GIB * 0.80),
         gpu_memory_fraction=0.90,
-        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "test"),
+        gpu=GpuResourceSnapshot(
+            available=gpu_available,
+            device_count=1 if gpu_available else 0,
+            selected_device=0 if gpu_available else None,
+            device_name="RTX 3090" if gpu_available else None,
+            free_bytes=int(23.6 * _GIB) if gpu_available else None,
+            total_bytes=24 * _GIB if gpu_available else None,
+            budget_bytes=int(24 * 0.90 * _GIB) if gpu_available else None,
+            reason="available" if gpu_available else "CUDA unavailable",
+        ),
     )
 
 
@@ -259,19 +269,160 @@ def test_live_host_ram_reclamp_can_block_future_replacement() -> None:
     assert "host-RAM" in decision.reason
 
 
-def test_one_job_vram_infeasibility_and_missing_telemetry_fail_before_launch() -> None:
+def test_missing_gpu_telemetry_constructs_conservative_serial_plan() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        estimated_gpu_memory_mib_per_job=4096.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=None,
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    assert plan.uses_cuda
+    assert plan.initial_jobs == 1
+    assert plan.maximum_jobs == 4
+    assert plan.gpu_total_bytes is None
+    assert plan.gpu_memory_budget_bytes is None
+    assert plan.baseline_gpu_used_bytes is None
+    assert plan.baseline_gpu_utilization_percent is None
+    assert plan.gpu_utilization_budget_percent == 90.0
+    assert plan.estimated_gpu_bytes_per_job == int(4096.0 * _MIB)
+    assert "GPU telemetry unavailable at preflight" in plan.reason
+    assert "parallel expansion is disabled until live evidence is observed" in plan.reason
+
+
+def test_genuine_cuda_device_unavailability_fails_preflight() -> None:
     policy = InferenceConcurrencyPolicy(estimated_gpu_memory_mib_per_job=4096.0)
-    with pytest.raises(ValueError, match="cannot fit one job"):
+    with pytest.raises(ValueError, match="CUDA device 'cuda:0' is unavailable"):
         build_inference_concurrency_plan(
-            task_count=1, device="cuda:0", resources=_resources(), policy=policy,
-            gpu_sample=_gpu_sample(0.0, 20.0, 1.0),
+            task_count=1,
+            device="cuda:0",
+            resources=_resources(gpu_available=False),
+            policy=policy,
+            gpu_sample=None,
             cpu_sample=CpuTelemetrySample(0.0, 0.0),
         )
-    with pytest.raises(ValueError, match="requires live VRAM telemetry"):
-        build_inference_concurrency_plan(
-            task_count=1, device="cuda:0", resources=_resources(), policy=policy,
-            gpu_sample=None, cpu_sample=CpuTelemetrySample(0.0, 0.0),
+
+
+def test_missing_telemetry_does_not_authorize_parallel_promotion() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=20.0,
+        minimum_calibration_seconds=10.0,
+        monitor_interval_seconds=1.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=None,
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    # No telemetry samples observed throughout the stabilization window.
+    decision = controller.observe(active_jobs=1, gpu_sample=None, now=25.0)
+    assert decision.target_jobs == 1
+    assert controller.gpu_calibrated
+    assert "no GPU telemetry sample was observed during calibration" in decision.reason
+    assert "remaining in conservative serial mode" in decision.reason
+
+
+def test_missing_preflight_telemetry_promotes_when_calibration_evidence_arrives() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=20.0,
+        minimum_calibration_seconds=10.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=None,
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    decisions = []
+    for second in range(1, 15):
+        d = controller.observe(
+            active_jobs=1,
+            gpu_sample=_gpu_sample(float(second), 2.0, 10.0),
+            now=float(second),
         )
+        if d.changed:
+            decisions.append(d)
+    assert controller.gpu_calibrated
+    assert controller.target_jobs > 1
+    assert any(d.changed and d.target_jobs > 1 for d in decisions)
+
+
+def test_preflight_soft_vram_crossing_selects_serial_calibration_posture() -> None:
+    """A one-job estimate above the fractional budget is a soft envelope, not
+    physical proof that CUDA execution is impossible.
+
+    The plan must keep the conservative one-slot calibration posture and leave
+    the actual execution authoritative instead of raising a soft-fraction
+    planning failure.
+    """
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        estimated_gpu_memory_mib_per_job=4096.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4, device="cuda:0", resources=_resources(), policy=policy,
+        gpu_sample=_gpu_sample(0.0, 20.0, 1.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    assert plan.uses_cuda
+    assert plan.initial_jobs == 1
+    assert plan.maximum_jobs == 4
+    assert plan.gpu_memory_budget_bytes == int(24 * _GIB * 0.90)
+    assert "soft VRAM admission envelope" in plan.reason
+    assert "one calibration job" in plan.reason
+
+
+def test_measured_one_job_vram_peak_falls_back_to_serial_not_zero() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=300.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+
+    decision = controller.observe(
+        active_jobs=1,
+        gpu_sample=_gpu_sample(1.0, 23.0, 20.0),
+        now=1.0,
+    )
+
+    # The measured peak crosses the soft VRAM envelope, so parallel expansion
+    # is capped; the running job itself proves serial viability, so the target
+    # floor of one applies and no terminal blocked state may be produced.
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    assert controller.target_jobs == 1
+    assert controller.admission_blocked_reason is None
+    assert "falls back to serial execution" in decision.reason
 
 
 def test_live_vram_change_reclamps_future_admission() -> None:
@@ -300,12 +451,62 @@ def test_live_vram_change_reclamps_future_admission() -> None:
     assert "live VRAM re-clamp" in decision.reason
 
 
-def test_measured_one_job_vram_infeasibility_blocks_future_admission() -> None:
+def test_high_soft_vram_calibration_falls_back_to_serial_target_one() -> None:
+    """A successful calibration whose projected one-job VRAM demand exceeds the
+    soft fraction caps expansion at one and never blocks the queue."""
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=4,
-        stabilization_seconds=300.0,
-        monitor_interval_seconds=1.0,
+        stabilization_seconds=20.0,
+        minimum_calibration_seconds=20.0,
+        monitor_interval_seconds=5.0,
+        stability_samples=2,
         observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.05,
+        estimated_gpu_memory_mib_per_job=22000.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    decision = None
+    for second in (5.0, 10.0, 15.0, 20.0, 25.0):
+        # Retained utilization samples stay low; no incremental-VRAM sample
+        # crosses the activity floor, so the configured estimate is the
+        # conservative VRAM fallback and it exceeds the soft fraction.
+        decision = controller.observe(
+            active_jobs=1,
+            gpu_sample=_gpu_sample(second, 1.1, 20.0),
+            now=second,
+        )
+        if controller.gpu_calibrated:
+            break
+
+    assert decision is not None
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    assert controller.admission_blocked_reason is None
+    assert "fixed projection permits 1" in decision.reason
+    assert "falls back to serial execution" in decision.reason
+    assert "using the configured VRAM fallback" in decision.reason
+
+
+def test_high_utilization_calibration_falls_back_to_serial_target_one() -> None:
+    """A successful calibration at 95-100% GPU utilization caps expansion at
+    one (serial fallback) and never converts success into target zero."""
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=20.0,
+        minimum_calibration_seconds=20.0,
+        monitor_interval_seconds=5.0,
+        stability_samples=2,
+        observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.05,
         estimated_gpu_memory_mib_per_job=1024.0,
     )
     plan = build_inference_concurrency_plan(
@@ -318,21 +519,31 @@ def test_measured_one_job_vram_infeasibility_blocks_future_admission() -> None:
     )
     controller = AdaptiveInferenceConcurrency(plan, policy)
     controller.start_calibration(now=0.0)
+    decision = None
+    for second in (5.0, 10.0, 15.0, 20.0, 25.0):
+        decision = controller.observe(
+            active_jobs=1,
+            gpu_sample=_gpu_sample(second, 3.0, 97.0),
+            now=second,
+        )
+        if controller.gpu_calibrated:
+            break
 
-    decision = controller.observe(
-        active_jobs=1,
-        gpu_sample=_gpu_sample(1.0, 23.0, 20.0),
-        now=1.0,
-    )
+    assert decision is not None
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    assert controller.target_jobs == 1
+    assert controller.admission_blocked_reason is None
+    assert "fixed projection permits 1" in decision.reason
+    assert "falls back to serial execution" in decision.reason
+    # Idle serial launch remains possible: the one-slot target still admits a
+    # queued job once the calibrated job has finished.
+    idle = controller.observe(active_jobs=0, gpu_sample=None, now=30.0)
+    assert idle.target_jobs == 1
+    assert controller.admission_blocked_reason is None
 
-    assert decision.changed
-    assert decision.target_jobs == 0
-    assert controller.target_jobs == 0
-    assert controller.admission_blocked_reason is not None
-    assert "measured single-job VRAM peak" in decision.reason
 
-
-def test_one_slot_cuda_ceiling_still_measures_and_blocks_unsafe_replacement() -> None:
+def test_one_slot_cuda_ceiling_still_measures_and_keeps_serial_floor() -> None:
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=1,
         stabilization_seconds=300.0,
@@ -363,9 +574,9 @@ def test_one_slot_cuda_ceiling_still_measures_and_blocks_unsafe_replacement() ->
     assert decision.target_jobs == 1
     decision = controller.complete_first_cuda_job(now=2.0)
     assert controller.gpu_calibrated
-    assert decision.target_jobs == 0
-    assert controller.admission_blocked_reason is not None
-    assert "fixed projection permits 0" in decision.reason
+    assert decision.target_jobs == 1
+    assert controller.admission_blocked_reason is None
+    assert "fixed projection permits 1" in decision.reason
 
 
 def test_one_slot_cuda_ceiling_completes_calibration_only_after_first_job() -> None:
@@ -405,7 +616,7 @@ def test_one_slot_cuda_ceiling_completes_calibration_only_after_first_job() -> N
     assert "calibration complete" in decision.reason
 
 
-def test_one_slot_cuda_completion_uses_late_peak_and_blocks_replacement() -> None:
+def test_one_slot_cuda_completion_uses_late_peak_and_keeps_serial_floor() -> None:
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=1,
         stabilization_seconds=300.0,
@@ -432,10 +643,12 @@ def test_one_slot_cuda_completion_uses_late_peak_and_blocks_replacement() -> Non
         gpu_sample=_gpu_sample(2.0, 23.0, 12.0), now=2.0
     )
 
+    # The late VRAM peak crosses the soft envelope, so the maximum stays at one
+    # (which it already was); it must not become terminal infeasibility.
     assert controller.gpu_calibrated
-    assert decision.target_jobs == 0
-    assert controller.admission_blocked_reason is not None
-    assert "fixed projection permits 0" in decision.reason
+    assert decision.target_jobs == 1
+    assert controller.admission_blocked_reason is None
+    assert "fixed projection permits 1" in decision.reason
 
 
 def test_one_slot_cuda_completion_uses_configured_vram_fallback_without_samples() -> None:
@@ -461,7 +674,7 @@ def test_one_slot_cuda_completion_uses_configured_vram_fallback_without_samples(
     assert "configured VRAM fallback" in decision.reason
 
 
-def test_live_external_vram_baseline_can_block_all_future_admission() -> None:
+def test_live_external_vram_baseline_throttles_additional_admission() -> None:
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=4,
         stabilization_seconds=2.0,
@@ -492,14 +705,28 @@ def test_live_external_vram_baseline_can_block_all_future_admission() -> None:
         now=3.0,
     )
 
+    # Soft-envelope saturation: zero *additional* capacity while the active job
+    # occupies the target, but the serial floor keeps the queue launchable.
     assert decision.changed
-    assert decision.target_jobs == 0
+    assert decision.target_jobs == 1
+    assert controller.target_jobs == 1
+    assert controller.admission_blocked_reason is None
     assert "external VRAM baseline" in decision.reason
+    # Repeated saturation while idle must hold the serial floor instead of
+    # creating a self-deadlock.
+    idle = controller.observe(
+        active_jobs=0,
+        gpu_sample=_gpu_sample(4.0, 21.5, 0.0),
+        now=4.0,
+    )
+    assert idle.target_jobs == 1
+    assert controller.admission_blocked_reason is None
 
 
-def test_zero_admission_queue_fails_cleanly_without_launching_replacement(
-    monkeypatch,
-) -> None:
+def test_high_demand_calibration_continues_serial_queue(monkeypatch) -> None:
+    """Exact EVAL2 failure edge on the generic runner: a successful high-demand
+    calibration caps concurrency at one and the queued task launches after the
+    first job completes instead of the queue aborting."""
     import time
 
     from mdstats.training_data import campaign_cli
@@ -562,16 +789,91 @@ def test_zero_admission_queue_fails_cleanly_without_launching_replacement(
         },
     }
 
-    with pytest.raises(campaign_cli.CampaignCliError, match="resource admission blocked"):
-        campaign_cli._run_adaptive_inference_tasks(
-            tasks,
-            cfg=cfg,
-            phase="evaluation",
-            device="cuda:0",
-            progress=Progress(),
-        )
+    results = campaign_cli._run_adaptive_inference_tasks(
+        tasks,
+        cfg=cfg,
+        phase="evaluation",
+        device="cuda:0",
+        progress=Progress(),
+    )
 
-    assert launched == [0]
+    # The measured single-job VRAM peak crosses the soft envelope, so the
+    # second task must run serially after the first completes; the queue may
+    # not abort with a soft-telemetry admission error.
+    assert results == {"0": 0, "1": 1}
+    assert launched == [0, 1]
+
+
+def test_post_calibration_live_vram_saturation_cannot_deadlock_idle_queue() -> None:
+    """Live aggregate VRAM above the soft ceiling with an idle queue must hold
+    the serial floor instead of collapsing to a terminal zero-capacity state."""
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=2.0,
+        minimum_calibration_seconds=2.0,
+        stability_samples=2,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4, device="cuda:0", resources=_resources(), policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(1.0, 3.0, 12.0), now=1.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(2.0, 3.0, 12.0), now=2.0)
+    assert controller.target_jobs >= 2
+
+    decision = controller.observe(
+        active_jobs=0, gpu_sample=_gpu_sample(3.0, 23.0, 0.0), now=3.0
+    )
+
+    # Live VRAM reached the ceiling with no active job: no additional capacity
+    # is available, but the idle queue stays launchable at the serial floor.
+    assert decision.target_jobs == 1
+    assert controller.target_jobs == 1
+    assert controller.admission_blocked_reason is None
+    repeat = controller.observe(
+        active_jobs=0, gpu_sample=_gpu_sample(4.0, 23.0, 0.0), now=4.0
+    )
+    assert repeat.target_jobs == 1
+    assert controller.admission_blocked_reason is None
+
+
+def test_post_calibration_missing_telemetry_holds_instead_of_terminal_block() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=2.0,
+        minimum_calibration_seconds=2.0,
+        stability_samples=2,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4, device="cuda:0", resources=_resources(), policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(1.0, 3.0, 12.0), now=1.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(2.0, 3.0, 12.0), now=2.0)
+    assert controller.gpu_calibrated
+    assert controller.target_jobs >= 2
+
+    decision = controller.observe(active_jobs=1, gpu_sample=None, now=3.0)
+
+    # Missing/stale telemetry must not invent evidence for a terminal block;
+    # the calibrated estimate continues to govern admission conservatively.
+    assert not decision.changed
+    assert controller.target_jobs >= 2
+    assert controller.admission_blocked_reason is None
 
 
 

@@ -23,6 +23,7 @@ from mdstats.training_data.inference_parallel import (
 )
 from mdstats.training_data.model_features import AtomicModelPrediction, MaceCalculatorProvider
 from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+from mdstats.training_data.training_parallel import GpuTelemetrySample
 
 
 def _h(text: str) -> str:
@@ -164,8 +165,7 @@ def test_staged_scientific_api_cache_only_restart_needs_no_model(
     )
 
 
-def _resources() -> SystemResourceSnapshot:
-    gib = 1024**3
+def _resources(*, gib: int = 1024**3, gpu_available: bool = True) -> SystemResourceSnapshot:
     return SystemResourceSnapshot(
         cpu_threads_available=8,
         cpu_fraction=0.90,
@@ -174,7 +174,16 @@ def _resources() -> SystemResourceSnapshot:
         ram_fraction=0.80,
         ram_budget_bytes=int(48 * gib * 0.80),
         gpu_memory_fraction=0.90,
-        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "test"),
+        gpu=GpuResourceSnapshot(
+            available=gpu_available,
+            device_count=1 if gpu_available else 0,
+            selected_device=0 if gpu_available else None,
+            device_name="RTX 3090" if gpu_available else None,
+            free_bytes=24 * gib if gpu_available else None,
+            total_bytes=24 * gib if gpu_available else None,
+            budget_bytes=int(24 * gib * 0.90) if gpu_available else None,
+            reason="available" if gpu_available else "CUDA unavailable",
+        ),
     )
 
 
@@ -267,6 +276,293 @@ def test_staged_eval_has_one_outer_owner_and_binds_joint_model_job_cap(
     assert results == {"0": True, "1": True}
     assert peak == 1
     assert observed_jobs == [2, 2]
+
+
+def test_eval2_cached_prefix_then_high_demand_calibration_continues_serially(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Exact EVAL2 admission reproducer through the real staged orchestration.
+
+    Cached n512 seeds are reused without counting as CUDA calibration; the
+    first uncached n1024 task launches alone, completes successfully while its
+    measured demand exceeds the soft GPU-utilization envelope, and the queued
+    n1024-seed2 task must launch serially afterward instead of the scheduler
+    aborting with the historical "resource admission blocked" fatal error.
+    """
+    monkeypatch.setattr(
+        campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources()
+    )
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+
+    gib = 1024**3
+    baseline_sample = GpuTelemetrySample(
+        sampled_monotonic=time.monotonic(),
+        device_index=0,
+        utilization_percent=2.0,
+        used_bytes=1 * gib,
+        total_bytes=24 * gib,
+    )
+    high_sample = GpuTelemetrySample(
+        sampled_monotonic=time.monotonic(),
+        device_index=0,
+        utilization_percent=97.0,
+        used_bytes=10 * gib,
+        total_bytes=24 * gib,
+    )
+    inference_active = {"count": 0}
+
+    def fake_gpu_telemetry(device: str) -> GpuTelemetrySample:
+        return high_sample if inference_active["count"] else baseline_sample
+
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", fake_gpu_telemetry)
+
+    events: list[str] = []
+    lock = threading.Lock()
+
+    class Prepared:
+        def __init__(self):
+            self.execution_plan = mdstats.InferenceExecutionPlan(
+                batch_policy="auto", selected_batch_size=8,
+                maximum_batch_size=32,
+            )
+
+    def make_task(index: int, key: str, *, cached: bool) -> campaign_cli._StagedEvaluationTask:
+        def infer(prepared):
+            with lock:
+                inference_active["count"] += 1
+            events.append(f"start:{key}")
+            time.sleep(0.05)
+            with lock:
+                inference_active["count"] -= 1
+            events.append(f"end:{key}")
+            return True
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=key,
+            label=key,
+            start_detail="eval2",
+            prepare=Prepared,
+            requires_inference=lambda prepared: not cached,
+            infer=infer,
+            finalize=lambda prepared, result: result,
+            done_detail=lambda result, wall: "done",
+            cached_result=(lambda prepared: "cached") if cached else None,
+        )
+
+    tasks = (
+        make_task(0, "n512-seed1", cached=True),
+        make_task(1, "n512-seed2", cached=True),
+        make_task(2, "n1024-seed1", cached=False),
+        make_task(3, "n1024-seed2", cached=False),
+    )
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_jobs"] = 4
+    # Keep the calibration window open across the short simulated job so the
+    # completion-boundary finalization classifies the complete first job.
+    cfg["execution"]["parallel_evaluation_stabilization_seconds"] = 300.0
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cuda:0", progress=_Progress()
+    )
+
+    assert results == {
+        "n512-seed1": "cached",
+        "n512-seed2": "cached",
+        "n1024-seed1": True,
+        "n1024-seed2": True,
+    }
+    # Serial continuation: the queued n1024-seed2 task launches only after the
+    # high-demand calibration job completed, and never concurrently.
+    assert events == [
+        "start:n1024-seed1",
+        "end:n1024-seed1",
+        "start:n1024-seed2",
+        "end:n1024-seed2",
+    ]
+    output = capsys.readouterr().out
+    assert "resource admission blocked" not in output
+    assert "single-job calibration complete" in output
+    assert "fixed projection permits 1 concurrent job(s)" in output
+
+
+def test_eval2_missing_preflight_telemetry_launches_first_cuda_job_and_continues_serially(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """G2 acceptance: available CUDA device with missing preflight telemetry
+    launches the first CUDA task and continues the remaining queue serially."""
+    monkeypatch.setattr(
+        campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources()
+    )
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    # GPU telemetry is entirely unavailable (e.g. NVML and nvidia-smi failed).
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+
+    events: list[str] = []
+    lock = threading.Lock()
+
+    class Prepared:
+        def __init__(self):
+            self.execution_plan = mdstats.InferenceExecutionPlan(
+                batch_policy="auto", selected_batch_size=8,
+                maximum_batch_size=32,
+            )
+
+    def make_task(index: int, key: str) -> campaign_cli._StagedEvaluationTask:
+        def infer(prepared):
+            events.append(f"start:{key}")
+            time.sleep(0.05)
+            events.append(f"end:{key}")
+            return True
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=key,
+            label=key,
+            start_detail="eval2",
+            prepare=Prepared,
+            requires_inference=lambda prepared: True,
+            infer=infer,
+            finalize=lambda prepared, result: result,
+            done_detail=lambda result, wall: "done",
+        )
+
+    tasks = (
+        make_task(0, "n1024-seed1"),
+        make_task(1, "n1024-seed2"),
+    )
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_jobs"] = 4
+    cfg["execution"]["parallel_evaluation_stabilization_seconds"] = 300.0
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cuda:0", progress=_Progress()
+    )
+
+    assert results == {
+        "n1024-seed1": True,
+        "n1024-seed2": True,
+    }
+    assert events == [
+        "start:n1024-seed1",
+        "end:n1024-seed1",
+        "start:n1024-seed2",
+        "end:n1024-seed2",
+    ]
+    output = capsys.readouterr().out
+    assert "resource admission blocked" not in output
+    assert "conservative serial mode" in output
+
+
+def test_eval2_missing_preflight_telemetry_with_telemetry_recovery_during_calibration(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """G2 acceptance: telemetry becoming available after launch is incorporated
+    cleanly without corrupting serial floor."""
+    monkeypatch.setattr(
+        campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources()
+    )
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+
+    gib = 1024**3
+    recovered_sample = GpuTelemetrySample(
+        sampled_monotonic=time.monotonic(),
+        device_index=0,
+        utilization_percent=15.0,
+        used_bytes=2 * gib,
+        total_bytes=24 * gib,
+    )
+    inference_active = {"count": 0}
+
+    def telemetry_with_recovery(device: str) -> GpuTelemetrySample | None:
+        # Preflight returns None; once running, returns telemetry.
+        return recovered_sample if inference_active["count"] else None
+
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", telemetry_with_recovery)
+
+    class Prepared:
+        def __init__(self):
+            self.execution_plan = mdstats.InferenceExecutionPlan(
+                batch_policy="auto", selected_batch_size=8,
+                maximum_batch_size=32,
+            )
+
+    def make_task(index: int, key: str) -> campaign_cli._StagedEvaluationTask:
+        def infer(prepared):
+            inference_active["count"] += 1
+            time.sleep(0.05)
+            inference_active["count"] -= 1
+            return True
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=key,
+            label=key,
+            start_detail="eval2",
+            prepare=Prepared,
+            requires_inference=lambda prepared: True,
+            infer=infer,
+            finalize=lambda prepared, result: result,
+            done_detail=lambda result, wall: "done",
+        )
+
+    tasks = (
+        make_task(0, "task1"),
+        make_task(1, "task2"),
+    )
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_jobs"] = 4
+    cfg["execution"]["parallel_evaluation_stabilization_seconds"] = 300.0
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cuda:0", progress=_Progress()
+    )
+
+    assert results == {"task1": True, "task2": True}
+    output = capsys.readouterr().out
+    assert "resource admission blocked" not in output
+
+
+def test_eval2_missing_preflight_telemetry_real_execution_error_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G2 acceptance: actual CUDA runtime execution error propagates as CampaignCliError."""
+    monkeypatch.setattr(
+        campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources()
+    )
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+
+    class Prepared:
+        def __init__(self):
+            self.execution_plan = mdstats.InferenceExecutionPlan(
+                batch_policy="auto", selected_batch_size=8,
+                maximum_batch_size=32,
+            )
+
+    def infer_oom(prepared):
+        raise RuntimeError("CUDA out of memory: tried to allocate 8.00 GiB")
+
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1,
+        key="oom-task",
+        label="oom-task",
+        start_detail="eval2",
+        prepare=Prepared,
+        requires_inference=lambda prepared: True,
+        infer=infer_oom,
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "done",
+    )
+
+    cfg = _pipeline_cfg()
+    with pytest.raises(campaign_cli.CampaignCliError, match="CUDA out of memory"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task], cfg=cfg, phase="evaluation", device="cuda:0", progress=_Progress()
+        )
 
 
 def test_staged_runner_overlaps_prepare_and_finalize_with_single_inference_slot(

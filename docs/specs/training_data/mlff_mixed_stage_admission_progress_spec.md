@@ -53,6 +53,22 @@ observed growth, configured lower-bound per-job estimates, and safety margins.
 Projected VRAM and projected GPU utilization must both remain strictly below their
 90% ceilings.
 
+The 90% ceilings are soft parallel-expansion envelopes, not single-job execution
+proof. A successfully completed one-slot CUDA calibration is direct evidence that
+serial execution of the applicable job/resource profile is viable, so the
+effective target concurrency after successful calibration SHALL always remain at
+least one when at least one job is configured. Measured demand above a soft
+envelope SHALL cap additional concurrency (serial fallback) and SHALL NOT be
+converted into terminal queue infeasibility; only actual execution failure or
+genuine device/resource unavailability may terminate the queue. Absence of
+preflight GPU telemetry SHALL select conservative serial execution (initial
+concurrency one) without parallel expansion evidence, rather than blocking the
+first execution attempt when the device is available. Live VRAM and
+reservation checks regulate launching additional work and may transiently return
+zero additional capacity while active jobs occupy the target; they SHALL NOT
+self-block an idle queue solely from the soft fractional envelope. Host-RAM
+admission safeguards are unchanged.
+
 CPU execution SHALL remain bounded by the 90% effective CPU allocation and projected
 host-utilization ceiling. All execution modes SHALL retain the 80% available-RAM
 budget. Runtime scheduling changes SHALL NOT enter scientific digests.

@@ -548,9 +548,18 @@ GPU utilization and VRAM remain strictly below 90%, additionally bounded by CPU,
 RAM, explicit job caps, and task count. If a short calibration job finishes,
 the next queued job continues serially under the same 300-second clock. The scheduler
 does not wait unnecessarily if the queue finishes before calibration is complete.
-After calibration, the calibrated GPU-utilization estimate is frozen: instantaneous
-GPU-utilization spikes do not ratchet concurrency downward. Live telemetry retains
-only the hard VRAM guard, because actual memory saturation can cause OOM.
+The 90% ceilings are soft parallel-expansion envelopes, not single-job execution
+proof: a successfully completed one-slot calibration proves that serial execution
+is viable, so measured demand above a soft envelope caps concurrency at one
+(serial fallback) instead of blocking the queue. Only actual execution failure,
+such as a genuine CUDA out-of-memory error, or device unavailability terminates
+queued work. If preflight GPU telemetry is unavailable while the CUDA device is
+present, mdstats starts in conservative serial mode without inventing expansion
+headroom. After calibration, the calibrated GPU-utilization estimate is frozen:
+instantaneous GPU-utilization spikes do not ratchet concurrency downward. Live
+telemetry retains only the hard VRAM guard, because actual memory saturation can
+cause OOM; that guard throttles additional launches while active jobs occupy the
+target but never reduces an idle queue below one launchable job.
 
 The CLI continues to print per-task stage transitions such as `authenticating
 checkpoint artifact`, `reconstructing deployable MACE model`, `loading target

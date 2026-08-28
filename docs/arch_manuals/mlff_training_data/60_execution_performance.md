@@ -187,6 +187,8 @@ Scratch-space admission is part of bounded execution. A stage that can create pr
 
 GPU jobs are admitted against explicit free-memory and configured-budget evidence. Calibration/measurement windows and utilization estimators are runtime policy owned by the current execution specifications, not by release chronology in this manual.
 
+Soft GPU-utilization and fractional-VRAM envelopes regulate additional concurrency above a serial floor. A successfully completed one-job CUDA calibration is direct evidence that serial execution of the applicable job/resource profile is viable, so measured demand above a soft envelope caps additional concurrency at one (serial fallback) instead of proving the queue infeasible; only actual execution failure or genuine device/resource unavailability may terminate queued work. Absence of preflight GPU telemetry selects conservative serial execution without parallel expansion evidence, rather than blocking the first execution attempt when the CUDA device is available.
+
 An execution controller may reduce job concurrency after measured resource pressure. It cannot change the scientific batch/exposure semantics, precision policy, checkpoint evidence, or target/replay membership merely to fit memory unless the owning scientific specification explicitly permits that change.
 
 Adaptive OOM recovery is acceptable only when the recovered execution is protocol-equivalent and the changed execution parameter is non-semantic.
