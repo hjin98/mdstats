@@ -4,6 +4,8 @@ These files decompose `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_A
 
 A requirement omitted from a package is **not waived** if it is frozen by V7. A package may not reinterpret V7 to preserve legacy code/tests. Newly discovered necessary implementation consequences that preserve V7 are incorporated locally; reopen design only on a V7-listed reopen condition or equivalent material evidence.
 
+P3 is governed by `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` together with the mandatory `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN_REVIEW1_AMENDMENT.md`. The Review-1 amendment has precedence only where it makes the P3 execution-boundary, lineage, failure, or restart contract more specific; all unaffected P3 revision-2 obligations remain mandatory.
+
 ## Mandatory sequence
 
 ```text
@@ -32,7 +34,7 @@ Do not start dependent executable work until the previous package has both **sem
 
 1. `P1_NEUTRAL_SCIENTIFIC_SUBSTRATE.md` — DATA2/DATA3/neutral statistical identity and provenance reset.
 2. `P2_TARGET_SIZE_STATISTICAL_AUTHORITIES.md` — configurable N/M ladders, one split, one training order, one evaluation order, and pure target-size state.
-3. `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` — common preparation, exact candidate materialization, paired optimizer seeds, TRAIN2 continuation, exact-M EVAL2 and reducer.
+3. `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` + mandatory `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN_REVIEW1_AMENDMENT.md` — common preparation, exact candidate materialization, paired optimizer seeds, exact TRAIN2 boundary continuation, exact-M EVAL2, crash-safe reducer commit, and restart closure.
 4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — atomic current-runtime, state-schema, receipt, restart and invalidation transition.
 5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — exact-T_selected CV and fresh final-production path.
 6. `P6_DESTRUCTIVE_CLEANUP_FINAL_CLOSURE.md` — remove retired architecture and perform assembled final acceptance.
