@@ -5,6 +5,7 @@ protocol_version: 5.8.0
 status: active
 created_date: 2026-08-27
 reviewed_head: 6f0d34366ca954eabe21740ddda96357afc12eb1
+review_revision: 1
 architecture_change: major
 compatibility_policy: destructive-generation-reset
 supersedes_conflicting_target_size_population_and_eval_design: true
@@ -14,195 +15,327 @@ supersedes_conflicting_target_size_population_and_eval_design: true
 
 ## Objective and protected concerns
 
-Rebuild the MLFF target-size population/evaluation architecture around a clean current-generation design that:
+Rebuild the MLFF target-size population/evaluation architecture around one clean current-generation design that:
 
-1. gives target-training data first priority over target-size evaluation data for scarce structural/condition/event coverage;
-2. preserves a statistically meaningful non-gradient target-size evaluation population without allowing evaluation membership to influence training through fitted/role-local evidence;
-3. removes the current full-`size_development_complement` EVAL2 population and replaces it with one deterministic nested evaluation ladder paired to the exact `n1/n2/n3` screening fidelities;
-4. removes the hard-coded eight-size target universe and replaces it with a canonical configurable power-of-two ladder;
-5. preserves the exact target-size continuation funnel, paired-seed comparison, REPAIR2 nesting, MVQUAL hard qualification, EVAL2 metric semantics, and OPT-EVAL4 execution machinery where they remain valid;
-6. performs a destructive current-generation reset rather than accumulating compatibility aliases, migration bridges, duplicate authorities, legacy selectors, stale terminology, or fallback paths;
-7. leaves the repository in a simpler single-generation state whose documentation, configuration, persisted authority, runtime behavior, tests, and current terminology agree.
+1. gives target-training data first priority over target-size evaluation data for scarce structural/condition/event support;
+2. preserves a statistically meaningful, permanently non-gradient target-size evaluation population without allowing future evaluation/model outcomes to choose training membership;
+3. replaces the current full `size_development_complement` EVAL2 population with one deterministic nested evaluation ladder paired to exact `n1/n2/n3` screening fidelities;
+4. replaces the hard-coded eight-size target universe and fixed 16,384 ceiling with a canonical configurable power-of-two ladder;
+5. preserves exact target-size continuation, paired-seed comparison, one repaired training master order, independent MVQUAL qualification, canonical EVAL2 metric semantics, and OPT-EVAL4 execution machinery where those remain valid;
+6. performs a destructive semantic-generation reset instead of adding migration bridges, compatibility aliases, duplicate authorities, legacy selectors, stale terminology, or fallback paths; and
+7. leaves documentation, configuration, persistent authority, runtime behavior, tests, and current terminology describing one architecture.
 
-The stakeholder priority order is:
+The stakeholder priority is:
 
 ```text
 scientific/product correctness
     > clean single-authority architecture
-    > performance/resource efficiency
-    > development convenience / compatibility with obsolete campaign state
+    > material performance/resource efficiency
+    > development convenience / compatibility with obsolete derived state
 ```
 
 ### Protected scientific concerns
 
 The implementation must preserve all of the following:
 
-- target-size rungs remain nested prefixes of one authoritative repaired training order per required training domain;
-- the target-size decision remains target-only development/model-selection evidence and does not consume held-out CV, calibration, locked-test, replay-score ranking, or downstream deployment evidence;
-- target-size screening remains exact continuation `0 -> n1 -> n2 -> n3`, with paired optimizer seeds and no ordinary target-success early stopping during the screen;
-- production starts fresh after `N_selected` freezes and retains its independent production epoch maximum;
-- evaluation data never supply gradients or fold-checkpoint-monitor evidence for the target-size protocol being selected;
-- cross-role correlation leakage is prohibited at the authoritative correlation-unit boundary rather than claimed away by naive frame spacing;
-- DFT labels, foundation residuals, fitted transforms, and other role-local/fitted evidence cannot influence the initial training/evaluation allocation before that role boundary freezes;
-- target training has first claim on unique or scarce edge/condition/event support;
-- evaluation remains sufficiently representative to measure the relative benefit of target-size candidates rather than becoming only the redundant/easy complement;
-- no runtime silently shrinks/expands the configured scientific ladders to make an undersized campaign proceed;
-- configuration values that change scientific population identity participate in canonical policy/state identity.
+- target-size rungs are nested prefixes of one authoritative repaired target-training order per required training domain;
+- target size remains a protocol-global cardinality while actual frame membership remains domain-local;
+- the size decision consumes only authorized development/model-selection evidence, never held-out CV, calibration, locked-test, replay-score ranking, or downstream deployment evidence;
+- target-size screening remains exact continuation `0 -> n1 -> n2 -> n3` with paired optimizer seeds and no ordinary target-success early stopping during screening;
+- production starts fresh after `N_selected` freezes and keeps its independent production epoch maximum;
+- target-size evaluation data never supply gradients and never enter fold checkpoint monitors;
+- cross-role correlation leakage is prevented at the authoritative correlation/equivalence-family boundary rather than claimed away by naive frame spacing;
+- allocation membership freezes before role-local fitted/model-dependent evidence and before any target-size candidate TRAIN2 trajectory can influence it;
+- target training receives first claim on unique/scarce support, while evaluation retains correlation-distinct support where such support exists;
+- evaluation remains representative enough to measure relative target-size benefit rather than degenerating into an easy/redundant complement;
+- configuration changes that alter scientific population identity participate in canonical state identity;
+- no runtime silently changes configured target/evaluation cardinalities to make an undersized campaign proceed; and
+- no implementation calls correlated configuration counts “independent samples” unless a separately qualified estimator proves that interpretation.
+
+## Final design review corrections incorporated
+
+This revision closes material gaps found during independent review of the initial workplan:
+
+1. **CV ordering is now frozen:** target train/evaluation allocation must occur before cross-validation plans are constructed. The current `build_cross_validation_plans()` consumes every `OuterRole.DEVELOPMENT` unit; post-hoc filtering is insufficient.
+2. **Cross-domain closure is now frozen:** allocation is coherent across exact-geometry, declared structural, explicit correlation, protected-event, and other current leakage-equivalence families even when a family spans label domains.
+3. **Allocation evidence is no longer ambiguous:** direct continuous target-label values and target/foundation error scores cannot rank the pre-role allocation; the allowed split-safe feature contract is explicit below.
+4. **Allocation mechanics are no longer delegated wholesale:** a deterministic whole-allocation-group, cost-aware coverage order and residual-feasibility veto are required; only equivalent local realization details remain delegated.
+5. **Evaluation order freezes before candidate training:** `pi_eval` cannot adapt to candidate TRAIN2 predictions, target-size outcomes, or survivor decisions.
+6. **Cardinality scope is explicit:** `m1/m2/m3` are configuration counts per target label domain, not independent-unit counts and not a hidden protocol-global total.
+7. **Post-selection M3 ownership is explicit:** after `N_selected` freezes, final-development production may reuse M3 as target-side checkpoint/model-selection evidence; CV continues to use fold-local checkpoint monitors; outer/calibration/locked roles remain separate.
+8. **The generation boundary is explicit:** the new architecture must use a new semantic generation identity rather than silently reusing TARGET-SIZE-V5/fixed-population schemas.
+9. **Documentation sequencing is safe:** Part 1 may precede Part 2 on the implementation branch, but future-state normative documentation must not be merged/released alone while executable main still implements the retired architecture.
+10. **Scientific qualification cannot become a ceremonial optional pass:** missing representative decision-preservation evidence is reported as unavailable/deferred qualification, never as success.
 
 ## Engineering envelope and chosen architecture
 
-### 1. Statistical allocation model: training-priority carve-out, not a percentage split
+### 1. Authoritative dependency order
 
-Let `U_d` be the current-generation eligible target development universe for label domain `d` after upstream raw-event detection, DATA5 correlation-unit construction, protected outer-role assignment, and all current eligibility constraints.
-
-The architecture does **not** introduce a percentage-based random train/evaluation split. Instead, it introduces one deterministic training-priority carve-out before role-local fitted target selection:
+For each target label domain, the current-generation control flow is:
 
 ```text
-eligible target development universe U_d
-        -> TRAIN-RESERVE pre-role coverage allocation
-             -> training-reserved correlation units Treserve_d
-             -> residual evaluation correlation units R_d
+source / DATA4 partition-independent evidence / event catalog
+    -> DATA5 correlation units + protected outer roles
+    -> global leakage-equivalence closure
+    -> training-priority target allocation
+         -> target-training-authorized allocation groups
+         -> residual target-size-evaluation allocation groups
+    -> cross-validation plans built ONLY from target-training-authorized units
+    -> role-local fitted preparation
+         -> FEAS1 -> MVIDX1 -> MVSEL2 -> REPAIR2/MVSTATE2 -> MVQUAL
+    -> configured target-size ladder
+    -> residual evaluation reference/order -> M1/M2/M3
+    -> exact paired (n1,m1) -> (n2,m2) -> (n3,m3) target-size screen
+    -> selected protocol-global N
+    -> fresh production/fold training
+         final-development checkpoint selection may reuse M3
+         CV checkpoint selection uses fold-local monitors
+    -> held-out protocol validation -> calibration -> locked tests
 ```
 
-The training reserve exists to protect the maximum configured target-training ladder while giving training first claim on important physical support. `R_d` is the entire residual target-size evaluation reference population for the domain.
+No later fitted/model/evaluation result may reverse this dependency and change the frozen allocation.
 
-The carve-out is a role-allocation authority, not the final target-training order. The full current rich target-training chain runs only after this boundary freezes.
+### 2. Allocation unit: correlation/equivalence-safe groups, not IID thinning
 
-### 2. Correlation-unit-safe allocation, not unsupported IID thinning
+DATA5 currently owns autocorrelation-aware complete-frame partition units. The new architecture preserves that evidence and adds a stricter allocation boundary.
 
-DATA5 currently models autocorrelation through complete correlation/partition units. The new design SHALL preserve that evidence instead of claiming that arbitrarily spaced retained frames are mathematically independent.
+An **allocation group** is the smallest deterministic connected component that must share one target-training-versus-target-size-evaluation role. At minimum closure must include every relation currently treated as incompatible-role leakage by DATA5/TARGET-DATA role policies, including as applicable:
+
+- one DATA5 correlation/partition unit;
+- exact-geometry identity families;
+- declared structural/near-duplicate families;
+- explicit correlation/active-learning correlation families;
+- protected event-window linkage;
+- source lineage relations whose current policy forbids independent-role splitting.
+
+If such a relation crosses label domains, the allocation group crosses those domains for role consistency. A structure/correlation family cannot be target training in one label domain and target-size evaluation in another when current leakage policy treats those observations as correlated equivalents.
 
 Required invariant:
 
 ```text
-if any correlation unit is allocated to target training,
-no frame from that unit may enter target-size evaluation;
-if a unit is allocated to target-size evaluation,
-no frame from that unit may enter target-size training,
-CV gradient training, or target-training checkpoint-monitor roles.
+allocation_group_role in {target_training, target_size_evaluation}
+
+all member units/frames share that role
+no group is split across roles
 ```
 
-Protected event windows and stronger declared correlation families remain indivisible where their current policy requires it.
+This is a cross-role independence safeguard. It does **not** assert that frames within one training or evaluation group are IID.
 
-A simple frame-count condition such as `|U_d| >= Nmax + M3` is necessary but not sufficient. Feasibility must account for whole correlation units, support obligations, and role exclusions. The implementation must not manufacture apparent independence by taking one arbitrary frame from each existing DATA5 block unless a separately justified statistical policy explicitly defines that representation.
+`N` and `m_i` count configurations. They do not count independent correlation units. Evaluation evidence must report correlation-unit/effective-sample diagnostics so 1,024 configurations are never presented as 1,024 independent observations merely by cardinality.
 
-### 3. Training-priority reserve objective and admissible evidence
+### 3. Pre-role allocation feature contract
 
-The TRAIN-RESERVE allocation runs **before** role-local fitted preparation and therefore may consume only partition-/role-safe evidence available without circular dependence on future training/evaluation roles, for example:
+The training-priority allocation runs before role-local fitted preparation. Its inputs are therefore limited to a versioned **split-safe feature contract** whose values are computed independently of the eventual train/evaluation role and of target-size candidate models.
 
-- DATA4 raw physical/geometry summaries;
-- declared thermodynamic/chemical/strain/condition identities;
-- raw pair-geometry families;
-- partition-independent profile/environment classifications when available upstream;
-- DATA4 event identities and protected event windows;
-- structural/condition/provenance/correlation identities available without training-domain fitting;
-- source/replica/run/correlation-family provenance.
+Allowed classes are:
 
-TRAIN-RESERVE SHALL NOT consume as allocation inputs:
+- immutable source/replica/run/provenance/correlation identities;
+- composition, cell, geometry, pair-distance/coordination and other partition-independent structural descriptors;
+- declared thermodynamic/chemical/strain/regime/condition identities;
+- partition-independent profile/environment classifications whose provider does not fit on the eventual target-training role;
+- predeclared DATA4 event identities/protected windows computed before role assignment;
+- other explicitly documented DATA4/DATA5 categorical or structural evidence proven role-independent.
 
-- training-domain foundation residuals or difficulty values;
-- fitted DATA6/DATA7 transforms or metrics whose fit depends on the training role;
-- role-local E0 fits;
-- role-local target-normalization quantities;
-- held-out/CV/locked evidence;
-- any quantity whose current semantic owner is downstream of the role boundary.
+Prohibited pre-role ranking inputs are:
 
-Raw DFT-derived physical facts already owned by partition-independent DATA4 may remain available when they are genuinely upstream physical descriptors rather than evaluation statistics, but the implementation must not create a new target-label optimization loop that reads the future evaluation pool to tune training membership.
+- continuous target energy/force/stress values or quantiles used as optimization scores merely because they are stored in DATA4;
+- target-model error, target-size candidate prediction/error, or later EVAL2 result;
+- foundation residual/difficulty values when their current semantic owner is a fitted/final-development domain;
+- DATA6/DATA7 fitted transforms/metrics;
+- role-local E0 fits or normalizations;
+- held-out CV, calibration, outer-validation, or locked evidence;
+- any feature whose production meaning depends on the allocation being chosen.
 
-### 4. Training-first support policy
+A predeclared event class may be used categorically even if its upstream event detector consumes physical labels, provided the event detector is partition-independent, specified before the allocation, and is not tuned from target-size evaluation outcomes. Direct label magnitudes remain forbidden as allocation ranking scores unless Software Design explicitly reopens this contract.
 
-TRAIN-RESERVE must maximize training support subject to residual evaluation feasibility. The hierarchy is asymmetric by design:
+Part 1 specifications must enumerate the exact current allowlisted feature families. Part 2 must authenticate that feature-contract identity in allocation state.
 
-1. unique admissible support belongs to training;
-2. scarce support is allocated to training first;
-3. where multiple independent/correlation-distinct representatives exist, the reserve must avoid exhausting every representative of an important condition/event/support stratum when doing so would make the residual evaluation population scientifically blind;
-4. evaluation residual feasibility is a guardrail, not a second hard-coverage qualification equivalent to MVQUAL.
+### 4. Training-priority allocation policy
 
-Suggested realization: an exact deterministic coverage/provenance selector that reuses/generalizes current multi-view sparse selection primitives while operating on pre-role-safe families and whole correlation-unit allocation state. Equivalent implementations are allowed if they preserve the frozen role boundary, support priority, determinism, and scientific semantics.
+The allocation is asymmetric: training has first claim, but it cannot blindly exhaust every correlation-distinct representative of all important residual strata when alternatives exist.
 
-The reserve need not contain exactly `Nmax` raw frames if whole correlation-unit allocation makes exact raw cardinality impossible. It must contain enough eligible frames to materialize the configured `Nmax` training prefix after downstream domain-local selection, while minimizing unnecessary reserve growth under the whole-unit constraint. This distinction must be explicit in policy/evidence rather than hidden rounding.
+The authoritative process is:
 
-### 5. Rich target-training chain after role freeze
+#### 4.1 Build one deterministic allocation-group order
 
-After `Treserve_d` freezes, only its frames are candidates for target-training membership in that domain. The existing rich training chain remains the scientific membership authority and should be reused/refactored rather than duplicated:
+Use the split-safe feature contract and whole allocation groups. Shared exact sparse neighborhood/coverage primitives may be reused, but allocation scoring is **unit/group cost-aware** and must not pretend a variable-size allocation group is the same scientific object as one frame in MVSEL2.
+
+Required lexicographic priorities are:
+
+1. satisfy mandatory/unique training-support obligations;
+2. improve the current worst split-safe training coverage family;
+3. improve total split-safe training coverage;
+4. prefer underrepresented condition/provenance/correlation groups;
+5. improve representative structural utility/diversity;
+6. for otherwise equivalent gain, prefer lower incremental reserved-frame cost;
+7. stable allocation-group identity is the final tie-break.
+
+Coverage-gain comparison for variable-size groups must account for incremental usable-frame cost so large temporal blocks are not preferred merely because they contain more redundant frames. Mandatory rare support may override cost.
+
+The exact normalization/tolerance implementation may be delegated only if it preserves this ordering and is independently deterministic/reference-tested.
+
+#### 4.2 Residual evaluation feasibility is an admissibility constraint
+
+Before accepting a group into target training, the allocator evaluates residual consequences for configured `M3` and declared split-safe evaluation strata.
+
+- If a required/important stratum has only one admissible allocation group, training gets it and the evaluation deficiency is recorded explicitly.
+- If two or more correlation-distinct groups exist, the allocator must preserve at least one residual representative where doing so is compatible with training capacity/mandatory support.
+- It is forbidden to steal a uniquely required training group merely to make evaluation look complete.
+- It is also forbidden to exhaust all residual representatives of a multiply-supported important stratum merely because training coverage gain is marginally higher, unless no feasible allocation satisfying training/CV capacity exists.
+
+This residual guard is weaker than MVQUAL and is not a hidden second training qualification threshold.
+
+#### 4.3 Reserve length is the shortest feasible prefix, not necessarily Nmax raw frames
+
+Because groups are indivisible and CV later removes fold evaluation/monitor/purge units, the target-training reserve generally requires more than `Nmax` raw frames.
+
+The allocator freezes the **shortest admissible prefix** of its deterministic group order for which all of the following are simultaneously true:
+
+- residual target-size-evaluation capacity is at least configured `M3` per target label domain;
+- deterministic CV construction using only training-authorized units succeeds at the configured fold topology;
+- every resulting required fold training domain and final-development domain has at least `Nmax` eligible target-training configurations after its monitor/evaluation/purge exclusions;
+- mandatory split-safe training support remains represented;
+- residual feasibility guard remains satisfied as far as the data permit.
+
+The CV plan may be recomputed while searching this prefix because no allocation has frozen yet. Once the shortest feasible prefix and resulting CV plans freeze, no later FEAS1/MVQUAL/TRAIN2/EVAL2 result may enlarge the reserve by stealing groups from evaluation. If rich training later proves infeasible, fail closed or reopen the affected design; do not adapt membership post hoc.
+
+### 5. Cross-validation construction order is mandatory
+
+Current code builds CV from every DATA5 `OuterRole.DEVELOPMENT` unit. The new generation must change that ownership/order.
+
+Required current flow:
 
 ```text
-training-reserved frames
-    -> role-local fitted selection inputs
-    -> FEAS1
-    -> MVIDX1
-    -> MVSEL2
-    -> REPAIR2 / MVSTATE2
-    -> MVQUAL
-    -> qualified target-size ladder
+outer DATA5 roles
+ -> target allocation
+ -> target-training-authorized development units
+ -> CV evaluation/monitor/training/purge assignment
 ```
 
-Current target-label families, foundation-residual weakness families, required hard coverage, obligations, representative utility, sparse diversity, correlation/provenance balancing, REPAIR2 active-shell repair, and independent MVQUAL remain training-domain semantics unless an implementation discovery proves a specific element obsolete under this reset.
+The `CrossValidationPlan` or successor must bind the allocation authority/digest. Evaluation-residual groups must be absent before `_assign_evaluation_folds`, checkpoint-monitor selection, purge calculation, and fold-training construction execute.
 
-The full maximum repaired prefix of length `Nmax` belongs entirely to the training reserve by construction. Evaluation membership cannot change when rich training evidence later reorders the reserve.
+Post-hoc filtering of already-built CV plans is forbidden because it can change fold balance, monitor support, purge topology, and training capacity.
 
-### 6. Target-size evaluation reference population and nested ladder
+Held-out CV folds are still protocol-validation evidence and are distinct from the target-size evaluation ladder.
 
-The residual population is:
+### 6. Rich target-training chain after allocation freeze
+
+Only target-training-authorized frames may enter fitted target preparation. Preserve/reuse the current rich chain:
 
 ```text
-R_d = U_d \ Treserve_d
+training-authorized domain
+ -> role-local fitted selection inputs
+ -> FEAS1
+ -> MVIDX1
+ -> MVSEL2
+ -> REPAIR2 / MVSTATE2
+ -> MVQUAL
+ -> configured qualified target-size prefixes
 ```
 
-at the correlation-unit allocation level. It is the target-size **evaluation reference population**, not a gradient domain and not the legacy `size_development_complement` of each candidate prefix.
+Current target-label families, foundation-residual weakness families, required hard coverage/obligations, representative utility, sparse diversity, correlation/provenance balancing, REPAIR2 repair, and independent MVQUAL remain training-domain semantics unless evidence requires a bounded redesign.
 
-Run one deterministic evaluation coverage/order chain over `R_d` to publish one master evaluation order `pi_eval_d`.
+One repaired master order per required training domain remains authoritative. Every configured target-size rung is a prefix. Independent per-rung re-selection/repair is forbidden.
 
-Evaluation prefixes are:
+If the full configured `Nmax` cannot materialize or rich hard qualification cannot be satisfied inside the frozen reserve, the campaign fails closed. It does not move evaluation groups into training after seeing role-local evidence.
+
+### 7. Residual target-size evaluation reference and ladder
+
+For domain `d`, let `R_d` contain frames belonging to target-size-evaluation allocation groups after role allocation freezes.
+
+Build one deterministic evaluation master order `pi_eval_d` over `R_d`. The order must freeze **before the first target-size TRAIN2 candidate trajectory/checkpoint is executed**.
+
+The evaluation order may use, after allocation freezes:
+
+- role-local target-label distributions;
+- a frozen external/foundation model's residuals if that model identity is independent of the target-size candidate trajectories;
+- the same structural/condition/event/provenance evidence used by the generalized exact coverage machinery.
+
+It may not use:
+
+- predictions/errors from any target-size candidate model;
+- survivor outcomes or selected-size decisions;
+- production-model predictions produced after size selection;
+- held-out CV/calibration/locked evidence.
+
+Thus evaluation selection can be rich but cannot become adaptive hard-example mining against the candidates it later ranks.
+
+Evaluation prefixes are exact nested views:
 
 ```text
 M1_d = pi_eval_d[:m1]
 M2_d = pi_eval_d[:m2]
 M3_d = pi_eval_d[:m3]
-```
-
-with strict nesting:
-
-```text
 M1_d subset M2_d subset M3_d subset R_d
 ```
 
-The evaluation selector should reuse the exact sparse multi-view infrastructure/scoring kernels where semantically appropriate, but it is a distinct role policy:
+Evaluation selection is representative/model-selection coverage, not MVQUAL hard qualification. It does not inherit the training 0.95 threshold or REPAIR2 by default. Deficits and unrepresentable strata are diagnostics/qualification evidence.
 
-- it is representative/model-selection coverage, not gradient-training hard qualification;
-- it does not inherit training MVQUAL's `coverage_threshold=0.95` as a pass/fail requirement merely because the same kernel is reused;
-- it does not inherit REPAIR2 active-shell hard-coverage repair unless separate evidence later shows an evaluation-specific repair is necessary;
-- missing/unrepresentable evaluation strata are diagnostics/qualification evidence, not permission to steal unique support back from training at runtime;
-- it may use role-local target labels/foundation residuals to order `R_d` **after** allocation freezes, because those quantities can no longer change training/evaluation membership.
+Correlation/provenance balance must be explicit in evaluation ordering so frames do not concentrate in one residual correlation group when alternatives exist. Multiple frames from one evaluation allocation group are permitted when required for cardinality, but selected correlation-unit counts/effective-sample diagnostics must be persisted.
 
-One master order must own all three evaluation rungs. Independent M1/M2/M3 resampling is forbidden.
+`R_d \ M3_d` stays non-gradient and serves only as larger residual/reference evidence for qualification or other explicitly authorized development diagnostics. It is not an automatic fallback evaluation set in production.
 
-The unselected residual `R_d \ M3_d` remains useful as a larger retrospective/reference population for scientific qualification of the bounded ladder and must not be reclassified as training merely because ordinary production evaluates only M1/M2/M3.
+### 8. Cardinality scope and multi-domain aggregation
 
-### 7. Pair evaluation fidelity and cardinality explicitly
-
-The target-size screen owns three immutable rung pairs:
+Configured evaluation sizes are **per target label domain**:
 
 ```text
-(n1, m1)
-(n2, m2)
-(n3, m3)
+m1 = 2^q1 configurations per target label domain
+m2 = 2^q2 configurations per target label domain
+m3 = 2^q3 configurations per target label domain
+```
+
+Each target label domain has its own authenticated nested evaluation order/prefixes. The canonical EVAL2 target-metric aggregation/weighting across label domains remains unchanged by this work and remains the sole metric owner; this work must not silently introduce equal-domain averaging, domain reweighting, or a new score merely because cardinalities changed.
+
+If `D` target label domains participate and all eight default candidate sizes are initially qualified with two seeds, the default ordinary configuration-evaluation upper bound is:
+
+```text
+D * (8*2*256 + 4*2*512 + 2*2*1024)
+= D * 12,288 configurations
+```
+
+before batching/cache reuse. Documentation/performance claims must not quote 12,288 as a protocol-global bound without the domain factor.
+
+### 9. Pair evaluation fidelity and cardinality explicitly
+
+The target-size screen owns exactly three immutable stage pairs:
+
+```text
+(n1,m1)
+(n2,m2)
+(n3,m3)
 ```
 
 Default:
 
 ```text
-fidelity epochs:      [1, 3, 10]
-evaluation sizes:     [256, 512, 1024]
+fidelity_epochs       = [1, 3, 10]
+evaluation_size_powers = [8, 9, 10]
+evaluation_sizes      = [256, 512, 1024]
 ```
 
-At one screening stage, all candidate sizes and all paired optimizer seeds use the exact same authenticated evaluation prefix for that domain/stage. Metrics are compared only within the same stage/rung population. No code may compare a candidate's M1 metric directly against another stage's M2/M3 metric as though the sample were unchanged.
+At one stage, every candidate size and paired optimizer seed uses the exact same authenticated evaluation-rung identity per target label domain. Metrics are compared only within that stage population. Cross-rung metric values are not directly compared as though the sample were unchanged.
 
-EVAL2 retains its existing force-metric semantics and OPT-EVAL4 staged execution/resource machinery. This work changes target-size **population authority**, not the canonical force estimator itself.
+EVAL2 retains the canonical target-force estimator and OPT-EVAL4 retains execution/resource ownership. Population authority changes; metric definition does not.
 
-### 8. Power-of-two target-size and evaluation configuration
+### 10. M3 lifecycle after target-size selection
 
-Remove the hard-coded scientific target-size tuple and ceiling. Canonical user configuration shall express powers of two:
+M3 is development/model-selection evidence, not held-out validation.
+
+After `N_selected` freezes:
+
+- final-development production may reuse the frozen M3 target population for target-side checkpoint/model selection, replacing the retired development-complement role;
+- M3 remains non-gradient;
+- final-development checkpoint selection may not mutate M3 membership/order;
+- cross-validation models continue to use their fold-local checkpoint monitors, not M3;
+- held-out CV, outer validation, uncertainty calibration, and locked tests remain separate and cannot be collapsed into M3;
+- using M3 for final-development checkpoint selection means M3 cannot later be advertised as independent protocol validation evidence.
+
+If an existing separate common target-online monitor has no remaining independent responsibility after this consolidation, Part 2 must remove/merge it rather than preserve duplicate model-selection authorities. If it still owns a distinct required training-time diagnostic that does not control target-size evaluation or final checkpoint choice, document that narrower role explicitly.
+
+### 11. Power-of-two target-size/evaluation configuration
+
+Canonical user configuration is exponent-based:
 
 ```toml
 [target_data.size_convergence]
@@ -212,420 +345,403 @@ evaluation_size_powers = [8, 9, 10]
 fidelity_epochs = [1, 3, 10]
 ```
 
-The resolved policy derives:
+Resolved policy derives:
 
 ```text
-candidate_target_sizes = [2^p for p in target_size_power_min..target_size_power_max]
-Nmax = 2^target_size_power_max
+candidate_target_sizes = [2^p for p in pmin..pmax]
+Nmax = 2^pmax
 evaluation_sizes = [2^q for q in evaluation_size_powers]
+rungs = [(n1,m1),(n2,m2),(n3,m3)]
 ```
 
-Default remains behaviorally equivalent to the old numerical target ladder and proposed evaluation ladder:
+Defaults therefore remain numerically:
 
 ```text
-training candidates: 128,256,512,1024,2048,4096,8192,16384
-evaluation:          256,512,1024
+target sizes: 128,256,512,1024,2048,4096,8192,16384
+evaluation sizes per target label domain: 256,512,1024
 ```
 
 Required validation:
 
-- powers are integers;
-- `target_size_power_min < target_size_power_max` unless a future accepted single-rung policy is explicitly designed;
-- the derived candidate ladder contains at least the minimum number of sizes required by the target-size funnel;
-- `evaluation_size_powers` contains exactly three strictly increasing integer powers;
-- derived sizes are positive and fit implementation integer/resource limits;
-- no hidden `<=16384` scientific guard remains;
-- no runtime dynamically invents non-power-of-two rescue sizes;
-- the resolved canonical configuration persists both powers and human-readable derived sizes and includes semantically relevant values in policy/state identity.
+- all powers are integers and nonnegative;
+- `pmin < pmax` for the current three-or-more-rung funnel;
+- the derived target ladder contains at least the policy's minimum qualified-size count;
+- evaluation powers contain exactly three strictly increasing values;
+- every derived cardinality is an exact positive integer representable by all owning serialized/index/count types;
+- there is no scientific `<=16384` guard; implementation/resource representation limits are explicit technical limits, not hidden scientific ceilings;
+- no non-power-of-two rescue size is generated;
+- resolved configuration persists both canonical powers and human-readable derived sizes;
+- powers, rung mapping, and other scientific population fields participate in semantic policy/state identity.
 
-The evaluation powers need not be consecutive. `[8,10,11]` is structurally valid if explicitly configured and scientifically qualified.
+Evaluation powers need not be consecutive. A configuration such as `[8,10,11]` is structurally legal but is scientifically unqualified until representative qualification supports it.
 
-### 9. Configured ceiling semantics
+### 12. Configured-ceiling semantics
 
-Replace `fixed ceiling` terminology and outcomes with configured-ceiling semantics.
-
-Required semantic replacement:
+Replace current fixed-ceiling semantics everywhere in current authority:
 
 ```text
-FIXED_TARGET_SIZES                 -> policy-derived power-of-two ladder
+FIXED_TARGET_SIZES                 -> policy-derived target ladder
 FIXED_TARGET_SIZE_CEILING          -> configured Nmax
 outside the fixed universe        -> outside configured target-size ladder
 nonconverged_at_fixed_ceiling      -> nonconverged_at_configured_ceiling
 fixed scientific ceiling 16384    -> configured scientific ceiling 2^pmax
 ```
 
-A configured ceiling remains a real scientific boundary: if the largest configured candidate is materially superior under the final comparison rule, the typed result remains non-convergence at the configured ceiling. The implementation SHALL NOT synthesize a larger rescue size.
+If the largest configured candidate remains materially superior under the final practical-equivalence rule, return typed non-convergence at the configured ceiling. Do not synthesize a larger/intermediate rescue size.
 
-### 10. Cross-validation and role boundary
+### 13. Capacity and early feasibility
 
-The evaluation residual must remain non-gradient for the complete target-size protocol. A frame/correlation unit assigned to `R_d` cannot later leak into:
+Preparation must establish before expensive rich MVIDX/MVSEL/TRAIN2 work that the configured architecture is feasible.
 
-- final-development target gradients;
-- fold target gradients;
-- fold checkpoint monitors used to select checkpoints;
-- target-size online training monitor if that monitor's role would make the target-size evaluation evidence non-independent under the current protocol.
+Per target label domain it must prove, using the frozen allocation/CV topology:
 
-The exact domain construction must be reconciled so each required final/fold training domain is derived from target-training-authorized correlation units only. Held-out CV evidence remains held out as before.
+- every required final/fold training domain can materialize `Nmax` target configurations;
+- residual evaluation contains at least `M3` target configurations;
+- mandatory split-safe training support is available;
+- residual support guard is accounted for, including explicit unrepresentable strata;
+- global/cross-domain leakage-equivalence groups are role-consistent;
+- CV monitor/evaluation/purge construction succeeds without consuming residual target-size-evaluation groups.
 
-The protocol-global selected cardinality remains common while actual target membership remains domain-local.
+`16384 + 1024 = 17408` is only a single-domain raw arithmetic lower bound under defaults. It is neither an independence guarantee nor a sufficient capacity criterion. Whole allocation groups, CV fold/monitor/purge requirements, multiple target domains, outer roles, and support obligations may require materially more source frames.
 
-### 11. Capacity/preflight semantics
+An undersized campaign fails early with resolved-policy/capacity diagnostics. It never silently lowers `pmax`, lowers `m3`, reuses a correlation group across roles, or falls back to the old complement evaluator.
 
-For each required label domain, preparation must establish **before expensive rich MVIDX/MVSEL/TRAIN2 execution** that the configured architecture is feasible.
+### 14. Semantic-generation reset and compatibility
 
-At minimum it must prove:
+This architecture is a new semantic generation. It must not silently reuse TARGET-SIZE-V5/fixed-universe/complement schemas or authority-version strings in a way that lets old state deserialize as current.
 
-- enough target-training-authorized capacity exists to materialize `Nmax` in every required target training domain;
-- residual evaluation capacity exists for `M3` after whole-unit training-priority allocation;
-- required training-support obligations remain satisfiable;
-- residual evaluation support passes its weaker feasibility guard;
-- role/correlation leakage invariants hold.
+The exact public generation name/version is delegated, but the implementation must make old/new identity distinguishable at the earliest persisted owner. Current documentation/code should not continue to call the new current architecture `TARGET-SIZE-V5` where that name denotes retired fixed-population/complement semantics.
 
-The arithmetic default lower bound `16384 + 1024 = 17408` frames is only a diagnostic lower bound. Whole-unit allocation, domain overlap, required supports, purge, protected events, and CV topology may require more raw frames.
+Existing derived campaign/prepared state is intentionally unsupported. Do not add migration/compatibility paths for:
 
-Undersized campaigns fail early with a clear resolved-policy/capacity diagnostic. They do not silently lower `pmax`, lower `m3`, reuse correlated frames across roles, or fall back to the legacy full complement.
+- old `size_development` role-freeze semantics;
+- old full/coarse complement target-size EVAL2 roles;
+- fixed-eight/fixed-ceiling target-size policy state;
+- old target-size study/evidence population identities;
+- old REPAIR/MVQUAL candidate universes;
+- old DATA7/DATA8 candidate artifacts;
+- old target-size TRAIN2/EVAL2 checkpoints/evidence;
+- fixed/flexible candidate-authority bridges or compatibility receipts retained only for superseded generations.
 
-### 12. Current-generation persistence and compatibility
+Raw/external source data remain valid inputs. A current run must rebuild derived state under the new generation. A pre-reset workspace fails early with a clear “unsupported pre-training-priority/evaluation-ladder generation; create/reprepare a new campaign workspace” class of error.
 
-This is an intentional destructive generation reset.
-
-Existing derived campaign/prepared state is deprecated and may be discarded. The implementation SHALL NOT add migration/compatibility code to preserve:
-
-- old `TargetDataRoleFreeze` semantics based on `size_development`;
-- old full-complement or coarse-complement EVAL2 roles;
-- old fixed-eight target-size policy state;
-- fixed-ceiling terminal-state serialization;
-- old target-size study plans/evidence bound to prior population semantics;
-- old REPAIR/MVQUAL/selection identities whose candidate universe or role boundary differs;
-- old DATA7/DATA8 target candidate artifacts;
-- old TRAIN2/EVAL2 target-size checkpoints/evidence;
-- historical fixed-fidelity/flexible-fidelity candidate-authority bridges or compatibility receipts solely needed for superseded campaign generations.
-
-Current raw/external source data may be reused as inputs. Current-generation derived state must be rebuilt under the new policy/role identities. Old current-workspace state should fail early with an actionable `pre-training-priority/evaluation-ladder generation; start/reprepare a new campaign workspace` style error rather than being silently reinterpreted.
-
-Historical records under `docs/history/`, release history, archived workplans, or immutable published evidence may remain historical. They must be clearly non-normative and must not create executable compatibility obligations.
+Historical docs/release evidence may remain historical. Executable historical readers may remain only when an independently required product capability consumes them; otherwise remove them from the current training package rather than retaining dead compatibility code.
 
 ## Part 1 - Documentation and specification authority reset
 
-Part 1 MUST complete and be reviewed before Part 2 implementation begins. Its purpose is to make the accepted architecture explicit enough that implementation does not infer semantics from obsolete code.
+Part 1 executes before Part 2 on the implementation branch. It defines the target architecture precisely enough that implementation need not infer intent from obsolete code.
 
-### D1. Rewrite the architecture manuals first
+**Publication constraint:** Part 1 future-state normative documentation must not be merged/released by itself to a branch that still ships the retired executable architecture. Part 1 closes as an implementation-branch design gate; public/main documentation and executable code become authoritative together when Part 2 is accepted.
 
-Update the current MLFF training-data architecture so the authoritative dependency graph becomes conceptually:
-
-```text
-source / DATA4 raw evidence / events
-    -> DATA5 correlation units + protected outer roles
-    -> training-priority target role allocation
-         -> target-training reserve
-         -> residual target-size evaluation reference population
-    -> training-domain fitted preparation
-         -> FEAS1 -> MVIDX1 -> MVSEL2 -> REPAIR2/MVSTATE2 -> MVQUAL
-    -> configured target-size ladder
-    -> evaluation reference coverage order -> M1/M2/M3
-    -> exact paired (n1,m1) -> (n2,m2) -> (n3,m3) target-size screen
-    -> selected protocol-global N
-    -> fresh production/CV training
-    -> held-out protocol validation / calibration / locked tests
-```
+### D1. Rewrite architecture manuals
 
 At minimum reconcile:
 
 - `docs/arch_manuals/mlff_training_data/30_statistical_design.md`;
 - `docs/arch_manuals/mlff_training_data/50_target_multiview.md`;
 - `docs/arch_manuals/mlff_training_data/80_ownership_and_decisions.md`;
-- top-level `docs/arch_manuals/mlff_training_data_architecture.md` and its generated/include dependency surface where applicable;
-- any current dependency graph/source map that presents the old role/selection/evaluation flow.
+- `docs/arch_manuals/mlff_training_data_architecture.md`;
+- current dependency graph/source maps and generated architecture inputs.
 
 Required documentary outcomes:
 
-- training-priority allocation and correlation-unit role exclusivity are explicit architecture;
-- pre-role-safe versus role-local/fitted evidence boundary is explicit;
+- target allocation precedes CV construction and fitted preparation;
+- allocation/equivalence-group closure across label domains is explicit;
+- split-safe allocation evidence versus role-local rich evidence is explicit;
+- allocation group/configuration counts/effective independence are not conflated;
 - training reserve versus final rich training order are distinct authorities;
-- residual evaluation reference population and nested M1/M2/M3 ladder are explicit;
-- target/evaluation powers and configured-ceiling semantics replace fixed-universe language;
-- EVAL2 population ownership is separated from metric/execution ownership;
-- CV/non-gradient implications are explicit;
-- destructive generation reset/no compatibility is explicit;
-- current architecture does not imply IID where only correlation-unit separation is proven.
+- residual evaluation order freezes before candidate TRAIN2;
+- M1/M2/M3 are per-domain nested populations;
+- M3 post-selection checkpoint role is explicit;
+- configured powers/configured-ceiling semantics replace fixed-universe language;
+- destructive new-generation/no-migration semantics are explicit;
+- EVAL2 population ownership is distinct from metric/execution ownership.
 
 ### D2. Rewrite current normative specifications
 
-Update/replace current normative specs whose contracts conflict, including at minimum:
+Update/replace every current spec affected by role/population ownership, including at minimum:
 
-- target-subset size-study specification;
-- DATA5 partition/role specification if needed to expose the nested target-development allocation boundary;
-- target-data role-freeze specification;
-- target coverage / FEAS1 / MVIDX / MVSEL2 / REPAIR2 / MVQUAL specifications where candidate-domain ownership or fixed ladder assumptions change;
-- EVAL2 target-size role specification;
-- OPT-EVAL4 specification only where population identity/buffering assumptions reference full complement; preserve its execution semantics otherwise;
-- campaign/configuration specification and generated example contract;
-- persistence/restart/current-generation specification where old generation identities are removed.
+- target-subset size-study policy;
+- DATA5 partition/CV role policy;
+- TARGET-DATA role-freeze/allocation policy;
+- leakage/equivalence-family policy;
+- target coverage / FEAS1 / MVIDX / MVSEL2 / REPAIR2 / MVQUAL where domain/ladder ownership changes;
+- EVAL2 target-role/population policy;
+- OPT-EVAL4 only where population identity/buffer assumptions reference full complement;
+- final-development checkpoint-selection/monitor policy;
+- campaign/configuration/default-generation policy;
+- persistence/restart/current-generation policy.
 
-Specifications must clearly distinguish:
+Specifications must distinguish three related but non-interchangeable mechanisms:
 
 ```text
-TRAIN-RESERVE role-allocation coverage
-rich training hard coverage + MVQUAL
-evaluation representative coverage
+TRAIN-RESERVE split-safe allocation coverage
+rich target-training hard coverage + MVQUAL
+residual target-size-evaluation representative coverage
 ```
 
-They are related mechanisms but not interchangeable pass/fail authorities.
+The allocation spec must enumerate split-safe feature families and the group-level deterministic objective/admissibility semantics from this workplan.
 
 ### D3. Cleanse retired terminology from current documentation
 
-Perform repository-wide inspection over **current normative/user documentation** and remove or rewrite current statements that imply any retired design, including:
+Perform repository-wide inspection over current normative/user documentation and rewrite/remove current statements that imply retired behavior, including:
 
-- `fixed target-size universe` / `fixed nominal population` where used as current authority;
-- `fixed ceiling` / `nonconverged_at_fixed_ceiling` as current terminology;
-- hard-coded current scientific `16384` other than as an example/default derived from `pmax=14`;
-- `size_development` where the new explicit target-training/evaluation roles supersede it;
-- `size_development_complement` / `size_development_coarse` current evaluation semantics;
-- candidate-prefix complement subtraction as the target-size evaluation population;
-- any arbitrary train/evaluation percentage split introduced during intermediate design work;
-- migration/compatibility language for campaign generations this reset intentionally discards;
-- statements that every decorrelated retained point is IID/independent when the actual guarantee is correlation-unit-safe separation;
-- old selector/repair generations presented as alternate current routes;
-- stale current references to legacy fixed/flexible target-size authority generations.
+- fixed target-size universe/fixed nominal population;
+- fixed ceiling / `nonconverged_at_fixed_ceiling`;
+- scientific 16,384 except as the default `2^14` example;
+- current `size_development` where explicit target-training/evaluation roles supersede it;
+- `size_development_complement` / `size_development_coarse` target-size evaluation semantics;
+- candidate-prefix complement subtraction as current evaluation population;
+- arbitrary train/evaluation percentages;
+- current migration/compatibility promises intentionally removed by this reset;
+- unsupported claims that retained frames are IID after decorrelation;
+- old selector/repair generations presented as alternate current paths;
+- current uses of TARGET-SIZE-V5/fixed/flexible generation terminology that would misidentify the new semantic generation.
 
-Historical documents under `docs/history/`, archived workplans, release notes, and immutable historical evidence need not be rewritten to pretend history did not happen. They must remain clearly historical/non-current. Current architecture/spec/user docs must not point to them as executable authority.
+Historical/archive/release documents need not be rewritten to erase history, but they must remain clearly non-current and must not be referenced as executable authority.
 
 ### D4. Resolve active-workplan precedence
 
-Update `workplans/active/README.md` and any conflicting active plan language so this workplan is the controlling authority for target-size **population, target/evaluation role allocation, evaluation ladder, configured powers, and generation reset**.
+Reconcile `workplans/active/README.md` and conflicting active-plan text.
 
-The existing exact-boundary screening workplan remains controlling for nonconflicting exact `n1/n2/n3` continuation behavior until its closure. Any sentence in it that freezes the candidate universe or old EVAL2 population is superseded by this reset and must be marked/reconciled so an implementer cannot satisfy two contradictory plans.
+This workplan controls target-size population, allocation, evaluation-ladder, power/configured-ceiling, new-generation and compatibility semantics.
 
-Unrelated active RAM/lifecycle/DATA7-8 plans remain independent unless implementation evidence shows a direct dependency.
+The exact-boundary screening workplan remains controlling only for nonconflicting `n1 -> n2 -> n3` continuation/fresh-production behavior. Its fixed-candidate/population/EVAL2 assumptions must be explicitly marked superseded so an implementer cannot satisfy contradictory contracts.
 
-### D5. Part 1 acceptance
+Unrelated RAM/lifecycle/DATA7-8 workplans remain independent unless implementation evidence shows a direct dependency.
+
+### D5. Document multi-domain and post-selection metric semantics
+
+Current docs/specs must state:
+
+- `m_i` cardinality is per target label domain;
+- existing EVAL2 domain aggregation/weighting remains unchanged;
+- final-development M3 may control checkpoint/model selection only after target size is frozen;
+- CV fold monitors remain separate;
+- M3 is not held-out validation after it has controlled target-size/final checkpoint decisions;
+- outer validation/calibration/locked roles remain independent.
+
+### D6. Part 1 acceptance
 
 Part 1 closes only when:
 
-1. the architecture manuals tell one coherent current-generation story;
-2. current normative specs agree with that architecture;
-3. current user/config docs expose the new power-based configuration and evaluation ladder;
-4. current terminology search finds no unexplained legacy fixed-universe/complement/current-migration language;
-5. historical-only occurrences are confined to clearly historical/archive/release surfaces;
-6. dependency/ownership diagrams identify the new role-allocation and evaluation-ladder owners;
-7. no documentation claims unsupported statistical independence;
-8. an independent design review can reconstruct Part 2 behavior from current documentation without consulting this conversation.
+1. architecture manuals tell one coherent future current-generation story;
+2. current normative specs agree with the architecture and this reviewed contract;
+3. user/config docs expose power-based configuration and per-domain M1/M2/M3;
+4. current terminology search has no unexplained retired fixed/complement/migration/TARGET-SIZE-V5 current authority;
+5. dependency diagrams place target allocation before CV/fitted preparation;
+6. ownership diagrams identify one allocation owner and one evaluation-ladder owner;
+7. docs do not claim unsupported IID semantics;
+8. post-selection M3/checkpoint/CV roles are unambiguous;
+9. active workplan precedence is noncontradictory; and
+10. documentation build/lint/reference/PDF checks required by the repository pass on the branch.
 
-Part 1 is documentary/non-executable. It requires documentation build/lint/reference checks applicable to the repository but does not substitute for Part 2 executable regression.
+An independent implementer should be able to reconstruct Part 2 behavior from current branch documentation without this conversation.
 
 ## Part 2 - Code implementation and destructive cleanup
 
-Part 2 implements the documented architecture. The implementer must prefer ownership correction, reuse/refactoring, and deletion over wrappers/adapters that preserve superseded semantics.
+Part 2 implements the documented architecture. Prefer ownership correction, semantic reuse/refactoring, and deletion over adapters that preserve superseded designs.
 
-### C1. Canonical power-based target-size/evaluation policy
-
-Replace the fixed candidate-size tuple with one canonical configuration/policy owner.
+### C1. Canonical power policy and new generation identity
 
 Required end state:
 
-- canonical configured fields: `target_size_power_min`, `target_size_power_max`, `evaluation_size_powers`, `fidelity_epochs`;
-- canonical derived values: candidate target sizes, `Nmax`, evaluation sizes, rung pairs;
-- `TargetSizeStudyPolicy` or its clean successor owns the derived scientific ladder, screening funnel, equivalence rules, and authenticated seed set without a hard-coded 16384 guard;
-- all consumers use the canonical resolved policy rather than recomputing powers independently;
-- policy serialization/digest includes semantically relevant powers/derived rung mapping;
-- configuration/example/status output reports both powers and resolved integer sizes;
-- terminal state is `nonconverged_at_configured_ceiling`;
-- remove obsolete fixed-generation candidate-authority compatibility helpers if no longer used by any current path.
+- canonical config fields `target_size_power_min`, `target_size_power_max`, `evaluation_size_powers`, `fidelity_epochs`;
+- one canonical resolver derives target sizes, `Nmax`, per-domain evaluation sizes, and stage pairs;
+- `TargetSizeStudyPolicy` or clean successor owns the derived ladder/funnel/equivalence/seed semantics;
+- all consumers use resolved policy instead of recomputing powers;
+- current schemas/authority versions distinguish the new generation from TARGET-SIZE-V5/fixed/complement state;
+- terminal non-convergence is `nonconverged_at_configured_ceiling`;
+- default and nondefault configs print/persist powers plus derived sizes;
+- semantically relevant fields participate in identity.
 
-Structural acceptance must prove `FIXED_TARGET_SIZES`, `FIXED_TARGET_SIZE_CEILING`, executable `<=16384` scientific guards, and current fixed-universe error text are absent from the current code path.
+Structural acceptance proves current production code has no scientific `FIXED_TARGET_SIZES`, `FIXED_TARGET_SIZE_CEILING`, `<=16384` guard, fixed-universe error, or old-generation alias capable of deserializing retired state as current.
 
-### C2. Introduce correlation-unit-safe target role allocation before fitted selection
+### C2. Build global allocation-equivalence groups
 
-Create one current authoritative target-development allocation record/policy (names may differ if a cleaner existing owner is extended) that publishes per label domain:
+Create/reuse one owner that closes DATA5 units under all incompatible-role leakage/equivalence relations, including cross-label-domain relations.
 
-- source eligible/correlation-unit identity;
-- target-training-reserved units/frames;
-- target-size-evaluation residual units/frames;
-- support/coverage diagnostics;
-- residual evaluation feasibility diagnostics;
-- exact policy/config identity;
-- proof of disjointness and correlation-unit exclusivity.
+Required tests:
 
-Required behavior:
+- exact geometry family spanning domains cannot split roles;
+- declared structural/correlation/active-learning family cannot split roles;
+- protected event linkage cannot split roles when policy declares it indivisible;
+- unrelated groups remain independently allocatable;
+- group identity is deterministic and digest-bound.
 
-- allocation runs before role-local fitted target preparation;
-- allocation inputs are limited to approved pre-role-safe evidence;
-- training has first claim on unique/scarce support;
-- residual evaluation receives correlation-distinct remaining support where possible;
-- enough training capacity for `Nmax` is guaranteed before proceeding;
-- enough residual capacity for `M3` is guaranteed before proceeding;
-- role assignment is deterministic/restartable;
-- changing allocation/power policy invalidates dependent derived state;
-- no percentage/random split authority is introduced.
+Do not create a second leakage-family definition inconsistent with existing DATA5/TARGET-DATA policy; consolidate the current relations into one allocation input authority.
 
-If current DATA5 ownership is the cleanest place for the nested allocation, extend it there; if a dedicated TARGET-DATA authority is cleaner, keep DATA5 outer-role ownership and make the new authority consume DATA5. Do not create two synchronized owners.
+### C3. Implement deterministic training-priority allocation + shortest feasible reserve
 
-### C3. Reconcile CV and fitted-domain construction to the new roles
+Create one authoritative allocation record/policy that publishes:
 
-Modify final-development/CV domain construction so target-training fitted products and target gradients can consume only target-training-authorized correlation units.
+- source/equivalence-group identity;
+- split-safe feature-contract identity;
+- deterministic ordered allocation groups and selected training prefix;
+- training-authorized units/frames by label domain;
+- residual evaluation units/frames by label domain;
+- training split-safe coverage/support diagnostics;
+- residual support/deficiency diagnostics;
+- CV-feasibility/capacity result;
+- exact config/policy digest;
+- proofs of disjointness/equivalence-group role consistency.
 
-Required negative invariants:
+Implement the lexicographic/cost-aware selection and residual admissibility rules frozen above. Role assignment freezes only after the shortest prefix satisfying residual M3 capacity and deterministic CV/Nmax feasibility is found.
 
-- evaluation residual units never enter final target gradients;
-- evaluation residual units never enter fold target gradients;
-- evaluation residual units never enter a checkpoint-monitor role that would invalidate target-size evaluation independence;
-- held-out CV folds remain held out and are not repurposed as the new evaluation ladder;
-- calibration/locked-test roles remain unchanged and cannot become target-size evaluation data.
+No percentage/random split authority is introduced.
 
-Extend leakage audit to fail closed on any prohibited crossing.
+### C4. Rebuild CV plans from training-authorized units only
 
-### C4. Make coverage/MVIDX machinery role-generic where reuse is justified
-
-Refactor current target coverage/reference/index primitives enough to support:
-
-1. TRAIN-RESERVE pre-role-safe allocation coverage;
-2. rich training-domain FEAS1/MVIDX/MVSEL2/REPAIR2/MVQUAL;
-3. residual evaluation representative coverage/order.
-
-Do not copy the current coverage implementation three times. Shared exact geometric/sparse primitives should have one semantic implementation where the mathematical relation is the same, with explicit role policies controlling which feature families, hard predicates, obligations, and scoring phases apply.
-
-Preserve a bounded independent/reference oracle for optimized selector kernels where one already exists or is materially useful.
-
-Anti-shortcut: do not route the new evaluation path through legacy `TrainingSelectionPlan` quota/FPS selection merely because it already accepts arbitrary cardinalities. Current architecture has one multi-view family; semantic reuse must be through that current mechanism or a justified generalized successor.
-
-### C5. Preserve rich training chain inside the reserve
-
-Update FEAS1/MVIDX/MVSEL2/REPAIR2/MVQUAL candidate/reference ownership to the target-training reserve and configured target-size ladder.
+`build_cross_validation_plans()` or its current successor must consume target-training-authorized units, not all outer development units.
 
 Required behavior:
 
-- one master repaired order per required training domain;
-- configured target-size rungs are prefix views;
-- hard-coverage monotonicity remains enforced;
-- MVQUAL evaluates all configured materializable prefixes needed by the policy;
-- no hidden eight-rung loops/arrays/tests remain;
-- configured ladders smaller/larger than the default work subject to actual feasibility/resource limits;
-- candidate data identities bind the new training-role/allocation authority.
+- evaluation residual absent before fold assignment begins;
+- fold evaluation/monitor/purge/training roles are recomputed from training-authorized units;
+- CV plan identity binds allocation identity;
+- each fold training domain has Nmax capacity;
+- held-out CV remains distinct from target-size evaluation;
+- changing allocation invalidates CV/fitted descendants.
 
-Preserve current exact scientific selector/repair semantics unless the new role boundary makes a specific predicate invalid; such a discovery is a bounded design-reopen trigger, not permission to silently weaken qualification.
+A test that constructs old CV and merely filters residual UIDs afterward is specifically insufficient.
 
-### C6. Implement the residual evaluation master order and M1/M2/M3 artifacts
+### C5. Route fitted/rich training chain through training-authorized domains
 
-Create the current evaluation-ladder authority over `R_d`.
+Update DATA6/DATA7/FEAS1/MVIDX/MVSEL2/REPAIR2/MVQUAL ownership so:
 
-Required end state:
+- no residual evaluation UID enters fitted target-training inputs;
+- configured target sizes, not a static eight-rung tuple, drive materializable prefixes;
+- one repaired master order remains authoritative;
+- MVQUAL monotonicity and hard predicates remain exact;
+- candidate materialization identities bind allocation/CV/current-generation authority;
+- nondefault smaller/larger ladders work subject to actual capacity/resource limits.
 
-- one deterministic `pi_eval_d` per required evaluation domain;
-- `M1/M2/M3` are exact prefixes at configured evaluation sizes;
-- all ladder frames belong to the residual evaluation role and no training frame appears;
-- nested UID identity is explicitly validated;
-- evaluation-order policy/feature/reference identities are persisted and digest-bound;
-- rich evaluation-local target labels/foundation residuals may influence ordering only after the role allocation is frozen;
-- evaluation hard-coverage deficits/support holes are recorded diagnostically;
-- no automatic fallback to full complement or arbitrary temporal sampling.
+If rich training fails inside the frozen reserve, do not adapt the role split from role-local evidence.
 
-Suggested materialization: three authenticated bounded ExtXYZ/monitor artifacts for M1/M2/M3, even if M1/M2 bytes duplicate prefixes of M3. Simplicity of restart/parsing/identity is preferred unless measurement shows material I/O/storage harm. Membership identity, not duplicated bytes, proves nesting.
+### C6. Generalize shared exact coverage/index primitives without conflating policies
 
-### C7. Rebind EVAL2 to stage-specific evaluation rungs
+Reuse shared mathematical primitives for allocation, rich training, and evaluation where the relation is genuinely the same; do not copy the implementation three times.
 
-Delete current target-size semantics based on:
+However, keep policy layers distinct:
 
-- `build_eval2_size_study_target_role()` full complement subtraction;
+- allocation uses whole groups, split-safe features, variable cost and residual veto;
+- rich training uses frame-level hard coverage/obligations, REPAIR2 and MVQUAL;
+- evaluation uses representative coverage without training hard pass/fail.
+
+Do not force these materially different policies through one generic score abstraction if doing so obscures semantics. Reuse adjacency/index/vector kernels and shared state primitives; retain role-specific policy owners.
+
+Preserve exact/reference oracles for optimized selection/index paths where materially useful.
+
+### C7. Build frozen residual evaluation order and M1/M2/M3
+
+Required end state per target label domain:
+
+- one `pi_eval_d` freezes before any candidate TRAIN2 execution;
+- M1/M2/M3 are exact configured prefixes;
+- all selected frames belong to residual allocation groups;
+- no target-training frame/group appears;
+- evaluation feature/reference/policy/foundation identities are digest-bound;
+- target labels/frozen-foundation residuals may influence ordering only after allocation freeze and before candidate TRAIN2;
+- candidate-model predictions/outcomes cannot influence ordering;
+- correlation-unit/effective-sample diagnostics are recorded;
+- unrepresentable strata remain diagnostics, not runtime reallocation triggers;
+- no fallback to full complement or arbitrary temporal sampling exists.
+
+Suggested materialization remains three authenticated bounded ExtXYZ/monitor artifacts unless one indexed artifact proves equally clear/restart-safe and materially simpler.
+
+### C8. Rebind EVAL2 and final-development checkpoint selection
+
+Delete current target-size/full-development semantics based on:
+
+- `build_eval2_size_study_target_role()` complement subtraction;
 - `size_development_complement`;
-- `size_development_coarse` legacy helper behavior;
-- maximum-training-prefix subtraction as evaluation role definition;
-- legacy deterministic block-sampler compatibility used only for old target-size generations.
+- `size_development_coarse`;
+- maximum-training-prefix subtraction;
+- legacy block sampling used only for retired generations.
 
-The target-size owner shall resolve:
+Resolve target-size stages directly:
 
 ```text
-coarse       -> M1
-short        -> M2
+coarse -> M1
+short -> M2
 final_screen -> M3
 ```
 
-for every candidate and paired seed.
+After target size freezes, final-development checkpoint/model selection may reuse M3. CV continues to use fold checkpoint monitors.
 
-Preserve:
+Preserve canonical EVAL2 target-force metric/domain aggregation, checkpoint/foundation identity checks, and OPT-EVAL4 CPU-prepare -> accelerator-inference -> CPU-finalize -> parent-commit execution/resource machinery.
 
-- canonical EVAL2 target-force metric definition;
-- exact candidate/checkpoint/foundation identity checks;
-- OPT-EVAL4 CPU-prepare -> accelerator-inference -> CPU-finalize -> parent-commit pipeline;
-- resource admission/RAM/VRAM/parallelism machinery unless a direct incompatibility is found;
-- same-rung paired-candidate comparison semantics.
+Evaluation evidence binds exact evaluation-ladder/rung identity, not a generic role name.
 
-Evaluation evidence must bind the evaluation-ladder authority/rung digest, not merely a generic role name.
+### C9. Reconcile target-size evidence/orchestration
 
-### C8. Reconcile target-size study evidence and orchestration
+Update study/evidence schemas so every stage authenticates:
 
-Update target-size study/evidence schemas so each stage authenticates its exact `(n_i,m_i)` rung and evaluation population.
+- exact stage and boundary `n_i`;
+- exact per-domain evaluation rung `m_i`/rung digests;
+- complete ordered paired-seed population;
+- candidate data/current-generation identity;
+- shared metric/domain-aggregation policy;
+- exact continuation ancestry.
 
-Required behavior:
+Preserve `q -> min(q,4) -> 2 -> 1`, practical-equivalence/smaller-size rules, and exact boundary continuation.
 
-- exact `n1/n2/n3` continuation remains unchanged;
-- `q -> min(q,4) -> 2 -> 1` remains unchanged unless the configured ladder has fewer than required qualified sizes, which remains a typed insufficiency;
-- paired seeds remain complete and ordered;
-- successful candidates within one stage share one evaluation-rung identity;
-- cross-rung metric mixing fails closed;
-- selected `N` is always one configured target-size power-of-two rung;
-- configured-ceiling nonconvergence is typed and authenticated;
-- status/reporting prints active training boundary and active evaluation cardinality clearly.
+Cross-rung population mixing fails closed. Selected N is a configured target-size rung. Configured-ceiling nonconvergence is typed/authenticated. Status/reporting prints active boundary and per-domain evaluation cardinality.
 
-### C9. Current-generation invalidation and legacy deletion
+### C10. Persistence/restart/invalidation
 
-Perform a deliberate cleanup sweep after the new path works.
+Identity must invalidate unsafe reuse when changing at least:
 
-Delete or retire from current execution any code whose sole purpose is a superseded design, including as applicable:
+- target min/max powers;
+- evaluation powers;
+- fidelity epochs;
+- allocation group/equivalence policy;
+- split-safe feature contract;
+- allocation scoring/residual-feasibility policy;
+- evaluation order feature/policy/foundation identity;
+- correlation-unit source identity;
+- relevant rich target coverage policy.
+
+Required restart behavior:
+
+- identical scientific config/inputs -> deterministic same allocation/CV/orders/digests;
+- execution-only worker/chunk/cache changes -> scientific identities stable when mathematically unchanged;
+- changed scientific policy -> affected descendants invalidate;
+- pre-reset workspace -> clear unsupported-generation failure;
+- restart at each target-size boundary uses the same frozen M_i identities;
+- no restart path recomputes evaluation order from candidate predictions.
+
+### C11. Destructive cleanup
+
+After the new path passes, remove superseded current code/tests/exports rather than retaining parallel implementations.
+
+Delete/retire as applicable:
 
 - fixed target-size constants/guards;
-- old candidate-authority migration/bridge/receipt code;
-- old fixed/flexible target-size generation aliases no longer needed for current state;
-- full-complement/coarse-complement EVAL2 helpers;
-- deprecated `size_development` current role fields if the new explicit roles supersede them;
-- stale serializer branches for unsupported current campaign generations;
-- tests that only prove deprecated behavior;
-- duplicate selectors/wrappers introduced by earlier revisions and no longer referenced by current code.
+- fixed/flexible candidate-authority migration/bridge/receipt code no longer serving an independent historical-reader product;
+- full/coarse complement EVAL2 helpers/role kinds;
+- deprecated `size_development` current role fields;
+- stale serializers/current-generation aliases;
+- current TARGET-SIZE-V5 strings that identify the retired semantic generation;
+- dead selector/repair/migration wrappers;
+- tests that exist only to preserve retired behavior.
 
-Do not retain dead compatibility code merely because deletion is inconvenient. Historical evidence readers may remain only where independently required to inspect durable historical records and must be isolated from current execution.
+Structural acceptance requires repository-wide import/reference/search evidence that no removed authority has a reachable current production consumer.
 
-Structural acceptance requires repository-wide import/reference/search evidence that removed current authorities have no reachable production consumer.
+### C12. Performance/resource preservation
 
-### C10. Configuration, state identity, persistence, and restart
-
-All scientific policy fields introduced by this reset must participate in canonical resolved configuration and state identity where they affect membership/evaluation meaning.
-
-At minimum identity must prevent unsafe reuse when changing:
-
-- target-size min/max powers;
-- evaluation size powers;
-- fidelity epochs;
-- TRAIN-RESERVE allocation policy/feature contract;
-- evaluation selection policy/feature contract;
-- correlation-unit source identity;
-- relevant target coverage policies.
-
-Restart tests must cover:
-
-- same config -> deterministic same allocation/orders/digests;
-- changed powers/allocation/evaluation policy -> affected state invalidates;
-- irrelevant execution-only worker/chunk/cache changes -> scientific identities remain stable where mathematically unchanged;
-- pre-reset campaign state -> clear unsupported-generation failure rather than migration.
-
-### C11. Performance/resource preservation
-
-Reuse current performance architecture:
+Preserve/reuse where semantically compatible:
 
 - exact sparse forward MVIDX representation;
-- memory mapping/out-of-core support;
-- current optimized MVSEL2 forward/lazy scoring;
-- bounded evaluation preparation/finalization buffers;
-- current inference admission/concurrency machinery;
-- graph/context reuse where the new nested evaluation population permits it.
+- mmap/out-of-core execution;
+- optimized MVSEL2 forward/lazy kernels;
+- bounded evaluation prepare/finalize buffers;
+- current inference admission/concurrency;
+- graph/context reuse enabled by nested M1/M2/M3.
 
-The new evaluation ladder should materially reduce inference compared with full-complement EVAL2. For the default eight qualified sizes and two seeds, the ordinary upper funnel workload is bounded by:
+Default ordinary target-size evaluation cost is bounded per target label domain by 12,288 configuration evaluations when all eight candidates are initially qualified and two seeds are used. Total cost scales by the number of target label domains.
 
-```text
-8*2*256 + 4*2*512 + 2*2*1024 = 12,288 evaluated configurations
-```
-
-before accounting for batching/cache reuse. This is a design-scale diagnostic, not a substitute for measured qualification.
-
-Do not weaken selector exactness, coverage semantics, or role separation to optimize performance.
+Do not trade exactness, role separation, or configured cardinality for performance.
 
 ## Implementation authority
 
@@ -633,284 +749,333 @@ Do not weaken selector exactness, coverage semantics, or role separation to opti
 
 The implementer MUST preserve:
 
-- training-priority role allocation before fitted target selection;
-- correlation-unit-safe train/evaluation separation;
-- no percentage/random split as current scientific authority;
-- pre-role-safe evidence only for allocation;
-- rich training selection inside the training reserve;
-- residual evaluation reference population and one nested evaluation master order;
-- exactly three configured evaluation rungs paired one-to-one with `n1/n2/n3`;
-- power-of-two configured target ladder using min/max exponents;
-- default powers `7..14` and evaluation powers `[8,9,10]` unless current config-generation ownership requires an equivalent canonical spelling;
-- configured-ceiling nonconvergence semantics;
-- no dynamic rescue sizes;
-- destructive generation reset/no compatibility migration for old derived campaign state;
-- reuse of EVAL2 metric and OPT-EVAL4 execution semantics;
-- preservation of exact screening continuation and fresh post-selection production;
-- target/evaluation role exclusion from gradients and prohibited CV monitor use;
-- stage-local and final regression/integration requirements;
-- full long real-data/GPU production qualification remains separate and deferred to the established final qualification phase unless specifically requested later.
+- target allocation before CV construction and fitted preparation;
+- allocation-group closure across all current incompatible-role leakage/equivalence relations, including cross-domain relations;
+- split-safe feature contract and prohibition on direct target-label/error ranking before allocation freeze;
+- deterministic cost-aware training-priority group order, residual feasibility veto, and shortest feasible reserve prefix;
+- no post-freeze stealing between target training and target-size evaluation;
+- rich training chain inside training-authorized domains;
+- one frozen evaluation master order per target label domain before candidate TRAIN2;
+- exactly three per-domain evaluation rungs paired with n1/n2/n3;
+- M3 reuse for final-development checkpoint selection after N freezes, with CV monitors remaining fold-local;
+- exponent-based target/evaluation configuration and configured-ceiling semantics;
+- new semantic generation identity and destructive no-migration policy for derived state;
+- canonical EVAL2 metric/domain aggregation and OPT-EVAL4 execution semantics;
+- exact screening continuation and fresh production;
+- full long target-machine/GPU qualification remains separate from routine functional acceptance.
 
 ### Delegated
 
-Implementation may choose, while preserving the frozen contract:
+Implementation may choose, without changing frozen semantics:
 
-- exact class/module/schema names for TRAIN-RESERVE and evaluation-ladder authority;
-- whether nested target allocation is physically owned inside DATA5 or by a dedicated immediate consumer, provided there is one authority and DATA5 outer roles remain coherent;
-- internal sparse data structures and generalized selector interfaces;
-- exact pre-role-safe coverage weighting/tie implementation consistent with the documented deterministic training-priority objective;
-- whether M1/M2/M3 are materialized as three artifacts or one indexed artifact if restart clarity and bounded I/O remain equivalent;
-- local schema version numbers and error-code names;
-- test fixture sizes and faked expensive numerical layers below the semantic owners.
+- exact class/module/schema names for allocation/evaluation authorities;
+- whether allocation lives in DATA5 or an immediate TARGET-DATA consumer, provided there is one owner and CV consumes it before fold construction;
+- internal sparse/group data structures;
+- mathematically equivalent floating tolerance/normalization realization for the frozen group-level objective;
+- three artifacts versus one indexed M-ladder artifact;
+- concrete new semantic-generation identifier/version string;
+- local schema/error-code names;
+- bounded test fixture sizes and numerical fakes below accepted owner boundaries.
 
 ### Reopen only on evidence
 
-Reopen the affected design surface only if implementation/representative evidence proves one of these assumptions false:
+Reopen only the affected surface if representative evidence proves:
 
-1. whole correlation-unit allocation cannot preserve enough training capacity without pathological reserve inflation;
-2. the documented pre-role-safe feature set is insufficient to protect training edge support, requiring a different leakage-safe upstream descriptor authority;
-3. residual evaluation support is systematically too biased after training priority to preserve target-size decisions at practical `m1/m2/m3`;
-4. exact reuse/generalization of current multi-view kernels would materially increase complexity or change semantics compared with a cleaner mathematically equivalent component;
-5. a configured target-size ladder beyond the old 16384 exposes an unanticipated algorithm/resource bound that cannot be addressed cleanly;
-6. current CV topology makes one global residual role impossible without a better per-domain correlation-safe formulation;
-7. retrospective scientific qualification shows `[256,512,1024]` fails required survivor/winner preservation.
+1. whole allocation-group closure causes pathological reserve inflation or makes the default architecture infeasible;
+2. split-safe features cannot protect training edge support adequately;
+3. residual evaluation is systematically biased enough to change target-size decisions at practical M sizes;
+4. current multi-view primitives cannot be reused without materially worse complexity/semantics;
+5. configured sizes above 16,384 encounter a genuine representation/algorithm bound requiring an explicit technical limit;
+6. multi-domain equivalence closure or CV topology requires a different statistically valid allocation formulation;
+7. default `[256,512,1024]` fails survivor/winner preservation;
+8. M3 reuse for final checkpoint selection conflicts with an independently required distinct development/model-selection authority.
 
-Do not reopen unrelated exact-boundary, production-freshness, or held-out evidence doctrine when only one of these local assumptions fails.
+Do not reopen exact-boundary/fresh-production/held-out doctrine merely because one local assumption fails.
 
 ## Initially expected affected surface
 
-The implementer must re-derive this list from the assembled candidate; initially expected surfaces include:
+Implementation must re-derive the final affected surface. Initially inspect at least:
 
 ### Core code
 
-- `mdstats/training_data/partition.py` and/or immediate target-role allocation owner;
-- `mdstats/training_data/target_data_roles.py`;
-- `mdstats/training_data/leakage.py`;
-- target coverage/reference/feasibility/index modules;
-- `target_multi_view_selector_v2.py`, current selection engine/state, REPAIR2, MVQUAL2 where policy/domain inputs change;
+- `partition.py` outer/CV planning;
+- `target_data_roles.py` or replacement allocation owner;
+- `leakage.py` and correlation/equivalence-family ownership;
+- target coverage/reference/feasibility/sparse-index modules;
+- MVSEL2 engine/state, REPAIR2, MVQUAL2;
 - `target_size_study.py`;
 - `eval2.py`;
-- `_campaign_cli_core.py` target-size orchestration/config/state/reporting;
-- DATA7/DATA8 materialization/planning owners;
-- CV/final-domain assembly and checkpoint-monitor role ownership;
-- configuration parsing/resolution and generated examples;
-- serializers/current-state reconciliation and package exports.
+- final-development checkpoint/monitor owner;
+- `_campaign_cli_core.py` orchestration/config/state/reporting;
+- DATA6/7/8 planning/materialization owners;
+- CV/final-domain assembly;
+- configuration resolution/default generation;
+- serializers/current-state reconciliation/package exports.
 
 ### Tests
 
-At minimum inspect/reconcile:
+At minimum reconcile:
 
-- DATA5 partition/leakage tests;
-- target role-freeze tests;
-- coverage/FEAS1/MVIDX/MVSEL2/REPAIR2/MVQUAL tests;
-- target-size study/flexible-fidelity/topology tests;
-- EVAL2 tests;
-- OPT-EVAL4 staged-evaluation tests;
-- campaign CLI/state/restart/preflight tests;
-- CV lifecycle/materialization tests;
-- configuration/default/digest tests;
-- performance/reference-equivalence tests where generalized kernels are changed.
+- DATA5 partition/CV/leakage;
+- target allocation/role freeze;
+- cross-domain leakage families;
+- coverage/FEAS1/MVIDX/MVSEL2/REPAIR2/MVQUAL;
+- target-size study/flexible-fidelity/topology;
+- EVAL2/OPT-EVAL4;
+- production checkpoint selection;
+- campaign CLI/state/restart/preflight;
+- CV lifecycle/materialization;
+- configuration/default/digest;
+- reference/performance tests for changed generalized kernels.
 
 ### Documentation
 
-Part 1 surfaces plus campaign examples, README/user guides, dependency graphs, current release/current architecture references, generated PDF/documentation inputs as required by repository policy.
+Part 1 surfaces plus README/user guides, campaign examples, dependency graphs, current architecture/release references, and generated PDFs required by repository policy.
 
-## Part 2 stage sequence and required acceptance
+## Part 2 gate sequence and required acceptance
 
-### Gate C-A - Power policy + role-allocation primitives
+Each executable material gate closes semantic/conformance plus focused tests and stage-local affected regression before dependent work proceeds.
 
-Implement canonical power configuration, configured-ceiling semantics, target role allocation record/policy, whole-correlation-unit disjointness, and early feasibility.
+### Gate C-A - Generation/power policy + allocation-equivalence primitives
 
-Focused tests:
+Implement new semantic generation, canonical power resolver, configured ceiling, global allocation-equivalence groups, split-safe feature contract and identity.
+
+Focused acceptance:
 
 - default/nondefault power resolution;
-- exact derived ladders;
-- invalid power combinations;
-- no hidden 16384 ceiling;
-- deterministic allocation;
-- unique/scarce training priority;
-- residual support guard;
-- whole-unit train/eval disjointness;
-- insufficient-capacity fail-closed behavior.
+- nonnegative/representable power validation;
+- exact derived ladders/rung pairs;
+- no hidden 16,384 scientific ceiling;
+- cross-domain geometry/correlation family closure;
+- split-safe feature allow/prohibit enforcement;
+- deterministic identities.
 
-Stage-local affected regression: configuration, partition/role, current state identity, target-data role freeze/leakage.
+Stage-local regression: config, partition/role/leakage/current-state identity.
 
-### Gate C-B - Training-chain domain reconciliation
+### Gate C-B - Training-priority allocation + CV reconstruction
 
-Route fitted preparation/FEAS1/MVIDX/MVSEL2/REPAIR2/MVQUAL through target-training-authorized domains and configured ladders.
+Implement cost-aware deterministic group order, residual guard, shortest feasible reserve and CV-from-training-only construction.
 
-Focused tests:
+Focused acceptance:
 
-- default ladder exact equivalence where semantics intentionally match old default training order on a fully training-authorized fixture;
-- nondefault smaller/larger power ladders;
-- one master order/nested prefixes;
+- unique/scarce support goes to training;
+- multiply-supported strata retain residual support when feasible;
+- variable-size group cost prevents redundant large-block preference under equal coverage;
+- whole-group disjointness;
+- shortest prefix satisfies M3 + every fold/final Nmax capacity;
+- evaluation residual absent before CV assignment;
+- insufficient capacity fails closed;
+- no post-hoc CV filtering path.
+
+Stage-local regression: DATA5/target roles/CV/leakage/preflight/state identity.
+
+### Gate C-C - Rich training chain reconciliation
+
+Route DATA6/7/FEAS/MVIDX/MVSEL2/REPAIR2/MVQUAL through training-authorized domains/configured ladders.
+
+Focused acceptance:
+
+- no residual UID/group in fitted target inputs;
+- one repaired order/nested prefixes;
+- default configured ladder matches intentionally preserved scientific selector behavior on bounded fixtures;
+- nondefault ladders work;
 - MVQUAL monotonicity and configured-prefix population;
-- no residual evaluation UID in training inputs;
-- CV/final training domain role exclusion.
+- final/fold Nmax capacity;
+- rich failure cannot mutate role allocation.
 
-Stage-local regression: all affected DATA6/7, coverage, selector, repair, MVQUAL, DATA7/8, CV domain tests.
+Stage-local regression: affected DATA6/7/8, coverage, selector, repair, qualification, CV/final domain consumers.
 
-### Gate C-C - Evaluation master order and nested ladder
+### Gate C-D - Frozen evaluation order + nested ladder
 
-Implement role-local residual evaluation coverage/order and M1/M2/M3 publication.
+Build one evaluation order per target label domain before candidate TRAIN2.
 
-Focused tests:
+Focused acceptance:
 
-- deterministic master order;
-- strict M1 subset M2 subset M3;
-- exact configured cardinalities;
-- all UIDs belong to residual role;
-- training unique support remains excluded;
-- diagnostic behavior when an evaluation stratum is unrepresentable;
-- evaluation-local rich features cannot mutate role allocation.
+- deterministic order/digest;
+- strict M1 subset M2 subset M3 and exact per-domain cardinalities;
+- all frames from residual role;
+- candidate-model prediction unavailable/forbidden as order input;
+- frozen foundation/label ordering cannot mutate allocation;
+- correlation/effective-sample diagnostics;
+- unrepresentable-stratum diagnostics;
+- no full-complement/temporal fallback.
 
-Stage-local regression: generalized coverage/index/selector primitives and evaluation role/materialization tests.
+Stage-local regression: generalized coverage/index/evaluation role/materialization.
 
-### Gate C-D - EVAL2 and target-size rung integration
+### Gate C-E - EVAL2, M3 checkpoint role and target-size orchestration
 
-Rebind real `select-target-size` orchestration to `(n1,M1)`, `(n2,M2)`, `(n3,M3)`.
-
-Acceptance boundary must exercise the real owner path:
+Exercise the real owner path:
 
 ```text
-resolved TOML/config
- -> current campaign state/reconciliation
- -> target role-allocation authority
- -> target-training study authority
- -> evaluation-ladder authority
+resolved config/current generation
+ -> outer roles
+ -> allocation-equivalence + training-priority allocation
+ -> CV-from-training-only plans
+ -> rich target-training study
+ -> frozen evaluation ladder
  -> select-target-size stage resolver
- -> TRAIN2 boundary continuation
- -> EVAL2 role resolution
- -> OPT-EVAL4 execution owner
- -> target-size reducer
- -> next-stage survivor authorization
- -> selected-size/configured-ceiling terminal state
+ -> TRAIN2 exact boundary continuation
+ -> EVAL2 stage-specific M role
+ -> OPT-EVAL4
+ -> reducer/survivor authorization
+ -> selected/configured-ceiling state
+ -> fresh final-development training
+ -> M3 final checkpoint selection
 ```
 
-Allowed doubles are below the owner boundary: expensive MACE numerical stepping/GPU inference may be bounded/faked after real runtime/evaluation role assembly. Do not patch/reimplement the stage resolver, role authority, reducer, or selected-size transition in tests intended to prove orchestration.
+Allowed doubles are below these owners: expensive MACE stepping/GPU inference may be bounded/faked after real runtime/evaluation assembly. Tests intended to prove orchestration must not patch/reimplement allocation, CV construction, rung resolution, reducer, or selected-size/checkpoint transitions.
 
 Required integration cases:
 
-1. default `[1,3,10]` + powers `7..14` + eval `[8,9,10]`;
-2. nondefault fidelity and nondefault evaluation powers;
-3. changed target `pmax`/`pmin`;
-4. configured-ceiling nonconvergence;
-5. insufficient residual M3 capacity;
-6. pre-reset workspace rejection;
-7. restart at each screen boundary preserves exact rung identity;
-8. no eliminated candidate receives later training/evaluation;
-9. no full-complement EVAL2 fallback executes.
+1. default `[1,3,10]`, target powers `7..14`, eval powers `[8,9,10]`;
+2. nondefault fidelity/evaluation powers;
+3. changed pmin/pmax;
+4. multiple target label domains verifying per-domain cardinality and unchanged metric aggregation;
+5. configured-ceiling nonconvergence;
+6. insufficient residual M3 capacity;
+7. insufficient fold Nmax capacity despite raw `Nmax+M3` frames;
+8. pre-reset workspace rejection;
+9. restart at every screen boundary preserves allocation/CV/M identities;
+10. eliminated candidate receives no later work;
+11. no full-complement fallback;
+12. M3 final checkpoint selection after N freeze;
+13. CV checkpoint monitors remain fold-local.
 
-Stage-local regression: target-size study, campaign CLI, scheduler, persistence/restart, EVAL2, OPT-EVAL4, DATA7/8 consumers.
+Stage-local regression: target-size study, CLI, scheduler, persistence/restart, EVAL2/OPT-EVAL4, checkpoint selection, DATA7/8 consumers.
 
-### Gate C-E - Destructive legacy cleanup
+### Gate C-F - Destructive cleanup
 
-After new assembled path passes, remove superseded code/tests/current terminology rather than keeping parallel implementations.
+Remove superseded code/tests/current terminology after new assembled path passes.
 
-Required structural checks:
+Structural checks:
 
-- no reachable current `FIXED_TARGET_SIZES`/fixed-ceiling authority;
-- no current `size_development_complement`/coarse-complement runtime role;
-- no obsolete target-size migration bridge/receipt reachable from current state loading;
-- no second target membership selector on the production path;
-- no stale eight-rung-only loop or static current tuple hidden outside the canonical resolver;
-- no deprecated compatibility alias in current config that would silently reinterpret old scientific semantics;
-- no current doc/spec claims the retired architecture.
+- no reachable fixed-size/fixed-ceiling authority;
+- no complement/coarse-complement target-size role;
+- no obsolete migration bridge/receipt reachable from current loading;
+- no TARGET-SIZE-V5 current semantic alias for the new generation;
+- no second current target-membership selector;
+- no stale eight-rung-only loop/static tuple outside canonical default derivation/examples;
+- no old config alias that silently changes scientific meaning;
+- no current doc/spec claims retired behavior.
 
-Run focused deletion/import/package tests plus stage-local affected regression after cleanup because deletion can expose hidden dependencies.
+Run focused import/package/deletion checks and affected regression after deletion.
 
-### Gate C-F - Final assembled acceptance
+### Gate C-G - Final assembled functional acceptance
 
-After all executable changes:
+After all executable edits:
 
-1. reconcile every frozen obligation against source/current documentation;
-2. re-derive the complete affected surface from the final diff and dependency/ownership graph;
+1. reconcile every frozen obligation against source/current docs;
+2. re-derive the complete affected surface from final diff/dependency graph;
 3. run the complete affected regression suite;
-4. run assembled integration through real target-size CLI/state owners with bounded numerical fakes only below accepted owner boundaries;
-5. run repository-required broader/full tests when impact cannot be confidently bounded;
-6. rebuild/check affected documentation/PDF outputs per repository policy;
+4. run assembled integration through real semantic owners with bounded expensive numerical doubles only below those owners;
+5. run repository-required broader/full tests if impact cannot be confidently bounded;
+6. rebuild/check affected documentation/PDF outputs;
 7. perform structural legacy-absence/authority-uniqueness inspection;
-8. run bounded deterministic performance/reference-equivalence checks for generalized selection/index paths;
-9. run retrospective scientific qualification described below on available representative historical/bounded evidence when feasible without a full target-machine production campaign.
+8. run bounded deterministic reference/performance checks for changed allocation/coverage/index/selector paths;
+9. package/execute scientific qualification below or explicitly record unavailable external evidence as deferred—not passed.
 
-Newly introduced or plausibly affected failures block closure. Pre-existing unrelated failures may be documented only after proving they are unrelated.
+New or plausibly affected failures block functional closure. Proven pre-existing unrelated failures may be attributed.
 
 ## Scientific qualification obligations
 
-Because this work changes evaluation sampling/population semantics, ordinary unit/regression tests are necessary but not sufficient to establish the scientific approximation.
+This architecture changes the sampling estimator/population used for target-size decisions. Functional tests cannot by themselves establish that `[256,512,1024]` preserves the intended decision.
 
-Use completed/bounded checkpoint evidence where available to compare the nested evaluation ladder against a larger residual reference/oracle population.
+### Required qualification harness and claims
 
-Qualification must assess the **target-size decision**, not demand that a 256-point metric numerically equal a full-residual metric.
+Provide a reproducible retrospective/oracle path that can use completed candidate checkpoints/predictions or a bounded representative run to compare M1/M2/M3 with the complete residual reference population `R` (or the largest practical authenticated reference when complete R is infeasible).
 
-Required claims:
+Qualification assesses decisions, not pointwise equality:
 
-1. M1 coarse screen does not falsely eliminate an eventual competitive/finalist size on qualification cases;
+1. M1 does not falsely eliminate an eventual competitive/reference-finalist size on qualified cases;
 2. M2 preserves the reference finalist population;
-3. M3 selects the same target size as the larger residual reference under the configured practical-equivalence/smaller-size rule;
-4. same-size nested coverage/support diagnostics improve monotonically where the metric mathematically implies monotonicity;
-5. M1/M2/M3 representative coverage is materially better than naive temporal/uniform same-cardinality baselines on declared important strata;
-6. training reserve retains/qualifies required rich training coverage after evaluation is carved out;
-7. correlation-unit leakage audit remains clean;
-8. deterministic rerun/restart/worker-count/cache realization preserves scientific identities/results;
-9. the assembled real target-size path consumes exact M_i at exact n_i;
-10. bounded timing/inference-count evidence confirms the expected reduction versus full-complement evaluation.
+3. M3 selects the same target size under the configured practical-equivalence/smaller-size rule;
+4. evaluation coverage/support improves monotonically where the metric mathematically implies monotonicity;
+5. M ladders cover declared conditions/events/features better than naive temporal/uniform same-cardinality baselines;
+6. training reserve still supports rich training/MVQUAL after carve-out;
+7. allocation/evaluation/CV leakage audit is clean;
+8. rerun/restart/worker/cache realization preserves scientific identities/results;
+9. real assembled target-size path consumes exact M_i at exact n_i;
+10. timing/inference evidence confirms material reduction versus full-complement evaluation.
 
-If `[256,512,1024]` fails decision preservation, revise the affected evaluation powers/cardinalities explicitly and requalify. Do not silently expand evaluation at runtime.
+Policy tuning/qualification must not use held-out CV/locked evidence. If M powers are changed based on qualification, that creates a new policy identity and invalidates target-size evidence produced under the old M ladder.
 
-Full long real-data GPU/resource production qualification remains separate and deferred to the established final GPU/release qualification process. CPU/bounded functional tests cannot claim GPU qualification.
+### Qualification closure semantics
+
+- Representative decision-preservation evidence is required before declaring the new default M ladder scientifically qualified for production use.
+- If the development environment lacks the historical checkpoints/data/hardware needed for representative qualification, implementation may be functionally complete but the qualification is **deferred/unavailable**, not passed.
+- The final report must distinguish functional acceptance, scientific sampling-policy qualification, and target-machine/GPU performance qualification.
+- Full long real-data GPU/resource qualification remains deferred to the established final GPU/release phase; CPU/bounded functional tests cannot claim it.
+- If default `[256,512,1024]` fails decision preservation, explicitly revise the affected powers and requalify. Never silently expand M at runtime.
 
 ## Anti-shortcut and cleanup constraints
 
-The following are explicitly forbidden:
+Explicitly forbidden:
 
-- retaining the old complement evaluator behind a fallback flag;
-- accepting both fixed-size tuples and power-based policy as equal current authorities;
-- silently mapping legacy config keys to materially new semantics in this destructive generation;
-- creating a compatibility migration solely so old campaign state continues;
-- running the full rich training selector over the future evaluation role before allocation freezes;
-- using held-out CV to choose the target size;
-- treating one arbitrary frame per DATA5 block as proven IID without a defined/statistically justified policy;
-- satisfying tests by weakening MVQUAL, evaluation-ladder disjointness, configured cardinalities, or practical-equivalence rules;
-- implementing evaluation M1/M2/M3 as independently sampled datasets;
-- copying current multi-view code into parallel train/eval implementations when one generalized mathematical kernel suffices;
-- preserving dead selector/repair/migration code because archived tests reference it; update/delete obsolete tests instead;
-- adding a new target role while leaving `size_development` as an equally authoritative current role;
-- letting execution worker counts, batch sizes, cache state, RAM/VRAM admission, or parallel scheduling alter scientific membership/order.
+- build CV from the whole outer development pool and filter residual evaluation units afterward;
+- split one leakage-equivalence/allocation group across train/evaluation, including across label domains;
+- use direct continuous target-label values, candidate errors, or role-fitted residuals to rank pre-role allocation contrary to the split-safe contract;
+- adapt allocation after FEAS1/MVQUAL/TRAIN2/EVAL2 reveals a difficult case;
+- choose/reorder M1/M2/M3 using candidate-model predictions or survivor outcomes;
+- retain old complement evaluator behind fallback/config flag;
+- accept fixed-size tuples and exponent policy as equal current authorities;
+- silently map legacy config keys to materially new semantics;
+- migrate old derived campaign state solely for compatibility;
+- use held-out CV to choose target size or final checkpoint;
+- claim configuration count equals independent-sample count;
+- weaken MVQUAL, disjointness, configured cardinalities, practical-equivalence, or exact boundary rules to satisfy tests;
+- independently resample M1/M2/M3;
+- copy full multi-view implementations into parallel train/eval/allocation code when mathematical primitives can be shared;
+- preserve dead selector/repair/migration code because archived tests reference it;
+- leave `size_development` or TARGET-SIZE-V5 as an equally authoritative current semantic path;
+- let worker/batch/cache/RAM/VRAM/scheduling choices alter scientific membership/order;
+- merge/release Part 1 future-state docs alone while main executable behavior still implements the retired architecture;
+- report unavailable scientific qualification as a pass.
 
 ## Handoff closure
 
-This plan intentionally changes current architecture documented at reviewed head `6f0d34366ca954eabe21740ddda96357afc12eb1`, where the target-size population is fixed at eight powers through 16384 and EVAL2 still exposes `size_development_complement` behavior.
-
-The handoff is closed as follows:
+Reviewed-head current behavior includes a fixed eight-size ladder through 16,384, CV plans built from all outer development units, and target-size/final-development EVAL2 complement roles. This plan intentionally replaces those population/role semantics while preserving nonconflicting exact-boundary continuation and fresh production doctrine.
 
 ```text
-stakeholder requirement:
-  training coverage priority + bounded nested evaluation + configurable base-2 ladders
+stakeholder requirements:
+  training coverage priority
+  + bounded nested evaluation
+  + configurable base-2 target/evaluation ladders
+  + documentation first
+  + destructive cleanup/no compatibility accretion
 
 protected concerns:
-  scientific role separation, correlation leakage, exact screening,
-  rich training coverage, representative evaluation, clean single generation
+  statistical role separation
+  correlation/equivalence leakage
+  exact screening continuation
+  rich target-training coverage
+  representative nonadaptive evaluation
+  clean one-generation ownership
 
 accepted architecture:
-  pre-role training-priority correlation-unit carve-out
-  -> rich training order inside reserve
-  -> residual evaluation reference/order
+  outer roles
+  -> global allocation-equivalence closure
+  -> split-safe cost-aware training-priority allocation
+  -> shortest reserve satisfying residual M3 + CV/final Nmax capacity
+  -> CV built from training-authorized units only
+  -> rich training order/qualification inside reserve
+  -> frozen residual per-domain evaluation order before candidate TRAIN2
   -> nested M1/M2/M3 paired with n1/n2/n3
-  -> configured power-of-two target ladder
+  -> configured exponent target ladder
+  -> selected N
+  -> fresh production with M3 final-development checkpoint selection
 
 known cross-module consequences:
-  DATA5/role freeze/CV -> coverage/MVIDX/select/repair/MVQUAL
-  -> target-size policy/state -> EVAL2/OPT-EVAL4 -> CLI/restart/config/docs/tests
-
-implementation obligations:
-  Parts 1 and 2 / Gates D1-D5 + C-A-C-F
+  DATA4/DATA5/leakage/role allocation/CV
+  -> DATA6/7 coverage/MVIDX/MVSEL2/REPAIR2/MVQUAL
+  -> target-size policy/state/EVAL2/OPT-EVAL4/checkpoint selection
+  -> CLI/restart/config/docs/tests/cleanup
 
 acceptance:
-  documentation authority reset + structural legacy deletion
-  + stage-local affected regression
+  Part 1 coherent future docs on branch
+  + Part 2 stage-local semantic/functional closure
   + final affected regression/integration
-  + bounded scientific decision-preservation qualification
+  + structural legacy absence/authority uniqueness
+  + explicit scientific sampling qualification status
 ```
 
-No material discussed design decision is intentionally delegated back to implementation discovery. Implementation may refine local mechanics, but any material change to the frozen training-priority role boundary, evaluation-ladder semantics, power-based target universe, or destructive compatibility policy requires a bounded Software Design reopen.
+No material reviewed design decision is intentionally delegated back to implementation discovery. A material change to allocation-before-CV ordering, cross-domain equivalence closure, split-safe feature policy, target/evaluation role boundary, nonadaptive M ladder, per-domain cardinality, M3 lifecycle, power-based target universe, or destructive compatibility policy requires a bounded Software Design reopen.
