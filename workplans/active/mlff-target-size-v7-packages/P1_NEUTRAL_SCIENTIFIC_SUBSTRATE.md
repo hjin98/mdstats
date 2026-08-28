@@ -4,9 +4,9 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P1
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 sequence: 1
 status: active
-package_revision: 6
+package_revision: 7
 amended_date: 2026-08-28
-rework_reason: Independent review after P1A4 confirmed the assembled canonical-frame builder repair but found remaining authority bypasses and restart gaps: the exported direct canonical-identity builder can still mint authoritative label identity from missing labels; canonical record/identity persistence does not enforce label/fingerprint atomicity or deterministic fingerprint coherence; SourceRecord deserialization can lose an authoritative quality outcome; direct VASP canonical rebuild cannot replay explicit manifest companion-file bindings; and mandatory P1-E3 real-owner cases remain incomplete.
+rework_reason: Independent review after P1A5 confirmed the revision-6 canonical persistence, quality-pair, companion replay, ensemble-certificate, and expanded P1-E3 repairs, but found four remaining closure blockers: duplicated required-label authority logic still diverges for optional-energy semantics; source-record.v2 still silently defaults omitted authoritative fields; SourceAuthority construction can omit or mis-associate manifest companion truth; and direct VASP rebuild does not verify persisted selected-energy units/semantic role against the reparsed authoritative channel.
 ---
 
 # P1 — Neutral scientific substrate
@@ -17,22 +17,23 @@ Establish the current-generation **scientific identity substrate** without chang
 
 The parent V7 workplan remains the generation-level authority, but **durable product code and persisted schema names introduced by P1 are version-agnostic**. The new substrate remains internal/unreachable from the current target-size runtime until P4.
 
-P1 revision 6 preserves all scientifically valid P1A4 work: version-agnostic naming; compatibility-neutral source identity; actual source composition/ensemble/quality facts; canonical construction from real normalized arrays; required-label gating in the assembled frame authority; physical-versus-labeled frame distinction; geometry-versus-labeled duplicate separation; generic provider dispatch with provider-owned LTA rebinding; durable typed-profile restart; removal of the invalid DATA3 adapter; source-control checking; and preserved bounded per-run parallelism.
+P1 revision 7 preserves all scientifically valid P1A5 work: version-agnostic naming; compatibility-neutral source identity; actual source composition/ensemble/quality facts; canonical construction from real normalized arrays; assembled required-label gating; physical-versus-labeled frame distinction; geometry-versus-labeled duplicate separation; constructor/deserializer coherence for canonical label/fingerprint pairs; `mdstats.source-record.v2`; coherent quality status/outcome validation; explicit companion-file persistence and replay; source-control and ensemble-certificate verification; expanded real-owner P1-E3 coverage; generic provider dispatch with provider-owned LTA rebinding; durable typed-profile restart; invalid DATA3-adapter removal; and preserved bounded per-run parallelism.
 
-Revision 6 is a **narrow closure amendment**. It does not reopen the P1 architecture. It closes every remaining path by which current-generation authoritative label/source state can be created or reconstructed without satisfying the same scientific invariants enforced by the assembled owner, and completes the real-owner acceptance evidence required to freeze P1.
+Revision 7 is a **final narrow closure amendment**. It does not reopen P1 architecture. It freezes the exact P1A6 repair strategy for the four remaining authority/integrity defects so implementation does not have to rediscover ownership or choose among semantically weaker alternatives.
 
-P1 remains active until the complete current-generation owner chain closes through real numerical frame data, compatibility-neutral source facts, uniform required-label authority across every authoritative constructor, coherent persistence/restart reconstruction, replayable source/control bindings, provider-owned typed profile rebinding, and affected regression/integration evidence.
+P1 remains active until the complete current-generation owner chain closes through real numerical frame data, compatibility-neutral source facts, one shared required-label authority mechanism, structurally strict source persistence, verified manifest-to-source companion binding, exact source/control/energy interpretation replay, provider-owned typed profile rebinding, and affected regression/integration evidence.
 
 ## Protected concerns
 
 P1 protects the following product outcomes simultaneously:
 
 - canonical training identity represents the actual numerical labels and semantic/unit/convention information required to interpret them;
-- **every authoritative constructor, record, identity object, deserializer and assembled owner obeys the same required-label authority rule**; no secondary helper/export may bypass it;
+- **every authoritative constructor, record, identity object, deserializer and assembled owner obeys the same required-label authority rule**; no secondary helper/export may bypass or independently reinterpret it;
 - physical/source/geometry frame identity may remain available for diagnostics/statistics when scientifically needed, but authoritative canonical label and labeled-configuration identity is never granted before the configured required-label contract is satisfied;
 - authoritative label digest and labeled-configuration fingerprint are an internally coherent pair and cannot be independently absent, forged or inconsistent;
 - compatibility-neutral source facts needed by downstream scientific algorithms are not lost when moving away from legacy DATA2 identity;
-- durable source reconstruction preserves complete source-quality state and the exact source/control/companion-file interpretation that produced authoritative source facts rather than silently synthesizing, dropping or reparsing material facts;
+- durable source reconstruction preserves complete source-quality state and the exact source/control/companion-file/energy-channel interpretation that produced authoritative source facts rather than silently synthesizing, dropping or reparsing material facts;
+- source authority cannot be constructed with companion locator truth that is absent, unverified, or associated with a different manifest than the DATA2 catalog being converted;
 - provenance heterogeneity is recorded precisely but is not a generic target-training eligibility, identity or partition axis;
 - advisory compatibility policy/group assignment cannot change scientific source/frame/feature/statistical identity;
 - unresolved or partial electronic provenance can proceed through the **assembled** current-generation path when required numerical labels are usable;
@@ -57,10 +58,11 @@ The semantic package `mdstats.training_data.neutral_substrate` and version-agnos
 The accepted scientific chain is:
 
 ```text
-source files / manifest / explicit companion bindings
+source files / verified manifest / explicit companion bindings
   -> existing parser/cache/control machinery
   -> normalized per-frame arrays + precise compatibility-neutral source facts/provenance/control binding
   -> SourceAuthority
+  -> one shared required-label authority mechanism
   -> CanonicalFrameAuthority
   -> NeutralFeatureEvidence
        -> provider-owned typed material-profile rebinding
@@ -79,9 +81,9 @@ The canonical label identity for each frame binds, as configured and applicable:
 - energy units and normalization;
 - entropy/free-energy convention;
 - derivative/stress convention identity;
-- actual canonical energy value;
-- actual canonical force array;
-- actual canonical stress array;
+- actual canonical energy value when supplied/required;
+- actual canonical force array when supplied/required;
+- actual canonical stress array when supplied/required;
 - label-fingerprint policy/tolerances.
 
 The configured required-label contract is resolved before **authoritative** label identity is granted. The rule applies uniformly to:
@@ -97,14 +99,40 @@ It is forbidden to obtain authoritative canonical label identity by:
 
 - replacing a configured-required numerical value with `None`;
 - hashing a missing required value because a lower-level digest helper can encode `None`;
+- treating an optional absent property as required merely because a second authority implementation drifted from the assembled owner;
 - copying a legacy `label_payload_digest`;
 - hashing only presence booleans/metadata;
 - constructing a labeled fingerprint without a valid authoritative label digest;
-- invoking a secondary identity constructor that does not know or enforce the required-label representation.
+- invoking a secondary identity constructor that does not use the same required-label authority evaluator as the assembled owner.
 
-A low-level canonical payload digest helper may remain representation-neutral and permit optional absent values if that is useful. Such a helper is **not itself an authority decision**. Any function returning an authoritative current-generation frame/label identity must either enforce the configured required-label contract itself through the shared authority mechanism or be removed/reclassified as non-authoritative.
+A low-level canonical payload digest helper may remain representation-neutral and permit optional absent values if that is useful. Such a helper is **not itself an authority decision**.
 
-Prefer one shared internal required-label validation/authority operation used by every authoritative constructor rather than duplicate policy logic. If `build_canonical_frame_identity()` has no genuine supported owner, removal from the authoritative package surface is lower complexity than maintaining a second authority path.
+**Exact P1A6 implementation consequence:** required-label numerical validity must have one semantic owner. Extend `mdstats.training_data.eligibility` with one pure version-agnostic evaluator (exact name delegated; e.g. `evaluate_required_label_contract`) that accepts the active `FrameEligibilityPolicy`, atom count, energy, forces and stress and returns a deterministic result containing at minimum whether the configured label contract is satisfied plus the same label-specific reason/warning semantics used by `assess_frame_eligibility`. `assess_frame_eligibility()` must call that evaluator rather than maintaining its own independent E/F/stress validation. Both `_build_canonical_frame_records_for_run()` and retained `build_canonical_frame_identity()` must call the same evaluator and may grant canonical label/labeled identity **iff** that evaluator says the configured label contract is satisfied.
+
+The shared evaluator owns only numerical label-contract validity. Source quality, SCF state, cell/geometry validity and other whole-frame eligibility remain owned by `assess_frame_eligibility()` and must not be accidentally promoted into the narrower label-authority predicate.
+
+For optional properties the evaluator semantics are frozen:
+
+```text
+require_energy=False + energy=None
+    -> energy dimension satisfies required-label contract
+
+require_forces=False + forces=None
+    -> force dimension satisfies required-label contract
+
+stress_requirement=OPTIONAL + stress=None
+    -> stress dimension satisfies required-label contract
+
+stress_requirement=REQUIRED + stress=None
+    -> required-label contract fails
+
+stress_requirement=FORBIDDEN + stress is not None
+    -> required-label contract fails
+```
+
+Any supplied label value still must be shape-valid, finite and canonicalizable even when the property is optional.
+
+If repository evidence shows `build_canonical_frame_identity()` has no genuine supported current-generation owner, removing/reclassifying it remains acceptable and lower complexity. If it remains authoritative/exported, duplicated handwritten authority predicates are no longer delegated: it must consume the shared evaluator.
 
 ### 4. Physical frame identity and labeled identity remain distinct
 
@@ -112,7 +140,7 @@ A frame may possess source-occurrence and geometry identity when a required labe
 
 However:
 
-- authoritative canonical label identity exists only after the configured required-label set is proven present, shape-valid, finite and canonicalizable;
+- authoritative canonical label identity exists only after the configured required-label set is proven present where required, shape-valid, finite and canonicalizable;
 - authoritative labeled-configuration identity exists if and only if authoritative canonical label identity exists;
 - geometry-duplicate reasoning may include physical frames independently of label validity;
 - labeled-duplicate reasoning must not treat a frame lacking authoritative canonical label identity as a valid labeled configuration;
@@ -143,6 +171,8 @@ A payload with only one member of the pair, or a labeled fingerprint that does n
 
 Round-trip persistence must preserve physical-only frames and authoritative labeled frames without allowing contradictory combinations to enter the current owner graph.
 
+The P1A5 implementation of this invariant is accepted and should not be redesigned during P1A6 unless a direct regression demonstrates a defect.
+
 ### 6. Current-generation frame construction does not require `label_domain_id`
 
 No current-generation source/frame builder may require resolved compatibility-domain assignment in order to construct canonical frames. The new canonical-frame path must not require legacy DATA3 to run first merely because legacy DATA3 requires `label_domain_id`.
@@ -162,7 +192,7 @@ Removing compatibility-domain authority must not discard independent scientific 
 - precise electronic-structure provenance;
 - source-control / control-bundle interpretation identity sufficient to prove that a later direct-source rebuild uses the same authoritative control semantics that produced the source record;
 - ensemble-certificate or equivalent control-interpretation binding where that certificate owns the authoritative ensemble fact;
-- source/manifest locator facts needed to replay the exact explicitly bound companion-file roles that materially participate in source/control identity;
+- exact source/manifest locator facts needed to replay explicitly bound companion-file roles that materially participate in source/control identity;
 - reference/replica/assertion facts used by current downstream algorithms;
 - timestep or equivalent temporal source fact wherever the current statistical path requires it.
 
@@ -174,46 +204,124 @@ Do not reconstruct authoritative ensemble or quality state from generic assertio
 
 P1 current-generation persistence remains unpublished/provisional. Therefore current source-record deserialization must not fabricate **or silently drop** authoritative scientific facts.
 
-For the current source-record schema:
+`mdstats.source-record.v2` remains the accepted current schema. The schema identifier need not bump again for P1A6 because the v2 implementation is not yet accepted/frozen; instead make the v2 decoder actually satisfy its frozen contract.
 
-- every scientific field emitted by `to_dict()` that belongs to authoritative source state must be structurally present on decode, even when its legitimate value is explicit `null`, empty tuple, or equivalent;
-- `quality_assessment_status` and `quality_outcome` must be decoded as a coherent pair according to the established source-quality vocabulary; an omitted outcome must not silently become `None` and make a completed/unqualified source permissive;
-- missing composition, ensemble, source quality, source-control digest, ensemble-certificate digest, or required companion/control replay facts must fail explicitly;
-- no fallback such as reconstructed formula strings, `"unknown"`, `"not_requested"`, synthetic quality values, or guessed companion paths may return a current `SourceAuthority`.
+**Exact P1A6 implementation consequence:** every field emitted by `SourceRecord._payload()` that represents current authoritative source state must be structurally required by `SourceRecord.from_dict()`. The required set is therefore:
 
-Because the unpublished `mdstats.source-record.v1` identifier has already represented materially different provisional shapes, the current-generation source-record schema must move to a new ordinary version (for example `mdstats.source-record.v2`) rather than giving one schema identifier incompatible authority contracts. No architecture-generation prefix is permitted. The old provisional shape need not be migrated unless repository evidence demonstrates a genuine persisted consumer; if migration is required, it must recover/prove the actual facts and must not invent them.
+```text
+run_id
+source_locator
+source_identity_signature
+source_control_digest
+ensemble_certificate_digest
+frame_count
+composition
+selected_energy_channel
+selected_energy_units
+selected_energy_semantic_role
+electronic_structure
+ensemble
+quality_assessment_status
+quality_outcome
+timestep_fs
+replica_id
+reference_group
+reference_run_id
+assertions
+companion_files
+target_usable
+mechanical_rejection_codes
+```
+
+A legitimate nullable/empty value is represented by a **present key** whose value is `null`, `{}`, or `[]` as appropriate. An absent key is not equivalent.
+
+After required-key validation:
+
+- `assertions` must be a mapping;
+- `companion_files` must be a mapping in current v2 serialization; do not accept a sequence fallback unless a demonstrated supported v2 producer requires it;
+- `mechanical_rejection_codes` must be a sequence of codes, not an omitted/defaulted field;
+- quality status/outcome coherence already implemented in P1A5 remains required;
+- content-digest verification remains required;
+- old v1 continues to fail explicitly.
+
+Do not use `payload.get(..., default)` for any authoritative v2 field. `.get()` is acceptable only after structural presence has already been established and only to decode an explicit `None` cleanly.
 
 Outer source-authority schema versioning may remain unchanged if its decoder unambiguously rejects obsolete nested source-record state and no semantic ambiguity remains; bump it only if implementation evidence shows that is required.
 
-### 9. Direct-source canonical rebuild must replay exact companion/control bindings
+### 9. SourceAuthority construction and direct-source rebuild must bind one verified manifest/source/control/energy interpretation
 
-When `build_vasp_canonical_frame_authority()` or another direct-source current-generation builder reopens a source represented by persisted `SourceAuthority`, it must reproduce the same source/control interpretation that produced that source authority.
+When `build_vasp_canonical_frame_authority()` or another direct-source current-generation builder reopens a source represented by persisted `SourceAuthority`, it must reproduce the same source/control/energy interpretation that produced that source authority.
 
 It must verify at least:
 
 - immutable primary source identity;
 - relevant source-control/control-semantics binding;
-- explicitly bound companion-file role -> locator/identity mapping that participated in the source/control bundle;
-- selected energy-channel interpretation used by the source authority.
+- explicitly bound companion-file role -> locator mapping that participated in the source/control bundle;
+- ensemble-certificate interpretation;
+- selected energy-channel name, units and semantic role used by the source authority.
 
 The currently supported `TrainingDataRunSpec.companion_files` model is part of the accepted source surface. A source that was validly ingested with explicit companion bindings must be able to traverse the direct current-generation canonical rebuild without being spuriously rejected merely because the rebuild dropped those bindings.
 
-Implementation may satisfy this by either:
+#### 9.1 Exact P1A6 SourceAuthority-construction strategy
 
-- retaining sufficient companion role/locator binding information in current-generation source authority; or
-- requiring a verified manifest/run-spec input at direct rebuild and checking it against the persisted manifest/source authority before reparsing.
+Do **not** expand legacy `TrainingDataSource`/DATA2 persistence merely to carry P1 companion locators. The minimum-complexity accepted endpoint is to make the originating `TrainingDataManifest` a required authority input when converting a `TrainingDataSourceCatalog` into current-generation `SourceAuthority`.
 
-Whichever realization is chosen, the real accepted behavior is:
+`build_source_authority_from_data2_catalog()` must therefore require a concrete `TrainingDataManifest` (or an equivalently typed verified manifest owner) rather than treating `manifest=None` as authoritative. Before constructing any `SourceRecord`, it must verify:
+
+1. `manifest.content_digest == catalog.manifest_digest`;
+2. `manifest.dataset_id == catalog.dataset_id`;
+3. manifest run IDs equal catalog source run IDs exactly — no missing, extra or duplicate association;
+4. for every run ID, `run.vasprun == catalog.source(run_id).source_locator` under the same locator representation already used by DATA2; do not silently normalize a materially different locator into equality;
+5. companion bindings persisted into the `SourceRecord` come only from that verified run spec.
+
+After these checks, pass each run's exact sorted `companion_files` to `source_record_from_data2()`.
+
+Remove or reject the current ambiguous route where `manifest` is absent and `companion_files_by_run` defaults to `{}`. Also remove/reject a caller-supplied companion mapping as an independent authority source unless implementation can prove it is derived from the same verified manifest; a free-form mapping whose association cannot be checked against `catalog.manifest_digest` is not sufficient current authority.
+
+This intentionally makes all P1 callers — including fixtures with zero companions — pass the originating manifest. An explicit empty companion map from a verified run spec is scientifically different from “companion context was unavailable.” P1 is unpublished scaffolding, so updating these internal callers is preferred over retaining an unsafe optional path.
+
+`build_source_authority()` may remain as a lower-level constructor only if its authority contract is made explicit and it cannot be mistaken for a catalog-to-authority conversion that has verified manifest association. If retained for focused tests/internal composition, callers that provide companion bindings directly own that low-level input; P1-E1/E4 acceptance must use the verified catalog+manifest owner path.
+
+#### 9.2 Exact P1A6 direct-rebuild strategy
+
+`build_vasp_canonical_frame_authority()` must continue to:
+
+- resolve `source.source_locator` and every persisted `source.companion_files` role;
+- call `read_vasp_run_controls(path, companion_files=...)`;
+- require reparsed `bundle.source_identity.signature == source.source_identity_signature`;
+- require reparsed `bundle.signature == source.source_control_digest`;
+- require regenerated ensemble certificate signature equals `source.ensemble_certificate_digest`.
+
+After resolving `channel = bundle.energy_catalog.channel(source.selected_energy_channel)`, direct rebuild must additionally require:
 
 ```text
-same source + same explicit companion bindings + same control semantics
-    -> direct rebuild succeeds and reproduces the source/control identity
-
-same primary source but changed/missing/rebound material companion/control semantics
-    -> direct rebuild rejects
+channel.source_name == source.selected_energy_channel
+channel.units == source.selected_energy_units
+channel.semantic_role == source.selected_energy_semantic_role
 ```
 
-Do not guess standard filenames for an explicitly overridden companion binding. Do not weaken the source-control signature check to make companion-bound sources pass.
+before `channel.as_array()` enters `FrameData` or any canonical digest is produced. A mismatch must raise `TrainingDataInputError` with a source/run-specific message and must not be repaired by changing persisted SourceRecord semantics or by trusting whichever side is more convenient.
+
+If canonical normalization later introduces an explicit conversion layer, the comparison may be performed against the canonicalized interpretation owned by that layer, but P1A6 must not invent such a conversion to avoid the direct equality check. Current DATA2 VASP energy channels are already expressed in the expected current units/roles.
+
+The accepted behavior is:
+
+```text
+same verified manifest + same source + same explicit companion bindings
++ same control/ensemble + same selected-energy interpretation
+    -> SourceAuthority/direct rebuild succeeds
+
+foreign or mismatched manifest association
+    -> SourceAuthority construction rejects
+
+same primary source but changed/missing/rebound companion/control semantics
+    -> direct rebuild rejects
+
+same source/control bundle but persisted selected-energy units/semantic role drift
+    -> direct rebuild rejects before canonical label hashing
+```
+
+Do not guess standard filenames for an explicitly overridden companion binding. Do not weaken source-control, ensemble-certificate, or selected-energy checks to make a fixture pass.
 
 ### 10. Reuse normalized frame/parsing and established DATA3 algorithms without semantic or parallelization drift
 
@@ -238,7 +346,7 @@ No production-scale performance qualification is required in P1; preservation is
 
 ### 11. Source authority remains compatibility-policy neutral
 
-`SourceAuthority.content_digest`, source membership eligible for canonical-frame construction, corpus atomic-reference identifiability and downstream scientific lineage exclude:
+`SourceAuthority.content_digest`, source membership eligible for canonical-frame construction, corpus/current-operation atomic-reference identifiability and downstream scientific lineage exclude:
 
 - `label_domain_id`;
 - compatibility-group assignment;
@@ -250,15 +358,16 @@ Advisory compatibility reports may still be serialized and inspected, but only a
 
 ### 12. Required-label validity is frame-aware and precedes label authority
 
-Source-level aggregate label counts are insufficient to authorize every frame. The current-generation required-label authority mechanism inspects the actual configured numerical values.
+Source-level aggregate label counts are insufficient to authorize every frame. The shared current-generation required-label authority mechanism inspects the actual configured numerical values.
 
 - required properties are present for each affected frame when required by the configured training representation;
 - supplied values have valid shape, are finite and canonicalizable;
 - optional properties may be absent when the configured operation does not require them;
 - supplied `NaN`, `+inf` and `-inf` cannot receive canonical scientific identity;
 - missing configured-required energy, forces, or required stress cannot receive authoritative canonical label/labeled-configuration identity merely because a digest helper can encode `None`;
+- optional missing energy/forces/stress do not become false negatives merely because a secondary builder independently encoded stricter semantics;
 - explicit user filters and demonstrated mechanical training-engine constraints remain valid hard exclusions;
-- actual source quality assessment remains part of established eligibility semantics;
+- actual source quality assessment remains part of established full-frame eligibility semantics but is not itself a numerical label-presence predicate;
 - provenance heterogeneity alone is not a hard exclusion.
 
 ### 13. Neutral DATA4 reuse is scientific-evidence rebind, not identity laundering
@@ -313,12 +422,15 @@ Isolation is not permission for the new substrate itself to depend scientificall
 
 The following are authoritative and must not be reinterpreted away:
 
-- one uniform required-label authority rule across all authoritative frame/identity constructors and persistence paths;
+- one shared required-label numerical authority evaluator across `assess_frame_eligibility`, assembled canonical frame construction, and every retained direct authoritative identity constructor;
+- optional-energy/optional-force/optional-stress absence semantics exactly match the active `FrameEligibilityPolicy` and cannot diverge by constructor;
 - physical/source/geometry identity is distinct from authoritative label/labeled identity;
 - canonical label digest and labeled fingerprint form an atomic, deterministic pair;
-- source persistence is structurally strict and preserves coherent quality status/outcome;
-- current source-record schema must advance beyond the ambiguous provisional `mdstats.source-record.v1` shape;
-- direct-source canonical rebuild must replay/verify explicit companion-file bindings and control interpretation rather than dropping them or weakening verification;
+- `mdstats.source-record.v2` is structurally strict across every authoritative field emitted by its current payload;
+- source persistence preserves coherent quality status/outcome and explicit null/empty state without interpreting omitted keys as legitimate emptiness;
+- catalog-to-`SourceAuthority` conversion uses the verified originating manifest; unverified/free-form companion mappings are not an equivalent authority source;
+- manifest digest, dataset ID, exact run membership and run primary locator association are checked before companion truth is accepted;
+- direct-source canonical rebuild replays/validates explicit companion bindings, source-control identity, ensemble certificate, and selected-energy channel name/units/semantic role;
 - compatibility-neutral but scientifically complete source facts;
 - real source composition/ensemble/quality semantics in reused algorithms;
 - provider-owned material-profile rebinding behind a material-agnostic neutral-core contract;
@@ -332,19 +444,21 @@ The following are authoritative and must not be reinterpreted away:
 
 Implementation may choose:
 
-- exact helper/file decomposition;
-- whether to remove the direct `build_canonical_frame_identity()` authority surface or route it through one shared required-label authority helper;
+- exact name and return representation of the shared required-label evaluator, provided there is one semantic implementation and all required owners consume it;
+- exact helper/file decomposition around that evaluator;
+- whether to remove the direct `build_canonical_frame_identity()` authority surface or route it through the shared evaluator;
 - exact internal representation distinguishing physical-frame identity from authoritative label/labeled identity;
 - exact constructor validation placement provided contradictory label/fingerprint state cannot exist;
-- exact companion replay realization: persist role/locator bindings in current source authority or require/verify manifest/run-spec input at direct rebuild;
-- whether outer `SourceAuthority` schema must bump in addition to the required source-record schema bump;
+- exact error-message wording for strict source-persistence, manifest-association and selected-energy mismatch failures, provided failures are explicit and source-specific where applicable;
+- whether lower-level `build_source_authority()` remains available for focused/internal use, provided P1 real-owner conversion uses the verified manifest path and no lower-level shortcut is accepted as proof of manifest association;
+- whether outer `SourceAuthority` schema must bump; no bump is required merely because v2 implementation is being completed before acceptance;
 - shared legacy/canonical per-run kernel versus another semantically equivalent reuse structure;
 - the small provider rebind dispatch/protocol API and adapter placement;
 - typed profile persistence mechanism, provided it is durable and single-authority;
 - cache/local data layout and internal performance mechanics;
 - exact semantic class/function names, provided durable names stay version-agnostic.
 
-Choose the minimum product complexity satisfying the frozen scientific contract. Avoid a second parser, duplicate required-label policy implementations, speculative generalized plugin machinery, guessed companion paths, or compatibility machinery for unpublished provisional state without a demonstrated consumer.
+Choose the minimum product complexity satisfying the frozen scientific contract. Avoid a second parser, duplicate required-label policy implementations, speculative generalized plugin machinery, guessed companion paths, free-form unverified companion authority, or compatibility machinery for unpublished provisional state without a demonstrated consumer.
 
 ### Reopen only on evidence
 
@@ -352,34 +466,144 @@ Reopen only the affected design surface if repository evidence shows one of the 
 
 - normalized frame arrays cannot represent a required training label/convention without loss;
 - an established downstream non-label consumer fundamentally cannot operate with the physical-versus-labeled distinction;
-- a real supported current-generation consumer requires a direct authoritative identity builder whose required-label contract cannot be derived from the same policy used by `CanonicalFrameAuthority`;
-- a compatibility-neutral source fact or companion/control binding required by direct rebuild cannot be represented without importing retired compatibility authority;
+- a real supported current-generation consumer requires a direct authoritative identity builder whose required-label contract cannot consume the shared policy evaluator;
+- a real P1 caller cannot provide the originating `TrainingDataManifest`, and the catalog can independently prove exact companion role/locator association without extending or importing retired compatibility authority;
+- selected-energy units/semantic role require a real normalization/conversion owner rather than direct equality, with repository evidence demonstrating such a supported path;
 - a genuine supported migration consumer requires old provisional P1 source persistence and the missing scientific facts can be independently recovered/proven;
 - an existing material-profile provider has an unavoidable scientific dependency on retired compatibility identity rather than merely stale lineage fields.
 
-Do not silently carry legacy identity forward, weaken verification, or synthesize missing scientific facts in lieu of reopening.
+Do not silently carry legacy identity forward, weaken verification, synthesize missing scientific facts, or make unverified caller input authoritative in lieu of reopening.
 
 ## Entry conditions
 
-- Implementation branch is reconciled with P1 revision 6.
-- Preserve already-valid P1A4 work: assembled required-label gating; physical/labeled frame distinction; geometry/labeled duplicate split; source composition/ensemble/quality owner propagation; generic profile provider dispatch; typed LTA canonical rebinding/restart; invalid DATA3-adapter removal; compatibility-policy invariance; source-control signature checking; preserved per-run parallel construction; naming; and runtime isolation.
-- Treat only the following as active P1A5 rework surfaces unless implementation evidence broadens impact:
-  1. all authoritative identity-construction paths;
-  2. canonical identity/record constructor + deserializer invariants;
-  3. source-record quality/persistence schema strictness;
-  4. explicit companion-file replay/control binding in direct VASP canonical rebuild;
-  5. missing P1-E3 real-owner cases and the affected regression surface.
+- Implementation branch is reconciled with P1 revision 7 at the P1A5 head.
+- Preserve already-valid P1A5 work: canonical label/fingerprint constructor/deserializer coherence; `source-record.v2`; quality status/outcome coherence; direct companion replay; source-control and ensemble-certificate checks; expanded P1-E3 energy/force/semantic/missing-label/stress/physical-duplicate coverage; assembled required-label gating; physical/labeled frame distinction; geometry/labeled duplicate split; source composition/ensemble/quality propagation; generic profile provider dispatch; typed LTA canonical rebinding/restart; invalid DATA3-adapter removal; compatibility-policy invariance; preserved per-run parallel construction; naming; and runtime isolation.
+- Treat only the following as active P1A6 rework surfaces unless implementation evidence broadens impact:
+  1. shared required-label numerical validity ownership across `eligibility.py`, neutral `identity.py`, and neutral `frame_authority.py`;
+  2. exhaustive structural strictness of `SourceRecord.from_dict()` for current v2 payload fields;
+  3. verified manifest ownership in `build_source_authority_from_data2_catalog()` and all P1 callers;
+  4. selected-energy units/semantic-role verification in direct VASP canonical rebuild;
+  5. tests/regression invalidated by those four changes.
 - Existing DATA2/DATA3/DATA4/DATA5 regression baselines are understood; unrelated pre-existing failures are recorded rather than absorbed.
+
+## P1A6 exact repair sequence
+
+Implement in the following order so each authority boundary can close before dependent evidence is updated.
+
+### Stage A — consolidate required-label numerical validity
+
+Affected owners expected: `mdstats/training_data/eligibility.py`, `mdstats/training_data/neutral_substrate/frame_authority.py`, `mdstats/training_data/neutral_substrate/identity.py`, focused tests.
+
+Required implementation:
+
+1. Extract the existing E/F/stress presence, shape, finite, stress-symmetry and forbidden/required/optional logic from `assess_frame_eligibility()` into one pure evaluator owned by `eligibility.py`.
+2. Make `assess_frame_eligibility()` consume its result to populate the existing label-related hard/warning codes. Preserve existing reason-code vocabulary unless a demonstrated defect requires change.
+3. Replace the handwritten E/F/stress authority predicate in `_build_canonical_frame_records_for_run()` with the same evaluator.
+4. Replace the handwritten E/F/stress predicate in retained `build_canonical_frame_identity()` with the same evaluator, or remove/reclassify that constructor if no current owner needs it.
+5. Grant canonical label/labeled identity only when the evaluator reports the configured label contract satisfied.
+6. Do not let SCF/source-quality/cell/geometry exclusions enter this narrower predicate; those remain full-frame eligibility concerns.
+
+Mandatory focused acceptance before Stage B:
+
+- table/property-style equivalence across assembled builder and retained direct builder for:
+  - required energy present/missing/nonfinite;
+  - optional energy present/missing/nonfinite;
+  - required forces present/missing/bad shape/nonfinite;
+  - optional forces present/missing/bad shape/nonfinite;
+  - stress required present/missing/bad shape/nonfinite/nonsymmetric;
+  - stress optional present/missing/bad supplied value;
+  - stress forbidden absent/present;
+- explicit regression reproducer for `require_energy=False, energy=None, require_forces=True, valid forces, optional stress`, requiring both authoritative paths to make the same positive authority decision;
+- existing DATA3 eligibility reason-code tests and neutral P1-C tests pass.
+
+Stage A fails if two separate handwritten policy predicates remain authoritative even if tests currently agree.
+
+### Stage B — make source-record.v2 structurally exact
+
+Affected owner expected: `mdstats/training_data/neutral_substrate/sources.py`, source serialization tests.
+
+Required implementation:
+
+1. Replace the partial `required_keys` set with the complete authoritative v2 field set frozen in section 8.
+2. Reject any missing field before decoding values.
+3. Decode `timestep_fs`, replica/reference fields and other nullable values from present keys; explicit `None` remains valid where allowed.
+4. Require `assertions` and `companion_files` mappings and `mechanical_rejection_codes` sequence representation matching `to_dict()`.
+5. Remove permissive `companion_files` sequence fallback and all default-empty `.get()` behavior for authoritative fields unless a real supported producer is proven.
+6. Preserve v1 rejection and quality-pair validation.
+
+Mandatory focused acceptance before Stage C:
+
+- round trip a fully populated v2 record and a record containing legitimate explicit null/empty values;
+- delete **each authoritative field at least once** via parameterized negative test and require `TrainingDataSerializationError` rather than default reconstruction;
+- specifically prove missing `companion_files`, `assertions`, `mechanical_rejection_codes`, `timestep_fs`, `replica_id`, `reference_group`, and `reference_run_id` are rejected;
+- invalid type for assertions/companions/rejection-codes rejects;
+- old v1 remains rejected.
+
+### Stage C — verify manifest association before SourceAuthority construction
+
+Affected owners expected: `neutral_substrate/sources.py`, P1 helper/fixture callers, P1 source map if signatures change.
+
+Required implementation:
+
+1. Change `build_source_authority_from_data2_catalog()` so the originating manifest is required for authoritative catalog conversion.
+2. Verify manifest digest, dataset ID, exact run-ID set and per-run primary locator equality against the catalog before building records.
+3. Derive companion bindings only from the verified manifest run specs.
+4. Remove the silent `manifest=None -> empty companion mapping` authority path.
+5. Remove or reject independently supplied `companion_files_by_run` as a competing authority input on this high-level conversion path.
+6. Update every P1 real-owner caller/helper to pass the same manifest used to construct the DATA2 catalog. This includes zero-companion fixtures.
+7. Keep low-level `build_source_authority()` only if useful, but do not use it to satisfy P1 manifest-association acceptance.
+
+Mandatory focused acceptance before Stage D:
+
+- normal zero-companion catalog + matching manifest succeeds;
+- explicit non-empty companion catalog + matching manifest succeeds and persists exact role/locator pairs;
+- omitted manifest fails at the API boundary rather than creating empty companion state;
+- foreign manifest with same dataset ID/run IDs but different content digest rejects;
+- manifest with wrong dataset ID rejects;
+- manifest with missing/extra run rejects;
+- manifest run with same run ID but different `vasprun` locator rejects;
+- existing source authority content remains compatibility-policy invariant when the same verified manifest is used.
+
+### Stage D — verify selected-energy interpretation during direct rebuild
+
+Affected owner expected: `neutral_substrate/frame_authority.py`, direct-source tests.
+
+Required implementation:
+
+1. Preserve all P1A5 primary source, source-control, companion replay and ensemble-certificate checks.
+2. Resolve the persisted selected channel by name from the reparsed bundle.
+3. Before reading values into `FrameData`, compare reparsed `source_name`, `units`, and `semantic_role` against the persisted `SourceRecord` fields.
+4. Reject any mismatch explicitly before canonical label hashing.
+5. Do not mutate or normalize the stored SourceRecord to make the comparison pass.
+
+Mandatory focused acceptance before package closure:
+
+- unchanged source/companion/control/energy interpretation rebuild succeeds;
+- tampered persisted `selected_energy_units` with unchanged real source rejects;
+- tampered persisted `selected_energy_semantic_role` with unchanged real source rejects;
+- missing selected channel rejects;
+- existing source-control mismatch, companion-content mismatch and ensemble-certificate mismatch tests remain green.
+
+### Stage E — final assembled closure
+
+After Stages A-D and their stage-local affected regressions pass:
+
+1. update `P1_SOURCE_MAP.md` only as needed to reflect the actual final signatures/owner placement; do not rewrite settled architecture;
+2. reconcile the entire P1 diff against revision 7;
+3. re-derive affected DATA2-DATA5 surfaces from the assembled candidate;
+4. run the complete P1-B/C/D/E affected regression/integration surface listed below;
+5. run repository/project-required Python/package checks covering the final affected surface;
+6. do not run long GPU/production qualification.
 
 ## Pass P1-A — source-map reconciliation
 
 Update `P1_SOURCE_MAP.md` and directly affected internal architectural notes so the authoritative path is unambiguous:
 
 ```text
-precise compatibility-neutral source facts/provenance/control + companion bindings
+precise compatibility-neutral source facts/provenance/control + verified manifest companion bindings
  + normalized per-frame arrays carrying actual E/F/stress/geometry
    -> SourceAuthority
-   -> one required-label authority mechanism
+   -> one shared required-label authority mechanism
         -> physical/source/geometry frame authority
         -> authoritative label/labeled identity only after configured-required-label validity
    -> CanonicalFrameAuthority
@@ -390,11 +614,12 @@ precise compatibility-neutral source facts/provenance/control + companion bindin
 
 The source map must state explicitly that:
 
-- no exported/helper authoritative identity path may bypass configured required-label authority;
+- no exported/helper authoritative identity path may bypass or duplicate configured required-label authority;
 - canonical label digest and labeled fingerprint are an atomic deterministic pair;
 - physical/source/geometry frame bookkeeping may exist without authoritative label identity where downstream non-label consumers require the frame;
-- `SourceAuthority` retains composition/ensemble/quality, source/control interpretation binding, and enough source/manifest companion-binding truth for deterministic direct rebuild;
-- current-generation source persistence does not synthesize or drop missing authoritative facts from obsolete provisional payloads;
+- `SourceAuthority` retains composition/ensemble/quality, source/control interpretation binding, and verified originating-manifest companion-binding truth for deterministic direct rebuild;
+- current-generation source persistence does not synthesize or drop missing authoritative facts from obsolete/incomplete payloads;
+- direct rebuild verifies persisted selected-energy channel name/units/semantic role against the reparsed authoritative channel;
 - legacy DATA3 may coexist for old-runtime isolation but is not a required parent of canonical frame authority;
 - material-profile rebinding is generic at the neutral-core boundary and provider-owned in scientific detail;
 - LTA is the mandatory P1 reference provider, not a neutral-core special case;
@@ -414,8 +639,9 @@ Preserve/extend the version-agnostic source authority so that:
 - corpus/current-operation atomic-reference identifiability is not split by compatibility domain;
 - source scientific/content identity excludes advisory compatibility policy/group lineage;
 - source eligibility for canonicalization means at least one frame can potentially contribute;
-- compatibility-neutral source facts required by P1-C/P1-D are retained with their real values, including composition/atom count, ensemble, source quality status **and outcome**, selected energy semantics, source/control interpretation identity and explicit companion-binding truth needed for direct rebuild;
-- obsolete provisional source-record payloads lacking newly authoritative facts fail explicitly rather than receiving invented/defaulted values.
+- compatibility-neutral source facts required by P1-C/P1-D are retained with their real values, including composition/atom count, ensemble, source quality status **and outcome**, selected energy semantics, source/control interpretation identity and verified explicit companion-binding truth needed for direct rebuild;
+- obsolete/incomplete source-record payloads lacking authoritative facts fail explicitly rather than receiving invented/defaulted values;
+- catalog-to-current-source-authority conversion proves the manifest association from which companion locator truth is taken.
 
 ### P1-B acceptance
 
@@ -424,22 +650,24 @@ Preserve/extend the version-agnostic source authority so that:
 - changing only advisory compatibility policy changes advisory output but not `SourceAuthority.content_digest` or source membership eligible for canonicalization;
 - no `label_domain_id` is required by the current-generation source owner;
 - source round-trip preserves all downstream-required scientific facts and source/control/companion interpretation binding exactly;
-- source-record current schema is no longer the ambiguous provisional `mdstats.source-record.v1` shape;
-- stale/incomplete provisional payloads cannot become current authority through fallback composition, ensemble, quality or control values;
-- omission of `quality_outcome` is rejected when the current schema requires the field, including the legitimate explicit-`null` case being represented by a present key;
+- source-record current schema is `mdstats.source-record.v2` and structurally requires its complete authoritative payload;
+- stale/incomplete provisional payloads cannot become current authority through fallback composition, ensemble, quality, companion, reference, assertion or control values;
+- omission of any authoritative v2 field is rejected while legitimate explicit null/empty values remain representable;
 - invalid quality status/outcome combinations are rejected rather than becoming permissive eligibility state;
-- a direct-source canonical rebuild succeeds for unchanged explicitly companion-bound sources and rejects changed/missing/rebound material companion/control interpretation.
+- matching DATA2 catalog + originating manifest succeeds; missing/foreign/mismatched manifest association rejects;
+- a direct-source canonical rebuild succeeds for unchanged explicitly companion-bound sources and rejects changed/missing/rebound material companion/control/energy interpretation.
 
 ### P1-B verification
 
 1. focused provenance/source-policy/usability/source-fact tests;
 2. affected DATA2/source-ingestion regression;
-3. source-record/source-authority serialization/restart round trip including composition/ensemble/quality status+outcome/control/companion facts;
-4. strict obsolete-provisional-payload rejection;
+3. source-record/source-authority serialization/restart round trip including composition/ensemble/quality status+outcome/control/companion/reference/assertion facts;
+4. exhaustive current-v2 required-field omission rejection;
 5. constructor/deserializer tests for quality status/outcome combinations;
-6. bounded direct-source rebuild with at least one non-empty explicit `TrainingDataRunSpec.companion_files` binding;
-7. negative companion/control mismatch cases with unchanged primary source where feasible;
-8. structural proof that compatibility-domain/policy identity is excluded from source scientific lineage.
+6. verified-manifest catalog conversion success + missing/foreign/dataset/run/locator mismatch negatives;
+7. bounded direct-source rebuild with at least one non-empty explicit `TrainingDataRunSpec.companion_files` binding;
+8. negative companion/control/ensemble/selected-energy mismatch cases with unchanged primary source where feasible;
+9. structural proof that compatibility-domain/policy identity is excluded from source scientific lineage.
 
 ## Pass P1-C — canonical frame authority and identity from actual arrays
 
@@ -449,7 +677,9 @@ Construct `CanonicalFrameAuthority` from `SourceAuthority`, normalized `FrameDat
 
 The authoritative builder must not require `TrainingFrameCatalog` or another legacy DATA3 object.
 
-Resolve configured required-label authority through one shared semantic mechanism used by every current-generation authoritative identity path. If `build_canonical_frame_identity()` remains exported as an authoritative constructor, it must accept enough policy/representation context to produce exactly the same authority decision as the assembled frame owner. If it cannot do so without duplicating policy semantics, remove or explicitly reclassify it as non-authoritative.
+Resolve configured required-label authority through the single shared evaluator in `eligibility.py`. `assess_frame_eligibility()`, assembled canonical record construction, and every retained direct authoritative identity constructor must consume this one result. No authoritative constructor may reimplement the E/F/stress required/optional/forbidden logic.
+
+If `build_canonical_frame_identity()` remains exported as an authoritative constructor, it must accept enough policy/representation context to produce exactly the same authority decision as the assembled frame owner, including optional-energy and optional-force absence. If it cannot do so without owning duplicate policy semantics, remove or explicitly reclassify it as non-authoritative.
 
 ### P1-C2 — source/frame validation and established algorithms
 
@@ -466,7 +696,7 @@ For every frame, compute through the real implementation path:
 
 - occurrence/frame UID;
 - geometry fingerprint;
-- configured required-label validity;
+- configured required-label validity through the shared evaluator;
 - canonical label payload from actual valid E/F/stress values and interpretation metadata when label authority exists;
 - labeled-configuration fingerprint only when authoritative canonical label identity exists;
 - separate electronic-structure provenance reference;
@@ -487,6 +717,8 @@ For every frame, compute through the real implementation path:
 
 Round-trip both physical-only and authoritative labeled frames through current persistence.
 
+The P1A5 implementation already satisfies this contract and should be preserved.
+
 ### P1-C4 — unresolved provenance and numerical validity
 
 A source whose electronic provenance is unresolved/partial but whose configured required labels and mechanical source facts are valid must traverse `SourceAuthority -> CanonicalFrameAuthority` without `label_domain_id`.
@@ -494,10 +726,13 @@ A source whose electronic provenance is unresolved/partial but whose configured 
 The real owner must prove:
 
 - actual `energies_ev=None` or frame-equivalent missing required energy cannot obtain authoritative canonical label/labeled identity;
+- `energy_ev=None` is accepted by the label-authority mechanism when energy is explicitly optional and all other configured label constraints are satisfied;
 - actual `forces_ev_per_angstrom=None` cannot obtain authoritative canonical label/labeled identity when forces are required;
+- missing forces are accepted when forces are explicitly optional and all other configured label constraints are satisfied;
 - missing stress blocks label authority only when stress is configured required;
 - optional absent stress remains valid;
-- supplied non-finite required energy/forces/stress cannot receive valid canonical scientific identity;
+- supplied forbidden stress blocks label authority;
+- supplied non-finite/shape-invalid required or optional labels cannot receive valid canonical scientific identity;
 - physical/source/geometry identity remains coherent where retained;
 - labeled-duplicate consumers exclude physical-only frames.
 
@@ -510,13 +745,15 @@ Canonical-frame construction must preserve applicable per-run parallel execution
 Prove through the real current-generation owner(s) that:
 
 - no authoritative constructor can mint label/labeled identity from a missing configured-required property;
+- no authoritative constructor falsely withholds label authority solely because a configured-optional property is absent;
+- assembled and direct authoritative constructors make identical required-label decisions for the same policy and numerical payload;
 - identical actual canonical labels under different provenance/grouping produce identical canonical label identity;
 - advisory grouping-policy changes do not alter scientific frame identity;
-- changing actual energy changes canonical label/labeled identity;
+- changing actual energy changes canonical label/labeled identity when energy participates;
 - changing actual force or configured stress changes identity when applicable;
 - changing semantic/unit/convention interpretation changes identity through the real builder;
-- missing required energy/forces and required stress absence withhold label authority while optional stress absence does not;
-- non-finite required values withhold/fail label authority;
+- missing required energy/forces and required stress absence withhold label authority while configured-optional absence does not;
+- non-finite supplied values withhold/fail label authority;
 - canonical label digest/labeled fingerprint pair is constructor- and restart-coherent;
 - geometry duplicate semantics remain geometry-only and labeled duplicates use only authoritative labels;
 - source/frame atom-count/composition mismatch is rejected;
@@ -527,24 +764,25 @@ Prove through the real current-generation owner(s) that:
 
 ### P1-C verification cycle
 
-1. focused shared required-label authority tests;
-2. direct authoritative identity-constructor tests or structural removal/non-authoritative proof;
-3. explicit missing-energy, missing-force, required-stress-missing, optional-stress-missing and non-finite real-builder cases;
-4. semantic/unit/convention sensitivity through the real builder;
-5. constructor + deserializer coherence negatives for the label/fingerprint pair;
-6. geometry-versus-labeled duplicate tests including physical-only frames;
-7. source/frame composition consistency tests;
-8. ensemble/temperature/strain-context tests;
-9. source-quality/eligibility tests;
-10. worker=1 versus bounded parallel-worker equivalence;
-11. affected DATA3 frame/identity/eligibility/temperature/reference-cell/strain/duplicate and parallel-resource regression;
-12. canonical frame serialization/restart;
-13. structural negative check that the authoritative builder does not require `TrainingFrameCatalog`, `label_domain_id`, legacy label-domain identity or compatibility-policy-containing parent digest;
-14. bounded integration carrying real canonical frame authority into neutral feature evidence.
+1. focused shared required-label evaluator tests;
+2. assembled/direct authority-equivalence matrix including the optional-energy reproducer;
+3. direct authoritative identity-constructor tests or structural removal/non-authoritative proof;
+4. explicit missing-energy, missing-force, required/optional/forbidden-stress and non-finite real-builder cases;
+5. semantic/unit/convention sensitivity through the real builder;
+6. constructor + deserializer coherence negatives for the label/fingerprint pair;
+7. geometry-versus-labeled duplicate tests including physical-only frames;
+8. source/frame composition consistency tests;
+9. ensemble/temperature/strain-context tests;
+10. source-quality/eligibility tests;
+11. worker=1 versus bounded parallel-worker equivalence;
+12. affected DATA3 frame/identity/eligibility/temperature/reference-cell/strain/duplicate and parallel-resource regression;
+13. canonical frame serialization/restart;
+14. structural negative check that the authoritative builder does not require `TrainingFrameCatalog`, `label_domain_id`, legacy label-domain identity or compatibility-policy-containing parent digest;
+15. bounded integration carrying real canonical frame authority into neutral feature evidence.
 
 ## Pass P1-D — neutral evidence, provider contract and statistical owner
 
-Preserve the accepted P1A4 realization unless P1-C changes force a narrow adaptation.
+Preserve the accepted P1A5 realization unless P1-C/source-authority signature changes force a narrow caller adaptation.
 
 ### P1-D1 — raw feature/event evidence rebind
 
@@ -566,21 +804,23 @@ Preserve the typed current-generation statistical owner consuming only `SourceAu
 
 ### P1-D acceptance / verification
 
-Retain the existing accepted P1A4 P1-D focused and affected DATA4/DATA5/profile/LTA/event/statistical-role tests. Add only affected propagation guards required by changes to physical-versus-labeled identity or source lineage. Do not gratuitously rewrite already-valid provider/profile machinery.
+Retain the existing accepted P1A5 P1-D focused and affected DATA4/DATA5/profile/LTA/event/statistical-role tests. Update only callers requiring the verified manifest and add affected propagation guards required by the shared label evaluator/source lineage changes. Do not gratuitously rewrite already-valid provider/profile machinery.
 
 ## Pass P1-E — package closure
 
-Reconcile the complete P1 diff against the parent workplan and revision 6, then re-derive the affected surface from the assembled candidate.
+Reconcile the complete P1 diff against the parent workplan and revision 7, then re-derive the affected surface from the assembled candidate.
 
 ### P1-E1 — required real-owner integration
 
 Execute bounded deterministic integration through actual P1 owners:
 
 ```text
-source files / manifest / explicit companion bindings
+source files / originating manifest / explicit companion bindings
  -> existing parser/cache/control machinery yielding normalized frame arrays
- -> SourceAuthority carrying real compatibility-neutral source facts/control binding
- -> uniform required-label authority
+ -> DATA2 catalog
+ -> verified manifest-to-catalog association
+ -> SourceAuthority carrying real compatibility-neutral source facts/control/companion/energy interpretation
+ -> shared required-label authority
  -> CanonicalFrameAuthority built from actual frame arrays
  -> NeutralFeatureEvidence using provider-owned typed profile rebinding
  -> NeutralStatisticalBase
@@ -592,18 +832,22 @@ Forbidden acceptance substitutions include:
 
 - legacy DATA3 as semantic owner of canonical numerical identity;
 - helper-only canonical tests while an exported/assembled authoritative constructor remains broken;
+- separate handwritten required-label predicates that happen to agree on tested fixtures;
 - prebuilt canonical frame authority instead of its real builder;
 - manually mutated `SourceAuthority`/`SourceRecord` values as proof that source ingestion propagated ensemble/quality correctly;
 - synthetic assertion-derived ensemble/quality values instead of source-owned facts;
-- permissive deserializer defaults or omitted quality outcome standing in for persisted source facts;
+- permissive deserializer defaults or omitted authoritative v2 fields standing in for explicit persisted source facts;
+- constructing current `SourceAuthority` from a DATA2 catalog without verifying the originating manifest;
+- accepting a free-form companion mapping whose association to `catalog.manifest_digest` is not proven;
 - dropping explicit companion bindings during direct rebuild and weakening source-control verification to compensate;
+- verifying selected channel existence while ignoring persisted units/semantic-role mismatch;
 - direct helper hashing of missing labels as proof that the assembled owner enforces required-label authority;
 - outer-profile-only tests bypassing typed provider rebinding;
 - test-harness reimplementation of canonical/profile logic.
 
 ### P1-E2 — compatibility-policy invariance proof
 
-Using the same scientific inputs, build the complete P1 chain under at least two advisory compatibility policies producing observably different advisory output. Require equality of all applicable scientific state/behavior:
+Using the same scientific inputs and the same verified originating manifest, build the complete P1 chain under at least two advisory compatibility policies producing observably different advisory output. Require equality of all applicable scientific state/behavior:
 
 - source membership and `SourceAuthority.content_digest`;
 - canonical frame UIDs/labels/labeled identities/physical-only status and `CanonicalFrameAuthority.content_digest`;
@@ -615,42 +859,50 @@ Using the same scientific inputs, build the complete P1 chain under at least two
 
 Only advisory diagnostics may differ.
 
-### P1-E3 — assembled numerical/semantic/required-label sensitivity proof
+### P1-E3 — assembled numerical/semantic/required-label sensitivity and equivalence proof
 
-Through the **real canonical-frame builder** and, where retained, every exported authoritative direct identity constructor, execute each applicable case:
+Through the **real canonical-frame builder**, shared label evaluator, and every retained exported authoritative direct identity constructor, execute each applicable case:
 
-1. change an actual energy value and require changed canonical label/labeled/frame/downstream lineage;
+1. change an actual energy value and require changed canonical label/labeled/frame/downstream lineage when energy participates;
 2. change an actual force value, or configured stress value where appropriate, and require changed canonical label identity;
 3. change at least one real semantic/unit/convention input consumed by the builder — for example energy normalization or entropy convention — and require changed canonical identity;
-4. supply a non-finite configured-required value and prove authoritative label identity is not granted;
+4. supply a non-finite configured-required or configured-optional value and prove authoritative label identity is not granted;
 5. represent genuinely missing configured-required energy (`energies_ev=None` or semantically equivalent missing owner state), not merely `NaN`, and prove no authoritative label/labeled identity is granted;
 6. represent genuinely missing configured-required forces (`forces_ev_per_angstrom=None` or equivalent) and prove the same when forces are required;
-7. exercise stress absence in both required and optional modes, proving required absence blocks label authority while optional absence does not;
-8. for physical-only frames, prove geometry/source identity remains coherent and labeled-duplicate/label-dependent consumers do not treat them as valid labeled configurations;
-9. if a direct authoritative identity builder remains, prove the same missing/optional/required contract through that builder or prove structurally that the builder is non-authoritative/removed.
+7. exercise stress absence in required and optional modes plus stress presence in forbidden mode;
+8. exercise optional-energy absence and optional-force absence, proving absence itself does not block authority when the policy makes that property optional;
+9. for physical-only frames, prove geometry/source identity remains coherent and labeled-duplicate/label-dependent consumers do not treat them as valid labeled configurations;
+10. if a direct authoritative identity builder remains, run the same policy/value matrix through both direct and assembled paths and require identical authority booleans; otherwise prove structurally that the builder is non-authoritative/removed.
 
-Direct digest-helper tests cannot substitute for this assembled owner proof. Evidence must fail if any authoritative path creates a canonical label/labeled fingerprint from a missing configured-required value.
+Direct digest-helper tests cannot substitute for this assembled owner proof. Evidence must fail if any authoritative path creates a canonical label/labeled fingerprint from a missing configured-required value **or** if a secondary path falsely rejects a legitimate optional-absence configuration.
 
-### P1-E4 — source-fact, quality and companion/control preservation proof
+### P1-E4 — source-fact, manifest, quality and companion/control/energy preservation proof
 
 Exercise at least:
 
 - source/frame atom-count or composition mismatch rejection;
-- NPT/NPH or another genuinely ensemble-sensitive context through the real source-ingestion/control owner -> `SourceAuthority` -> canonical builder chain;
+- NPT/NPH or another genuinely ensemble-sensitive context through the real source-ingestion/control owner -> verified catalog/manifest conversion -> `SourceAuthority` -> canonical builder chain;
 - source quality status/outcome propagation into frame eligibility through the real source-assessment/source-record owner, including an unqualified case;
-- source-record round-trip and negative deserialization proving omitted/malformed quality outcome cannot become permissive current authority;
+- source-record round-trip and exhaustive negative deserialization proving omitted authoritative fields cannot become permissive/current authority;
+- matching catalog + originating manifest success;
+- missing manifest rejection;
+- foreign manifest digest rejection even when convenient run IDs overlap;
+- wrong dataset/run membership/primary locator association rejection;
 - unchanged direct-source canonical rebuild with at least one explicit non-empty companion-file binding;
 - changed/missing/rebound companion/control binding rejection while primary source identity remains unchanged where feasible;
-- persisted source/control interpretation mismatch rejection.
+- persisted source/control interpretation mismatch rejection;
+- persisted selected-energy units mismatch rejection with unchanged real source;
+- persisted selected-energy semantic-role mismatch rejection with unchanged real source.
 
-The ensemble/quality/companion evidence must be proxy-proof: the production owner assigning the source field/binding and the real downstream canonical consumer must execute. Manually replacing `SourceAuthority` after construction is not acceptance evidence for owner propagation.
+The ensemble/quality/manifest/companion/energy evidence must be proxy-proof: the production owner assigning the source field/binding and the real downstream canonical consumer must execute. Manually replacing `SourceAuthority` after construction is not acceptance evidence for owner propagation; targeted post-construction replacement remains acceptable only as a negative consumer-guard test after real-owner propagation is separately proven.
 
 ### P1-E5 — unresolved-provenance assembled proof
 
 Construct a bounded unresolved/partial provenance source with valid required numerical labels and execute:
 
 ```text
-SourceAuthority
+TrainingDataManifest + DATA2 catalog
+ -> verified SourceAuthority
  -> CanonicalFrameAuthority from real arrays
  -> NeutralFeatureEvidence
  -> NeutralStatisticalBase
@@ -667,9 +919,11 @@ Retain the existing bounded LTA partition-stage proof through the generic provid
 Structurally prove there is no current-generation path by which:
 
 - legacy DATA3 metadata lacking actual E/F/stress becomes authoritative `CanonicalFrameAuthority`;
-- an exported direct identity builder mints authoritative label identity without the configured required-label contract;
+- an exported direct identity builder owns a second required-label predicate or mints authoritative label identity without the shared configured required-label contract;
 - contradictory canonical label/fingerprint pair state can be constructed or deserialized as valid current scientific state;
-- obsolete source-record persistence manufactures or drops composition/ensemble/quality/control/companion facts and returns current authority.
+- `SourceRecord.from_dict()` manufactures omitted authoritative v2 fields through defaults;
+- catalog-to-SourceAuthority conversion omits manifest verification or silently substitutes empty/free-form companion context;
+- direct VASP rebuild accepts selected-energy units/semantic role that disagree with the reparsed channel.
 
 Keep `build_canonical_frame_authority_from_data3_catalog()` absent. Remove/reclassify any other invalid authority surface rather than preserving it merely for provisional tests.
 
@@ -678,7 +932,7 @@ Keep `build_canonical_frame_authority_from_data3_catalog()` absent. Remove/recla
 Verify:
 
 - no `v7_`, `V7*`, `mdstats.v7-*` product/schema names or aliases;
-- any source-record schema bump is ordinary/version-agnostic;
+- `mdstats.source-record.v2` remains ordinary/version-agnostic;
 - current prepare/select-target-size remains on old runtime until P4;
 - campaign CLI/public target-size exports do not expose neutral substrate prematurely;
 - old runtime remains reachable;
@@ -689,19 +943,23 @@ Verify:
 Required executable evidence on the final assembled candidate:
 
 - all P1-B/C/D focused tests;
+- Stage A shared-evaluator and direct/assembled authority-equivalence matrix;
+- explicit optional-energy absence reproducer and optional-force/stress cases;
 - affected DATA2 source-ingestion/control/manifest-companion/quality/persistence regression;
+- verified-manifest catalog conversion positives and missing/foreign/dataset/run/locator negatives;
+- exhaustive source-record.v2 required-field omission/type rejection;
 - affected DATA3 geometry/identity/eligibility/temperature/reference-cell/strain/duplicate and parallel-resource regression;
 - affected DATA4 raw-feature/event/profile/LTA regression;
 - affected DATA5 statistical-role/partition/leakage regression;
 - serialization/restart reconstruction for every new current-generation owner and rebound typed profile payload;
-- source-record schema/strict obsolete-payload rejection;
 - quality status/outcome coherence tests;
 - explicit companion-bound direct rebuild success and mismatch rejection;
+- selected-energy channel name/units/semantic-role direct-rebuild verification and mismatch rejection;
 - canonical constructor/deserializer label/fingerprint coherence tests;
 - P1-E1 real-owner integration;
 - P1-E2 compatibility invariance;
-- P1-E3 energy + force/stress + semantic + genuine missing required-label + non-finite authority sensitivity;
-- P1-E4 real-owner source-fact/quality/companion/control preservation;
+- P1-E3 numerical + semantic + required/optional label sensitivity/equivalence;
+- P1-E4 real-owner source-fact/manifest/quality/companion/control/energy preservation;
 - P1-E5 unresolved-provenance chain;
 - P1-E6 generic material-profile/LTA/restart integration;
 - P1-E7 invalid-authority absence;
@@ -720,9 +978,12 @@ A required check that did not execute is not a pass. Green helper tests do not s
 - Do not build a generalized material plugin framework beyond the minimal provider-rebind contract needed by current providers.
 - Do not generically mutate arbitrary profile payload dictionaries by guessed field names.
 - Do not add a second VASP parser, duplicate frame-normalization implementation or parallel profile-analysis engine solely for the new identity model.
-- Do not duplicate required-label policy logic in multiple authoritative constructors; share or remove the secondary authority path.
+- Do not duplicate required-label policy logic in multiple authoritative constructors; one shared evaluator is now the required endpoint.
+- Do not broaden full-frame eligibility semantics merely to solve label-authority consistency; label validity and full eligibility remain distinct owners.
 - Do not retain unpublished provisional adapters/aliases or source-persistence compatibility fallbacks merely to keep old P1 tests/artifacts green.
-- Do not weaken source-control verification to accommodate lost companion-file context; preserve/replay the context instead.
+- Do not permit current catalog-to-source-authority conversion without the verified originating manifest merely to preserve a convenient optional API.
+- Do not accept a free-form companion mapping as equivalent to verified manifest association.
+- Do not weaken source-control/ensemble/selected-energy verification to accommodate lost or inconsistent source context; preserve/replay and compare the context instead.
 - Do not solve missing-required-label authority by rejecting all physical-frame representation if established non-label consumers scientifically require those frames; preserve the physical-versus-labeled distinction instead.
 - Do not perform long GPU training or production-scale qualification in P1.
 
@@ -730,13 +991,15 @@ A required check that did not execute is not a pass. Green helper tests do not s
 
 P1 is accepted only when the following invariant is true in the **assembled real-owner object graph and every exported authoritative construction/restart path**:
 
-> Canonical usable source/frame identity is derived from actual compatibility-neutral source facts plus the configured numerical energy/force/stress payload and required interpretation metadata; one required-label authority rule governs every authoritative constructor and deserializer; authoritative canonical label/labeled-configuration identity exists only after the configured required-label set is present, shape-valid, finite and canonicalizable; canonical label digest and labeled fingerprint are an atomic deterministic pair; physical/source/geometry frame identity remains distinguishable where scientifically needed; unresolved provenance with usable labels traverses the current-generation path without compatibility-domain assignment; persisted source authority preserves coherent quality status/outcome and the exact source/control/explicit-companion interpretation needed for deterministic direct rebuild rather than synthesizing, dropping, guessing or silently reinterpreting material facts; established source/frame consistency, ensemble, source-quality, strain, eligibility, duplicate and applicable parallel-execution semantics are preserved; neutral raw/event/material-profile evidence is rebound through a material-agnostic core contract with provider-owned typed scientific reconstruction and durable restart resolution; no compatibility-group assignment, compatibility-policy identity, retired DATA2/DATA3/DATA4/profile ancestor digest, invalid DATA3-to-canonical surrogate, secondary identity-authority bypass, contradictory canonical persistence state, obsolete provisional source payload masquerading as current authority, or pre-target CV authority participates in current-generation scientific identity or protected-role assignment; precise provenance remains fully recorded; durable naming is version-agnostic; and the production target-size runtime has not yet switched.
+> Canonical usable source/frame identity is derived from actual compatibility-neutral source facts plus the configured numerical energy/force/stress payload and required interpretation metadata; one shared required-label evaluator governs the E/F/stress required/optional/forbidden decision used by full frame eligibility, assembled canonical construction and every retained direct authoritative identity constructor; authoritative canonical label/labeled-configuration identity exists only after the configured required-label set is present where required and every supplied participating value is shape-valid, finite and canonicalizable, while legitimate optional absence is not falsely rejected; canonical label digest and labeled fingerprint are an atomic deterministic pair; physical/source/geometry frame identity remains distinguishable where scientifically needed; unresolved provenance with usable labels traverses the current-generation path without compatibility-domain assignment; `mdstats.source-record.v2` structurally preserves every authoritative source field with explicit null/empty state rather than omitted-key defaults; catalog-to-SourceAuthority conversion verifies the originating manifest digest, dataset, exact run set and primary locators before accepting companion bindings; persisted source authority preserves coherent quality status/outcome and the exact source/control/explicit-companion/selected-energy interpretation needed for deterministic direct rebuild rather than synthesizing, dropping, guessing or silently reinterpreting material facts; direct rebuild verifies selected energy name, units and semantic role against the reparsed channel; established source/frame consistency, ensemble, source-quality, strain, eligibility, duplicate and applicable parallel-execution semantics are preserved; neutral raw/event/material-profile evidence is rebound through a material-agnostic core contract with provider-owned typed scientific reconstruction and durable restart resolution; no compatibility-group assignment, compatibility-policy identity, retired DATA2/DATA3/DATA4/profile ancestor digest, invalid DATA3-to-canonical surrogate, secondary identity-authority predicate, contradictory canonical persistence state, incomplete source payload, unverified manifest/companion association, energy-interpretation mismatch, or pre-target CV authority participates in current-generation scientific identity or protected-role assignment; precise provenance remains fully recorded; durable naming is version-agnostic; and the production target-size runtime has not yet switched.
 
 The following are explicitly insufficient for P1 acceptance:
 
-- fixing `CanonicalFrameAuthority` while leaving another exported authoritative identity constructor able to hash missing required labels into authority;
+- fixing the assembled `CanonicalFrameAuthority` while retaining a second handwritten `build_canonical_frame_identity()` policy predicate;
+- direct and assembled constructors agreeing on required-energy tests while disagreeing on optional-energy or optional-force absence;
 - canonical helper unit tests when an assembled/exported semantic owner is broken;
 - a stable label digest with missing configured-required values merely because the digest helper supports optional fields;
+- withholding authority from a valid optional-absence payload because a secondary builder is stricter than `FrameEligibilityPolicy`;
 - label digest and labeled fingerprint being independently optional without constructor/deserializer coherence;
 - accepting a labeled fingerprint inconsistent with stored geometry + label digest;
 - treating a frame without authoritative label identity as a valid labeled duplicate/configuration merely because its physical frame record exists;
@@ -744,11 +1007,13 @@ The following are explicitly insufficient for P1 acceptance:
 - source/frame validation that checks frame arrays only against themselves;
 - manually replacing `SourceAuthority` ensemble/quality values in tests and treating that as proof of real source-owner propagation;
 - assertion-derived `"unknown"` ensemble or synthetic permissive source-quality state in place of source-owned facts;
-- a missing `quality_outcome` key silently decoding as `None` when that omission can change eligibility;
-- reusing the materially changed provisional `mdstats.source-record.v1` schema identifier for current authority;
-- permissive provisional deserialization that fabricates or drops composition/ensemble/quality/control/companion facts and returns current authority;
+- any missing authoritative `source-record.v2` key silently decoding to `None`, `{}`, `[]`, or another default;
+- accepting `companion_files` sequence/default fallback in current v2 without a demonstrated producer contract;
+- constructing `SourceAuthority` from a DATA2 catalog without the originating manifest or without checking `manifest.content_digest == catalog.manifest_digest`;
+- accepting a foreign manifest/free-form companion mapping because run IDs happen to overlap;
 - direct-source rebuild that drops explicit manifest companion bindings or checks only primary source identity;
-- weakening source-control verification instead of replaying the source/control context that originally produced it;
+- direct-source rebuild that finds the selected energy channel by name but fails to verify units and semantic role against persisted source authority;
+- weakening source-control, ensemble-certificate, companion, or selected-energy verification instead of preserving/replaying the context that originally produced it;
 - LTA-specific branching in the neutral core as the profile architecture;
 - rebinding only an outer profile wrapper while retaining legacy typed lineage or copying an opaque old scientific digest;
 - round-trip digest equality when typed scientific payload/state cannot be resolved and consumed after restart;
