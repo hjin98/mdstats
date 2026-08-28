@@ -16,7 +16,7 @@ from ..events import FullResolutionEventCatalog
 from ..profile_extensions import (
     ProfileFeatureCatalog,
     ProfileFeatureStage,
-    wrap_lta_partition_features,
+    rebind_partition_profile_catalog,
 )
 from ..raw_features import RawFeatureCatalog
 from .frame_authority import CanonicalFrameAuthority
@@ -154,39 +154,11 @@ def build_neutral_feature_evidence_from_data4_bundle(
 
     clean_profiles: list[ProfileFeatureCatalog] = []
     for p in data4_bundle.profile_partition_features:
-        if p.extension_id == "lta" and p.stage is ProfileFeatureStage.PARTITION:
-            from ..lta_profile import LtaPartitionFeatureCatalog
-
-            typed_lta = p.as_lta_partition()
-            rebound_records = tuple(
-                replace(
-                    r,
-                    frame_record_digest=frame_authority.frame(r.frame_uid).content_digest,
-                )
-                for r in typed_lta.frame_records
+        if p.stage is not ProfileFeatureStage.PARTITION:
+            raise TrainingDataInputError(
+                f"Unsupported non-partition profile feature stage in DATA4: {p.stage!r}"
             )
-            rebound_lta = LtaPartitionFeatureCatalog(
-                dataset_id=typed_lta.dataset_id,
-                frame_catalog_digest=frame_authority.content_digest,
-                policy=typed_lta.policy,
-                frame_records=rebound_records,
-                mobile_states=typed_lta.mobile_states,
-            )
-            clean_p = wrap_lta_partition_features(rebound_lta)
-        else:
-            clean_p = ProfileFeatureCatalog(
-                extension_id=p.extension_id,
-                stage=p.stage,
-                provider_identity=p.provider_identity,
-                frame_catalog_digest=frame_authority.content_digest,
-                parent_bundle_digest=None,
-                payload_schema=p.payload_schema,
-                payload=p.payload_mapping if p.payload_embedded else None,
-                scientific_payload_digest_value=p.scientific_payload_digest,
-                notes=p.notes,
-            )
-            if p._resolved_payload is not None:
-                clean_p.bind_scientific_payload(p._resolved_payload)
+        clean_p = rebind_partition_profile_catalog(p, frame_authority)
         clean_profiles.append(clean_p)
 
     clean_events = FullResolutionEventCatalog(

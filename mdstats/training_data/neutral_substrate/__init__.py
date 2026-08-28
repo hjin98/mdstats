@@ -11,7 +11,6 @@ from .frame_authority import (
     CanonicalFrameAuthority,
     CanonicalFrameRecord,
     build_canonical_frame_authority,
-    build_canonical_frame_authority_from_data3_catalog,
     build_vasp_canonical_frame_authority,
 )
 from .identity import (
@@ -118,7 +117,6 @@ __all__ = (
     "audit_neutral_leakage",
     "build_advisory_compatibility_report",
     "build_canonical_frame_authority",
-    "build_canonical_frame_authority_from_data3_catalog",
     "build_canonical_frame_identity",
     "build_independence_report",
     "build_neutral_feature_evidence_from_data4_bundle",

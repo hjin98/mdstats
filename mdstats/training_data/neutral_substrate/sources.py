@@ -21,7 +21,7 @@ from ..labels import (
     LabelCompatibilityPolicy,
     build_label_domain_catalog,
 )
-from ..sources import TrainingDataSource, TrainingDataSourceCatalog
+from ..sources import SourceComposition, TrainingDataSource, TrainingDataSourceCatalog
 
 SOURCE_RECORD_SCHEMA = "mdstats.source-record.v1"
 PROVENANCE_DIAGNOSTICS_SCHEMA = "mdstats.provenance-diagnostics.v1"
@@ -45,8 +45,6 @@ def _fingerprint_dimension_values(
     fingerprint: ElectronicStructureFingerprint,
 ) -> dict[str, str]:
     return {
-        "theory": fingerprint.theory.content_digest,
-        "theory_resolution": fingerprint.theory.resolution_status,
         "energy_reference": fingerprint.energy_reference.content_digest,
         "energy_reference_resolution": fingerprint.energy_reference.resolution_status,
         "derivative_convention": fingerprint.derivative_convention.content_digest,
@@ -65,12 +63,15 @@ class SourceRecord:
     source_locator: str
     source_identity_signature: str
     frame_count: int
-    composition_digest: str
-    reduced_formula: str
+    composition: SourceComposition
     selected_energy_channel: str
     selected_energy_units: str
     selected_energy_semantic_role: str
     electronic_structure: ElectronicStructureFingerprint
+    ensemble: str
+    quality_assessment_status: str
+    quality_outcome: str | None
+    timestep_fs: float | None
     replica_id: str | None
     reference_group: str | None
     reference_run_id: str | None
@@ -86,11 +87,8 @@ class SourceRecord:
             "source_identity_signature",
             validate_digest(self.source_identity_signature, name="source_identity_signature"),
         )
-        object.__setattr__(
-            self,
-            "composition_digest",
-            validate_digest(self.composition_digest, name="composition_digest"),
-        )
+        if not isinstance(self.composition, SourceComposition):
+            raise TrainingDataInputError("Source composition must be an instance of SourceComposition.")
         object.__setattr__(self, "assertions", tuple(sorted((str(k), v) for k, v in self.assertions)))
         object.__setattr__(
             self,
@@ -103,12 +101,12 @@ class SourceRecord:
             raise TrainingDataInputError("Unusable sources require mechanical rejection codes.")
 
     @property
-    def composition(self) -> Any:
-        """Duck-typed composition surface used by the neutral partition builder."""
+    def composition_digest(self) -> str:
+        return self.composition.content_digest
 
-        from types import SimpleNamespace
-
-        return SimpleNamespace(reduced_formula=self.reduced_formula)
+    @property
+    def reduced_formula(self) -> str:
+        return self.composition.reduced_formula
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -117,12 +115,15 @@ class SourceRecord:
             "source_locator": self.source_locator,
             "source_identity_signature": self.source_identity_signature,
             "frame_count": self.frame_count,
-            "composition_digest": self.composition_digest,
-            "reduced_formula": self.reduced_formula,
+            "composition": self.composition.to_dict(),
             "selected_energy_channel": self.selected_energy_channel,
             "selected_energy_units": self.selected_energy_units,
             "selected_energy_semantic_role": self.selected_energy_semantic_role,
             "electronic_structure": self.electronic_structure.to_dict(),
+            "ensemble": self.ensemble,
+            "quality_assessment_status": self.quality_assessment_status,
+            "quality_outcome": self.quality_outcome,
+            "timestep_fs": self.timestep_fs,
             "replica_id": self.replica_id,
             "reference_group": self.reference_group,
             "reference_run_id": self.reference_run_id,
@@ -142,19 +143,27 @@ class SourceRecord:
     def from_dict(cls, payload: Mapping[str, Any]) -> "SourceRecord":
         if payload.get("schema") != SOURCE_RECORD_SCHEMA:
             raise TrainingDataSerializationError("Unsupported source-record schema.")
+        comp_payload = payload.get("composition")
+        if isinstance(comp_payload, Mapping):
+            comp = SourceComposition.from_dict(comp_payload)
+        else:
+            comp = SourceComposition.from_symbols((str(payload.get("reduced_formula", "X")),))
         result = cls(
             run_id=str(payload["run_id"]),
             source_locator=str(payload["source_locator"]),
             source_identity_signature=str(payload["source_identity_signature"]),
             frame_count=int(payload["frame_count"]),
-            composition_digest=str(payload["composition_digest"]),
-            reduced_formula=str(payload["reduced_formula"]),
+            composition=comp,
             selected_energy_channel=str(payload["selected_energy_channel"]),
             selected_energy_units=str(payload["selected_energy_units"]),
             selected_energy_semantic_role=str(payload["selected_energy_semantic_role"]),
             electronic_structure=ElectronicStructureFingerprint.from_dict(
                 payload["electronic_structure"]
             ),
+            ensemble=str(payload.get("ensemble", "unknown")),
+            quality_assessment_status=str(payload.get("quality_assessment_status", "not_requested")),
+            quality_outcome=None if payload.get("quality_outcome") is None else str(payload["quality_outcome"]),
+            timestep_fs=None if payload.get("timestep_fs") is None else float(payload["timestep_fs"]),
             replica_id=None if payload.get("replica_id") is None else str(payload["replica_id"]),
             reference_group=(
                 None if payload.get("reference_group") is None else str(payload["reference_group"])
@@ -175,17 +184,25 @@ class SourceRecord:
 
 def source_record_from_data2(source: TrainingDataSource) -> SourceRecord:
     usable, reasons = _source_is_mechanically_usable(source)
+    quality_status = (
+        source.quality_assessment_status.value
+        if hasattr(source.quality_assessment_status, "value")
+        else str(source.quality_assessment_status)
+    )
     return SourceRecord(
         run_id=source.run_id,
         source_locator=source.source_locator,
         source_identity_signature=source.source_identity_signature,
         frame_count=source.frame_count,
-        composition_digest=source.composition.content_digest,
-        reduced_formula=source.composition.reduced_formula,
+        composition=source.composition,
         selected_energy_channel=source.selected_energy.source_name,
         selected_energy_units=source.selected_energy.units,
         selected_energy_semantic_role=source.selected_energy.semantic_role,
         electronic_structure=source.electronic_structure,
+        ensemble=source.ensemble,
+        quality_assessment_status=quality_status,
+        quality_outcome=source.quality_outcome,
+        timestep_fs=source.timestep_fs,
         replica_id=source.replica_id,
         reference_group=source.reference_group,
         reference_run_id=source.reference_run_id,

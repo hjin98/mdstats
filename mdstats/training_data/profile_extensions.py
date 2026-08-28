@@ -33,20 +33,34 @@ class ProfileFeatureStage(str, Enum):
     SELECTION = "selection"
 
 
-def _thaw(value: Any) -> Any:
+def _freeze_payload(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return ("__dict__", tuple(sorted((str(k), _freeze_payload(v)) for k, v in value.items())))
+    if isinstance(value, (list, tuple)):
+        if isinstance(value, tuple) and len(value) == 2 and value[0] in ("__dict__", "__list__"):
+            return value
+        return ("__list__", tuple(_freeze_payload(v) for v in value))
+    return value
+
+
+def _thaw_payload(value: Any) -> Any:
+    if isinstance(value, tuple) and len(value) == 2 and value[0] in ("__dict__", "__list__"):
+        tag, content = value
+        if tag == "__dict__":
+            return {k: _thaw_payload(v) for k, v in content}
+        if tag == "__list__":
+            return [_thaw_payload(v) for v in content]
     if isinstance(value, tuple):
-        if all(isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str) for item in value):
-            return {item[0]: _thaw(item[1]) for item in value}
-        return [_thaw(item) for item in value]
+        if value and all(isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str) for item in value):
+            return {item[0]: _thaw_payload(item[1]) for item in value}
+        return [_thaw_payload(item) for item in value]
     return value
 
 
 @dataclass(frozen=True, slots=True)
 class ProfileFeatureCatalog:
-    """Generic profile-extension identity with optional embedded payload.
+    """Standardized metadata container for optional material-profile evidence.
 
-    Partition-scale scientific catalogs may be bound by digest and retained as
-    a typed in-memory object instead of being deep-copied into this wrapper.
     Selection-scale catalogs remain embeddable for standalone round trips.
     """
 
@@ -55,7 +69,7 @@ class ProfileFeatureCatalog:
     provider_identity: MaterialProfileProviderIdentity
     frame_catalog_digest: str
     payload_schema: str
-    payload: Mapping[str, Any] | tuple[tuple[str, Any], ...] | None = None
+    payload: Mapping[str, Any] | tuple[Any, ...] | None = None
     scientific_payload_digest_value: str | None = None
     parent_bundle_digest: str | None = None
     notes: tuple[str, ...] = ()
@@ -78,13 +92,13 @@ class ProfileFeatureCatalog:
 
         embedded_digest: str | None = None
         if self.payload is not None:
-            normalized = json_value(_thaw(self.payload) if isinstance(self.payload, tuple) else self.payload)
+            normalized = json_value(_thaw_payload(self.payload) if isinstance(self.payload, tuple) else self.payload)
             if not isinstance(normalized, Mapping):
                 raise TrainingDataInputError("Profile feature payload must be a mapping.")
             embedded = normalized.get("content_digest")
             if embedded is not None:
                 embedded_digest = validate_digest(str(embedded), name="scientific_payload_digest")
-            object.__setattr__(self, "payload", tuple_value(normalized))
+            object.__setattr__(self, "payload", _freeze_payload(normalized))
 
         explicit = self.scientific_payload_digest_value
         if explicit is not None:
@@ -119,7 +133,7 @@ class ProfileFeatureCatalog:
             raise TrainingDataSerializationError(
                 "Profile payload is digest-bound but not resolved in this object."
             )
-        value = _thaw(self.payload)
+        value = _thaw_payload(self.payload)
         if not isinstance(value, Mapping):
             raise TrainingDataSerializationError("Profile feature payload is not a mapping.")
         return value
@@ -259,6 +273,34 @@ class ProfileFeatureCatalog:
         return ()
 
 
+_PARTITION_PROFILE_REBIND_PROVIDERS: dict[
+    str, Any
+] = {}
+
+
+def register_partition_profile_rebind_provider(
+    extension_id: str,
+    rebind_fn: Any,
+) -> None:
+    """Register a provider-owned typed rebind function for a partition-stage profile feature."""
+    _PARTITION_PROFILE_REBIND_PROVIDERS[str(extension_id).strip().lower()] = rebind_fn
+
+
+def rebind_partition_profile_catalog(
+    catalog: ProfileFeatureCatalog,
+    frame_authority: Any,
+) -> ProfileFeatureCatalog:
+    """Rebind a partition-stage profile feature catalog to a canonical frame authority through its registered provider."""
+    extension_id = catalog.extension_id
+    provider = _PARTITION_PROFILE_REBIND_PROVIDERS.get(extension_id)
+    if provider is None:
+        raise TrainingDataInputError(
+            f"Unsupported partition-stage material-profile provider: {extension_id!r}. "
+            "Material-profile rebinding requires a registered provider adapter."
+        )
+    return provider(catalog, frame_authority)
+
+
 def _provider_identity(*, extension_id: str, stage: ProfileFeatureStage, configuration_digest: str) -> MaterialProfileProviderIdentity:
     return MaterialProfileProviderIdentity(
         provider_id=f"mdstats.profile.{extension_id}.{stage.value}",
@@ -267,7 +309,11 @@ def _provider_identity(*, extension_id: str, stage: ProfileFeatureStage, configu
     )
 
 
-def wrap_lta_partition_features(catalog: Any) -> ProfileFeatureCatalog:
+def wrap_lta_partition_features(
+    catalog: Any,
+    *,
+    embed_payload: bool = False,
+) -> ProfileFeatureCatalog:
     from .lta_profile import LTA_PARTITION_FEATURE_CATALOG_SCHEMA
 
     result = ProfileFeatureCatalog(
@@ -280,9 +326,12 @@ def wrap_lta_partition_features(catalog: Any) -> ProfileFeatureCatalog:
         ),
         frame_catalog_digest=catalog.frame_catalog_digest,
         payload_schema=LTA_PARTITION_FEATURE_CATALOG_SCHEMA,
-        payload=None,
+        payload=catalog.to_dict() if embed_payload else None,
         scientific_payload_digest_value=catalog.content_digest,
-        notes=("Optional LTA partition extension; scientific payload is stored once by DATA4.",),
+        notes=(
+            "Optional LTA partition extension; scientific payload is "
+            + ("embedded for standalone use." if embed_payload else "stored once by DATA4."),
+        ),
     )
     return result.bind_scientific_payload(catalog)
 

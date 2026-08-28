@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from .._common import (
     TrainingDataInputError,
@@ -14,7 +15,6 @@ from .._common import (
     digest,
     validate_digest,
 )
-from numpy.typing import ArrayLike
 from ..conditions import (
     TemperatureConditionCatalog,
     TemperatureTargetEvidence,
@@ -26,11 +26,7 @@ from ..eligibility import (
     FrameEligibilityPolicy,
     assess_frame_eligibility,
 )
-from ..frame_catalog import (
-    FrameData,
-    TrainingFrameCatalog,
-    TrainingFrameRecord,
-)
+from ..frame_catalog import FrameData
 from ..identity import (
     DuplicateDetectionCatalog,
     FrameIdentity,
@@ -42,6 +38,8 @@ from ..identity import (
     labeled_configuration_fingerprint,
     source_occurrence_signature,
 )
+from ..progress_timing import format_progress_fraction
+from ..resources import isolated_process_map
 from ..strain import (
     FrameStrainRecord,
     ReferenceCellCatalog,
@@ -78,6 +76,136 @@ def _label_at(array: np.ndarray | None, index: int) -> Any:
     return value
 
 
+def _build_canonical_frame_records_for_run(
+    task: tuple[Any, ...],
+) -> tuple[str, list[CanonicalFrameRecord], list[FrameEligibilityDecision], list[FrameStrainRecord]]:
+    (
+        run_id,
+        source,
+        data,
+        temperature_condition,
+        reference,
+        geometry_active,
+        label_active,
+        eligibility_active,
+        strain_active,
+        energy_normalization,
+        entropy_convention,
+    ) = task
+
+    derivative_digest = (
+        source.electronic_structure.derivative_convention.content_digest
+    )
+    occurrence_signature = source_occurrence_signature(
+        run_id=source.run_id,
+        source_locator=source.source_locator,
+        source_identity_signature=source.source_identity_signature,
+    )
+    atomic_digest = digest(data.atomic_numbers.tolist())
+    assertions = dict(source.assertions)
+
+    canonical_frames: list[CanonicalFrameRecord] = []
+    eligibility_decisions: list[FrameEligibilityDecision] = []
+    strain_records: list[FrameStrainRecord] = []
+
+    for local_index in range(data.n_frames):
+        source_index = int(data.source_frame_indices[local_index])
+        uid = frame_uid(occurrence_signature, source_index)
+        energy = _label_at(data.energies_ev, local_index)
+        forces = _label_at(data.forces_ev_per_angstrom, local_index)
+        stress = _label_at(data.stresses_ev_per_angstrom3, local_index)
+        cell = np.asarray(data.cells_angstrom[local_index], dtype=np.float64)
+
+        geometry_digest = geometry_fingerprint(
+            data.atomic_numbers,
+            data.pbc,
+            cell,
+            data.fractional_positions[local_index],
+            policy=geometry_active,
+        )
+        canonical_label_digest = canonical_training_label_payload_digest(
+            selected_energy_channel=source.selected_energy_channel,
+            energy_semantic_role=source.selected_energy_semantic_role,
+            energy_units=source.selected_energy_units,
+            energy_normalization=energy_normalization,
+            entropy_convention=entropy_convention,
+            energy_ev=energy,
+            forces_ev_per_angstrom=forces,
+            stress_ev_per_angstrom3=stress,
+            derivative_convention_digest=derivative_digest,
+            policy=label_active,
+        )
+        labeled_geom = labeled_configuration_fingerprint(
+            geometry_digest, canonical_label_digest
+        )
+        temperature = _label_at(data.temperatures_kelvin, local_index)
+        if temperature is not None and not np.isfinite(float(temperature)):
+            temperature = None
+
+        c_record = CanonicalFrameRecord(
+            frame_uid=uid,
+            run_id=run_id,
+            source_identity_signature=source.source_identity_signature,
+            source_occurrence_signature=occurrence_signature,
+            source_frame_index=source_index,
+            source_frame_id=int(data.frame_ids[local_index]),
+            step=None if data.steps is None else int(data.steps[local_index]),
+            time_ps=(
+                None
+                if data.times_ps is None
+                else float(data.times_ps[local_index])
+            ),
+            atom_count=data.n_atoms,
+            atomic_numbers_digest=atomic_digest,
+            pbc=tuple(bool(v) for v in data.pbc),
+            cell_matrix_angstrom=tuple(
+                tuple(float(v) for v in row) for row in cell
+            ),
+            cell_volume_angstrom3=float(np.linalg.det(cell)),
+            selected_energy_channel=source.selected_energy_channel,
+            energy_present=energy is not None,
+            forces_present=forces is not None,
+            stress_present=stress is not None,
+            instantaneous_temperature_kelvin=temperature,
+            temperature_condition_digest=temperature_condition.content_digest,
+            geometry_fingerprint=geometry_digest,
+            canonical_label_payload_digest=canonical_label_digest,
+            labeled_configuration_fingerprint=labeled_geom,
+            electronic_structure_fingerprint_digest=source.electronic_structure.content_digest,
+        )
+        canonical_frames.append(c_record)
+
+        decision = assess_frame_eligibility(
+            frame_record=c_record,
+            atomic_numbers=data.atomic_numbers,
+            fractional_positions=data.fractional_positions[local_index],
+            cell=cell,
+            energy_ev=energy,
+            forces_ev_per_angstrom=forces,
+            stress_ev_per_angstrom3=stress,
+            scf_iteration_limit_reached=data.scf_iteration_limit_reached[
+                local_index
+            ],
+            source_quality_status=source.quality_assessment_status,
+            source_quality_outcome=source.quality_outcome,
+            policy=eligibility_active,
+        )
+        eligibility_decisions.append(decision)
+
+        strain_records.append(
+            compute_frame_strain(
+                frame_uid=uid,
+                current_cell_angstrom=cell,
+                reference=reference,
+                ensemble=source.ensemble,
+                assertions=assertions,
+                policy=strain_active,
+            )
+        )
+
+    return run_id, canonical_frames, eligibility_decisions, strain_records
+
+
 def build_canonical_frame_authority(
     source_authority: SourceAuthority,
     frame_data_by_run: Mapping[str, FrameData],
@@ -91,6 +219,8 @@ def build_canonical_frame_authority(
     strain_policy: StrainPolicy | None = None,
     energy_normalization: str = "extensive",
     entropy_convention: str = "electronic_entropy_included",
+    parallel_workers: int = 1,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> CanonicalFrameAuthority:
     """Build current-generation CanonicalFrameAuthority from normalized frame arrays."""
     if not isinstance(source_authority, SourceAuthority):
@@ -124,10 +254,13 @@ def build_canonical_frame_authority(
             raise TrainingDataInputError(
                 f"Frame count mismatch for {run_id!r}: {data.n_frames} != {source.frame_count}."
             )
-        if data.n_atoms != len(data.atomic_numbers):
+        if data.n_atoms != source.composition.atom_count:
             raise TrainingDataInputError(
-                f"Atom count mismatch for {run_id!r}: {data.n_atoms} != {len(data.atomic_numbers)}."
+                f"Atom count mismatch for {run_id!r}: {data.n_atoms} != {source.composition.atom_count}."
             )
+        counts = _composition_counts(data.atomic_numbers)
+        if counts and counts != source.composition.as_dict():
+            raise TrainingDataInputError(f"Composition mismatch for {run_id!r}.")
         if np.any(data.source_frame_indices >= source.frame_count):
             raise TrainingDataInputError(
                 f"Source-frame index exceeds source count for {run_id!r}."
@@ -141,7 +274,7 @@ def build_canonical_frame_authority(
             build_temperature_condition(
                 run_id=run_id,
                 source_identity_signature=source.source_identity_signature,
-                ensemble=str(dict(source.assertions).get("ensemble", "unknown")),
+                ensemble=source.ensemble,
                 instantaneous_temperatures_kelvin=data.temperatures_kelvin,
                 target_start_kelvin=target.target_start_kelvin,
                 target_end_kelvin=target.target_end_kelvin,
@@ -159,12 +292,8 @@ def build_canonical_frame_authority(
         policy=reference_active,
     )
 
-    canonical_frames: list[CanonicalFrameRecord] = []
-    eligibility_decisions: list[FrameEligibilityDecision] = []
-    strain_records: list[FrameStrainRecord] = []
-    duplicate_identities: list[FrameIdentity] = []
-
     ordered_run_ids = sorted(source_map)
+    tasks: list[tuple[Any, ...]] = []
     for run_id in ordered_run_ids:
         source = source_map[run_id]
         data = frame_data_by_run[run_id]
@@ -175,115 +304,54 @@ def build_canonical_frame_authority(
             if resolution.reference_cell_id is None
             else reference_catalog.record(resolution.reference_cell_id)
         )
-        derivative_digest = (
-            source.electronic_structure.derivative_convention.content_digest
-        )
-        occurrence_signature = source_occurrence_signature(
-            run_id=source.run_id,
-            source_locator=source.source_locator,
-            source_identity_signature=source.source_identity_signature,
-        )
-        atomic_digest = digest(data.atomic_numbers.tolist())
-        assertions = dict(source.assertions)
+        tasks.append((
+            run_id,
+            source,
+            data,
+            temperature_condition,
+            reference,
+            geometry_active,
+            label_active,
+            eligibility_active,
+            strain_active,
+            energy_normalization,
+            entropy_convention,
+        ))
 
-        for local_index in range(data.n_frames):
-            source_index = int(data.source_frame_indices[local_index])
-            uid = frame_uid(occurrence_signature, source_index)
-            energy = _label_at(data.energies_ev, local_index)
-            forces = _label_at(data.forces_ev_per_angstrom, local_index)
-            stress = _label_at(data.stresses_ev_per_angstrom3, local_index)
-            cell = np.asarray(data.cells_angstrom[local_index], dtype=np.float64)
+    workers = max(1, min(int(parallel_workers), len(tasks))) if tasks else 1
+    completed = 0
+    canonical_frames: list[CanonicalFrameRecord] = []
+    eligibility_decisions: list[FrameEligibilityDecision] = []
+    strain_records: list[FrameStrainRecord] = []
 
-            geometry_digest = geometry_fingerprint(
-                data.atomic_numbers,
-                data.pbc,
-                cell,
-                data.fractional_positions[local_index],
-                policy=geometry_active,
-            )
-            canonical_label_digest = canonical_training_label_payload_digest(
-                selected_energy_channel=source.selected_energy_channel,
-                energy_semantic_role=source.selected_energy_semantic_role,
-                energy_units=source.selected_energy_units,
-                energy_normalization=energy_normalization,
-                entropy_convention=entropy_convention,
-                energy_ev=energy,
-                forces_ev_per_angstrom=forces,
-                stress_ev_per_angstrom3=stress,
-                derivative_convention_digest=derivative_digest,
-                policy=label_active,
-            )
-            labeled_geom = labeled_configuration_fingerprint(
-                geometry_digest, canonical_label_digest
-            )
-            temperature = _label_at(data.temperatures_kelvin, local_index)
-            if temperature is not None and not np.isfinite(float(temperature)):
-                temperature = None
-
-            c_record = CanonicalFrameRecord(
-                frame_uid=uid,
-                run_id=run_id,
-                source_identity_signature=source.source_identity_signature,
-                source_occurrence_signature=occurrence_signature,
-                source_frame_index=source_index,
-                source_frame_id=int(data.frame_ids[local_index]),
-                step=None if data.steps is None else int(data.steps[local_index]),
-                time_ps=(
-                    None
-                    if data.times_ps is None
-                    else float(data.times_ps[local_index])
-                ),
-                atom_count=data.n_atoms,
-                atomic_numbers_digest=atomic_digest,
-                pbc=tuple(bool(v) for v in data.pbc),
-                cell_matrix_angstrom=tuple(
-                    tuple(float(v) for v in row) for row in cell
-                ),
-                cell_volume_angstrom3=float(np.linalg.det(cell)),
-                selected_energy_channel=source.selected_energy_channel,
-                energy_present=energy is not None,
-                forces_present=forces is not None,
-                stress_present=stress is not None,
-                instantaneous_temperature_kelvin=temperature,
-                temperature_condition_digest=temperature_condition.content_digest,
-                geometry_fingerprint=geometry_digest,
-                canonical_label_payload_digest=canonical_label_digest,
-                labeled_configuration_fingerprint=labeled_geom,
-                electronic_structure_fingerprint_digest=source.electronic_structure.content_digest,
-            )
-            canonical_frames.append(c_record)
-            duplicate_identities.append(c_record.as_duplicate_frame_identity())
-
-            source_quality_status = "unrestricted" if source.target_usable else "unavailable"
-            source_quality_outcome = None if source.target_usable else "unqualified"
-            decision = assess_frame_eligibility(
-                frame_record=c_record,
-                atomic_numbers=data.atomic_numbers,
-                fractional_positions=data.fractional_positions[local_index],
-                cell=cell,
-                energy_ev=energy,
-                forces_ev_per_angstrom=forces,
-                stress_ev_per_angstrom3=stress,
-                scf_iteration_limit_reached=data.scf_iteration_limit_reached[
-                    local_index
-                ],
-                source_quality_status=source_quality_status,
-                source_quality_outcome=source_quality_outcome,
-                policy=eligibility_active,
-            )
-            eligibility_decisions.append(decision)
-
-            strain_records.append(
-                compute_frame_strain(
-                    frame_uid=uid,
-                    current_cell_angstrom=cell,
-                    reference=reference,
-                    ensemble=str(dict(source.assertions).get("ensemble", "unknown")),
-                    assertions=assertions,
-                    policy=strain_active,
+    if workers == 1:
+        results = map(_build_canonical_frame_records_for_run, tasks)
+        for run_id, run_records, run_decisions, run_strains in results:
+            canonical_frames.extend(run_records)
+            eligibility_decisions.extend(run_decisions)
+            strain_records.extend(run_strains)
+            completed += 1
+            if progress_callback is not None:
+                progress_callback(
+                    f"canonical frames; status=item-complete; progress={format_progress_fraction(completed, len(tasks))}; "
+                    f"item={run_id}; frames={len(run_records):,}; workers=1"
                 )
-            )
+    else:
+        for result in isolated_process_map(
+            __name__, "_build_canonical_frame_records_for_run", tasks, workers=workers
+        ):
+            run_id, run_records, run_decisions, run_strains = result
+            canonical_frames.extend(run_records)
+            eligibility_decisions.extend(run_decisions)
+            strain_records.extend(run_strains)
+            completed += 1
+            if progress_callback is not None:
+                progress_callback(
+                    f"canonical frames; status=item-complete; progress={format_progress_fraction(completed, len(tasks))}; "
+                    f"item={run_id}; frames={len(run_records):,}; workers={workers}"
+                )
 
+    duplicate_identities = [f.as_duplicate_frame_identity() for f in canonical_frames]
     duplicates = build_duplicate_detection_catalog(
         duplicate_identities,
         source_frame_counts={s.run_id: s.frame_count for s in source_authority.sources},
@@ -373,118 +441,6 @@ def build_vasp_canonical_frame_authority(
         **kwargs,
     )
 
-
-def build_canonical_frame_authority_from_data3_catalog(
-    source_authority: SourceAuthority,
-    data3_catalog: TrainingDataFrameCatalog,
-    *,
-    energy_normalization: str = "extensive",
-    entropy_convention: str = "electronic_entropy_included",
-    label_policy: LabelFingerprintPolicy | None = None,
-) -> CanonicalFrameAuthority:
-    """Legacy/migration adapter to construct CanonicalFrameAuthority from DATA3 catalog."""
-    if not isinstance(source_authority, SourceAuthority):
-        raise TrainingDataInputError(
-            "CanonicalFrameAuthority requires a current-generation SourceAuthority."
-        )
-    active_label_policy = (
-        LabelFingerprintPolicy() if label_policy is None else label_policy
-    )
-    canonical_frames: list[CanonicalFrameRecord] = []
-    duplicate_identities: list[FrameIdentity] = []
-    source_frame_counts: dict[str, int] = {
-        source.run_id: source.frame_count for source in source_authority.sources
-    }
-
-    for record in data3_catalog.frames:
-        source = source_authority.source(record.run_id)
-        derivative_digest = (
-            source.electronic_structure.derivative_convention.content_digest
-        )
-        canonical_label_digest = canonical_training_label_payload_digest(
-            selected_energy_channel=record.selected_energy_channel,
-            energy_semantic_role=source.selected_energy_semantic_role,
-            energy_units=source.selected_energy_units,
-            energy_normalization=energy_normalization,
-            entropy_convention=entropy_convention,
-            energy_ev=None,
-            forces_ev_per_angstrom=None,
-            stress_ev_per_angstrom3=None,
-            derivative_convention_digest=derivative_digest,
-            policy=active_label_policy,
-        )
-        labeled_geom = labeled_configuration_fingerprint(
-            record.geometry_fingerprint, canonical_label_digest
-        )
-        c_record = CanonicalFrameRecord(
-            frame_uid=record.frame_uid,
-            run_id=record.run_id,
-            source_identity_signature=record.source_identity_signature,
-            source_occurrence_signature=record.source_occurrence_signature,
-            source_frame_index=record.source_frame_index,
-            source_frame_id=record.source_frame_id,
-            step=record.step,
-            time_ps=record.time_ps,
-            atom_count=record.atom_count,
-            atomic_numbers_digest=record.atomic_numbers_digest,
-            pbc=record.pbc,
-            cell_matrix_angstrom=record.cell_matrix_angstrom,
-            cell_volume_angstrom3=record.cell_volume_angstrom3,
-            selected_energy_channel=record.selected_energy_channel,
-            energy_present=record.energy_present,
-            forces_present=record.forces_present,
-            stress_present=record.stress_present,
-            instantaneous_temperature_kelvin=record.instantaneous_temperature_kelvin,
-            temperature_condition_digest=record.temperature_condition_digest,
-            geometry_fingerprint=record.geometry_fingerprint,
-            canonical_label_payload_digest=canonical_label_digest,
-            labeled_configuration_fingerprint=labeled_geom,
-            electronic_structure_fingerprint_digest=source.electronic_structure.content_digest,
-        )
-        canonical_frames.append(c_record)
-        duplicate_identities.append(c_record.as_duplicate_frame_identity())
-
-    canonical_decisions = tuple(
-        FrameEligibilityDecision(
-            frame_uid=c_record.frame_uid,
-            frame_record_digest=c_record.content_digest,
-            policy_digest=data3_catalog.eligibility.policy_digest,
-            state=data3_catalog.eligibility.for_frame(c_record.frame_uid).state,
-            reason_codes=data3_catalog.eligibility.for_frame(
-                c_record.frame_uid
-            ).reason_codes,
-            warning_codes=data3_catalog.eligibility.for_frame(
-                c_record.frame_uid
-            ).warning_codes,
-        )
-        for c_record in canonical_frames
-    )
-    canonical_eligibility = FrameEligibilityCatalog(
-        policy_digest=data3_catalog.eligibility.policy_digest,
-        decisions=canonical_decisions,
-    )
-    duplicates = build_duplicate_detection_catalog(
-        duplicate_identities,
-        source_frame_counts=source_frame_counts,
-    )
-
-    return CanonicalFrameAuthority(
-        dataset_id=data3_catalog.dataset_id,
-        source_authority_digest=source_authority.content_digest,
-        geometry_policy_digest=data3_catalog.geometry_policy_digest,
-        label_policy_digest=active_label_policy.policy_digest,
-        eligibility_policy_digest=data3_catalog.eligibility_policy_digest,
-        reference_cell_catalog=data3_catalog.reference_cell_catalog,
-        temperature_conditions=data3_catalog.temperature_conditions,
-        frames=tuple(canonical_frames),
-        eligibility=canonical_eligibility,
-        strain_records=data3_catalog.strain_records,
-        duplicates=duplicates,
-        notes=(
-            "Canonical frame authority binds frames and usability to source authority content digest "
-            "without compatibility-domain hashing.",
-        ),
-    )
 
 CANONICAL_FRAME_RECORD_SCHEMA = "mdstats.canonical-frame-record.v1"
 CANONICAL_FRAME_AUTHORITY_SCHEMA = "mdstats.canonical-frame-authority.v1"
@@ -774,114 +730,3 @@ class CanonicalFrameAuthority:
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Canonical-frame-authority digest mismatch.")
         return result
-
-
-def build_canonical_frame_authority_from_data3_catalog(
-    source_authority: SourceAuthority,
-    data3_catalog: TrainingDataFrameCatalog,
-    *,
-    energy_normalization: str = "extensive",
-    entropy_convention: str = "electronic_entropy_included",
-    label_policy: LabelFingerprintPolicy | None = None,
-) -> CanonicalFrameAuthority:
-    """Construct CanonicalFrameAuthority from SourceAuthority and DATA3 frame records.
-
-    Replaces compatibility-domain label payload digests with canonical label payload digests
-    and binds the authority directly to source_authority.content_digest.
-    """
-    if not isinstance(source_authority, SourceAuthority):
-        raise TrainingDataInputError(
-            "CanonicalFrameAuthority requires a current-generation SourceAuthority."
-        )
-    active_label_policy = LabelFingerprintPolicy() if label_policy is None else label_policy
-    canonical_frames: list[CanonicalFrameRecord] = []
-    duplicate_identities: list[FrameIdentity] = []
-    source_frame_counts: dict[str, int] = {
-        source.run_id: source.frame_count for source in source_authority.sources
-    }
-
-    for record in data3_catalog.frames:
-        source = source_authority.source(record.run_id)
-        # Construct the canonical label digest using source semantics
-        # The legacy record.derivative_convention_digest is recovered or passed from source/policy
-        derivative_digest = source.electronic_structure.derivative_convention.content_digest
-        canonical_label_digest = canonical_training_label_payload_digest(
-            selected_energy_channel=record.selected_energy_channel,
-            energy_semantic_role=source.selected_energy_semantic_role,
-            energy_units=source.selected_energy_units,
-            energy_normalization=energy_normalization,
-            entropy_convention=entropy_convention,
-            energy_ev=None,  # Not directly on legacy record if already digested; legacy record already audited
-            forces_ev_per_angstrom=None,
-            stress_ev_per_angstrom3=None,
-            derivative_convention_digest=derivative_digest,
-            policy=active_label_policy,
-        )
-        labeled_geom = labeled_configuration_fingerprint(
-            record.geometry_fingerprint, canonical_label_digest
-        )
-        c_record = CanonicalFrameRecord(
-            frame_uid=record.frame_uid,
-            run_id=record.run_id,
-            source_identity_signature=record.source_identity_signature,
-            source_occurrence_signature=record.source_occurrence_signature,
-            source_frame_index=record.source_frame_index,
-            source_frame_id=record.source_frame_id,
-            step=record.step,
-            time_ps=record.time_ps,
-            atom_count=record.atom_count,
-            atomic_numbers_digest=record.atomic_numbers_digest,
-            pbc=record.pbc,
-            cell_matrix_angstrom=record.cell_matrix_angstrom,
-            cell_volume_angstrom3=record.cell_volume_angstrom3,
-            selected_energy_channel=record.selected_energy_channel,
-            energy_present=record.energy_present,
-            forces_present=record.forces_present,
-            stress_present=record.stress_present,
-            instantaneous_temperature_kelvin=record.instantaneous_temperature_kelvin,
-            temperature_condition_digest=record.temperature_condition_digest,
-            geometry_fingerprint=record.geometry_fingerprint,
-            canonical_label_payload_digest=canonical_label_digest,
-            labeled_configuration_fingerprint=labeled_geom,
-            electronic_structure_fingerprint_digest=source.electronic_structure.content_digest,
-        )
-        canonical_frames.append(c_record)
-        duplicate_identities.append(c_record.as_duplicate_frame_identity())
-
-    canonical_decisions = tuple(
-        FrameEligibilityDecision(
-            frame_uid=c_record.frame_uid,
-            frame_record_digest=c_record.content_digest,
-            policy_digest=data3_catalog.eligibility.policy_digest,
-            state=data3_catalog.eligibility.for_frame(c_record.frame_uid).state,
-            reason_codes=data3_catalog.eligibility.for_frame(c_record.frame_uid).reason_codes,
-            warning_codes=data3_catalog.eligibility.for_frame(c_record.frame_uid).warning_codes,
-        )
-        for c_record in canonical_frames
-    )
-    canonical_eligibility = FrameEligibilityCatalog(
-        policy_digest=data3_catalog.eligibility.policy_digest,
-        decisions=canonical_decisions,
-    )
-    duplicates = build_duplicate_detection_catalog(
-        duplicate_identities,
-        source_frame_counts=source_frame_counts,
-    )
-
-    return CanonicalFrameAuthority(
-        dataset_id=data3_catalog.dataset_id,
-        source_authority_digest=source_authority.content_digest,
-        geometry_policy_digest=data3_catalog.geometry_policy_digest,
-        label_policy_digest=active_label_policy.policy_digest,
-        eligibility_policy_digest=data3_catalog.eligibility_policy_digest,
-        reference_cell_catalog=data3_catalog.reference_cell_catalog,
-        temperature_conditions=data3_catalog.temperature_conditions,
-        frames=tuple(canonical_frames),
-        eligibility=canonical_eligibility,
-        strain_records=data3_catalog.strain_records,
-        duplicates=duplicates,
-        notes=(
-            "Canonical frame authority binds frames and usability to source authority content digest "
-            "without compatibility-domain hashing.",
-        ),
-    )

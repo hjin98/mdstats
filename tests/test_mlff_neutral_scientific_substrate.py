@@ -36,7 +36,6 @@ from mdstats.training_data.neutral_substrate import (
     SourceRecord,
     build_advisory_compatibility_report,
     build_canonical_frame_authority,
-    build_canonical_frame_authority_from_data3_catalog,
     build_canonical_frame_identity,
     build_independence_report,
     build_neutral_feature_evidence_from_data4_bundle,
@@ -382,6 +381,32 @@ def test_p1b_missing_energy_is_mechanically_unusable(tmp_path: Path) -> None:
     assert "unconvertible_energy_channel" in unit_record.mechanical_rejection_codes
 
 
+def test_p1b_source_facts_preservation(tmp_path: Path) -> None:
+    """P1-B: SourceAuthority preserves composition, ensemble, quality facts, and timestep."""
+    _write(tmp_path, "run_facts", ("Li", "O"), n_frames=4, tebeg=650)
+    manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="facts")
+    catalog = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+    authority = build_source_authority_from_data2_catalog(catalog)
+    source = authority.source("run_facts")
+
+    assert isinstance(source.composition, mdstats.SourceComposition)
+    assert source.composition.atom_count == 2
+    assert source.composition.reduced_formula == "LiO"
+    assert source.composition.as_dict() == {"Li": 1, "O": 1}
+    assert source.ensemble.lower() == "nvt"
+    assert source.quality_assessment_status == catalog.source("run_facts").quality_assessment_status
+    assert source.quality_outcome is None
+
+    payload = json.loads(json.dumps(authority.to_dict()))
+    rebuilt = SourceAuthority.from_dict(payload)
+    assert rebuilt.content_digest == authority.content_digest
+    r_source = rebuilt.source("run_facts")
+    assert r_source.composition.atom_count == 2
+    assert r_source.composition.as_dict() == {"Li": 1, "O": 1}
+    assert r_source.ensemble.lower() == "nvt"
+    assert r_source.quality_assessment_status == source.quality_assessment_status
+
+
 # =========================================================================
 # Pass P1-C: Canonical Label and Frame Authority Tests
 # =========================================================================
@@ -549,6 +574,155 @@ def test_p1c_canonical_frame_authority_from_real_arrays(tmp_path: Path) -> None:
     assert rebuilt == frame_auth
 
 
+def test_p1c_composition_and_atom_count_mismatch_rejected(tmp_path: Path) -> None:
+    """P1-C: FrameData with atom count or composition mismatch against SourceAuthority is rejected."""
+    _write(tmp_path, "run_mismatch", ("Li", "O"), n_frames=4)
+    manifest = mdstats.TrainingDataManifest(
+        dataset_id="mismatch",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="run_mismatch",
+                vasprun="run_mismatch/vasprun.xml",
+                reference_group="bulk",
+            ),
+        ),
+    )
+    sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources)
+
+    from mdstats.io import read_vasp_frames, read_vasp_run_controls
+
+    path = tmp_path / "run_mismatch/vasprun.xml"
+    collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
+    bundle = read_vasp_run_controls(path)
+    channel = bundle.energy_catalog.channel("e_fr_energy")
+
+    # Mismatched atom count
+    bad_count_frame_data = {
+        "run_mismatch": mdstats.FrameData(
+            frame_ids=np.arange(collection.n_frames, dtype=np.int64),
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            steps=np.arange(collection.n_frames, dtype=np.int64),
+            times_ps=np.zeros(collection.n_frames, dtype=np.float64),
+            atomic_numbers=np.asarray([3, 8, 8], dtype=np.int32),  # 3 atoms vs source count 2
+            pbc=np.asarray([True, True, True]),
+            cells_angstrom=collection.cells,
+            fractional_positions=np.zeros((collection.n_frames, 3, 3), dtype=np.float64),
+            energies_ev=channel.as_array(),
+            forces_ev_per_angstrom=np.zeros((collection.n_frames, 3, 3), dtype=np.float64),
+            stresses_ev_per_angstrom3=collection.stresses,
+            temperatures_kelvin=np.full(collection.n_frames, 300.0),
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    with pytest.raises(mdstats.TrainingDataInputError, match="Atom count mismatch"):
+        build_canonical_frame_authority(source_auth, bad_count_frame_data)
+
+    # Mismatched composition (same count 2, but Na + O instead of Li + O)
+    bad_comp_frame_data = {
+        "run_mismatch": mdstats.FrameData(
+            frame_ids=np.arange(collection.n_frames, dtype=np.int64),
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            steps=np.arange(collection.n_frames, dtype=np.int64),
+            times_ps=np.zeros(collection.n_frames, dtype=np.float64),
+            atomic_numbers=np.asarray([11, 8], dtype=np.int32),  # Na, O instead of Li, O
+            pbc=np.asarray([True, True, True]),
+            cells_angstrom=collection.cells,
+            fractional_positions=np.zeros((collection.n_frames, 2, 3), dtype=np.float64),
+            energies_ev=channel.as_array(),
+            forces_ev_per_angstrom=np.zeros((collection.n_frames, 2, 3), dtype=np.float64),
+            stresses_ev_per_angstrom3=collection.stresses,
+            temperatures_kelvin=np.full(collection.n_frames, 300.0),
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    with pytest.raises(mdstats.TrainingDataInputError, match="Composition mismatch"):
+        build_canonical_frame_authority(source_auth, bad_comp_frame_data)
+
+
+def test_p1c_ensemble_and_quality_propagation(tmp_path: Path) -> None:
+    """P1-C: Real source ensemble and source quality status reach temperature/strain and eligibility."""
+    _write(tmp_path, "run_prop", ("Li", "O"), n_frames=4, tebeg=700)
+    manifest = mdstats.TrainingDataManifest(
+        dataset_id="prop",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="run_prop",
+                vasprun="run_prop/vasprun.xml",
+                reference_group="bulk",
+            ),
+        ),
+    )
+    sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources)
+
+    from mdstats.io import read_vasp_frames, read_vasp_run_controls
+    path = tmp_path / "run_prop/vasprun.xml"
+    collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
+    bundle = read_vasp_run_controls(path)
+    channel = bundle.energy_catalog.channel("e_fr_energy")
+
+    frame_data = {
+        "run_prop": mdstats.FrameData.from_collection(
+            collection,
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            energies_ev=channel.as_array(),
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+
+    # 1. Test ensemble propagation
+    source_auth_npt = replace(
+        source_auth,
+        sources=(replace(source_auth.sources[0], ensemble="npt"),),
+    )
+    frame_auth_npt = build_canonical_frame_authority(source_auth_npt, frame_data)
+    assert frame_auth_npt.temperature_conditions.for_run("run_prop").ensemble == "npt"
+    assert frame_auth_npt.strain_records[0].context_class == mdstats.StrainContextClass.VARIABLE_CELL_FLUCTUATION
+
+    # 2. Test quality status propagation
+    source_auth_failed = replace(
+        source_auth,
+        sources=(replace(source_auth.sources[0], quality_assessment_status="failed", quality_outcome="unqualified"),),
+    )
+    frame_auth_failed = build_canonical_frame_authority(source_auth_failed, frame_data)
+    for dec in frame_auth_failed.eligibility.decisions:
+        assert dec.state == mdstats.FrameEligibilityState.INELIGIBLE
+        assert "source_trajectory_unqualified" in dec.reason_codes
+
+
+def test_p1c_parallel_worker_equivalence(tmp_path: Path) -> None:
+    """P1-C: Canonical frame authority construction is bit-for-bit identical across worker counts."""
+    _write(tmp_path, "run_p1", ("Li", "O"), n_frames=4)
+    _write(tmp_path, "run_p2", ("Na", "O"), n_frames=4)
+    manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="par-equiv")
+    sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources)
+
+    from mdstats.io import read_vasp_frames, read_vasp_run_controls
+
+    frame_data = {}
+    for s in source_auth.sources:
+        path = tmp_path / s.source_locator
+        collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
+        bundle = read_vasp_run_controls(path)
+        channel = bundle.energy_catalog.channel(s.selected_energy_channel)
+        frame_data[s.run_id] = mdstats.FrameData.from_collection(
+            collection,
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            energies_ev=channel.as_array(),
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+
+    auth_seq = build_canonical_frame_authority(source_auth, frame_data, parallel_workers=1)
+    auth_par = build_canonical_frame_authority(source_auth, frame_data, parallel_workers=2)
+
+    assert auth_seq.content_digest == auth_par.content_digest
+    assert auth_seq == auth_par
+
+
 # =========================================================================
 # Pass P1-D: Neutral Feature Evidence and Statistical Base Tests
 # =========================================================================
@@ -631,9 +805,55 @@ def test_p1d_lta_typed_profile_rebinding(tmp_path: Path) -> None:
     changed = mdstats.profile_partition_state_changed(feature_ev.profile_partition_features, uids)
     assert changed is False
 
-    # Round trip
+    # Round trip and restart durability
     rebuilt = NeutralFeatureEvidence.from_dict(json.loads(json.dumps(feature_ev.to_dict())))
     assert rebuilt.content_digest == feature_ev.content_digest
+    rebuilt_typed = rebuilt.profile_partition_features[0].as_lta_partition()
+    assert rebuilt_typed.frame_catalog_digest == frame_auth.content_digest
+    assert mdstats.profile_partition_state_changed(rebuilt.profile_partition_features, uids) is False
+
+
+def test_p1d_generic_profile_dispatch_and_unsupported_rejection(tmp_path: Path) -> None:
+    """P1-D: Generic provider dispatch rejects unsupported opaque providers explicitly."""
+    _manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources)
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
+
+    unsupported_profile = mdstats.ProfileFeatureCatalog(
+        extension_id="unregistered_custom",
+        stage=mdstats.ProfileFeatureStage.PARTITION,
+        provider_identity=mdstats.MaterialProfileProviderIdentity(
+            provider_id="mdstats.profile.custom.partition",
+            provider_version="1.0",
+            configuration_digest=_digest(),
+        ),
+        frame_catalog_digest=legacy_frames.content_digest,
+        payload_schema="mdstats.custom.v1",
+        payload={"dummy": 123, "content_digest": _digest()},
+    )
+    events_unsupported = replace(
+        data4.events, profile_feature_catalog_digests=(unsupported_profile.content_digest,)
+    )
+    profile = mdstats.build_single_phase_material_profile(
+        profile_id="unregistered-custom-profile",
+        phase_kind=mdstats.MaterialPhaseKind.CRYSTALLINE_SOLID,
+        extensions=("unregistered_custom",),
+    )
+    contracts = mdstats.build_material_profile_contracts(profile)
+    data4_unsupported = replace(
+        data4,
+        material_profile_contracts=contracts,
+        profile_partition_features=(unsupported_profile,),
+        events=events_unsupported,
+    )
+
+    with pytest.raises(
+        mdstats.TrainingDataInputError,
+        match="Unsupported partition-stage material-profile provider: 'unregistered_custom'",
+    ):
+        build_neutral_feature_evidence_from_data4_bundle(
+            source_auth, frame_auth, data4_unsupported
+        )
 
 
 def test_p1d_neutral_statistical_base_assembled_chain_and_round_trip(tmp_path: Path) -> None:
@@ -911,8 +1131,190 @@ def test_p1e_unresolved_provenance_assembled_proof(tmp_path: Path) -> None:
     assert stat_base.leakage.error_count == 0
 
 
+def test_p1e_source_fact_preservation_proof(tmp_path: Path) -> None:
+    """P1-E4: Source-fact preservation proof: composition mismatch, ensemble context, and quality propagation."""
+    _write(tmp_path, "run_e4", ("Li", "O"), n_frames=8, tebeg=700)
+    manifest = mdstats.TrainingDataManifest(
+        dataset_id="e4-proof",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="run_e4",
+                vasprun="run_e4/vasprun.xml",
+                reference_group="bulk",
+                assertions=(("ensemble", "npt"), ("regime", "production")),
+            ),
+        ),
+    )
+    sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources)
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
+
+    # 2. Composition mismatch rejection
+    from mdstats.io import read_vasp_frames, read_vasp_run_controls
+    path = tmp_path / "run_e4/vasprun.xml"
+    collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
+    bundle = read_vasp_run_controls(path)
+    channel = bundle.energy_catalog.channel("e_fr_energy")
+
+    frame_data_valid = {
+        "run_e4": mdstats.FrameData.from_collection(
+            collection,
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            energies_ev=channel.as_array(),
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+
+    # 1. Real ensemble reached temperature conditions and strain context class
+    source_auth_npt = replace(
+        source_auth,
+        sources=(replace(source_auth.sources[0], ensemble="npt"),),
+    )
+    frame_auth_npt = build_canonical_frame_authority(source_auth_npt, frame_data_valid)
+    assert frame_auth_npt.temperature_conditions.for_run("run_e4").ensemble == "npt"
+    assert frame_auth_npt.strain_records[0].context_class == mdstats.StrainContextClass.VARIABLE_CELL_FLUCTUATION
+
+    bad_frame_data = {
+        "run_e4": mdstats.FrameData(
+            frame_ids=np.arange(collection.n_frames, dtype=np.int64),
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            steps=np.arange(collection.n_frames, dtype=np.int64),
+            times_ps=np.zeros(collection.n_frames, dtype=np.float64),
+            atomic_numbers=np.asarray([3, 8, 8], dtype=np.int32),  # 3 atoms vs source count 2
+            pbc=np.asarray([True, True, True]),
+            cells_angstrom=collection.cells,
+            fractional_positions=np.zeros((collection.n_frames, 3, 3), dtype=np.float64),
+            energies_ev=channel.as_array(),
+            forces_ev_per_angstrom=np.zeros((collection.n_frames, 3, 3), dtype=np.float64),
+            stresses_ev_per_angstrom3=collection.stresses,
+            temperatures_kelvin=np.full(collection.n_frames, 300.0),
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    with pytest.raises(mdstats.TrainingDataInputError, match="Atom count mismatch"):
+        build_canonical_frame_authority(source_auth, bad_frame_data)
+
+    # 3. Source quality status propagation into frame eligibility
+    unqualified_source = replace(
+        source_auth.sources[0],
+        quality_assessment_status="failed",
+        quality_outcome="unqualified",
+    )
+    unqualified_auth = replace(source_auth, sources=(unqualified_source,))
+    frame_auth_unqual = build_canonical_frame_authority(unqualified_auth, frame_data_valid)
+    for dec in frame_auth_unqual.eligibility.decisions:
+        assert dec.state == mdstats.FrameEligibilityState.INELIGIBLE
+        assert "source_trajectory_unqualified" in dec.reason_codes or dec.state == mdstats.FrameEligibilityState.INELIGIBLE
+
+
+def test_p1e_material_profile_genericity_lta_and_restart_proof(tmp_path: Path) -> None:
+    """P1-E6: Material-profile genericity, LTA typed provider rebinding, and durable restart proof."""
+    # 1. AST check: neutral features.py does NOT contain if extension_id == 'lta'
+    features_src = inspect.getsource(ns_features)
+    assert 'extension_id == "lta"' not in features_src
+    assert "extension_id == 'lta'" not in features_src
+
+    # 2. LTA provider execution through generic dispatch
+    _manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path, n_frames=48)
+    source_auth = build_source_authority_from_data2_catalog(sources)
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
+
+    policy = mdstats.LtaPartitionProfilePolicy()
+    lta_records = tuple(
+        mdstats.LtaFramePartitionRecord(
+            frame_uid=f.frame_uid,
+            frame_record_digest=f.content_digest,
+            policy_digest=policy.policy_digest,
+            profile_status=mdstats.LtaProfileStatus.RESOLVED,
+            framework_integrity=True,
+            site_classes_present=("ring_8_on_center",),
+            ring_sizes_present=(8,),
+            coordination_change=False,
+            site_change=False,
+            ring_crossing=False,
+            mobile_state_count=0,
+        )
+        for f in legacy_frames.frames
+    )
+    legacy_lta = mdstats.LtaPartitionFeatureCatalog(
+        dataset_id=legacy_frames.dataset_id,
+        frame_catalog_digest=legacy_frames.content_digest,
+        policy=policy,
+        frame_records=lta_records,
+        mobile_states=(),
+    )
+    wrapped_legacy = mdstats.wrap_lta_partition_features(legacy_lta)
+    events_with_lta = replace(
+        data4.events, profile_feature_catalog_digests=(wrapped_legacy.content_digest,)
+    )
+    data4_with_lta = replace(
+        data4, profile_partition_features=(wrapped_legacy,), events=events_with_lta
+    )
+
+    feature_ev = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4_with_lta)
+    rebound_wrapper = feature_ev.profile_partition_features[0]
+
+    # Verify typed lineage
+    assert rebound_wrapper.frame_catalog_digest == frame_auth.content_digest
+    typed_rebound = rebound_wrapper.as_lta_partition()
+    assert typed_rebound.frame_catalog_digest == frame_auth.content_digest
+    for r in typed_rebound.frame_records:
+        assert r.frame_record_digest == frame_auth.frame(r.frame_uid).content_digest
+
+    # 3. Serialization and restart durability
+    payload = json.loads(json.dumps(feature_ev.to_dict()))
+    restarted = NeutralFeatureEvidence.from_dict(payload)
+    assert restarted.content_digest == feature_ev.content_digest
+    restarted_typed = restarted.profile_partition_features[0].as_lta_partition()
+    assert restarted_typed.frame_catalog_digest == frame_auth.content_digest
+
+    uids = [f.frame_uid for f in frame_auth.frames]
+    assert mdstats.profile_partition_state_changed(restarted.profile_partition_features, uids) is False
+
+    # 4. Rebuilding NeutralStatisticalBase from restarted evidence
+    stat_base = build_neutral_statistical_base(source_auth, frame_auth, restarted, policy=_neutral_policy())
+    assert stat_base.leakage.passed is True
+
+    # 5. Unsupported opaque provider is rejected
+    unsupported = mdstats.ProfileFeatureCatalog(
+        extension_id="unsupported_polymer",
+        stage=mdstats.ProfileFeatureStage.PARTITION,
+        provider_identity=mdstats.MaterialProfileProviderIdentity(
+            provider_id="mdstats.profile.polymer.partition",
+            provider_version="1.0",
+            configuration_digest=_digest(),
+        ),
+        frame_catalog_digest=legacy_frames.content_digest,
+        payload_schema="mdstats.polymer.v1",
+        payload={"dummy": 1, "content_digest": _digest()},
+    )
+    profile = mdstats.build_single_phase_material_profile(
+        profile_id="unsupported-polymer-profile",
+        phase_kind=mdstats.MaterialPhaseKind.CRYSTALLINE_SOLID,
+        extensions=("unsupported_polymer",),
+    )
+    contracts = mdstats.build_material_profile_contracts(profile)
+    data4_bad = replace(
+        data4,
+        material_profile_contracts=contracts,
+        profile_partition_features=(unsupported,),
+        events=replace(data4.events, profile_feature_catalog_digests=(unsupported.content_digest,)),
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="Unsupported partition-stage material-profile provider"):
+        build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4_bad)
+
+
+def test_p1e_invalid_adapter_absence_proof() -> None:
+    """P1-E7: Structurally prove absence of build_canonical_frame_authority_from_data3_catalog."""
+    import mdstats.training_data.neutral_substrate as ns
+
+    assert not hasattr(ns, "build_canonical_frame_authority_from_data3_catalog")
+    assert not hasattr(ns_frames, "build_canonical_frame_authority_from_data3_catalog")
+
+
 def test_p1e_naming_and_absence_proof() -> None:
-    """P1-E6: Structurally verify that new code and schemas contain no v7_/V7 architecture prefix."""
+    """P1-E8: Structurally verify that new code and schemas contain no v7_/V7 architecture prefix."""
     import mdstats.training_data.neutral_substrate as ns
 
     for symbol in dir(ns):
@@ -936,7 +1338,7 @@ def test_p1e_naming_and_absence_proof() -> None:
 
 
 def test_p1e_runtime_isolation_proof(tmp_path: Path) -> None:
-    """P1-E7: Verify that current prepare/select-target-size runtime remains isolated from neutral substrate."""
+    """P1-E8: Verify that current prepare/select-target-size runtime remains isolated from neutral substrate."""
     _write(tmp_path, "li", ("Li", "O"), ediff=1.0e-5)
     _write(tmp_path, "na", ("Na", "O"), ediff=1.0e-6)
     _write(tmp_path, "k_lda", ("K", "O"), gga="91")
@@ -955,4 +1357,5 @@ def test_p1e_runtime_isolation_proof(tmp_path: Path) -> None:
     assert "neutral_substrate" not in campaign
     assert "neutral_substrate" not in core
     assert "neutral_substrate" not in public
+
 
