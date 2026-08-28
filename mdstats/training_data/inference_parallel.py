@@ -465,17 +465,22 @@ def build_inference_concurrency_plan(
     baseline_gpu_util = None
     estimated_gpu = None
     if str(device).startswith("cuda"):
-        if gpu_sample is None:
+        if not resources.gpu.available:
             raise ValueError(
-                "CUDA inference admission requires live VRAM telemetry to prove one-job feasibility."
+                f"CUDA device {device!r} is unavailable: {resources.gpu.reason}."
+            )
+        estimated_gpu = max(1, int(float(policy.estimated_gpu_memory_mib_per_job) * _MIB))
+        gpu_util_budget = 100.0 * float(policy.gpu_utilization_fraction)
+        if gpu_sample is None:
+            reason = (
+                "CUDA starts one job for fixed single-job calibration; "
+                "GPU telemetry unavailable at preflight, so parallel expansion is disabled until live evidence is observed"
             )
         else:
             gpu_total = int(gpu_sample.total_bytes)
             gpu_budget = int(gpu_total * float(policy.gpu_memory_fraction))
-            gpu_util_budget = 100.0 * float(policy.gpu_utilization_fraction)
             baseline_gpu_used = int(gpu_sample.used_bytes)
             baseline_gpu_util = max(0.0, float(gpu_sample.utilization_percent))
-            estimated_gpu = max(1, int(float(policy.estimated_gpu_memory_mib_per_job) * _MIB))
             one_job_projection = baseline_gpu_used + math.ceil(
                 estimated_gpu * float(policy.observed_memory_growth_margin)
             )
@@ -498,15 +503,15 @@ def build_inference_concurrency_plan(
                     "CUDA starts one job for fixed single-job GPU/VRAM calibration; "
                     f"remaining concurrency is projected below {gpu_util_budget:.0f}% ceilings from measured per-job demand"
                 )
-            # Do not use the configured per-job VRAM guess as a pre-calibration
-            # concurrency cap. CUDA runs exactly one job until the measured
-            # single-job calibration is complete; the retained VRAM samples then
-            # become authoritative for remaining-job projection. The configured
-            # estimate is only a fallback if no >=activity-floor VRAM sample is
-            # observed during calibration.
-            threads_per_job = max(1, resources.cpu_threads_budget // maximum)
-            estimated_cpu_per_job = 100.0 * threads_per_job / max(1, resources.cpu_threads_available)
-            initial = 1
+        # Do not use the configured per-job VRAM guess as a pre-calibration
+        # concurrency cap. CUDA runs exactly one job until the measured
+        # single-job calibration is complete; the retained VRAM samples then
+        # become authoritative for remaining-job projection. The configured
+        # estimate is only a fallback if no >=activity-floor VRAM sample is
+        # observed during calibration.
+        threads_per_job = max(1, resources.cpu_threads_budget // maximum)
+        estimated_cpu_per_job = 100.0 * threads_per_job / max(1, resources.cpu_threads_available)
+        initial = 1
     else:
         if baseline_cpu is None:
             initial = maximum
@@ -600,6 +605,8 @@ class AdaptiveInferenceConcurrency:
         self._gpu_estimated_utilization_per_job: float | None = None
         self._gpu_estimated_memory_bytes_per_job: int | None = None
         self._gpu_calibration_samples_seen = 0
+        self._gpu_total_bytes: int | None = self.plan.gpu_total_bytes
+        self._gpu_memory_budget_bytes: int | None = self.plan.gpu_memory_budget_bytes
         self._admission_blocked_reason: str | None = None
 
     @property
@@ -700,15 +707,18 @@ class AdaptiveInferenceConcurrency:
         return sum(selected) / len(selected), len(selected), trim_count
 
     def _finish_cuda_calibration(self) -> InferenceConcurrencyDecision:
-        assert self.plan.gpu_memory_budget_bytes is not None
-        assert self.plan.gpu_utilization_budget_percent is not None
-
         threshold_percent = 100.0 * float(self.policy.minimum_gpu_activity_fraction)
-        total_bytes = int(self.plan.gpu_total_bytes or 0)
-        threshold_bytes = max(
-            1,
-            math.ceil(total_bytes * float(self.policy.minimum_gpu_activity_fraction)),
-        ) if total_bytes > 0 else 1
+        total_bytes = int(self._gpu_total_bytes or self.plan.gpu_total_bytes or 0)
+        threshold_bytes = (
+            max(
+                1,
+                math.ceil(
+                    total_bytes * float(self.policy.minimum_gpu_activity_fraction)
+                ),
+            )
+            if total_bytes > 0
+            else 1
+        )
 
         # GPU utilization and VRAM are filtered independently.  This is
         # important for multi-stage jobs: model loading may allocate VRAM while
@@ -751,40 +761,70 @@ class AdaptiveInferenceConcurrency:
         self._gpu_estimated_memory_bytes_per_job = max(1, int(memory_per_job))
         self._gpu_calibrated = True
 
-        memory_budget = int(self.plan.gpu_memory_budget_bytes)
-        util_budget = float(self.plan.gpu_utilization_budget_percent)
+        memory_budget = (
+            int(self._gpu_memory_budget_bytes)
+            if self._gpu_memory_budget_bytes is not None
+            else (
+                int(self.plan.gpu_memory_budget_bytes)
+                if self.plan.gpu_memory_budget_bytes is not None
+                else (
+                    int(total_bytes * float(self.policy.gpu_memory_fraction))
+                    if total_bytes > 0
+                    else None
+                )
+            )
+        )
+        util_budget = (
+            float(self.plan.gpu_utilization_budget_percent)
+            if self.plan.gpu_utilization_budget_percent is not None
+            else 100.0 * float(self.policy.gpu_utilization_fraction)
+        )
         # The completed one-slot calibration is direct evidence that serial
         # execution of this job/resource profile is viable.  Soft GPU-utilization
         # and fractional-VRAM envelopes regulate additional concurrency above
         # that serial floor; they can never reduce the target below one.
         safe_jobs = 1
         safe_memory, safe_util = self._cuda_projection_for_jobs(1)
-        for jobs in range(2, int(self.plan.maximum_jobs) + 1):
-            predicted_memory, predicted_util = self._cuda_projection_for_jobs(jobs)
-            if predicted_memory < memory_budget and predicted_util < util_budget:
-                safe_jobs = jobs
-                safe_memory, safe_util = predicted_memory, predicted_util
-                continue
-            break
+        if (
+            (self._gpu_calibration_samples_seen > 0 or self.plan.gpu_memory_budget_bytes is not None)
+            and memory_budget is not None
+            and util_budget is not None
+        ):
+            for jobs in range(2, int(self.plan.maximum_jobs) + 1):
+                predicted_memory, predicted_util = self._cuda_projection_for_jobs(jobs)
+                if predicted_memory < memory_budget and predicted_util < util_budget:
+                    safe_jobs = jobs
+                    safe_memory, safe_util = predicted_memory, predicted_util
+                    continue
+                break
 
         previous = self.target_jobs
         self.target_jobs = max(1, min(int(self.plan.maximum_jobs), safe_jobs))
         serial_fallback = (
             self.target_jobs == 1
             and int(self.plan.maximum_jobs) > 1
-            and (safe_memory >= memory_budget or safe_util >= util_budget)
+            and (
+                memory_budget is None
+                or safe_memory >= memory_budget
+                or safe_util >= util_budget
+            )
         )
         util_count = len(self._gpu_util_samples)
         memory_count = len(self._gpu_memory_samples)
         fallback_bits: list[str] = []
-        if util_count == 0:
+        if self._gpu_calibration_samples_seen == 0 and self.plan.gpu_memory_budget_bytes is None:
             fallback_bits.append(
-                f"no GPU-utilization sample reached {threshold_percent:.1f}%; using the activity floor"
+                "no GPU telemetry sample was observed during calibration; remaining in conservative serial mode"
             )
-        if memory_count == 0:
-            fallback_bits.append(
-                f"no incremental-VRAM sample reached {threshold_percent:.1f}%; using the configured VRAM fallback"
-            )
+        else:
+            if util_count == 0:
+                fallback_bits.append(
+                    f"no GPU-utilization sample reached {threshold_percent:.1f}%; using the activity floor"
+                )
+            if memory_count == 0:
+                fallback_bits.append(
+                    f"no incremental-VRAM sample reached {threshold_percent:.1f}%; using the configured VRAM fallback"
+                )
         fallback = "" if not fallback_bits else "; " + "; ".join(fallback_bits)
         reason = (
             "single-job calibration complete: "
@@ -798,7 +838,7 @@ class AdaptiveInferenceConcurrency:
             f"fixed projection permits {self.target_jobs} concurrent job(s)"
             + fallback
         )
-        if serial_fallback:
+        if serial_fallback and (self._gpu_calibration_samples_seen > 0 or self.plan.gpu_memory_budget_bytes is not None):
             reason += (
                 "; soft GPU envelope does not permit parallel expansion, so CUDA "
                 "admission falls back to serial execution (target one, never zero)"
@@ -832,9 +872,16 @@ class AdaptiveInferenceConcurrency:
                 )
             if gpu_sample is not None and active == 1:
                 self._gpu_calibration_samples_seen += 1
+                if self._gpu_total_bytes is None and gpu_sample.total_bytes:
+                    self._gpu_total_bytes = int(gpu_sample.total_bytes)
+                    self._gpu_memory_budget_bytes = int(
+                        self._gpu_total_bytes * float(self.policy.gpu_memory_fraction)
+                    )
                 baseline_memory = int(self.plan.baseline_gpu_used_bytes or 0)
                 baseline_util = float(self.plan.baseline_gpu_utilization_percent or 0.0)
-                total_bytes = int(self.plan.gpu_total_bytes or gpu_sample.total_bytes or 0)
+                total_bytes = int(
+                    self._gpu_total_bytes or self.plan.gpu_total_bytes or gpu_sample.total_bytes or 0
+                )
                 threshold_percent = 100.0 * float(
                     self.policy.minimum_gpu_activity_fraction
                 )
@@ -855,7 +902,19 @@ class AdaptiveInferenceConcurrency:
                     self._gpu_util_samples.append((now, incremental_util))
                 if incremental_memory_percent >= threshold_percent:
                     self._gpu_memory_samples.append((now, incremental_memory))
-                memory_budget = int(self.plan.gpu_memory_budget_bytes or 0)
+                memory_budget = (
+                    int(self._gpu_memory_budget_bytes)
+                    if self._gpu_memory_budget_bytes is not None
+                    else (
+                        int(self.plan.gpu_memory_budget_bytes)
+                        if self.plan.gpu_memory_budget_bytes is not None
+                        else (
+                            int(total_bytes * float(self.policy.gpu_memory_fraction))
+                            if total_bytes > 0
+                            else 0
+                        )
+                    )
+                )
                 measured_one_job = baseline_memory + math.ceil(
                     incremental_memory
                     * float(self.policy.observed_memory_growth_margin)
@@ -865,6 +924,7 @@ class AdaptiveInferenceConcurrency:
                 if (
                     int(self.plan.maximum_jobs) > 1
                     and incremental_memory > 0
+                    and memory_budget > 0
                     and measured_one_job > memory_budget
                 ):
                     # The measured peak crosses the soft VRAM envelope, so no
@@ -936,81 +996,98 @@ class AdaptiveInferenceConcurrency:
         # telemetry is retained only for the hard VRAM guard, where ignoring an
         # excursion can cause an allocation failure/OOM rather than merely high
         # device occupancy.
-        if gpu_sample is not None and self.plan.gpu_memory_budget_bytes is not None:
-            memory_budget = int(self.plan.gpu_memory_budget_bytes)
-            live_used = int(gpu_sample.used_bytes)
-            if live_used >= memory_budget:
-                # Soft-envelope saturation: active jobs occupy the available
-                # capacity, so additional launches are throttled.  Active jobs
-                # survive the downshift and the serial floor keeps the target at
-                # one, so an idle queue can always still admit one job.
-                previous = self.target_jobs
-                self.target_jobs = max(1, active - 1)
-                return InferenceConcurrencyDecision(
-                    previous,
-                    self.target_jobs,
-                    self.target_jobs != previous,
-                    "live VRAM safety override: aggregate VRAM reached the configured "
-                    "ceiling; additional CUDA launches are throttled until active "
-                    "jobs drain below the concurrency target",
-                    live_used,
-                    self._cuda_projection_for_jobs(self.target_jobs)[1],
+        if gpu_sample is not None:
+            if self._gpu_total_bytes is None and gpu_sample.total_bytes:
+                self._gpu_total_bytes = int(gpu_sample.total_bytes)
+                self._gpu_memory_budget_bytes = int(
+                    self._gpu_total_bytes * float(self.policy.gpu_memory_fraction)
                 )
-            per_job = max(1, int(self._gpu_estimated_memory_bytes_per_job or 1))
-            margin = float(self.policy.observed_memory_growth_margin)
-            estimated_external_baseline = max(
-                int(self.plan.baseline_gpu_used_bytes or 0),
-                live_used - active * per_job,
+            total_bytes = int(
+                self._gpu_total_bytes or self.plan.gpu_total_bytes or gpu_sample.total_bytes or 0
             )
-            replacement_projection = estimated_external_baseline + math.ceil(
-                per_job * margin
+            memory_budget = self._gpu_memory_budget_bytes or (
+                int(self.plan.gpu_memory_budget_bytes)
+                if self.plan.gpu_memory_budget_bytes is not None
+                else (
+                    int(total_bytes * float(self.policy.gpu_memory_fraction))
+                    if total_bytes > 0
+                    else None
+                )
             )
-            if replacement_projection > memory_budget:
-                # Zero *additional* capacity while active jobs occupy the
-                # target is ordinary saturation; the serial floor keeps an idle
-                # queue launchable, so this soft-envelope re-clamp never sets a
-                # terminal zero-target state.
-                previous = self.target_jobs
-                self.target_jobs = max(1, active)
-                return InferenceConcurrencyDecision(
-                    previous,
-                    self.target_jobs,
-                    self.target_jobs != previous,
-                    "live external VRAM baseline leaves insufficient headroom for an "
-                    f"additional calibrated inference job; projected={replacement_projection} "
-                    f"bytes, ceiling={memory_budget} bytes; queued CUDA work continues "
-                    "once active jobs drain below the concurrency target",
-                    replacement_projection,
-                    self._cuda_projection_for_jobs(1)[1],
-                )
-            live_limit = max(0, active)
-            for jobs in range(max(0, active), int(self.target_jobs) + 1):
-                additional = max(0, jobs - active)
-                projected_live = live_used + math.ceil(additional * per_job * margin)
-                if projected_live <= memory_budget:
-                    live_limit = jobs
-                    continue
-                break
-            if live_limit < self.target_jobs:
-                previous = self.target_jobs
-                self.target_jobs = max(1, live_limit)
-                if self.target_jobs == previous:
-                    predicted_memory, predicted_util = self._cuda_projection_for_jobs(
-                        self.target_jobs
+            if memory_budget is not None:
+                live_used = int(gpu_sample.used_bytes)
+                if live_used >= memory_budget:
+                    # Soft-envelope saturation: active jobs occupy the available
+                    # capacity, so additional launches are throttled.  Active jobs
+                    # survive the downshift and the serial floor keeps the target at
+                    # one, so an idle queue can always still admit one job.
+                    previous = self.target_jobs
+                    self.target_jobs = max(1, active - 1)
+                    return InferenceConcurrencyDecision(
+                        previous,
+                        self.target_jobs,
+                        self.target_jobs != previous,
+                        "live VRAM safety override: aggregate VRAM reached the configured "
+                        "ceiling; additional CUDA launches are throttled until active "
+                        "jobs drain below the concurrency target",
+                        live_used,
+                        self._cuda_projection_for_jobs(self.target_jobs)[1],
                     )
-                    return self._hold(
-                        "live VRAM re-clamp holds the serial floor for queued CUDA work",
-                        predicted_memory=predicted_memory,
-                        predicted_utilization=predicted_util,
-                    )
-                return InferenceConcurrencyDecision(
-                    previous,
-                    live_limit,
-                    True,
-                    "live VRAM re-clamp reduced future admission before launching another job",
-                    live_used + math.ceil(max(0, live_limit - active) * per_job * margin),
-                    self._cuda_projection_for_jobs(live_limit)[1],
+                per_job = max(1, int(self._gpu_estimated_memory_bytes_per_job or 1))
+                margin = float(self.policy.observed_memory_growth_margin)
+                estimated_external_baseline = max(
+                    int(self.plan.baseline_gpu_used_bytes or 0),
+                    live_used - active * per_job,
                 )
+                replacement_projection = estimated_external_baseline + math.ceil(
+                    per_job * margin
+                )
+                if replacement_projection > memory_budget:
+                    # Zero *additional* capacity while active jobs occupy the
+                    # target is ordinary saturation; the serial floor keeps an idle
+                    # queue launchable, so this soft-envelope re-clamp never sets a
+                    # terminal zero-target state.
+                    previous = self.target_jobs
+                    self.target_jobs = max(1, active)
+                    return InferenceConcurrencyDecision(
+                        previous,
+                        self.target_jobs,
+                        self.target_jobs != previous,
+                        "live external VRAM baseline leaves insufficient headroom for an "
+                        f"additional calibrated inference job; projected={replacement_projection} "
+                        f"bytes, ceiling={memory_budget} bytes; queued CUDA work continues "
+                        "once active jobs drain below the concurrency target",
+                        replacement_projection,
+                        self._cuda_projection_for_jobs(1)[1],
+                    )
+                live_limit = max(0, active)
+                for jobs in range(max(0, active), int(self.target_jobs) + 1):
+                    additional = max(0, jobs - active)
+                    projected_live = live_used + math.ceil(additional * per_job * margin)
+                    if projected_live <= memory_budget:
+                        live_limit = jobs
+                        continue
+                    break
+                if live_limit < self.target_jobs:
+                    previous = self.target_jobs
+                    self.target_jobs = max(1, live_limit)
+                    if self.target_jobs == previous:
+                        predicted_memory, predicted_util = self._cuda_projection_for_jobs(
+                            self.target_jobs
+                        )
+                        return self._hold(
+                            "live VRAM re-clamp holds the serial floor for queued CUDA work",
+                            predicted_memory=predicted_memory,
+                            predicted_utilization=predicted_util,
+                        )
+                    return InferenceConcurrencyDecision(
+                        previous,
+                        live_limit,
+                        True,
+                        "live VRAM re-clamp reduced future admission before launching another job",
+                        live_used + math.ceil(max(0, live_limit - active) * per_job * margin),
+                        self._cuda_projection_for_jobs(live_limit)[1],
+                    )
 
         predicted_memory, predicted_util = self._cuda_projection_for_jobs(
             self.target_jobs

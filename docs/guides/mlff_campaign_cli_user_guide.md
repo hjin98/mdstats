@@ -553,7 +553,9 @@ proof: a successfully completed one-slot calibration proves that serial executio
 is viable, so measured demand above a soft envelope caps concurrency at one
 (serial fallback) instead of blocking the queue. Only actual execution failure,
 such as a genuine CUDA out-of-memory error, or device unavailability terminates
-queued work. After calibration, the calibrated GPU-utilization estimate is frozen:
+queued work. If preflight GPU telemetry is unavailable while the CUDA device is
+present, mdstats starts in conservative serial mode without inventing expansion
+headroom. After calibration, the calibrated GPU-utilization estimate is frozen:
 instantaneous GPU-utilization spikes do not ratchet concurrency downward. Live
 telemetry retains only the hard VRAM guard, because actual memory saturation can
 cause OOM; that guard throttles additional launches while active jobs occupy the

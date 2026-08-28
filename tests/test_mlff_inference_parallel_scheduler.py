@@ -12,10 +12,11 @@ from mdstats.training_data.inference_parallel import (
 from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
 from mdstats.training_data.training_parallel import GpuTelemetrySample
 
+_MIB = 1024 ** 2
 _GIB = 1024 ** 3
 
 
-def _resources(*, cpu: int = 32, ram_gib: int = 128) -> SystemResourceSnapshot:
+def _resources(*, cpu: int = 32, ram_gib: int = 128, gpu_available: bool = True) -> SystemResourceSnapshot:
     return SystemResourceSnapshot(
         cpu_threads_available=cpu,
         cpu_fraction=0.90,
@@ -24,7 +25,16 @@ def _resources(*, cpu: int = 32, ram_gib: int = 128) -> SystemResourceSnapshot:
         ram_fraction=0.80,
         ram_budget_bytes=int(ram_gib * _GIB * 0.80),
         gpu_memory_fraction=0.90,
-        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "test"),
+        gpu=GpuResourceSnapshot(
+            available=gpu_available,
+            device_count=1 if gpu_available else 0,
+            selected_device=0 if gpu_available else None,
+            device_name="RTX 3090" if gpu_available else None,
+            free_bytes=int(23.6 * _GIB) if gpu_available else None,
+            total_bytes=24 * _GIB if gpu_available else None,
+            budget_bytes=int(24 * 0.90 * _GIB) if gpu_available else None,
+            reason="available" if gpu_available else "CUDA unavailable",
+        ),
     )
 
 
@@ -259,15 +269,100 @@ def test_live_host_ram_reclamp_can_block_future_replacement() -> None:
     assert "host-RAM" in decision.reason
 
 
-def test_missing_gpu_telemetry_still_requires_live_vram_proof() -> None:
-    # Missing live VRAM telemetry is genuine device-telemetry unavailability,
-    # not a soft-envelope crossing, so admission still refuses to guess.
+def test_missing_gpu_telemetry_constructs_conservative_serial_plan() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        estimated_gpu_memory_mib_per_job=4096.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=None,
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    assert plan.uses_cuda
+    assert plan.initial_jobs == 1
+    assert plan.maximum_jobs == 4
+    assert plan.gpu_total_bytes is None
+    assert plan.gpu_memory_budget_bytes is None
+    assert plan.baseline_gpu_used_bytes is None
+    assert plan.baseline_gpu_utilization_percent is None
+    assert plan.gpu_utilization_budget_percent == 90.0
+    assert plan.estimated_gpu_bytes_per_job == int(4096.0 * _MIB)
+    assert "GPU telemetry unavailable at preflight" in plan.reason
+    assert "parallel expansion is disabled until live evidence is observed" in plan.reason
+
+
+def test_genuine_cuda_device_unavailability_fails_preflight() -> None:
     policy = InferenceConcurrencyPolicy(estimated_gpu_memory_mib_per_job=4096.0)
-    with pytest.raises(ValueError, match="requires live VRAM telemetry"):
+    with pytest.raises(ValueError, match="CUDA device 'cuda:0' is unavailable"):
         build_inference_concurrency_plan(
-            task_count=1, device="cuda:0", resources=_resources(), policy=policy,
-            gpu_sample=None, cpu_sample=CpuTelemetrySample(0.0, 0.0),
+            task_count=1,
+            device="cuda:0",
+            resources=_resources(gpu_available=False),
+            policy=policy,
+            gpu_sample=None,
+            cpu_sample=CpuTelemetrySample(0.0, 0.0),
         )
+
+
+def test_missing_telemetry_does_not_authorize_parallel_promotion() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=20.0,
+        minimum_calibration_seconds=10.0,
+        monitor_interval_seconds=1.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=None,
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    # No telemetry samples observed throughout the stabilization window.
+    decision = controller.observe(active_jobs=1, gpu_sample=None, now=25.0)
+    assert decision.target_jobs == 1
+    assert controller.gpu_calibrated
+    assert "no GPU telemetry sample was observed during calibration" in decision.reason
+    assert "remaining in conservative serial mode" in decision.reason
+
+
+def test_missing_preflight_telemetry_promotes_when_calibration_evidence_arrives() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4,
+        stabilization_seconds=20.0,
+        minimum_calibration_seconds=10.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=None,
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    decisions = []
+    for second in range(1, 15):
+        d = controller.observe(
+            active_jobs=1,
+            gpu_sample=_gpu_sample(float(second), 2.0, 10.0),
+            now=float(second),
+        )
+        if d.changed:
+            decisions.append(d)
+    assert controller.gpu_calibrated
+    assert controller.target_jobs > 1
+    assert any(d.changed and d.target_jobs > 1 for d in decisions)
 
 
 def test_preflight_soft_vram_crossing_selects_serial_calibration_posture() -> None:

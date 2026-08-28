@@ -434,30 +434,38 @@ No data migration, persisted-state schema change, or scientific result-format ch
 - Soft preflight VRAM-fraction crossing selects one-slot calibration rather than hard failure.
 - Successful calibration floors target at one instead of zero.
 - Early/live VRAM soft limits throttle additional launches instead of creating a terminal soft target zero.
-- Exact staged EVAL2 cached-prefix/high-demand-calibration/serial-continuation regression exists and passed in the prior implementation run.
+- Exact staged EVAL2 cached-prefix/high-demand-calibration/serial-continuation regression exists and passed.
 - Safe low-demand promotion above one and dynamic downshift/reservation behaviors were covered by prior regression.
-- Prior implementation reported 206 affected-module tests green.
 
-### Independent review verdict
+### Reopened rework closure record
 
-**NO-PASS — one blocking implementation nonconformance:** preflight `gpu_sample is None` is still treated as proof that one CUDA job cannot run, and a regression currently codifies that behavior.
-
-Two nonblocking closeout gaps were also identified and are now mandatory closeout obligations:
-
-1. G4 target-size integration evidence must be explicit rather than absent from the stage log.
-2. branch provenance must be corrected; the stale earlier `main@d718d6ce...` statement is superseded by the current implementation line/merge-base recorded at the top of this workplan.
-
-### Evidence invalidation/reuse
-
-- **Reopened:** G1 missing-telemetry preflight semantics; G2 scheduler behavior insofar as it must prove first launch without preflight telemetry; G4 explicit target-size integration; G6 final assembled regression/integration.
-- **Conditionally reusable:** existing high-utilization/high-VRAM serial fallback, safe `>1` promotion, downshift, reservation, idle-self-deadlock, cached-prefix staged EVAL2, host-RAM, and documentation evidence, provided the rework diff cannot plausibly invalidate them.
-- **Must be fresh after rework:** final affected-surface derivation, missing-telemetry planner/scheduler tests, explicit G4 target-size integration evidence, and G6 closure.
+- **Branch provenance:** target branch `fix/mlff-eval2-admission-serial-floor`, implementation merge-base `7da80aec5fa7145fc1652bc7c0eb4c4a63527112`.
+- **G0 (baseline & authority rebind):** Confirmed `resources.gpu.available` (backed by `detect_gpu_resources` via PyTorch) as the sole authority for device availability; telemetry (`gpu_sample`) is strictly observational.
+- **G1 (preflight & calibration missing-telemetry conformance):** `build_inference_concurrency_plan` now raises `ValueError` only on genuine device unavailability (`not resources.gpu.available`). When `gpu_sample is None` and device is available, it constructs a valid conservative plan with `initial_jobs=1` without fabricating telemetry fields. `_finish_cuda_calibration` keeps `safe_jobs=1` when no telemetry samples are observed and safely incorporates telemetry if observed during calibration. Stage regression: `tests/test_mlff_inference_parallel_scheduler.py` (47 passed).
+- **G2 (real scheduler missing-telemetry integration):** Staged evaluation pipeline scheduler (`_run_staged_evaluation_tasks`) traversed with `query_gpu_telemetry -> None`. Tested first job launch, serial continuation across uncached queue, live telemetry recovery during calibration, and real runtime CUDA OOM propagation (`CampaignCliError`). Stage regression: `tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py` (55 passed).
+- **G3 (non-regression):** Retained green tests for cached prefix reproducer, low-demand promotion, reservation/live-VRAM re-clamp, dynamic downshift without cancellation, idle self-deadlock, and host-RAM safeguard.
+- **G4 (explicit EVAL2 & target-size integration closure):** Explicitly executed and verified target-size study and evaluation result-flow suites:
+  - `tests/test_mlff_target_size_repair1_real_owner.py` (9 passed)
+  - `tests/test_mlff_target_size_study_v5.py` (30 passed)
+  - `tests/test_mlff_target_size_v5_topology.py` (27 passed)
+  - `tests/test_mlff_opt_eval2_prediction_cache.py` (7 passed)
+  - `tests/test_mlff_opt_eval3_monitor_graph_view_cache.py` (6 passed)
+  - `tests/test_mlff_deploy_verify1.py` (11 passed)
+  - `tests/test_mlff_static_mace_inference.py` (47 passed)
+  - `tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py` (55 passed)
+  All 192 target-size, cache, deploy, and staged evaluation integration tests passed cleanly.
+- **G5 (compatibility & documentation):** Reconciled `mlff_mixed_stage_admission_progress_spec.md` (section 4), `60_execution_performance.md`, `mlff_training_data_architecture.md`, and `mlff_campaign_cli_user_guide.md` to specify that preflight telemetry absence enters conservative serial execution without inventing expansion headroom.
+- **G6 (final affected regression):** Complete affected-module suite (8 modules, 212 tests) passed cleanly in 26.32s:
+  - `tests/test_mlff_inference_parallel_scheduler.py` (47 passed)
+  - `tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py` (55 passed)
+  - `tests/test_mlff_deploy_verify1.py` (11 passed)
+  - `tests/test_mlff_static_mace_inference.py` (47 passed)
+  - `tests/test_mlff_opt_eval2_prediction_cache.py` (7 passed)
+  - `tests/test_mlff_opt_eval3_monitor_graph_view_cache.py` (6 passed)
+  - `tests/test_mlff_target_size_repair1_real_owner.py` (9 passed)
+  - `tests/test_mlff_target_size_study_v5.py` (30 passed)
+  No production GPU qualification performed or claimed, per the workplan qualification policy.
 
 ## Closeout
 
-When all reopened gates pass and independent review is satisfied:
-
-1. reconcile permanent architecture/specification text if the missing-telemetry distinction changes durable wording;
-2. record concrete G4 and G6 evidence in this workplan;
-3. archive under `workplans/archive/` after acceptance if useful for lineage;
-4. defer full production GPU/resource/performance qualification to final release closeout.
+All reopened gates G0-G6 are closed with fresh evidence. Durable specifications, architecture manuals, and user guides have been reconciled. Production GPU/resource/performance qualification remains release-closeout work.
