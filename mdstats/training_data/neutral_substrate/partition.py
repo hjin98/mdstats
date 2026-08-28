@@ -1352,15 +1352,67 @@ class NeutralStatisticalBase:
     notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.unit_catalog.policy_digest != self.policy.policy_digest:
-            raise TrainingDataInputError("Neutral statistical base policy mismatch.")
-        if self.feasibility.unit_catalog_digest != self.unit_catalog.content_digest:
+        if self.dataset_id != self.unit_catalog.dataset_id:
+            raise TrainingDataInputError(
+                f"Dataset ID mismatch: base.dataset_id={self.dataset_id!r} != unit_catalog.dataset_id={self.unit_catalog.dataset_id!r}"
+            )
+        p_digest = self.policy.policy_digest
+        if self.unit_catalog.policy_digest != p_digest:
+            raise TrainingDataInputError("Neutral statistical base unit_catalog policy mismatch.")
+        if self.feasibility.policy_digest != p_digest:
+            raise TrainingDataInputError("Neutral statistical base feasibility policy mismatch.")
+        if self.outer_partition.policy_digest != p_digest:
+            raise TrainingDataInputError("Neutral statistical base outer_partition policy mismatch.")
+        if self.leakage.policy_digest != p_digest:
+            raise TrainingDataInputError("Neutral statistical base leakage policy mismatch.")
+
+        u_digest = self.unit_catalog.content_digest
+        if self.feasibility.unit_catalog_digest != u_digest:
             raise TrainingDataInputError("Neutral feasibility lineage mismatch.")
-        if self.outer_partition.unit_catalog_digest != self.unit_catalog.content_digest:
+        if self.outer_partition.unit_catalog_digest != u_digest:
             raise TrainingDataInputError("Neutral outer-partition lineage mismatch.")
-        if self.leakage.unit_catalog_digest != self.unit_catalog.content_digest:
+        if self.independence.unit_catalog_digest != u_digest:
+            raise TrainingDataInputError("Neutral independence lineage mismatch.")
+        if self.leakage.unit_catalog_digest != u_digest:
             raise TrainingDataInputError("Neutral leakage lineage mismatch.")
-        if not self.leakage.passed:
+
+        if self.leakage.outer_partition_digest != self.outer_partition.content_digest:
+            raise TrainingDataInputError("Neutral leakage outer_partition_digest mismatch.")
+
+        catalog_ids = {unit.unit_id for unit in self.unit_catalog.units}
+        assigned_ids = {assignment.unit_id for assignment in self.outer_partition.assignments}
+        unassigned_ids = set(self.outer_partition.unassigned_unit_ids)
+
+        if not assigned_ids.isdisjoint(unassigned_ids):
+            raise TrainingDataInputError("Outer partition has overlapping assigned and unassigned units.")
+        if assigned_ids | unassigned_ids != catalog_ids:
+            raise TrainingDataInputError("Outer partition unit IDs do not exactly match unit catalog units.")
+
+        recomputed_feasibility = assess_neutral_feasibility(self.unit_catalog, policy=self.policy)
+        if self.feasibility.content_digest != recomputed_feasibility.content_digest:
+            raise TrainingDataInputError(
+                "Neutral statistical base feasibility report does not match deterministic assessment."
+            )
+
+        recomputed_outer = build_neutral_outer_partition(self.unit_catalog, recomputed_feasibility, policy=self.policy)
+        if self.outer_partition.content_digest != recomputed_outer.content_digest:
+            raise TrainingDataInputError(
+                "Neutral statistical base outer partition does not match deterministic derivation."
+            )
+
+        recomputed_independence = build_independence_report(self.unit_catalog)
+        if self.independence.content_digest != recomputed_independence.content_digest:
+            raise TrainingDataInputError(
+                "Neutral statistical base independence report does not match deterministic derivation."
+            )
+
+        recomputed_leakage = audit_neutral_leakage(self.unit_catalog, self.outer_partition, policy=self.policy)
+        if self.leakage.content_digest != recomputed_leakage.content_digest:
+            raise TrainingDataInputError(
+                "Neutral statistical base leakage report does not match deterministic audit."
+            )
+
+        if not recomputed_leakage.passed or not self.leakage.passed:
             raise TrainingDataInputError("Neutral statistical base cannot be created with leakage errors.")
         object.__setattr__(self, "notes", tuple(str(v) for v in self.notes))
 

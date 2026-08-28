@@ -493,33 +493,33 @@ Do not rerun unaffected expensive source/frame focused tests solely because P1A8
 
 P1A8 cannot be marked complete until all of the following are true:
 
-- [ ] `NeutralStatisticalBase` validates `dataset_id == unit_catalog.dataset_id`.
-- [ ] Policy digest is identical across policy, unit catalog, feasibility, outer partition, and leakage.
-- [ ] Unit-catalog digest is identical across unit catalog, feasibility, outer partition, independence, and leakage.
-- [ ] `leakage.outer_partition_digest == outer_partition.content_digest` is enforced.
-- [ ] Outer assigned + unassigned unit IDs exactly cover the bound unit catalog with no foreign/missing IDs.
-- [ ] Stored feasibility equals a fresh `assess_neutral_feasibility()` result.
-- [ ] Stored outer partition equals a fresh deterministic `build_neutral_outer_partition()` result using recomputed feasibility.
-- [ ] Stored independence equals a fresh `build_independence_report()` result.
-- [ ] Stored leakage equals a fresh `audit_neutral_leakage()` result for the exact stored partition.
-- [ ] The aggregate still rejects if the fresh leakage audit does not pass.
-- [ ] Aggregate validation runs for both direct construction and `from_dict()` restart.
-- [ ] Invalid state is rejected rather than silently repaired.
-- [ ] Positive direct construction remains unchanged.
-- [ ] Positive JSON round-trip preserves aggregate `content_digest`.
-- [ ] Stale leakage + changed partition constructor/restart negative passes.
-- [ ] Coordinated changed-partition + updated leakage partition digest + stale leakage findings/pass negative passes.
-- [ ] Noncanonical but leakage-clean outer partition restart negative passes.
-- [ ] Rehashed stale feasibility restart negative passes.
-- [ ] Rehashed stale independence restart negative passes.
-- [ ] Foreign and missing unit-ID restart negatives pass.
-- [ ] Policy-lineage mismatch negative passes.
-- [ ] Tests exercise the real aggregate constructor/deserializer and real semantic owners rather than helper-only proxies.
-- [ ] `P1_SOURCE_MAP.md` records the final aggregate/restart authority.
-- [ ] Final affected neutral statistical/DATA5 regression passes on the same candidate.
-- [ ] Final P1-D/P1-E assembled integration passes on the same candidate.
-- [ ] Repository-required Python/package checks execute.
-- [ ] No long GPU/full-production qualification is used as a substitute for functional acceptance.
+- [x] `NeutralStatisticalBase` validates `dataset_id == unit_catalog.dataset_id`.
+- [x] Policy digest is identical across policy, unit catalog, feasibility, outer partition, and leakage.
+- [x] Unit-catalog digest is identical across unit catalog, feasibility, outer partition, independence, and leakage.
+- [x] `leakage.outer_partition_digest == outer_partition.content_digest` is enforced.
+- [x] Outer assigned + unassigned unit IDs exactly cover the bound unit catalog with no foreign/missing IDs.
+- [x] Stored feasibility equals a fresh `assess_neutral_feasibility()` result.
+- [x] Stored outer partition equals a fresh deterministic `build_neutral_outer_partition()` result using recomputed feasibility.
+- [x] Stored independence equals a fresh `build_independence_report()` result.
+- [x] Stored leakage equals a fresh `audit_neutral_leakage()` result for the exact stored partition.
+- [x] The aggregate still rejects if the fresh leakage audit does not pass.
+- [x] Aggregate validation runs for both direct construction and `from_dict()` restart.
+- [x] Invalid state is rejected rather than silently repaired.
+- [x] Positive direct construction remains unchanged.
+- [x] Positive JSON round-trip preserves aggregate `content_digest`.
+- [x] Stale leakage + changed partition constructor/restart negative passes.
+- [x] Coordinated changed-partition + updated leakage partition digest + stale leakage findings/pass negative passes.
+- [x] Noncanonical but leakage-clean outer partition restart negative passes.
+- [x] Rehashed stale feasibility restart negative passes.
+- [x] Rehashed stale independence restart negative passes.
+- [x] Foreign and missing unit-ID restart negatives pass.
+- [x] Policy-lineage mismatch negative passes.
+- [x] Tests exercise the real aggregate constructor/deserializer and real semantic owners rather than helper-only proxies.
+- [x] `P1_SOURCE_MAP.md` records the final aggregate/restart authority.
+- [x] Final affected neutral statistical/DATA5 regression passes on the same candidate.
+- [x] Final P1-D/P1-E assembled integration passes on the same candidate.
+- [x] Repository-required Python/package checks execute.
+- [x] No long GPU/full-production qualification is used as a substitute for functional acceptance.
 
 ## P1 exit gate
 

@@ -1812,20 +1812,206 @@ def test_p1d_neutral_base_rejects_legacy_and_mismatched_authorities(tmp_path: Pa
     with pytest.raises(mdstats.TrainingDataInputError, match="Frame authority does not match"):
         build_neutral_unit_catalog(tampered_source, frame_auth, feature_ev)
 
-    # Reject passing legacy DATA2/DATA3/DATA4 objects
-    with pytest.raises(mdstats.TrainingDataInputError, match="SourceAuthority"):
-        build_neutral_statistical_base(sources, frame_auth, feature_ev)
 
-    with pytest.raises(mdstats.TrainingDataInputError, match="CanonicalFrameAuthority"):
-        build_neutral_statistical_base(source_auth, legacy_frames, feature_ev)
+def test_p1d_neutral_statistical_base_aggregate_coherence_and_restart_adversarial(tmp_path: Path) -> None:
+    """P1A8: Complete aggregate semantic coherence and adversarial persistence/restart proofs."""
+    manifest, sources, _frames, data4 = _data4_bundle(tmp_path)
+    policy = _neutral_policy()
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
+    feature_ev = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4)
+    base = build_neutral_statistical_base(source_auth, frame_auth, feature_ev, policy=policy)
 
-    with pytest.raises(mdstats.TrainingDataInputError, match="NeutralFeatureEvidence"):
-        build_neutral_statistical_base(source_auth, frame_auth, data4)
+    # 1. Positive restart control: JSON serialization / deserialization round-trip preserves content_digest
+    payload = base.to_dict()
+    rebuilt = NeutralStatisticalBase.from_dict(payload)
+    assert rebuilt.content_digest == base.content_digest
 
-    # Reject mismatched lineage
-    tampered_source = replace(source_auth, manifest_digest=_digest())
-    with pytest.raises(mdstats.TrainingDataInputError, match="Frame authority does not match"):
-        build_neutral_unit_catalog(tampered_source, frame_auth, feature_ev)
+    # 2. B1 — Stale certificate / changed partition:
+    # Outer partition changed, but old leakage report retained
+    alt_assignments = tuple(
+        replace(a, role=mdstats.OuterRole.DEVELOPMENT) if a.role != mdstats.OuterRole.PURGED else a
+        for a in base.outer_partition.assignments
+    )
+    alt_outer = replace(base.outer_partition, assignments=alt_assignments)
+    with pytest.raises(mdstats.TrainingDataError, match="leakage outer_partition_digest mismatch|does not match deterministic derivation"):
+        NeutralStatisticalBase(
+            dataset_id=base.dataset_id,
+            policy=base.policy,
+            unit_catalog=base.unit_catalog,
+            feasibility=base.feasibility,
+            outer_partition=alt_outer,
+            independence=base.independence,
+            leakage=base.leakage,
+        )
+
+    bad_payload_b1 = deepcopy(payload)
+    bad_payload_b1["outer_partition"] = alt_outer.to_dict()
+    with pytest.raises(mdstats.TrainingDataError, match="leakage outer_partition_digest mismatch|does not match deterministic derivation"):
+        NeutralStatisticalBase.from_dict(bad_payload_b1)
+
+    # 3. B2 — Coordinated rehash cannot counterfeit leakage validity:
+    # Outer partition changed, leakage outer_partition_digest updated to point to it,
+    # but leakage findings/passed stale (does not match fresh audit_neutral_leakage)
+    fake_leakage = replace(
+        base.leakage,
+        outer_partition_digest=alt_outer.content_digest,
+    )
+    with pytest.raises(mdstats.TrainingDataError, match="leakage report does not match deterministic audit|outer partition does not match deterministic derivation"):
+        NeutralStatisticalBase(
+            dataset_id=base.dataset_id,
+            policy=base.policy,
+            unit_catalog=base.unit_catalog,
+            feasibility=base.feasibility,
+            outer_partition=alt_outer,
+            independence=base.independence,
+            leakage=fake_leakage,
+        )
+
+    bad_payload_b2 = deepcopy(payload)
+    bad_payload_b2["outer_partition"] = alt_outer.to_dict()
+    bad_payload_b2["leakage"] = fake_leakage.to_dict()
+    with pytest.raises(mdstats.TrainingDataError, match="leakage report does not match deterministic audit|outer partition does not match deterministic derivation"):
+        NeutralStatisticalBase.from_dict(bad_payload_b2)
+
+    # 4. B3 — Noncanonical outer assignment even if leakage passes:
+    # Partition differs from build_neutral_outer_partition() but leakage freshly computed for it
+    fresh_leakage_for_alt = ns_partition.audit_neutral_leakage(base.unit_catalog, alt_outer, policy=base.policy)
+    with pytest.raises(mdstats.TrainingDataError, match="outer partition does not match deterministic derivation"):
+        NeutralStatisticalBase(
+            dataset_id=base.dataset_id,
+            policy=base.policy,
+            unit_catalog=base.unit_catalog,
+            feasibility=base.feasibility,
+            outer_partition=alt_outer,
+            independence=base.independence,
+            leakage=fresh_leakage_for_alt,
+        )
+
+    bad_payload_b3 = deepcopy(payload)
+    bad_payload_b3["outer_partition"] = alt_outer.to_dict()
+    bad_payload_b3["leakage"] = fresh_leakage_for_alt.to_dict()
+    with pytest.raises(mdstats.TrainingDataError, match="outer partition does not match deterministic derivation"):
+        NeutralStatisticalBase.from_dict(bad_payload_b3)
+
+    # 5. B4 — Stale feasibility / independence:
+    # Stale feasibility
+    alt_feasibility = replace(base.feasibility, available_unit_count=999)
+    with pytest.raises(mdstats.TrainingDataError, match="feasibility report does not match deterministic assessment"):
+        NeutralStatisticalBase(
+            dataset_id=base.dataset_id,
+            policy=base.policy,
+            unit_catalog=base.unit_catalog,
+            feasibility=alt_feasibility,
+            outer_partition=base.outer_partition,
+            independence=base.independence,
+            leakage=base.leakage,
+        )
+
+    bad_payload_feas = deepcopy(payload)
+    bad_payload_feas["feasibility"] = alt_feasibility.to_dict()
+    with pytest.raises(mdstats.TrainingDataError, match="feasibility report does not match deterministic assessment"):
+        NeutralStatisticalBase.from_dict(bad_payload_feas)
+
+    # Stale independence
+    alt_independence = replace(base.independence, independent_unit_count=999)
+    with pytest.raises(mdstats.TrainingDataError, match="independence report does not match deterministic derivation"):
+        NeutralStatisticalBase(
+            dataset_id=base.dataset_id,
+            policy=base.policy,
+            unit_catalog=base.unit_catalog,
+            feasibility=base.feasibility,
+            outer_partition=base.outer_partition,
+            independence=alt_independence,
+            leakage=base.leakage,
+        )
+
+    bad_payload_indep = deepcopy(payload)
+    bad_payload_indep["independence"] = alt_independence.to_dict()
+    with pytest.raises(mdstats.TrainingDataError, match="independence report does not match deterministic derivation"):
+        NeutralStatisticalBase.from_dict(bad_payload_indep)
+
+    # 6. B5 — Unit membership corruption:
+    # Foreign unit ID in outer partition
+    foreign_assignments = base.outer_partition.assignments + (
+        NeutralRoleAssignment(unit_id=_digest(), role=mdstats.OuterRole.DEVELOPMENT, assignment_reason_codes=("foreign",)),
+    )
+    foreign_outer = replace(base.outer_partition, assignments=foreign_assignments)
+    foreign_leakage = replace(base.leakage, outer_partition_digest=foreign_outer.content_digest)
+    with pytest.raises(mdstats.TrainingDataError, match="do not exactly match unit catalog units"):
+        NeutralStatisticalBase(
+            dataset_id=base.dataset_id,
+            policy=base.policy,
+            unit_catalog=base.unit_catalog,
+            feasibility=base.feasibility,
+            outer_partition=foreign_outer,
+            independence=base.independence,
+            leakage=foreign_leakage,
+        )
+
+    bad_payload_foreign = deepcopy(payload)
+    bad_payload_foreign["outer_partition"] = foreign_outer.to_dict()
+    bad_payload_foreign["leakage"] = foreign_leakage.to_dict()
+    with pytest.raises(mdstats.TrainingDataError, match="do not exactly match unit catalog units"):
+        NeutralStatisticalBase.from_dict(bad_payload_foreign)
+
+    # Missing unit ID (omitted from assigned and unassigned)
+    omitted_outer = replace(base.outer_partition, assignments=base.outer_partition.assignments[:-1])
+    omitted_leakage = replace(base.leakage, outer_partition_digest=omitted_outer.content_digest)
+    with pytest.raises(mdstats.TrainingDataError, match="do not exactly match unit catalog units"):
+        NeutralStatisticalBase(
+            dataset_id=base.dataset_id,
+            policy=base.policy,
+            unit_catalog=base.unit_catalog,
+            feasibility=base.feasibility,
+            outer_partition=omitted_outer,
+            independence=base.independence,
+            leakage=omitted_leakage,
+        )
+
+    bad_payload_omitted = deepcopy(payload)
+    bad_payload_omitted["outer_partition"] = omitted_outer.to_dict()
+    bad_payload_omitted["leakage"] = omitted_leakage.to_dict()
+    with pytest.raises(mdstats.TrainingDataError, match="do not exactly match unit catalog units"):
+        NeutralStatisticalBase.from_dict(bad_payload_omitted)
+
+    # Overlapping assigned and unassigned units
+    with pytest.raises(mdstats.TrainingDataError, match="Units cannot be simultaneously assigned and unassigned"):
+        replace(
+            base.outer_partition,
+            unassigned_unit_ids=(base.outer_partition.assignments[0].unit_id,)
+        )
+
+    bad_payload_overlap = deepcopy(payload)
+    bad_payload_overlap["outer_partition"]["unassigned_unit_ids"] = [base.outer_partition.assignments[0].unit_id]
+    with pytest.raises(mdstats.TrainingDataError, match="Units cannot be simultaneously assigned and unassigned|do not exactly match unit catalog units"):
+        NeutralStatisticalBase.from_dict(bad_payload_overlap)
+
+    # 7. B6 — Policy / Dataset ID mismatch:
+    # Dataset ID mismatch
+    with pytest.raises(mdstats.TrainingDataError, match="Dataset ID mismatch"):
+        NeutralStatisticalBase(
+            dataset_id="different_dataset_id",
+            policy=base.policy,
+            unit_catalog=base.unit_catalog,
+            feasibility=base.feasibility,
+            outer_partition=base.outer_partition,
+            independence=base.independence,
+            leakage=base.leakage,
+        )
+
+    # Policy digest mismatch in outer_partition
+    alt_policy = replace(base.policy, role_budget=replace(base.policy.role_budget, outer_monitor_minimum_independent_units=99))
+    with pytest.raises(mdstats.TrainingDataError, match="policy mismatch"):
+        NeutralStatisticalBase(
+            dataset_id=base.dataset_id,
+            policy=alt_policy,
+            unit_catalog=base.unit_catalog,
+            feasibility=base.feasibility,
+            outer_partition=base.outer_partition,
+            independence=base.independence,
+            leakage=base.leakage,
+        )
 
 
 # =========================================================================

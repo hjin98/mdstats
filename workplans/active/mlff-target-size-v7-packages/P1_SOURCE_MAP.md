@@ -59,6 +59,13 @@ source files
 - Supported rebound typed profile payloads must remain resolvable and usable after serialization/restart.
 - A legacy DATA3-to-canonical path lacking actual E/F/stress must not return an authoritative canonical type.
 - Cross-validation is not part of the neutral pre-target statistical substrate.
+- `NeutralStatisticalBase` owns aggregate semantic coherence across dataset ID, policy, unit catalog, feasibility, outer partition, independence, and leakage:
+  - `leakage.passed` is not trusted independently of a fresh `audit_neutral_leakage()`;
+  - `leakage.outer_partition_digest` must bind the exact stored `outer_partition.content_digest`;
+  - assigned + unassigned outer-partition unit IDs must exactly cover the bound `NeutralUnitCatalog` with no foreign or missing unit IDs;
+  - restart re-derives deterministic feasibility, outer partition, independence, and leakage through the same scientific owners as initial construction rather than using a deserializer-only approximation;
+  - current P1 outer partition is deterministic owner state, not an arbitrary persisted override;
+  - stale, replayed, or rehashed aggregate state is rejected rather than silently repaired.
 - All new code, symbol and schema names are version-agnostic (no `v7_` or `V7` prefixes).
 
 ## Owning implementation (unreachable scaffolding)
