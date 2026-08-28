@@ -22,7 +22,12 @@ from ._common import (
     validate_digest,
 )
 from .eligibility import FrameEligibilityState
-from .neutral_substrate import CanonicalFrameAuthority, NeutralStatisticalBase
+from .neutral_substrate import (
+    CanonicalFrameAuthority,
+    NeutralSplitExclusionEvidence,
+    NeutralStatisticalBase,
+    build_neutral_split_exclusion_evidence,
+)
 from .partition import OuterRole
 
 TARGET_SIZE_POLICY_SCHEMA = "mdstats.target-size-scientific-policy.v1"
@@ -36,6 +41,10 @@ TARGET_SIZE_METRIC_SCHEMA = "mdstats.target-size-boundary-metric.v1"
 TARGET_SIZE_FAILURE_SCHEMA = "mdstats.target-size-numerical-failure.v1"
 TARGET_SIZE_REDUCER_SCHEMA = "mdstats.target-size-reducer-state.v1"
 TARGET_SIZE_AGGREGATE_SCHEMA = "mdstats.target-size-statistical-aggregate.v1"
+TARGET_SIZE_HARD_OBLIGATION_SCHEMA = "mdstats.target-size-hard-support-obligation.v1"
+TARGET_SIZE_QUALIFICATION_SCHEMA = "mdstats.target-size-candidate-qualification.v1"
+TARGET_SIZE_FUNNEL_POLICY_SCHEMA = "mdstats.target-size-funnel.v1"
+TARGET_SIZE_FUNNEL_TRANSITION = "q->min(q,4)->2->1"
 
 
 def _checked_dict_digest(
@@ -44,6 +53,144 @@ def _checked_dict_digest(
     supplied = payload.get("content_digest")
     if supplied not in (None, result_digest):
         raise TrainingDataSerializationError(f"{name} digest mismatch.")
+
+
+# Frozen pre-candidate evidence authorized for hard-support selectors.  Every
+# attribute is canonical P1/P2 membership evidence carried by the bound
+# population; provenance, CV, candidate, and seed namespaces are deliberately
+# absent and are rejected as unknown selectors.
+HARD_SUPPORT_CONDITION_ATTRIBUTES = (
+    "condition_id",
+    "reduced_formula",
+    "temperature_condition",
+    "strain_class",
+    "regime",
+)
+HARD_SUPPORT_USER_LABEL_PREFIX = "user_label."
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSizeHardSupportObligation:
+    """One declarative, serializable hard-support obligation.
+
+    The obligation identifies a support subset using only frozen pre-candidate
+    evidence already authorized for P2 ordering/qualification (canonical P1/P2
+    condition membership), together with the required minimum membership count.
+    Obligation identity never depends on callbacks, object identity, mutable
+    runtime state, model predictions, candidate outcomes, CV state, or
+    execution results.
+    """
+
+    obligation_id: str
+    attribute: str
+    value: str
+    minimum_count: int
+
+    def __post_init__(self) -> None:
+        obligation_id = str(self.obligation_id).strip()
+        if not obligation_id:
+            raise TrainingDataInputError(
+                "Hard-support obligation_id must be non-empty."
+            )
+        attribute = str(self.attribute).strip()
+        value = str(self.value)
+        if not value.strip():
+            raise TrainingDataInputError(
+                "Hard-support obligation selector value must be non-empty."
+            )
+        if attribute in HARD_SUPPORT_CONDITION_ATTRIBUTES:
+            pass
+        elif attribute.startswith(HARD_SUPPORT_USER_LABEL_PREFIX):
+            if not attribute[len(HARD_SUPPORT_USER_LABEL_PREFIX) :].strip():
+                raise TrainingDataInputError(
+                    "A user_label hard-support selector requires a non-empty label key."
+                )
+        else:
+            raise TrainingDataInputError(
+                f"Unknown hard-support selector attribute: {attribute!r}."
+            )
+        minimum = _positive_int(self.minimum_count, name="minimum_count")
+        object.__setattr__(self, "obligation_id", obligation_id)
+        object.__setattr__(self, "attribute", attribute)
+        object.__setattr__(self, "value", value)
+        object.__setattr__(self, "minimum_count", minimum)
+
+    def matches(self, condition_attributes: tuple[tuple[str, str], ...]) -> bool:
+        return (str(self.attribute), str(self.value)) in set(condition_attributes)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": TARGET_SIZE_HARD_OBLIGATION_SCHEMA,
+            "obligation_id": self.obligation_id,
+            "attribute": self.attribute,
+            "value": self.value,
+            "minimum_count": self.minimum_count,
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> TargetSizeHardSupportObligation:
+        if payload.get("schema") != TARGET_SIZE_HARD_OBLIGATION_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported target-size hard-support obligation schema."
+            )
+        result = cls(
+            obligation_id=str(payload["obligation_id"]),
+            attribute=str(payload["attribute"]),
+            value=str(payload["value"]),
+            minimum_count=int(payload["minimum_count"]),
+        )
+        _checked_dict_digest(
+            payload, result.content_digest, name="Target-size hard-support obligation"
+        )
+        return result
+
+
+def _normalize_hard_support_obligations(
+    obligations: Sequence[TargetSizeHardSupportObligation | Mapping[str, Any]],
+) -> tuple[TargetSizeHardSupportObligation, ...]:
+    """Canonical normalization: validated selectors, stable order, no aliases."""
+
+    parsed: list[TargetSizeHardSupportObligation] = []
+    for item in obligations:
+        if isinstance(item, TargetSizeHardSupportObligation):
+            parsed.append(item)
+        elif isinstance(item, Mapping):
+            try:
+                parsed.append(
+                    TargetSizeHardSupportObligation(
+                        obligation_id=str(item["obligation_id"]),
+                        attribute=str(item["attribute"]),
+                        value=str(item["value"]),
+                        minimum_count=item["minimum_count"],
+                    )
+                )
+            except KeyError as error:
+                raise TrainingDataInputError(
+                    f"Hard-support obligation is missing required field: {error.args[0]!r}."
+                ) from None
+        else:
+            raise TrainingDataInputError(
+                "Hard-support obligations must be declarative mappings."
+            )
+    by_id: dict[str, TargetSizeHardSupportObligation] = {}
+    for obligation in parsed:
+        existing = by_id.get(obligation.obligation_id)
+        if existing is None:
+            by_id[obligation.obligation_id] = obligation
+        elif existing == obligation:
+            continue
+        else:
+            raise TrainingDataInputError(
+                f"Contradictory hard-support obligations share obligation_id {obligation.obligation_id!r}."
+            )
+    return tuple(sorted(by_id.values(), key=lambda item: item.obligation_id))
 
 
 def _positive_int(value: Any, *, name: str) -> int:
@@ -66,6 +213,7 @@ class ResolvedTargetSizePolicy:
     training_order_policy: str = "candidate_independent_priority.v1"
     split_policy: str = "training_priority_exact_reserve.v1"
     evaluation_order_policy: str = "candidate_independent_representative.v1"
+    hard_support_obligations: tuple[TargetSizeHardSupportObligation, ...] = ()
 
     def __post_init__(self) -> None:
         sizes = tuple(self.candidate_sizes)
@@ -143,6 +291,10 @@ class ResolvedTargetSizePolicy:
         ):
             if not str(getattr(self, name)).strip():
                 raise TrainingDataInputError(f"{name} must be nonempty.")
+        # Canonical normalization participates in policy identity: stable
+        # ordering, validated selectors, no contradictory aliases.
+        obligations = _normalize_hard_support_obligations(self.hard_support_obligations)
+        object.__setattr__(self, "hard_support_obligations", obligations)
         object.__setattr__(self, "candidate_sizes", sizes)
         object.__setattr__(self, "evaluation_sizes", evaluation)
         object.__setattr__(self, "fidelity_epochs", epochs)
@@ -178,6 +330,9 @@ class ResolvedTargetSizePolicy:
             "training_order_policy": self.training_order_policy,
             "split_policy": self.split_policy,
             "evaluation_order_policy": self.evaluation_order_policy,
+            "hard_support_obligations": [
+                item.to_dict() for item in self.hard_support_obligations
+            ],
         }
 
     @property
@@ -210,6 +365,10 @@ class ResolvedTargetSizePolicy:
             training_order_policy=str(payload["training_order_policy"]),
             split_policy=str(payload["split_policy"]),
             evaluation_order_policy=str(payload["evaluation_order_policy"]),
+            hard_support_obligations=tuple(
+                TargetSizeHardSupportObligation.from_dict(item)
+                for item in payload["hard_support_obligations"]
+            ),
         )
         _checked_dict_digest(payload, result.content_digest, name="Target-size policy")
         return result
@@ -227,6 +386,9 @@ def resolve_target_size_policy(
     training_order_policy: str = "candidate_independent_priority.v1",
     split_policy: str = "training_priority_exact_reserve.v1",
     evaluation_order_policy: str = "candidate_independent_representative.v1",
+    hard_support_obligations: Sequence[
+        TargetSizeHardSupportObligation | Mapping[str, Any]
+    ] = (),
 ) -> ResolvedTargetSizePolicy:
     pmin = _positive_int(target_size_power_min, name="target_size_power_min")
     pmax = _positive_int(target_size_power_max, name="target_size_power_max")
@@ -251,6 +413,7 @@ def resolve_target_size_policy(
         training_order_policy=training_order_policy,
         split_policy=split_policy,
         evaluation_order_policy=evaluation_order_policy,
+        hard_support_obligations=tuple(hard_support_obligations),
     )
 
 
@@ -312,6 +475,11 @@ def resolve_target_size_policy_from_config(
         raise TrainingDataInputError("evaluation_size_powers must be an array.")
     if not isinstance(raw_fidelity, (tuple, list)):
         raise TrainingDataInputError("fidelity_epochs must be an array.")
+    raw_obligations = size.get("hard_support_obligations", ())
+    if not isinstance(raw_obligations, (tuple, list)):
+        raise TrainingDataInputError(
+            "hard_support_obligations must be an array of tables."
+        )
     # Validate the production horizon but deliberately exclude it from P2 identity.
     max_epochs = training.get("max_num_epochs", 30)
     _positive_int(max_epochs, name="[training].max_num_epochs")
@@ -336,6 +504,7 @@ def resolve_target_size_policy_from_config(
                 "evaluation_order_policy", "candidate_independent_representative.v1"
             )
         ),
+        hard_support_obligations=tuple(raw_obligations),
     )
 
 
@@ -347,6 +516,7 @@ class TargetSizePopulationFrame:
     geometry_fingerprint: str
     canonical_label_payload_digest: str
     frame_record_digest: str
+    condition_attributes: tuple[tuple[str, str], ...]
 
     def __post_init__(self) -> None:
         for name in (
@@ -360,6 +530,14 @@ class TargetSizePopulationFrame:
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
             )
+        attributes = tuple(
+            sorted((str(key), str(value)) for key, value in self.condition_attributes)
+        )
+        if not attributes or len(set(key for key, _ in attributes)) != len(attributes):
+            raise TrainingDataInputError(
+                "Target-size population frame requires unique non-empty condition attributes."
+            )
+        object.__setattr__(self, "condition_attributes", attributes)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -370,6 +548,7 @@ class TargetSizePopulationFrame:
             "geometry_fingerprint": self.geometry_fingerprint,
             "canonical_label_payload_digest": self.canonical_label_payload_digest,
             "frame_record_digest": self.frame_record_digest,
+            "condition_attributes": dict(self.condition_attributes),
         }
 
     @property
@@ -396,7 +575,11 @@ class TargetSizePopulationFrame:
                     "canonical_label_payload_digest",
                     "frame_record_digest",
                 )
-            }
+            },
+            condition_attributes=tuple(
+                (str(key), str(value))
+                for key, value in payload["condition_attributes"].items()
+            ),
         )
         _checked_dict_digest(
             payload, result.content_digest, name="Target-size population frame"
@@ -512,6 +695,17 @@ def build_target_size_population(
     for unit in catalog.units:
         if unit.unit_id not in development:
             continue
+        condition = unit.condition
+        condition_attributes = (
+            ("condition_id", condition.condition_id),
+            ("reduced_formula", condition.reduced_formula),
+            ("temperature_condition", condition.temperature_condition),
+            ("strain_class", condition.strain_class),
+            ("regime", condition.regime),
+        ) + tuple(
+            (f"{HARD_SUPPORT_USER_LABEL_PREFIX}{key}", value)
+            for key, value in condition.user_labels
+        )
         for uid in unit.frame_uids:
             frame = frame_authority.frame(uid)
             decision = frame_authority.eligibility.for_frame(uid)
@@ -531,6 +725,7 @@ def build_target_size_population(
                     geometry_fingerprint=frame.geometry_fingerprint,
                     canonical_label_payload_digest=frame.canonical_label_payload_digest,
                     frame_record_digest=frame.content_digest,
+                    condition_attributes=condition_attributes,
                 )
             )
     if not result:
@@ -548,9 +743,28 @@ def build_target_size_population(
 
 def _constraint_components(
     population: TargetSizePopulation,
+    split_exclusion_evidence: NeutralSplitExclusionEvidence,
 ) -> tuple[tuple[str, ...], ...]:
-    """Linear-memory union of P1 correlation units and exact geometry duplicates."""
+    """Transitive closure of the complete inherited P1 relation authority.
 
+    The population's unit/geometry fields are mapping evidence only.  Every
+    split-excluding relation is consumed from the single canonical P1 relation
+    input: correlation units, exact geometry duplicates, protected event
+    windows, and condition-scoped replica/structural-realization lineages.
+    Reduction is a deterministic linear-memory union over the projected groups,
+    so a chain through unit, duplicate, and additional protected relations
+    collapses into one indivisible component.
+    """
+
+    if (
+        split_exclusion_evidence.frame_authority_digest
+        != population.frame_authority_digest
+        or split_exclusion_evidence.unit_catalog_digest
+        != population.neutral_unit_catalog_digest
+    ):
+        raise TrainingDataInputError(
+            "Split-exclusion relation authority does not bind this U_size population."
+        )
     parent = {uid: uid for uid in population.frame_uids}
 
     def find(uid: str) -> str:
@@ -566,16 +780,11 @@ def _constraint_components(
                 a, b = b, a
             parent[b] = a
 
-    by_unit: dict[str, list[str]] = {}
-    by_geometry: dict[str, list[str]] = {}
-    for item in population.frames:
-        by_unit.setdefault(item.unit_id, []).append(item.frame_uid)
-        by_geometry.setdefault(item.geometry_fingerprint, []).append(item.frame_uid)
-    for groups in (by_unit.values(), by_geometry.values()):
-        for members in groups:
-            first = members[0]
-            for uid in members[1:]:
-                union(first, uid)
+    members = set(population.frame_uids)
+    for group in split_exclusion_evidence.groups_for(members):
+        first = group.frame_uids[0]
+        for uid in group.frame_uids[1:]:
+            union(first, uid)
     components: dict[str, list[str]] = {}
     for uid in population.frame_uids:
         components.setdefault(find(uid), []).append(uid)
@@ -588,13 +797,18 @@ def _constraint_components(
 class TargetSizePopulationSplit:
     population_digest: str
     policy_digest: str
+    split_exclusion_evidence_digest: str
     training_frame_uids: tuple[str, ...]
     evaluation_reserve_frame_uids: tuple[str, ...]
     constraint_component_digests: tuple[str, ...]
     allocation_diagnostics: tuple[tuple[str, int], ...]
 
     def __post_init__(self) -> None:
-        for name in ("population_digest", "policy_digest"):
+        for name in (
+            "population_digest",
+            "policy_digest",
+            "split_exclusion_evidence_digest",
+        ):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
             )
@@ -624,6 +838,7 @@ class TargetSizePopulationSplit:
             "schema": TARGET_SIZE_SPLIT_SCHEMA,
             "population_digest": self.population_digest,
             "policy_digest": self.policy_digest,
+            "split_exclusion_evidence_digest": self.split_exclusion_evidence_digest,
             "training_frame_uids": list(self.training_frame_uids),
             "evaluation_reserve_frame_uids": list(self.evaluation_reserve_frame_uids),
             "constraint_component_digests": list(self.constraint_component_digests),
@@ -646,6 +861,9 @@ class TargetSizePopulationSplit:
         result = cls(
             population_digest=str(payload["population_digest"]),
             policy_digest=str(payload["policy_digest"]),
+            split_exclusion_evidence_digest=str(
+                payload["split_exclusion_evidence_digest"]
+            ),
             training_frame_uids=tuple(str(v) for v in payload["training_frame_uids"]),
             evaluation_reserve_frame_uids=tuple(
                 str(v) for v in payload["evaluation_reserve_frame_uids"]
@@ -739,12 +957,21 @@ def _allocation_component_order(
 def split_target_size_population(
     population: TargetSizePopulation,
     policy: ResolvedTargetSizePolicy,
+    split_exclusion_evidence: NeutralSplitExclusionEvidence,
 ) -> TargetSizePopulationSplit:
+    """Construct one exact ``U_size -> P_train + M3`` split.
+
+    ``split_exclusion_evidence`` is the one canonical P1 relation input.  The
+    complete connected-component closure is built before any allocation, so a
+    greedy or partial pre-pass can never allocate before every inherited P1
+    protected relation is applied.
+    """
+
     if len(population.frames) < policy.nmax + policy.m3:
         raise TrainingDataInputError(
             f"U_size has {len(population.frames)} configurations; at least {policy.nmax + policy.m3} are required."
         )
-    components = _constraint_components(population)
+    components = _constraint_components(population, split_exclusion_evidence)
     # Prefer redundant/larger components for the reserve, then use exact DP so
     # a failed greedy prefix can never become a false infeasibility verdict.
     ordered = _allocation_component_order(population, components)
@@ -766,6 +993,7 @@ def split_target_size_population(
     return TargetSizePopulationSplit(
         population_digest=population.content_digest,
         policy_digest=policy.content_digest,
+        split_exclusion_evidence_digest=split_exclusion_evidence.content_digest,
         training_frame_uids=training,
         evaluation_reserve_frame_uids=evaluation,
         constraint_component_digests=component_digests,
@@ -1072,6 +1300,150 @@ def build_target_evaluation_order(
 
 
 @dataclass(frozen=True, slots=True)
+class TargetSizeCandidateQualification:
+    """Derived per-N qualification evidence for one exact candidate prefix.
+
+    Qualification is exactly:
+
+        qualified(N) = prefix_exists(N)
+                       AND labels_training_usable(T_N)
+                       AND all_configured_hard_support_obligations_satisfied(T_N)
+
+    It never reorders, repairs, swaps, or constructs a different prefix, and it
+    never depends on optimizer seed results, evaluation outcomes, survivor
+    state, selection diagnostics, or P3 runtime accidents.  Persisted
+    qualification evidence is derived/checkable state, not an editable
+    authority.
+    """
+
+    target_size: int
+    prefix_exists: bool
+    labels_training_usable: bool
+    obligation_counts: tuple[tuple[str, int], ...]
+    unsatisfied_obligation_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "target_size", _positive_int(self.target_size, name="target_size")
+        )
+        if not self.prefix_exists:
+            raise TrainingDataInputError(
+                "Qualification evidence is only defined for an existing exact prefix."
+            )
+        if not self.labels_training_usable:
+            raise TrainingDataInputError(
+                "A prefix with unusable training labels cannot carry qualification counts."
+            )
+        object.__setattr__(
+            self,
+            "obligation_counts",
+            tuple(sorted((str(k), int(v)) for k, v in self.obligation_counts)),
+        )
+        object.__setattr__(
+            self,
+            "unsatisfied_obligation_ids",
+            tuple(str(v) for v in self.unsatisfied_obligation_ids),
+        )
+
+    @property
+    def qualified(self) -> bool:
+        return not self.unsatisfied_obligation_ids
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": TARGET_SIZE_QUALIFICATION_SCHEMA,
+            "target_size": self.target_size,
+            "prefix_exists": self.prefix_exists,
+            "labels_training_usable": self.labels_training_usable,
+            "obligation_counts": dict(self.obligation_counts),
+            "unsatisfied_obligation_ids": list(self.unsatisfied_obligation_ids),
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> TargetSizeCandidateQualification:
+        if payload.get("schema") != TARGET_SIZE_QUALIFICATION_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported target-size qualification schema."
+            )
+        result = cls(
+            target_size=int(payload["target_size"]),
+            prefix_exists=bool(payload["prefix_exists"]),
+            labels_training_usable=bool(payload["labels_training_usable"]),
+            obligation_counts=tuple(
+                (str(k), int(v)) for k, v in payload["obligation_counts"].items()
+            ),
+            unsatisfied_obligation_ids=tuple(
+                str(v) for v in payload["unsatisfied_obligation_ids"]
+            ),
+        )
+        _checked_dict_digest(
+            payload, result.content_digest, name="Target-size qualification"
+        )
+        return result
+
+
+def qualify_target_size_candidates(
+    population: TargetSizePopulation,
+    training_order: TargetTrainingOrder,
+    policy: ResolvedTargetSizePolicy,
+) -> tuple[TargetSizeCandidateQualification, ...]:
+    """Qualify each configured exact prefix under the resolved policy.
+
+    Only explicitly configured hard-support obligations gate a prefix.
+    Coverage, novelty, residual, balance, and other diagnostics remain
+    ordering/observational evidence and never enter this decision.
+    """
+
+    by_uid = population._by_uid
+    result: list[TargetSizeCandidateQualification] = []
+    for size in policy.candidate_sizes:
+        if size > len(training_order.frame_uids):
+            raise TrainingDataInputError(
+                f"pi_train has no exact prefix of size {size}."
+            )
+        prefix = training_order.candidate_membership(size)
+        labels_usable = all(
+            uid in by_uid and by_uid[uid].canonical_label_payload_digest is not None
+            for uid in prefix
+        )
+        if not labels_usable:
+            raise TrainingDataInputError(
+                "A configured candidate prefix contains frames without usable canonical labels."
+            )
+        counts: list[tuple[str, int]] = []
+        unsatisfied: list[str] = []
+        for obligation in policy.hard_support_obligations:
+            matched = sum(
+                1
+                for uid in prefix
+                if obligation.matches(by_uid[uid].condition_attributes)
+            )
+            counts.append((obligation.obligation_id, matched))
+            if matched < obligation.minimum_count:
+                unsatisfied.append(obligation.obligation_id)
+        result.append(
+            TargetSizeCandidateQualification(
+                target_size=size,
+                prefix_exists=True,
+                labels_training_usable=labels_usable,
+                obligation_counts=tuple(counts),
+                unsatisfied_obligation_ids=tuple(unsatisfied),
+            )
+        )
+    return tuple(result)
+
+
+REQUIRED_QUALIFIED_CANDIDATE_COUNT = 3
+
+
+@dataclass(frozen=True, slots=True)
 class TargetSizeExperimentDefinition:
     dataset_id: str
     population_digest: str
@@ -1081,6 +1453,7 @@ class TargetSizeExperimentDefinition:
     evaluation_order: TargetEvaluationOrder
     candidate_membership_digests: tuple[tuple[int, str], ...]
     evaluation_membership_digests: tuple[tuple[int, str], ...]
+    candidate_qualification: tuple[TargetSizeCandidateQualification, ...]
 
     def __post_init__(self) -> None:
         for name in ("population_digest", "split_digest"):
@@ -1126,6 +1499,36 @@ class TargetSizeExperimentDefinition:
             )
         object.__setattr__(self, "candidate_membership_digests", candidates)
         object.__setattr__(self, "evaluation_membership_digests", evaluations)
+        object.__setattr__(self, "candidate_qualification", tuple(self.candidate_qualification))
+
+    @property
+    def funnel_policy(self) -> dict[str, str]:
+        """Version-agnostic, fidelity-agnostic funnel transition identity.
+
+        The configured ``fidelity_epochs`` tuple remains the sole scientific
+        identity of the configured boundary values; this schema name must never
+        encode a historical fidelity ladder.
+        """
+        return {
+            "schema": TARGET_SIZE_FUNNEL_POLICY_SCHEMA,
+            "transition": TARGET_SIZE_FUNNEL_TRANSITION,
+        }
+
+    @property
+    def qualified_candidate_sizes(self) -> tuple[int, ...]:
+        return tuple(
+            item.target_size
+            for item in self.candidate_qualification
+            if item.qualified
+        )
+
+    def qualification(self, target_size: int) -> TargetSizeCandidateQualification:
+        for item in self.candidate_qualification:
+            if item.target_size == target_size:
+                return item
+        raise TrainingDataInputError(
+            "Target size is outside the configured candidate universe."
+        )
 
     def candidate_membership(self, target_size: int) -> tuple[str, ...]:
         if target_size not in self.policy.candidate_sizes:
@@ -1150,6 +1553,10 @@ class TargetSizeExperimentDefinition:
             "split_digest": self.split_digest,
             "training_order": self.training_order.to_dict(),
             "evaluation_order": self.evaluation_order.to_dict(),
+            "funnel_policy": self.funnel_policy,
+            "candidate_qualification": [
+                item.to_dict() for item in self.candidate_qualification
+            ],
             "candidate_membership_digests": {
                 str(k): v for k, v in self.candidate_membership_digests
             },
@@ -1192,6 +1599,10 @@ class TargetSizeExperimentDefinition:
                     for k, v in payload["evaluation_membership_digests"].items()
                 )
             ),
+            candidate_qualification=tuple(
+                TargetSizeCandidateQualification.from_dict(item)
+                for item in payload["candidate_qualification"]
+            ),
         )
         _checked_dict_digest(
             payload, result.content_digest, name="Target-size experiment definition"
@@ -1220,6 +1631,15 @@ def build_target_size_experiment_definition(
         raise TrainingDataInputError(
             "Target training and evaluation populations overlap."
         )
+    qualification = qualify_target_size_candidates(population, training_order, policy)
+    qualified_sizes = tuple(item.target_size for item in qualification if item.qualified)
+    if len(qualified_sizes) < REQUIRED_QUALIFIED_CANDIDATE_COUNT:
+        raise TrainingDataInputError(
+            "Hard-support qualification leaves "
+            f"{len(qualified_sizes)} qualified candidate(s) {list(qualified_sizes)}; "
+            f"the {TARGET_SIZE_FUNNEL_TRANSITION} funnel requires at least "
+            f"{REQUIRED_QUALIFIED_CANDIDATE_COUNT} qualified candidate sizes."
+        )
     return TargetSizeExperimentDefinition(
         dataset_id=population.dataset_id,
         population_digest=population.content_digest,
@@ -1235,6 +1655,7 @@ def build_target_size_experiment_definition(
             (size, evaluation_order.membership_digest(size))
             for size in policy.evaluation_sizes
         ),
+        candidate_qualification=qualification,
     )
 
 
@@ -1612,11 +2033,16 @@ class TargetSizeReducerState:
 def initial_target_size_reducer(
     definition: TargetSizeExperimentDefinition,
 ) -> TargetSizeReducerState:
+    active = definition.qualified_candidate_sizes
+    if not active:
+        raise TrainingDataInputError(
+            "A target-size experiment requires at least one qualified candidate size."
+        )
     return TargetSizeReducerState(
         experiment_definition_digest=definition.content_digest,
         execution_context_digest=None,
         status=ReducerStatus.AWAITING_EXECUTION_CONTEXT,
-        active_candidate_sizes=definition.policy.candidate_sizes,
+        active_candidate_sizes=active,
     )
 
 
@@ -1678,6 +2104,16 @@ def advance_target_size_reducer(
 
     if state.experiment_definition_digest != definition.content_digest:
         raise TrainingDataInputError("Reducer/definition lineage mismatch.")
+    qualified = definition.qualified_candidate_sizes
+    unqualified_sizes = sorted(
+        {item.target_size for item in outcomes if item.target_size not in qualified}
+    )
+    if unqualified_sizes:
+        raise TrainingDataInputError(
+            "Boundary evidence targets unqualified candidate size(s) "
+            f"{unqualified_sizes}; only qualified configured sizes "
+            f"{list(qualified)} may enter ordinary funnel execution."
+        )
     index = _boundary_index(state.status)
     policy = definition.policy
     epoch = policy.fidelity_epochs[index]
@@ -1917,6 +2353,20 @@ class TargetSizeStatisticalAggregate:
             raise TrainingDataInputError(
                 "Aggregate definition/policy lineage mismatch."
             )
+        # Derived candidate qualification is freshly re-derivable from the
+        # exact prefixes, the bound population, and the normalized hard-support
+        # obligations; stored qualified=true can never survive a policy or
+        # prefix change.
+        derived_qualification = qualify_target_size_candidates(
+            self.population, self.definition.training_order, self.policy
+        )
+        if tuple(item.content_digest for item in derived_qualification) != tuple(
+            item.content_digest for item in self.definition.candidate_qualification
+        ):
+            raise TrainingDataInputError(
+                "Persisted candidate qualification does not match deterministic "
+                "re-derivation from the exact prefixes and bound policy."
+            )
         validate_target_size_reducer_state(self.definition, self.reducer_state)
         object.__setattr__(self, "training_priority_evidence", training_evidence)
         object.__setattr__(self, "evaluation_priority_evidence", evaluation_evidence)
@@ -1972,6 +2422,11 @@ class TargetSizeStatisticalAggregate:
             payload["definition"]
         )
         serialized_reducer = TargetSizeReducerState.from_dict(payload["reducer_state"])
+        # Re-derive the inherited P1 split-exclusion relation authority through
+        # the real P1 owners before trusting any stored split descendant.
+        derived_evidence = build_neutral_split_exclusion_evidence(
+            frame_authority, neutral_base
+        )
         training_evidence = tuple(
             (str(uid), tuple(float(v) for v in vector))
             for uid, vector in sorted(
@@ -1984,6 +2439,15 @@ class TargetSizeStatisticalAggregate:
                 payload.get("evaluation_priority_evidence", {}).items()
             )
         )
+        if (
+            serialized_split.split_exclusion_evidence_digest
+            != derived_evidence.content_digest
+        ):
+            raise TrainingDataSerializationError(
+                "Target-size aggregate inherited P1 split-exclusion relation "
+                "authority does not match the accepted P1 owners; the stale "
+                "split and all descendants are rejected."
+            )
         rebuilt = build_target_size_statistical_aggregate(
             frame_authority,
             neutral_base,
@@ -2046,7 +2510,10 @@ def build_target_size_statistical_aggregate(
 ) -> TargetSizeStatisticalAggregate:
     active = ResolvedTargetSizePolicy() if policy is None else policy
     population = build_target_size_population(frame_authority, neutral_base)
-    split = split_target_size_population(population, active)
+    split_exclusion = build_neutral_split_exclusion_evidence(
+        frame_authority, neutral_base
+    )
+    split = split_target_size_population(population, active, split_exclusion)
     training_items = _evidence_items(
         split.training_frame_uids,
         training_priority_evidence,
@@ -2087,12 +2554,19 @@ def build_target_size_statistical_aggregate(
 
 __all__ = (
     "BoundaryOutcome",
+    "HARD_SUPPORT_CONDITION_ATTRIBUTES",
+    "HARD_SUPPORT_USER_LABEL_PREFIX",
     "NumericalFailureKind",
+    "REQUIRED_QUALIFIED_CANDIDATE_COUNT",
     "ReducerStatus",
     "ResolvedTargetSizePolicy",
+    "TARGET_SIZE_FUNNEL_POLICY_SCHEMA",
+    "TARGET_SIZE_FUNNEL_TRANSITION",
     "TargetEvaluationOrder",
     "TargetSizeBoundaryMetric",
+    "TargetSizeCandidateQualification",
     "TargetSizeExperimentDefinition",
+    "TargetSizeHardSupportObligation",
     "TargetSizeNumericalFailure",
     "TargetSizePopulation",
     "TargetSizePopulationFrame",
@@ -2108,6 +2582,7 @@ __all__ = (
     "build_target_size_statistical_aggregate",
     "build_target_training_order",
     "initial_target_size_reducer",
+    "qualify_target_size_candidates",
     "reference_exact_split_feasible",
     "resolve_target_size_policy",
     "resolve_target_size_policy_from_config",

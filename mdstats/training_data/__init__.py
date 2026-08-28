@@ -2155,13 +2155,20 @@ from .target_size_study import (
 # Current-generation statistical experiment scaffold.  It remains unreachable
 # from campaign commands until the P4 atomic cutover.
 from .target_size_experiment import (
+    HARD_SUPPORT_CONDITION_ATTRIBUTES,
+    HARD_SUPPORT_USER_LABEL_PREFIX,
+    REQUIRED_QUALIFIED_CANDIDATE_COUNT,
     BoundaryOutcome,
     NumericalFailureKind,
     ReducerStatus,
     ResolvedTargetSizePolicy,
+    TARGET_SIZE_FUNNEL_POLICY_SCHEMA,
+    TARGET_SIZE_FUNNEL_TRANSITION,
     TargetEvaluationOrder,
     TargetSizeBoundaryMetric,
+    TargetSizeCandidateQualification,
     TargetSizeExperimentDefinition,
+    TargetSizeHardSupportObligation,
     TargetSizeNumericalFailure,
     TargetSizePopulation,
     TargetSizePopulationFrame,
@@ -2177,6 +2184,7 @@ from .target_size_experiment import (
     build_target_size_statistical_aggregate,
     build_target_training_order,
     initial_target_size_reducer,
+    qualify_target_size_candidates,
     reference_exact_split_feasible,
     resolve_target_size_policy,
     resolve_target_size_policy_from_config,
