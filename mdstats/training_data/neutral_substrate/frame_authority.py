@@ -434,6 +434,11 @@ def build_vasp_canonical_frame_authority(
             raise TrainingDataInputError(
                 f"Ensemble certificate interpretation mismatch for {source.run_id!r}."
             )
+        if certificate.ensemble.value != source.ensemble:
+            raise TrainingDataInputError(
+                f"Ensemble interpretation mismatch for {source.run_id!r}: "
+                f"reparsed={certificate.ensemble.value!r} != persisted={source.ensemble!r}"
+            )
         channel = bundle.energy_catalog.channel(source.selected_energy_channel)
         if channel is None:
             raise TrainingDataInputError(

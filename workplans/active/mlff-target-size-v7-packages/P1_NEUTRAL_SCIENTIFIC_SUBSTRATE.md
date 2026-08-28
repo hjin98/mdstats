@@ -779,22 +779,22 @@ No long GPU/full-production qualification is part of P1A7.
 
 P1A7 cannot be marked complete until all of the following are true:
 
-- [ ] `build_vasp_canonical_frame_authority()` compares `certificate.ensemble.value` to persisted `source.ensemble` after certificate-signature verification and before downstream use.
-- [ ] Real NPT direct rebuild still succeeds unchanged.
-- [ ] Real NPT + only persisted ensemble tampered to contradictory value rejects.
-- [ ] Existing source-control, certificate-digest, companion, selected-energy units and selected-energy role mismatch tests remain green.
-- [ ] Missing selected-energy channel direct-rebuild negative executes and passes.
-- [ ] Shared required-label acceptance covers nonfinite forces.
-- [ ] Shared required-label acceptance covers stress wrong shape.
-- [ ] Shared required-label acceptance covers stress nonfinite.
-- [ ] Shared required-label acceptance covers stress nonsymmetry.
-- [ ] Optional forces/stress supplied-invalid cases fail even though the property is optional.
-- [ ] Required/optional/forbidden semantics remain consistent across shared evaluator and authoritative construction paths.
-- [ ] Former optional-energy bug reproducer remains positive across direct and assembled builders.
-- [ ] `P1_SOURCE_MAP.md` records verified manifest ownership, shared evaluator ownership and direct certificate-ensemble/energy replay checks.
-- [ ] Final affected DATA2-DATA5/P1 regression/integration executes on the same candidate.
-- [ ] Repository-required Python/package checks execute.
-- [ ] No long GPU/production qualification is run merely to close P1.
+- [x] `build_vasp_canonical_frame_authority()` compares `certificate.ensemble.value` to persisted `source.ensemble` after certificate-signature verification and before downstream use.
+- [x] Real NPT direct rebuild still succeeds unchanged.
+- [x] Real NPT + only persisted ensemble tampered to contradictory value rejects.
+- [x] Existing source-control, certificate-digest, companion, selected-energy units and selected-energy role mismatch tests remain green.
+- [x] Missing selected-energy channel direct-rebuild negative executes and passes.
+- [x] Shared required-label acceptance covers nonfinite forces.
+- [x] Shared required-label acceptance covers stress wrong shape.
+- [x] Shared required-label acceptance covers stress nonfinite.
+- [x] Shared required-label acceptance covers stress nonsymmetry.
+- [x] Optional forces/stress supplied-invalid cases fail even though the property is optional.
+- [x] Required/optional/forbidden semantics remain consistent across shared evaluator and authoritative construction paths.
+- [x] Former optional-energy bug reproducer remains positive across direct and assembled builders.
+- [x] `P1_SOURCE_MAP.md` records verified manifest ownership, shared evaluator ownership and direct certificate-ensemble/energy replay checks.
+- [x] Final affected DATA2-DATA5/P1 regression/integration executes on the same candidate.
+- [x] Repository-required Python/package checks execute.
+- [x] No long GPU/production qualification is run merely to close P1.
 
 ## P1 exit gate
 

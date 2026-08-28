@@ -779,7 +779,8 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     deriv_digest = _digest()
 
     # 1. Direct unit tests on pure evaluate_required_label_contract evaluator:
-    # 1a. Default policy (E required, F required, S optional)
+    # 1a. Energy:
+    # - required + finite present -> satisfied
     res_valid = evaluate_required_label_contract(
         atom_count=2,
         energy_ev=-10.0,
@@ -789,7 +790,7 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert res_valid.is_satisfied is True
     assert res_valid.reason_codes == ()
 
-    # 1b. Missing energy with require_energy=True -> rejected
+    # - required + missing -> fail missing_energy
     res_no_e = evaluate_required_label_contract(
         atom_count=2,
         energy_ev=None,
@@ -800,7 +801,18 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert res_no_e.is_satisfied is False
     assert "missing_energy" in res_no_e.reason_codes
 
-    # 1c. Missing energy with require_energy=False -> SATISFIED (Stage A requirement)
+    # - required + nonfinite -> fail nonfinite_energy
+    res_nan_e_req = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=float("nan"),
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_energy=True),
+    )
+    assert res_nan_e_req.is_satisfied is False
+    assert "nonfinite_energy" in res_nan_e_req.reason_codes
+
+    # - optional + missing -> satisfied
     res_opt_e = evaluate_required_label_contract(
         atom_count=2,
         energy_ev=None,
@@ -811,7 +823,7 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert res_opt_e.is_satisfied is True
     assert res_opt_e.reason_codes == ()
 
-    # 1d. Non-finite energy with require_energy=False -> rejected (must be finite if supplied)
+    # - optional + nonfinite supplied -> fail nonfinite_energy
     res_nan_e = evaluate_required_label_contract(
         atom_count=2,
         energy_ev=float("nan"),
@@ -822,7 +834,51 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert res_nan_e.is_satisfied is False
     assert "nonfinite_energy" in res_nan_e.reason_codes
 
-    # 1e. Missing forces with require_forces=False -> SATISFIED
+    # 1b. Forces:
+    # - required + valid finite -> satisfied
+    res_f_valid = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_forces=True),
+    )
+    assert res_f_valid.is_satisfied is True
+
+    # - required + missing -> fail missing_forces
+    res_no_f = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=None,
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_forces=True),
+    )
+    assert res_no_f.is_satisfied is False
+    assert "missing_forces" in res_no_f.reason_codes
+
+    # - required + wrong shape -> fail force_shape_mismatch
+    res_f_shape_req = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=[[0.1, 0.0, 0.0]],  # 1 atom force for 2 atoms
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_forces=True),
+    )
+    assert res_f_shape_req.is_satisfied is False
+    assert "force_shape_mismatch" in res_f_shape_req.reason_codes
+
+    # - required + nonfinite supplied -> fail nonfinite_forces
+    res_f_nan_req = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=[[0.1, np.nan, 0.0], [-0.1, 0.0, 0.0]],
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_forces=True),
+    )
+    assert res_f_nan_req.is_satisfied is False
+    assert "nonfinite_forces" in res_f_nan_req.reason_codes
+
+    # - optional + missing -> satisfied
     res_opt_f = evaluate_required_label_contract(
         atom_count=2,
         energy_ev=-10.0,
@@ -833,7 +889,7 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert res_opt_f.is_satisfied is True
     assert res_opt_f.reason_codes == ()
 
-    # 1f. Bad shape forces with require_forces=False -> rejected
+    # - optional + wrong shape supplied -> fail force_shape_mismatch
     res_bad_f = evaluate_required_label_contract(
         atom_count=2,
         energy_ev=-10.0,
@@ -844,7 +900,118 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert res_bad_f.is_satisfied is False
     assert "force_shape_mismatch" in res_bad_f.reason_codes
 
-    # 1g. Stress forbidden: absent -> satisfied, present -> rejected
+    # - optional + nonfinite supplied -> fail nonfinite_forces
+    res_f_nan_opt = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=[[0.1, np.nan, 0.0], [-0.1, 0.0, 0.0]],
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_forces=False),
+    )
+    assert res_f_nan_opt.is_satisfied is False
+    assert "nonfinite_forces" in res_f_nan_opt.reason_codes
+
+    # 1c. Stress:
+    # - required + valid finite symmetric (3,3) -> satisfied
+    res_s_req_valid = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.REQUIRED),
+    )
+    assert res_s_req_valid.is_satisfied is True
+
+    # - required + missing -> fail missing_stress
+    res_s_req_missing = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=None,
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.REQUIRED),
+    )
+    assert res_s_req_missing.is_satisfied is False
+    assert "missing_stress" in res_s_req_missing.reason_codes
+
+    # - required + wrong shape -> fail stress_shape_mismatch
+    res_s_req_shape = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=np.zeros((3, 2)),
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.REQUIRED),
+    )
+    assert res_s_req_shape.is_satisfied is False
+    assert "stress_shape_mismatch" in res_s_req_shape.reason_codes
+
+    # - required + nonfinite supplied -> fail nonfinite_stress
+    res_s_req_nan = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=np.full((3, 3), np.nan),
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.REQUIRED),
+    )
+    assert res_s_req_nan.is_satisfied is False
+    assert "nonfinite_stress" in res_s_req_nan.reason_codes
+
+    # - required + nonsymmetric supplied -> fail nonsymmetric_stress
+    bad_sym_stress = np.array([[1.0, 2.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    res_s_req_asym = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=bad_sym_stress,
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.REQUIRED),
+    )
+    assert res_s_req_asym.is_satisfied is False
+    assert "nonsymmetric_stress" in res_s_req_asym.reason_codes
+
+    # - optional + missing -> satisfied (with optional warning)
+    res_s_opt_missing = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=None,
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.OPTIONAL),
+    )
+    assert res_s_opt_missing.is_satisfied is True
+    assert "stress_absent_optional" in res_s_opt_missing.warning_codes
+
+    # - optional + wrong shape supplied -> fail stress_shape_mismatch
+    res_s_opt_shape = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=np.zeros((3, 2)),
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.OPTIONAL),
+    )
+    assert res_s_opt_shape.is_satisfied is False
+    assert "stress_shape_mismatch" in res_s_opt_shape.reason_codes
+
+    # - optional + nonfinite supplied -> fail nonfinite_stress
+    res_s_opt_nan = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=np.full((3, 3), np.nan),
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.OPTIONAL),
+    )
+    assert res_s_opt_nan.is_satisfied is False
+    assert "nonfinite_stress" in res_s_opt_nan.reason_codes
+
+    # - optional + nonsymmetric supplied -> fail nonsymmetric_stress
+    res_s_opt_asym = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=bad_sym_stress,
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.OPTIONAL),
+    )
+    assert res_s_opt_asym.is_satisfied is False
+    assert "nonsymmetric_stress" in res_s_opt_asym.reason_codes
+
+    # - forbidden + absent -> satisfied
     res_forbid_no_s = evaluate_required_label_contract(
         atom_count=2,
         energy_ev=-10.0,
@@ -855,6 +1022,7 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert res_forbid_no_s.is_satisfied is True
     assert res_forbid_no_s.reason_codes == ()
 
+    # - forbidden + present -> fail stress_present_but_forbidden
     res_forbid_with_s = evaluate_required_label_contract(
         atom_count=2,
         energy_ev=-10.0,
@@ -2232,6 +2400,18 @@ def test_p1e_source_fact_preservation_proof(tmp_path: Path) -> None:
     tampered_role_auth = replace(source_auth_npt, sources=(tampered_role_source,))
     with pytest.raises(mdstats.TrainingDataInputError, match="Selected energy channel semantic_role mismatch"):
         build_vasp_canonical_frame_authority(tampered_role_auth, base_directory=tmp_path)
+
+    # 7. Persisted selected-energy channel absent from real catalog rejects
+    tampered_chan_source = replace(source_auth_npt.sources[0], selected_energy_channel="absent_energy_channel")
+    tampered_chan_auth = replace(source_auth_npt, sources=(tampered_chan_source,))
+    with pytest.raises(mdstats.TrainingDataInputError, match="Selected energy channel 'absent_energy_channel' is absent"):
+        build_vasp_canonical_frame_authority(tampered_chan_auth, base_directory=tmp_path)
+
+    # 8. Real NPT certificate plus tampered persisted SourceRecord.ensemble rejects before downstream use
+    tampered_ens_source = replace(source_auth_npt.sources[0], ensemble="NVE")
+    tampered_ens_auth = replace(source_auth_npt, sources=(tampered_ens_source,))
+    with pytest.raises(mdstats.TrainingDataInputError, match="Ensemble interpretation mismatch"):
+        build_vasp_canonical_frame_authority(tampered_ens_auth, base_directory=tmp_path)
 
 
 def test_p1e_material_profile_genericity_lta_and_restart_proof(tmp_path: Path) -> None:

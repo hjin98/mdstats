@@ -10,21 +10,26 @@ Package contract: `P1_NEUTRAL_SCIENTIFIC_SUBSTRATE.md`.
 ## Scientific identity chain
 
 ```text
-precise compatibility-neutral source facts + provenance
-  + normalized per-frame arrays carrying actual E/F/stress/geometry
-    -> version-agnostic source authority (SourceAuthority)
-    -> canonical usable frame authority (CanonicalFrameAuthority)
-    -> neutral feature / correlation evidence (NeutralFeatureEvidence)
-         -> material-agnostic profile rebind dispatch
-         -> provider-owned typed scientific-payload reconstruction
-    -> neutral statistical base (NeutralStatisticalBase)
+source files
+ + verified originating TrainingDataManifest
+ + exact explicit companion role/locator bindings
+  -> DATA2 parser/control/source facts
+  -> build_source_authority_from_data2_catalog(catalog, manifest=...)
+       verifies manifest digest + dataset ID + exact run set + primary locators
+  -> SourceAuthority / source-record.v2
+  -> eligibility.evaluate_required_label_contract
+       shared by full frame eligibility + direct/assembled canonical label authority
+  -> CanonicalFrameAuthority
+  -> NeutralFeatureEvidence
+       -> provider-owned typed profile rebind
+  -> NeutralStatisticalBase
 ```
 
 | Layer | What it is | What it is not |
 | --- | --- | --- |
 | Provenance | Exact `ElectronicStructureFingerprint` facts (XC, DFT+U, hybrid, PAW, spin, dispersion, smearing, numerical quality, k-points, software/parser) | Training-eligibility gate; partition key; role-budget axis |
 | Source authority | Compatibility-neutral source facts required downstream: composition/atom count, ensemble/control interpretation, quality status/outcome, energy semantics, replica/reference/assertion facts, precise provenance, corpus atomic-reference identifiability, advisory compatibility diagnostics | Compatibility-group / `label_domain_id` gate; a lossy summary that forces downstream code to reconstruct real source facts from assertions |
-| Canonical labels & frame authority | Actual E/F/stress plus semantic/unit/convention identity, frame occurrence, geometry, conditions, source-quality-aware eligibility, strain/context, duplicates; authoritative label/labeled identity only after configured required-label validity is proven | Compatibility-group hash; legacy DATA3 label digest; legacy DATA3 metadata converted without real numerical labels; granting authoritative label identity to missing required values |
+| Canonical labels & frame authority | Actual E/F/stress plus semantic/unit/convention identity, frame occurrence, geometry, conditions, source-quality-aware eligibility, strain/context, duplicates; authoritative label/labeled identity only after configured required-label validity is proven via shared `evaluate_required_label_contract` | Compatibility-group hash; legacy DATA3 label digest; legacy DATA3 metadata converted without real numerical labels; granting authoritative label identity to missing required values |
 | Neutral feature evidence | Raw features, events, and partition-stage material profiles rebound to neutral source/frame authority | Legacy DATA4 wrapper embedding retired lineage; opaque profile digest copied into a new wrapper |
 | Material-profile provider | Owns typed scientific reconstruction of provider-specific frame/catalog lineage against canonical frame authority | Material-specific science implemented in neutral core; arbitrary dictionary-field rewriting |
 | Neutral statistical base | Temporal blocks, events, lineage, condition/regime, replica/realization/reference-group, duplicates/correlation, protected outer roles | Compatibility-domain fanout; pre-target CV plans |
@@ -33,12 +38,20 @@ precise compatibility-neutral source facts + provenance
 
 - Provenance facts are descriptive/advisory by default.
 - Source authority retains real compatibility-neutral source facts needed by reused scientific algorithms; removing compatibility authority does not remove composition, ensemble, quality, source/control interpretation binding, explicit companion bindings or other independent source truth.
-- Source authority deserialization must not synthesize missing authoritative facts from obsolete provisional payloads, uses `mdstats.source-record.v2`, and enforces strict status/outcome pair coherence.
-- Numerical label identity is independent of compatibility grouping and comes from actual normalized frame arrays.
+- Originating `TrainingDataManifest` is mandatory for high-level source authority construction via `build_source_authority_from_data2_catalog(catalog, manifest=...)`, verifying manifest digest, dataset ID, run set equality, and primary locators before copying companion bindings.
+- Source authority deserialization must not synthesize missing authoritative facts from obsolete provisional payloads, uses `mdstats.source-record.v2`, requires all 22 authoritative keys (omitted fields do not default to emptiness), and enforces strict status/outcome pair coherence.
+- Numerical label validity is evaluated exclusively by the shared pure evaluator `mdstats.training_data.eligibility.evaluate_required_label_contract`, consumed identically by full frame eligibility, assembled `CanonicalFrameAuthority`, and direct `build_canonical_frame_identity`.
 - Physical frame presence and geometry/source identity are distinguished from authoritative canonical label identity; missing configured-required labels prevent label and labeled-configuration authority while allowing physical diagnostics where needed.
 - Canonical label payload digest and labeled configuration fingerprint are an atomic, deterministic pair in all constructors and deserializers.
-- Any exported direct identity constructor (`build_canonical_frame_identity`) enforces the exact same required-label authority contract as the assembled owner.
-- Direct VASP canonical rebuild replays explicit manifest companion-file bindings (`source.companion_files`) and verifies exact source/control interpretation bindings.
+- Direct VASP canonical rebuild (`build_vasp_canonical_frame_authority`) verifies, before downstream temperature, strain, or canonical label use:
+  1. primary source identity signature;
+  2. source-control digest;
+  3. exact persisted companion bindings;
+  4. ensemble-certificate digest;
+  5. **reconstructed certificate ensemble value == persisted `SourceRecord.ensemble`**;
+  6. selected energy channel name;
+  7. selected energy units;
+  8. selected energy semantic role.
 - Legacy DATA3 may coexist for old-runtime isolation but is not a required scientific parent of canonical frame authority.
 - Compatibility grouping is not a target-training eligibility or partition axis.
 - Material-profile rebinding is generic at the neutral-core boundary and provider-owned in scientific detail.
@@ -57,8 +70,8 @@ current prepare/select-target-size, or `mdstats.training_data` public exports.
 
 | Pass | Owner | Current runtime left intact |
 | --- | --- | --- |
-| P1-B | `sources.py` — compatibility-neutral `SourceAuthority` with downstream-required source facts | legacy `sources.build_training_data_source_catalog` may still assign compatibility domains |
-| P1-C | `identity.py` + `frame_authority.py` and shared established DATA3 helpers — real-array canonical identity, source/frame validation, ensemble/quality semantics, preserved per-run parallel construction | legacy DATA3 identity may still hash `label_domain_id` for old runtime |
+| P1-B | `sources.py` — compatibility-neutral `SourceAuthority` (`source-record.v2`) built from verified manifest | legacy `sources.build_training_data_source_catalog` may still assign compatibility domains |
+| P1-C | `identity.py` + `frame_authority.py` consuming shared `evaluate_required_label_contract` — real-array canonical identity, source/frame validation, ensemble/quality semantics, direct VASP verification, preserved per-run parallel construction | legacy DATA3 identity may still hash `label_domain_id` for old runtime |
 | P1-D1 | neutral feature owner — raw/event evidence rebind | legacy DATA4 may remain a value source |
 | P1-D2 | generic profile rebind boundary + provider-owned typed adapters | legacy profile wrappers/payloads remain old-runtime values, not neutral authority |
 | P1-D3 | LTA provider adapter — mandatory reference realization of generic contract | LTA science remains provider-owned |
