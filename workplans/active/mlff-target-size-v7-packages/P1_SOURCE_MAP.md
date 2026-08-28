@@ -10,28 +10,38 @@ Package contract: `P1_NEUTRAL_SCIENTIFIC_SUBSTRATE.md`.
 ## Scientific identity chain
 
 ```text
-precise provenance (descriptive / advisory by default)
-  -> version-agnostic source authority (SourceAuthority)
-  -> canonical usable frame authority (CanonicalFrameAuthority)
-  -> neutral feature / correlation evidence (NeutralFeatureEvidence)
-  -> neutral statistical base (NeutralStatisticalBase)
+precise compatibility-neutral source facts + provenance
+  + normalized per-frame arrays carrying actual E/F/stress/geometry
+    -> version-agnostic source authority (SourceAuthority)
+    -> canonical usable frame authority (CanonicalFrameAuthority)
+    -> neutral feature / correlation evidence (NeutralFeatureEvidence)
+         -> material-agnostic profile rebind dispatch
+         -> provider-owned typed scientific-payload reconstruction
+    -> neutral statistical base (NeutralStatisticalBase)
 ```
 
 | Layer | What it is | What it is not |
 | --- | --- | --- |
 | Provenance | Exact `ElectronicStructureFingerprint` facts (XC, DFT+U, hybrid, PAW, spin, dispersion, smearing, numerical quality, k-points, software/parser) | Training-eligibility gate; partition key; role-budget axis |
-| Source authority | Record of sources, usability, corpus atomic-reference identifiability, and advisory compatibility diagnostics | Compatibility-group / `label_domain_id` gate or scientific ancestor digest |
-| Canonical labels & frame authority | Quantized energy/force/stress plus semantic/unit/convention identity, frame occurrence, geometry, and conditions | Compatibility-group hash; legacy DATA3 catalog wrapper |
-| Neutral feature evidence | Raw features, events, and profile features bound to neutral source/frame authority digests | Legacy DATA4 bundle wrapper embedding label-domain digests |
+| Source authority | Compatibility-neutral source facts required downstream: composition/atom count, ensemble/control interpretation, quality status/outcome, energy semantics, replica/reference/assertion facts, precise provenance, corpus atomic-reference identifiability, advisory compatibility diagnostics | Compatibility-group / `label_domain_id` gate; a lossy summary that forces downstream code to reconstruct real source facts from assertions |
+| Canonical labels & frame authority | Actual E/F/stress plus semantic/unit/convention identity, frame occurrence, geometry, conditions, source-quality-aware eligibility, strain/context, duplicates | Compatibility-group hash; legacy DATA3 label digest; legacy DATA3 metadata converted without real numerical labels |
+| Neutral feature evidence | Raw features, events, and partition-stage material profiles rebound to neutral source/frame authority | Legacy DATA4 wrapper embedding retired lineage; opaque profile digest copied into a new wrapper |
+| Material-profile provider | Owns typed scientific reconstruction of provider-specific frame/catalog lineage against canonical frame authority | Material-specific science implemented in neutral core; arbitrary dictionary-field rewriting |
 | Neutral statistical base | Temporal blocks, events, lineage, condition/regime, replica/realization/reference-group, duplicates/correlation, protected outer roles | Compatibility-domain fanout; pre-target CV plans |
 
 ## Required distinctions
 
 - Provenance facts are descriptive/advisory by default.
-- Numerical label identity is independent of compatibility grouping.
+- Source authority retains real compatibility-neutral source facts needed by reused scientific algorithms; removing compatibility authority does not remove composition, ensemble, quality or other independent source truth.
+- Numerical label identity is independent of compatibility grouping and comes from actual normalized frame arrays.
+- Legacy DATA3 may coexist for old-runtime isolation but is not a required scientific parent of canonical frame authority.
 - Compatibility grouping is not a target-training eligibility or partition axis.
+- Material-profile rebinding is generic at the neutral-core boundary and provider-owned in scientific detail.
+- LTA is the mandatory P1 reference provider because it currently carries typed frame lineage; it is not a neutral-core special case.
+- Supported rebound typed profile payloads must remain resolvable and usable after serialization/restart.
+- A legacy DATA3-to-canonical path lacking actual E/F/stress must not return an authoritative canonical type.
 - Cross-validation is not part of the neutral pre-target statistical substrate.
-- All new code, symbol, and schema names are version-agnostic (no `v7_` or `V7` prefixes).
+- All new code, symbol and schema names are version-agnostic (no `v7_` or `V7` prefixes).
 
 ## Owning implementation (unreachable scaffolding)
 
@@ -42,19 +52,61 @@ current prepare/select-target-size, or `mdstats.training_data` public exports.
 
 | Pass | Owner | Current runtime left intact |
 | --- | --- | --- |
-| P1-B | `sources.py` — `build_source_authority` | `sources.build_training_data_source_catalog` still assigns domains |
-| P1-C | `identity.py` & `frame_authority.py` — `build_canonical_frame_authority` | `identity.label_payload_digest` still hashes `label_domain_id` |
-| P1-D1 | `features.py` — `build_neutral_feature_evidence` | `data4_bundle` still binds legacy frame/source catalogs |
-| P1-D2 | `partition.py` — `build_neutral_statistical_base` | `partition` / `data5_bundle` still own CV and domain units |
+| P1-B | `sources.py` — compatibility-neutral `SourceAuthority` with downstream-required source facts | legacy `sources.build_training_data_source_catalog` may still assign compatibility domains |
+| P1-C | `identity.py` + `frame_authority.py` and shared established DATA3 helpers — real-array canonical identity, source/frame validation, ensemble/quality semantics, preserved per-run parallel construction | legacy DATA3 identity may still hash `label_domain_id` for old runtime |
+| P1-D1 | neutral feature owner — raw/event evidence rebind | legacy DATA4 may remain a value source |
+| P1-D2 | generic profile rebind boundary + provider-owned typed adapters | legacy profile wrappers/payloads remain old-runtime values, not neutral authority |
+| P1-D3 | LTA provider adapter — mandatory reference realization of generic contract | LTA science remains provider-owned |
+| P1-D4 | typed profile persistence/restart owner | digest-only wrappers are insufficient when typed payload cannot be restored |
+| P1-D5 | `partition.py` — `NeutralStatisticalBase` | legacy `partition` / `data5_bundle` may still own old CV/domain units until cutover |
 
-Local reconciliation: advisory compatibility grouping is serialized on
-`SourceAuthority` but excluded from `content_digest`, so a grouping-policy-only
-change does not invalidate scientific source identity or downstream lineage that
-consumes that digest.
+## Profile-provider contract
 
-## Hard rejection (mechanical only)
+The neutral core owns only generic dispatch, canonical-lineage validation, persistence requirements and explicit rejection of unsupported/opaque providers.
 
-Unresolved or mixed electronic-structure provenance does not block usable labels.
-Rejection remains limited to missing/corrupt/non-finite/unconvertible required
-labels, explicit user filters, or a demonstrated mechanical training-engine
-constraint.
+Each supported partition-stage provider owns how its typed scientific payload is rebound:
+
+```text
+legacy/current typed provider payload
+  -> provider rebind(CanonicalFrameAuthority)
+  -> same physical/profile state with canonical frame/catalog lineage
+  -> recomputed typed scientific digest
+  -> generic ProfileFeatureCatalog wrapper
+  -> durable typed payload reconstruction after restart
+```
+
+For LTA, the mandatory reference consequence is:
+
+```text
+LtaPartitionFeatureCatalog.frame_catalog_digest
+    = CanonicalFrameAuthority.content_digest
+
+LtaFramePartitionRecord.frame_record_digest
+    = CanonicalFrameAuthority.frame(frame_uid).content_digest
+```
+
+The neutral core must not contain an `extension_id == "lta"` scientific reconstruction branch. Unsupported providers must fail explicitly rather than inheriting an opaque legacy scientific digest.
+
+## Source/frame semantic preservation
+
+The canonical owner must reuse established DATA3 scientific algorithms without compatibility-domain ancestry and without semantic drift:
+
+- validate frame atom count/species against `SourceAuthority` composition;
+- use actual source ensemble for temperature and strain context;
+- use actual source quality status/outcome for frame eligibility;
+- preserve reference-cell, strain, eligibility, duplicate and geometry semantics;
+- preserve applicable per-run parallel construction, with worker-count-independent scientific output.
+
+A check such as `data.n_atoms == len(data.atomic_numbers)` does not establish source/frame consistency because both values come from the same frame payload.
+
+## Runtime isolation
+
+Advisory compatibility grouping may be serialized on `SourceAuthority` but is excluded from its scientific `content_digest`, so grouping-policy-only changes do not invalidate downstream scientific lineage.
+
+Current production prepare/select-target-size remains on the old runtime until P4. Isolation does not permit the new substrate to depend scientifically on retired compatibility-domain owners.
+
+## Hard rejection
+
+Unresolved or mixed electronic-structure provenance does not itself block usable labels.
+
+Hard rejection remains appropriate for missing/corrupt/non-finite/unconvertible required labels, source/frame composition inconsistency, actual source-quality exclusions required by established eligibility policy, explicit user filters, demonstrated mechanical training-engine constraints, unsupported material-profile payloads that cannot be safely rebound, or other genuine scientific invalidity.
