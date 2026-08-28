@@ -236,8 +236,10 @@ from .eligibility import (
     FrameEligibilityDecision,
     FrameEligibilityPolicy,
     FrameEligibilityState,
+    RequiredLabelContractResult,
     StressRequirement,
     assess_frame_eligibility,
+    evaluate_required_label_contract,
 )
 from .frame_catalog import (
     FRAME_DATA_SCHEMA,

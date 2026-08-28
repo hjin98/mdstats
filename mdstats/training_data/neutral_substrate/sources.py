@@ -21,6 +21,7 @@ from ..labels import (
     LabelCompatibilityPolicy,
     build_label_domain_catalog,
 )
+from ..manifest import TrainingDataManifest
 from ..sources import SourceComposition, TrainingDataSource, TrainingDataSourceCatalog
 
 SOURCE_RECORD_SCHEMA = "mdstats.source-record.v2"
@@ -191,15 +192,26 @@ class SourceRecord:
             "ensemble",
             "quality_assessment_status",
             "quality_outcome",
+            "timestep_fs",
+            "replica_id",
+            "reference_group",
+            "reference_run_id",
+            "assertions",
+            "companion_files",
             "target_usable",
+            "mechanical_rejection_codes",
         )
         for key in required_keys:
             if key not in payload:
-                raise TrainingDataSerializationError(f"Source-record missing required field: {key!r}")
+                raise TrainingDataSerializationError(
+                    f"Source-record missing required field: {key!r}"
+                )
+
         comp_payload = payload["composition"]
         if not isinstance(comp_payload, Mapping):
             raise TrainingDataSerializationError("Source-record composition must be a mapping.")
         comp = SourceComposition.from_dict(comp_payload)
+
         status = str(payload["quality_assessment_status"]).lower()
         outcome_raw = payload["quality_outcome"]
         outcome = None if outcome_raw is None else str(outcome_raw).lower()
@@ -216,13 +228,25 @@ class SourceRecord:
                     f"quality_outcome must be None when quality_assessment_status is {status!r}"
                 )
 
-        companions_raw = payload.get("companion_files", {})
-        if isinstance(companions_raw, Mapping):
-            companions = tuple((str(k), str(v)) for k, v in companions_raw.items())
-        elif isinstance(companions_raw, Sequence):
-            companions = tuple((str(k), str(v)) for k, v in companions_raw)
-        else:
-            companions = ()
+        elec_payload = payload["electronic_structure"]
+        if not isinstance(elec_payload, Mapping):
+            raise TrainingDataSerializationError("Source-record electronic_structure must be a mapping.")
+        electronic_structure = ElectronicStructureFingerprint.from_dict(elec_payload)
+
+        assertions_raw = payload["assertions"]
+        if not isinstance(assertions_raw, Mapping):
+            raise TrainingDataSerializationError("Source-record assertions must be a mapping.")
+        assertions = tuple(sorted((str(k), v) for k, v in assertions_raw.items()))
+
+        companions_raw = payload["companion_files"]
+        if not isinstance(companions_raw, Mapping):
+            raise TrainingDataSerializationError("Source-record companion_files must be a mapping.")
+        companions = tuple(sorted((str(k), str(v)) for k, v in companions_raw.items()))
+
+        rejections_raw = payload["mechanical_rejection_codes"]
+        if not isinstance(rejections_raw, Sequence) or isinstance(rejections_raw, (str, bytes)):
+            raise TrainingDataSerializationError("Source-record mechanical_rejection_codes must be a sequence.")
+        mechanical_rejection_codes = tuple(str(code) for code in rejections_raw)
 
         result = cls(
             run_id=str(payload["run_id"]),
@@ -235,26 +259,22 @@ class SourceRecord:
             selected_energy_channel=str(payload["selected_energy_channel"]),
             selected_energy_units=str(payload["selected_energy_units"]),
             selected_energy_semantic_role=str(payload["selected_energy_semantic_role"]),
-            electronic_structure=ElectronicStructureFingerprint.from_dict(
-                payload["electronic_structure"]
-            ),
+            electronic_structure=electronic_structure,
             ensemble=str(payload["ensemble"]),
             quality_assessment_status=status,
             quality_outcome=outcome,
-            timestep_fs=None if payload.get("timestep_fs") is None else float(payload["timestep_fs"]),
-            replica_id=None if payload.get("replica_id") is None else str(payload["replica_id"]),
+            timestep_fs=None if payload["timestep_fs"] is None else float(payload["timestep_fs"]),
+            replica_id=None if payload["replica_id"] is None else str(payload["replica_id"]),
             reference_group=(
-                None if payload.get("reference_group") is None else str(payload["reference_group"])
+                None if payload["reference_group"] is None else str(payload["reference_group"])
             ),
             reference_run_id=(
-                None if payload.get("reference_run_id") is None else str(payload["reference_run_id"])
+                None if payload["reference_run_id"] is None else str(payload["reference_run_id"])
             ),
-            assertions=tuple((str(k), v) for k, v in payload.get("assertions", {}).items()),
+            assertions=assertions,
             companion_files=companions,
             target_usable=bool(payload["target_usable"]),
-            mechanical_rejection_codes=tuple(
-                str(code) for code in payload.get("mechanical_rejection_codes", ())
-            ),
+            mechanical_rejection_codes=mechanical_rejection_codes,
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Source-record digest mismatch.")
@@ -631,20 +651,47 @@ def build_source_authority(
 def build_source_authority_from_data2_catalog(
     catalog: TrainingDataSourceCatalog,
     *,
-    manifest: Any | None = None,
-    companion_files_by_run: Mapping[str, Sequence[tuple[str, str]]] | None = None,
+    manifest: TrainingDataManifest,
     atomic_reference_policy: AtomicReferenceIdentifiabilityPolicy | None = None,
     advisory_compatibility_policy: LabelCompatibilityPolicy | None = None,
 ) -> SourceAuthority:
-    companions = companion_files_by_run
-    if companions is None and manifest is not None and hasattr(manifest, "runs"):
-        companions = {run.run_id: run.companion_files for run in manifest.runs}
+    """Build current-generation SourceAuthority from DATA2 catalog with verified originating manifest."""
+    if not isinstance(catalog, TrainingDataSourceCatalog):
+        raise TrainingDataInputError("catalog must be an instance of TrainingDataSourceCatalog.")
+    if manifest is None or not isinstance(manifest, TrainingDataManifest):
+        raise TrainingDataInputError("Originating TrainingDataManifest is required for SourceAuthority conversion.")
+    if manifest.content_digest != catalog.manifest_digest:
+        raise TrainingDataInputError(
+            f"Manifest content digest mismatch: manifest={manifest.content_digest!r} != catalog={catalog.manifest_digest!r}"
+        )
+    if manifest.dataset_id != catalog.dataset_id:
+        raise TrainingDataInputError(
+            f"Manifest dataset ID mismatch: manifest={manifest.dataset_id!r} != catalog={catalog.dataset_id!r}"
+        )
+    manifest_runs = {run.run_id: run for run in manifest.runs}
+    catalog_runs = {source.run_id: source for source in catalog.sources}
+    if set(manifest_runs) != set(catalog_runs):
+        raise TrainingDataInputError(
+            f"Manifest run IDs do not match catalog source run IDs: manifest={sorted(manifest_runs)} != catalog={sorted(catalog_runs)}"
+        )
+    for run_id, run_spec in manifest_runs.items():
+        source = catalog_runs[run_id]
+        if run_spec.vasprun != source.source_locator:
+            raise TrainingDataInputError(
+                f"Source locator mismatch for run {run_id!r}: manifest={run_spec.vasprun!r} != catalog={source.source_locator!r}"
+            )
+
+    companions_by_run = {
+        run.run_id: run.companion_files
+        for run in manifest.runs
+    }
+
     return build_source_authority(
         catalog.sources,
         dataset_id=catalog.dataset_id,
         manifest_digest=catalog.manifest_digest,
         energy_policy_digest=catalog.energy_policy_digest,
-        companion_files_by_run=companions,
+        companion_files_by_run=companions_by_run,
         atomic_reference_policy=atomic_reference_policy,
         advisory_compatibility_policy=advisory_compatibility_policy,
     )

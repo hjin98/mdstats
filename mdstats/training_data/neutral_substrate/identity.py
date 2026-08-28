@@ -21,6 +21,11 @@ from .._common import (
     digest,
     validate_digest,
 )
+from ..eligibility import (
+    FrameEligibilityPolicy,
+    StressRequirement,
+    evaluate_required_label_contract,
+)
 from ..identity import (
     DuplicateDetectionCatalog,
     FrameIdentity,
@@ -283,49 +288,16 @@ def build_canonical_frame_identity(
         policy=geometry_policy,
     )
 
-    # Required-label validity evaluation:
-    has_energy = (energy_ev is not None) and np.isfinite(float(energy_ev))
-    energy_valid = (
-        has_energy
-        if eligibility_active.require_energy
-        else (energy_ev is None or np.isfinite(float(energy_ev)))
-    )
-
     n_atoms = len(np.asarray(atomic_numbers))
-    if forces_ev_per_angstrom is None:
-        has_forces = False
-        forces_valid = not eligibility_active.require_forces
-    else:
-        f_arr = np.asarray(forces_ev_per_angstrom, dtype=np.float64)
-        forces_valid = (f_arr.shape == (n_atoms, 3)) and np.all(np.isfinite(f_arr))
-        has_forces = forces_valid
-
-    if stress_ev_per_angstrom3 is None:
-        stress_valid = (
-            eligibility_active.stress_requirement is not StressRequirement.REQUIRED
-        )
-    else:
-        s_arr = np.asarray(stress_ev_per_angstrom3, dtype=np.float64)
-        stress_valid = (
-            eligibility_active.stress_requirement is not StressRequirement.FORBIDDEN
-            and s_arr.shape == (3, 3)
-            and np.all(np.isfinite(s_arr))
-            and np.allclose(
-                s_arr,
-                s_arr.T,
-                rtol=0.0,
-                atol=eligibility_active.stress_symmetry_tolerance,
-            )
-        )
-
-    label_authority_granted = (
-        energy_valid
-        and forces_valid
-        and stress_valid
-        and (has_energy or (not eligibility_active.require_energy and energy_ev is not None))
+    label_eval = evaluate_required_label_contract(
+        atom_count=n_atoms,
+        energy_ev=energy_ev,
+        forces_ev_per_angstrom=forces_ev_per_angstrom,
+        stress_ev_per_angstrom3=stress_ev_per_angstrom3,
+        policy=eligibility_active,
     )
 
-    if label_authority_granted:
+    if label_eval.is_satisfied:
         labels = canonical_training_label_payload_digest(
             selected_energy_channel=selected_energy_channel,
             energy_semantic_role=energy_semantic_role,

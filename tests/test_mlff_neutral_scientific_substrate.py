@@ -10,7 +10,14 @@ import numpy as np
 import pytest
 
 import mdstats
-from mdstats.training_data import _campaign_cli_core, campaign_cli
+from mdstats.training_data import (
+    FrameEligibilityPolicy,
+    RequiredLabelContractResult,
+    StressRequirement,
+    _campaign_cli_core,
+    campaign_cli,
+    evaluate_required_label_contract,
+)
 from mdstats.training_data._common import digest
 from mdstats.training_data.identity import label_payload_digest
 from mdstats.training_data.neutral_substrate import (
@@ -301,7 +308,9 @@ def _build_full_neutral_chain(
         partition_role_budget=_data4_role_budget(),
     )
     source_auth = build_source_authority_from_data2_catalog(
-        source_cat, advisory_compatibility_policy=advisory_policy
+        source_cat,
+        manifest=manifest,
+        advisory_compatibility_policy=advisory_policy,
     )
     frame_auth = build_vasp_canonical_frame_authority(
         source_auth,
@@ -335,7 +344,7 @@ def test_p1b_mixed_provenance_is_usable_and_unresolved_is_reported(tmp_path: Pat
         source_policy=mdstats.SourceAuditPolicy(fail_on_unresolved_label_domain=False),
     )
     assert catalog.source("unresolved").label_domain_id is None
-    authority = build_source_authority_from_data2_catalog(catalog)
+    authority = build_source_authority_from_data2_catalog(catalog, manifest=manifest)
     assert set(authority.target_usable_run_ids) == {
         "dft",
         "dftu",
@@ -362,9 +371,10 @@ def test_p1b_grouping_policy_does_not_change_usable_membership_or_source_identit
     _write(tmp_path, "na", ("Na", "O"), ediff=1.0e-6)
     manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="grouping")
     catalog = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
-    default = build_source_authority_from_data2_catalog(catalog)
+    default = build_source_authority_from_data2_catalog(catalog, manifest=manifest)
     split = build_source_authority_from_data2_catalog(
         catalog,
+        manifest=manifest,
         advisory_compatibility_policy=mdstats.LabelCompatibilityPolicy(
             numerical_differences_are_quality_flags=False,
         ),
@@ -404,7 +414,7 @@ def test_p1b_source_facts_preservation(tmp_path: Path) -> None:
     _write(tmp_path, "run_facts", ("Li", "O"), n_frames=4, tebeg=650)
     manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="facts")
     catalog = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
-    authority = build_source_authority_from_data2_catalog(catalog)
+    authority = build_source_authority_from_data2_catalog(catalog, manifest=manifest)
     source = authority.source("run_facts")
 
     assert isinstance(source.composition, mdstats.SourceComposition)
@@ -430,17 +440,92 @@ def test_p1b_strict_deserialization_rejection(tmp_path: Path) -> None:
     _write(tmp_path, "run_strict", ("Li", "O"), n_frames=2)
     manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="strict")
     catalog = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
-    authority = build_source_authority_from_data2_catalog(catalog)
+    authority = build_source_authority_from_data2_catalog(catalog, manifest=manifest)
     source = authority.source("run_strict")
     payload = source.to_dict()
 
     assert payload["schema"] == "mdstats.source-record.v2"
 
-    # Reject missing quality_outcome key
-    bad = dict(payload)
-    del bad["quality_outcome"]
-    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'quality_outcome'"):
-        SourceRecord.from_dict(bad)
+    all_22_fields = (
+        "run_id",
+        "source_locator",
+        "source_identity_signature",
+        "source_control_digest",
+        "ensemble_certificate_digest",
+        "frame_count",
+        "composition",
+        "selected_energy_channel",
+        "selected_energy_units",
+        "selected_energy_semantic_role",
+        "electronic_structure",
+        "ensemble",
+        "quality_assessment_status",
+        "quality_outcome",
+        "timestep_fs",
+        "replica_id",
+        "reference_group",
+        "reference_run_id",
+        "assertions",
+        "companion_files",
+        "target_usable",
+        "mechanical_rejection_codes",
+    )
+    # Exhaustively test deleting EACH of the 22 required fields
+    for field_name in all_22_fields:
+        bad = dict(payload)
+        del bad[field_name]
+        with pytest.raises(
+            mdstats.TrainingDataSerializationError,
+            match=f"missing required field: '{field_name}'",
+        ):
+            SourceRecord.from_dict(bad)
+
+    # Reject type errors for mappings/sequences
+    for bad_val in ([], "not-a-map", 123):
+        bad = dict(payload)
+        bad["assertions"] = bad_val
+        with pytest.raises(mdstats.TrainingDataSerializationError, match="assertions must be a mapping"):
+            SourceRecord.from_dict(bad)
+
+        bad = dict(payload)
+        bad["companion_files"] = bad_val
+        with pytest.raises(mdstats.TrainingDataSerializationError, match="companion_files must be a mapping"):
+            SourceRecord.from_dict(bad)
+
+        bad = dict(payload)
+        bad["composition"] = bad_val
+        with pytest.raises(mdstats.TrainingDataSerializationError, match="composition must be a mapping"):
+            SourceRecord.from_dict(bad)
+
+        bad = dict(payload)
+        bad["electronic_structure"] = bad_val
+        with pytest.raises(mdstats.TrainingDataSerializationError, match="electronic_structure must be a mapping"):
+            SourceRecord.from_dict(bad)
+
+    for bad_val in ("not-a-seq", {"a": 1}, 123):
+        bad = dict(payload)
+        bad["mechanical_rejection_codes"] = bad_val
+        with pytest.raises(mdstats.TrainingDataSerializationError, match="mechanical_rejection_codes must be a sequence"):
+            SourceRecord.from_dict(bad)
+
+    # Legitimate explicit null/empty values round-trip without error
+    explicit_null = dict(payload)
+    explicit_null["timestep_fs"] = None
+    explicit_null["replica_id"] = None
+    explicit_null["reference_group"] = None
+    explicit_null["reference_run_id"] = None
+    explicit_null["assertions"] = {}
+    explicit_null["companion_files"] = {}
+    explicit_null["mechanical_rejection_codes"] = []
+    explicit_null["content_digest"] = digest({k: v for k, v in explicit_null.items() if k != "content_digest"})
+    decoded = SourceRecord.from_dict(explicit_null)
+    assert decoded.timestep_fs is None
+    assert decoded.replica_id is None
+    assert decoded.reference_group is None
+    assert decoded.reference_run_id is None
+    assert decoded.assertions == ()
+    assert decoded.companion_files == ()
+    assert decoded.mechanical_rejection_codes == ()
 
     # Reject incoherent quality pair: completed with None outcome
     bad = dict(payload)
@@ -454,36 +539,6 @@ def test_p1b_strict_deserialization_rejection(tmp_path: Path) -> None:
     bad["quality_assessment_status"] = "not_requested"
     bad["quality_outcome"] = "strictly_qualified"
     with pytest.raises(mdstats.TrainingDataSerializationError, match="quality_outcome must be None"):
-        SourceRecord.from_dict(bad)
-
-    # Reject missing composition
-    bad = dict(payload)
-    del bad["composition"]
-    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'composition'"):
-        SourceRecord.from_dict(bad)
-
-    # Reject missing ensemble
-    bad = dict(payload)
-    del bad["ensemble"]
-    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'ensemble'"):
-        SourceRecord.from_dict(bad)
-
-    # Reject missing quality_assessment_status
-    bad = dict(payload)
-    del bad["quality_assessment_status"]
-    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'quality_assessment_status'"):
-        SourceRecord.from_dict(bad)
-
-    # Reject missing source_control_digest
-    bad = dict(payload)
-    del bad["source_control_digest"]
-    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'source_control_digest'"):
-        SourceRecord.from_dict(bad)
-
-    # Reject missing ensemble_certificate_digest
-    bad = dict(payload)
-    del bad["ensemble_certificate_digest"]
-    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'ensemble_certificate_digest'"):
         SourceRecord.from_dict(bad)
 
     # Reject old schema v1
@@ -504,6 +559,64 @@ def test_p1b_strict_deserialization_rejection(tmp_path: Path) -> None:
     del bad_auth["dataset_id"]
     with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'dataset_id'"):
         SourceAuthority.from_dict(bad_auth)
+
+
+def test_p1b_manifest_association_verification(tmp_path: Path) -> None:
+    """P1-B Stage C: build_source_authority_from_data2_catalog requires and verifies originating manifest."""
+    _write(tmp_path, "run1", ("Li", "O"), n_frames=2)
+    manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="assoc-test")
+    catalog = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+
+    # 1. Matching catalog + manifest succeeds
+    auth = build_source_authority_from_data2_catalog(catalog, manifest=manifest)
+    assert auth.dataset_id == "assoc-test"
+
+    # 2. Missing manifest (None) rejects
+    with pytest.raises(mdstats.TrainingDataInputError, match="Originating TrainingDataManifest is required"):
+        build_source_authority_from_data2_catalog(catalog, manifest=None)  # type: ignore
+
+    # 3. Foreign manifest with different digest rejects
+    foreign_manifest = replace(
+        manifest,
+        runs=(
+            replace(
+                manifest.runs[0],
+                assertions=(("regime", "foreign"),),
+            ),
+        ),
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="Manifest content digest mismatch"):
+        build_source_authority_from_data2_catalog(catalog, manifest=foreign_manifest)
+
+    # 4. Manifest with wrong dataset_id rejects
+    wrong_dataset_manifest = replace(manifest, dataset_id="other-dataset")
+    with pytest.raises(mdstats.TrainingDataInputError, match="Manifest dataset ID mismatch|Manifest content digest mismatch"):
+        build_source_authority_from_data2_catalog(catalog, manifest=wrong_dataset_manifest)
+
+    # 5. Manifest with missing or extra run rejects
+    wrong_runs_manifest = replace(
+        manifest,
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="run_extra",
+                vasprun="run_extra/vasprun.xml",
+                reference_group="bulk",
+            ),
+        ),
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="Manifest content digest mismatch|Manifest run IDs do not match"):
+        build_source_authority_from_data2_catalog(catalog, manifest=wrong_runs_manifest)
+
+    # 6. Manifest with mismatched locator rejects
+    mismatched_locator_manifest = mdstats.TrainingDataManifest(
+        dataset_id=manifest.dataset_id,
+        system_profile=manifest.system_profile,
+        runs=(
+            replace(manifest.runs[0], vasprun="different/path/vasprun.xml"),
+        ),
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="Manifest content digest mismatch|Source locator mismatch"):
+        build_source_authority_from_data2_catalog(catalog, manifest=mismatched_locator_manifest)
 
 
 # =========================================================================
@@ -655,7 +768,7 @@ def test_p1c_canonical_identity_and_record_atomicity_and_coherence() -> None:
 
 
 def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
-    """P1-C: build_canonical_frame_identity resolves required-label authority before granting canonical labels."""
+    """P1-C: evaluate_required_label_contract and build_canonical_frame_identity resolve label validity."""
     numbers = [3, 8]
     pbc = [True, True, True]
     cell = 10.0 * np.eye(3)
@@ -665,7 +778,95 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     es_digest = _digest()
     deriv_digest = _digest()
 
-    # 1. Valid labels -> authoritative identity granted
+    # 1. Direct unit tests on pure evaluate_required_label_contract evaluator:
+    # 1a. Default policy (E required, F required, S optional)
+    res_valid = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+    )
+    assert res_valid.is_satisfied is True
+    assert res_valid.reason_codes == ()
+
+    # 1b. Missing energy with require_energy=True -> rejected
+    res_no_e = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=None,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_energy=True),
+    )
+    assert res_no_e.is_satisfied is False
+    assert "missing_energy" in res_no_e.reason_codes
+
+    # 1c. Missing energy with require_energy=False -> SATISFIED (Stage A requirement)
+    res_opt_e = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=None,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_energy=False),
+    )
+    assert res_opt_e.is_satisfied is True
+    assert res_opt_e.reason_codes == ()
+
+    # 1d. Non-finite energy with require_energy=False -> rejected (must be finite if supplied)
+    res_nan_e = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=float("nan"),
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_energy=False),
+    )
+    assert res_nan_e.is_satisfied is False
+    assert "nonfinite_energy" in res_nan_e.reason_codes
+
+    # 1e. Missing forces with require_forces=False -> SATISFIED
+    res_opt_f = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=None,
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_forces=False),
+    )
+    assert res_opt_f.is_satisfied is True
+    assert res_opt_f.reason_codes == ()
+
+    # 1f. Bad shape forces with require_forces=False -> rejected
+    res_bad_f = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=[[0.1, 0.0, 0.0]],  # 1 atom force for 2 atoms
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(require_forces=False),
+    )
+    assert res_bad_f.is_satisfied is False
+    assert "force_shape_mismatch" in res_bad_f.reason_codes
+
+    # 1g. Stress forbidden: absent -> satisfied, present -> rejected
+    res_forbid_no_s = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=None,
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.FORBIDDEN),
+    )
+    assert res_forbid_no_s.is_satisfied is True
+    assert res_forbid_no_s.reason_codes == ()
+
+    res_forbid_with_s = evaluate_required_label_contract(
+        atom_count=2,
+        energy_ev=-10.0,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=stress,
+        policy=FrameEligibilityPolicy(stress_requirement=StressRequirement.FORBIDDEN),
+    )
+    assert res_forbid_with_s.is_satisfied is False
+    assert "stress_present_but_forbidden" in res_forbid_with_s.reason_codes
+
+    # 2. build_canonical_frame_identity tests consuming evaluate_required_label_contract:
+    # 2a. Valid labels -> authoritative identity granted
     ident = build_canonical_frame_identity(
         run_id="run_test",
         source_locator="run_test/vasprun.xml",
@@ -690,7 +891,33 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert ident.canonical_label_payload_digest is not None
     assert ident.labeled_configuration_fingerprint is not None
 
-    # 2. Missing energy -> physical-only identity (no authoritative label)
+    # 2b. Missing energy when require_energy=False -> authoritative label GRANTED
+    ident_opt_e = build_canonical_frame_identity(
+        run_id="run_test",
+        source_locator="run_test/vasprun.xml",
+        source_identity_signature=_digest(),
+        source_frame_index=0,
+        atomic_numbers=numbers,
+        pbc=pbc,
+        cell=cell,
+        fractional_positions=positions,
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role="free_energy",
+        energy_units="eV",
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=None,
+        forces_ev_per_angstrom=forces,
+        stress_ev_per_angstrom3=None,
+        derivative_convention_digest=deriv_digest,
+        electronic_structure_fingerprint_digest=es_digest,
+        eligibility_policy=FrameEligibilityPolicy(require_energy=False, require_forces=True, stress_requirement=StressRequirement.OPTIONAL),
+    )
+    assert ident_opt_e.has_authoritative_label is True
+    assert ident_opt_e.canonical_label_payload_digest is not None
+    assert ident_opt_e.labeled_configuration_fingerprint is not None
+
+    # 2c. Missing energy when require_energy=True -> physical-only identity
     ident_no_e = build_canonical_frame_identity(
         run_id="run_test",
         source_locator="run_test/vasprun.xml",
@@ -716,7 +943,7 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert ident_no_e.labeled_configuration_fingerprint is None
     assert ident_no_e.geometry_fingerprint == ident.geometry_fingerprint
 
-    # 3. Non-finite energy -> physical-only identity
+    # 2d. Non-finite energy -> physical-only identity
     ident_nan_e = build_canonical_frame_identity(
         run_id="run_test",
         source_locator="run_test/vasprun.xml",
@@ -741,7 +968,7 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert ident_nan_e.canonical_label_payload_digest is None
     assert ident_nan_e.labeled_configuration_fingerprint is None
 
-    # 4. Missing forces when forces required -> physical-only identity
+    # 2e. Missing forces when forces required -> physical-only identity
     ident_no_f = build_canonical_frame_identity(
         run_id="run_test",
         source_locator="run_test/vasprun.xml",
@@ -766,8 +993,7 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     assert ident_no_f.canonical_label_payload_digest is None
     assert ident_no_f.labeled_configuration_fingerprint is None
 
-    # 5. Stress optional vs required
-    # Stress None with optional stress -> label authority granted
+    # 2f. Stress None with optional stress -> label authority granted
     ident_opt_s = build_canonical_frame_identity(
         run_id="run_test",
         source_locator="run_test/vasprun.xml",
@@ -787,14 +1013,14 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
         stress_ev_per_angstrom3=None,
         derivative_convention_digest=deriv_digest,
         electronic_structure_fingerprint_digest=es_digest,
-        eligibility_policy=mdstats.FrameEligibilityPolicy(
-            stress_requirement=mdstats.StressRequirement.OPTIONAL
+        eligibility_policy=FrameEligibilityPolicy(
+            stress_requirement=StressRequirement.OPTIONAL
         ),
     )
     assert ident_opt_s.has_authoritative_label is True
     assert ident_opt_s.canonical_label_payload_digest is not None
 
-    # Stress None with required stress -> label authority withheld
+    # 2g. Stress None with required stress -> label authority withheld
     ident_req_s = build_canonical_frame_identity(
         run_id="run_test",
         source_locator="run_test/vasprun.xml",
@@ -814,8 +1040,8 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
         stress_ev_per_angstrom3=None,
         derivative_convention_digest=deriv_digest,
         electronic_structure_fingerprint_digest=es_digest,
-        eligibility_policy=mdstats.FrameEligibilityPolicy(
-            stress_requirement=mdstats.StressRequirement.REQUIRED
+        eligibility_policy=FrameEligibilityPolicy(
+            stress_requirement=StressRequirement.REQUIRED
         ),
     )
     assert ident_req_s.has_authoritative_label is False
@@ -951,7 +1177,7 @@ def test_p1c_canonical_frame_authority_from_real_arrays(tmp_path: Path) -> None:
         ),
     )
     sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
     frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
 
     assert frame_auth.source_authority_digest == source_auth.content_digest
@@ -1000,7 +1226,7 @@ def test_p1c_composition_and_atom_count_mismatch_rejected(tmp_path: Path) -> Non
         ),
     )
     sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
 
     from mdstats.io import read_vasp_frames, read_vasp_run_controls
 
@@ -1067,7 +1293,7 @@ def test_p1c_ensemble_and_quality_propagation(tmp_path: Path) -> None:
         ),
     )
     sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
 
     from mdstats.io import read_vasp_frames, read_vasp_run_controls
     path = tmp_path / "run_prop/vasprun.xml"
@@ -1110,7 +1336,7 @@ def test_p1c_parallel_worker_equivalence(tmp_path: Path) -> None:
     _write(tmp_path, "run_p2", ("Na", "O"), n_frames=4)
     manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="par-equiv")
     sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
 
     from mdstats.io import read_vasp_frames, read_vasp_run_controls
 
@@ -1139,7 +1365,7 @@ def test_p1c_required_label_ordering_and_authority_precedence(tmp_path: Path) ->
     _write(tmp_path, "run_prec", ("Li", "O"), n_frames=2)
     manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="precedence")
     sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
 
     from mdstats.io import read_vasp_frames, read_vasp_run_controls
 
@@ -1225,8 +1451,8 @@ def test_p1c_required_label_ordering_and_authority_precedence(tmp_path: Path) ->
 
 
 def test_p1d_neutral_feature_evidence_assembly_and_round_trip(tmp_path: Path) -> None:
-    _manifest, sources, _frames, data4 = _data4_bundle(tmp_path)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    manifest, sources, _frames, data4 = _data4_bundle(tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
     frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
     feature_ev = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4)
 
@@ -1244,8 +1470,8 @@ def test_p1d_neutral_feature_evidence_assembly_and_round_trip(tmp_path: Path) ->
 
 def test_p1d_lta_typed_profile_rebinding(tmp_path: Path) -> None:
     """Test typed rebinding of LtaPartitionFeatureCatalog to canonical frame authority."""
-    _manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path, n_frames=16)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path, n_frames=16)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
     frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
 
     policy = mdstats.LtaPartitionProfilePolicy()
@@ -1311,8 +1537,8 @@ def test_p1d_lta_typed_profile_rebinding(tmp_path: Path) -> None:
 
 def test_p1d_generic_profile_dispatch_and_unsupported_rejection(tmp_path: Path) -> None:
     """P1-D: Generic provider dispatch rejects unsupported opaque providers explicitly."""
-    _manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
     frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
 
     unsupported_profile = mdstats.ProfileFeatureCatalog(
@@ -1353,9 +1579,9 @@ def test_p1d_generic_profile_dispatch_and_unsupported_rejection(tmp_path: Path) 
 
 
 def test_p1d_neutral_statistical_base_assembled_chain_and_round_trip(tmp_path: Path) -> None:
-    _manifest, sources, _frames, data4 = _data4_bundle(tmp_path)
+    manifest, sources, _frames, data4 = _data4_bundle(tmp_path)
     policy = _neutral_policy()
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
     frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
     feature_ev = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4)
     base = build_neutral_statistical_base(source_auth, frame_auth, feature_ev, policy=policy)
@@ -1398,10 +1624,25 @@ def test_p1d_neutral_statistical_base_assembled_chain_and_round_trip(tmp_path: P
 
 
 def test_p1d_neutral_base_rejects_legacy_and_mismatched_authorities(tmp_path: Path) -> None:
-    _manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
     frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
     feature_ev = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4)
+
+    # Reject passing legacy DATA2/DATA3/DATA4 objects
+    with pytest.raises(mdstats.TrainingDataInputError, match="SourceAuthority"):
+        build_neutral_statistical_base(sources, frame_auth, feature_ev)
+
+    with pytest.raises(mdstats.TrainingDataInputError, match="CanonicalFrameAuthority"):
+        build_neutral_statistical_base(source_auth, legacy_frames, feature_ev)
+
+    with pytest.raises(mdstats.TrainingDataInputError, match="NeutralFeatureEvidence"):
+        build_neutral_statistical_base(source_auth, frame_auth, data4)
+
+    # Reject mismatched lineage
+    tampered_source = replace(source_auth, manifest_digest=_digest())
+    with pytest.raises(mdstats.TrainingDataInputError, match="Frame authority does not match"):
+        build_neutral_unit_catalog(tampered_source, frame_auth, feature_ev)
 
     # Reject passing legacy DATA2/DATA3/DATA4 objects
     with pytest.raises(mdstats.TrainingDataInputError, match="SourceAuthority"):
@@ -1521,9 +1762,9 @@ def test_p1e_compatibility_policy_invariance_proof(tmp_path: Path) -> None:
 
 
 def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> None:
-    """P1-E3: Assembled numerical/semantic/required-label sensitivity proof executing all 9 mandatory cases."""
-    _manifest, sources, _frames, data4 = _data4_bundle(tmp_path, n_frames=48)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    """P1-E3: Assembled numerical/semantic/required-label sensitivity proof executing all mandatory cases."""
+    manifest, sources, _frames, data4 = _data4_bundle(tmp_path, n_frames=48)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
     frame_auth1 = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
     feature_ev1 = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth1, data4)
     stat_base1 = build_neutral_statistical_base(source_auth, frame_auth1, feature_ev1, policy=_neutral_policy())
@@ -1624,7 +1865,7 @@ def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> Non
     assert frame_auth_nan.eligibility.for_frame(frame_auth_nan.frames[0].frame_uid).state == mdstats.FrameEligibilityState.INELIGIBLE
     assert "nonfinite_energy" in frame_auth_nan.eligibility.for_frame(frame_auth_nan.frames[0].frame_uid).reason_codes
 
-    # Case 5: Genuinely missing configured-required energy (energies_ev=None)
+    # Case 5: Genuinely missing configured-required energy (energies_ev=None with require_energy=True)
     frame_data_no_e = {
         "run": mdstats.FrameData(
             frame_ids=np.arange(collection.n_frames, dtype=np.int64),
@@ -1708,8 +1949,17 @@ def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> Non
     assert frame_auth_req_s.frames[0].has_authoritative_label is False
     assert frame_auth_req_s.frames[0].canonical_label_payload_digest is None
 
-    # Case 8: Physical-only frames duplicate behavior
-    # Frames 0 and 1 with identical geometry but missing energy
+    # Case 8: Optional energy absence (require_energy=False, energy=None) -> label authority granted across assembled and direct builders
+    frame_auth_opt_e = build_canonical_frame_authority(
+        source_auth,
+        frame_data_no_e,
+        eligibility_policy=mdstats.FrameEligibilityPolicy(require_energy=False, require_forces=True, stress_requirement=mdstats.StressRequirement.OPTIONAL),
+    )
+    assert frame_auth_opt_e.frames[0].has_authoritative_label is True
+    assert frame_auth_opt_e.frames[0].canonical_label_payload_digest is not None
+    assert frame_auth_opt_e.frames[0].labeled_configuration_fingerprint is not None
+
+    # Case 9: Physical-only frames duplicate behavior
     dup_pos = collection.fractional_positions.copy()
     dup_pos[1] = dup_pos[0]  # Frame 1 identical geometry to Frame 0
     dup_energies = channel.as_array().copy()
@@ -1741,7 +1991,7 @@ def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> Non
     with pytest.raises(mdstats.TrainingDataInputError, match="Cannot construct FrameIdentity without authoritative label"):
         frame_auth_phys.frames[0].as_duplicate_frame_identity()
 
-    # Case 9: Direct identity builder (build_canonical_frame_identity) contract
+    # Case 10: Direct identity builder (build_canonical_frame_identity) contract equivalence
     direct_valid = build_canonical_frame_identity(
         run_id="run",
         source_locator="run/vasprun.xml",
@@ -1810,7 +2060,7 @@ def test_p1e_unresolved_provenance_assembled_proof(tmp_path: Path) -> None:
         base_directory=tmp_path,
         source_policy=mdstats.SourceAuditPolicy(fail_on_unresolved_label_domain=False),
     )
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
     assert "unresolved_run" in source_auth.provenance_diagnostics.unresolved_or_partial_source_ids
 
     frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
@@ -1867,7 +2117,7 @@ def test_p1e_source_fact_preservation_proof(tmp_path: Path) -> None:
         ),
     )
     catalog_npt = mdstats.build_training_data_source_catalog(manifest_npt, base_directory=tmp_path)
-    source_auth_npt = build_source_authority_from_data2_catalog(catalog_npt)
+    source_auth_npt = build_source_authority_from_data2_catalog(catalog_npt, manifest=manifest_npt)
     assert source_auth_npt.source("run_npt").ensemble.upper() == "NPT"
 
     frame_auth_npt = build_vasp_canonical_frame_authority(source_auth_npt, base_directory=tmp_path)
@@ -1898,7 +2148,7 @@ def test_p1e_source_fact_preservation_proof(tmp_path: Path) -> None:
     )
     source_u = catalog_u.source("run_unconv")
     assert source_u.quality_outcome == "unqualified"
-    source_auth_u = build_source_authority_from_data2_catalog(catalog_u)
+    source_auth_u = build_source_authority_from_data2_catalog(catalog_u, manifest=manifest_u)
     assert source_auth_u.source("run_unconv").quality_outcome == "unqualified"
 
     frame_auth_u = build_vasp_canonical_frame_authority(source_auth_u, base_directory=tmp_path)
@@ -1972,6 +2222,17 @@ def test_p1e_source_fact_preservation_proof(tmp_path: Path) -> None:
     with pytest.raises(mdstats.TrainingDataInputError, match="Atom count mismatch"):
         build_canonical_frame_authority(source_auth_npt, bad_frame_data)
 
+    # 6. Stage D Selected-energy units and semantic-role direct rebuild verification
+    tampered_units_source = replace(source_auth_npt.sources[0], selected_energy_units="Ha")
+    tampered_units_auth = replace(source_auth_npt, sources=(tampered_units_source,))
+    with pytest.raises(mdstats.TrainingDataInputError, match="Selected energy channel units mismatch"):
+        build_vasp_canonical_frame_authority(tampered_units_auth, base_directory=tmp_path)
+
+    tampered_role_source = replace(source_auth_npt.sources[0], selected_energy_semantic_role="internal_energy")
+    tampered_role_auth = replace(source_auth_npt, sources=(tampered_role_source,))
+    with pytest.raises(mdstats.TrainingDataInputError, match="Selected energy channel semantic_role mismatch"):
+        build_vasp_canonical_frame_authority(tampered_role_auth, base_directory=tmp_path)
+
 
 def test_p1e_material_profile_genericity_lta_and_restart_proof(tmp_path: Path) -> None:
     """P1-E6: Material-profile genericity, LTA typed provider rebinding, and durable restart proof."""
@@ -1981,8 +2242,8 @@ def test_p1e_material_profile_genericity_lta_and_restart_proof(tmp_path: Path) -
     assert "extension_id == 'lta'" not in features_src
 
     # 2. LTA provider execution through generic dispatch
-    _manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path, n_frames=48)
-    source_auth = build_source_authority_from_data2_catalog(sources)
+    manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path, n_frames=48)
+    source_auth = build_source_authority_from_data2_catalog(sources, manifest=manifest)
     frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
 
     policy = mdstats.LtaPartitionProfilePolicy()

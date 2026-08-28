@@ -26,6 +26,7 @@ from ..eligibility import (
     FrameEligibilityPolicy,
     StressRequirement,
     assess_frame_eligibility,
+    evaluate_required_label_contract,
 )
 from ..frame_catalog import FrameData
 from ..identity import (
@@ -125,44 +126,15 @@ def _build_canonical_frame_records_for_run(
             policy=geometry_active,
         )
 
-        # Required-label validity and authoritative label identity:
-        has_energy = (energy is not None) and np.isfinite(float(energy))
-        energy_valid = has_energy if eligibility_active.require_energy else (energy is None or np.isfinite(float(energy)))
-
-        if forces is None:
-            has_forces = False
-            forces_valid = not eligibility_active.require_forces
-        else:
-            f_arr = np.asarray(forces, dtype=np.float64)
-            forces_valid = (f_arr.shape == (data.n_atoms, 3)) and np.all(np.isfinite(f_arr))
-            has_forces = forces_valid
-
-        if stress is None:
-            has_stress = False
-            stress_valid = (eligibility_active.stress_requirement is not StressRequirement.REQUIRED)
-        else:
-            s_arr = np.asarray(stress, dtype=np.float64)
-            s_finite = (s_arr.shape == (3, 3)) and np.all(np.isfinite(s_arr))
-            if eligibility_active.stress_requirement is StressRequirement.FORBIDDEN:
-                stress_valid = False
-                has_stress = False
-            elif eligibility_active.stress_requirement is StressRequirement.REQUIRED:
-                stress_valid = s_finite and np.allclose(s_arr, s_arr.T, rtol=0.0, atol=eligibility_active.stress_symmetry_tolerance)
-                has_stress = stress_valid
-            else:  # OPTIONAL
-                stress_valid = s_finite and np.allclose(s_arr, s_arr.T, rtol=0.0, atol=eligibility_active.stress_symmetry_tolerance)
-                has_stress = stress_valid
-
-        is_label_authoritative = (
-            (has_energy if eligibility_active.require_energy else True)
-            and (has_forces if eligibility_active.require_forces else True)
-            and (has_stress if eligibility_active.stress_requirement is StressRequirement.REQUIRED else True)
-            and energy_valid
-            and forces_valid
-            and stress_valid
+        label_eval = evaluate_required_label_contract(
+            atom_count=data.n_atoms,
+            energy_ev=energy,
+            forces_ev_per_angstrom=forces,
+            stress_ev_per_angstrom3=stress,
+            policy=eligibility_active,
         )
 
-        if is_label_authoritative:
+        if label_eval.is_satisfied:
             canonical_label_digest = canonical_training_label_payload_digest(
                 selected_energy_channel=source.selected_energy_channel,
                 energy_semantic_role=source.selected_energy_semantic_role,
@@ -465,7 +437,22 @@ def build_vasp_canonical_frame_authority(
         channel = bundle.energy_catalog.channel(source.selected_energy_channel)
         if channel is None:
             raise TrainingDataInputError(
-                f"Selected energy channel is absent for {source.run_id!r}."
+                f"Selected energy channel {source.selected_energy_channel!r} is absent for {source.run_id!r}."
+            )
+        if channel.source_name != source.selected_energy_channel:
+            raise TrainingDataInputError(
+                f"Selected energy channel source_name mismatch for {source.run_id!r}: "
+                f"reparsed={channel.source_name!r} != persisted={source.selected_energy_channel!r}"
+            )
+        if channel.units != source.selected_energy_units:
+            raise TrainingDataInputError(
+                f"Selected energy channel units mismatch for {source.run_id!r}: "
+                f"reparsed={channel.units!r} != persisted={source.selected_energy_units!r}"
+            )
+        if channel.semantic_role != source.selected_energy_semantic_role:
+            raise TrainingDataInputError(
+                f"Selected energy channel semantic_role mismatch for {source.run_id!r}: "
+                f"reparsed={channel.semantic_role!r} != persisted={source.selected_energy_semantic_role!r}"
             )
         collection = read_vasp_frames(
             path,
