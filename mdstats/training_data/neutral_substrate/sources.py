@@ -62,6 +62,8 @@ class SourceRecord:
     run_id: str
     source_locator: str
     source_identity_signature: str
+    source_control_digest: str
+    ensemble_certificate_digest: str
     frame_count: int
     composition: SourceComposition
     selected_energy_channel: str
@@ -82,11 +84,16 @@ class SourceRecord:
     def __post_init__(self) -> None:
         if not self.run_id.strip() or not self.source_locator.strip():
             raise TrainingDataInputError("Source run_id and source_locator must be non-empty.")
-        object.__setattr__(
-            self,
+        for name in (
             "source_identity_signature",
-            validate_digest(self.source_identity_signature, name="source_identity_signature"),
-        )
+            "source_control_digest",
+            "ensemble_certificate_digest",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                validate_digest(getattr(self, name), name=name),
+            )
         if not isinstance(self.composition, SourceComposition):
             raise TrainingDataInputError("Source composition must be an instance of SourceComposition.")
         object.__setattr__(self, "assertions", tuple(sorted((str(k), v) for k, v in self.assertions)))
@@ -114,6 +121,8 @@ class SourceRecord:
             "run_id": self.run_id,
             "source_locator": self.source_locator,
             "source_identity_signature": self.source_identity_signature,
+            "source_control_digest": self.source_control_digest,
+            "ensemble_certificate_digest": self.ensemble_certificate_digest,
             "frame_count": self.frame_count,
             "composition": self.composition.to_dict(),
             "selected_energy_channel": self.selected_energy_channel,
@@ -143,15 +152,35 @@ class SourceRecord:
     def from_dict(cls, payload: Mapping[str, Any]) -> "SourceRecord":
         if payload.get("schema") != SOURCE_RECORD_SCHEMA:
             raise TrainingDataSerializationError("Unsupported source-record schema.")
-        comp_payload = payload.get("composition")
-        if isinstance(comp_payload, Mapping):
-            comp = SourceComposition.from_dict(comp_payload)
-        else:
-            comp = SourceComposition.from_symbols((str(payload.get("reduced_formula", "X")),))
+        required_keys = (
+            "run_id",
+            "source_locator",
+            "source_identity_signature",
+            "source_control_digest",
+            "ensemble_certificate_digest",
+            "frame_count",
+            "composition",
+            "selected_energy_channel",
+            "selected_energy_units",
+            "selected_energy_semantic_role",
+            "electronic_structure",
+            "ensemble",
+            "quality_assessment_status",
+            "target_usable",
+        )
+        for key in required_keys:
+            if key not in payload:
+                raise TrainingDataSerializationError(f"Source-record missing required field: {key!r}")
+        comp_payload = payload["composition"]
+        if not isinstance(comp_payload, Mapping):
+            raise TrainingDataSerializationError("Source-record composition must be a mapping.")
+        comp = SourceComposition.from_dict(comp_payload)
         result = cls(
             run_id=str(payload["run_id"]),
             source_locator=str(payload["source_locator"]),
             source_identity_signature=str(payload["source_identity_signature"]),
+            source_control_digest=str(payload["source_control_digest"]),
+            ensemble_certificate_digest=str(payload["ensemble_certificate_digest"]),
             frame_count=int(payload["frame_count"]),
             composition=comp,
             selected_energy_channel=str(payload["selected_energy_channel"]),
@@ -160,8 +189,8 @@ class SourceRecord:
             electronic_structure=ElectronicStructureFingerprint.from_dict(
                 payload["electronic_structure"]
             ),
-            ensemble=str(payload.get("ensemble", "unknown")),
-            quality_assessment_status=str(payload.get("quality_assessment_status", "not_requested")),
+            ensemble=str(payload["ensemble"]),
+            quality_assessment_status=str(payload["quality_assessment_status"]),
             quality_outcome=None if payload.get("quality_outcome") is None else str(payload["quality_outcome"]),
             timestep_fs=None if payload.get("timestep_fs") is None else float(payload["timestep_fs"]),
             replica_id=None if payload.get("replica_id") is None else str(payload["replica_id"]),
@@ -193,6 +222,8 @@ def source_record_from_data2(source: TrainingDataSource) -> SourceRecord:
         run_id=source.run_id,
         source_locator=source.source_locator,
         source_identity_signature=source.source_identity_signature,
+        source_control_digest=source.source_control_bundle_signature,
+        ensemble_certificate_digest=source.ensemble_certificate_signature,
         frame_count=source.frame_count,
         composition=source.composition,
         selected_energy_channel=source.selected_energy.source_name,
@@ -452,17 +483,31 @@ class SourceAuthority:
     def from_dict(cls, payload: Mapping[str, Any]) -> "SourceAuthority":
         if payload.get("schema") != SOURCE_AUTHORITY_SCHEMA:
             raise TrainingDataSerializationError("Unsupported source-authority schema.")
+        for key in (
+            "dataset_id",
+            "manifest_digest",
+            "energy_policy_digest",
+            "sources",
+            "provenance_diagnostics",
+            "atomic_reference_identifiability",
+        ):
+            if key not in payload:
+                raise TrainingDataSerializationError(f"Source-authority missing required field: {key!r}")
+        sources = tuple(SourceRecord.from_dict(item) for item in payload["sources"])
+        advisory_payload = payload.get("advisory_compatibility")
+        if advisory_payload is None:
+            advisory = build_advisory_compatibility_report(sources)
+        else:
+            advisory = AdvisoryCompatibilityReport.from_dict(advisory_payload)
         result = cls(
             dataset_id=str(payload["dataset_id"]),
             manifest_digest=str(payload["manifest_digest"]),
             energy_policy_digest=str(payload["energy_policy_digest"]),
-            sources=tuple(SourceRecord.from_dict(item) for item in payload["sources"]),
+            sources=sources,
             provenance_diagnostics=ProvenanceDiagnostics.from_dict(
                 payload["provenance_diagnostics"]
             ),
-            advisory_compatibility=AdvisoryCompatibilityReport.from_dict(
-                payload["advisory_compatibility"]
-            ),
+            advisory_compatibility=advisory,
             atomic_reference_identifiability=AtomicReferenceIdentifiabilityReport.from_dict(
                 payload["atomic_reference_identifiability"]
             ),

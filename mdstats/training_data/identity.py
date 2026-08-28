@@ -618,7 +618,9 @@ def build_duplicate_detection_catalog(
     labeled: dict[str, list[Any]] = {}
     for record in records:
         geometry.setdefault(record.geometry_fingerprint, []).append(record)
-        labeled.setdefault(record.labeled_configuration_fingerprint, []).append(record)
+        l_fp = getattr(record, "labeled_configuration_fingerprint", None)
+        if l_fp is not None:
+            labeled.setdefault(l_fp, []).append(record)
 
     geometry_groups: list[DuplicateGeometryGroup] = []
     for fingerprint, group in geometry.items():

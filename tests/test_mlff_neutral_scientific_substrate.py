@@ -84,12 +84,18 @@ def _vasprun(
     n_frames: int = 2,
     gga: str = "PE",
     ediff: float = 1.0e-5,
+    nelm: int = 100,
+    scf_steps_per_frame: int = 1,
     ismear: int = 0,
+    isif: int = 2,
+    gamma_l: float | None = None,
+    pmass: float | None = None,
     ldau: bool = False,
     hybrid: bool = False,
     unresolved_gga: bool = False,
     position_offset: float = 0.0,
     force_event_frame: int | None = None,
+    catastrophic_force: bool = False,
     tebeg: int = 700,
 ) -> str:
     calculations: list[str] = []
@@ -98,13 +104,22 @@ def _vasprun(
         positions = [(0.1 + shift, 0.1, 0.1), (0.5, 0.5, 0.5)][: len(elements)]
         while len(positions) < len(elements):
             positions.append((0.2 * len(positions), 0.2, 0.2))
-        force = 3.0 if force_event_frame == index else 0.1 + 0.001 * index
+        if catastrophic_force:
+            force = 500.0
+        elif force_event_frame == index:
+            force = 3.0
+        else:
+            force = 0.1 + 0.001 * index
         forces = [(force, 0.0, 0.0) if i == 0 else (-force if i == 1 else 0.0, 0.0, 0.0)
                   for i in range(len(elements))]
         energy = -10.0 + 0.01 * index
+        scsteps = "".join(
+            f'<scstep><energy><i name="e_fr_energy">{energy}</i><i name="e_0_energy">{energy + 0.1}</i></energy></scstep>'
+            for _ in range(scf_steps_per_frame)
+        )
         calculations.append(
             f'''<calculation>
-    <scstep><energy><i name="e_fr_energy">{energy}</i><i name="e_0_energy">{energy + 0.1}</i></energy></scstep>
+    {scsteps}
     <structure><crystal><varray name="basis"><v>10 0 0</v><v>0 10 0</v><v>0 0 10</v></varray></crystal>
       <varray name="positions">{_vectors(positions)}</varray></structure>
     <varray name="forces">{_vectors(forces)}</varray>
@@ -124,12 +139,14 @@ def _vasprun(
         else ""
     )
     hybrid_tag = '<i name="LHFCALC" type="logical">T</i><i name="AEXX">0.25</i>' if hybrid else ""
+    gamma_l_tag = f'<i name="LANGEVIN_GAMMA_L">{gamma_l}</i>' if gamma_l is not None else ""
+    pmass_tag = f'<i name="PMASS">{pmass or 100.0}</i>' if (isif == 3 or pmass is not None) else ""
     return f'''<?xml version="1.0"?>
 <modeling>
   <generator><i name="program" type="string">vasp</i><i name="version" type="string">6.4.2</i><i name="subversion" type="string">test</i></generator>
   <incar>
-    <i name="IBRION" type="int">0</i><i name="MDALGO" type="int">3</i><i name="SMASS">-3</i><i name="ISIF" type="int">2</i>
-    <v name="LANGEVIN_GAMMA">{gamma}</v>{gga_tag}
+    <i name="IBRION" type="int">0</i><i name="MDALGO" type="int">3</i><i name="SMASS">-3</i><i name="ISIF" type="int">{isif}</i>
+    <v name="LANGEVIN_GAMMA">{gamma}</v>{gamma_l_tag}{pmass_tag}{gga_tag}
     <i name="ISMEAR" type="int">{ismear}</i><i name="SIGMA">0.05</i><i name="ISPIN" type="int">1</i>
     <i name="LDAU" type="logical">{ldau_flag}</i>{ldau_extra}{hybrid_tag}
     <i name="ENCUT">520</i><i name="LASPH" type="logical">T</i>
@@ -138,7 +155,7 @@ def _vasprun(
   <kpoints><generation param="Gamma"><v name="divisions">1 1 1</v></generation>
     <varray name="kpointlist"><v>0 0 0</v></varray><varray name="weights"><v>1</v></varray></kpoints>
   <parameters>
-    <separator name="electronic"><i name="EDIFF">{ediff}</i><i name="NELM" type="int">100</i>
+    <separator name="electronic"><i name="EDIFF">{ediff}</i><i name="NELM" type="int">{nelm}</i>
       <i name="NELMIN" type="int">2</i><i name="ALGO" type="string">Normal</i>
       {gga_tag}<i name="ISMEAR" type="int">{ismear}</i><i name="SIGMA">0.05</i>
       <i name="ISPIN" type="int">1</i><i name="LDAU" type="logical">{ldau_flag}</i>
@@ -147,7 +164,8 @@ def _vasprun(
     </separator>
     <separator name="ionic"><i name="IBRION" type="int">0</i><i name="NSW" type="int">{n_frames}</i><i name="POTIM">1</i>
       <i name="TEBEG">{tebeg}</i><i name="TEEND">{tebeg}</i><i name="MDALGO" type="int">3</i><i name="SMASS">-3</i>
-      <i name="ISIF" type="int">2</i><i name="ISYM" type="int">0</i><v name="LANGEVIN_GAMMA">{gamma}</v>
+      <i name="ISIF" type="int">{isif}</i><i name="ISYM" type="int">0</i><v name="LANGEVIN_GAMMA">{gamma}</v>
+      {gamma_l_tag}{pmass_tag}
     </separator>
   </parameters>
   {_atominfo(elements)}
@@ -405,6 +423,59 @@ def test_p1b_source_facts_preservation(tmp_path: Path) -> None:
     assert r_source.composition.as_dict() == {"Li": 1, "O": 1}
     assert r_source.ensemble.lower() == "nvt"
     assert r_source.quality_assessment_status == source.quality_assessment_status
+
+
+def test_p1b_strict_deserialization_rejection(tmp_path: Path) -> None:
+    """P1-B: Deserialization rejects missing required fields without synthesizing defaults."""
+    _write(tmp_path, "run_strict", ("Li", "O"), n_frames=2)
+    manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="strict")
+    catalog = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+    authority = build_source_authority_from_data2_catalog(catalog)
+    source = authority.source("run_strict")
+    payload = source.to_dict()
+
+    # Reject missing composition
+    bad = dict(payload)
+    del bad["composition"]
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'composition'"):
+        SourceRecord.from_dict(bad)
+
+    # Reject missing ensemble
+    bad = dict(payload)
+    del bad["ensemble"]
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'ensemble'"):
+        SourceRecord.from_dict(bad)
+
+    # Reject missing quality_assessment_status
+    bad = dict(payload)
+    del bad["quality_assessment_status"]
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'quality_assessment_status'"):
+        SourceRecord.from_dict(bad)
+
+    # Reject missing source_control_digest
+    bad = dict(payload)
+    del bad["source_control_digest"]
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'source_control_digest'"):
+        SourceRecord.from_dict(bad)
+
+    # Reject missing ensemble_certificate_digest
+    bad = dict(payload)
+    del bad["ensemble_certificate_digest"]
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'ensemble_certificate_digest'"):
+        SourceRecord.from_dict(bad)
+
+    # Reject invalid schema
+    bad = dict(payload)
+    bad["schema"] = "invalid.schema"
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="Unsupported source-record schema"):
+        SourceRecord.from_dict(bad)
+
+    # Authority missing dataset_id
+    auth_payload = authority.to_dict()
+    bad_auth = dict(auth_payload)
+    del bad_auth["dataset_id"]
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="missing required field: 'dataset_id'"):
+        SourceAuthority.from_dict(bad_auth)
 
 
 # =========================================================================
@@ -723,6 +794,91 @@ def test_p1c_parallel_worker_equivalence(tmp_path: Path) -> None:
     assert auth_seq == auth_par
 
 
+def test_p1c_required_label_ordering_and_authority_precedence(tmp_path: Path) -> None:
+    """P1-C: Required-label validity precedes label authority while preserving physical frame existence."""
+    _write(tmp_path, "run_prec", ("Li", "O"), n_frames=2)
+    manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="precedence")
+    sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources)
+
+    from mdstats.io import read_vasp_frames, read_vasp_run_controls
+
+    path = tmp_path / "run_prec/vasprun.xml"
+    collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
+    bundle = read_vasp_run_controls(path)
+    channel = bundle.energy_catalog.channel("e_fr_energy")
+
+    # Frame 0: valid energy (-10.0), Frame 1: missing energy (None)
+    # Set identical fractional positions so geometry fingerprints match exactly
+    positions = np.zeros((2, 2, 3), dtype=np.float64)
+    positions[0] = [[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]
+    positions[1] = [[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]
+
+    energies_partial = np.asarray([-10.0, np.nan], dtype=np.float64)  # NaN for frame 1
+    # FrameData with stresses=None (to test optional vs required stress)
+    frame_data = {
+        "run_prec": mdstats.FrameData(
+            frame_ids=np.arange(2, dtype=np.int64),
+            source_frame_indices=np.arange(2, dtype=np.int64),
+            steps=np.arange(2, dtype=np.int64),
+            times_ps=np.zeros(2, dtype=np.float64),
+            atomic_numbers=np.asarray([3, 8], dtype=np.int32),
+            pbc=np.asarray([True, True, True]),
+            cells_angstrom=collection.cells[:2],
+            fractional_positions=positions,
+            energies_ev=energies_partial,
+            forces_ev_per_angstrom=collection.forces[:2],
+            stresses_ev_per_angstrom3=None,
+            temperatures_kelvin=np.full(2, 300.0),
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached[:2],
+        )
+    }
+
+    # 1. Under default policy (energy required, stress optional):
+    frame_auth = build_canonical_frame_authority(source_auth, frame_data)
+
+    f0 = frame_auth.frames[0]
+    f1 = frame_auth.frames[1]
+
+    # Frame 0 has valid energy -> has authoritative label
+    assert f0.has_authoritative_label is True
+    assert f0.canonical_label_payload_digest is not None
+    assert f0.labeled_configuration_fingerprint is not None
+
+    # Frame 1 has non-finite/missing energy -> NO authoritative label
+    assert f1.has_authoritative_label is False
+    assert f1.canonical_label_payload_digest is None
+    assert f1.labeled_configuration_fingerprint is None
+
+    # But Frame 1 still exists as a physical frame with occurrence and geometry identity
+    assert f1.frame_uid is not None
+    assert f1.geometry_fingerprint == f0.geometry_fingerprint
+    assert frame_auth.eligibility.for_frame(f1.frame_uid).state == mdstats.FrameEligibilityState.INELIGIBLE
+
+    # Geometry duplicates group both frames together, but labeled duplicates group 0 frames
+    assert len(frame_auth.duplicates.geometry_groups) == 1
+    assert len(frame_auth.duplicates.geometry_groups[0].frame_uids) == 2
+    assert len(frame_auth.duplicates.labeled_groups) == 0
+
+    # 2. Stress requirement test:
+    # When stress is REQUIRED and stress is absent, Frame 0 loses label authority:
+    req_stress_policy = mdstats.FrameEligibilityPolicy(
+        stress_requirement=mdstats.StressRequirement.REQUIRED
+    )
+    frame_auth_req_stress = build_canonical_frame_authority(
+        source_auth, frame_data, eligibility_policy=req_stress_policy
+    )
+    assert frame_auth_req_stress.frames[0].has_authoritative_label is False
+    assert frame_auth_req_stress.frames[0].canonical_label_payload_digest is None
+
+    # 3. Serialization durability of frame authority with un-labeled frames:
+    payload = json.loads(json.dumps(frame_auth.to_dict()))
+    rebuilt = CanonicalFrameAuthority.from_dict(payload)
+    assert rebuilt.content_digest == frame_auth.content_digest
+    assert rebuilt.frames[1].has_authoritative_label is False
+    assert rebuilt.frames[1].canonical_label_payload_digest is None
+
+
 # =========================================================================
 # Pass P1-D: Neutral Feature Evidence and Statistical Base Tests
 # =========================================================================
@@ -1026,49 +1182,89 @@ def test_p1e_compatibility_policy_invariance_proof(tmp_path: Path) -> None:
 
 def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> None:
     """P1-E3: Assembled numerical-change sensitivity proof through the real builder."""
-    _write(tmp_path, "run_base", ("Li", "O"), n_frames=16, tebeg=600)
-    manifest = mdstats.TrainingDataManifest(
-        dataset_id="sensitivity",
-        system_profile="generic",
-        runs=(
-            mdstats.TrainingDataRunSpec(
-                run_id="run_base",
-                vasprun="run_base/vasprun.xml",
-                reference_group="bulk",
-                assertions=(("regime", "production"),),
-            ),
-        ),
-    )
-    sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+    _manifest, sources, _frames, data4 = _data4_bundle(tmp_path, n_frames=48)
     source_auth = build_source_authority_from_data2_catalog(sources)
     frame_auth1 = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
+    feature_ev1 = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth1, data4)
+    stat_base1 = build_neutral_statistical_base(source_auth, frame_auth1, feature_ev1, policy=_neutral_policy())
 
-    # Now load FrameData and alter one energy value
     from mdstats.io import read_vasp_frames, read_vasp_run_controls
-    path = tmp_path / "run_base/vasprun.xml"
+    path = tmp_path / "run/vasprun.xml"
     bundle = read_vasp_run_controls(path)
     collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
     channel = bundle.energy_catalog.channel("e_fr_energy")
-    energies_modified = channel.as_array().copy()
-    energies_modified[0] = -99.9  # change frame 0 energy
 
-    frame_data_mod = {
-        "run_base": mdstats.FrameData.from_collection(
+    # 1. Mutate energy on frame 0
+    energies_mod = channel.as_array().copy()
+    energies_mod[0] = -99.9  # change frame 0 energy
+    frame_data_e = {
+        "run": mdstats.FrameData.from_collection(
             collection,
             source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
-            energies_ev=energies_modified,
+            energies_ev=energies_mod,
             scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
         )
     }
-    frame_auth2 = build_canonical_frame_authority(source_auth, frame_data_mod)
+    frame_auth_e = build_canonical_frame_authority(source_auth, frame_data_e)
+    feature_ev_e = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth_e, data4)
+    stat_base_e = build_neutral_statistical_base(source_auth, frame_auth_e, feature_ev_e, policy=_neutral_policy())
 
-    # Frame 0 must change
-    assert frame_auth1.frames[0].canonical_label_payload_digest != frame_auth2.frames[0].canonical_label_payload_digest
-    assert frame_auth1.frames[0].labeled_configuration_fingerprint != frame_auth2.frames[0].labeled_configuration_fingerprint
-    assert frame_auth1.content_digest != frame_auth2.content_digest
+    assert frame_auth1.frames[0].canonical_label_payload_digest != frame_auth_e.frames[0].canonical_label_payload_digest
+    assert frame_auth1.frames[0].labeled_configuration_fingerprint != frame_auth_e.frames[0].labeled_configuration_fingerprint
+    assert frame_auth1.frames[1].canonical_label_payload_digest == frame_auth_e.frames[1].canonical_label_payload_digest
+    assert frame_auth1.content_digest != frame_auth_e.content_digest
+    assert feature_ev1.content_digest != feature_ev_e.content_digest
+    assert stat_base1.content_digest != stat_base_e.content_digest
 
-    # Frame 1 has same energy, so its label digest is unchanged
-    assert frame_auth1.frames[1].canonical_label_payload_digest == frame_auth2.frames[1].canonical_label_payload_digest
+    # 2. Mutate forces on frame 0
+    forces_mod = collection.forces.copy()
+    forces_mod[0, 0, 0] += 2.5
+    frame_data_f = {
+        "run": mdstats.FrameData(
+            frame_ids=np.arange(collection.n_frames, dtype=np.int64),
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            steps=np.arange(collection.n_frames, dtype=np.int64),
+            times_ps=collection.times,
+            atomic_numbers=np.asarray([3, 8], dtype=np.int32),
+            pbc=np.asarray([True, True, True]),
+            cells_angstrom=collection.cells,
+            fractional_positions=collection.fractional_positions,
+            energies_ev=channel.as_array(),
+            forces_ev_per_angstrom=forces_mod,
+            stresses_ev_per_angstrom3=collection.stresses,
+            temperatures_kelvin=collection.temperatures,
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    frame_auth_f = build_canonical_frame_authority(source_auth, frame_data_f)
+    feature_ev_f = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth_f, data4)
+    stat_base_f = build_neutral_statistical_base(source_auth, frame_auth_f, feature_ev_f, policy=_neutral_policy())
+
+    assert frame_auth1.frames[0].canonical_label_payload_digest != frame_auth_f.frames[0].canonical_label_payload_digest
+    assert frame_auth1.frames[0].labeled_configuration_fingerprint != frame_auth_f.frames[0].labeled_configuration_fingerprint
+    assert frame_auth1.frames[1].canonical_label_payload_digest == frame_auth_f.frames[1].canonical_label_payload_digest
+    assert frame_auth1.content_digest != frame_auth_f.content_digest
+    assert feature_ev1.content_digest != feature_ev_f.content_digest
+    assert stat_base1.content_digest != stat_base_f.content_digest
+
+    # 3. Non-finite value: frame loses label authority while retaining geometry/physical identity
+    energies_nan = channel.as_array().copy()
+    energies_nan[0] = np.nan
+    frame_data_nan = {
+        "run": mdstats.FrameData.from_collection(
+            collection,
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            energies_ev=energies_nan,
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    frame_auth_nan = build_canonical_frame_authority(source_auth, frame_data_nan)
+    assert frame_auth_nan.frames[0].has_authoritative_label is False
+    assert frame_auth_nan.frames[0].canonical_label_payload_digest is None
+    assert frame_auth_nan.frames[0].labeled_configuration_fingerprint is None
+    assert frame_auth_nan.frames[0].geometry_fingerprint == frame_auth1.frames[0].geometry_fingerprint
+    assert frame_auth_nan.frames[0].frame_uid == frame_auth1.frames[0].frame_uid
+    assert frame_auth_nan.eligibility.for_frame(frame_auth_nan.frames[0].frame_uid).state == mdstats.FrameEligibilityState.INELIGIBLE
 
 
 def test_p1e_unresolved_provenance_assembled_proof(tmp_path: Path) -> None:
@@ -1132,51 +1328,76 @@ def test_p1e_unresolved_provenance_assembled_proof(tmp_path: Path) -> None:
 
 
 def test_p1e_source_fact_preservation_proof(tmp_path: Path) -> None:
-    """P1-E4: Source-fact preservation proof: composition mismatch, ensemble context, and quality propagation."""
-    _write(tmp_path, "run_e4", ("Li", "O"), n_frames=8, tebeg=700)
-    manifest = mdstats.TrainingDataManifest(
-        dataset_id="e4-proof",
+    """P1-E4: Source-fact preservation proof: real NPT inference, real unqualified status, control binding, and composition mismatch."""
+    # 1. Real VASP NPT ensemble inference end-to-end
+    _write(tmp_path, "run_npt", ("Li", "O"), n_frames=8, isif=3, gamma_l=10.0, tebeg=750)
+    manifest_npt = mdstats.TrainingDataManifest(
+        dataset_id="npt-proof",
         system_profile="generic",
         runs=(
             mdstats.TrainingDataRunSpec(
-                run_id="run_e4",
-                vasprun="run_e4/vasprun.xml",
+                run_id="run_npt",
+                vasprun="run_npt/vasprun.xml",
                 reference_group="bulk",
-                assertions=(("ensemble", "npt"), ("regime", "production")),
+                assertions=(("regime", "production"),),
             ),
         ),
     )
-    sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
-    source_auth = build_source_authority_from_data2_catalog(sources)
-    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
+    catalog_npt = mdstats.build_training_data_source_catalog(manifest_npt, base_directory=tmp_path)
+    source_auth_npt = build_source_authority_from_data2_catalog(catalog_npt)
+    assert source_auth_npt.source("run_npt").ensemble.upper() == "NPT"
 
-    # 2. Composition mismatch rejection
+    frame_auth_npt = build_vasp_canonical_frame_authority(source_auth_npt, base_directory=tmp_path)
+    assert frame_auth_npt.temperature_conditions.for_run("run_npt").ensemble.upper() == "NPT"
+    assert frame_auth_npt.strain_records[0].context_class == mdstats.StrainContextClass.VARIABLE_CELL_FLUCTUATION
+
+    # 2. Real unconverged VASP XML quality assessment end-to-end
+    _write(tmp_path, "run_unconv", ("Li", "O"), n_frames=8, catastrophic_force=True, tebeg=700)
+    manifest_u = mdstats.TrainingDataManifest(
+        dataset_id="unconv-proof",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="run_unconv",
+                vasprun="run_unconv/vasprun.xml",
+                reference_group="bulk",
+                assertions=(("regime", "production"),),
+            ),
+        ),
+    )
+    catalog_u = mdstats.build_training_data_source_catalog(
+        manifest_u,
+        base_directory=tmp_path,
+        source_policy=mdstats.SourceAuditPolicy(
+            trajectory_assessment_mode=mdstats.SourceTrajectoryAssessmentMode.FULL_REQUIRED,
+            fail_on_unresolved_label_domain=False,
+        ),
+    )
+    source_u = catalog_u.source("run_unconv")
+    assert source_u.quality_outcome == "unqualified"
+    source_auth_u = build_source_authority_from_data2_catalog(catalog_u)
+    assert source_auth_u.source("run_unconv").quality_outcome == "unqualified"
+
+    frame_auth_u = build_vasp_canonical_frame_authority(source_auth_u, base_directory=tmp_path)
+    for dec in frame_auth_u.eligibility.decisions:
+        assert dec.state == mdstats.FrameEligibilityState.INELIGIBLE
+        assert "source_trajectory_unqualified" in dec.reason_codes
+
+    # 3. Source control-binding mismatch rejection in direct rebuild
+    mismatched_source = replace(source_auth_npt.sources[0], source_control_digest=_digest())
+    mismatched_auth = replace(source_auth_npt, sources=(mismatched_source,))
+    with pytest.raises(mdstats.TrainingDataInputError, match="Source control interpretation mismatch"):
+        build_vasp_canonical_frame_authority(mismatched_auth, base_directory=tmp_path)
+
+    # 4. Composition mismatch rejection
     from mdstats.io import read_vasp_frames, read_vasp_run_controls
-    path = tmp_path / "run_e4/vasprun.xml"
+    path = tmp_path / "run_npt/vasprun.xml"
     collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
     bundle = read_vasp_run_controls(path)
     channel = bundle.energy_catalog.channel("e_fr_energy")
 
-    frame_data_valid = {
-        "run_e4": mdstats.FrameData.from_collection(
-            collection,
-            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
-            energies_ev=channel.as_array(),
-            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
-        )
-    }
-
-    # 1. Real ensemble reached temperature conditions and strain context class
-    source_auth_npt = replace(
-        source_auth,
-        sources=(replace(source_auth.sources[0], ensemble="npt"),),
-    )
-    frame_auth_npt = build_canonical_frame_authority(source_auth_npt, frame_data_valid)
-    assert frame_auth_npt.temperature_conditions.for_run("run_e4").ensemble == "npt"
-    assert frame_auth_npt.strain_records[0].context_class == mdstats.StrainContextClass.VARIABLE_CELL_FLUCTUATION
-
     bad_frame_data = {
-        "run_e4": mdstats.FrameData(
+        "run_npt": mdstats.FrameData(
             frame_ids=np.arange(collection.n_frames, dtype=np.int64),
             source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
             steps=np.arange(collection.n_frames, dtype=np.int64),
@@ -1193,19 +1414,7 @@ def test_p1e_source_fact_preservation_proof(tmp_path: Path) -> None:
         )
     }
     with pytest.raises(mdstats.TrainingDataInputError, match="Atom count mismatch"):
-        build_canonical_frame_authority(source_auth, bad_frame_data)
-
-    # 3. Source quality status propagation into frame eligibility
-    unqualified_source = replace(
-        source_auth.sources[0],
-        quality_assessment_status="failed",
-        quality_outcome="unqualified",
-    )
-    unqualified_auth = replace(source_auth, sources=(unqualified_source,))
-    frame_auth_unqual = build_canonical_frame_authority(unqualified_auth, frame_data_valid)
-    for dec in frame_auth_unqual.eligibility.decisions:
-        assert dec.state == mdstats.FrameEligibilityState.INELIGIBLE
-        assert "source_trajectory_unqualified" in dec.reason_codes or dec.state == mdstats.FrameEligibilityState.INELIGIBLE
+        build_canonical_frame_authority(source_auth_npt, bad_frame_data)
 
 
 def test_p1e_material_profile_genericity_lta_and_restart_proof(tmp_path: Path) -> None:

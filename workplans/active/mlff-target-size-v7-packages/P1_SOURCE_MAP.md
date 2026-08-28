@@ -24,7 +24,7 @@ precise compatibility-neutral source facts + provenance
 | --- | --- | --- |
 | Provenance | Exact `ElectronicStructureFingerprint` facts (XC, DFT+U, hybrid, PAW, spin, dispersion, smearing, numerical quality, k-points, software/parser) | Training-eligibility gate; partition key; role-budget axis |
 | Source authority | Compatibility-neutral source facts required downstream: composition/atom count, ensemble/control interpretation, quality status/outcome, energy semantics, replica/reference/assertion facts, precise provenance, corpus atomic-reference identifiability, advisory compatibility diagnostics | Compatibility-group / `label_domain_id` gate; a lossy summary that forces downstream code to reconstruct real source facts from assertions |
-| Canonical labels & frame authority | Actual E/F/stress plus semantic/unit/convention identity, frame occurrence, geometry, conditions, source-quality-aware eligibility, strain/context, duplicates | Compatibility-group hash; legacy DATA3 label digest; legacy DATA3 metadata converted without real numerical labels |
+| Canonical labels & frame authority | Actual E/F/stress plus semantic/unit/convention identity, frame occurrence, geometry, conditions, source-quality-aware eligibility, strain/context, duplicates; authoritative label/labeled identity only after configured required-label validity is proven | Compatibility-group hash; legacy DATA3 label digest; legacy DATA3 metadata converted without real numerical labels; granting authoritative label identity to missing required values |
 | Neutral feature evidence | Raw features, events, and partition-stage material profiles rebound to neutral source/frame authority | Legacy DATA4 wrapper embedding retired lineage; opaque profile digest copied into a new wrapper |
 | Material-profile provider | Owns typed scientific reconstruction of provider-specific frame/catalog lineage against canonical frame authority | Material-specific science implemented in neutral core; arbitrary dictionary-field rewriting |
 | Neutral statistical base | Temporal blocks, events, lineage, condition/regime, replica/realization/reference-group, duplicates/correlation, protected outer roles | Compatibility-domain fanout; pre-target CV plans |
@@ -32,8 +32,10 @@ precise compatibility-neutral source facts + provenance
 ## Required distinctions
 
 - Provenance facts are descriptive/advisory by default.
-- Source authority retains real compatibility-neutral source facts needed by reused scientific algorithms; removing compatibility authority does not remove composition, ensemble, quality or other independent source truth.
+- Source authority retains real compatibility-neutral source facts needed by reused scientific algorithms; removing compatibility authority does not remove composition, ensemble, quality, source/control interpretation binding or other independent source truth.
+- Source authority deserialization must not synthesize missing authoritative facts from obsolete provisional payloads.
 - Numerical label identity is independent of compatibility grouping and comes from actual normalized frame arrays.
+- Physical frame presence and geometry/source identity are distinguished from authoritative canonical label identity; missing configured-required labels prevent label and labeled-configuration authority while allowing physical diagnostics where needed.
 - Legacy DATA3 may coexist for old-runtime isolation but is not a required scientific parent of canonical frame authority.
 - Compatibility grouping is not a target-training eligibility or partition axis.
 - Material-profile rebinding is generic at the neutral-core boundary and provider-owned in scientific detail.

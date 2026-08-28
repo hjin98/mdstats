@@ -24,6 +24,7 @@ from ..eligibility import (
     FrameEligibilityCatalog,
     FrameEligibilityDecision,
     FrameEligibilityPolicy,
+    StressRequirement,
     assess_frame_eligibility,
 )
 from ..frame_catalog import FrameData
@@ -123,21 +124,64 @@ def _build_canonical_frame_records_for_run(
             data.fractional_positions[local_index],
             policy=geometry_active,
         )
-        canonical_label_digest = canonical_training_label_payload_digest(
-            selected_energy_channel=source.selected_energy_channel,
-            energy_semantic_role=source.selected_energy_semantic_role,
-            energy_units=source.selected_energy_units,
-            energy_normalization=energy_normalization,
-            entropy_convention=entropy_convention,
-            energy_ev=energy,
-            forces_ev_per_angstrom=forces,
-            stress_ev_per_angstrom3=stress,
-            derivative_convention_digest=derivative_digest,
-            policy=label_active,
+
+        # Required-label validity and authoritative label identity:
+        has_energy = (energy is not None) and np.isfinite(float(energy))
+        energy_valid = has_energy if eligibility_active.require_energy else (energy is None or np.isfinite(float(energy)))
+
+        if forces is None:
+            has_forces = False
+            forces_valid = not eligibility_active.require_forces
+        else:
+            f_arr = np.asarray(forces, dtype=np.float64)
+            forces_valid = (f_arr.shape == (data.n_atoms, 3)) and np.all(np.isfinite(f_arr))
+            has_forces = forces_valid
+
+        if stress is None:
+            has_stress = False
+            stress_valid = (eligibility_active.stress_requirement is not StressRequirement.REQUIRED)
+        else:
+            s_arr = np.asarray(stress, dtype=np.float64)
+            s_finite = (s_arr.shape == (3, 3)) and np.all(np.isfinite(s_arr))
+            if eligibility_active.stress_requirement is StressRequirement.FORBIDDEN:
+                stress_valid = False
+                has_stress = False
+            elif eligibility_active.stress_requirement is StressRequirement.REQUIRED:
+                stress_valid = s_finite and np.allclose(s_arr, s_arr.T, rtol=0.0, atol=eligibility_active.stress_symmetry_tolerance)
+                has_stress = stress_valid
+            else:  # OPTIONAL
+                stress_valid = s_finite and np.allclose(s_arr, s_arr.T, rtol=0.0, atol=eligibility_active.stress_symmetry_tolerance)
+                has_stress = stress_valid
+
+        is_label_authoritative = (
+            (has_energy if eligibility_active.require_energy else True)
+            and (has_forces if eligibility_active.require_forces else True)
+            and (has_stress if eligibility_active.stress_requirement is StressRequirement.REQUIRED else True)
+            and energy_valid
+            and forces_valid
+            and stress_valid
         )
-        labeled_geom = labeled_configuration_fingerprint(
-            geometry_digest, canonical_label_digest
-        )
+
+        if is_label_authoritative:
+            canonical_label_digest = canonical_training_label_payload_digest(
+                selected_energy_channel=source.selected_energy_channel,
+                energy_semantic_role=source.selected_energy_semantic_role,
+                energy_units=source.selected_energy_units,
+                energy_normalization=energy_normalization,
+                entropy_convention=entropy_convention,
+                energy_ev=energy,
+                forces_ev_per_angstrom=forces,
+                stress_ev_per_angstrom3=stress,
+                derivative_convention_digest=derivative_digest,
+                policy=label_active,
+            )
+            labeled_geom = labeled_configuration_fingerprint(
+                geometry_digest, canonical_label_digest
+            )
+        else:
+            canonical_label_digest = None
+            labeled_geom = None
+
         temperature = _label_at(data.temperatures_kelvin, local_index)
         if temperature is not None and not np.isfinite(float(temperature)):
             temperature = None
@@ -351,9 +395,8 @@ def build_canonical_frame_authority(
                     f"item={run_id}; frames={len(run_records):,}; workers={workers}"
                 )
 
-    duplicate_identities = [f.as_duplicate_frame_identity() for f in canonical_frames]
     duplicates = build_duplicate_detection_catalog(
-        duplicate_identities,
+        canonical_frames,
         source_frame_counts={s.run_id: s.frame_count for s in source_authority.sources},
     )
 
@@ -404,6 +447,10 @@ def build_vasp_canonical_frame_authority(
         if bundle.source_identity.signature != source.source_identity_signature:
             raise TrainingDataInputError(
                 f"Source identity changed for {source.run_id!r}."
+            )
+        if bundle.signature != source.source_control_digest:
+            raise TrainingDataInputError(
+                f"Source control interpretation mismatch for {source.run_id!r}."
             )
         channel = bundle.energy_catalog.channel(source.selected_energy_channel)
         if channel is None:
@@ -468,9 +515,9 @@ class CanonicalFrameRecord:
     instantaneous_temperature_kelvin: float | None
     temperature_condition_digest: str
     geometry_fingerprint: str
-    canonical_label_payload_digest: str
-    labeled_configuration_fingerprint: str
-    electronic_structure_fingerprint_digest: str
+    canonical_label_payload_digest: str | None = None
+    labeled_configuration_fingerprint: str | None = None
+    electronic_structure_fingerprint_digest: str = ""
     _content_digest_cache: str | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -481,11 +528,16 @@ class CanonicalFrameRecord:
             "atomic_numbers_digest",
             "temperature_condition_digest",
             "geometry_fingerprint",
-            "canonical_label_payload_digest",
-            "labeled_configuration_fingerprint",
             "electronic_structure_fingerprint_digest",
         ):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
+        for name in (
+            "canonical_label_payload_digest",
+            "labeled_configuration_fingerprint",
+        ):
+            val = getattr(self, name)
+            if val is not None:
+                object.__setattr__(self, name, validate_digest(val, name=name))
         if self.source_frame_index < 0 or self.atom_count <= 0:
             raise TrainingDataInputError("Frame indices and atom count are invalid.")
         if not self.run_id.strip() or not self.selected_energy_channel.strip():
@@ -508,7 +560,11 @@ class CanonicalFrameRecord:
             object.__setattr__(self, "instantaneous_temperature_kelvin", value)
 
     @property
-    def label_payload_digest(self) -> str:
+    def has_authoritative_label(self) -> bool:
+        return self.canonical_label_payload_digest is not None
+
+    @property
+    def label_payload_digest(self) -> str | None:
         return self.canonical_label_payload_digest
 
     @property
@@ -524,6 +580,8 @@ class CanonicalFrameRecord:
         )
 
     def as_duplicate_frame_identity(self) -> FrameIdentity:
+        if self.canonical_label_payload_digest is None or self.labeled_configuration_fingerprint is None:
+            raise TrainingDataInputError("Cannot construct FrameIdentity without authoritative label identity.")
         return FrameIdentity(
             frame_uid=self.frame_uid,
             geometry_fingerprint=self.geometry_fingerprint,
@@ -602,8 +660,16 @@ class CanonicalFrameRecord:
             ),
             temperature_condition_digest=str(payload["temperature_condition_digest"]),
             geometry_fingerprint=str(payload["geometry_fingerprint"]),
-            canonical_label_payload_digest=str(payload["canonical_label_payload_digest"]),
-            labeled_configuration_fingerprint=str(payload["labeled_configuration_fingerprint"]),
+            canonical_label_payload_digest=(
+                None
+                if payload.get("canonical_label_payload_digest") is None
+                else str(payload["canonical_label_payload_digest"])
+            ),
+            labeled_configuration_fingerprint=(
+                None
+                if payload.get("labeled_configuration_fingerprint") is None
+                else str(payload["labeled_configuration_fingerprint"])
+            ),
             electronic_structure_fingerprint_digest=str(
                 payload["electronic_structure_fingerprint_digest"]
             ),

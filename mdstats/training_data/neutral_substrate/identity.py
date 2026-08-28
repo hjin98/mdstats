@@ -121,9 +121,9 @@ class CanonicalFrameIdentity:
     run_id: str
     source_frame_index: int
     geometry_fingerprint: str
-    canonical_label_payload_digest: str
-    labeled_configuration_fingerprint: str
-    electronic_structure_fingerprint_digest: str
+    canonical_label_payload_digest: str | None = None
+    labeled_configuration_fingerprint: str | None = None
+    electronic_structure_fingerprint_digest: str = ""
 
     def __post_init__(self) -> None:
         if not self.run_id.strip():
@@ -134,19 +134,30 @@ class CanonicalFrameIdentity:
         for name in (
             "frame_uid",
             "geometry_fingerprint",
-            "canonical_label_payload_digest",
-            "labeled_configuration_fingerprint",
             "electronic_structure_fingerprint_digest",
         ):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
+        for name in (
+            "canonical_label_payload_digest",
+            "labeled_configuration_fingerprint",
+        ):
+            val = getattr(self, name)
+            if val is not None:
+                object.__setattr__(self, name, validate_digest(val, name=name))
 
     @property
-    def label_payload_digest(self) -> str:
+    def has_authoritative_label(self) -> bool:
+        return self.canonical_label_payload_digest is not None
+
+    @property
+    def label_payload_digest(self) -> str | None:
         """Alias used by geometry/labeled duplicate grouping."""
 
         return self.canonical_label_payload_digest
 
     def as_duplicate_frame_identity(self) -> FrameIdentity:
+        if self.canonical_label_payload_digest is None or self.labeled_configuration_fingerprint is None:
+            raise TrainingDataInputError("Cannot construct FrameIdentity without authoritative label identity.")
         return FrameIdentity(
             frame_uid=self.frame_uid,
             geometry_fingerprint=self.geometry_fingerprint,
@@ -182,9 +193,15 @@ class CanonicalFrameIdentity:
             run_id=str(payload["run_id"]),
             source_frame_index=int(payload["source_frame_index"]),
             geometry_fingerprint=str(payload["geometry_fingerprint"]),
-            canonical_label_payload_digest=str(payload["canonical_label_payload_digest"]),
-            labeled_configuration_fingerprint=str(
-                payload["labeled_configuration_fingerprint"]
+            canonical_label_payload_digest=(
+                None
+                if payload.get("canonical_label_payload_digest") is None
+                else str(payload["canonical_label_payload_digest"])
+            ),
+            labeled_configuration_fingerprint=(
+                None
+                if payload.get("labeled_configuration_fingerprint") is None
+                else str(payload["labeled_configuration_fingerprint"])
             ),
             electronic_structure_fingerprint_digest=str(
                 payload["electronic_structure_fingerprint_digest"]
