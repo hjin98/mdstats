@@ -1,4 +1,4 @@
-"""V7 neutral correlation/statistical substrate without compatibility domains or CV."""
+"""Neutral correlation/statistical substrate without compatibility domains or CV."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import numpy as np
 from mdstats.sampling import (
     AutocorrelationPolicy,
     CompleteFrameBlockPolicy,
+    FrameInterval,
     build_complete_frame_block_plan,
     effective_sample_count,
 )
@@ -35,23 +36,26 @@ from ..partition import (
     _temperature_label,
 )
 from ..profile_extensions import profile_partition_state_changed
+from .features import NeutralFeatureEvidence
+from .frame_authority import CanonicalFrameAuthority, CanonicalFrameRecord
+from .sources import SourceAuthority
 
-V7_NEUTRAL_ROLE_BUDGET_SCHEMA = "mdstats.v7-neutral-role-budget.v1"
-V7_NEUTRAL_PARTITION_POLICY_SCHEMA = "mdstats.v7-neutral-partition-policy.v1"
-V7_NEUTRAL_PARTITION_POLICY_VERSION = "mdstats.v7-neutral-partition.2026-08.v1"
-V7_NEUTRAL_CONDITION_KEY_SCHEMA = "mdstats.v7-neutral-partition-condition.v1"
-V7_NEUTRAL_UNIT_SCHEMA = "mdstats.v7-neutral-partition-unit.v1"
-V7_NEUTRAL_UNIT_CATALOG_SCHEMA = "mdstats.v7-neutral-partition-unit-catalog.v1"
-V7_NEUTRAL_FEASIBILITY_SCHEMA = "mdstats.v7-neutral-partition-feasibility.v1"
-V7_NEUTRAL_ROLE_ASSIGNMENT_SCHEMA = "mdstats.v7-neutral-outer-role-assignment.v1"
-V7_NEUTRAL_OUTER_PARTITION_SCHEMA = "mdstats.v7-neutral-outer-partition.v1"
-V7_NEUTRAL_INDEPENDENCE_SCHEMA = "mdstats.v7-neutral-independence-report.v1"
-V7_NEUTRAL_LEAKAGE_FINDING_SCHEMA = "mdstats.v7-neutral-leakage-finding.v1"
-V7_NEUTRAL_LEAKAGE_REPORT_SCHEMA = "mdstats.v7-neutral-leakage-report.v1"
-V7_NEUTRAL_STATISTICAL_BASE_SCHEMA = "mdstats.v7-neutral-statistical-base.v1"
+NEUTRAL_ROLE_BUDGET_SCHEMA = "mdstats.neutral-role-budget.v1"
+NEUTRAL_PARTITION_POLICY_SCHEMA = "mdstats.neutral-partition-policy.v1"
+NEUTRAL_PARTITION_POLICY_VERSION = "mdstats.neutral-partition.2026-08.v1"
+NEUTRAL_CONDITION_KEY_SCHEMA = "mdstats.neutral-partition-condition.v1"
+NEUTRAL_UNIT_SCHEMA = "mdstats.neutral-partition-unit.v1"
+NEUTRAL_UNIT_CATALOG_SCHEMA = "mdstats.neutral-partition-unit-catalog.v1"
+NEUTRAL_FEASIBILITY_SCHEMA = "mdstats.neutral-partition-feasibility.v1"
+NEUTRAL_ROLE_ASSIGNMENT_SCHEMA = "mdstats.neutral-outer-role-assignment.v1"
+NEUTRAL_OUTER_PARTITION_SCHEMA = "mdstats.neutral-outer-partition.v1"
+NEUTRAL_INDEPENDENCE_SCHEMA = "mdstats.neutral-independence-report.v1"
+NEUTRAL_LEAKAGE_FINDING_SCHEMA = "mdstats.neutral-leakage-finding.v1"
+NEUTRAL_LEAKAGE_REPORT_SCHEMA = "mdstats.neutral-leakage-report.v1"
+NEUTRAL_STATISTICAL_BASE_SCHEMA = "mdstats.neutral-statistical-base.v1"
 
 
-class V7NeutralFeasibilityOutcome(str, Enum):
+class NeutralFeasibilityOutcome(str, Enum):
     FULLY_SUPPORTED = "fully_supported"
     SUPPORTED_WITH_TEMPORAL_BLOCKS_ONLY = "supported_with_temporal_blocks_only"
     CALIBRATION_DEFERRED = "calibration_deferred"
@@ -59,14 +63,14 @@ class V7NeutralFeasibilityOutcome(str, Enum):
     INSUFFICIENT_FOR_REQUESTED_ROLES = "insufficient_for_requested_roles"
 
 
-class V7LeakageSeverity(str, Enum):
+class LeakageSeverity(str, Enum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralRoleBudget:
+class NeutralRoleBudget:
     development_minimum_independent_units: int = 4
     outer_monitor_minimum_independent_units: int = 1
     calibration_minimum_independent_units: int = 1
@@ -89,7 +93,7 @@ class V7NeutralRoleBudget:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_ROLE_BUDGET_SCHEMA,
+            "schema": NEUTRAL_ROLE_BUDGET_SCHEMA,
             "development_minimum_independent_units": self.development_minimum_independent_units,
             "outer_monitor_minimum_independent_units": self.outer_monitor_minimum_independent_units,
             "calibration_minimum_independent_units": self.calibration_minimum_independent_units,
@@ -108,9 +112,9 @@ class V7NeutralRoleBudget:
         return {**self._payload(), "policy_digest": self.policy_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralRoleBudget":
-        if payload.get("schema") != V7_NEUTRAL_ROLE_BUDGET_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 neutral-role-budget schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralRoleBudget":
+        if payload.get("schema") != NEUTRAL_ROLE_BUDGET_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-role-budget schema.")
         result = cls(
             development_minimum_independent_units=int(
                 payload["development_minimum_independent_units"]
@@ -128,13 +132,13 @@ class V7NeutralRoleBudget:
             allow_calibration_deferral=bool(payload["allow_calibration_deferral"]),
         )
         if payload.get("policy_digest") not in (None, result.policy_digest):
-            raise TrainingDataSerializationError("V7 neutral-role-budget digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-role-budget digest mismatch.")
         return result
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralPartitionPolicy:
-    role_budget: V7NeutralRoleBudget = V7NeutralRoleBudget()
+class NeutralPartitionPolicy:
+    role_budget: NeutralRoleBudget = NeutralRoleBudget()
     block_policy: CompleteFrameBlockPolicy = CompleteFrameBlockPolicy(
         minimum_block_frames=32,
         autocorrelation_block_multiplier=2.0,
@@ -152,7 +156,7 @@ class V7NeutralPartitionPolicy:
     require_condition_coverage_in_outer_roles: bool = True
     allow_global_role_fallback: bool = True
     minimum_units_per_condition_for_full_outer_roles: int = 7
-    policy_version: str = V7_NEUTRAL_PARTITION_POLICY_VERSION
+    policy_version: str = NEUTRAL_PARTITION_POLICY_VERSION
 
     def __post_init__(self) -> None:
         states = tuple(str(v) for v in self.accepted_eligibility_states)
@@ -173,7 +177,7 @@ class V7NeutralPartitionPolicy:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_PARTITION_POLICY_SCHEMA,
+            "schema": NEUTRAL_PARTITION_POLICY_SCHEMA,
             "policy_version": self.policy_version,
             "role_budget": self.role_budget.to_dict(),
             "block_policy": self.block_policy.to_dict(),
@@ -195,11 +199,11 @@ class V7NeutralPartitionPolicy:
         return {**self._payload(), "policy_digest": self.policy_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralPartitionPolicy":
-        if payload.get("schema") != V7_NEUTRAL_PARTITION_POLICY_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 neutral-partition-policy schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralPartitionPolicy":
+        if payload.get("schema") != NEUTRAL_PARTITION_POLICY_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-partition-policy schema.")
         result = cls(
-            role_budget=V7NeutralRoleBudget.from_dict(payload["role_budget"]),
+            role_budget=NeutralRoleBudget.from_dict(payload["role_budget"]),
             block_policy=CompleteFrameBlockPolicy.from_dict(payload["block_policy"]),
             accepted_eligibility_states=tuple(str(v) for v in payload["accepted_eligibility_states"]),
             autocorrelation_observables=tuple(str(v) for v in payload["autocorrelation_observables"]),
@@ -214,12 +218,12 @@ class V7NeutralPartitionPolicy:
             policy_version=str(payload["policy_version"]),
         )
         if payload.get("policy_digest") not in (None, result.policy_digest):
-            raise TrainingDataSerializationError("V7 neutral-partition-policy digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-partition-policy digest mismatch.")
         return result
 
 
 @dataclass(frozen=True, slots=True, order=True)
-class V7NeutralConditionKey:
+class NeutralPartitionConditionKey:
     reduced_formula: str
     temperature_condition: str
     strain_class: str
@@ -237,7 +241,7 @@ class V7NeutralConditionKey:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_CONDITION_KEY_SCHEMA,
+            "schema": NEUTRAL_CONDITION_KEY_SCHEMA,
             "reduced_formula": self.reduced_formula,
             "temperature_condition": self.temperature_condition,
             "strain_class": self.strain_class,
@@ -253,9 +257,9 @@ class V7NeutralConditionKey:
         return {**self._payload(), "condition_id": self.condition_id}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralConditionKey":
-        if payload.get("schema") != V7_NEUTRAL_CONDITION_KEY_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 neutral-condition-key schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralPartitionConditionKey":
+        if payload.get("schema") != NEUTRAL_CONDITION_KEY_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-condition-key schema.")
         result = cls(
             reduced_formula=str(payload["reduced_formula"]),
             temperature_condition=str(payload["temperature_condition"]),
@@ -264,15 +268,15 @@ class V7NeutralConditionKey:
             user_labels=tuple((str(k), str(v)) for k, v in payload.get("user_labels", {}).items()),
         )
         if payload.get("condition_id") not in (None, result.condition_id):
-            raise TrainingDataSerializationError("V7 neutral-condition-key digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-condition-key digest mismatch.")
         return result
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralPartitionUnit:
+class NeutralPartitionUnit:
     unit_id: str
     run_id: str
-    condition: V7NeutralConditionKey
+    condition: NeutralPartitionConditionKey
     source_frame_start: int
     source_frame_stop: int
     frame_uids: tuple[str, ...]
@@ -301,16 +305,23 @@ class V7NeutralPartitionUnit:
             tuple(str(v) for v in self.independence_evidence_codes),
         )
         object.__setattr__(self, "independence_grade", IndependenceGrade(self.independence_grade))
+        if self.source_frame_stop <= self.source_frame_start or not self.frame_uids:
+            raise TrainingDataInputError("Partition unit must span at least one frame.")
+        if len(self.frame_uids) != (self.source_frame_stop - self.source_frame_start):
+            raise TrainingDataInputError("Partition unit frame count is inconsistent with span.")
+
+    @property
+    def frame_count(self) -> int:
+        return len(self.frame_uids)
 
     @property
     def correlation_group_id(self) -> str:
-        """Stable correlation group consumed later without frame expansion."""
-
+        """Self-identifying correlation unit ID."""
         return self.unit_id
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_UNIT_SCHEMA,
+            "schema": NEUTRAL_UNIT_SCHEMA,
             "unit_id": self.unit_id,
             "run_id": self.run_id,
             "condition": self.condition.to_dict(),
@@ -338,24 +349,25 @@ class V7NeutralPartitionUnit:
         return cached
 
     def to_dict(self) -> dict[str, Any]:
-        payload = self._payload()
-        return {**payload, "content_digest": self.content_digest}
+        return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralPartitionUnit":
-        if payload.get("schema") != V7_NEUTRAL_UNIT_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 neutral-partition-unit schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralPartitionUnit":
+        if payload.get("schema") != NEUTRAL_UNIT_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-unit schema.")
         result = cls(
             unit_id=str(payload["unit_id"]),
             run_id=str(payload["run_id"]),
-            condition=V7NeutralConditionKey.from_dict(payload["condition"]),
+            condition=NeutralPartitionConditionKey.from_dict(payload["condition"]),
             source_frame_start=int(payload["source_frame_start"]),
             source_frame_stop=int(payload["source_frame_stop"]),
             frame_uids=tuple(str(v) for v in payload["frame_uids"]),
             block_plan_signature=str(payload["block_plan_signature"]),
             event_ids=tuple(str(v) for v in payload.get("event_ids", ())),
             contains_protected_event_frames=bool(payload["contains_protected_event_frames"]),
-            maximum_autocorrelation_time_frames=float(payload["maximum_autocorrelation_time_frames"]),
+            maximum_autocorrelation_time_frames=float(
+                payload["maximum_autocorrelation_time_frames"]
+            ),
             effective_sample_count=float(payload["effective_sample_count"]),
             replica_id=None if payload.get("replica_id") is None else str(payload["replica_id"]),
             structural_realization_id=(
@@ -372,167 +384,179 @@ class V7NeutralPartitionUnit:
             ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 neutral-partition-unit digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-unit digest mismatch.")
         return result
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralUnitCatalog:
+class NeutralUnitCatalog:
     dataset_id: str
-    source_catalog_digest: str
-    frame_catalog_digest: str
-    data4_bundle_digest: str
+    source_authority_digest: str
+    frame_authority_digest: str
+    feature_evidence_digest: str
     policy_digest: str
-    units: tuple[V7NeutralPartitionUnit, ...]
-    run_block_plan_signatures: tuple[tuple[str, str], ...]
-    _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
+    units: tuple[NeutralPartitionUnit, ...]
+    run_block_plan_signatures: tuple[str, ...] = ()
+    _by_unit_id: dict[str, NeutralPartitionUnit] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _unit_id_by_frame_uid: dict[str, str] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _content_digest_cache: str | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         for name in (
-            "source_catalog_digest",
-            "frame_catalog_digest",
-            "data4_bundle_digest",
+            "source_authority_digest",
+            "frame_authority_digest",
+            "feature_evidence_digest",
             "policy_digest",
         ):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
-        units = tuple(
-            sorted(self.units, key=lambda item: (item.run_id, item.source_frame_start, item.unit_id))
-        )
+        units = tuple(sorted(self.units, key=lambda item: (item.run_id, item.source_frame_start)))
         if len({item.unit_id for item in units}) != len(units):
             raise TrainingDataInputError("Neutral partition unit IDs must be unique.")
         object.__setattr__(self, "units", units)
-        object.__setattr__(
-            self,
-            "run_block_plan_signatures",
-            tuple(sorted((str(a), str(b)) for a, b in self.run_block_plan_signatures)),
-        )
+        object.__setattr__(self, "_by_unit_id", {item.unit_id: item for item in units})
+        frame_map: dict[str, str] = {}
+        for item in units:
+            for frame_uid in item.frame_uids:
+                if frame_uid in frame_map:
+                    raise TrainingDataInputError("A frame cannot belong to multiple neutral units.")
+                frame_map[frame_uid] = item.unit_id
+        object.__setattr__(self, "_unit_id_by_frame_uid", frame_map)
+
+    def unit(self, unit_id: str) -> NeutralPartitionUnit:
+        try:
+            return self._by_unit_id[unit_id]
+        except KeyError:
+            raise KeyError(unit_id) from None
+
+    def unit_for_frame(self, frame_uid: str) -> NeutralPartitionUnit:
+        try:
+            unit_id = self._unit_id_by_frame_uid[frame_uid]
+            return self._by_unit_id[unit_id]
+        except KeyError:
+            raise KeyError(frame_uid) from None
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_UNIT_CATALOG_SCHEMA,
+            "schema": NEUTRAL_UNIT_CATALOG_SCHEMA,
             "dataset_id": self.dataset_id,
-            "source_catalog_digest": self.source_catalog_digest,
-            "frame_catalog_digest": self.frame_catalog_digest,
-            "data4_bundle_digest": self.data4_bundle_digest,
+            "source_authority_digest": self.source_authority_digest,
+            "frame_authority_digest": self.frame_authority_digest,
+            "feature_evidence_digest": self.feature_evidence_digest,
             "policy_digest": self.policy_digest,
             "units": [item.to_dict() for item in self.units],
-            "run_block_plan_signatures": [list(item) for item in self.run_block_plan_signatures],
+            "run_block_plan_signatures": list(self.run_block_plan_signatures),
         }
 
     @property
     def content_digest(self) -> str:
         cached = self._content_digest_cache
-        if not cached:
+        if cached is None:
             cached = digest(self._payload())
             object.__setattr__(self, "_content_digest_cache", cached)
         return cached
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self._payload(), "content_digest": self.content_digest}
+        payload = self._payload()
+        return {**payload, "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralUnitCatalog":
-        if payload.get("schema") != V7_NEUTRAL_UNIT_CATALOG_SCHEMA:
-            raise TrainingDataSerializationError(
-                "Unsupported V7 neutral-unit-catalog schema."
-            )
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralUnitCatalog":
+        if payload.get("schema") != NEUTRAL_UNIT_CATALOG_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-unit-catalog schema.")
         result = cls(
             dataset_id=str(payload["dataset_id"]),
-            source_catalog_digest=str(payload["source_catalog_digest"]),
-            frame_catalog_digest=str(payload["frame_catalog_digest"]),
-            data4_bundle_digest=str(payload["data4_bundle_digest"]),
+            source_authority_digest=str(payload["source_authority_digest"]),
+            frame_authority_digest=str(payload["frame_authority_digest"]),
+            feature_evidence_digest=str(payload["feature_evidence_digest"]),
             policy_digest=str(payload["policy_digest"]),
-            units=tuple(V7NeutralPartitionUnit.from_dict(item) for item in payload["units"]),
+            units=tuple(NeutralPartitionUnit.from_dict(item) for item in payload.get("units", ())),
             run_block_plan_signatures=tuple(
-                (str(a), str(b)) for a, b in payload.get("run_block_plan_signatures", ())
+                str(v) for v in payload.get("run_block_plan_signatures", ())
             ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 neutral-unit-catalog digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-unit-catalog digest mismatch.")
         return result
 
 
-def _condition_for_frame(
+def build_neutral_unit_catalog(
+    source_authority: SourceAuthority,
+    frame_authority: CanonicalFrameAuthority,
+    feature_evidence: NeutralFeatureEvidence,
     *,
-    source: Any,
-    frame: Any,
-    frame_catalog: Any,
-    strain_record: Any,
-    regime_by_frame_uid: Mapping[str, str] | None,
-    user_labels_by_frame_uid: Mapping[str, Mapping[str, str]] | None,
-) -> V7NeutralConditionKey:
-    temperature = frame_catalog.temperature_conditions.for_run(frame.run_id)
-    labels: tuple[tuple[str, str], ...] = ()
-    if user_labels_by_frame_uid is not None and frame.frame_uid in user_labels_by_frame_uid:
-        labels = tuple((str(k), str(v)) for k, v in user_labels_by_frame_uid[frame.frame_uid].items())
-    return V7NeutralConditionKey(
-        reduced_formula=source.composition.reduced_formula,
-        temperature_condition=_temperature_label(temperature),
-        strain_class=strain_record.tensor_class.value,
-        regime=_regime_label(source, frame.frame_uid, regime_by_frame_uid),
-        user_labels=labels,
-    )
-
-
-def build_v7_neutral_unit_catalog(
-    source_catalog: Any,
-    frame_catalog: Any,
-    data4_bundle: Any,
-    *,
-    policy: V7NeutralPartitionPolicy | None = None,
+    policy: NeutralPartitionPolicy | None = None,
     regime_by_frame_uid: Mapping[str, str] | None = None,
     user_labels_by_frame_uid: Mapping[str, Mapping[str, str]] | None = None,
-) -> V7NeutralUnitCatalog:
-    active = V7NeutralPartitionPolicy() if policy is None else policy
-    if source_catalog.content_digest != data4_bundle.source_catalog_digest:
-        raise TrainingDataInputError("Neutral substrate source catalog does not match DATA4.")
-    if frame_catalog.content_digest != data4_bundle.frame_catalog_digest:
-        raise TrainingDataInputError("Neutral substrate frame catalog does not match DATA4.")
+) -> NeutralUnitCatalog:
+    if not isinstance(source_authority, SourceAuthority):
+        raise TrainingDataInputError(
+            "NeutralUnitCatalog requires a current-generation SourceAuthority."
+        )
+    if not isinstance(frame_authority, CanonicalFrameAuthority):
+        raise TrainingDataInputError(
+            "NeutralUnitCatalog requires a current-generation CanonicalFrameAuthority."
+        )
+    if not isinstance(feature_evidence, NeutralFeatureEvidence):
+        raise TrainingDataInputError(
+            "NeutralUnitCatalog requires a current-generation NeutralFeatureEvidence."
+        )
+    if frame_authority.source_authority_digest != source_authority.content_digest:
+        raise TrainingDataInputError(
+            "Frame authority does not match source authority lineage."
+        )
+    if feature_evidence.frame_authority_digest != frame_authority.content_digest:
+        raise TrainingDataInputError(
+            "Feature evidence does not match frame authority lineage."
+        )
+    if feature_evidence.source_authority_digest != source_authority.content_digest:
+        raise TrainingDataInputError(
+            "Feature evidence does not match source authority lineage."
+        )
 
-    frame_map = {item.frame_uid: item for item in frame_catalog.frames}
-    raw_map = {item.frame_uid: item for item in data4_bundle.raw_features.records}
-    eligibility_map = {item.frame_uid: item for item in frame_catalog.eligibility.decisions}
-    strain_by_uid = {item.frame_uid: item for item in frame_catalog.strain_records}
-    event_by_run: dict[str, list[Any]] = {}
-    for event in data4_bundle.events.events:
-        event_by_run.setdefault(event.run_id, []).append(event)
-    event_ordinals_by_frame_by_run: dict[str, dict[str, tuple[int, ...]]] = {}
-    for run_id, run_events in event_by_run.items():
-        ordinals_by_frame: dict[str, list[int]] = {}
-        for event_ordinal, event in enumerate(run_events):
-            for frame_uid in event.protected_frame_uids:
-                ordinals_by_frame.setdefault(frame_uid, []).append(event_ordinal)
-        event_ordinals_by_frame_by_run[run_id] = {
-            frame_uid: tuple(ordinals) for frame_uid, ordinals in ordinals_by_frame.items()
-        }
-    frames_by_run: dict[str, list[Any]] = {}
-    for frame in frame_catalog.frames:
+    active = NeutralPartitionPolicy() if policy is None else policy
+    units: list[NeutralPartitionUnit] = []
+    run_plan_signatures: list[str] = []
+    accepted = set(active.accepted_eligibility_states)
+
+    frame_map = {item.frame_uid: item for item in frame_authority.frames}
+    strain_by_uid = {item.frame_uid: item for item in frame_authority.strain_records}
+
+    frames_by_run: dict[str, list[CanonicalFrameRecord]] = {}
+    for frame in frame_authority.frames:
         frames_by_run.setdefault(frame.run_id, []).append(frame)
     for run_frames in frames_by_run.values():
         run_frames.sort(key=lambda item: item.source_frame_index)
 
-    units: list[V7NeutralPartitionUnit] = []
-    run_plan_signatures: list[tuple[str, str]] = []
-    accepted = set(active.accepted_eligibility_states)
-    condition_by_uid: dict[str, V7NeutralConditionKey] = {}
-    for frame in frame_catalog.frames:
-        if eligibility_map[frame.frame_uid].state.value not in accepted:
+    condition_by_uid: dict[str, NeutralPartitionConditionKey] = {}
+    for frame in frame_authority.frames:
+        if frame_authority.eligibility.for_frame(frame.frame_uid).state.value not in accepted:
             continue
-        source = source_catalog.source(frame.run_id)
-        condition_by_uid[frame.frame_uid] = _condition_for_frame(
-            source=source,
-            frame=frame,
-            frame_catalog=frame_catalog,
-            strain_record=strain_by_uid[frame.frame_uid],
-            regime_by_frame_uid=regime_by_frame_uid,
-            user_labels_by_frame_uid=user_labels_by_frame_uid,
+        source = source_authority.source(frame.run_id)
+        temp = frame_authority.temperature_conditions.for_run(frame.run_id)
+        strain = strain_by_uid[frame.frame_uid]
+        labels = ()
+        if user_labels_by_frame_uid is not None and frame.frame_uid in user_labels_by_frame_uid:
+            labels = tuple(
+                (str(k), str(v)) for k, v in user_labels_by_frame_uid[frame.frame_uid].items()
+            )
+        condition_by_uid[frame.frame_uid] = NeutralPartitionConditionKey(
+            reduced_formula=source.reduced_formula,
+            temperature_condition=_temperature_label(temp),
+            strain_class=strain.tensor_class.value,
+            regime=_regime_label(source, frame.frame_uid, regime_by_frame_uid),
+            user_labels=labels,
         )
+
     condition_runs: dict[str, set[str]] = {}
     condition_replicas: dict[str, set[str]] = {}
     condition_structural_realizations: dict[str, set[str]] = {}
     for uid, condition in condition_by_uid.items():
         frame = frame_map[uid]
-        source = source_catalog.source(frame.run_id)
+        source = source_authority.source(frame.run_id)
         condition_runs.setdefault(condition.condition_id, set()).add(frame.run_id)
         if source.replica_id is not None:
             condition_replicas.setdefault(condition.condition_id, set()).add(source.replica_id)
@@ -543,10 +567,28 @@ def build_v7_neutral_unit_catalog(
                 str(realization_id).strip()
             )
 
-    for source in source_catalog.sources:
-        run_frames = frames_by_run.get(source.run_id, ())
+    event_by_run: dict[str, list[Any]] = {}
+    event_ordinals_by_frame_by_run: dict[str, dict[str, tuple[int, ...]]] = {}
+    for event in feature_evidence.events.events:
+        event_by_run.setdefault(event.run_id, []).append(event)
+    for run_id, run_events in event_by_run.items():
+        ordinals_by_frame: dict[str, list[int]] = {}
+        for event_ordinal, event in enumerate(run_events):
+            for frame_uid in event.protected_frame_uids:
+                ordinals_by_frame.setdefault(frame_uid, []).append(event_ordinal)
+        event_ordinals_by_frame_by_run[run_id] = {
+            frame_uid: tuple(ordinals)
+            for frame_uid, ordinals in ordinals_by_frame.items()
+        }
+
+    for source in source_authority.sources:
+        if not source.target_usable:
+            continue
+        run_frames = frames_by_run.get(source.run_id, [])
         eligible = [
-            item for item in run_frames if eligibility_map[item.frame_uid].state.value in accepted
+            item
+            for item in run_frames
+            if frame_authority.eligibility.for_frame(item.frame_uid).state.value in accepted
         ]
         if not eligible:
             continue
@@ -557,7 +599,7 @@ def build_v7_neutral_unit_catalog(
             vector = np.full(maximum_index + 1, np.nan, dtype=np.float64)
             complete = True
             for item in eligible:
-                value = _raw_observable(raw_map[item.frame_uid], name)
+                value = _raw_observable(feature_evidence.raw_features.for_frame(item.frame_uid), name)
                 if value is None:
                     complete = False
                     break
@@ -567,14 +609,15 @@ def build_v7_neutral_unit_catalog(
         if not observables:
             vector = np.full(maximum_index + 1, np.nan, dtype=np.float64)
             for item in eligible:
-                vector[item.source_frame_index] = raw_map[item.frame_uid].cell_volume_angstrom3
+                vector[item.source_frame_index] = feature_evidence.raw_features.for_frame(item.frame_uid).cell_volume_angstrom3
             observables["cell_volume_angstrom3"] = vector
+
         plan = build_complete_frame_block_plan(
             eligible_frame_indices=eligible_indices,
             frame_observables=observables,
             policy=active.block_policy,
         )
-        run_plan_signatures.append((source.run_id, plan.signature))
+        run_plan_signatures.append(plan.signature)
         condition_by_source_index = {
             item.source_frame_index: condition_by_uid[item.frame_uid].condition_id
             for item in eligible
@@ -583,7 +626,7 @@ def build_v7_neutral_unit_catalog(
         protected_by_event: list[tuple[int, ...]] = []
         if active.merge_protected_event_windows:
             for event in event_by_run.get(source.run_id, []):
-                indices = tuple(frame_map[uid].source_frame_index for uid in event.protected_frame_uids)
+                indices = tuple(frame_map[uid].source_frame_index for uid in event.protected_frame_uids if uid in frame_map)
                 event_conditions = {condition_by_source_index.get(index) for index in indices}
                 event_conditions.discard(None)
                 if len(event_conditions) > 1:
@@ -595,7 +638,8 @@ def build_v7_neutral_unit_catalog(
 
         same_run_uids = tuple(item.frame_uid for item in eligible)
         state_changed = profile_partition_state_changed(
-            tuple(getattr(data4_bundle, "profile_partition_features", ())), same_run_uids
+            tuple(getattr(feature_evidence, "profile_partition_features", ())),
+            same_run_uids,
         )
 
         for interval in intervals:
@@ -634,7 +678,7 @@ def build_v7_neutral_unit_catalog(
             elif condition_run_count >= 2:
                 grade = IndependenceGrade.INDEPENDENT_THERMODYNAMIC_RUN
                 evidence = ("multiple_source_runs_for_composition_condition",)
-            elif getattr(data4_bundle, "profile_partition_features", ()) and not state_changed:
+            elif getattr(feature_evidence, "profile_partition_features", ()) and not state_changed:
                 grade = IndependenceGrade.SLOW_STATE_NOT_DECORRELATED
                 evidence = ("single_run_no_observed_profile_state_transition",)
             elif len(intervals) >= 2:
@@ -651,7 +695,7 @@ def build_v7_neutral_unit_catalog(
                 "block_plan_signature": plan.signature,
             }
             units.append(
-                V7NeutralPartitionUnit(
+                NeutralPartitionUnit(
                     unit_id=digest(unit_payload),
                     run_id=source.run_id,
                     condition=condition,
@@ -674,12 +718,12 @@ def build_v7_neutral_unit_catalog(
                 )
             )
     if not units:
-        raise TrainingDataInputError("No eligible frames remain for V7 neutral partitioning.")
-    return V7NeutralUnitCatalog(
-        dataset_id=frame_catalog.dataset_id,
-        source_catalog_digest=source_catalog.content_digest,
-        frame_catalog_digest=frame_catalog.content_digest,
-        data4_bundle_digest=data4_bundle.content_digest,
+        raise TrainingDataInputError("No eligible frames remain for neutral partitioning.")
+    return NeutralUnitCatalog(
+        dataset_id=frame_authority.dataset_id,
+        source_authority_digest=source_authority.content_digest,
+        frame_authority_digest=frame_authority.content_digest,
+        feature_evidence_digest=feature_evidence.content_digest,
         policy_digest=active.policy_digest,
         units=tuple(units),
         run_block_plan_signatures=tuple(run_plan_signatures),
@@ -687,10 +731,10 @@ def build_v7_neutral_unit_catalog(
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralFeasibilityReport:
+class NeutralFeasibilityReport:
     policy_digest: str
     unit_catalog_digest: str
-    outcome: V7NeutralFeasibilityOutcome
+    outcome: NeutralFeasibilityOutcome
     available_unit_count: int
     available_condition_count: int
     calibration_deferred: bool
@@ -703,7 +747,7 @@ class V7NeutralFeasibilityReport:
         object.__setattr__(
             self, "unit_catalog_digest", validate_digest(self.unit_catalog_digest, name="unit_catalog_digest")
         )
-        object.__setattr__(self, "outcome", V7NeutralFeasibilityOutcome(self.outcome))
+        object.__setattr__(self, "outcome", NeutralFeasibilityOutcome(self.outcome))
         object.__setattr__(
             self,
             "per_condition_unit_counts",
@@ -714,13 +758,13 @@ class V7NeutralFeasibilityReport:
     @property
     def is_usable(self) -> bool:
         return self.outcome not in {
-            V7NeutralFeasibilityOutcome.INSUFFICIENT_FOR_LOCKED_TEST,
-            V7NeutralFeasibilityOutcome.INSUFFICIENT_FOR_REQUESTED_ROLES,
+            NeutralFeasibilityOutcome.INSUFFICIENT_FOR_LOCKED_TEST,
+            NeutralFeasibilityOutcome.INSUFFICIENT_FOR_REQUESTED_ROLES,
         }
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_FEASIBILITY_SCHEMA,
+            "schema": NEUTRAL_FEASIBILITY_SCHEMA,
             "policy_digest": self.policy_digest,
             "unit_catalog_digest": self.unit_catalog_digest,
             "outcome": self.outcome.value,
@@ -740,13 +784,13 @@ class V7NeutralFeasibilityReport:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralFeasibilityReport":
-        if payload.get("schema") != V7_NEUTRAL_FEASIBILITY_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 neutral-feasibility schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralFeasibilityReport":
+        if payload.get("schema") != NEUTRAL_FEASIBILITY_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-feasibility schema.")
         result = cls(
             policy_digest=str(payload["policy_digest"]),
             unit_catalog_digest=str(payload["unit_catalog_digest"]),
-            outcome=V7NeutralFeasibilityOutcome(payload["outcome"]),
+            outcome=NeutralFeasibilityOutcome(payload["outcome"]),
             available_unit_count=int(payload["available_unit_count"]),
             available_condition_count=int(payload["available_condition_count"]),
             calibration_deferred=bool(payload["calibration_deferred"]),
@@ -757,19 +801,19 @@ class V7NeutralFeasibilityReport:
             reason_codes=tuple(str(v) for v in payload.get("reason_codes", ())),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 neutral-feasibility digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-feasibility digest mismatch.")
         return result
 
 
-def assess_v7_neutral_feasibility(
-    unit_catalog: V7NeutralUnitCatalog,
+def assess_neutral_feasibility(
+    unit_catalog: NeutralUnitCatalog,
     *,
-    policy: V7NeutralPartitionPolicy | None = None,
-) -> V7NeutralFeasibilityReport:
-    active = V7NeutralPartitionPolicy() if policy is None else policy
+    policy: NeutralPartitionPolicy | None = None,
+) -> NeutralFeasibilityReport:
+    active = NeutralPartitionPolicy() if policy is None else policy
     if unit_catalog.policy_digest != active.policy_digest:
         raise TrainingDataInputError("Unit catalog and feasibility policy differ.")
-    groups: dict[str, list[V7NeutralPartitionUnit]] = {}
+    groups: dict[str, list[NeutralPartitionUnit]] = {}
     for unit in unit_catalog.units:
         groups.setdefault(unit.condition.condition_id, []).append(unit)
     counts = tuple((key, len(value)) for key, value in groups.items())
@@ -798,22 +842,22 @@ def assess_v7_neutral_feasibility(
         ):
             calibration_deferred = True
             reason_codes.append("calibration_deferred_for_role_budget")
-            outcome = V7NeutralFeasibilityOutcome.CALIBRATION_DEFERRED
+            outcome = NeutralFeasibilityOutcome.CALIBRATION_DEFERRED
         elif len(units) < (
             budget.locked_interpolation_test_minimum_independent_units
             + budget.development_minimum_independent_units
         ):
-            outcome = V7NeutralFeasibilityOutcome.INSUFFICIENT_FOR_LOCKED_TEST
+            outcome = NeutralFeasibilityOutcome.INSUFFICIENT_FOR_LOCKED_TEST
             reason_codes.append("insufficient_units_for_development_and_locked_test")
         else:
-            outcome = V7NeutralFeasibilityOutcome.INSUFFICIENT_FOR_REQUESTED_ROLES
+            outcome = NeutralFeasibilityOutcome.INSUFFICIENT_FOR_REQUESTED_ROLES
             reason_codes.append("insufficient_units_for_requested_outer_roles")
     elif temporal_only:
-        outcome = V7NeutralFeasibilityOutcome.SUPPORTED_WITH_TEMPORAL_BLOCKS_ONLY
+        outcome = NeutralFeasibilityOutcome.SUPPORTED_WITH_TEMPORAL_BLOCKS_ONLY
         reason_codes.append("no_independent_replica_or_run_support")
     else:
-        outcome = V7NeutralFeasibilityOutcome.FULLY_SUPPORTED
-    return V7NeutralFeasibilityReport(
+        outcome = NeutralFeasibilityOutcome.FULLY_SUPPORTED
+    return NeutralFeasibilityReport(
         policy_digest=active.policy_digest,
         unit_catalog_digest=unit_catalog.content_digest,
         outcome=outcome,
@@ -827,7 +871,7 @@ def assess_v7_neutral_feasibility(
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralRoleAssignment:
+class NeutralRoleAssignment:
     unit_id: str
     role: OuterRole
     assignment_reason_codes: tuple[str, ...]
@@ -841,7 +885,7 @@ class V7NeutralRoleAssignment:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_ROLE_ASSIGNMENT_SCHEMA,
+            "schema": NEUTRAL_ROLE_ASSIGNMENT_SCHEMA,
             "unit_id": self.unit_id,
             "role": self.role.value,
             "assignment_reason_codes": list(self.assignment_reason_codes),
@@ -855,51 +899,60 @@ class V7NeutralRoleAssignment:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralRoleAssignment":
-        if payload.get("schema") != V7_NEUTRAL_ROLE_ASSIGNMENT_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 neutral-role-assignment schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralRoleAssignment":
+        if payload.get("schema") != NEUTRAL_ROLE_ASSIGNMENT_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-role-assignment schema.")
         result = cls(
             unit_id=str(payload["unit_id"]),
             role=OuterRole(payload["role"]),
             assignment_reason_codes=tuple(str(v) for v in payload.get("assignment_reason_codes", ())),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 neutral-role-assignment digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-role-assignment digest mismatch.")
         return result
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralOuterPartition:
+class NeutralOuterPartition:
     policy_digest: str
     unit_catalog_digest: str
-    feasibility_report_digest: str
-    assignments: tuple[V7NeutralRoleAssignment, ...]
-    _by_unit_id: dict[str, V7NeutralRoleAssignment] = field(
-        default_factory=dict, init=False, repr=False, compare=False
-    )
+    assignments: tuple[NeutralRoleAssignment, ...]
+    unassigned_unit_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        for name in ("policy_digest", "unit_catalog_digest", "feasibility_report_digest"):
+        for name in ("policy_digest", "unit_catalog_digest"):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
         assignments = tuple(sorted(self.assignments, key=lambda item: item.unit_id))
-        if len({item.unit_id for item in assignments}) != len(assignments):
-            raise TrainingDataInputError("Outer-role assignments require unique unit IDs.")
+        assigned_ids = [item.unit_id for item in assignments]
+        if len(set(assigned_ids)) != len(assigned_ids):
+            raise TrainingDataInputError("Neutral outer roles cannot assign a unit multiple times.")
+        unassigned = tuple(sorted(str(v) for v in self.unassigned_unit_ids))
+        if set(assigned_ids).intersection(unassigned):
+            raise TrainingDataInputError("Units cannot be simultaneously assigned and unassigned.")
         object.__setattr__(self, "assignments", assignments)
-        object.__setattr__(self, "_by_unit_id", {item.unit_id: item for item in assignments})
+        object.__setattr__(self, "unassigned_unit_ids", unassigned)
 
-    def role_for_unit(self, unit_id: str) -> OuterRole:
-        return self._by_unit_id[unit_id].role
+    def role_for_unit(self, unit_id: str) -> OuterRole | None:
+        for assignment in self.assignments:
+            if assignment.unit_id == unit_id:
+                return assignment.role
+        return None
 
-    def units_for_role(self, role: OuterRole) -> tuple[str, ...]:
-        return tuple(item.unit_id for item in self.assignments if item.role is role)
+    def unit_ids_for_role(self, role: OuterRole) -> tuple[str, ...]:
+        active_role = OuterRole(role)
+        return tuple(
+            assignment.unit_id
+            for assignment in self.assignments
+            if assignment.role == active_role
+        )
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_OUTER_PARTITION_SCHEMA,
+            "schema": NEUTRAL_OUTER_PARTITION_SCHEMA,
             "policy_digest": self.policy_digest,
             "unit_catalog_digest": self.unit_catalog_digest,
-            "feasibility_report_digest": self.feasibility_report_digest,
             "assignments": [item.to_dict() for item in self.assignments],
+            "unassigned_unit_ids": list(self.unassigned_unit_ids),
         }
 
     @property
@@ -910,38 +963,44 @@ class V7NeutralOuterPartition:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralOuterPartition":
-        if payload.get("schema") != V7_NEUTRAL_OUTER_PARTITION_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 neutral-outer-partition schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralOuterPartition":
+        if payload.get("schema") != NEUTRAL_OUTER_PARTITION_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-outer-partition schema.")
         result = cls(
             policy_digest=str(payload["policy_digest"]),
             unit_catalog_digest=str(payload["unit_catalog_digest"]),
-            feasibility_report_digest=str(payload["feasibility_report_digest"]),
             assignments=tuple(
-                V7NeutralRoleAssignment.from_dict(item) for item in payload["assignments"]
+                NeutralRoleAssignment.from_dict(item) for item in payload.get("assignments", ())
             ),
+            unassigned_unit_ids=tuple(str(v) for v in payload.get("unassigned_unit_ids", ())),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 neutral-outer-partition digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-outer-partition digest mismatch.")
         return result
 
 
-def build_v7_neutral_outer_partition(
-    unit_catalog: V7NeutralUnitCatalog,
-    feasibility: V7NeutralFeasibilityReport,
+def build_neutral_outer_partition(
+    unit_catalog: NeutralUnitCatalog,
+    feasibility: NeutralFeasibilityReport,
     *,
-    policy: V7NeutralPartitionPolicy | None = None,
-) -> V7NeutralOuterPartition:
-    active = V7NeutralPartitionPolicy() if policy is None else policy
+    policy: NeutralPartitionPolicy | None = None,
+) -> NeutralOuterPartition:
+    active = NeutralPartitionPolicy() if policy is None else policy
+    if unit_catalog.policy_digest != active.policy_digest:
+        raise TrainingDataInputError("Unit catalog and outer-partition policy differ.")
+    if feasibility.unit_catalog_digest != unit_catalog.content_digest:
+        raise TrainingDataInputError("Feasibility report and unit catalog mismatch.")
     if not feasibility.is_usable:
         raise TrainingDataInputError(
-            f"Neutral population is not feasible for outer partitioning: {feasibility.outcome.value}."
+            f"Neutral unit catalog is not feasible for outer partitioning: {feasibility.outcome.value}."
         )
+
     units = list(unit_catalog.units)
     temporal_index = _build_temporal_neighbor_index(units)
-    groups: dict[str, list[V7NeutralPartitionUnit]] = {}
+    groups: dict[str, list[NeutralPartitionUnit]] = {}
     for unit in units:
         groups.setdefault(unit.condition.condition_id, []).append(unit)
+
     selected: dict[OuterRole, set[str]] = {
         OuterRole.LOCKED_INTERPOLATION_TEST: set(),
         OuterRole.UNCERTAINTY_CALIBRATION: set(),
@@ -960,6 +1019,7 @@ def build_v7_neutral_outer_partition(
             positions = _spaced_indices(len(group), len(role_sequence))
             for role, position in zip(role_sequence, positions, strict=True):
                 selected[role].add(group[position].unit_id)
+
     budget = active.role_budget
     minima = {
         OuterRole.OUTER_MONITOR: budget.outer_monitor_minimum_independent_units,
@@ -979,6 +1039,7 @@ def build_v7_neutral_outer_partition(
                 unit = candidates.pop()
                 selected[role].add(unit.unit_id)
                 occupied.add(unit.unit_id)
+
     purge_ids = _neighbor_unit_ids(
         units,
         occupied,
@@ -986,7 +1047,7 @@ def build_v7_neutral_outer_partition(
         temporal_index=temporal_index,
     )
     purge_ids -= occupied
-    assignments: list[V7NeutralRoleAssignment] = []
+    assignments: list[NeutralRoleAssignment] = []
     for unit in units:
         if unit.unit_id in selected[OuterRole.LOCKED_INTERPOLATION_TEST]:
             role = OuterRole.LOCKED_INTERPOLATION_TEST
@@ -1004,49 +1065,49 @@ def build_v7_neutral_outer_partition(
             role = OuterRole.DEVELOPMENT
             reasons = ("remaining_eligible_development_unit",)
         assignments.append(
-            V7NeutralRoleAssignment(
+            NeutralRoleAssignment(
                 unit_id=unit.unit_id,
                 role=role,
                 assignment_reason_codes=reasons,
             )
         )
-    development_count = sum(item.role is OuterRole.DEVELOPMENT for item in assignments)
-    if development_count < budget.development_minimum_independent_units:
-        raise TrainingDataInputError(
-            f"Outer-role purge leaves only {development_count} development units; "
-            f"minimum is {budget.development_minimum_independent_units}."
-        )
-    return V7NeutralOuterPartition(
+
+    return NeutralOuterPartition(
         policy_digest=active.policy_digest,
         unit_catalog_digest=unit_catalog.content_digest,
-        feasibility_report_digest=feasibility.content_digest,
         assignments=tuple(assignments),
+        unassigned_unit_ids=(),
     )
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralIndependenceReport:
+class NeutralIndependenceReport:
     unit_catalog_digest: str
-    grade_counts: tuple[tuple[str, int], ...]
-    weakest_grade: IndependenceGrade
+    per_grade_unit_counts: tuple[tuple[str, int], ...]
+    independent_unit_count: int
+    dependent_unit_count: int
     notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
-            self, "unit_catalog_digest", validate_digest(self.unit_catalog_digest, name="unit_catalog_digest")
+            self,
+            "unit_catalog_digest",
+            validate_digest(self.unit_catalog_digest, name="unit_catalog_digest"),
         )
         object.__setattr__(
-            self, "grade_counts", tuple(sorted((str(k), int(v)) for k, v in self.grade_counts))
+            self,
+            "per_grade_unit_counts",
+            tuple(sorted((str(k), int(v)) for k, v in self.per_grade_unit_counts)),
         )
-        object.__setattr__(self, "weakest_grade", IndependenceGrade(self.weakest_grade))
         object.__setattr__(self, "notes", tuple(str(v) for v in self.notes))
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_INDEPENDENCE_SCHEMA,
+            "schema": NEUTRAL_INDEPENDENCE_SCHEMA,
             "unit_catalog_digest": self.unit_catalog_digest,
-            "grade_counts": dict(self.grade_counts),
-            "weakest_grade": self.weakest_grade.value,
+            "per_grade_unit_counts": dict(self.per_grade_unit_counts),
+            "independent_unit_count": self.independent_unit_count,
+            "dependent_unit_count": self.dependent_unit_count,
             "notes": list(self.notes),
         }
 
@@ -1058,67 +1119,69 @@ class V7NeutralIndependenceReport:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralIndependenceReport":
-        if payload.get("schema") != V7_NEUTRAL_INDEPENDENCE_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 independence-report schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralIndependenceReport":
+        if payload.get("schema") != NEUTRAL_INDEPENDENCE_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-independence schema.")
         result = cls(
             unit_catalog_digest=str(payload["unit_catalog_digest"]),
-            grade_counts=tuple((str(k), int(v)) for k, v in payload["grade_counts"].items()),
-            weakest_grade=IndependenceGrade(payload["weakest_grade"]),
+            per_grade_unit_counts=tuple(
+                (str(k), int(v)) for k, v in payload.get("per_grade_unit_counts", {}).items()
+            ),
+            independent_unit_count=int(payload["independent_unit_count"]),
+            dependent_unit_count=int(payload["dependent_unit_count"]),
             notes=tuple(str(v) for v in payload.get("notes", ())),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 independence-report digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-independence digest mismatch.")
         return result
 
 
-def build_v7_independence_report(unit_catalog: V7NeutralUnitCatalog) -> V7NeutralIndependenceReport:
-    order = {
-        IndependenceGrade.INDEPENDENT_REPLICA: 0,
-        IndependenceGrade.INDEPENDENT_STRUCTURAL_REALIZATION: 1,
-        IndependenceGrade.INDEPENDENT_THERMODYNAMIC_RUN: 2,
-        IndependenceGrade.PURGED_TEMPORAL_BLOCK: 3,
-        IndependenceGrade.SLOW_STATE_NOT_DECORRELATED: 4,
-        IndependenceGrade.INSUFFICIENT_INDEPENDENCE: 5,
-    }
+def build_independence_report(unit_catalog: NeutralUnitCatalog) -> NeutralIndependenceReport:
     counts: dict[str, int] = {}
+    independent = 0
+    dependent = 0
     for unit in unit_catalog.units:
-        counts[unit.independence_grade.value] = counts.get(unit.independence_grade.value, 0) + 1
-    weakest = max((unit.independence_grade for unit in unit_catalog.units), key=lambda item: order[item])
-    notes = ()
-    if weakest in {IndependenceGrade.SLOW_STATE_NOT_DECORRELATED, IndependenceGrade.INSUFFICIENT_INDEPENDENCE}:
-        notes = ("At least one condition lacks demonstrated slow-state independence.",)
-    return V7NeutralIndependenceReport(
+        grade = unit.independence_grade
+        counts[grade.value] = counts.get(grade.value, 0) + 1
+        if grade in {
+            IndependenceGrade.INDEPENDENT_REPLICA,
+            IndependenceGrade.INDEPENDENT_STRUCTURAL_REALIZATION,
+            IndependenceGrade.INDEPENDENT_THERMODYNAMIC_RUN,
+        }:
+            independent += 1
+        else:
+            dependent += 1
+    return NeutralIndependenceReport(
         unit_catalog_digest=unit_catalog.content_digest,
-        grade_counts=tuple(counts.items()),
-        weakest_grade=weakest,
-        notes=notes,
+        per_grade_unit_counts=tuple(counts.items()),
+        independent_unit_count=independent,
+        dependent_unit_count=dependent,
+        notes=("Independence summary generated from neutral partition units.",),
     )
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralLeakageFinding:
-    code: str
-    severity: V7LeakageSeverity
-    unit_ids: tuple[str, ...]
-    frame_uids: tuple[str, ...]
+class NeutralLeakageFinding:
+    severity: LeakageSeverity
+    check_name: str
     message: str
+    involved_unit_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if not self.code.strip() or not self.message.strip():
-            raise TrainingDataInputError("Leakage finding code and message are required.")
-        object.__setattr__(self, "severity", V7LeakageSeverity(self.severity))
-        object.__setattr__(self, "unit_ids", tuple(sorted(set(str(v) for v in self.unit_ids))))
-        object.__setattr__(self, "frame_uids", tuple(sorted(set(str(v) for v in self.frame_uids))))
+        object.__setattr__(self, "severity", LeakageSeverity(self.severity))
+        object.__setattr__(
+            self,
+            "involved_unit_ids",
+            tuple(sorted(validate_digest(v, name="involved_unit_id") for v in self.involved_unit_ids)),
+        )
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_LEAKAGE_FINDING_SCHEMA,
-            "code": self.code,
+            "schema": NEUTRAL_LEAKAGE_FINDING_SCHEMA,
             "severity": self.severity.value,
-            "unit_ids": list(self.unit_ids),
-            "frame_uids": list(self.frame_uids),
+            "check_name": self.check_name,
             "message": self.message,
+            "involved_unit_ids": list(self.involved_unit_ids),
         }
 
     @property
@@ -1129,52 +1192,46 @@ class V7NeutralLeakageFinding:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralLeakageFinding":
-        if payload.get("schema") != V7_NEUTRAL_LEAKAGE_FINDING_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 leakage-finding schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralLeakageFinding":
+        if payload.get("schema") != NEUTRAL_LEAKAGE_FINDING_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-leakage-finding schema.")
         result = cls(
-            code=str(payload["code"]),
-            severity=V7LeakageSeverity(payload["severity"]),
-            unit_ids=tuple(str(v) for v in payload.get("unit_ids", ())),
-            frame_uids=tuple(str(v) for v in payload.get("frame_uids", ())),
+            severity=LeakageSeverity(payload["severity"]),
+            check_name=str(payload["check_name"]),
             message=str(payload["message"]),
+            involved_unit_ids=tuple(str(v) for v in payload.get("involved_unit_ids", ())),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 leakage-finding digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-leakage-finding digest mismatch.")
         return result
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralLeakageReport:
+class NeutralLeakageReport:
+    policy_digest: str
     unit_catalog_digest: str
     outer_partition_digest: str
-    findings: tuple[V7NeutralLeakageFinding, ...]
+    findings: tuple[NeutralLeakageFinding, ...]
+    passed: bool
+    error_count: int
+    warning_count: int
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "unit_catalog_digest", validate_digest(self.unit_catalog_digest, name="unit_catalog_digest")
-        )
-        object.__setattr__(
-            self,
-            "outer_partition_digest",
-            validate_digest(self.outer_partition_digest, name="outer_partition_digest"),
-        )
-        object.__setattr__(
-            self,
-            "findings",
-            tuple(sorted(self.findings, key=lambda item: (item.severity.value, item.code, item.content_digest))),
-        )
-
-    @property
-    def passed(self) -> bool:
-        return not any(item.severity is V7LeakageSeverity.ERROR for item in self.findings)
+        for name in ("policy_digest", "unit_catalog_digest", "outer_partition_digest"):
+            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
+        findings = tuple(sorted(self.findings, key=lambda item: (item.severity.value, item.check_name)))
+        object.__setattr__(self, "findings", findings)
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_LEAKAGE_REPORT_SCHEMA,
+            "schema": NEUTRAL_LEAKAGE_REPORT_SCHEMA,
+            "policy_digest": self.policy_digest,
             "unit_catalog_digest": self.unit_catalog_digest,
             "outer_partition_digest": self.outer_partition_digest,
             "findings": [item.to_dict() for item in self.findings],
+            "passed": self.passed,
+            "error_count": self.error_count,
+            "warning_count": self.warning_count,
         }
 
     @property
@@ -1182,116 +1239,119 @@ class V7NeutralLeakageReport:
         return digest(self._payload())
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self._payload(), "content_digest": self.content_digest, "passed": self.passed}
+        return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralLeakageReport":
-        if payload.get("schema") != V7_NEUTRAL_LEAKAGE_REPORT_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 leakage-report schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralLeakageReport":
+        if payload.get("schema") != NEUTRAL_LEAKAGE_REPORT_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-leakage-report schema.")
         result = cls(
+            policy_digest=str(payload["policy_digest"]),
             unit_catalog_digest=str(payload["unit_catalog_digest"]),
             outer_partition_digest=str(payload["outer_partition_digest"]),
-            findings=tuple(V7NeutralLeakageFinding.from_dict(item) for item in payload.get("findings", ())),
+            findings=tuple(
+                NeutralLeakageFinding.from_dict(item) for item in payload.get("findings", ())
+            ),
+            passed=bool(payload["passed"]),
+            error_count=int(payload["error_count"]),
+            warning_count=int(payload["warning_count"]),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 leakage-report digest mismatch.")
-        if payload.get("passed") not in (None, result.passed):
-            raise TrainingDataSerializationError("V7 leakage passed state mismatch.")
+            raise TrainingDataSerializationError("Neutral-leakage-report digest mismatch.")
         return result
 
 
-_PROTECTED_OUTER_ROLES = {
-    OuterRole.DEVELOPMENT,
-    OuterRole.OUTER_MONITOR,
-    OuterRole.UNCERTAINTY_CALIBRATION,
-    OuterRole.LOCKED_INTERPOLATION_TEST,
-}
-
-
-def audit_v7_neutral_leakage(
-    unit_catalog: V7NeutralUnitCatalog,
-    outer_partition: V7NeutralOuterPartition,
+def audit_neutral_leakage(
+    unit_catalog: NeutralUnitCatalog,
+    outer_partition: NeutralOuterPartition,
     *,
-    policy: V7NeutralPartitionPolicy | None = None,
-) -> V7NeutralLeakageReport:
-    active = V7NeutralPartitionPolicy() if policy is None else policy
-    findings: list[V7NeutralLeakageFinding] = []
-    role_by_unit = {item.unit_id: item.role for item in outer_partition.assignments}
-    if set(role_by_unit) != {item.unit_id for item in unit_catalog.units}:
-        findings.append(
-            V7NeutralLeakageFinding(
-                code="incomplete_outer_assignment",
-                severity=V7LeakageSeverity.ERROR,
-                unit_ids=tuple(role_by_unit),
-                frame_uids=(),
-                message="Outer assignments do not cover the unit catalog exactly.",
-            )
-        )
-    occupied = {
-        unit_id
-        for unit_id, role in role_by_unit.items()
-        if role in _PROTECTED_OUTER_ROLES and role is not OuterRole.DEVELOPMENT
-    }
-    expected_purge = _neighbor_unit_ids(
-        unit_catalog.units,
-        occupied,
-        active.role_budget.purge_units_between_roles,
-        temporal_index=_build_temporal_neighbor_index(unit_catalog.units),
+    policy: NeutralPartitionPolicy | None = None,
+) -> NeutralLeakageReport:
+    active = NeutralPartitionPolicy() if policy is None else policy
+    if outer_partition.unit_catalog_digest != unit_catalog.content_digest:
+        raise TrainingDataInputError("Outer partition and unit catalog lineage mismatch.")
+    findings: list[NeutralLeakageFinding] = []
+
+    temporal_index = _build_temporal_neighbor_index(unit_catalog.units)
+    role_units: dict[OuterRole, set[str]] = {role: set() for role in OuterRole}
+    for assignment in outer_partition.assignments:
+        role_units[assignment.role].add(assignment.unit_id)
+
+    protected_roles = (
+        OuterRole.DEVELOPMENT,
+        OuterRole.OUTER_MONITOR,
+        OuterRole.UNCERTAINTY_CALIBRATION,
+        OuterRole.LOCKED_INTERPOLATION_TEST,
     )
-    missing_purge = {
-        unit_id
-        for unit_id in expected_purge
-        if role_by_unit.get(unit_id) not in {OuterRole.PURGED, OuterRole.EXCLUDED}
-        and unit_id not in occupied
-    }
-    if missing_purge:
-        findings.append(
-            V7NeutralLeakageFinding(
-                code="missing_outer_purge_neighbors",
-                severity=V7LeakageSeverity.ERROR,
-                unit_ids=tuple(missing_purge),
-                frame_uids=(),
-                message="Temporal neighbors of outer evidence were not purged.",
-            )
-        )
-    protected_sets = {
-        role: set(outer_partition.units_for_role(role)) for role in _PROTECTED_OUTER_ROLES
-    }
-    roles = list(_PROTECTED_OUTER_ROLES)
-    for index, left in enumerate(roles):
-        for right in roles[index + 1 :]:
-            overlap = protected_sets[left] & protected_sets[right]
+    for left in protected_roles:
+        for right in protected_roles:
+            if left is right:
+                continue
+            overlap = role_units[left].intersection(role_units[right])
             if overlap:
                 findings.append(
-                    V7NeutralLeakageFinding(
-                        code="overlapping_protected_outer_roles",
-                        severity=V7LeakageSeverity.ERROR,
-                        unit_ids=tuple(overlap),
-                        frame_uids=(),
-                        message=f"Protected roles {left.value} and {right.value} share units.",
+                    NeutralLeakageFinding(
+                        severity=LeakageSeverity.ERROR,
+                        check_name="disjoint_protected_roles",
+                        message=f"Roles {left.value} and {right.value} share units.",
+                        involved_unit_ids=tuple(overlap),
                     )
                 )
-    return V7NeutralLeakageReport(
+
+    purge = active.role_budget.purge_units_between_roles
+    if purge > 0:
+        protected_outer = (
+            role_units[OuterRole.OUTER_MONITOR]
+            | role_units[OuterRole.UNCERTAINTY_CALIBRATION]
+            | role_units[OuterRole.LOCKED_INTERPOLATION_TEST]
+        )
+        expected_purge = _neighbor_unit_ids(
+            unit_catalog.units,
+            protected_outer,
+            purge,
+            temporal_index=temporal_index,
+        )
+        missing_purge = {
+            uid
+            for uid in expected_purge
+            if uid not in role_units[OuterRole.PURGED]
+            and uid not in protected_outer
+        }
+        if missing_purge:
+            findings.append(
+                NeutralLeakageFinding(
+                    severity=LeakageSeverity.ERROR,
+                    check_name="temporal_purge_between_roles",
+                    message="Same-run neighbor of outer evidence is not assigned to purged role.",
+                    involved_unit_ids=tuple(sorted(missing_purge)),
+                )
+            )
+
+    errors = sum(1 for item in findings if item.severity == LeakageSeverity.ERROR)
+    warnings = sum(1 for item in findings if item.severity == LeakageSeverity.WARNING)
+    return NeutralLeakageReport(
+        policy_digest=active.policy_digest,
         unit_catalog_digest=unit_catalog.content_digest,
         outer_partition_digest=outer_partition.content_digest,
         findings=tuple(findings),
+        passed=errors == 0,
+        error_count=errors,
+        warning_count=warnings,
     )
 
 
 @dataclass(frozen=True, slots=True)
-class V7NeutralStatisticalBase:
+class NeutralStatisticalBase:
     dataset_id: str
-    policy: V7NeutralPartitionPolicy
-    unit_catalog: V7NeutralUnitCatalog
-    feasibility: V7NeutralFeasibilityReport
-    outer_partition: V7NeutralOuterPartition
-    independence: V7NeutralIndependenceReport
-    leakage: V7NeutralLeakageReport
+    policy: NeutralPartitionPolicy
+    unit_catalog: NeutralUnitCatalog
+    feasibility: NeutralFeasibilityReport
+    outer_partition: NeutralOuterPartition
+    independence: NeutralIndependenceReport
+    leakage: NeutralLeakageReport
     notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.unit_catalog.dataset_id != self.dataset_id:
-            raise TrainingDataInputError("Neutral statistical base dataset mismatch.")
         if self.unit_catalog.policy_digest != self.policy.policy_digest:
             raise TrainingDataInputError("Neutral statistical base policy mismatch.")
         if self.feasibility.unit_catalog_digest != self.unit_catalog.content_digest:
@@ -1306,7 +1366,7 @@ class V7NeutralStatisticalBase:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_NEUTRAL_STATISTICAL_BASE_SCHEMA,
+            "schema": NEUTRAL_STATISTICAL_BASE_SCHEMA,
             "dataset_id": self.dataset_id,
             "policy": self.policy.to_dict(),
             "unit_catalog": self.unit_catalog.to_dict(),
@@ -1325,55 +1385,69 @@ class V7NeutralStatisticalBase:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7NeutralStatisticalBase":
-        if payload.get("schema") != V7_NEUTRAL_STATISTICAL_BASE_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 neutral-statistical-base schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NeutralStatisticalBase":
+        if payload.get("schema") != NEUTRAL_STATISTICAL_BASE_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported neutral-statistical-base schema.")
         result = cls(
             dataset_id=str(payload["dataset_id"]),
-            policy=V7NeutralPartitionPolicy.from_dict(payload["policy"]),
-            unit_catalog=V7NeutralUnitCatalog.from_dict(payload["unit_catalog"]),
-            feasibility=V7NeutralFeasibilityReport.from_dict(payload["feasibility"]),
-            outer_partition=V7NeutralOuterPartition.from_dict(payload["outer_partition"]),
-            independence=V7NeutralIndependenceReport.from_dict(payload["independence"]),
-            leakage=V7NeutralLeakageReport.from_dict(payload["leakage"]),
+            policy=NeutralPartitionPolicy.from_dict(payload["policy"]),
+            unit_catalog=NeutralUnitCatalog.from_dict(payload["unit_catalog"]),
+            feasibility=NeutralFeasibilityReport.from_dict(payload["feasibility"]),
+            outer_partition=NeutralOuterPartition.from_dict(payload["outer_partition"]),
+            independence=NeutralIndependenceReport.from_dict(payload["independence"]),
+            leakage=NeutralLeakageReport.from_dict(payload["leakage"]),
             notes=tuple(str(v) for v in payload.get("notes", ())),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 neutral-statistical-base digest mismatch.")
+            raise TrainingDataSerializationError("Neutral-statistical-base digest mismatch.")
         return result
 
 
-def build_v7_neutral_statistical_base(
-    source_catalog: Any,
-    frame_catalog: Any,
-    data4_bundle: Any,
+def build_neutral_statistical_base(
+    source_authority: SourceAuthority,
+    frame_authority: CanonicalFrameAuthority,
+    feature_evidence: NeutralFeatureEvidence,
     *,
-    policy: V7NeutralPartitionPolicy | None = None,
+    policy: NeutralPartitionPolicy | None = None,
     regime_by_frame_uid: Mapping[str, str] | None = None,
     user_labels_by_frame_uid: Mapping[str, Mapping[str, str]] | None = None,
-) -> V7NeutralStatisticalBase:
-    active = V7NeutralPartitionPolicy() if policy is None else policy
-    units = build_v7_neutral_unit_catalog(
-        source_catalog,
-        frame_catalog,
-        data4_bundle,
+) -> NeutralStatisticalBase:
+    """Build the current-generation neutral statistical base directly from current owners."""
+    if not isinstance(source_authority, SourceAuthority):
+        raise TrainingDataInputError(
+            "NeutralStatisticalBase requires a current-generation SourceAuthority."
+        )
+    if not isinstance(frame_authority, CanonicalFrameAuthority):
+        raise TrainingDataInputError(
+            "NeutralStatisticalBase requires a current-generation CanonicalFrameAuthority."
+        )
+    if not isinstance(feature_evidence, NeutralFeatureEvidence):
+        raise TrainingDataInputError(
+            "NeutralStatisticalBase requires a current-generation NeutralFeatureEvidence."
+        )
+
+    active = NeutralPartitionPolicy() if policy is None else policy
+    units = build_neutral_unit_catalog(
+        source_authority,
+        frame_authority,
+        feature_evidence,
         policy=active,
         regime_by_frame_uid=regime_by_frame_uid,
         user_labels_by_frame_uid=user_labels_by_frame_uid,
     )
-    feasibility = assess_v7_neutral_feasibility(units, policy=active)
-    outer = build_v7_neutral_outer_partition(units, feasibility, policy=active)
-    leakage = audit_v7_neutral_leakage(units, outer, policy=active)
-    return V7NeutralStatisticalBase(
-        dataset_id=frame_catalog.dataset_id,
+    feasibility = assess_neutral_feasibility(units, policy=active)
+    outer = build_neutral_outer_partition(units, feasibility, policy=active)
+    leakage = audit_neutral_leakage(units, outer, policy=active)
+    return NeutralStatisticalBase(
+        dataset_id=frame_authority.dataset_id,
         policy=active,
         unit_catalog=units,
         feasibility=feasibility,
         outer_partition=outer,
-        independence=build_v7_independence_report(units),
+        independence=build_independence_report(units),
         leakage=leakage,
         notes=(
-            "V7 neutral statistical base owns correlation/partition units and protected outer roles. "
+            "Neutral statistical base owns correlation/partition units and protected outer roles. "
             "It does not construct a cross-validation plan and does not partition by compatibility grouping.",
         ),
     )

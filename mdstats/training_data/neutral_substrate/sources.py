@@ -1,4 +1,4 @@
-"""V7 source authority: precise provenance without compatibility eligibility."""
+"""Neutral source authority: precise provenance without compatibility eligibility."""
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ from ..labels import (
 )
 from ..sources import TrainingDataSource, TrainingDataSourceCatalog
 
-V7_SOURCE_RECORD_SCHEMA = "mdstats.v7-source-record.v1"
-V7_PROVENANCE_DIAGNOSTICS_SCHEMA = "mdstats.v7-provenance-diagnostics.v1"
-V7_ADVISORY_COMPATIBILITY_REPORT_SCHEMA = "mdstats.v7-advisory-compatibility-report.v1"
-V7_SOURCE_AUTHORITY_SCHEMA = "mdstats.v7-source-authority.v1"
+SOURCE_RECORD_SCHEMA = "mdstats.source-record.v1"
+PROVENANCE_DIAGNOSTICS_SCHEMA = "mdstats.provenance-diagnostics.v1"
+ADVISORY_COMPATIBILITY_REPORT_SCHEMA = "mdstats.advisory-compatibility-report.v1"
+SOURCE_AUTHORITY_SCHEMA = "mdstats.source-authority.v1"
 
 
 def _source_is_mechanically_usable(source: TrainingDataSource) -> tuple[bool, tuple[str, ...]]:
@@ -60,7 +60,7 @@ def _fingerprint_dimension_values(
 
 
 @dataclass(frozen=True, slots=True)
-class V7SourceRecord:
+class SourceRecord:
     run_id: str
     source_locator: str
     source_identity_signature: str
@@ -80,7 +80,7 @@ class V7SourceRecord:
 
     def __post_init__(self) -> None:
         if not self.run_id.strip() or not self.source_locator.strip():
-            raise TrainingDataInputError("V7 source run_id and source_locator must be non-empty.")
+            raise TrainingDataInputError("Source run_id and source_locator must be non-empty.")
         object.__setattr__(
             self,
             "source_identity_signature",
@@ -98,9 +98,9 @@ class V7SourceRecord:
             tuple(str(code) for code in self.mechanical_rejection_codes),
         )
         if self.target_usable and self.mechanical_rejection_codes:
-            raise TrainingDataInputError("Usable V7 sources cannot carry mechanical rejection codes.")
+            raise TrainingDataInputError("Usable sources cannot carry mechanical rejection codes.")
         if not self.target_usable and not self.mechanical_rejection_codes:
-            raise TrainingDataInputError("Unusable V7 sources require mechanical rejection codes.")
+            raise TrainingDataInputError("Unusable sources require mechanical rejection codes.")
 
     @property
     def composition(self) -> Any:
@@ -112,7 +112,7 @@ class V7SourceRecord:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_SOURCE_RECORD_SCHEMA,
+            "schema": SOURCE_RECORD_SCHEMA,
             "run_id": self.run_id,
             "source_locator": self.source_locator,
             "source_identity_signature": self.source_identity_signature,
@@ -139,9 +139,9 @@ class V7SourceRecord:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7SourceRecord":
-        if payload.get("schema") != V7_SOURCE_RECORD_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 source-record schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SourceRecord":
+        if payload.get("schema") != SOURCE_RECORD_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported source-record schema.")
         result = cls(
             run_id=str(payload["run_id"]),
             source_locator=str(payload["source_locator"]),
@@ -169,13 +169,13 @@ class V7SourceRecord:
             ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 source-record digest mismatch.")
+            raise TrainingDataSerializationError("Source-record digest mismatch.")
         return result
 
 
-def v7_source_record_from_data2(source: TrainingDataSource) -> V7SourceRecord:
+def source_record_from_data2(source: TrainingDataSource) -> SourceRecord:
     usable, reasons = _source_is_mechanically_usable(source)
-    return V7SourceRecord(
+    return SourceRecord(
         run_id=source.run_id,
         source_locator=source.source_locator,
         source_identity_signature=source.source_identity_signature,
@@ -196,7 +196,7 @@ def v7_source_record_from_data2(source: TrainingDataSource) -> V7SourceRecord:
 
 
 @dataclass(frozen=True, slots=True)
-class V7ProvenanceDiagnostics:
+class ProvenanceDiagnostics:
     fingerprint_counts: tuple[tuple[str, int], ...]
     unresolved_or_partial_source_ids: tuple[str, ...]
     varying_dimensions: tuple[str, ...]
@@ -226,7 +226,7 @@ class V7ProvenanceDiagnostics:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_PROVENANCE_DIAGNOSTICS_SCHEMA,
+            "schema": PROVENANCE_DIAGNOSTICS_SCHEMA,
             "fingerprint_counts": dict(self.fingerprint_counts),
             "unresolved_or_partial_source_ids": list(self.unresolved_or_partial_source_ids),
             "varying_dimensions": list(self.varying_dimensions),
@@ -242,9 +242,9 @@ class V7ProvenanceDiagnostics:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7ProvenanceDiagnostics":
-        if payload.get("schema") != V7_PROVENANCE_DIAGNOSTICS_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 provenance-diagnostics schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProvenanceDiagnostics":
+        if payload.get("schema") != PROVENANCE_DIAGNOSTICS_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported provenance-diagnostics schema.")
         result = cls(
             fingerprint_counts=tuple(
                 (str(k), int(v)) for k, v in payload.get("fingerprint_counts", {}).items()
@@ -259,11 +259,11 @@ class V7ProvenanceDiagnostics:
             notes=tuple(str(item) for item in payload.get("notes", ())),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 provenance-diagnostics digest mismatch.")
+            raise TrainingDataSerializationError("Provenance-diagnostics digest mismatch.")
         return result
 
 
-def build_v7_provenance_diagnostics(records: Sequence[V7SourceRecord]) -> V7ProvenanceDiagnostics:
+def build_provenance_diagnostics(records: Sequence[SourceRecord]) -> ProvenanceDiagnostics:
     fingerprint_counts: dict[str, int] = {}
     channel_counts: dict[str, int] = {}
     unresolved: list[str] = []
@@ -289,7 +289,7 @@ def build_v7_provenance_diagnostics(records: Sequence[V7SourceRecord]) -> V7Prov
             "Unresolved or partial electronic-structure provenance is reported and does not "
             "block target-usable membership.",
         )
-    return V7ProvenanceDiagnostics(
+    return ProvenanceDiagnostics(
         fingerprint_counts=tuple(fingerprint_counts.items()),
         unresolved_or_partial_source_ids=tuple(unresolved),
         varying_dimensions=varying,
@@ -299,7 +299,7 @@ def build_v7_provenance_diagnostics(records: Sequence[V7SourceRecord]) -> V7Prov
 
 
 @dataclass(frozen=True, slots=True)
-class V7AdvisoryCompatibilityReport:
+class AdvisoryCompatibilityReport:
     """Non-authoritative compatibility grouping used only for diagnostics."""
 
     policy_digest: str
@@ -320,7 +320,7 @@ class V7AdvisoryCompatibilityReport:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_ADVISORY_COMPATIBILITY_REPORT_SCHEMA,
+            "schema": ADVISORY_COMPATIBILITY_REPORT_SCHEMA,
             "policy_digest": self.policy_digest,
             "source_group_ids": [[run_id, group_id] for run_id, group_id in self.source_group_ids],
             "unresolved_source_ids": list(self.unresolved_source_ids),
@@ -334,10 +334,10 @@ class V7AdvisoryCompatibilityReport:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7AdvisoryCompatibilityReport":
-        if payload.get("schema") != V7_ADVISORY_COMPATIBILITY_REPORT_SCHEMA:
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AdvisoryCompatibilityReport":
+        if payload.get("schema") != ADVISORY_COMPATIBILITY_REPORT_SCHEMA:
             raise TrainingDataSerializationError(
-                "Unsupported V7 advisory-compatibility-report schema."
+                "Unsupported advisory-compatibility-report schema."
             )
         result = cls(
             policy_digest=str(payload["policy_digest"]),
@@ -349,16 +349,16 @@ class V7AdvisoryCompatibilityReport:
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
-                "V7 advisory-compatibility-report digest mismatch."
+                "Advisory-compatibility-report digest mismatch."
             )
         return result
 
 
-def build_v7_advisory_compatibility_report(
-    records: Sequence[V7SourceRecord],
+def build_advisory_compatibility_report(
+    records: Sequence[SourceRecord],
     *,
     policy: LabelCompatibilityPolicy | None = None,
-) -> V7AdvisoryCompatibilityReport:
+) -> AdvisoryCompatibilityReport:
     active = LabelCompatibilityPolicy() if policy is None else policy
     catalog = build_label_domain_catalog(
         {item.run_id: item.electronic_structure for item in records},
@@ -367,7 +367,7 @@ def build_v7_advisory_compatibility_report(
     groups: list[tuple[str, str | None]] = []
     for record in records:
         groups.append((record.run_id, catalog.domain_for_source(record.run_id)))
-    return V7AdvisoryCompatibilityReport(
+    return AdvisoryCompatibilityReport(
         policy_digest=active.policy_digest,
         source_group_ids=tuple(groups),
         unresolved_source_ids=tuple(catalog.unresolved_source_ids),
@@ -375,16 +375,16 @@ def build_v7_advisory_compatibility_report(
 
 
 @dataclass(frozen=True, slots=True)
-class V7SourceAuthority:
+class SourceAuthority:
     dataset_id: str
     manifest_digest: str
     energy_policy_digest: str
-    sources: tuple[V7SourceRecord, ...]
-    provenance_diagnostics: V7ProvenanceDiagnostics
-    advisory_compatibility: V7AdvisoryCompatibilityReport
+    sources: tuple[SourceRecord, ...]
+    provenance_diagnostics: ProvenanceDiagnostics
+    advisory_compatibility: AdvisoryCompatibilityReport
     atomic_reference_identifiability: AtomicReferenceIdentifiabilityReport
     notes: tuple[str, ...] = ()
-    _by_run_id: dict[str, V7SourceRecord] = field(
+    _by_run_id: dict[str, SourceRecord] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
 
@@ -393,12 +393,12 @@ class V7SourceAuthority:
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
         sources = tuple(sorted(self.sources, key=lambda item: item.run_id))
         if len({item.run_id for item in sources}) != len(sources):
-            raise TrainingDataInputError("V7 source run IDs must be unique.")
+            raise TrainingDataInputError("Source run IDs must be unique.")
         object.__setattr__(self, "sources", sources)
         object.__setattr__(self, "notes", tuple(str(item) for item in self.notes))
         object.__setattr__(self, "_by_run_id", {item.run_id: item for item in sources})
 
-    def source(self, run_id: str) -> V7SourceRecord:
+    def source(self, run_id: str) -> SourceRecord:
         try:
             return self._by_run_id[run_id]
         except KeyError:
@@ -410,7 +410,7 @@ class V7SourceAuthority:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": V7_SOURCE_AUTHORITY_SCHEMA,
+            "schema": SOURCE_AUTHORITY_SCHEMA,
             "dataset_id": self.dataset_id,
             "manifest_digest": self.manifest_digest,
             "energy_policy_digest": self.energy_policy_digest,
@@ -432,18 +432,18 @@ class V7SourceAuthority:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "V7SourceAuthority":
-        if payload.get("schema") != V7_SOURCE_AUTHORITY_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported V7 source-authority schema.")
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SourceAuthority":
+        if payload.get("schema") != SOURCE_AUTHORITY_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported source-authority schema.")
         result = cls(
             dataset_id=str(payload["dataset_id"]),
             manifest_digest=str(payload["manifest_digest"]),
             energy_policy_digest=str(payload["energy_policy_digest"]),
-            sources=tuple(V7SourceRecord.from_dict(item) for item in payload["sources"]),
-            provenance_diagnostics=V7ProvenanceDiagnostics.from_dict(
+            sources=tuple(SourceRecord.from_dict(item) for item in payload["sources"]),
+            provenance_diagnostics=ProvenanceDiagnostics.from_dict(
                 payload["provenance_diagnostics"]
             ),
-            advisory_compatibility=V7AdvisoryCompatibilityReport.from_dict(
+            advisory_compatibility=AdvisoryCompatibilityReport.from_dict(
                 payload["advisory_compatibility"]
             ),
             atomic_reference_identifiability=AtomicReferenceIdentifiabilityReport.from_dict(
@@ -452,11 +452,11 @@ class V7SourceAuthority:
             notes=tuple(str(item) for item in payload.get("notes", ())),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError("V7 source-authority digest mismatch.")
+            raise TrainingDataSerializationError("Source-authority digest mismatch.")
         return result
 
 
-def build_v7_source_authority(
+def build_source_authority(
     sources: Sequence[TrainingDataSource],
     *,
     dataset_id: str,
@@ -464,10 +464,10 @@ def build_v7_source_authority(
     energy_policy_digest: str,
     atomic_reference_policy: AtomicReferenceIdentifiabilityPolicy | None = None,
     advisory_compatibility_policy: LabelCompatibilityPolicy | None = None,
-) -> V7SourceAuthority:
-    records = tuple(v7_source_record_from_data2(item) for item in sources)
+) -> SourceAuthority:
+    records = tuple(source_record_from_data2(item) for item in sources)
     if not records:
-        raise TrainingDataInputError("V7 source authority requires at least one source.")
+        raise TrainingDataInputError("Source authority requires at least one source.")
     source_by_id = {item.run_id: item for item in sources}
     usable = [item for item in records if item.target_usable]
     compositions = {
@@ -482,31 +482,31 @@ def build_v7_source_authority(
     atomic_report = analyze_atomic_reference_identifiability(
         compositions, policy=atomic_active
     )
-    return V7SourceAuthority(
+    return SourceAuthority(
         dataset_id=dataset_id,
         manifest_digest=manifest_digest,
         energy_policy_digest=energy_policy_digest,
         sources=records,
-        provenance_diagnostics=build_v7_provenance_diagnostics(records),
-        advisory_compatibility=build_v7_advisory_compatibility_report(
+        provenance_diagnostics=build_provenance_diagnostics(records),
+        advisory_compatibility=build_advisory_compatibility_report(
             records, policy=advisory_compatibility_policy
         ),
         atomic_reference_identifiability=atomic_report,
         notes=(
-            "V7 source authority records precise provenance and corpus-level atomic-reference "
+            "Source authority records precise provenance and corpus-level atomic-reference "
             "identifiability. Compatibility grouping is advisory only and is not a training "
             "eligibility or identity axis.",
         ),
     )
 
 
-def build_v7_source_authority_from_data2_catalog(
+def build_source_authority_from_data2_catalog(
     catalog: TrainingDataSourceCatalog,
     *,
     atomic_reference_policy: AtomicReferenceIdentifiabilityPolicy | None = None,
     advisory_compatibility_policy: LabelCompatibilityPolicy | None = None,
-) -> V7SourceAuthority:
-    return build_v7_source_authority(
+) -> SourceAuthority:
+    return build_source_authority(
         catalog.sources,
         dataset_id=catalog.dataset_id,
         manifest_digest=catalog.manifest_digest,
