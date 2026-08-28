@@ -10,7 +10,9 @@ from .frame_authority import (
     CANONICAL_FRAME_RECORD_SCHEMA,
     CanonicalFrameAuthority,
     CanonicalFrameRecord,
+    build_canonical_frame_authority,
     build_canonical_frame_authority_from_data3_catalog,
+    build_vasp_canonical_frame_authority,
 )
 from .identity import (
     CANONICAL_FRAME_IDENTITY_SCHEMA,
@@ -115,6 +117,7 @@ __all__ = (
     "assess_neutral_feasibility",
     "audit_neutral_leakage",
     "build_advisory_compatibility_report",
+    "build_canonical_frame_authority",
     "build_canonical_frame_authority_from_data3_catalog",
     "build_canonical_frame_identity",
     "build_independence_report",
@@ -125,6 +128,7 @@ __all__ = (
     "build_provenance_diagnostics",
     "build_source_authority",
     "build_source_authority_from_data2_catalog",
+    "build_vasp_canonical_frame_authority",
     "canonical_training_label_payload_digest",
     "source_record_from_data2",
 )

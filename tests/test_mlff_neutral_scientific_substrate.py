@@ -34,14 +34,19 @@ from mdstats.training_data.neutral_substrate import (
     NeutralUnitCatalog,
     SourceAuthority,
     SourceRecord,
+    build_advisory_compatibility_report,
+    build_canonical_frame_authority,
     build_canonical_frame_authority_from_data3_catalog,
     build_canonical_frame_identity,
+    build_independence_report,
     build_neutral_feature_evidence_from_data4_bundle,
     build_neutral_outer_partition,
     build_neutral_statistical_base,
     build_neutral_unit_catalog,
+    build_provenance_diagnostics,
     build_source_authority,
     build_source_authority_from_data2_catalog,
+    build_vasp_canonical_frame_authority,
     canonical_training_label_payload_digest,
     source_record_from_data2,
 )
@@ -281,8 +286,9 @@ def _build_full_neutral_chain(
     source_auth = build_source_authority_from_data2_catalog(
         source_cat, advisory_compatibility_policy=advisory_policy
     )
-    frame_auth = build_canonical_frame_authority_from_data3_catalog(
-        source_auth, frames_cat
+    frame_auth = build_vasp_canonical_frame_authority(
+        source_auth,
+        base_directory=tmp_path,
     )
     feature_ev = build_neutral_feature_evidence_from_data4_bundle(
         source_auth, frame_auth, data4
@@ -493,15 +499,50 @@ def test_p1c_canonical_labels_reject_non_finite_numerics() -> None:
         )
 
 
-def test_p1c_canonical_frame_authority_round_trip(tmp_path: Path) -> None:
-    _manifest, sources, frames, _data4 = _data4_bundle(tmp_path)
+def test_p1c_canonical_frame_authority_from_real_arrays(tmp_path: Path) -> None:
+    """Test canonical frame authority constructed from real VASP/FrameData arrays."""
+    _write(tmp_path, "run_real", ("Li", "O"), n_frames=8, tebeg=600)
+    manifest = mdstats.TrainingDataManifest(
+        dataset_id="canonical-real",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="run_real",
+                vasprun="run_real/vasprun.xml",
+                reference_group="bulk",
+                assertions=(("regime", "production"),),
+            ),
+        ),
+    )
+    sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
     source_auth = build_source_authority_from_data2_catalog(sources)
-    frame_auth = build_canonical_frame_authority_from_data3_catalog(source_auth, frames)
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
 
     assert frame_auth.source_authority_digest == source_auth.content_digest
-    assert len(frame_auth.frames) == len(frames.frames)
+    assert len(frame_auth.frames) == 8
     assert frame_auth.to_dict()["schema"] == "mdstats.canonical-frame-authority.v1"
     assert "label_domain_id" not in json.dumps(frame_auth.to_dict())
+
+    # Verify that canonical label digests were computed from actual array values
+    first_frame = frame_auth.frames[0]
+    from mdstats.io import read_vasp_frames, read_vasp_run_controls
+
+    path = tmp_path / "run_real/vasprun.xml"
+    collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
+    bundle = read_vasp_run_controls(path)
+    channel = bundle.energy_catalog.channel("e_fr_energy")
+    expected_digest = canonical_training_label_payload_digest(
+        selected_energy_channel="e_fr_energy",
+        energy_semantic_role=source_auth.source("run_real").selected_energy_semantic_role,
+        energy_units=source_auth.source("run_real").selected_energy_units,
+        energy_normalization="extensive",
+        entropy_convention="electronic_entropy_included",
+        energy_ev=channel.as_array()[0],
+        forces_ev_per_angstrom=collection.forces[0],
+        stress_ev_per_angstrom3=collection.stresses[0],
+        derivative_convention_digest=source_auth.source("run_real").electronic_structure.derivative_convention.content_digest,
+    )
+    assert first_frame.canonical_label_payload_digest == expected_digest
 
     rebuilt = CanonicalFrameAuthority.from_dict(json.loads(json.dumps(frame_auth.to_dict())))
     assert rebuilt.content_digest == frame_auth.content_digest
@@ -514,9 +555,9 @@ def test_p1c_canonical_frame_authority_round_trip(tmp_path: Path) -> None:
 
 
 def test_p1d_neutral_feature_evidence_assembly_and_round_trip(tmp_path: Path) -> None:
-    _manifest, sources, frames, data4 = _data4_bundle(tmp_path)
+    _manifest, sources, _frames, data4 = _data4_bundle(tmp_path)
     source_auth = build_source_authority_from_data2_catalog(sources)
-    frame_auth = build_canonical_frame_authority_from_data3_catalog(source_auth, frames)
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
     feature_ev = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4)
 
     assert feature_ev.source_authority_digest == source_auth.content_digest
@@ -531,11 +572,75 @@ def test_p1d_neutral_feature_evidence_assembly_and_round_trip(tmp_path: Path) ->
     assert feature_ev.to_dict()["schema"] == "mdstats.neutral-feature-evidence.v1"
 
 
+def test_p1d_lta_typed_profile_rebinding(tmp_path: Path) -> None:
+    """Test typed rebinding of LtaPartitionFeatureCatalog to canonical frame authority."""
+    _manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path, n_frames=16)
+    source_auth = build_source_authority_from_data2_catalog(sources)
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
+
+    policy = mdstats.LtaPartitionProfilePolicy()
+    lta_records = tuple(
+        mdstats.LtaFramePartitionRecord(
+            frame_uid=f.frame_uid,
+            frame_record_digest=f.content_digest,  # legacy DATA3 digest
+            policy_digest=policy.policy_digest,
+            profile_status=mdstats.LtaProfileStatus.RESOLVED,
+            framework_integrity=True,
+            site_classes_present=("ring_8_on_center",),
+            ring_sizes_present=(8,),
+            coordination_change=False,
+            site_change=False,
+            ring_crossing=False,
+            mobile_state_count=0,
+        )
+        for f in legacy_frames.frames
+    )
+    legacy_lta = mdstats.LtaPartitionFeatureCatalog(
+        dataset_id=legacy_frames.dataset_id,
+        frame_catalog_digest=legacy_frames.content_digest,
+        policy=policy,
+        frame_records=lta_records,
+        mobile_states=(),
+    )
+    wrapped_legacy = mdstats.wrap_lta_partition_features(legacy_lta)
+
+    # Put wrapped_legacy into data4 with matching event linkage
+    events_with_lta = replace(
+        data4.events, profile_feature_catalog_digests=(wrapped_legacy.content_digest,)
+    )
+    data4_with_lta = replace(
+        data4, profile_partition_features=(wrapped_legacy,), events=events_with_lta
+    )
+
+    # Rebind through NeutralFeatureEvidence
+    feature_ev = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4_with_lta)
+    assert len(feature_ev.profile_partition_features) == 1
+    rebound_wrapper = feature_ev.profile_partition_features[0]
+
+    assert rebound_wrapper.frame_catalog_digest == frame_auth.content_digest
+    typed_rebound = rebound_wrapper.as_lta_partition()
+    assert typed_rebound.frame_catalog_digest == frame_auth.content_digest
+    assert rebound_wrapper.scientific_payload_digest == typed_rebound.content_digest
+
+    # Verify each frame record has canonical frame record digest
+    for r in typed_rebound.frame_records:
+        assert r.frame_record_digest == frame_auth.frame(r.frame_uid).content_digest
+
+    # Verify profile_partition_state_changed executes on rebound payload
+    uids = [f.frame_uid for f in frame_auth.frames]
+    changed = mdstats.profile_partition_state_changed(feature_ev.profile_partition_features, uids)
+    assert changed is False
+
+    # Round trip
+    rebuilt = NeutralFeatureEvidence.from_dict(json.loads(json.dumps(feature_ev.to_dict())))
+    assert rebuilt.content_digest == feature_ev.content_digest
+
+
 def test_p1d_neutral_statistical_base_assembled_chain_and_round_trip(tmp_path: Path) -> None:
-    manifest, sources, frames, data4 = _data4_bundle(tmp_path)
+    _manifest, sources, _frames, data4 = _data4_bundle(tmp_path)
     policy = _neutral_policy()
     source_auth = build_source_authority_from_data2_catalog(sources)
-    frame_auth = build_canonical_frame_authority_from_data3_catalog(source_auth, frames)
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
     feature_ev = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4)
     base = build_neutral_statistical_base(source_auth, frame_auth, feature_ev, policy=policy)
 
@@ -577,9 +682,9 @@ def test_p1d_neutral_statistical_base_assembled_chain_and_round_trip(tmp_path: P
 
 
 def test_p1d_neutral_base_rejects_legacy_and_mismatched_authorities(tmp_path: Path) -> None:
-    _manifest, sources, frames, data4 = _data4_bundle(tmp_path)
+    _manifest, sources, legacy_frames, data4 = _data4_bundle(tmp_path)
     source_auth = build_source_authority_from_data2_catalog(sources)
-    frame_auth = build_canonical_frame_authority_from_data3_catalog(source_auth, frames)
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
     feature_ev = build_neutral_feature_evidence_from_data4_bundle(source_auth, frame_auth, data4)
 
     # Reject passing legacy DATA2/DATA3/DATA4 objects
@@ -587,20 +692,12 @@ def test_p1d_neutral_base_rejects_legacy_and_mismatched_authorities(tmp_path: Pa
         build_neutral_statistical_base(sources, frame_auth, feature_ev)
 
     with pytest.raises(mdstats.TrainingDataInputError, match="CanonicalFrameAuthority"):
-        build_neutral_statistical_base(source_auth, frames, feature_ev)
+        build_neutral_statistical_base(source_auth, legacy_frames, feature_ev)
 
     with pytest.raises(mdstats.TrainingDataInputError, match="NeutralFeatureEvidence"):
         build_neutral_statistical_base(source_auth, frame_auth, data4)
 
     # Reject mismatched lineage
-    mismatched_sources = build_source_authority_from_data2_catalog(
-        sources,
-        advisory_compatibility_policy=mdstats.LabelCompatibilityPolicy(
-            numerical_differences_are_quality_flags=False,
-        ),
-    )
-    # mismatched_sources has different advisory report, but wait, its content_digest is same.
-    # Let's create an authority with different dataset_id or different manifest_digest
     tampered_source = replace(source_auth, manifest_digest=_digest())
     with pytest.raises(mdstats.TrainingDataInputError, match="Frame authority does not match"):
         build_neutral_unit_catalog(tampered_source, frame_auth, feature_ev)
@@ -611,8 +708,40 @@ def test_p1d_neutral_base_rejects_legacy_and_mismatched_authorities(tmp_path: Pa
 # =========================================================================
 
 
+def test_p1e_real_owner_integration(tmp_path: Path) -> None:
+    """P1-E1: Required real-owner integration through the actual P1 owner chain."""
+    _write(tmp_path, "run_e1", ("Li", "O"), n_frames=32, tebeg=650)
+    manifest = mdstats.TrainingDataManifest(
+        dataset_id="p1-e1",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="run_e1",
+                vasprun="run_e1/vasprun.xml",
+                reference_group="bulk",
+                assertions=(("regime", "production"),),
+            ),
+        ),
+    )
+    auth, frame, feat, base = _build_full_neutral_chain(
+        manifest, tmp_path, partition_policy=_neutral_policy()
+    )
+
+    assert isinstance(auth, SourceAuthority)
+    assert isinstance(frame, CanonicalFrameAuthority)
+    assert isinstance(feat, NeutralFeatureEvidence)
+    assert isinstance(base, NeutralStatisticalBase)
+
+    assert frame.source_authority_digest == auth.content_digest
+    assert feat.source_authority_digest == auth.content_digest
+    assert feat.frame_authority_digest == frame.content_digest
+    assert base.unit_catalog.source_authority_digest == auth.content_digest
+    assert base.unit_catalog.frame_authority_digest == frame.content_digest
+    assert base.unit_catalog.feature_evidence_digest == feat.content_digest
+
+
 def test_p1e_compatibility_policy_invariance_proof(tmp_path: Path) -> None:
-    """Prove that changing advisory compatibility grouping policy leaves all scientific identities identical."""
+    """P1-E2: Changing advisory compatibility grouping policy leaves all scientific identities identical."""
     _write(tmp_path, "li", ("Li", "O"), n_frames=32, tebeg=600, ediff=1.0e-5)
     _write(tmp_path, "na", ("Na", "O"), n_frames=32, tebeg=700, ediff=1.0e-6)
     manifest = mdstats.TrainingDataManifest(
@@ -660,6 +789,9 @@ def test_p1e_compatibility_policy_invariance_proof(tmp_path: Path) -> None:
 
     assert frame1.content_digest == frame2.content_digest
     assert [f.content_digest for f in frame1.frames] == [f.content_digest for f in frame2.frames]
+    assert [f.canonical_label_payload_digest for f in frame1.frames] == [
+        f.canonical_label_payload_digest for f in frame2.frames
+    ]
     assert frame1.duplicates.content_digest == frame2.duplicates.content_digest
 
     assert feat1.content_digest == feat2.content_digest
@@ -672,21 +804,117 @@ def test_p1e_compatibility_policy_invariance_proof(tmp_path: Path) -> None:
     assert base1.content_digest == base2.content_digest
 
 
-def test_p1e_scientific_change_sensitivity_proof(tmp_path: Path) -> None:
-    """Prove that changing real canonical numerical values invalidates the scientific lineage."""
-    first = build_canonical_frame_identity(**_identity_kwargs())
-    changed = build_canonical_frame_identity(**_identity_kwargs(energy_ev=-9.5))
+def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> None:
+    """P1-E3: Assembled numerical-change sensitivity proof through the real builder."""
+    _write(tmp_path, "run_base", ("Li", "O"), n_frames=16, tebeg=600)
+    manifest = mdstats.TrainingDataManifest(
+        dataset_id="sensitivity",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="run_base",
+                vasprun="run_base/vasprun.xml",
+                reference_group="bulk",
+                assertions=(("regime", "production"),),
+            ),
+        ),
+    )
+    sources = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
+    source_auth = build_source_authority_from_data2_catalog(sources)
+    frame_auth1 = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
 
-    assert first.canonical_label_payload_digest != changed.canonical_label_payload_digest
-    assert first.labeled_configuration_fingerprint != changed.labeled_configuration_fingerprint
-    assert first.content_digest != changed.content_digest
+    # Now load FrameData and alter one energy value
+    from mdstats.io import read_vasp_frames, read_vasp_run_controls
+    path = tmp_path / "run_base/vasprun.xml"
+    bundle = read_vasp_run_controls(path)
+    collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
+    channel = bundle.energy_catalog.channel("e_fr_energy")
+    energies_modified = channel.as_array().copy()
+    energies_modified[0] = -99.9  # change frame 0 energy
+
+    frame_data_mod = {
+        "run_base": mdstats.FrameData.from_collection(
+            collection,
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            energies_ev=energies_modified,
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    frame_auth2 = build_canonical_frame_authority(source_auth, frame_data_mod)
+
+    # Frame 0 must change
+    assert frame_auth1.frames[0].canonical_label_payload_digest != frame_auth2.frames[0].canonical_label_payload_digest
+    assert frame_auth1.frames[0].labeled_configuration_fingerprint != frame_auth2.frames[0].labeled_configuration_fingerprint
+    assert frame_auth1.content_digest != frame_auth2.content_digest
+
+    # Frame 1 has same energy, so its label digest is unchanged
+    assert frame_auth1.frames[1].canonical_label_payload_digest == frame_auth2.frames[1].canonical_label_payload_digest
+
+
+def test_p1e_unresolved_provenance_assembled_proof(tmp_path: Path) -> None:
+    """P1-E4: Unresolved provenance traverses the full current-generation owner chain without label_domain_id."""
+    _write(tmp_path, "unresolved_run", ("Li", "O"), n_frames=32, unresolved_gga=True, tebeg=700)
+    manifest = mdstats.TrainingDataManifest(
+        dataset_id="unresolved-assembled",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id="unresolved_run",
+                vasprun="unresolved_run/vasprun.xml",
+                reference_group="bulk",
+                assertions=(("regime", "production"),),
+            ),
+        ),
+    )
+    sources = mdstats.build_training_data_source_catalog(
+        manifest,
+        base_directory=tmp_path,
+        source_policy=mdstats.SourceAuditPolicy(fail_on_unresolved_label_domain=False),
+    )
+    source_auth = build_source_authority_from_data2_catalog(sources)
+    assert "unresolved_run" in source_auth.provenance_diagnostics.unresolved_or_partial_source_ids
+
+    frame_auth = build_vasp_canonical_frame_authority(source_auth, base_directory=tmp_path)
+    assert len(frame_auth.frames) == 32
+    assert "label_domain_id" not in json.dumps(frame_auth.to_dict())
+
+    path = tmp_path / "unresolved_run/vasprun.xml"
+    from mdstats.io import read_vasp_frames, read_vasp_run_controls
+
+    collection = read_vasp_frames(path, strict=True, assess_quality=False, assess_stationarity=False, assess_admissibility=False)
+    bundle = read_vasp_run_controls(path)
+    channel = bundle.energy_catalog.channel("e_fr_energy")
+    frame_data = {
+        "unresolved_run": mdstats.FrameData.from_collection(
+            collection,
+            source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
+            energies_ev=channel.as_array(),
+            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+        )
+    }
+    raw = mdstats.build_raw_feature_catalog(source_auth, frame_auth, frame_data)
+    events = mdstats.detect_full_resolution_events(
+        frame_auth,
+        raw,
+        policy=mdstats.EventDetectionPolicy(pre_frames=1, post_frames=1),
+    )
+    feature_ev = NeutralFeatureEvidence(
+        dataset_id=frame_auth.dataset_id,
+        source_authority_digest=source_auth.content_digest,
+        frame_authority_digest=frame_auth.content_digest,
+        raw_features=raw,
+        events=events,
+    )
+    stat_base = build_neutral_statistical_base(source_auth, frame_auth, feature_ev, policy=_neutral_policy())
+
+    assert stat_base.leakage.passed is True
+    assert stat_base.leakage.error_count == 0
 
 
 def test_p1e_naming_and_absence_proof() -> None:
-    """Structurally verify that new code and schemas contain no v7_/V7 architecture prefix."""
+    """P1-E6: Structurally verify that new code and schemas contain no v7_/V7 architecture prefix."""
     import mdstats.training_data.neutral_substrate as ns
 
-    # Check exported symbol names
     for symbol in dir(ns):
         if symbol.startswith("_"):
             continue
@@ -694,13 +922,12 @@ def test_p1e_naming_and_absence_proof() -> None:
         assert not symbol.startswith("V7"), f"Symbol {symbol} starts with V7"
         assert not symbol.startswith("build_v7_"), f"Symbol {symbol} starts with build_v7_"
 
-    # Check source code of each submodule
     for mod in (ns, ns_sources, ns_identity, ns_frames, ns_features, ns_partition):
         src = inspect.getsource(mod)
         for line in src.splitlines():
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
-                continue  # ignore comments / docstrings
+                continue
             assert "mdstats.v7-" not in line, f"Found mdstats.v7- schema in {mod.__name__}: {line}"
             assert "build_v7_" not in line, f"Found build_v7_ in {mod.__name__}: {line}"
             assert "V7Source" not in line, f"Found V7Source in {mod.__name__}: {line}"
@@ -709,18 +936,16 @@ def test_p1e_naming_and_absence_proof() -> None:
 
 
 def test_p1e_runtime_isolation_proof(tmp_path: Path) -> None:
-    """Verify that current prepare/select-target-size runtime remains isolated from neutral substrate."""
+    """P1-E7: Verify that current prepare/select-target-size runtime remains isolated from neutral substrate."""
     _write(tmp_path, "li", ("Li", "O"), ediff=1.0e-5)
     _write(tmp_path, "na", ("Na", "O"), ediff=1.0e-6)
     _write(tmp_path, "k_lda", ("K", "O"), gga="91")
     manifest = mdstats.discover_vasp_manifest(tmp_path, dataset_id="legacy")
     catalog = mdstats.build_training_data_source_catalog(manifest, base_directory=tmp_path)
 
-    # Legacy runtime still assigns and uses label domains
     assert catalog.source("li").label_domain_id == catalog.source("na").label_domain_id
     assert catalog.source("k_lda").label_domain_id != catalog.source("li").label_domain_id
 
-    # Public runtime does not import neutral_substrate
     public = json.dumps(list(getattr(mdstats, "__all__", ())))
     training_init = Path(mdstats.training_data.__file__).read_text(encoding="utf-8")
     campaign = Path(campaign_cli.__file__).read_text(encoding="utf-8")
@@ -730,3 +955,4 @@ def test_p1e_runtime_isolation_proof(tmp_path: Path) -> None:
     assert "neutral_substrate" not in campaign
     assert "neutral_substrate" not in core
     assert "neutral_substrate" not in public
+
