@@ -17,11 +17,11 @@ Revision-4 baseline/evidence remain preserved unchanged.
 | Entry/P3 | accepted P3 revision 7 through P3A9 | **CLOSED / PRESERVED** |
 | P4-A | CampaignStore state, canonical generation, CAS, transition identity | **CLOSED / PRESERVED** |
 | P4-B | destructive regime cutover | **CLOSED / PRESERVED** |
-| P4-C2 | one canonical execution-root owner + real-runtime first-publication retention race | **OPEN** |
-| P4-D | production switch architecture | **CLOSED / AFFECTED REGRESSION REQUIRED** |
-| P4-E2 | current-terminal authority/currentness + terminal view/report sealing | **OPEN** |
-| P4-F | STOR/docs/structural integration | **CLOSED / AFFECTED REGRESSION REQUIRED** |
-| P4-G2 | final assembled affected-surface closure | **OPEN / BLOCKED ON C2+E2** |
+| P4-C2 | one canonical execution-root owner + real-runtime first-publication retention race | **CLOSED** |
+| P4-D | production switch architecture | **CLOSED** |
+| P4-E2 | current-terminal authority/currentness + terminal view/report sealing | **CLOSED** |
+| P4-F | STOR/docs/structural integration | **CLOSED** |
+| P4-G2 | final assembled affected-surface closure | **CLOSED** |
 
 ## Independent-review blockers routed to revision 6
 
@@ -90,3 +90,54 @@ real CampaignStore current revision -> full current terminal validation -> termi
 ```
 
 P4 metadata remains `status: active` and P5 remains blocked until both stages and fresh P4-G2 assembled closure pass.
+
+## Revision-6 execution and reclosure evidence
+
+### P4-C2: Canonical execution-root ownership & real-runtime first-publication race
+- **Implementation:**
+  - Created single leaf module `mdstats/training_data/campaign_target_size_paths.py` owning `target_size_execution_root()` and `target_size_execution_root_locator()`.
+  - Refactored `mdstats/training_data/campaign_target_size_runtime.py` and `mdstats/training_data/campaign_target_size_retention.py` to import and share the single canonical root owner, removing duplicate formulas and constants.
+- **Validation Tests:**
+  - `test_p4c_real_runtime_first_publication_retention_race` in `tests/test_mlff_target_size_p4c_cross_store_adoption.py`: drives real `select-target-size`, intercepts runtime root in `initialize_target_size_screen`, executes real STOR destructive authorization from an independent spawned process while SQLite is in `AUTHORITIES_BOUND` with no `execution_root`, proves 0 files deleted, and resumes screen to terminal completion.
+  - `test_p4c_canonical_root_owner_uniqueness`: verifies AST/import uniqueness and absence of hardcoded duplicate layout strings.
+- **Command & Output:**
+  ```bash
+  conda run -n mace pytest -n 16 tests/test_mlff_target_size_p4c_cross_store_adoption.py
+  # Result: 25 passed in 26.37s
+  ```
+
+### P4-E2: Current-terminal authority & view/report sealing
+- **Implementation:**
+  - Updated `load_validated_target_size_terminal_result` in `mdstats/training_data/campaign_target_size_terminal.py` to always load `current = require_current_target_size_runtime(store)`, validate `expected_revision` as an assertion token on `current`, and perform full-chain authentication on `current`.
+  - Updated `build_target_size_result_view` and `write_target_size_result_view` in `mdstats/training_data/campaign_target_size_view.py` to reject rendering terminal state without a matching `ValidatedTargetSizeTerminalResult`.
+  - Updated `_report_terminal_state` in `mdstats/training_data/campaign_target_size_runtime.py` to only accept `ValidatedTargetSizeTerminalResult`.
+- **Validation Tests:**
+  - `test_p4e_mandatory_historical_revision_cannot_masquerade_as_current`: proves historical terminal generation g1 is rejected after `prepare` creates g2.
+  - `test_p4e_mandatory_raw_historical_terminal_view_is_rejected`: proves raw g1 revision or mismatched validated result cannot render a terminal view.
+  - `test_p4e_mandatory_reporter_rejects_raw_terminal_projection`: proves raw projection cannot be reported.
+  - `test_p4e_structural_single_current_terminal_loader`: verifies single current terminal loader owner.
+- **Command & Output:**
+  ```bash
+  conda run -n mace pytest -n 16 tests/test_mlff_target_size_p4e_terminal_and_invalidation.py
+  # Result: 40 passed in 54.12s
+  ```
+
+### P4-G2: Final assembled affected-surface closure and regression
+- **Affected Suites Executed:**
+  ```bash
+  conda run -n mace pytest -n 16 \
+    tests/test_mlff_target_size_p4a_campaign_state_cas.py \
+    tests/test_mlff_target_size_p4b_regime_cutover.py \
+    tests/test_mlff_target_size_p4c_cross_store_adoption.py \
+    tests/test_mlff_target_size_p4d_runtime_cutover.py \
+    tests/test_mlff_target_size_p4e_terminal_and_invalidation.py \
+    tests/test_mlff_target_size_p4f_storage_docs_structure.py \
+    tests/test_mlff_target_size_p4g_assembled_integration.py \
+    tests/test_mlff_target_size_p3a9_head_pointer_reconciliation.py
+  # Result: 166 passed in 79.49s (0:01:19)
+  ```
+- **Structural and Semantic Integrity:**
+  - Exactly one canonical execution-root constructor shared across runtime and STOR.
+  - Exactly one canonical current-terminal loader enforcing CampaignStore currentness.
+  - Complete conformance with Protocol 5 dual-closure doctrine and frozen parent workplan.
+

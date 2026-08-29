@@ -928,110 +928,110 @@ def test_p4c_transitioning_campaign_protects_its_whole_execution_root(
         store.close()
 
 
-def test_p4c_first_publication_retention_fence_protects_root_before_open_attempt_transition(
-    tmp_path: Path,
+def test_p4c_real_runtime_first_publication_retention_race(
+    tmp_path: Path, monkeypatch
 ):
-    """P4-C1 mandatory acceptance: the canonical current-generation root is
-    protected by the production retention fence from the very first P3
-    publication, before any OPEN_ATTEMPT transition or head adoption is
-    recorded in SQLite.
+    """P4-C2 mandatory acceptance: drive the real select-target-size runtime,
+    intercept real initialize_target_size_screen with a synchronization wrapper,
+    observe the actual root argument passed by production runtime, prove SQLite
+    is still in AUTHORITIES_BOUND with no execution_root, and prove an independent
+    process running real STOR cleanup is denied deletion of the runtime-created root
+    and freshly published P3 files. Then resume and complete the screen.
     """
+    import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
+    import mdstats.training_data.target_size_execution as p3
 
-    env = _env(tmp_path, root_name=".mdstats/target-size/g1")
-    store = CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
-    aggregate = env["aggregate"]
-    transitioning = begin_target_size_cutover(store)
-    bound = bind_current_target_size_authorities(
-        store,
-        transitioning,
-        frame_authority_digest=aggregate.frame_authority_digest,
-        neutral_statistical_base_digest=aggregate.neutral_statistical_base_digest,
-        split_exclusion_digest=digest({"fixture": "split-exclusion"}),
-        policy_digest=aggregate.policy.content_digest,
-        experiment_definition_digest=aggregate.definition.content_digest,
-        aggregate_digest=aggregate.content_digest,
-        common_preparation_digest=env["common"].content_digest,
+    config, workspace = p4d._fixture_campaign(tmp_path)
+    assert p4d._run(config, "prepare") == 0
+
+    real_init = p3.initialize_target_size_screen
+    race_checked = False
+
+    def synchronized_init(root, aggregate, context, common):
+        nonlocal race_checked
+        window = real_init(root, aggregate, context, common)
+        observed_root = Path(root)
+
+        # 1. Assert CampaignStore is still AUTHORITIES_BOUND, no attempt, no execution_root:
+        store_check = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+        try:
+            persisted = load_target_size_campaign_revision(store_check)
+            assert persisted.state.lifecycle is TargetSizeLifecycle.AUTHORITIES_BOUND
+            assert persisted.state.execution_root is None
+            assert persisted.state.adopted_execution_head_digest is None
+        finally:
+            store_check.close()
+
+        # 2. Derive targets from the actual runtime observed root and published files:
+        published_files = sorted(observed_root.rglob("*.json"))
+        assert published_files, "P3 screen initialization produced no files"
+        targets = [str(observed_root)] + [str(p) for p in published_files]
+
+        # 3. Independent child process runs real STOR destructive cleanup authorization:
+        mp_context = multiprocessing.get_context("spawn")
+        queue = mp_context.Queue()
+        child = mp_context.Process(
+            target=_cleanup_race_child, args=(str(workspace), targets, queue)
+        )
+        child.start()
+        child.join(timeout=300)
+        assert child.exitcode == 0
+        deleted = queue.get(timeout=30)
+        assert deleted == [], f"STOR deleted protected first-publication files: {deleted}"
+
+        # 4. Verify all published files and root directory remain intact:
+        for p in published_files:
+            assert p.is_file(), f"File was deleted: {p}"
+        assert observed_root.is_dir()
+
+        race_checked = True
+        return window
+
+    monkeypatch.setattr(p3, "initialize_target_size_screen", synchronized_init)
+    harness = p4d._BoundedNumericalHarness()
+    assert (
+        p4d._run(
+            config,
+            "select-target-size",
+            _external_boundary_trainer=harness.train,
+            _external_inference_evaluator=harness.evaluate,
+        )
+        == 0
     )
-    current = complete_target_size_cutover(store, bound)
-    assert current.state.lifecycle is TargetSizeLifecycle.AUTHORITIES_BOUND
-    assert current.state.execution_root is None
-    assert current.state.adopted_execution_head_digest is None
-    store.close()
+    assert race_checked, "Real runtime first-publication race was not executed"
 
-    canonical_root = env["root"]
-    assert canonical_root == tmp_path / ".mdstats" / "target-size" / f"g{current.state.generation}"
-
-    # Real P3 screen initialization executes once beneath the canonical root:
-    from mdstats.training_data.target_size_execution import initialize_target_size_screen
-    window = initialize_target_size_screen(
-        canonical_root, aggregate, env["context"], env["common"]
-    )
-    assert window is not None
-    published_files = sorted(canonical_root.rglob("*.json"))
-    assert published_files, "P3 screen initialization produced no files"
-
-    # SQLite is still in AUTHORITIES_BOUND with no execution_root or attempt stored:
-    store_check = CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
-    persisted = load_target_size_campaign_revision(store_check)
-    store_check.close()
-    assert persisted.state.lifecycle is TargetSizeLifecycle.AUTHORITIES_BOUND
-    assert persisted.state.execution_root is None
-
-    # An independent process runs real STOR destructive authorization:
-    targets = [str(canonical_root)] + [str(p) for p in published_files]
-    context = multiprocessing.get_context("spawn")
-    queue = context.Queue()
-    child = context.Process(
-        target=_cleanup_race_child, args=(str(tmp_path), targets, queue)
-    )
-    child.start()
-    child.join(timeout=300)
-    assert child.exitcode == 0
-    deleted = queue.get(timeout=30)
-    assert deleted == [], f"STOR deleted protected first-publication files: {deleted}"
-
-    # Verify all published P3 files and directories are intact:
-    for p in published_files:
-        assert p.is_file(), f"File was deleted: {p}"
-    assert canonical_root.is_dir()
-
-    # The screen remains fully resumable and advances to head adoption:
-    store_resume = CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
+    # Verify campaign reached terminal state successfully after the race:
+    store_final = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
     try:
-        screen_active = commit_target_size_campaign_transition(
-            store_resume,
-            kind=TargetSizeTransitionKind.OPEN_ATTEMPT,
-            expected=current.expectation(),
-            successor=TargetSizeCampaignState(
-                regime=TargetSizeRegime.CURRENT,
-                generation=current.state.generation,
-                lifecycle=TargetSizeLifecycle.SCREEN_ACTIVE,
-                attempt=window.content_digest,
-                frame_authority_digest=current.state.frame_authority_digest,
-                neutral_statistical_base_digest=(
-                    current.state.neutral_statistical_base_digest
-                ),
-                split_exclusion_digest=current.state.split_exclusion_digest,
-                policy_digest=current.state.policy_digest,
-                experiment_definition_digest=current.state.experiment_definition_digest,
-                aggregate_digest=current.state.aggregate_digest,
-                execution_context_digest=env["context"].content_digest,
-                common_preparation_digest=env["common"].content_digest,
-                screen_window_digest=window.content_digest,
-                execution_root=f".mdstats/target-size/g{current.state.generation}",
-            ),
-        ).revision
-
-        # Complete one boundary and adopt the head:
-        batch0 = _execute_boundary(env, tmp_path, aggregate.reducer_state, 1)
-        head0 = commit_target_size_boundary_batch(
-            canonical_root, aggregate.definition, aggregate.reducer_state, batch0
+        final_revision = load_target_size_campaign_revision(store_final)
+        assert final_revision.state.lifecycle in (
+            TargetSizeLifecycle.TERMINAL_SELECTED,
+            TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
         )
-        after, adopted_head = reconcile_and_adopt_target_size_head(
-            store_resume, screen_active, root=canonical_root, authority=env["authority"]
-        )
-        assert adopted_head.content_digest == head0.content_digest
-        assert after.state.adopted_execution_head_digest == head0.content_digest
     finally:
-        store_resume.close()
+        store_final.close()
+
+
+def test_p4c_canonical_root_owner_uniqueness():
+    """P4-C2 structural requirement: runtime and retention must both import and use
+    the single canonical root owner from campaign_target_size_paths, with no local
+    duplicated path formulas or constants."""
+    from mdstats.training_data.campaign_target_size_paths import (
+        target_size_execution_root,
+        target_size_execution_root_locator,
+        TARGET_SIZE_EXECUTION_ROOT_NAME,
+    )
+
+    pkg_dir = Path(__file__).resolve().parents[1] / "mdstats" / "training_data"
+    runtime_text = (pkg_dir / "campaign_target_size_runtime.py").read_text(encoding="utf-8")
+    retention_text = (pkg_dir / "campaign_target_size_retention.py").read_text(encoding="utf-8")
+
+    # Both must import from campaign_target_size_paths:
+    assert "from .campaign_target_size_paths import" in runtime_text
+    assert "target_size_execution_root" in runtime_text
+    assert "from .campaign_target_size_paths import target_size_execution_root" in retention_text
+
+    # Retention must not hardcode TARGET_SIZE_EXECUTION_ROOT_NAME:
+    assert 'TARGET_SIZE_EXECUTION_ROOT_NAME = "target-size"' not in retention_text
+
 

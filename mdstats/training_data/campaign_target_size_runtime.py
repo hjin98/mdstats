@@ -41,8 +41,11 @@ import subprocess
 import sys
 
 from ._common import TrainingDataError, TrainingDataInputError
-
-TARGET_SIZE_EXECUTION_ROOT_NAME = "target-size"
+from .campaign_target_size_paths import (
+    TARGET_SIZE_EXECUTION_ROOT_NAME,
+    target_size_execution_root,
+    target_size_execution_root_locator,
+)
 
 
 class TargetSizeRuntimeError(TrainingDataError):
@@ -270,17 +273,8 @@ def build_current_target_size_authorities(
     )
 
 
-def current_target_size_execution_root(paths: Any, generation: int) -> Path:
-    """Campaign-owned durable execution root for one canonical generation."""
-
-    return (
-        Path(paths.internal) / TARGET_SIZE_EXECUTION_ROOT_NAME / f"g{int(generation)}"
-    )
-
-
-def current_target_size_execution_root_locator(paths: Any, generation: int) -> str:
-    root = current_target_size_execution_root(paths, generation)
-    return root.relative_to(Path(paths.workspace)).as_posix()
+current_target_size_execution_root = target_size_execution_root
+current_target_size_execution_root_locator = target_size_execution_root_locator
 
 
 # ---------------------------------------------------------------------------
@@ -943,16 +937,12 @@ def execute_current_select_target_size(
         TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
     ):
         validated = load_validated_target_size_terminal_result(
-            cfg, paths, store, revision=revision
-        )
-        resolver = TargetSizeExecutionResolver(
-            current_target_size_execution_root(paths, revision.state.generation)
+            cfg, paths, store, expected_revision=revision
         )
         write_target_size_result_view(
             paths.results / "target-size-state.json",
             revision,
-            resolver=resolver,
-            definition=validated.authorities.aggregate.definition,
+            validated_result=validated,
         )
         _report_terminal_state(validated)
         return 0
@@ -979,6 +969,7 @@ def execute_current_select_target_size(
         f"screening canonical generation {revision.state.generation}",
     )
     state = screen.aggregate.reducer_state
+    validated = None
     try:
         revision = commit_target_size_campaign_transition(
             store,
@@ -1067,12 +1058,8 @@ def execute_current_select_target_size(
             revision = commit_terminal_projection(
                 store, revision, head, definition=screen.aggregate.definition
             )
-            # Nothing is reported before the persisted projection has been
-            # re-derived from authenticated P2/P3 state.
-            validate_terminal_projection(
-                revision,
-                resolver=screen.authority.resolver,
-                definition=screen.aggregate.definition,
+            validated = load_validated_target_size_terminal_result(
+                cfg, paths, store, expected_revision=revision
             )
     except Exception as exc:
         _mark_stage(
@@ -1080,23 +1067,33 @@ def execute_current_select_target_size(
         )
         raise
 
-    write_target_size_result_view(
-        paths.results / "target-size-state.json",
-        revision,
-        resolver=screen.authority.resolver,
-        definition=screen.aggregate.definition,
-    )
-    _mark_stage(
-        store,
-        paths,
-        "target_size_selection",
-        StageState.COMPLETE if state.is_terminal else StageState.WAITING,
-        f"reducer status {state.status.value}",
-    )
-    revision = load_target_size_campaign_revision(store)
-    if revision.state.terminal is not None:
-        _report_terminal_state(revision.state.terminal)
+    if state.is_terminal and validated is not None:
+        write_target_size_result_view(
+            paths.results / "target-size-state.json",
+            revision,
+            validated_result=validated,
+        )
+        _mark_stage(
+            store,
+            paths,
+            "target_size_selection",
+            StageState.COMPLETE,
+            f"reducer status {state.status.value}",
+        )
+        _report_terminal_state(validated)
     else:
+        write_target_size_result_view(
+            paths.results / "target-size-state.json",
+            revision,
+            resolver=screen.authority.resolver,
+        )
+        _mark_stage(
+            store,
+            paths,
+            "target_size_selection",
+            StageState.WAITING,
+            f"reducer status {state.status.value}",
+        )
         print(
             f"Target-size screen is operationally resumable: reducer status "
             f"{state.status.value}. Re-run `select-target-size` to continue.",
@@ -1105,22 +1102,18 @@ def execute_current_select_target_size(
     return 0
 
 
-def _report_terminal_state(terminal_or_validated: Any) -> None:
+def _report_terminal_state(validated_result: Any) -> None:
     from .campaign_target_size_terminal import (
-        TargetSizeTerminalProjection,
         TargetSizeTerminalProjectionError,
         ValidatedTargetSizeTerminalResult,
     )
 
-    if isinstance(terminal_or_validated, ValidatedTargetSizeTerminalResult):
-        terminal = terminal_or_validated.projection
-    elif isinstance(terminal_or_validated, TargetSizeTerminalProjection):
-        terminal = terminal_or_validated
-    else:
+    if not isinstance(validated_result, ValidatedTargetSizeTerminalResult):
         raise TargetSizeTerminalProjectionError(
-            "Terminal state reporting requires a validated terminal result or projection, "
-            f"not {type(terminal_or_validated).__name__}."
+            "Terminal state reporting requires a ValidatedTargetSizeTerminalResult established "
+            f"from the current CampaignStore revision, not {type(validated_result).__name__}."
         )
+    terminal = validated_result.projection
     if terminal.is_selection:
         print(
             f"Target size is already selected and frozen: N={terminal.selected_target_size}.",

@@ -982,26 +982,162 @@ def test_p4e_mandatory8_terminal_view_bypass_negative(tmp_path: Path):
 
     config, workspace, _harness = _terminal_campaign(tmp_path)
     store = CampaignStore(_state_db(workspace))
+    cfg, paths = _load_config(config)
     try:
         revision = load_target_size_campaign_revision(store)
         assert revision.state.terminal is not None
 
-        # 1. Unvalidated raw rendering without resolver / definition raises:
+        # 1. Unvalidated raw rendering without validated_result raises:
         with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
             build_target_size_result_view(revision)
-        assert "requires both a resolver and P2 experiment definition" in str(excinfo.value)
+        assert "requires a ValidatedTargetSizeTerminalResult" in str(excinfo.value)
 
-        # 2. Validated rendering with resolver and definition succeeds:
-        definition, paths = _definition(config)
-        resolver = TargetSizeExecutionResolver(
-            workspace / revision.state.execution_root
+        # 2. Validated rendering with validated_result succeeds:
+        validated = load_validated_target_size_terminal_result(
+            cfg, paths, store, expected_revision=revision
         )
         view = build_target_size_result_view(
-            revision, resolver=resolver, definition=definition
+            revision, validated_result=validated
         )
         assert view["schema"] == TARGET_SIZE_RESULT_VIEW_SCHEMA
         assert view["terminal"] is not None
-        assert view["terminal"]["selected_target_size"] == revision.state.terminal.selected_target_size
+        assert (
+            view["terminal"]["selected_target_size"]
+            == revision.state.terminal.selected_target_size
+        )
     finally:
         store.close()
+
+
+def test_p4e_mandatory_historical_revision_cannot_masquerade_as_current(
+    tmp_path: Path,
+):
+    """P4-E2 Mandatory Currentness Test A:
+    1. Produce terminal generation g1 and capture its terminal revision/evidence.
+    2. Change a target-size scientific identity and run real `prepare` so CampaignStore
+       advances/binds fresh generation g2.
+    3. Invoke the canonical current-terminal loader. It must reject because current g2
+       is nonterminal and historical g1 cannot masquerade as current.
+    """
+
+    config, workspace, _harness = _terminal_campaign(tmp_path)
+    cfg, paths = _load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        g1_revision = load_target_size_campaign_revision(store)
+        assert g1_revision.state.generation == 1
+        assert g1_revision.state.terminal is not None
+    finally:
+        store.close()
+
+    # Change scientific configuration (seeds) and run prepare to create generation g2:
+    content = config.read_text(encoding="utf-8")
+    config.write_text(
+        content.replace("seeds = [1, 2]", "seeds = [3, 4]"), encoding="utf-8"
+    )
+    p4d.cli._mark_stage(store, paths, "doctor", p4d.cli.StageState.COMPLETE, "fixture")
+    assert p4d._run(config, "prepare") == 0
+
+    cfg2, paths2 = _load_config(config)
+    store2 = CampaignStore(paths2.state_db)
+    try:
+        g2_revision = load_target_size_campaign_revision(store2)
+        assert g2_revision.state.generation == 2
+        assert g2_revision.state.lifecycle is TargetSizeLifecycle.AUTHORITIES_BOUND
+        assert g2_revision.state.terminal is None
+
+        # Current-terminal loader called on the campaign must reject because current g2 is nonterminal:
+        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
+            load_validated_target_size_terminal_result(cfg2, paths2, store2)
+        assert "is not in a terminal state" in str(excinfo1.value)
+
+        # Calling with expected_revision=g1_revision must fail immediately on revision mismatch:
+        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+            load_validated_target_size_terminal_result(
+                cfg2, paths2, store2, expected_revision=g1_revision
+            )
+        assert "does not match the current CampaignStore revision" in str(
+            excinfo2.value
+        )
+        assert "Historical terminal state cannot be loaded as current" in str(
+            excinfo2.value
+        )
+    finally:
+        store2.close()
+
+
+def test_p4e_mandatory_raw_historical_terminal_view_is_rejected(tmp_path: Path):
+    """P4-E2 Mandatory Currentness Test B:
+    Raw historical terminal view is rejected even when internally self-consistent.
+    Calling build_target_size_result_view with historical g1 state fails.
+    """
+
+    config, workspace, _harness = _terminal_campaign(tmp_path)
+    cfg, paths = _load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        g1_revision = load_target_size_campaign_revision(store)
+        g1_validated = load_validated_target_size_terminal_result(
+            cfg, paths, store, expected_revision=g1_revision
+        )
+    finally:
+        store.close()
+
+    # Advance to generation 2:
+    content = config.read_text(encoding="utf-8")
+    config.write_text(
+        content.replace("seeds = [1, 2]", "seeds = [3, 4]"), encoding="utf-8"
+    )
+    p4d.cli._mark_stage(store, paths, "doctor", p4d.cli.StageState.COMPLETE, "fixture")
+    assert p4d._run(config, "prepare") == 0
+
+    # 1. Raw historical revision without validated_result raises:
+    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
+        build_target_size_result_view(g1_revision)
+    assert "requires a ValidatedTargetSizeTerminalResult" in str(excinfo1.value)
+
+    # 2. Historical validated_result with current g2 revision raises:
+    store2 = CampaignStore(paths.state_db)
+    try:
+        g2_revision = load_target_size_campaign_revision(store2)
+        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+            build_target_size_result_view(g2_revision, validated_result=g1_validated)
+        assert "belongs to a different revision" in str(excinfo2.value)
+    finally:
+        store2.close()
+
+
+def test_p4e_mandatory_reporter_rejects_raw_terminal_projection():
+    """P4-E2 Mandatory Check: _report_terminal_state rejects raw TargetSizeTerminalProjection
+    and raw TargetSizeCampaignRevision, accepting only ValidatedTargetSizeTerminalResult.
+    """
+    from mdstats.training_data.campaign_target_size_runtime import (
+        _report_terminal_state,
+    )
+    from mdstats.training_data.campaign_target_size_state import (
+        TargetSizeTerminalProjection,
+    )
+
+    raw_projection = TargetSizeTerminalProjection(
+        reducer_status="selected",
+        experiment_definition_digest=digest({"fixture": "definition"}),
+        reducer_state_digest=digest({"fixture": "reducer"}),
+        execution_head_digest=digest({"fixture": "head"}),
+        training_order_digest=digest({"fixture": "order"}),
+        selected_target_size=4,
+        selected_membership_digest=digest({"fixture": "membership"}),
+        terminal_reason_codes=(),
+    )
+    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
+        _report_terminal_state(raw_projection)
+    assert "requires a ValidatedTargetSizeTerminalResult" in str(excinfo.value)
+
+
+def test_p4e_structural_single_current_terminal_loader():
+    """P4-E2 Structural Check: exactly one current terminal loader exists."""
+    import mdstats.training_data.campaign_target_size_terminal as terminal_mod
+
+    assert hasattr(terminal_mod, "load_validated_target_size_terminal_result")
+    assert hasattr(terminal_mod, "ValidatedTargetSizeTerminalResult")
+
 

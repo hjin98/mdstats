@@ -315,23 +315,26 @@ def load_validated_target_size_terminal_result(
     paths: Any,
     store: Any,
     *,
-    revision: TargetSizeCampaignRevision | None = None,
+    expected_revision: TargetSizeCampaignRevision | None = None,
 ) -> ValidatedTargetSizeTerminalResult:
-    """Reconstruct, authenticate, and re-derive the terminal target-size state.
+    """Reconstruct, authenticate, and re-derive the current terminal target-size state.
 
     This is the single authoritative terminal-load path for select-target-size
-    replay and downstream P5 consumption. Nothing persisted is trusted: current
-    P1/P2 authorities are reconstructed from source inputs, scientific and
-    context identities are verified against the persisted generation, the
-    persisted execution root and adopted immutable head are re-authenticated
-    through P3 owners, and the terminal selection is re-derived before returning.
+    replay and downstream P5 consumption. The loader always establishes the
+    current campaign revision directly from CampaignStore. If an expected_revision
+    assertion token is passed, it must match the current revision exactly.
+    Nothing persisted is trusted: current P1/P2 authorities are reconstructed
+    from source inputs, scientific and context identities are verified against
+    the current persisted generation, the persisted execution root and adopted
+    immutable head are re-authenticated through P3 owners, and the terminal
+    selection is re-derived before returning.
     """
 
     from ._campaign_cli_core import _cfg, _optimizer_policy
     from .campaign_target_size_cutover import require_current_target_size_runtime
+    from .campaign_target_size_paths import target_size_execution_root
     from .campaign_target_size_runtime import (
         build_current_target_size_authorities,
-        current_target_size_execution_root,
     )
     from .target_size_execution import (
         TargetSizeExecutionResolver,
@@ -339,9 +342,23 @@ def load_validated_target_size_terminal_result(
         build_target_size_screen_schedule,
     )
 
-    if revision is None:
-        revision = require_current_target_size_runtime(store)
-    state = revision.state
+    current = require_current_target_size_runtime(store)
+    if expected_revision is not None:
+        if (
+            current.state_revision != expected_revision.state_revision
+            or current.sequence != expected_revision.sequence
+            or current.state.generation != expected_revision.state.generation
+            or current.state.lifecycle != expected_revision.state.lifecycle
+        ):
+            raise TargetSizeTerminalProjectionError(
+                f"Supplied expected revision (generation {expected_revision.state.generation}, "
+                f"revision {expected_revision.state_revision}) does not match the current "
+                f"CampaignStore revision (generation {current.state.generation}, "
+                f"revision {current.state_revision}). Historical terminal state cannot "
+                "be loaded as current."
+            )
+
+    state = current.state
     if state.lifecycle not in (
         TargetSizeLifecycle.TERMINAL_SELECTED,
         TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
@@ -395,7 +412,7 @@ def load_validated_target_size_terminal_result(
             "generation. Run `prepare` to bind a fresh canonical generation."
         )
 
-    root = current_target_size_execution_root(paths, state.generation)
+    root = target_size_execution_root(paths, state.generation)
     if not root.is_dir():
         from .campaign_target_size_adoption import TargetSizeAdoptionCorruptionError
 
@@ -405,11 +422,11 @@ def load_validated_target_size_terminal_result(
     resolver = TargetSizeExecutionResolver(root)
 
     head = validate_terminal_projection(
-        revision, resolver=resolver, definition=definition
+        current, resolver=resolver, definition=definition
     )
 
     return ValidatedTargetSizeTerminalResult(
-        revision=revision,
+        revision=current,
         authorities=authorities,
         head=head,
         projection=state.terminal,

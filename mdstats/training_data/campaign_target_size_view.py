@@ -28,31 +28,41 @@ TARGET_SIZE_RESULT_VIEW_SCHEMA = "mdstats.target-size-result-view.v1"
 def build_target_size_result_view(
     revision: TargetSizeCampaignRevision,
     *,
+    validated_result: Any | None = None,
     resolver: Any | None = None,
-    definition: Any | None = None,
 ) -> dict[str, Any]:
-    """Render the current target-size campaign state as a derived view.
+    """Render the target-size campaign state as a derived view.
 
     Nonterminal views render nonterminal metadata without authoritative scientific
-    selection. Terminal views require authenticated resolver and P2 experiment
-    definition to validate the terminal projection before rendering.
+    selection. Terminal views require a canonical ValidatedTargetSizeTerminalResult
+    established from the current CampaignStore revision; a raw terminal revision
+    (even with resolver/definition) is rejected to prevent historical terminal
+    state from being rendered as current authority.
     """
 
     from .campaign_target_size_terminal import (
         TargetSizeTerminalProjectionError,
-        validate_terminal_projection,
+        ValidatedTargetSizeTerminalResult,
     )
 
     state = revision.state
-    if state.terminal is not None:
-        if resolver is None or definition is None:
+    if validated_result is not None:
+        if (
+            not isinstance(validated_result, ValidatedTargetSizeTerminalResult)
+            or validated_result.revision.state_revision != revision.state_revision
+            or validated_result.revision.sequence != revision.sequence
+            or validated_result.revision.state.generation != revision.state.generation
+        ):
             raise TargetSizeTerminalProjectionError(
-                "Rendering a terminal target-size result view requires both a resolver "
-                "and P2 experiment definition for validated re-derivation; a raw terminal "
-                "revision cannot be rendered alone."
+                "The supplied ValidatedTargetSizeTerminalResult belongs to a different "
+                f"revision than the revision being rendered (generation {revision.state.generation}, "
+                f"revision {revision.state_revision})."
             )
-        validate_terminal_projection(
-            revision, resolver=resolver, definition=definition
+    elif state.terminal is not None:
+        raise TargetSizeTerminalProjectionError(
+            "Rendering a terminal target-size result view requires a "
+            "ValidatedTargetSizeTerminalResult established from the current CampaignStore "
+            "revision; a raw terminal revision cannot be rendered alone."
         )
 
     payload: dict[str, Any] = {
@@ -72,7 +82,18 @@ def build_target_size_result_view(
         "adopted_reducer_state_digest": state.adopted_reducer_state_digest,
         "terminal": None if state.terminal is None else state.terminal.to_dict(),
     }
-    if resolver is not None and state.adopted_execution_head_digest is not None:
+    if validated_result is not None:
+        head = validated_result.head
+        payload["reducer_status"] = head.post_state.status.value
+        payload["active_candidate_sizes"] = list(head.post_state.active_candidate_sizes)
+        payload["completed_boundary_epochs"] = list(
+            head.post_state.completed_boundary_epochs
+        )
+        payload["selected_target_size"] = head.post_state.selected_target_size
+        payload["selected_membership_digest"] = (
+            head.post_state.selected_membership_digest
+        )
+    elif resolver is not None and state.adopted_execution_head_digest is not None:
         from .campaign_target_size_adoption import load_adopted_execution_head
 
         head = load_adopted_execution_head(resolver, revision)
@@ -92,13 +113,13 @@ def write_target_size_result_view(
     path: str | os.PathLike[str],
     revision: TargetSizeCampaignRevision,
     *,
+    validated_result: Any | None = None,
     resolver: Any | None = None,
-    definition: Any | None = None,
 ) -> dict[str, Any]:
     """Atomically (re)write the derived view; safe to repeat after any crash."""
 
     payload = build_target_size_result_view(
-        revision, resolver=resolver, definition=definition
+        revision, validated_result=validated_result, resolver=resolver
     )
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)

@@ -4,7 +4,7 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P4
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 4
-status: active
+status: implemented
 package_revision: 6
 amended_date: 2026-08-29
 reopened_from_revision5_candidate: 95c905436c2b47dea0d761145f8dc222b1428e53
@@ -14,7 +14,7 @@ revision4_baseline: P4_REVISION4_IMPLEMENTED_BASELINE.md
 revision4_evidence: P4_REVISION4_IMPLEMENTATION_PROGRESS.md
 entry_p3_closure_commit: 9d195807cff0bb8042f447ac33ceb0586ed708ac
 compatibility_policy: destructive-generation-reset
-implementation_closure: P4 revision 6 reopened after independent review; P4-C2 canonical execution-root ownership/real-runtime first-publication acceptance and P4-E2 current-terminal authority/view sealing are open; P4-G2 is invalidated until both close
+implementation_closure: Complete revision-6 reclosure: P4-C2 canonical execution-root ownership & real-runtime first-publication race, P4-E2 current-terminal authority sealing & view/report protection, and P4-G2 assembled regression/integration closed cleanly with 166 passed tests
 reconciliation_reason: Revision 6 preserves the frozen parent, accepted P1-P3 semantics, and the accepted P4 architecture. Revision-5 implementation fixed the original terminal early-return defect but left two implementation-level escape hatches: storage retention independently reconstructs the execution-root convention and its first-publication test bypasses the real select-target-size runtime; and the reusable terminal loader/view can still authenticate historical terminal state when supplied stale raw revision inputs. Revision 6 closes only those ownership and proxy-proof gaps. No scientific, reducer, TRAIN2/EVAL2, checkpoint, provider, seed, target-size decision, or P5 post-selection semantics are changed.
 ---
 
