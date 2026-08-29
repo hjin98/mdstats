@@ -12,9 +12,9 @@ and what remains. It is coordination material, not product documentation.
 | Pass | Scope | State |
 |---|---|---|
 | Entry gate | P3A9 closure + section 3 assertions | **CLOSED** |
-| P4-A | CampaignStore state, canonical generation, CAS, transition identity | in progress |
-| P4-B | Regime cutover owner | not started |
-| P4-C | Cross-store adoption, retention fence, restart, concurrency | not started |
+| P4-A | CampaignStore state, canonical generation, CAS, transition identity | **CLOSED** |
+| P4-B | Regime cutover owner | **CLOSED** |
+| P4-C | Cross-store adoption, retention fence, restart, concurrency | in progress |
 | P4-D | Atomic `prepare` / `select-target-size` production switch | not started |
 | P4-E | Terminal projection, semantic restart, invalidation | not started |
 | P4-F | Full STOR integration, docs, structural closure | not started |
@@ -201,3 +201,88 @@ attempt disagreement *at a matching revision* is a forged expectation rather tha
 - Regime transition `legacy -> transitioning -> current` semantics and retired-state
   quarantine (P4-B).
 - P3 head adoption, retention fence, recovery matrix (P4-C).
+
+---
+
+## Pass P4-B — Regime cutover owner
+
+**State: CLOSED** (semantic + functional). Commit: see `git log` for
+`feat(mlff): P4-B destructive target-size regime cutover owner`.
+
+### What was implemented
+
+New owner `mdstats/training_data/campaign_target_size_cutover.py`, consuming the P4-A state
+authority. No public runtime is wired yet (P4-D owns the switch), so the runtime stays coherently
+pre-switch.
+
+- `begin_target_size_cutover(store)` — CAS `legacy -> transitioning`, allocating the **new canonical
+  generation** in the same transition. Re-entry on an already-transitioning campaign returns the
+  persisted transition instead of allocating a second generation, which is what makes a fresh
+  process resume rather than restart.
+- `inventory_retired_target_size_state(store)` — reads record **names only**. Retired payloads are
+  never passed through a current deserializer, because that is exactly the reinterpretation the
+  parent forbids.
+- `quarantine_retired_target_size_state(store, generation=...)` — renames retired record keys under
+  `quarantine:retired-target-size:g<N>:` inside one exclusive transaction. Renaming rather than
+  copying keeps the operation total (sharded/native-pointer records quarantine exactly like compact
+  ones), cheap, and idempotent, and it preserves the rows as forensic history without leaving them
+  reachable from any current authority lookup. P4 deletes no historical scientific evidence; P6 owns
+  broad topology deletion.
+- `bind_current_target_size_authorities(...)` — CAS-binds the reconstructed P1/P2 identities while
+  still `transitioning`.
+- `complete_target_size_cutover(...)` — CAS `transitioning -> current`, but only after
+  `assert_no_retired_target_size_authority(store)` proves no retired record is reachable.
+- `require_current_target_size_runtime(store)` — the fail-closed gate with actionable guidance for
+  legacy (destructive reset via `prepare`) and transitioning (resume the exact cutover) workspaces.
+  There is no third answer: no mixed runtime exists.
+
+### Retired-state inventory (section 7.3), as encoded in the owner
+
+Exact keys: `target_size_study`, `target_size_historical_candidate_authority`,
+`target_data_role_freeze`, `target_coverage_reference`, `target_coverage_feasibility`,
+`target_coverage_sparse_index`, `target_multi_view_selection_v2`, `target_multi_view_repair_v2`,
+`target_multi_view_qualification_v2`, `prepare_restart_receipt`, `training_campaign`,
+`interim_evaluation`, `available_model_verification_set`, and the eleven `mlcv_*` pre-target
+CV/role/catalog keys.
+
+Prefixes: `materialization:`, `data8:` (per-variant prescribed target/evaluation materialization
+authority — P3 owns candidate materialization now), `execution:`, `train2_runtime:`,
+`adaptive_stop:`, `lightweight_rank:`, `checkpoint_catalog:`, `checkpoint_retention:`,
+`checkpoint_shortlist:`, `evaluation:`, `selection:`, `interim_member:`, `committee_member:`,
+`mlcv_run_selection:`, `mlcv_physical_attempt:`.
+
+Reusable lower-level inputs (identity independent of retired target-size semantics; reusable only
+by re-validating through their current owners — P1 consumes them via
+`build_source_authority_from_data2_catalog` and `build_neutral_feature_evidence_from_data4_bundle`):
+`source_catalog`, `frame_catalog`, `data4`, `data5`, `data6`.
+
+Records that are neither retired target-size authority nor lower-level target-size input
+(`replay_*`, `production_plan`, `production_qualification`, `foundation_target_audit`) are left
+untouched: P4 quarantines only what is necessary for unambiguous current authority.
+
+### Evidence executed
+
+`tests/test_mlff_target_size_p4b_regime_cutover.py` — **19 passed**, all against real
+`CampaignStore` SQLite files.
+
+| Gate item | Covering tests |
+|---|---|
+| fresh current campaign | `req1_fresh_campaign_reaches_current_regime`, `req1_current_campaign_refuses_a_second_cutover` |
+| legacy enters transition once | `req2_legacy_workspace_enters_transition_once`, `req2_inventory_separates_retired_authority_from_reusable_inputs` |
+| old selected-N/selector never becomes current authority | `req3_retired_records_are_quarantined_not_translated`, `req3_old_selected_n_cannot_be_read_as_current_authority`, `req3_promotion_is_refused_while_retired_authority_is_reachable`, `req3_quarantine_is_idempotent`, `req3_retired_key_and_prefix_inventory_covers_the_frozen_list` |
+| crash resumes the exact transition | `req4_fresh_process_resumes_the_exact_interrupted_transition` (spawned process finishes a cutover the dead parent started, keeping generation 1), `req4_interrupted_quarantine_replays_on_resume` |
+| competing transition rejected | `req5_competing_cutover_transition_is_rejected`, `req5_divergent_transition_from_a_stale_revision_is_rejected`, `req5_repeating_the_exact_completion_is_idempotent_not_a_second_cutover` |
+| no row-wise mixed execution | `req6_regime_is_campaign_wide_not_per_record` |
+| actionable fail-closed guidance | `req6_legacy_campaign_fails_closed_with_reset_guidance`, `req6_uninitialized_campaign_fails_closed`, `req6_transitioning_campaign_fails_closed_with_resume_guidance` |
+| version-agnostic naming | `test_p4b_no_version_prefixed_production_names` |
+
+Stage-local affected regression: `test_mlff_target_size_p4a_campaign_state_cas`,
+`test_mlff_target_size_p4b_regime_cutover`, `test_mlff_campaign_cli`,
+`test_mlff_cli_semantic_orchestration` — **130 passed, 1 skipped**.
+
+### Note recorded during the gate
+
+Repeating the *exact* completion transition is idempotent by design (P4-A section 4.3), so the
+first draft of the stale-revision test was wrong rather than the owner. The gate now asserts both:
+an exact retry returns the same revision, and a transition that changed one authoritative
+reference from the same stale predecessor is a typed `stale_revision` conflict.
