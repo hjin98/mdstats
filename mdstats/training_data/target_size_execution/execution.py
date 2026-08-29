@@ -763,7 +763,12 @@ def promote_target_size_boundary_snapshot(
         (summary_path, dest_summary),
         (companion_path, dest_companion),
     ):
-        if not dst.is_file() or _sha256_file(dst) != _sha256_file(src):
+        if dst.is_file():
+            if _sha256_file(dst) != _sha256_file(src):
+                raise TrainingDataInputError(
+                    f"Conflicting snapshot file already exists at {dst}."
+                )
+        else:
             tmp = dst.with_suffix(dst.suffix + ".tmp")
             shutil.copy2(src, tmp)
             os.replace(tmp, dst)
@@ -790,7 +795,14 @@ def promote_target_size_boundary_snapshot(
         rung_runtime_summary=summary,
     )
     meta_path = dest_dir / "snapshot.json"
-    _atomic_json_write(meta_path, snapshot.to_dict())
+    if meta_path.is_file():
+        existing_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if digest(existing_meta) != snapshot.content_digest:
+            raise TrainingDataInputError(
+                f"Conflicting snapshot metadata already exists at {meta_path}."
+            )
+    else:
+        _atomic_json_write(meta_path, snapshot.to_dict())
     return snapshot
 
 

@@ -207,7 +207,7 @@ def _execute_candidate_boundary(env, tmp_path: Path, size: int, seed: int, bound
         eval2_metric_record=metric_record,
     )
 
-    return trajectory, role, snapshot, completion_record
+    return trajectory, role, snapshot, completion_record, materialization, eval_artifact
 
 
 def _run_boundary_matrix(env, tmp_path: Path, state, *, skip: list | None = None):
@@ -220,7 +220,7 @@ def _run_boundary_matrix(env, tmp_path: Path, state, *, skip: list | None = None
     for index, (size, seed) in enumerate(keys):
         if skip and index in skip:
             continue
-        trajectory, role, snapshot, completion_record = _execute_candidate_boundary(
+        trajectory, role, snapshot, completion_record, *_ = _execute_candidate_boundary(
             env, tmp_path, size, seed, boundary
         )
         assert completion_record.boundary_epoch == boundary
@@ -365,7 +365,7 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
         try:
             if index == 1:
                 _boom()
-            trajectory, _role, _snap, completion_record = _execute_candidate_boundary(
+            trajectory, _role, _snap, completion_record, *_ = _execute_candidate_boundary(
                 env, tmp_path, size, seed, boundary
             )
             record_candidate_boundary_outcome(
@@ -387,7 +387,7 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
     assert load_current_execution_head(env["root"]) is None
     # Retrying the failed work completes the same boundary without duplicates.
     size, seed = keys[1]
-    trajectory, _role, _snap, completion_record = _execute_candidate_boundary(
+    trajectory, _role, _snap, completion_record, *_ = _execute_candidate_boundary(
         env, tmp_path, size, seed, boundary
     )
     record_candidate_boundary_outcome(
@@ -567,7 +567,7 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
     boundary, evaluation_size, keys = requirements
 
     # (a) After candidate TRAIN2 persistence, before any outcome: safe.
-    trajectory, role, snapshot, rec_one = _execute_candidate_boundary(
+    trajectory, role, snapshot, rec_one, *_ = _execute_candidate_boundary(
         env, tmp_path, keys[0][0], keys[0][1], boundary
     )
     head = reconcile_target_size_screen_root(
@@ -588,7 +588,7 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
     # (c) Finish the matrix; persist the batch but do not commit (crash point).
     completion_records = [rec_one]
     for size, seed in keys[1:]:
-        trajectory2, _r, _s, rec2 = _execute_candidate_boundary(
+        trajectory2, _r, _s, rec2, *_ = _execute_candidate_boundary(
             env, tmp_path, size, seed, boundary
         )
         record_candidate_boundary_outcome(env["root"], env["window"], trajectory2, rec2)
@@ -686,4 +686,182 @@ def test_p3e_head_ancestry_chain_and_negative_validations(tmp_path: Path) -> Non
         env["root"], env["aggregate"], env["context"], env["common"]
     )
     assert reconciled.content_digest == head1.content_digest
+
+
+def test_p3e_review3_discriminated_cell_completion_record_variants(
+    tmp_path: Path,
+) -> None:
+    from mdstats.training_data.eval2 import Eval2NumericalEvaluationError
+    from mdstats.training_data.train2_runtime import Train2NumericalFailureRecord
+    from mdstats.training_data.target_size_execution import (
+        TargetSizeExecutionResolver,
+    )
+    from mdstats.training_data.target_size_experiment import (
+        NumericalFailureKind,
+        TargetSizeBoundaryMetric,
+        TargetSizeNumericalFailure,
+    )
+
+    env = _env(tmp_path)
+    definition = env["aggregate"].definition
+    size0 = definition.qualified_candidate_sizes[0]
+    seed0 = definition.policy.optimizer_seeds[0]
+    state = env["aggregate"].reducer_state
+    window = env["window"]
+    (
+        trajectory,
+        role,
+        snapshot,
+        comp_success,
+        materialization,
+        eval_artifact,
+    ) = _execute_candidate_boundary(env, tmp_path, size0, seed0, 1)
+
+    # 1. Success completion record variant
+    assert comp_success.kind == "success"
+    assert isinstance(comp_success.outcome, TargetSizeBoundaryMetric)
+    assert comp_success.boundary_snapshot_digest is not None
+    assert comp_success.eval2_role_digest is not None
+    assert comp_success.evaluation_data_digest is not None
+    assert comp_success.eval2_metric_record_digest is not None
+    assert comp_success.prediction_evidence_digest is not None
+
+    # Success variant cannot have NumericalFailure outcome
+    with pytest.raises(mdstats.TrainingDataInputError):
+        build_target_size_cell_completion_record(
+            window=window,
+            trajectory=trajectory,
+            materialization=materialization,
+            boundary_snapshot=snapshot,
+            eval2_role=role,
+            evaluation_data=eval_artifact,
+            outcome=TargetSizeNumericalFailure(
+                experiment_definition_digest=trajectory.experiment_definition_digest,
+                execution_context_digest=trajectory.execution_context_digest,
+                target_size=trajectory.target_size,
+                optimizer_seed=trajectory.optimizer_seed,
+                boundary_epoch=1,
+                evaluation_membership_digest=role.evaluation_membership_digest,
+                kind=NumericalFailureKind.TRAIN_NONFINITE_MODEL_STATE,
+                classification_evidence_digest="0" * 64,
+            ),
+            kind="success",
+        )
+
+    # 2. TRAIN2 failure completion record variant
+    from mdstats.training_data.target_size_execution import translate_target_size_train2_failure
+
+    train_fail_rec = p3c._failure_record(
+        trajectory,
+        env["schedule"],
+        1,
+        code="train_nonfinite_model_state",
+        failed_epoch=0,
+    )
+    train_fail_outcome = translate_target_size_train2_failure(
+        train_fail_rec,
+        trajectory=trajectory,
+        definition=definition,
+        schedule=env["schedule"],
+        scheduled_boundary_epoch=1,
+    )
+    comp_train_fail = build_target_size_cell_completion_record(
+        window=window,
+        trajectory=trajectory,
+        materialization=materialization,
+        failure_record=train_fail_rec,
+        outcome=train_fail_outcome,
+        kind="train2_failure",
+    )
+    assert comp_train_fail.kind == "train2_failure"
+    assert isinstance(comp_train_fail.outcome, TargetSizeNumericalFailure)
+    assert (
+        comp_train_fail.outcome.kind
+        is NumericalFailureKind.TRAIN_NONFINITE_MODEL_STATE
+    )
+    assert comp_train_fail.boundary_snapshot_digest is None
+    assert comp_train_fail.eval2_role_digest is None
+    assert comp_train_fail.evaluation_data_digest is None
+
+    # TRAIN2 failure variant rejects binding snapshot/eval2 digests
+    with pytest.raises(mdstats.TrainingDataInputError):
+        replace(
+            comp_train_fail,
+            boundary_snapshot_digest=snapshot.content_digest,
+        )
+
+    # 3. EVAL2 failure completion record variant
+    eval_fail_err = Eval2NumericalEvaluationError(
+        "eval_nonfinite_force_prediction",
+        "NaN force predicted",
+        target_role_digest=role.content_digest,
+        prediction_digest="0" * 64,
+    )
+    comp_eval_fail = build_target_size_cell_completion_record(
+        window=window,
+        trajectory=trajectory,
+        materialization=materialization,
+        boundary_snapshot=snapshot,
+        eval2_role=role,
+        evaluation_data=eval_artifact,
+        failure_record=eval_fail_err,
+        kind="eval2_failure",
+    )
+    assert comp_eval_fail.kind == "eval2_failure"
+    assert isinstance(comp_eval_fail.outcome, TargetSizeNumericalFailure)
+    assert (
+        comp_eval_fail.outcome.kind
+        is NumericalFailureKind.EVAL_NONFINITE_PREDICTION
+    )
+    assert comp_eval_fail.boundary_snapshot_digest == snapshot.content_digest
+    assert comp_eval_fail.eval2_role_digest == role.content_digest
+
+
+def test_p3e_review3_resolver_graph_persistence_and_replay(
+    tmp_path: Path,
+) -> None:
+    from mdstats.training_data.target_size_execution import (
+        TargetSizeExecutionResolver,
+    )
+
+    env = _env(tmp_path)
+    resolver = TargetSizeExecutionResolver(env["root"])
+    definition = env["aggregate"].definition
+    state = env["aggregate"].reducer_state
+
+    # Run full matrix and commit batch
+    batch0, head0 = _full_matrix(env, tmp_path, state)
+
+    # Check resolver paths exist
+    assert resolver.batch_path(batch0.content_digest).is_file()
+    assert resolver.head_path(head0.content_digest).is_file()
+    for comp_digest in batch0.completion_record_digests:
+        assert resolver.completion_path(batch0.boundary_epoch, comp_digest).is_file()
+
+    # Reconcile successfully verifies loaded content digests
+    reconciled = reconcile_target_size_screen_root(
+        env["root"], env["aggregate"], env["context"], env["common"]
+    )
+    assert reconciled.content_digest == head0.content_digest
+
+    # Corrupting content of a completion record causes reconcile to reject with mismatch
+    first_comp_digest = batch0.completion_record_digests[0]
+    comp_file = resolver.completion_path(batch0.boundary_epoch, first_comp_digest)
+    original_data = comp_file.read_text(encoding="utf-8")
+    tampered_data = json.loads(original_data)
+    tampered_data["target_size"] = 99999
+    comp_file.write_text(json.dumps(tampered_data), encoding="utf-8")
+
+    with pytest.raises((mdstats.TrainingDataInputError, mdstats.TrainingDataSerializationError)):
+        reconcile_target_size_screen_root(
+            env["root"], env["aggregate"], env["context"], env["common"]
+        )
+
+    # Restore valid completion file
+    comp_file.write_text(original_data, encoding="utf-8")
+    reconciled_clean = reconcile_target_size_screen_root(
+        env["root"], env["aggregate"], env["context"], env["common"]
+    )
+    assert reconciled_clean.content_digest == head0.content_digest
+
 

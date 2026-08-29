@@ -349,10 +349,12 @@ class TargetSizePredictionEntry:
         energy = float(self.energy_ev)
         object.__setattr__(self, "energy_ev", energy)
         if self.forces_ev_per_angstrom is not None:
-            forces = np.asarray(self.forces_ev_per_angstrom, dtype=np.float64)
+            forces = np.array(self.forces_ev_per_angstrom, dtype=np.float64, copy=True)
+            forces.setflags(write=False)
             object.__setattr__(self, "forces_ev_per_angstrom", forces)
         if self.stress_ev_per_angstrom3 is not None:
-            stress = np.asarray(self.stress_ev_per_angstrom3, dtype=np.float64)
+            stress = np.array(self.stress_ev_per_angstrom3, dtype=np.float64, copy=True)
+            stress.setflags(write=False)
             object.__setattr__(self, "stress_ev_per_angstrom3", stress)
 
     def _payload(self) -> dict[str, Any]:
@@ -467,6 +469,13 @@ class TargetSizePredictionEvidence:
             raise TrainingDataInputError(
                 "Prediction count does not equal exact evaluation size."
             )
+        recomputed_payload_digest = target_size_eval2_prediction_digest_from_role_digest(
+            self.role_digest, preds
+        )
+        if self.prediction_payload_digest != recomputed_payload_digest:
+            raise TrainingDataInputError(
+                "Prediction evidence payload digest mismatch."
+            )
         object.__setattr__(self, "predictions", preds)
 
     def _payload(self) -> dict[str, Any]:
@@ -536,10 +545,10 @@ class TargetSizePredictionEvidence:
         return result
 
 
-def target_size_eval2_prediction_digest(
-    role: TargetSizeEval2Role, predictions: Sequence[Any]
+def target_size_eval2_prediction_digest_from_role_digest(
+    role_digest: str, predictions: Sequence[Any]
 ) -> str:
-    """Deterministic identity of one prediction set bound to the role."""
+    """Deterministic identity of one prediction set bound to the role digest."""
 
     entries = []
     for prediction in predictions:
@@ -574,9 +583,18 @@ def target_size_eval2_prediction_digest(
     return digest(
         {
             "schema": TARGET_SIZE_EVAL2_PREDICTION_SCHEMA,
-            "role_digest": role.content_digest,
+            "role_digest": validate_digest(role_digest, name="role_digest"),
             "predictions": entries,
         }
+    )
+
+
+def target_size_eval2_prediction_digest(
+    role: TargetSizeEval2Role, predictions: Sequence[Any]
+) -> str:
+    """Deterministic identity of one prediction set bound to the role."""
+    return target_size_eval2_prediction_digest_from_role_digest(
+        role.content_digest, predictions
     )
 
 
@@ -587,19 +605,103 @@ def run_target_size_direct_boundary_inference(
     boundary_state: TargetSizeBoundaryState | TargetSizeBoundarySnapshot,
     role: TargetSizeEval2Role,
     evaluation_data: TargetSizeEvaluationArtifact,
-    root_directory: str | Path,
+    canonical_frame_authority: Any | None = None,
+    definition: TargetSizeExperimentDefinition | None = None,
+    context: Any | None = None,
+    common: Any | None = None,
+    schedule: TargetSizeScreenSchedule | None = None,
+    optimizer_policy: Any | None = None,
+    materialization_directory: str | Path | None = None,
+    snapshot_root: str | Path | None = None,
+    evaluation_directory: str | Path | None = None,
+    root_directory: str | Path | None = None,
+    inference_forward: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
     inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]]
     | None = None,
 ) -> TargetSizePredictionEvidence:
     """Real semantic owner for single exact boundary checkpoint inference."""
-    if materialization.trajectory_digest != trajectory.content_digest:
+    mat_dir = Path(
+        materialization_directory
+        if materialization_directory is not None
+        else (getattr(materialization, "output_directory", "") or root_directory or ".")
+    )
+    snap_root = Path(
+        snapshot_root if snapshot_root is not None else (root_directory or ".")
+    )
+    eval_dir = Path(
+        evaluation_directory
+        if evaluation_directory is not None
+        else (root_directory or ".")
+    )
+
+    # 1. Trajectory validation
+    if (
+        definition is not None
+        and context is not None
+        and common is not None
+        and schedule is not None
+        and optimizer_policy is not None
+    ):
+        from .candidate import validate_target_size_candidate_trajectory
+
+        validate_target_size_candidate_trajectory(
+            trajectory,
+            definition,
+            context,
+            common,
+            schedule,
+            optimizer_policy=optimizer_policy,
+        )
+
+    # 2. Materialization validation
+    if canonical_frame_authority is not None:
+        from .candidate import validate_target_size_materialization
+
+        validate_target_size_materialization(
+            materialization,
+            trajectory,
+            canonical_frame_authority=canonical_frame_authority,
+            materialization_directory=mat_dir,
+            common=common,
+            optimizer_policy=optimizer_policy,
+        )
+    elif materialization.trajectory_digest != trajectory.content_digest:
         raise TrainingDataInputError(
             "Candidate materialization belongs to a different trajectory."
         )
-    if boundary_state.trajectory_digest != trajectory.content_digest:
+
+    # 3. Snapshot validation
+    if isinstance(boundary_state, TargetSizeBoundarySnapshot):
+        if (
+            snapshot_root is not None
+            or (snap_root / boundary_state.snapshot_relative_dir).is_dir()
+        ):
+            from .execution import validate_target_size_boundary_snapshot
+
+            validate_target_size_boundary_snapshot(
+                boundary_state,
+                snapshot_root=snap_root,
+                trajectory=trajectory,
+                schedule=schedule,
+            )
+        else:
+            if boundary_state.trajectory_digest != trajectory.content_digest:
+                raise TrainingDataInputError(
+                    "Boundary snapshot binds a different trajectory."
+                )
+            if (
+                boundary_state.evaluation_model_state
+                != trajectory.evaluation_model_state
+            ):
+                raise TrainingDataInputError(
+                    "Boundary snapshot evaluation model-state mismatch."
+                )
+    elif boundary_state.trajectory_digest != trajectory.content_digest:
         raise TrainingDataInputError(
             "Boundary state belongs to a different candidate trajectory."
         )
+
+    # 4. Role bindings check
     if role.trajectory_digest != trajectory.content_digest:
         raise TrainingDataInputError(
             "Direct EVAL2 role belongs to a different candidate trajectory."
@@ -656,6 +758,19 @@ def run_target_size_direct_boundary_inference(
         raise TrainingDataInputError(
             "Direct EVAL2 role binds a different evaluation data authority."
         )
+
+    # 5. Evaluation artifact validation
+    if definition is not None and canonical_frame_authority is not None:
+        from .export import validate_target_size_evaluation_artifact
+
+        validate_target_size_evaluation_artifact(
+            evaluation_data,
+            root_directory=eval_dir,
+            definition=definition,
+            canonical_frame_authority=canonical_frame_authority,
+        )
+
+    # 6. Live vs EMA evaluation check
     if (
         boundary_state.evaluation_model_state
         != trajectory.evaluation_model_state
@@ -686,7 +801,7 @@ def run_target_size_direct_boundary_inference(
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise TrainingDataInputError("ASE is required for inference.") from exc
 
-    target_path = Path(root_directory) / evaluation_data.relative_path
+    target_path = eval_dir / evaluation_data.relative_path
     if not target_path.is_file():
         raise TrainingDataInputError(
             f"Evaluation artifact file is missing: {target_path}"
@@ -697,37 +812,70 @@ def run_target_size_direct_boundary_inference(
             "Evaluation artifact frame count mismatch."
         )
 
-    if inference_evaluator is not None:
-        raw_predictions = inference_evaluator(boundary_state, atoms_list)
+    forward_fn = (
+        inference_forward
+        if inference_forward is not None
+        else inference_evaluator
+    )
+    if forward_fn is not None:
+        raw_predictions = forward_fn(boundary_state, atoms_list)
     else:
-        # Default MACE CPU inference from checkpoint
         from types import SimpleNamespace
         import torch
 
         if isinstance(boundary_state, TargetSizeBoundarySnapshot):
-            ckpt_dir = Path(root_directory) / boundary_state.snapshot_relative_dir
+            ckpt_dir = snap_root / boundary_state.snapshot_relative_dir
         else:
-            ckpt_dir = Path(root_directory)
+            ckpt_dir = snap_root
         summary = boundary_state.rung_runtime_summary
-        raw_checkpoint_path = ckpt_dir / summary.raw_checkpoint_name if hasattr(summary, "raw_checkpoint_name") else ckpt_dir / f"epoch-{summary.raw_checkpoint_epoch}.pt"
+        raw_checkpoint_path = (
+            ckpt_dir / summary.raw_checkpoint_name
+            if hasattr(summary, "raw_checkpoint_name")
+            else ckpt_dir / f"epoch-{summary.raw_checkpoint_epoch}.pt"
+        )
         if not raw_checkpoint_path.is_file():
-            # Search for matching epoch checkpoint
-            candidates = list(ckpt_dir.glob(f"*epoch*{summary.raw_checkpoint_epoch}*.pt"))
+            candidates = list(
+                ckpt_dir.glob(f"*epoch*{summary.raw_checkpoint_epoch}*.pt")
+            )
             if not candidates:
-                raise TrainingDataInputError(f"Raw checkpoint not found for epoch {summary.raw_checkpoint_epoch} in {ckpt_dir}")
+                raise TrainingDataInputError(
+                    f"Raw checkpoint not found for epoch {summary.raw_checkpoint_epoch} in {ckpt_dir}"
+                )
             raw_checkpoint_path = candidates[0]
-        model = torch.load(raw_checkpoint_path, map_location="cpu", weights_only=False)
+        device = (
+            getattr(optimizer_policy, "device", "cpu")
+            if optimizer_policy is not None
+            else "cpu"
+        )
+        dtype_str = getattr(
+            trajectory.realization, "default_dtype", "float64"
+        )
+        model = torch.load(
+            raw_checkpoint_path, map_location=device, weights_only=False
+        )
         if trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
             companion_path = ckpt_dir / "train2_runtime.pt"
             if not companion_path.is_file():
-                raise TrainingDataInputError(f"Continuation companion missing in {ckpt_dir}")
-            companion = torch.load(companion_path, map_location="cpu", weights_only=False)
+                raise TrainingDataInputError(
+                    f"Continuation companion missing in {ckpt_dir}"
+                )
+            companion = torch.load(
+                companion_path, map_location=device, weights_only=False
+            )
             ema_state = companion.get("ema_state")
-            if ema_state is not None and "shadow_params" in ema_state:
-                for p, shadow in zip(model.parameters(), ema_state["shadow_params"]):
-                    p.data.copy_(shadow)
+            if ema_state is None or "shadow_params" not in ema_state:
+                raise TrainingDataInputError(
+                    "EMA state missing in continuation companion."
+                )
+            for p, shadow in zip(
+                model.parameters(), ema_state["shadow_params"]
+            ):
+                p.data.copy_(shadow)
         from mace.calculators import MACECalculator
-        calc = MACECalculator(models=[model], device="cpu", default_dtype="float64")
+
+        calc = MACECalculator(
+            models=[model], device=device, default_dtype=dtype_str
+        )
         raw_predictions = []
         for atoms in atoms_list:
             local = atoms.copy()
@@ -736,10 +884,18 @@ def run_target_size_direct_boundary_inference(
             f = np.asarray(local.get_forces(), dtype=np.float64)
             s = None
             try:
-                s = np.asarray(local.get_stress(voigt=False), dtype=np.float64)
+                s = np.asarray(
+                    local.get_stress(voigt=False), dtype=np.float64
+                )
             except Exception:
                 s = None
-            raw_predictions.append(SimpleNamespace(energy_ev=e, forces_ev_per_angstrom=f, stress_ev_per_angstrom3=s))
+            raw_predictions.append(
+                SimpleNamespace(
+                    energy_ev=e,
+                    forces_ev_per_angstrom=f,
+                    stress_ev_per_angstrom3=s,
+                )
+            )
 
     if len(raw_predictions) != evaluation_data.evaluation_size:
         raise TrainingDataInputError(
@@ -835,6 +991,14 @@ def run_target_size_eval2_reduction(
             "Direct EVAL2 role binds a different evaluation data authority."
         )
 
+    recomputed_payload = target_size_eval2_prediction_digest(
+        role, prediction_evidence.predictions
+    )
+    if prediction_evidence.prediction_payload_digest != recomputed_payload:
+        raise TrainingDataInputError(
+            "Prediction evidence payload digest does not match predictions."
+        )
+
     active_view = view
     if active_view is None:
         if root_directory is None:
@@ -842,6 +1006,15 @@ def run_target_size_eval2_reduction(
                 "root_directory is required when view is not provided."
             )
         active_view = evaluation_data.build_evaluation_view(root_directory)
+    else:
+        if hasattr(active_view, "evaluation_view_digest"):
+            if (
+                active_view.evaluation_view_digest
+                != evaluation_data.evaluation_view_digest
+            ):
+                raise TrainingDataInputError(
+                    "Supplied evaluation view does not match evaluation data artifact view digest."
+                )
 
     if int(active_view.configuration_count) != role.evaluation_size:
         raise TrainingDataInputError(
@@ -959,6 +1132,7 @@ __all__ = [
     "run_target_size_eval2_reduction",
     "target_size_boundary_metric_from_eval2_record",
     "target_size_eval2_prediction_digest",
+    "target_size_eval2_prediction_digest_from_role_digest",
     "target_size_population_correlation_blocks",
     "translate_target_size_eval2_failure",
 ]

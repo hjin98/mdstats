@@ -539,6 +539,23 @@ def validate_target_size_candidate_trajectory(
         raise TrainingDataInputError(
             "Trajectory binds a different common preparation."
         )
+    if trajectory.optimizer_seed not in definition.policy.optimizer_seeds:
+        raise TrainingDataInputError(
+            "Trajectory optimizer seed is not in experiment definition seeds."
+        )
+    if (
+        trajectory.seed_neutral_training_policy_digest
+        != context.seed_neutral_optimizer_policy_digest
+    ):
+        raise TrainingDataInputError(
+            "Trajectory seed-neutral training policy digest does not match execution context."
+        )
+    expected_eval_state = "ema" if optimizer_policy.ema else "live"
+    if trajectory.evaluation_model_state != expected_eval_state:
+        raise TrainingDataInputError(
+            f"Trajectory evaluation_model_state '{trajectory.evaluation_model_state}' "
+            f"does not match optimizer policy EMA convention '{expected_eval_state}'."
+        )
     projection = project_target_size_candidate_preparation(
         common, definition, trajectory.target_size
     )
@@ -576,7 +593,7 @@ class TargetSizeCandidateMaterialization:
     mace_config_relative_path: str
     mace_config_sha256: str
     mace_config_digest: str
-    output_directory: str
+    output_directory: str = ""
     _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -608,7 +625,6 @@ class TargetSizeCandidateMaterialization:
             "mace_config_relative_path": self.mace_config_relative_path,
             "mace_config_sha256": self.mace_config_sha256,
             "mace_config_digest": self.mace_config_digest,
-            "output_directory": self.output_directory,
         }
 
     @property
@@ -623,7 +639,11 @@ class TargetSizeCandidateMaterialization:
         payload = self._payload()
         cached = self._content_digest_cache or digest(payload)
         object.__setattr__(self, "_content_digest_cache", cached)
-        return {**payload, "content_digest": cached}
+        return {
+            **payload,
+            "output_directory": self.output_directory,
+            "content_digest": cached,
+        }
 
     @classmethod
     def from_dict(
@@ -644,7 +664,7 @@ class TargetSizeCandidateMaterialization:
             mace_config_relative_path=str(payload["mace_config_relative_path"]),
             mace_config_sha256=str(payload["mace_config_sha256"]),
             mace_config_digest=str(payload["mace_config_digest"]),
-            output_directory=str(payload["output_directory"]),
+            output_directory=str(payload.get("output_directory", "")),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -839,6 +859,10 @@ def validate_target_size_materialization(
     trajectory: TargetSizeCandidateTrajectory,
     *,
     canonical_frame_authority: Any,
+    materialization_directory: str | Path | None = None,
+    projection: TargetSizeCandidatePreparation | None = None,
+    common: TargetSizeCommonPreparation | None = None,
+    optimizer_policy: MaceOptimizerPolicy | None = None,
 ) -> None:
     """Restart authentication of a durable candidate materialization."""
 
@@ -846,7 +870,52 @@ def validate_target_size_materialization(
         raise TrainingDataInputError(
             "Materialization record binds a different trajectory."
         )
-    root = Path(record.output_directory)
+    if record.target_train_artifact.role != "target_train":
+        raise TrainingDataInputError(
+            "Materialization target-train artifact role mismatch."
+        )
+    if record.harness_validation_artifact.role != "harness_validation":
+        raise TrainingDataInputError(
+            "Materialization harness-validation artifact role mismatch."
+        )
+    if record.target_train_artifact.frame_uids != trajectory.candidate_membership:
+        raise TrainingDataInputError(
+            "Materialization target-train artifact frame UIDs do not match trajectory candidate membership."
+        )
+    if (
+        record.target_train_artifact.membership_digest
+        != trajectory.candidate_membership_digest
+    ):
+        raise TrainingDataInputError(
+            "Materialization target-train artifact membership digest mismatch."
+        )
+    if common is not None:
+        if (
+            record.target_train_artifact.common_preparation_digest
+            != common.content_digest
+        ):
+            raise TrainingDataInputError(
+                "Materialization target-train common preparation digest mismatch."
+            )
+        if (
+            record.harness_validation_artifact.frame_uids
+            != common.harness_validation_membership
+        ):
+            raise TrainingDataInputError(
+                "Materialization harness validation membership mismatch."
+            )
+        if (
+            record.harness_validation_artifact.membership_digest
+            != common.harness_validation_membership_digest
+        ):
+            raise TrainingDataInputError(
+                "Materialization harness validation membership digest mismatch."
+            )
+    root = Path(
+        materialization_directory
+        if materialization_directory is not None
+        else (record.output_directory or ".")
+    )
     validate_target_size_extxyz_artifact(
         record.target_train_artifact,
         root_directory=root,
@@ -882,6 +951,20 @@ def validate_target_size_materialization(
         raise TrainingDataInputError(
             "Candidate MACE configuration does not point at the exact target-train artifact."
         )
+    if common is not None and projection is not None and optimizer_policy is not None:
+        expected_config = _mace_config_for_candidate(
+            trajectory=trajectory,
+            projection=projection,
+            common=common,
+            optimizer_policy=optimizer_policy,
+            target_train=record.target_train_artifact,
+            harness_validation=record.harness_validation_artifact,
+            extxyz_policy=MaceExtxyzPolicy(),
+        )
+        if record.mace_config_digest != digest(expected_config):
+            raise TrainingDataInputError(
+                "Candidate MACE configuration does not match re-derived configuration."
+            )
 
 
 __all__ = [

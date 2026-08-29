@@ -387,7 +387,15 @@ def write_target_size_extxyz_artifact(
         hashing_handle.flush()
         os.fsync(raw_handle.fileno())
         target_sha256 = hashing_handle.hexdigest()
-    os.replace(temporary_target, target)
+    if target.is_file():
+        if _sha256_file(target) != target_sha256:
+            temporary_target.unlink(missing_ok=True)
+            raise TrainingDataInputError(
+                f"Conflicting extxyz file already exists at {target}."
+            )
+        temporary_target.unlink(missing_ok=True)
+    else:
+        os.replace(temporary_target, target)
     normalized_records = tuple(
         sorted(
             (validate_digest(uid, name="frame_uid"), tuple(sorted(values)))
@@ -406,12 +414,10 @@ def write_target_size_extxyz_artifact(
         "extxyz_policy_digest": active.policy_digest,
         "records": {uid: dict(values) for uid, values in normalized_records},
     }
-    sidecar_sha256 = _atomic_text_bytes(
-        sidecar_path,
-        (json.dumps(sidecar_payload_record, indent=2, sort_keys=True) + "\n").encode(
-            "utf-8"
-        ),
-    )
+    sidecar_bytes = (
+        json.dumps(sidecar_payload_record, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    sidecar_sha256 = _atomic_text_bytes(sidecar_path, sidecar_bytes)
     sidecar_digest = digest(sidecar_payload_record)
 
     # Round-trip validation through ASE and the exact MACE keys.
@@ -894,6 +900,51 @@ def validate_target_size_evaluation_artifact(
     if digest(payload) != artifact.sidecar_digest:
         raise TrainingDataInputError(
             "Evaluation artifact sidecar content changed."
+        )
+    if payload.get("dataset_id") != canonical_frame_authority.dataset_id:
+        raise TrainingDataInputError(
+            "Evaluation artifact sidecar dataset_id mismatch."
+        )
+    if (
+        payload.get("canonical_frame_authority_digest")
+        != canonical_frame_authority.content_digest
+    ):
+        raise TrainingDataInputError(
+            "Evaluation artifact sidecar canonical frame authority mismatch."
+        )
+    if payload.get("membership_digest") != artifact.evaluation_membership_digest:
+        raise TrainingDataInputError(
+            "Evaluation artifact sidecar membership digest mismatch."
+        )
+    if payload.get("extxyz_policy_digest") != artifact.extxyz_policy_digest:
+        raise TrainingDataInputError(
+            "Evaluation artifact sidecar extxyz policy digest mismatch."
+        )
+    records_keys = tuple(sorted(payload.get("records", {}).keys()))
+    if records_keys != tuple(sorted(artifact.evaluation_frame_uids)):
+        raise TrainingDataInputError(
+            "Evaluation artifact sidecar records do not match evaluation frame UIDs."
+        )
+    recomputed_view_digest = digest(
+        {
+            "schema": TARGET_SIZE_EVALUATION_VIEW_SCHEMA,
+            "experiment_definition_digest": definition.content_digest,
+            "canonical_frame_authority_digest": (
+                canonical_frame_authority.content_digest
+            ),
+            "evaluation_size": artifact.evaluation_size,
+            "evaluation_membership_digest": artifact.evaluation_membership_digest,
+            "evaluation_frame_uids": list(artifact.evaluation_frame_uids),
+            "artifact_sha256": artifact.sha256,
+            "energy_key": artifact.energy_key,
+            "forces_key": artifact.forces_key,
+            "stress_key": artifact.stress_key,
+            "extxyz_policy_digest": artifact.extxyz_policy_digest,
+        }
+    )
+    if artifact.evaluation_view_digest != recomputed_view_digest:
+        raise TrainingDataInputError(
+            "Evaluation artifact evaluation view digest mismatch."
         )
 
 

@@ -646,3 +646,147 @@ def test_p3d_boundary_snapshot_promotion_and_validation(tmp_path: Path) -> None:
             trajectory=env["trajectory"],
             schedule=env["schedule"],
         )
+
+
+def test_p3d_review3_prediction_evidence_immutability_and_authentication(
+    tmp_path: Path,
+) -> None:
+    env = _env(tmp_path)
+    state = _boundary_state(env, tmp_path, 1, name="ckpt-r3")
+    snapshot = promote_target_size_boundary_snapshot(
+        env["trajectory"],
+        state,
+        checkpoint_directory=tmp_path / "ckpt-r3",
+        snapshot_root=tmp_path / "snap_root_r3",
+    )
+    eval_artifact = _eval_artifact_for(
+        env,
+        tmp_path,
+        env["aggregate"].definition.policy.evaluation_sizes[0],
+        name="eval-r3",
+    )
+    blocks = target_size_population_correlation_blocks(
+        env["aggregate"], env["evidence"]
+    )
+    role = build_target_size_eval2_role(
+        trajectory=env["trajectory"],
+        boundary_state=snapshot,
+        definition=env["aggregate"].definition,
+        schedule=env["schedule"],
+        correlation_blocks=blocks,
+        evaluation_data=eval_artifact,
+    )
+    materialization = _materialization_for(env, tmp_path)
+    view = eval_artifact.build_evaluation_view(tmp_path / "eval-r3")
+    evaluator = _predictions_evaluator(view)
+
+    # 1. Distinct locators test
+    evidence = run_target_size_direct_boundary_inference(
+        trajectory=env["trajectory"],
+        materialization=materialization,
+        boundary_state=snapshot,
+        role=role,
+        evaluation_data=eval_artifact,
+        materialization_directory=tmp_path / "materialization",
+        snapshot_root=tmp_path / "snap_root_r3",
+        evaluation_directory=tmp_path / "eval-r3",
+        inference_evaluator=evaluator,
+    )
+    assert evidence.prediction_count == role.evaluation_size
+
+    # 2. Immutability test on prediction entry
+    entry = evidence.predictions[0]
+    assert entry.forces_ev_per_angstrom is not None
+    assert not entry.forces_ev_per_angstrom.flags.writeable
+    with pytest.raises(ValueError):
+        entry.forces_ev_per_angstrom[0, 0] = 999.0
+
+    # 3. Payload digest mismatch test on construction
+    with pytest.raises(mdstats.TrainingDataInputError):
+        replace(evidence, prediction_payload_digest="0" * 64)
+
+    # 4. Recomputed payload digest equality
+    from mdstats.training_data.target_size_execution import (
+        target_size_eval2_prediction_digest_from_role_digest,
+    )
+
+    recomputed = target_size_eval2_prediction_digest_from_role_digest(
+        role.content_digest, evidence.predictions
+    )
+    assert evidence.prediction_payload_digest == recomputed
+
+    # 5. Snapshot promoter conflict detection on pre-existing differing raw checkpoint
+    snap_dir = tmp_path / "snap_root_r3" / snapshot.snapshot_relative_dir
+    fake_raw = snap_dir / snapshot.raw_checkpoint_name
+    original_bytes = fake_raw.read_bytes()
+    fake_raw.write_bytes(original_bytes + b"conflict")
+    with pytest.raises(mdstats.TrainingDataInputError):
+        promote_target_size_boundary_snapshot(
+            env["trajectory"],
+            state,
+            checkpoint_directory=tmp_path / "ckpt-r3",
+            snapshot_root=tmp_path / "snap_root_r3",
+        )
+    fake_raw.write_bytes(original_bytes)
+
+
+def test_p3d_review3_evaluation_view_bypass_prevention(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    state = _boundary_state(env, tmp_path, 1, name="ckpt-bypass")
+    snapshot = promote_target_size_boundary_snapshot(
+        env["trajectory"],
+        state,
+        checkpoint_directory=tmp_path / "ckpt-bypass",
+        snapshot_root=tmp_path / "snap_root_bypass",
+    )
+    eval_artifact = _eval_artifact_for(
+        env,
+        tmp_path,
+        env["aggregate"].definition.policy.evaluation_sizes[0],
+        name="eval-bypass",
+    )
+    blocks = target_size_population_correlation_blocks(
+        env["aggregate"], env["evidence"]
+    )
+    role = build_target_size_eval2_role(
+        trajectory=env["trajectory"],
+        boundary_state=snapshot,
+        definition=env["aggregate"].definition,
+        schedule=env["schedule"],
+        correlation_blocks=blocks,
+        evaluation_data=eval_artifact,
+    )
+    view = eval_artifact.build_evaluation_view(tmp_path / "eval-bypass")
+    evaluator = _predictions_evaluator(view)
+    evidence = run_target_size_direct_boundary_inference(
+        trajectory=env["trajectory"],
+        materialization=_materialization_for(env, tmp_path),
+        boundary_state=snapshot,
+        role=role,
+        evaluation_data=eval_artifact,
+        snapshot_root=tmp_path / "snap_root_bypass",
+        evaluation_directory=tmp_path / "eval-bypass",
+        inference_evaluator=evaluator,
+    )
+
+    # Reduction with matching view succeeds
+    rec = run_target_size_eval2_reduction(
+        role,
+        eval_artifact,
+        evidence,
+        view=view,
+    )
+    assert rec.configuration_count == role.evaluation_size
+
+    # Reduction with mismatched view digest fails
+    fake_view = SimpleNamespace(
+        evaluation_view_digest="0" * 64,
+        configuration_count=role.evaluation_size,
+    )
+    with pytest.raises(mdstats.TrainingDataInputError):
+        run_target_size_eval2_reduction(
+            role,
+            eval_artifact,
+            evidence,
+            view=fake_view,
+        )
