@@ -298,11 +298,17 @@ def test_p3d_exact_mev_conversion_and_reference_equivalence(tmp_path: Path) -> N
     definition = env["aggregate"].definition
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
     state = _boundary_state(env, tmp_path, 1, name="ckpt-mev")
+    snapshot = promote_target_size_boundary_snapshot(
+        env["trajectory"],
+        state,
+        checkpoint_directory=tmp_path / "ckpt-mev",
+        snapshot_root=tmp_path / "snap_root_mev",
+    )
     eval_artifact = _eval_artifact_for(env, tmp_path, 1, name="eval-mev")
     materialization = _materialization_for(env, tmp_path)
     role = build_target_size_eval2_role(
         trajectory=env["trajectory"],
-        boundary_state=state,
+        boundary_state=snapshot,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,
@@ -314,10 +320,18 @@ def test_p3d_exact_mev_conversion_and_reference_equivalence(tmp_path: Path) -> N
     pred_evidence = run_target_size_direct_boundary_inference(
         trajectory=env["trajectory"],
         materialization=materialization,
-        boundary_state=state,
+        boundary_state=snapshot,
         role=role,
         evaluation_data=eval_artifact,
-        root_directory=tmp_path / "eval-mev",
+        canonical_frame_authority=env["frame_authority"],
+        definition=definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=env["optimizer"],
+        materialization_directory=tmp_path / "materialization",
+        snapshot_root=tmp_path / "snap_root_mev",
+        evaluation_directory=tmp_path / "eval-mev",
         inference_evaluator=evaluator,
     )
     assert pred_evidence.role_digest == role.content_digest
@@ -423,10 +437,16 @@ def test_p3d_direct_role_payload_carries_no_legacy_selection_semantics(
     definition = env["aggregate"].definition
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
     state = _boundary_state(env, tmp_path, 1, name="ckpt-legacy")
+    snapshot = promote_target_size_boundary_snapshot(
+        env["trajectory"],
+        state,
+        checkpoint_directory=tmp_path / "ckpt-legacy",
+        snapshot_root=tmp_path / "snap_root_legacy",
+    )
     eval_artifact = _eval_artifact_for(env, tmp_path, 1, name="eval-legacy")
     role = build_target_size_eval2_role(
         trajectory=env["trajectory"],
-        boundary_state=state,
+        boundary_state=snapshot,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,
@@ -465,19 +485,35 @@ def test_p3d_direct_role_payload_carries_no_legacy_selection_semantics(
     better_pred = run_target_size_direct_boundary_inference(
         trajectory=env["trajectory"],
         materialization=materialization,
-        boundary_state=state,
+        boundary_state=snapshot,
         role=role,
         evaluation_data=eval_artifact,
-        root_directory=tmp_path / "eval-legacy",
+        canonical_frame_authority=env["frame_authority"],
+        definition=definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=env["optimizer"],
+        materialization_directory=tmp_path / "materialization",
+        snapshot_root=tmp_path / "snap_root_legacy",
+        evaluation_directory=tmp_path / "eval-legacy",
         inference_evaluator=better_eval,
     )
     worse_pred = run_target_size_direct_boundary_inference(
         trajectory=env["trajectory"],
         materialization=materialization,
-        boundary_state=state,
+        boundary_state=snapshot,
         role=role,
         evaluation_data=eval_artifact,
-        root_directory=tmp_path / "eval-legacy",
+        canonical_frame_authority=env["frame_authority"],
+        definition=definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=env["optimizer"],
+        materialization_directory=tmp_path / "materialization",
+        snapshot_root=tmp_path / "snap_root_legacy",
+        evaluation_directory=tmp_path / "eval-legacy",
         inference_evaluator=worse_eval,
     )
     better_metric = evaluate_target_size_boundary(
@@ -499,11 +535,17 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
     definition = env["aggregate"].definition
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
     state = _boundary_state(env, tmp_path, 1, name="ckpt-fail")
+    snapshot = promote_target_size_boundary_snapshot(
+        env["trajectory"],
+        state,
+        checkpoint_directory=tmp_path / "ckpt-fail",
+        snapshot_root=tmp_path / "snap_root_fail",
+    )
     eval_artifact = _eval_artifact_for(env, tmp_path, 1, name="eval-fail")
     materialization = _materialization_for(env, tmp_path)
     role = build_target_size_eval2_role(
         trajectory=env["trajectory"],
-        boundary_state=state,
+        boundary_state=snapshot,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,
@@ -519,10 +561,18 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
     broken_pred = run_target_size_direct_boundary_inference(
         trajectory=env["trajectory"],
         materialization=materialization,
-        boundary_state=state,
+        boundary_state=snapshot,
         role=role,
         evaluation_data=eval_artifact,
-        root_directory=tmp_path / "eval-fail",
+        canonical_frame_authority=env["frame_authority"],
+        definition=definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=env["optimizer"],
+        materialization_directory=tmp_path / "materialization",
+        snapshot_root=tmp_path / "snap_root_fail",
+        evaluation_directory=tmp_path / "eval-fail",
         inference_evaluator=_broken_force_eval,
     )
     outcome = evaluate_target_size_boundary(
@@ -543,10 +593,18 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
     broken_energy_pred = run_target_size_direct_boundary_inference(
         trajectory=env["trajectory"],
         materialization=materialization,
-        boundary_state=state,
+        boundary_state=snapshot,
         role=role,
         evaluation_data=eval_artifact,
-        root_directory=tmp_path / "eval-fail",
+        canonical_frame_authority=env["frame_authority"],
+        definition=definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=env["optimizer"],
+        materialization_directory=tmp_path / "materialization",
+        snapshot_root=tmp_path / "snap_root_fail",
+        evaluation_directory=tmp_path / "eval-fail",
         inference_evaluator=_broken_energy_eval,
     )
     energy_outcome = evaluate_target_size_boundary(
@@ -579,10 +637,18 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
         run_target_size_direct_boundary_inference(
             trajectory=other_traj,
             materialization=materialization,
-            boundary_state=state,
+            boundary_state=snapshot,
             role=role,
             evaluation_data=eval_artifact,
-            root_directory=tmp_path / "eval-fail",
+            canonical_frame_authority=env["frame_authority"],
+            definition=definition,
+            context=env["context"],
+            common=env["common"],
+            schedule=env["schedule"],
+            optimizer_policy=env["optimizer"],
+            materialization_directory=tmp_path / "materialization",
+            snapshot_root=tmp_path / "snap_root_fail",
+            evaluation_directory=tmp_path / "eval-fail",
             inference_evaluator=_predictions_evaluator(view),
         )
     # 2. Foreign evaluation data
@@ -593,10 +659,18 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
         run_target_size_direct_boundary_inference(
             trajectory=env["trajectory"],
             materialization=materialization,
-            boundary_state=state,
+            boundary_state=snapshot,
             role=role,
             evaluation_data=eval_artifact_m2,
-            root_directory=tmp_path / "eval-m2",
+            canonical_frame_authority=env["frame_authority"],
+            definition=definition,
+            context=env["context"],
+            common=env["common"],
+            schedule=env["schedule"],
+            optimizer_policy=env["optimizer"],
+            materialization_directory=tmp_path / "materialization",
+            snapshot_root=tmp_path / "snap_root_fail",
+            evaluation_directory=tmp_path / "eval-m2",
             inference_evaluator=_predictions_evaluator(view),
         )
 
@@ -680,13 +754,19 @@ def test_p3d_review3_prediction_evidence_immutability_and_authentication(
     view = eval_artifact.build_evaluation_view(tmp_path / "eval-r3")
     evaluator = _predictions_evaluator(view)
 
-    # 1. Distinct locators test
+    # 1. Distinct locators test with mandatory authorities
     evidence = run_target_size_direct_boundary_inference(
         trajectory=env["trajectory"],
         materialization=materialization,
         boundary_state=snapshot,
         role=role,
         evaluation_data=eval_artifact,
+        canonical_frame_authority=env["frame_authority"],
+        definition=env["aggregate"].definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=env["optimizer"],
         materialization_directory=tmp_path / "materialization",
         snapshot_root=tmp_path / "snap_root_r3",
         evaluation_directory=tmp_path / "eval-r3",
@@ -764,6 +844,13 @@ def test_p3d_review3_evaluation_view_bypass_prevention(tmp_path: Path) -> None:
         boundary_state=snapshot,
         role=role,
         evaluation_data=eval_artifact,
+        canonical_frame_authority=env["frame_authority"],
+        definition=env["aggregate"].definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=env["optimizer"],
+        materialization_directory=tmp_path / "materialization",
         snapshot_root=tmp_path / "snap_root_bypass",
         evaluation_directory=tmp_path / "eval-bypass",
         inference_evaluator=evaluator,
@@ -790,3 +877,47 @@ def test_p3d_review3_evaluation_view_bypass_prevention(tmp_path: Path) -> None:
             evidence,
             view=fake_view,
         )
+
+    # Generic view without evaluation_view_digest is rejected
+    generic_view = SimpleNamespace(
+        configuration_count=role.evaluation_size,
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="Generic EvaluationDatasetView"):
+        run_target_size_eval2_reduction(
+            role,
+            eval_artifact,
+            evidence,
+            view=generic_view,
+        )
+
+
+def test_p3d_review4_exact_m_byte_and_frame_order_validation(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    eval_artifact = _eval_artifact_for(
+        env,
+        tmp_path,
+        env["aggregate"].definition.policy.evaluation_sizes[0],
+        name="eval-r4",
+    )
+    # Valid artifact passes
+    validate_target_size_evaluation_artifact(
+        eval_artifact,
+        root_directory=tmp_path / "eval-r4",
+        definition=env["aggregate"].definition,
+        canonical_frame_authority=env["frame_authority"],
+    )
+
+    # Reordered ExtXYZ frames on disk must fail
+    extxyz_file = tmp_path / "eval-r4" / eval_artifact.relative_path
+    frames = ase.io.read(str(extxyz_file), index=":")
+    if len(frames) > 1:
+        reordered = list(reversed(frames))
+        ase.io.write(str(extxyz_file), reordered)
+        with pytest.raises(mdstats.TrainingDataInputError):
+            validate_target_size_evaluation_artifact(
+                eval_artifact,
+                root_directory=tmp_path / "eval-r4",
+                definition=env["aggregate"].definition,
+                canonical_frame_authority=env["frame_authority"],
+            )
+        ase.io.write(str(extxyz_file), frames)

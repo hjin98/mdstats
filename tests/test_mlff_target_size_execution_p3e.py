@@ -178,13 +178,26 @@ def _execute_candidate_boundary(env, tmp_path: Path, size: int, seed: int, bound
 
     view = eval_artifact.build_evaluation_view(eval_dir)
     evaluator = p3d._predictions_evaluator(view, epsilon=_epsilon(size, seed))
+    opt_policy = (
+        trajectory.realization.optimizer_policy
+        if hasattr(trajectory.realization, "optimizer_policy")
+        else (env["optimizer"] if seed == 1 else _seeded(env["optimizer"], seed))
+    )
     pred_evidence = run_target_size_direct_boundary_inference(
         trajectory=trajectory,
         materialization=materialization,
         boundary_state=snapshot,
         role=role,
         evaluation_data=eval_artifact,
-        root_directory=eval_dir,
+        canonical_frame_authority=env["frame_authority"],
+        definition=definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=opt_policy,
+        materialization_directory=mat_dir,
+        snapshot_root=env["root"],
+        evaluation_directory=eval_dir,
         inference_evaluator=evaluator,
     )
 
@@ -207,7 +220,16 @@ def _execute_candidate_boundary(env, tmp_path: Path, size: int, seed: int, bound
         eval2_metric_record=metric_record,
     )
 
-    return trajectory, role, snapshot, completion_record, materialization, eval_artifact
+    return (
+        trajectory,
+        role,
+        snapshot,
+        completion_record,
+        materialization,
+        eval_artifact,
+        pred_evidence,
+        metric_record,
+    )
 
 
 def _run_boundary_matrix(env, tmp_path: Path, state, *, skip: list | None = None):
@@ -220,16 +242,32 @@ def _run_boundary_matrix(env, tmp_path: Path, state, *, skip: list | None = None
     for index, (size, seed) in enumerate(keys):
         if skip and index in skip:
             continue
-        trajectory, role, snapshot, completion_record, *_ = _execute_candidate_boundary(
-            env, tmp_path, size, seed, boundary
-        )
+        (
+            trajectory,
+            role,
+            snapshot,
+            completion_record,
+            materialization,
+            eval_artifact,
+            pred_evidence,
+            metric_record,
+        ) = _execute_candidate_boundary(env, tmp_path, size, seed, boundary)
         assert completion_record.boundary_epoch == boundary
         assert completion_record.outcome.evaluation_membership_digest == (
             definition.evaluation_order.membership_digest(evaluation_size)
         )
         completion_records.append(completion_record)
         record_candidate_boundary_outcome(
-            env["root"], env["window"], trajectory, completion_record
+            env["root"],
+            env["window"],
+            trajectory,
+            completion_record,
+            materialization=materialization,
+            boundary_snapshot=snapshot,
+            eval2_role=role,
+            evaluation_data=eval_artifact,
+            prediction_evidence=pred_evidence,
+            eval2_metric_record=metric_record,
         )
     return boundary, evaluation_size, keys, completion_records
 
@@ -365,11 +403,29 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
         try:
             if index == 1:
                 _boom()
-            trajectory, _role, _snap, completion_record, *_ = _execute_candidate_boundary(
+            (
+                trajectory,
+                role,
+                snapshot,
+                completion_record,
+                materialization,
+                eval_artifact,
+                pred_evidence,
+                metric_record,
+            ) = _execute_candidate_boundary(
                 env, tmp_path, size, seed, boundary
             )
             record_candidate_boundary_outcome(
-                env["root"], env["window"], trajectory, completion_record
+                env["root"],
+                env["window"],
+                trajectory,
+                completion_record,
+                materialization=materialization,
+                boundary_snapshot=snapshot,
+                eval2_role=role,
+                evaluation_data=eval_artifact,
+                prediction_evidence=pred_evidence,
+                eval2_metric_record=metric_record,
             )
             completion_records.append(completion_record)
         except OSError:
@@ -387,11 +443,29 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
     assert load_current_execution_head(env["root"]) is None
     # Retrying the failed work completes the same boundary without duplicates.
     size, seed = keys[1]
-    trajectory, _role, _snap, completion_record, *_ = _execute_candidate_boundary(
+    (
+        trajectory,
+        role,
+        snapshot,
+        completion_record,
+        materialization,
+        eval_artifact,
+        pred_evidence,
+        metric_record,
+    ) = _execute_candidate_boundary(
         env, tmp_path, size, seed, boundary
     )
     record_candidate_boundary_outcome(
-        env["root"], env["window"], trajectory, completion_record
+        env["root"],
+        env["window"],
+        trajectory,
+        completion_record,
+        materialization=materialization,
+        boundary_snapshot=snapshot,
+        eval2_role=role,
+        evaluation_data=eval_artifact,
+        prediction_evidence=pred_evidence,
+        eval2_metric_record=metric_record,
     )
     recover_records = collect_boundary_cell_completion_records(
         env["root"], env["window"], boundary_epoch=boundary
@@ -567,7 +641,16 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
     boundary, evaluation_size, keys = requirements
 
     # (a) After candidate TRAIN2 persistence, before any outcome: safe.
-    trajectory, role, snapshot, rec_one, *_ = _execute_candidate_boundary(
+    (
+        trajectory,
+        role,
+        snapshot,
+        rec_one,
+        mat_one,
+        eval_one,
+        pred_one,
+        metric_one,
+    ) = _execute_candidate_boundary(
         env, tmp_path, keys[0][0], keys[0][1], boundary
     )
     head = reconcile_target_size_screen_root(
@@ -576,7 +659,18 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
     assert head is None
 
     # (b) After only some boundary outcomes exist: still pre-state.
-    record_candidate_boundary_outcome(env["root"], env["window"], trajectory, rec_one)
+    record_candidate_boundary_outcome(
+        env["root"],
+        env["window"],
+        trajectory,
+        rec_one,
+        materialization=mat_one,
+        boundary_snapshot=snapshot,
+        eval2_role=role,
+        evaluation_data=eval_one,
+        prediction_evidence=pred_one,
+        eval2_metric_record=metric_one,
+    )
     assert load_current_execution_head(env["root"]) is None
     partial = collect_boundary_cell_completion_records(
         env["root"], env["window"], boundary_epoch=boundary
@@ -588,10 +682,30 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
     # (c) Finish the matrix; persist the batch but do not commit (crash point).
     completion_records = [rec_one]
     for size, seed in keys[1:]:
-        trajectory2, _r, _s, rec2, *_ = _execute_candidate_boundary(
+        (
+            trajectory2,
+            role2,
+            snapshot2,
+            rec2,
+            mat2,
+            eval2,
+            pred2,
+            metric2,
+        ) = _execute_candidate_boundary(
             env, tmp_path, size, seed, boundary
         )
-        record_candidate_boundary_outcome(env["root"], env["window"], trajectory2, rec2)
+        record_candidate_boundary_outcome(
+            env["root"],
+            env["window"],
+            trajectory2,
+            rec2,
+            materialization=mat2,
+            boundary_snapshot=snapshot2,
+            eval2_role=role2,
+            evaluation_data=eval2,
+            prediction_evidence=pred2,
+            eval2_metric_record=metric2,
+        )
         completion_records.append(rec2)
     completion_records = tuple(
         collect_boundary_cell_completion_records(
@@ -715,6 +829,8 @@ def test_p3e_review3_discriminated_cell_completion_record_variants(
         comp_success,
         materialization,
         eval_artifact,
+        pred_evidence,
+        metric_record,
     ) = _execute_candidate_boundary(env, tmp_path, size0, seed0, 1)
 
     # 1. Success completion record variant
@@ -795,7 +911,7 @@ def test_p3e_review3_discriminated_cell_completion_record_variants(
         "eval_nonfinite_force_prediction",
         "NaN force predicted",
         target_role_digest=role.content_digest,
-        prediction_digest="0" * 64,
+        prediction_digest=pred_evidence.prediction_payload_digest,
     )
     comp_eval_fail = build_target_size_cell_completion_record(
         window=window,
@@ -804,6 +920,7 @@ def test_p3e_review3_discriminated_cell_completion_record_variants(
         boundary_snapshot=snapshot,
         eval2_role=role,
         evaluation_data=eval_artifact,
+        prediction_evidence=pred_evidence,
         failure_record=eval_fail_err,
         kind="eval2_failure",
     )

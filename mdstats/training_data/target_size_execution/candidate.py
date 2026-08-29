@@ -580,6 +580,50 @@ def validate_target_size_candidate_trajectory(
             "Trajectory realization is stale for the current exact T_N; "
             "loader/update geometry or precision realization differs."
         )
+
+    expected_foundation_digest = digest(
+        {
+            "schema": "mdstats.target-size.replay-foundation.v1",
+            "mode": "none",
+            "foundation_checkpoint_digest": None,
+            "selected_head_name": None,
+        }
+    )
+    if (
+        trajectory.replay_foundation_identity_digest
+        != expected_foundation_digest
+    ):
+        raise TrainingDataInputError(
+            "Trajectory replay foundation identity digest must be mode 'none'."
+        )
+    if getattr(trajectory, "replay_foundation", None) is not None:
+        raise TrainingDataInputError(
+            "Trajectory replay foundation must be None for P3 screening."
+        )
+
+    recomputed_protocol_digest = digest(
+        {
+            "schema": "mdstats.target-size.candidate-protocol.v1",
+            "seed_neutral_training_policy_digest": (
+                context.seed_neutral_optimizer_policy_digest
+            ),
+            "optimizer_seed": trajectory.optimizer_seed,
+            "candidate_membership_digest": (
+                projection.candidate_membership_digest
+            ),
+            "common_preparation_digest": common.content_digest,
+            "execution_context_digest": context.content_digest,
+            "realization_digest": expected_realization.content_digest,
+        }
+    )
+    if (
+        trajectory.candidate_training_protocol_digest
+        != recomputed_protocol_digest
+    ):
+        raise TrainingDataInputError(
+            "Trajectory candidate training protocol digest mismatch."
+        )
+
     return projection
 
 
@@ -861,6 +905,7 @@ def validate_target_size_materialization(
     canonical_frame_authority: Any,
     materialization_directory: str | Path | None = None,
     projection: TargetSizeCandidatePreparation | None = None,
+    definition: TargetSizeExperimentDefinition | None = None,
     common: TargetSizeCommonPreparation | None = None,
     optimizer_policy: MaceOptimizerPolicy | None = None,
 ) -> None:
@@ -951,20 +996,26 @@ def validate_target_size_materialization(
         raise TrainingDataInputError(
             "Candidate MACE configuration does not point at the exact target-train artifact."
         )
-    if common is not None and projection is not None and optimizer_policy is not None:
-        expected_config = _mace_config_for_candidate(
-            trajectory=trajectory,
-            projection=projection,
-            common=common,
-            optimizer_policy=optimizer_policy,
-            target_train=record.target_train_artifact,
-            harness_validation=record.harness_validation_artifact,
-            extxyz_policy=MaceExtxyzPolicy(),
-        )
-        if record.mace_config_digest != digest(expected_config):
-            raise TrainingDataInputError(
-                "Candidate MACE configuration does not match re-derived configuration."
+    if common is not None and optimizer_policy is not None:
+        active_projection = projection
+        if active_projection is None and definition is not None:
+            active_projection = project_target_size_candidate_preparation(
+                common, definition, trajectory.target_size
             )
+        if active_projection is not None:
+            expected_config = _mace_config_for_candidate(
+                trajectory=trajectory,
+                projection=active_projection,
+                common=common,
+                optimizer_policy=optimizer_policy,
+                target_train=record.target_train_artifact,
+                harness_validation=record.harness_validation_artifact,
+                extxyz_policy=MaceExtxyzPolicy(),
+            )
+            if record.mace_config_digest != digest(expected_config):
+                raise TrainingDataInputError(
+                    "Candidate MACE configuration does not match re-derived configuration."
+                )
 
 
 __all__ = [

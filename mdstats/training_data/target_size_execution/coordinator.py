@@ -186,6 +186,20 @@ class TargetSizeExecutionResolver:
     def eval2_metric_path(self, metric_digest: str) -> Path:
         return self.root_directory / "metrics" / f"{metric_digest}.json"
 
+    def snapshot_path(self, snapshot_digest: str) -> Path:
+        return (
+            self.root_directory
+            / "snapshots"
+            / f"{snapshot_digest}.json"
+        )
+
+    def planned_rung_path(self, planned_rung_digest: str) -> Path:
+        return (
+            self.root_directory
+            / "planned_rungs"
+            / f"{planned_rung_digest}.json"
+        )
+
     def failure_record_path(self, failure_digest: str) -> Path:
         return self.root_directory / "failures" / f"{failure_digest}.json"
 
@@ -204,6 +218,16 @@ class TargetSizeExecutionResolver:
 
     def head_path(self, head_digest: str) -> Path:
         return self.root_directory / "heads" / f"{head_digest}.json"
+
+    def cell_outcome_path(
+        self, window_digest: str, boundary_epoch: int, target_size: int, optimizer_seed: int
+    ) -> Path:
+        return (
+            self.root_directory
+            / "progress"
+            / str(boundary_epoch)
+            / f"{window_digest}_{target_size}_{optimizer_seed}.json"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1176,7 +1200,10 @@ def record_candidate_boundary_outcome(
             "Completion record belongs to a different trajectory."
         )
     resolver = TargetSizeExecutionResolver(Path(root))
-
+    if boundary_snapshot is not None and hasattr(boundary_snapshot, "to_dict"):
+        snap_path = resolver.snapshot_path(boundary_snapshot.content_digest)
+        if not snap_path.is_file():
+            _atomic_json_write(snap_path, boundary_snapshot.to_dict())
     if hasattr(trajectory, "to_dict"):
         traj_path = resolver.trajectory_path(trajectory.content_digest)
         if not traj_path.is_file():
@@ -1219,9 +1246,14 @@ def record_candidate_boundary_outcome(
     comp_path = resolver.completion_path(
         completion_record.boundary_epoch, completion_record.content_digest
     )
-    if not comp_path.is_file():
-        _atomic_json_write(comp_path, completion_record.to_dict())
-    else:
+    comp_dir = comp_path.parent
+    comp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(comp_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(completion_record.to_dict(), f, indent=2, sort_keys=True)
+            f.write("\n")
+    except FileExistsError:
         existing_comp = TargetSizeCellCompletionRecord.from_dict(
             json.loads(comp_path.read_text(encoding="utf-8"))
         )
@@ -1243,7 +1275,14 @@ def record_candidate_boundary_outcome(
         progress.boundary_epoch,
         progress,
     )
-    if progress_path.is_file():
+    progress_dir = progress_path.parent
+    progress_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(progress_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(progress.to_dict(), f, indent=2, sort_keys=True)
+            f.write("\n")
+    except FileExistsError:
         existing = TargetSizeCandidateOutcome.from_dict(
             json.loads(progress_path.read_text(encoding="utf-8"))
         )
@@ -1252,7 +1291,6 @@ def record_candidate_boundary_outcome(
                 "Conflicting outcome for the same candidate/boundary position."
             )
         return existing
-    _atomic_json_write(progress_path, progress.to_dict())
     return progress
 
 
@@ -1439,10 +1477,14 @@ def reconcile_target_size_screen_root(
     aggregate: Any,
     context: TargetSizeExecutionContext,
     common: TargetSizeCommonPreparation,
+    *,
+    schedule: TargetSizeScreenSchedule | None = None,
+    resolver: TargetSizeExecutionResolver | None = None,
 ) -> TargetSizeExecutionHead | None:
     """Crash-safe restart reconciliation through pure deterministic replay from initial state."""
 
     root_path = Path(root)
+    active_resolver = resolver if resolver is not None else TargetSizeExecutionResolver(root_path)
     window_path = root_path / SCREEN_WINDOW_FILENAME
     if not window_path.is_file():
         return None
@@ -1466,7 +1508,21 @@ def reconcile_target_size_screen_root(
     replayed_state = aggregate.reducer_state
     current_head = load_current_execution_head(root_path)
 
+    # 1. Verify current head matches stored immutable head
     if current_head is not None:
+        immutable_head_path = _head_path(root_path, current_head.content_digest)
+        if not immutable_head_path.is_file():
+            raise TrainingDataInputError(
+                "Current execution head is missing its immutable head file in heads/."
+            )
+        immutable_head = TargetSizeExecutionHead.from_dict(
+            json.loads(immutable_head_path.read_text(encoding="utf-8"))
+        )
+        if immutable_head.content_digest != current_head.content_digest:
+            raise TrainingDataInputError(
+                "Current head copy differs from immutable head."
+            )
+
         chain: list[TargetSizeExecutionHead] = [current_head]
         curr = current_head
         visited = {curr.content_digest}
@@ -1479,6 +1535,10 @@ def reconcile_target_size_screen_root(
             parent = TargetSizeExecutionHead.from_dict(
                 json.loads(parent_file.read_text(encoding="utf-8"))
             )
+            if parent.content_digest != curr.parent_head_digest:
+                raise TrainingDataInputError(
+                    "Parent head content digest does not match referenced digest."
+                )
             if parent.content_digest in visited:
                 raise TrainingDataInputError(
                     "Ancestry loop detected in execution heads."
@@ -1487,6 +1547,55 @@ def reconcile_target_size_screen_root(
             chain.append(parent)
             curr = parent
         chain.reverse()
+
+        # Verify all heads in heads/ are in valid chain and no forks exist
+        heads_dir = root_path / "heads"
+        if heads_dir.is_dir():
+            all_heads: list[TargetSizeExecutionHead] = []
+            for h_path in sorted(heads_dir.glob("*.json")):
+                h_obj = TargetSizeExecutionHead.from_dict(
+                    json.loads(h_path.read_text(encoding="utf-8"))
+                )
+                if h_obj.content_digest != h_path.stem:
+                    raise TrainingDataInputError(
+                        f"Head file name {h_path.name} does not match content digest {h_obj.content_digest}."
+                    )
+                all_heads.append(h_obj)
+            parent_to_heads: dict[str | None, list[str]] = {}
+            for h in all_heads:
+                parent_to_heads.setdefault(h.parent_head_digest, []).append(h.content_digest)
+            for p_digest, h_digests in parent_to_heads.items():
+                if len(h_digests) > 1:
+                    raise TrainingDataInputError(
+                        f"Fork detected: multiple heads {h_digests} claim parent head {p_digest}."
+                    )
+            chain_digests = {h.content_digest for h in chain}
+            for h in all_heads:
+                if h.content_digest not in chain_digests:
+                    raise TrainingDataInputError(
+                        f"Orphan head detected: {h.content_digest} is not in current head ancestry chain."
+                    )
+
+        # Scan for conflicting completions across cells
+        completions_dir = root_path / "completions"
+        if completions_dir.is_dir():
+            cells_seen: dict[tuple[int, int, int], str] = {}
+            for epoch_dir in sorted(completions_dir.iterdir()):
+                if epoch_dir.is_dir():
+                    for comp_file in sorted(epoch_dir.glob("*.json")):
+                        c_rec = TargetSizeCellCompletionRecord.from_dict(
+                            json.loads(comp_file.read_text(encoding="utf-8"))
+                        )
+                        if c_rec.content_digest != comp_file.stem:
+                            raise TrainingDataInputError(
+                                f"Completion file name {comp_file.name} does not match content digest {c_rec.content_digest}."
+                            )
+                        cell_key = (c_rec.boundary_epoch, c_rec.target_size, c_rec.optimizer_seed)
+                        if cell_key in cells_seen and cells_seen[cell_key] != c_rec.content_digest:
+                            raise TrainingDataInputError(
+                                f"Conflicting completion records found for cell {cell_key}."
+                            )
+                        cells_seen[cell_key] = c_rec.content_digest
 
         for head in chain:
             if head.pre_state_digest != replayed_state.content_digest:
@@ -1509,6 +1618,8 @@ def reconcile_target_size_screen_root(
                 raise TrainingDataInputError(
                     "Complete batch pre-state digest does not match replayed reducer state."
                 )
+
+            recomputed_outcomes: list[BoundaryOutcome] = []
             for comp_digest in batch.completion_record_digests:
                 comp_file = (
                     root_path
@@ -1531,8 +1642,161 @@ def reconcile_target_size_screen_root(
                     raise TrainingDataInputError(
                         "Completion record belongs to a different screen window."
                     )
+
+                # Reconstruct outcome from parent evidence
+                if record.kind == "success":
+                    if (
+                        record.eval2_role_digest is None
+                        or record.eval2_metric_record_digest is None
+                    ):
+                        raise TrainingDataInputError(
+                            "Success completion record missing role or metric digest."
+                        )
+                    role_file = active_resolver.role_path(record.eval2_role_digest)
+                    metric_file = active_resolver.eval2_metric_path(record.eval2_metric_record_digest)
+                    if not role_file.is_file() or not metric_file.is_file():
+                        raise TrainingDataInputError(
+                            "Parent role or metric record missing for completion record."
+                        )
+                    from .evaluation import (
+                        TargetSizeEval2Role,
+                        TargetSizePredictionEvidence,
+                        target_size_boundary_metric_from_eval2_record,
+                    )
+                    from ..eval2 import Eval2TargetMetricRecord
+                    role_obj = TargetSizeEval2Role.from_dict(
+                        json.loads(role_file.read_text(encoding="utf-8"))
+                    )
+                    if role_obj.content_digest != record.eval2_role_digest:
+                        raise TrainingDataInputError("Role content digest mismatch.")
+                    metric_obj = Eval2TargetMetricRecord.from_dict(
+                        json.loads(metric_file.read_text(encoding="utf-8"))
+                    )
+                    if metric_obj.content_digest != record.eval2_metric_record_digest:
+                        raise TrainingDataInputError("Metric record content digest mismatch.")
+                    if record.prediction_evidence_digest is not None:
+                        pred_file = active_resolver.prediction_evidence_path(record.prediction_evidence_digest)
+                        if pred_file.is_file():
+                            pred_obj = TargetSizePredictionEvidence.from_dict(
+                                json.loads(pred_file.read_text(encoding="utf-8"))
+                            )
+                            if pred_obj.content_digest != record.prediction_evidence_digest:
+                                raise TrainingDataInputError("Prediction evidence content digest mismatch.")
+                            if pred_obj.prediction_payload_digest != metric_obj.prediction_digest:
+                                raise TrainingDataInputError("Prediction payload digest mismatch in metric record.")
+                    derived_outcome = target_size_boundary_metric_from_eval2_record(
+                        role_obj, metric_obj
+                    )
+                    if derived_outcome.content_digest != record.outcome_digest:
+                        raise TrainingDataInputError(
+                            "Reconstructed outcome does not match completion outcome digest."
+                        )
+                    recomputed_outcomes.append(derived_outcome)
+
+                elif record.kind == "train2_failure":
+                    if record.failure_record_digest is None:
+                        raise TrainingDataInputError(
+                            "TRAIN2 failure completion record missing failure_record_digest."
+                        )
+                    fail_file = active_resolver.failure_record_path(record.failure_record_digest)
+                    if not fail_file.is_file():
+                        raise TrainingDataInputError(
+                            f"TRAIN2 failure record missing at {fail_file}."
+                        )
+                    fail_dict = json.loads(fail_file.read_text(encoding="utf-8"))
+                    if "failure_code" in fail_dict:
+                        from ..train2_runtime import Train2NumericalFailureRecord
+                        from .execution import translate_target_size_train2_failure
+                        from .candidate import TargetSizeCandidateTrajectory
+                        traj_file = active_resolver.trajectory_path(record.trajectory_digest)
+                        if not traj_file.is_file():
+                            raise TrainingDataInputError(f"Trajectory file missing: {traj_file}")
+                        traj_obj = TargetSizeCandidateTrajectory.from_dict(
+                            json.loads(traj_file.read_text(encoding="utf-8"))
+                        )
+                        raw_fail = Train2NumericalFailureRecord.from_dict(fail_dict)
+                        if raw_fail.content_digest != record.failure_record_digest:
+                            raise TrainingDataInputError("Failure record content digest mismatch.")
+                        if schedule is not None:
+                            derived_outcome = translate_target_size_train2_failure(
+                                raw_fail,
+                                trajectory=traj_obj,
+                                definition=definition,
+                                schedule=schedule,
+                                scheduled_boundary_epoch=batch.boundary_epoch,
+                            )
+                        else:
+                            derived_outcome = record.outcome
+                    else:
+                        from ..target_size_experiment import TargetSizeNumericalFailure
+                        derived_outcome = TargetSizeNumericalFailure.from_dict(fail_dict)
+                    if derived_outcome.content_digest != record.outcome_digest:
+                        raise TrainingDataInputError(
+                            "Reconstructed TRAIN2 failure does not match completion outcome digest."
+                        )
+                    recomputed_outcomes.append(derived_outcome)
+
+                elif record.kind == "eval2_failure":
+                    if (
+                        record.eval2_role_digest is None
+                        or record.failure_record_digest is None
+                    ):
+                        raise TrainingDataInputError(
+                            "EVAL2 failure completion record missing role or failure digest."
+                        )
+                    role_file = active_resolver.role_path(record.eval2_role_digest)
+                    fail_file = active_resolver.failure_record_path(record.failure_record_digest)
+                    if not role_file.is_file() or not fail_file.is_file():
+                        raise TrainingDataInputError(
+                            "Parent role or failure record missing for EVAL2 failure."
+                        )
+                    from .evaluation import (
+                        TargetSizeEval2Role,
+                        translate_target_size_eval2_failure,
+                    )
+                    role_obj = TargetSizeEval2Role.from_dict(
+                        json.loads(role_file.read_text(encoding="utf-8"))
+                    )
+                    fail_dict = json.loads(fail_file.read_text(encoding="utf-8"))
+                    if "failure_code" in fail_dict:
+                        from ..eval2 import Eval2NumericalEvaluationError
+                        raw_err = Eval2NumericalEvaluationError(
+                            target_role_digest=fail_dict["target_role_digest"],
+                            prediction_digest=fail_dict["prediction_digest"],
+                            failure_code=fail_dict["failure_code"],
+                            message=fail_dict.get("message", ""),
+                            details=fail_dict.get("details"),
+                        )
+                        derived_outcome = translate_target_size_eval2_failure(
+                            role_obj, raw_err
+                        )
+                    else:
+                        from ..target_size_experiment import TargetSizeNumericalFailure
+                        derived_outcome = TargetSizeNumericalFailure.from_dict(fail_dict)
+                    if derived_outcome.content_digest != record.outcome_digest:
+                        raise TrainingDataInputError(
+                            "Reconstructed EVAL2 failure does not match completion outcome digest."
+                        )
+                    recomputed_outcomes.append(derived_outcome)
+
+            rebuilt_batch = TargetSizeCompleteBoundaryBatch(
+                pre_state_digest=batch.pre_state_digest,
+                experiment_definition_digest=batch.experiment_definition_digest,
+                execution_context_digest=batch.execution_context_digest,
+                boundary_epoch=batch.boundary_epoch,
+                evaluation_membership_digest=batch.evaluation_membership_digest,
+                active_candidate_sizes=batch.active_candidate_sizes,
+                optimizer_seeds=batch.optimizer_seeds,
+                completion_record_digests=batch.completion_record_digests,
+                outcomes=tuple(recomputed_outcomes),
+            )
+            if rebuilt_batch.content_digest != batch.content_digest:
+                raise TrainingDataInputError(
+                    "Reconstructed batch content digest does not match stored batch."
+                )
+
             post_state = apply_complete_boundary_batch(
-                definition, replayed_state, batch
+                definition, replayed_state, rebuilt_batch
             )
             if post_state.content_digest != head.post_state_digest:
                 raise TrainingDataInputError(

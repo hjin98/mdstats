@@ -796,8 +796,10 @@ def promote_target_size_boundary_snapshot(
     )
     meta_path = dest_dir / "snapshot.json"
     if meta_path.is_file():
-        existing_meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        if digest(existing_meta) != snapshot.content_digest:
+        existing_snapshot = TargetSizeBoundarySnapshot.from_dict(
+            json.loads(meta_path.read_text(encoding="utf-8"))
+        )
+        if existing_snapshot.content_digest != snapshot.content_digest:
             raise TrainingDataInputError(
                 f"Conflicting snapshot metadata already exists at {meta_path}."
             )

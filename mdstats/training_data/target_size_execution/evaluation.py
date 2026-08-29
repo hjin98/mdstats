@@ -602,15 +602,15 @@ def run_target_size_direct_boundary_inference(
     *,
     trajectory: TargetSizeCandidateTrajectory,
     materialization: Any,
-    boundary_state: TargetSizeBoundaryState | TargetSizeBoundarySnapshot,
+    boundary_state: TargetSizeBoundarySnapshot,
     role: TargetSizeEval2Role,
     evaluation_data: TargetSizeEvaluationArtifact,
-    canonical_frame_authority: Any | None = None,
-    definition: TargetSizeExperimentDefinition | None = None,
-    context: Any | None = None,
-    common: Any | None = None,
-    schedule: TargetSizeScreenSchedule | None = None,
-    optimizer_policy: Any | None = None,
+    canonical_frame_authority: Any,
+    definition: TargetSizeExperimentDefinition,
+    context: Any,
+    common: Any,
+    schedule: TargetSizeScreenSchedule,
+    optimizer_policy: Any,
     materialization_directory: str | Path | None = None,
     snapshot_root: str | Path | None = None,
     evaluation_directory: str | Path | None = None,
@@ -620,6 +620,22 @@ def run_target_size_direct_boundary_inference(
     | None = None,
 ) -> TargetSizePredictionEvidence:
     """Real semantic owner for single exact boundary checkpoint inference."""
+    if not isinstance(boundary_state, TargetSizeBoundarySnapshot):
+        raise TrainingDataInputError(
+            "Direct boundary inference requires an immutable TargetSizeBoundarySnapshot."
+        )
+
+    for name, val in (
+        ("canonical_frame_authority", canonical_frame_authority),
+        ("definition", definition),
+        ("context", context),
+        ("common", common),
+        ("schedule", schedule),
+        ("optimizer_policy", optimizer_policy),
+    ):
+        if val is None:
+            raise TrainingDataInputError(f"Mandatory scientific authority '{name}' is missing.")
+
     mat_dir = Path(
         materialization_directory
         if materialization_directory is not None
@@ -634,72 +650,41 @@ def run_target_size_direct_boundary_inference(
         else (root_directory or ".")
     )
 
-    # 1. Trajectory validation
-    if (
-        definition is not None
-        and context is not None
-        and common is not None
-        and schedule is not None
-        and optimizer_policy is not None
-    ):
-        from .candidate import validate_target_size_candidate_trajectory
+    from .candidate import (
+        validate_target_size_candidate_trajectory,
+        validate_target_size_materialization,
+    )
+    from .execution import validate_target_size_boundary_snapshot
+    from .export import validate_target_size_evaluation_artifact
 
-        validate_target_size_candidate_trajectory(
-            trajectory,
-            definition,
-            context,
-            common,
-            schedule,
-            optimizer_policy=optimizer_policy,
-        )
+    # 1. Trajectory validation
+    validate_target_size_candidate_trajectory(
+        trajectory,
+        definition,
+        context,
+        common,
+        schedule,
+        optimizer_policy=optimizer_policy,
+    )
 
     # 2. Materialization validation
-    if canonical_frame_authority is not None:
-        from .candidate import validate_target_size_materialization
-
-        validate_target_size_materialization(
-            materialization,
-            trajectory,
-            canonical_frame_authority=canonical_frame_authority,
-            materialization_directory=mat_dir,
-            common=common,
-            optimizer_policy=optimizer_policy,
-        )
-    elif materialization.trajectory_digest != trajectory.content_digest:
-        raise TrainingDataInputError(
-            "Candidate materialization belongs to a different trajectory."
-        )
+    validate_target_size_materialization(
+        materialization,
+        trajectory,
+        canonical_frame_authority=canonical_frame_authority,
+        materialization_directory=mat_dir,
+        definition=definition,
+        common=common,
+        optimizer_policy=optimizer_policy,
+    )
 
     # 3. Snapshot validation
-    if isinstance(boundary_state, TargetSizeBoundarySnapshot):
-        if (
-            snapshot_root is not None
-            or (snap_root / boundary_state.snapshot_relative_dir).is_dir()
-        ):
-            from .execution import validate_target_size_boundary_snapshot
-
-            validate_target_size_boundary_snapshot(
-                boundary_state,
-                snapshot_root=snap_root,
-                trajectory=trajectory,
-                schedule=schedule,
-            )
-        else:
-            if boundary_state.trajectory_digest != trajectory.content_digest:
-                raise TrainingDataInputError(
-                    "Boundary snapshot binds a different trajectory."
-                )
-            if (
-                boundary_state.evaluation_model_state
-                != trajectory.evaluation_model_state
-            ):
-                raise TrainingDataInputError(
-                    "Boundary snapshot evaluation model-state mismatch."
-                )
-    elif boundary_state.trajectory_digest != trajectory.content_digest:
-        raise TrainingDataInputError(
-            "Boundary state belongs to a different candidate trajectory."
-        )
+    validate_target_size_boundary_snapshot(
+        boundary_state,
+        snapshot_root=snap_root,
+        trajectory=trajectory,
+        schedule=schedule,
+    )
 
     # 4. Role bindings check
     if role.trajectory_digest != trajectory.content_digest:
@@ -760,17 +745,14 @@ def run_target_size_direct_boundary_inference(
         )
 
     # 5. Evaluation artifact validation
-    if definition is not None and canonical_frame_authority is not None:
-        from .export import validate_target_size_evaluation_artifact
+    validate_target_size_evaluation_artifact(
+        evaluation_data,
+        root_directory=eval_dir,
+        definition=definition,
+        canonical_frame_authority=canonical_frame_authority,
+    )
 
-        validate_target_size_evaluation_artifact(
-            evaluation_data,
-            root_directory=eval_dir,
-            definition=definition,
-            canonical_frame_authority=canonical_frame_authority,
-        )
-
-    # 6. Live vs EMA evaluation check
+    # 6. Live vs EMA evaluation check & parameter-state authentication
     if (
         boundary_state.evaluation_model_state
         != trajectory.evaluation_model_state
@@ -779,18 +761,102 @@ def run_target_size_direct_boundary_inference(
             "Boundary state evaluation model-state mismatch."
         )
 
-    if trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_LIVE:
-        evaluated_model_state_digest = (
-            boundary_state.rung_runtime_summary.live_parameter_digest
+    from ..train2_runtime import _tensor_state_digest
+    import torch
+
+    ckpt_dir = snap_root / boundary_state.snapshot_relative_dir
+    summary = boundary_state.rung_runtime_summary
+    raw_checkpoint_path = (
+        ckpt_dir / summary.raw_checkpoint_name
+        if hasattr(summary, "raw_checkpoint_name")
+        else ckpt_dir / f"epoch-{summary.raw_checkpoint_epoch}.pt"
+    )
+    if not raw_checkpoint_path.is_file():
+        candidates = list(
+            ckpt_dir.glob(f"*epoch*{summary.raw_checkpoint_epoch}*.pt")
         )
+        if not candidates:
+            raise TrainingDataInputError(
+                f"Raw checkpoint not found for epoch {summary.raw_checkpoint_epoch} in {ckpt_dir}"
+            )
+        raw_checkpoint_path = candidates[0]
+
+    device = getattr(optimizer_policy, "device", "cpu")
+    dtype_str = getattr(
+        trajectory.realization, "default_dtype", "float64"
+    )
+    model = torch.load(
+        raw_checkpoint_path, map_location=device, weights_only=False
+    )
+
+    shadow_params: list[Any] = []
+    if trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_LIVE:
+        if isinstance(model, torch.nn.Module):
+            model_params = list(model.parameters())
+        else:
+            companion_path = ckpt_dir / "train2_runtime.pt"
+            if not companion_path.is_file():
+                raise TrainingDataInputError(
+                    f"Continuation companion missing in {ckpt_dir}"
+                )
+            companion = torch.load(
+                companion_path, map_location=device, weights_only=False
+            )
+            model_params = companion.get("live_parameters", [])
+        computed_live_digest = _tensor_state_digest(
+            model_params, schema="mdstats.train2-live-parameters.v1"
+        )
+        if computed_live_digest != summary.live_parameter_digest:
+            raise TrainingDataInputError(
+                "Loaded model live parameter digest does not match summary live parameter digest."
+            )
+        evaluated_model_state_digest = summary.live_parameter_digest
     elif trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
-        if boundary_state.rung_runtime_summary.ema_state_digest is None:
+        if summary.ema_state_digest is None:
             raise TrainingDataInputError(
                 "EMA trajectory convention requires authenticated EMA boundary state."
             )
-        evaluated_model_state_digest = (
-            boundary_state.rung_runtime_summary.ema_state_digest
+        companion_path = ckpt_dir / "train2_runtime.pt"
+        if not companion_path.is_file():
+            raise TrainingDataInputError(
+                f"Continuation companion missing in {ckpt_dir}"
+            )
+        companion = torch.load(
+            companion_path, map_location=device, weights_only=False
         )
+        ema_state = companion.get("ema_state")
+        if ema_state is None or "shadow_params" not in ema_state:
+            raise TrainingDataInputError(
+                "EMA state missing in continuation companion."
+            )
+        shadow_params = ema_state["shadow_params"]
+        if isinstance(model, torch.nn.Module):
+            model_params = list(model.parameters())
+        else:
+            model_params = companion.get("live_parameters", [])
+        if len(model_params) != len(shadow_params):
+            raise TrainingDataInputError(
+                f"EMA shadow parameter cardinality mismatch: expected {len(model_params)}, got {len(shadow_params)}."
+            )
+        for p, shadow in zip(model_params, shadow_params):
+            if p.shape != shadow.shape or p.dtype != shadow.dtype:
+                raise TrainingDataInputError(
+                    f"EMA shadow parameter shape/dtype mismatch: param ({p.shape}, {p.dtype}) vs shadow ({shadow.shape}, {shadow.dtype})."
+                )
+            if hasattr(p, "data") and isinstance(p.data, torch.Tensor):
+                p.data.copy_(shadow)
+        ema_values = list(shadow_params)
+        collected = ema_state.get("collected_params")
+        if collected is not None and isinstance(collected, list):
+            ema_values.extend(collected)
+        computed_ema_digest = _tensor_state_digest(
+            ema_values, schema="mdstats.train2-ema-state.v1"
+        )
+        if computed_ema_digest != summary.ema_state_digest:
+            raise TrainingDataInputError(
+                "Loaded EMA state digest does not match summary EMA state digest."
+            )
+        evaluated_model_state_digest = summary.ema_state_digest
     else:
         raise TrainingDataInputError(
             f"Unsupported evaluation model state: {trajectory.evaluation_model_state!r}"
@@ -820,82 +886,19 @@ def run_target_size_direct_boundary_inference(
     if forward_fn is not None:
         raw_predictions = forward_fn(boundary_state, atoms_list)
     else:
-        from types import SimpleNamespace
-        import torch
+        from ..model_features import MaceCalculatorProvider
 
-        if isinstance(boundary_state, TargetSizeBoundarySnapshot):
-            ckpt_dir = snap_root / boundary_state.snapshot_relative_dir
-        else:
-            ckpt_dir = snap_root
-        summary = boundary_state.rung_runtime_summary
-        raw_checkpoint_path = (
-            ckpt_dir / summary.raw_checkpoint_name
-            if hasattr(summary, "raw_checkpoint_name")
-            else ckpt_dir / f"epoch-{summary.raw_checkpoint_epoch}.pt"
-        )
-        if not raw_checkpoint_path.is_file():
-            candidates = list(
-                ckpt_dir.glob(f"*epoch*{summary.raw_checkpoint_epoch}*.pt")
-            )
-            if not candidates:
-                raise TrainingDataInputError(
-                    f"Raw checkpoint not found for epoch {summary.raw_checkpoint_epoch} in {ckpt_dir}"
-                )
-            raw_checkpoint_path = candidates[0]
-        device = (
-            getattr(optimizer_policy, "device", "cpu")
-            if optimizer_policy is not None
-            else "cpu"
-        )
-        dtype_str = getattr(
-            trajectory.realization, "default_dtype", "float64"
-        )
-        model = torch.load(
-            raw_checkpoint_path, map_location=device, weights_only=False
+        provider = MaceCalculatorProvider.from_model_path(
+            raw_checkpoint_path,
+            device=device,
+            default_dtype=dtype_str,
         )
         if trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
-            companion_path = ckpt_dir / "train2_runtime.pt"
-            if not companion_path.is_file():
-                raise TrainingDataInputError(
-                    f"Continuation companion missing in {ckpt_dir}"
-                )
-            companion = torch.load(
-                companion_path, map_location=device, weights_only=False
-            )
-            ema_state = companion.get("ema_state")
-            if ema_state is None or "shadow_params" not in ema_state:
-                raise TrainingDataInputError(
-                    "EMA state missing in continuation companion."
-                )
-            for p, shadow in zip(
-                model.parameters(), ema_state["shadow_params"]
-            ):
-                p.data.copy_(shadow)
-        from mace.calculators import MACECalculator
-
-        calc = MACECalculator(
-            models=[model], device=device, default_dtype=dtype_str
-        )
-        raw_predictions = []
-        for atoms in atoms_list:
-            local = atoms.copy()
-            local.calc = calc
-            e = float(local.get_potential_energy())
-            f = np.asarray(local.get_forces(), dtype=np.float64)
-            s = None
-            try:
-                s = np.asarray(
-                    local.get_stress(voigt=False), dtype=np.float64
-                )
-            except Exception:
-                s = None
-            raw_predictions.append(
-                SimpleNamespace(
-                    energy_ev=e,
-                    forces_ev_per_angstrom=f,
-                    stress_ev_per_angstrom3=s,
-                )
-            )
+            provider_model = getattr(provider._calculator, "models", [None])[0]
+            if provider_model is not None:
+                for p, shadow in zip(provider_model.parameters(), shadow_params):
+                    p.data.copy_(shadow)
+        raw_predictions = provider.predict_batch(atoms_list)
 
     if len(raw_predictions) != evaluation_data.evaluation_size:
         raise TrainingDataInputError(
@@ -1007,14 +1010,17 @@ def run_target_size_eval2_reduction(
             )
         active_view = evaluation_data.build_evaluation_view(root_directory)
     else:
-        if hasattr(active_view, "evaluation_view_digest"):
-            if (
-                active_view.evaluation_view_digest
-                != evaluation_data.evaluation_view_digest
-            ):
-                raise TrainingDataInputError(
-                    "Supplied evaluation view does not match evaluation data artifact view digest."
-                )
+        if not hasattr(active_view, "evaluation_view_digest"):
+            raise TrainingDataInputError(
+                "Generic EvaluationDatasetView without provenance identity is inadmissible."
+            )
+        if (
+            active_view.evaluation_view_digest
+            != evaluation_data.evaluation_view_digest
+        ):
+            raise TrainingDataInputError(
+                "Supplied evaluation view does not match evaluation data artifact view digest."
+            )
 
     if int(active_view.configuration_count) != role.evaluation_size:
         raise TrainingDataInputError(

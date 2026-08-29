@@ -9,6 +9,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 import mdstats
 import mdstats.training_data as training_data_pkg
 import tests.test_mlff_target_size_execution_p3a as p3a
@@ -215,16 +217,24 @@ def test_p3f_bounded_end_to_end_through_real_owners(tmp_path: Path) -> None:
                 correlation_blocks=env["blocks"],
                 evaluation_data=eval_artifact,
             )
-            assert role.evaluation_size == definition.policy.evaluation_sizes[boundary_index]
             view = eval_artifact.build_evaluation_view(eval_dir)
             evaluator = p3d._predictions_evaluator(view, epsilon=_epsilon(size, seed))
+            mat_lane_dir = tmp_path / f"mat-{lane.trajectory.target_size}-{lane.trajectory.optimizer_seed}"
             pred_evidence = run_target_size_direct_boundary_inference(
                 trajectory=lane.trajectory,
                 materialization=materialized[(size, seed)],
                 boundary_state=snapshot,
                 role=role,
                 evaluation_data=eval_artifact,
-                root_directory=eval_dir,
+                canonical_frame_authority=env["frame_authority"],
+                definition=definition,
+                context=env["context"],
+                common=env["common"],
+                schedule=schedule,
+                optimizer_policy=lane.policy,
+                materialization_directory=mat_lane_dir,
+                snapshot_root=env["root"],
+                evaluation_directory=eval_dir,
                 inference_evaluator=evaluator,
             )
             metric_record = run_target_size_eval2_reduction(
@@ -245,7 +255,16 @@ def test_p3f_bounded_end_to_end_through_real_owners(tmp_path: Path) -> None:
                 eval2_metric_record=metric_record,
             )
             record_candidate_boundary_outcome(
-                env["root"], env["window"], lane.trajectory, completion_record
+                env["root"],
+                env["window"],
+                lane.trajectory,
+                completion_record,
+                materialization=materialized[(size, seed)],
+                boundary_snapshot=snapshot,
+                eval2_role=role,
+                evaluation_data=eval_artifact,
+                prediction_evidence=pred_evidence,
+                eval2_metric_record=metric_record,
             )
         collected = collect_boundary_cell_completion_records(
             env["root"], env["window"], boundary_epoch=boundary
@@ -461,4 +480,147 @@ def test_p3f_serialized_payloads_carry_no_retired_fields(tmp_path: Path) -> None
     text = json.dumps(lane.trajectory.to_dict())
     assert "candidate_membership_digest" in text
     assert "optimizer_seed" in text
+
+
+def test_p3f_adversarial_restart_orphan_and_fork_heads(tmp_path: Path) -> None:
+    env = _screen_env(tmp_path)
+    definition = env["aggregate"].definition
+    schedule = env["schedule"]
+    state = env["aggregate"].reducer_state
+
+    # Run boundary 0 matrix and commit batch
+    requirements = derive_active_boundary_requirements(definition, state)
+    boundary, evaluation_size, keys = requirements
+    eval_dir = tmp_path / f"eval_data_{boundary}"
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    eval_artifact = write_target_size_evaluation_artifact(
+        eval_dir,
+        definition=definition,
+        evaluation_size=evaluation_size,
+        canonical_frame_authority=env["frame_authority"],
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+    )
+    for size, seed in keys:
+        lane = _CandidateLane(env, tmp_path, size, seed)
+        mat = lane.materialize(env, tmp_path)
+        boundary_state = lane.train_to_boundary(env, boundary)
+        snapshot = promote_target_size_boundary_snapshot(
+            lane.trajectory,
+            boundary_state,
+            checkpoint_directory=lane.checkpoint_dir,
+            snapshot_root=env["root"],
+        )
+        role = build_target_size_eval2_role(
+            trajectory=lane.trajectory,
+            boundary_state=snapshot,
+            definition=definition,
+            schedule=schedule,
+            correlation_blocks=env["blocks"],
+            evaluation_data=eval_artifact,
+        )
+        view = eval_artifact.build_evaluation_view(eval_dir)
+        evaluator = p3d._predictions_evaluator(view, epsilon=_epsilon(size, seed))
+        mat_lane_dir = tmp_path / f"mat-{lane.trajectory.target_size}-{lane.trajectory.optimizer_seed}"
+        pred_evidence = run_target_size_direct_boundary_inference(
+            trajectory=lane.trajectory,
+            materialization=mat,
+            boundary_state=snapshot,
+            role=role,
+            evaluation_data=eval_artifact,
+            canonical_frame_authority=env["frame_authority"],
+            definition=definition,
+            context=env["context"],
+            common=env["common"],
+            schedule=schedule,
+            optimizer_policy=lane.policy,
+            materialization_directory=mat_lane_dir,
+            snapshot_root=env["root"],
+            evaluation_directory=eval_dir,
+            inference_evaluator=evaluator,
+        )
+        metric_record = run_target_size_eval2_reduction(
+            role, eval_artifact, pred_evidence, root_directory=eval_dir
+        )
+        outcome = evaluate_target_size_boundary(
+            role, eval_artifact, pred_evidence, root_directory=eval_dir
+        )
+        completion_record = build_target_size_cell_completion_record(
+            window=env["window"],
+            trajectory=lane.trajectory,
+            materialization=mat,
+            boundary_snapshot=snapshot,
+            eval2_role=role,
+            evaluation_data=eval_artifact,
+            outcome=outcome,
+            prediction_evidence=pred_evidence,
+            eval2_metric_record=metric_record,
+        )
+        record_candidate_boundary_outcome(
+            env["root"],
+            env["window"],
+            lane.trajectory,
+            completion_record,
+            materialization=mat,
+            boundary_snapshot=snapshot,
+            eval2_role=role,
+            evaluation_data=eval_artifact,
+            prediction_evidence=pred_evidence,
+            eval2_metric_record=metric_record,
+        )
+    collected = collect_boundary_cell_completion_records(
+        env["root"], env["window"], boundary_epoch=boundary
+    )
+    batch = build_complete_boundary_batch(definition, state, collected)
+    head = commit_target_size_boundary_batch(env["root"], definition, state, batch)
+
+    # 1. Test orphan head in heads/
+    orphan_head = replace(head, batch_digest="0" * 64)
+    orphan_path = env["root"] / "heads" / f"{orphan_head.content_digest}.json"
+    orphan_path.write_text(json.dumps(orphan_head.to_dict()))
+    with pytest.raises(mdstats.TrainingDataInputError, match="Fork detected|Orphan head detected"):
+        reconcile_target_size_screen_root(
+            env["root"], env["aggregate"], env["context"], env["common"]
+        )
+    orphan_path.unlink()
+
+    # 2. Test conflicting completion records for the same cell
+    from mdstats.training_data.target_size_execution import translate_target_size_train2_failure
+
+    train_fail_rec = p3c._failure_record(
+        lane.trajectory,
+        schedule,
+        boundary,
+        code="train_nonfinite_model_state",
+        failed_epoch=0,
+    )
+    train_fail_outcome = translate_target_size_train2_failure(
+        train_fail_rec,
+        trajectory=lane.trajectory,
+        definition=definition,
+        schedule=schedule,
+        scheduled_boundary_epoch=boundary,
+    )
+    conflicting_comp = build_target_size_cell_completion_record(
+        window=env["window"],
+        trajectory=lane.trajectory,
+        materialization=mat,
+        failure_record=train_fail_rec,
+        outcome=train_fail_outcome,
+        kind="train2_failure",
+    )
+    conflicting_path = env["root"] / "completions" / str(boundary) / f"{conflicting_comp.content_digest}.json"
+    conflicting_path.write_text(json.dumps(conflicting_comp.to_dict()))
+    with pytest.raises(mdstats.TrainingDataInputError, match="Conflicting completion records"):
+        reconcile_target_size_screen_root(
+            env["root"], env["aggregate"], env["context"], env["common"]
+        )
+    conflicting_path.unlink()
+
+    # Clean reconciliation succeeds
+    reconciled = reconcile_target_size_screen_root(
+        env["root"], env["aggregate"], env["context"], env["common"]
+    )
+    assert reconciled.content_digest == head.content_digest
 

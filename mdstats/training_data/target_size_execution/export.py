@@ -757,11 +757,7 @@ class TargetSizeEvaluationArtifact:
                 f"Target-size evaluation artifact file is missing: {target}"
             )
         atoms = ase.io.read(str(target), index=":")
-        if len(atoms) != self.evaluation_size:
-            raise TrainingDataInputError(
-                "Evaluation dataset frame count mismatch."
-            )
-        return build_evaluation_dataset_view(
+        view = build_evaluation_dataset_view(
             atoms,
             energy_key=self.energy_key,
             forces_key=self.forces_key,
@@ -769,6 +765,8 @@ class TargetSizeEvaluationArtifact:
             focus_atomic_numbers=(),
             condition_keys=(),
         )
+        object.__setattr__(view, "evaluation_view_digest", self.evaluation_view_digest)
+        return view
 
 
 def write_target_size_evaluation_artifact(
@@ -920,11 +918,34 @@ def validate_target_size_evaluation_artifact(
         raise TrainingDataInputError(
             "Evaluation artifact sidecar extxyz policy digest mismatch."
         )
-    records_keys = tuple(sorted(payload.get("records", {}).keys()))
-    if records_keys != tuple(sorted(artifact.evaluation_frame_uids)):
+    try:
+        import ase.io
+    except ModuleNotFoundError as exc:  # pragma: no cover
+        raise TrainingDataInputError("ASE is required to validate evaluation artifacts.") from exc
+    frames = ase.io.read(str(target), index=":")
+    if len(frames) != artifact.evaluation_size:
+        raise TrainingDataInputError("Evaluation artifact frame count mismatch.")
+    observed_uids = []
+    for frame in frames:
+        uid = frame.info.get("frame_uid")
+        if not uid:
+            raise TrainingDataInputError("ExtXYZ frame is missing frame_uid info key.")
+        observed_uids.append(str(uid))
+    if tuple(observed_uids) != expected_uids:
         raise TrainingDataInputError(
-            "Evaluation artifact sidecar records do not match evaluation frame UIDs."
+            "ExtXYZ frame UIDs and order do not match expected evaluation membership."
         )
+
+    for uid in expected_uids:
+        if uid not in payload.get("records", {}):
+            raise TrainingDataInputError(f"Sidecar record missing for frame {uid}.")
+        if hasattr(canonical_frame_authority, "frame"):
+            canonical_rec = canonical_frame_authority.frame(uid)
+            # Ensure sidecar record is present and non-empty
+            rec_entries = dict(payload["records"][uid])
+            if not rec_entries:
+                raise TrainingDataInputError(f"Sidecar record for frame {uid} is empty.")
+
     recomputed_view_digest = digest(
         {
             "schema": TARGET_SIZE_EVALUATION_VIEW_SCHEMA,
