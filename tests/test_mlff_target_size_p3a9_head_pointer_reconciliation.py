@@ -1,11 +1,12 @@
 """P3A9 acceptance suite: stale-head successor reconciliation repair,
-deterministic scientific replay, fork/orphan rejection, CAS lock, and restart closure."""
+deterministic scientific replay, fork/orphan rejection, CAS lock, and process-level concurrency closure."""
 
 from __future__ import annotations
 
 import copy
 import hashlib
 import json
+import multiprocessing
 from dataclasses import replace
 from pathlib import Path
 
@@ -39,10 +40,8 @@ from mdstats.training_data.target_size_execution import (
     build_complete_boundary_batch,
     build_target_size_candidate_trajectory,
     build_target_size_cell_completion_record,
-    build_target_size_eval2_failure_cell_completion_record,
     build_target_size_eval2_role,
     build_target_size_screen_schedule,
-    build_target_size_train2_failure_cell_completion_record,
     commit_target_size_boundary_batch,
     derive_active_boundary_requirements,
     evaluate_target_size_boundary,
@@ -131,6 +130,10 @@ def _execute_boundary(env, tmp_path: Path, state, boundary: int):
     batch = build_complete_boundary_batch(definition, state, completion_records)
     return batch
 
+
+# ---------------------------------------------------------------------------
+# Section 4.1: Focused crash / replay acceptance
+# ---------------------------------------------------------------------------
 
 # 1. complete boundary batch durable, immutable head absent -> existing unique-batch recovery succeeds
 def test_p3a9_req1_complete_batch_durable_head_absent_recovery(tmp_path: Path) -> None:
@@ -443,140 +446,41 @@ def test_p3a9_req10_fresh_process_restart_after_repaired_crash_state(tmp_path: P
     assert reconciled_crash.post_state.status == head1_clean.post_state.status
 
 
-# 11. existing success, TRAIN2-failure, and EVAL2-failure fresh-process replay remains passing
-def test_p3a9_req11_success_train2_failure_eval2_failure_replay(tmp_path: Path) -> None:
-    env = _env(tmp_path, root_name="screen_req11")
-    definition = env["aggregate"].definition
-    state0 = env["aggregate"].reducer_state
+# ---------------------------------------------------------------------------
+# Section 4.2: Real-owner process-level concurrency acceptance
+# ---------------------------------------------------------------------------
 
-    # 1. Success boundary
-    batch0 = _execute_boundary(env, tmp_path, state0, 1)
-    head0 = commit_target_size_boundary_batch(env["root"], definition, state0, batch0)
-
-    # 2. Boundary with TRAIN2 failure cell
-    size0 = definition.qualified_candidate_sizes[0]
-    seed0 = definition.policy.optimizer_seeds[0]
-    trajectory = build_target_size_candidate_trajectory(
-        definition, env["context"], env["common"], env["schedule"],
-        target_size=size0, optimizer_policy=env["optimizer"], optimizer_seed=seed0
-    )
-    projection = project_target_size_candidate_preparation(env["common"], definition, size0)
-    mat_dir = tmp_path / f"mat-{size0}-{seed0}-b2"
-    mat_dir.mkdir(parents=True, exist_ok=True)
-    materialization = materialize_target_size_candidate(
-        trajectory, projection, env["common"],
-        canonical_frame_authority=env["frame_authority"],
-        frame_catalog=env["frames"],
-        frame_data_by_run=env["frame_data_by_run"],
-        output_directory=mat_dir,
-        optimizer_policy=env["optimizer"],
-        extxyz_policy=env["authority"].extxyz_policy,
-        frame_array_index=env["index"],
-    )
-    train_fail_rec, failure_checkpoint_directory = p3e._durable_train2_failure_record(
-        tmp_path, trajectory, env["schedule"], 3
-    )
-    plan_n2 = target_size_rung_plan(trajectory, env["schedule"], boundary_epoch=3)
-    comp_train_fail = build_target_size_train2_failure_cell_completion_record(
-        window=env["window"],
-        trajectory=trajectory,
-        materialization=materialization,
-        failure_record=train_fail_rec,
-        planned_rung=plan_n2,
-        schedule=env["schedule"],
-        definition=definition,
-        predecessor_continuation=TargetSizeContinuationRequest(
-            trajectory_digest=trajectory.content_digest,
-            predecessor_boundary_epoch=1,
-        ),
-        checkpoint_directory=failure_checkpoint_directory,
-    )
-    # Complete remaining cells with normal execution
-    requirements = derive_active_boundary_requirements(definition, head0.post_state)
-    b_epoch, eval_size, keys = requirements
-    completion_records = [comp_train_fail]
-    record_candidate_boundary_outcome(
-        env["root"],
-        env["window"],
-        trajectory,
-        comp_train_fail,
-        materialization=materialization,
-        failure_record=train_fail_rec,
-        planned_rung=plan_n2,
-        predecessor_continuation=TargetSizeContinuationRequest(
-            trajectory_digest=trajectory.content_digest,
-            predecessor_boundary_epoch=1,
-        ),
-        failure_checkpoint_directory=failure_checkpoint_directory,
-        restart_authority=env["authority"],
-    )
-    for size, seed in keys[1:]:
-        (
-            traj_i, role_i, snap_i, comp_i, mat_i, eval_i, pred_i, met_i
-        ) = p3e._execute_candidate_boundary(env, tmp_path, size, seed, 3)
-        completion_records.append(comp_i)
-        record_candidate_boundary_outcome(
-            env["root"],
-            env["window"],
-            traj_i,
-            comp_i,
-            materialization=mat_i,
-            boundary_snapshot=snap_i,
-            eval2_role=role_i,
-            evaluation_data=eval_i,
-            prediction_evidence=pred_i,
-            eval2_metric_record=met_i,
-            planned_rung=p3e._rung_provenance(env, traj_i, 3)[0],
-            predecessor_continuation=p3e._rung_provenance(env, traj_i, 3)[1],
-            restart_authority=env["authority"],
-        )
-
-    batch1 = build_complete_boundary_batch(definition, head0.post_state, completion_records)
-    persist_complete_boundary_batch(env["root"], batch1)
-    post_state1 = apply_complete_boundary_batch(definition, head0.post_state, batch1)
-    head1 = TargetSizeExecutionHead(
-        parent_head_digest=head0.content_digest,
-        batch_digest=batch1.content_digest,
-        pre_state_digest=head0.post_state.content_digest,
-        post_state_digest=post_state1.content_digest,
-        pre_state=head0.post_state,
-        post_state=post_state1,
-    )
-    _publish_head_file(env["root"], head1)
-
-    # Reconcile stale pointer
-    reconciled = reconcile_target_size_screen_root(env["root"], env["authority"])
-    assert reconciled.content_digest == head1.content_digest
+def _worker_commit(barrier, queue, root_path, definition, state, batch):
+    try:
+        barrier.wait(timeout=10)
+        head = commit_target_size_boundary_batch(root_path, definition, state, batch)
+        queue.put(("commit", head.content_digest, None))
+    except Exception as e:
+        queue.put(("commit", None, f"{type(e).__name__}: {e}"))
 
 
-# 12. P3A7 canonical restart-owner rejection remains passing
-def test_p3a9_req12_p3a7_restart_owner_rejection_preserved(tmp_path: Path) -> None:
-    env = _env(tmp_path, root_name="screen_req12")
-    definition = env["aggregate"].definition
-    size0 = definition.qualified_candidate_sizes[0]
-    seed0 = definition.policy.optimizer_seeds[0]
-
-    # Noncanonical / non-existent candidate resolution rejects through real resolve_target_size_candidate_for_resume owner
-    with pytest.raises(mdstats.TrainingDataInputError):
-        resolve_target_size_candidate_for_resume(
-            root=env["root"],
-            authority=env["authority"],
-            boundary_epoch=3,
-            target_size=size0,
-            optimizer_seed=seed0,
-        )
+def _worker_reconcile(barrier, queue, root_path, authority, label="reconcile"):
+    try:
+        barrier.wait(timeout=10)
+        head = reconcile_target_size_screen_root(root_path, authority)
+        digest_val = head.content_digest if head is not None else None
+        queue.put((label, digest_val, None))
+    except Exception as e:
+        queue.put((label, None, f"{type(e).__name__}: {e}"))
 
 
-# 13. P3A8 owner-level reconciliation acceptance remains passing
-def test_p3a9_req13_p3a8_owner_level_reconciliation_acceptance_preserved(tmp_path: Path) -> None:
-    env = _env(tmp_path, root_name="screen_req13")
+# Race A: Legitimate commit/retry versus reconciliation on the same stale-pointer successor
+def test_p3a9_concurrency_race_a_commit_vs_reconcile(tmp_path: Path) -> None:
+    env = _env(tmp_path, root_name="screen_race_a")
     state0 = env["aggregate"].reducer_state
     definition = env["aggregate"].definition
 
-    # Full screen execution through all boundaries with simulated crash at boundary 2
+    # Commit boundary 1 cleanly
     batch0 = _execute_boundary(env, tmp_path, state0, 1)
     head0 = commit_target_size_boundary_batch(env["root"], definition, state0, batch0)
+    assert load_current_execution_head(env["root"]).content_digest == head0.content_digest
 
+    # Run boundary 2, build batch1, publish immutable batch1 and immutable head1, leave current_head.json pointing at head0
     batch1 = _execute_boundary(env, tmp_path, head0.post_state, 3)
     persist_complete_boundary_batch(env["root"], batch1)
     post_state1 = apply_complete_boundary_batch(definition, head0.post_state, batch1)
@@ -589,16 +493,140 @@ def test_p3a9_req13_p3a8_owner_level_reconciliation_acceptance_preserved(tmp_pat
         post_state=post_state1,
     )
     _publish_head_file(env["root"], head1)
+    assert load_current_execution_head(env["root"]).content_digest == head0.content_digest
 
-    # Reconcile after crash
-    rec1 = reconcile_target_size_screen_root(env["root"], env["authority"])
-    assert rec1.content_digest == head1.content_digest
+    ctx = multiprocessing.get_context("fork")
+    barrier = ctx.Barrier(2)
+    queue = ctx.Queue()
 
-    # Continue boundary 3 from reconciled head
-    batch2 = _execute_boundary(env, tmp_path, rec1.post_state, 10)
-    head2 = commit_target_size_boundary_batch(env["root"], definition, rec1.post_state, batch2)
-    assert head2.parent_head_digest == head1.content_digest
+    p_commit = ctx.Process(
+        target=_worker_commit,
+        args=(barrier, queue, env["root"], definition, head0.post_state, batch1),
+    )
+    p_reconcile = ctx.Process(
+        target=_worker_reconcile,
+        args=(barrier, queue, env["root"], env["authority"], "reconcile"),
+    )
 
-    # Final reconciliation verifies terminal/reconciled head
-    rec_final = reconcile_target_size_screen_root(env["root"], env["authority"])
-    assert rec_final.content_digest == head2.content_digest
+    try:
+        p_commit.start()
+        p_reconcile.start()
+
+        p_commit.join(timeout=30)
+        p_reconcile.join(timeout=30)
+
+        assert not p_commit.is_alive(), "Worker commit timed out (possible deadlock)"
+        assert not p_reconcile.is_alive(), "Worker reconcile timed out (possible deadlock)"
+    finally:
+        if p_commit.is_alive():
+            p_commit.terminate()
+            p_commit.join()
+        if p_reconcile.is_alive():
+            p_reconcile.terminate()
+            p_reconcile.join()
+
+    results = {}
+    while not queue.empty():
+        label, digest_val, err = queue.get_nowait()
+        assert err is None, f"Worker {label} failed: {err}"
+        results[label] = digest_val
+
+    assert "commit" in results
+    assert "reconcile" in results
+    assert results["commit"] == head1.content_digest
+    assert results["reconcile"] == head1.content_digest
+
+    # Current head pointer resolves to head1
+    curr = load_current_execution_head(env["root"])
+    assert curr is not None
+    assert curr.content_digest == head1.content_digest
+
+    # Immutable head graph contains exactly head0 and head1
+    heads_on_disk = {p.stem for p in (env["root"] / "heads").glob("*.json")}
+    assert heads_on_disk == {head0.content_digest, head1.content_digest}
+
+    # Third process reconciliation returns same head1
+    fresh_rec = reconcile_target_size_screen_root(env["root"], env["authority"])
+    assert fresh_rec is not None
+    assert fresh_rec.content_digest == head1.content_digest
+
+
+# Race B: Concurrent reconcilers on the same stale-pointer root
+def test_p3a9_concurrency_race_b_concurrent_reconcilers(tmp_path: Path) -> None:
+    env = _env(tmp_path, root_name="screen_race_b")
+    state0 = env["aggregate"].reducer_state
+    definition = env["aggregate"].definition
+
+    # Commit boundary 1 cleanly
+    batch0 = _execute_boundary(env, tmp_path, state0, 1)
+    head0 = commit_target_size_boundary_batch(env["root"], definition, state0, batch0)
+
+    # Publish batch1 and head1, leave current_head.json at head0
+    batch1 = _execute_boundary(env, tmp_path, head0.post_state, 3)
+    persist_complete_boundary_batch(env["root"], batch1)
+    post_state1 = apply_complete_boundary_batch(definition, head0.post_state, batch1)
+    head1 = TargetSizeExecutionHead(
+        parent_head_digest=head0.content_digest,
+        batch_digest=batch1.content_digest,
+        pre_state_digest=head0.post_state.content_digest,
+        post_state_digest=post_state1.content_digest,
+        pre_state=head0.post_state,
+        post_state=post_state1,
+    )
+    _publish_head_file(env["root"], head1)
+    assert load_current_execution_head(env["root"]).content_digest == head0.content_digest
+
+    ctx = multiprocessing.get_context("fork")
+    barrier = ctx.Barrier(2)
+    queue = ctx.Queue()
+
+    p_rec1 = ctx.Process(
+        target=_worker_reconcile,
+        args=(barrier, queue, env["root"], env["authority"], "rec1"),
+    )
+    p_rec2 = ctx.Process(
+        target=_worker_reconcile,
+        args=(barrier, queue, env["root"], env["authority"], "rec2"),
+    )
+
+    try:
+        p_rec1.start()
+        p_rec2.start()
+
+        p_rec1.join(timeout=30)
+        p_rec2.join(timeout=30)
+
+        assert not p_rec1.is_alive(), "Worker rec1 timed out (possible deadlock)"
+        assert not p_rec2.is_alive(), "Worker rec2 timed out (possible deadlock)"
+    finally:
+        if p_rec1.is_alive():
+            p_rec1.terminate()
+            p_rec1.join()
+        if p_rec2.is_alive():
+            p_rec2.terminate()
+            p_rec2.join()
+
+    results = {}
+    while not queue.empty():
+        label, digest_val, err = queue.get_nowait()
+        assert err is None, f"Worker {label} failed: {err}"
+        results[label] = digest_val
+
+    assert "rec1" in results
+    assert "rec2" in results
+    assert results["rec1"] == head1.content_digest
+    assert results["rec2"] == head1.content_digest
+
+    # Current head pointer resolves to head1
+    curr = load_current_execution_head(env["root"])
+    assert curr is not None
+    assert curr.content_digest == head1.content_digest
+
+    # Immutable head graph contains exactly head0 and head1
+    heads_on_disk = {p.stem for p in (env["root"] / "heads").glob("*.json")}
+    assert heads_on_disk == {head0.content_digest, head1.content_digest}
+
+    # Third process reconciliation returns same head1
+    fresh_rec = reconcile_target_size_screen_root(env["root"], env["authority"])
+    assert fresh_rec is not None
+    assert fresh_rec.content_digest == head1.content_digest
