@@ -4,257 +4,382 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P3-P3A9
 parent_package_id: CODE-MLFF-TARGET-SIZE-V7-P3
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
-status: accepted
-accepted_closure_commit: 0bed3080ac4e3ba45f04fdf2fab891cfdc92fe58
+status: active
 repair_revision: 7
-instruction_revision: 2
+instruction_revision: 3
 created_date: 2026-08-29
 amended_date: 2026-08-29
 entry_p3a8_commit: 472276ee521eb2b19177299c1c9ad660dbd6ad46
-reviewed_candidate_commit: 4315b0ab4c13bbb45b963f3d816b5bb08aac75c0
-superseded_closure_metadata_commit: 7eb3d9c1891a32a7dee7eeb31d39987730adb466
-reconciliation_reason: Independent review of the first P3A9 candidate found the stale-current-head recovery algorithm itself conformant, but found one blocking functional-closure gap: the accepted concurrency invariant was not exercised through a real commit-versus-reconcile race under the canonical screen lock. The P3A9-local tests also overclaimed inherited P3A7/P3A8 restart-owner and P3F TRAIN2/EVAL2-failure evidence with weaker substitutes. This instruction revision reopens only P3A9 acceptance/closure, preserves the implemented reconciliation design as the baseline, and requires proxy-proof concurrency plus authoritative inherited regression before P3 may close and P4 may activate. It does not reopen P1-P3 scientific semantics, reducer policy, TRAIN2/EVAL2 semantics, checkpoint semantics, provider ownership, seed policy, or target-size decision logic.
+reviewed_product_baseline_commit: 4315b0ab4c13bbb45b963f3d816b5bb08aac75c0
+reviewed_acceptance_candidate_commit: 0bed3080ac4e3ba45f04fdf2fab891cfdc92fe58
+superseded_closure_metadata_commit: bf24a9e5ae17724d1ecd90a9e11643534e7f79f5
+reconciliation_reason: Independent review of the instruction-revision-2 candidate found the P3A9 production reconciliation implementation still conformant and found the new process races useful, but the races were not discriminating evidence for the frozen shared-lock invariant because the tested operations can converge correctly even without serialization. The review also found that the claimed third-process post-race reconciliation was still executed in the parent pytest process. This instruction revision reopens only P3A9 acceptance/closure, preserves the product implementation and prior process races, and adds deterministic canonical-lock-identity acceptance plus actual fresh-child reconciliation. It does not reopen P1-P3 scientific semantics, reducer policy, TRAIN2/EVAL2 semantics, checkpoint semantics, provider ownership, seed policy, or target-size decision logic.
 ---
 
 # P3A9 — stale-head successor reconciliation repair
 
-## 0. Review disposition and immediate sequencing correction
+## 0. Review disposition and sequencing override
 
-The implementation at `4315b0ab4c13bbb45b963f3d816b5bb08aac75c0` is the **reviewed P3A9 baseline**. Independent review did not identify a blocking product-code defect in its successor-chain replay algorithm. Do not roll back, replace, or redesign that implementation merely because closure evidence was incomplete.
+The production P3A9 implementation at `4315b0ab4c13bbb45b963f3d816b5bb08aac75c0` remains the reviewed product baseline. The acceptance candidate `0bed3080ac4e3ba45f04fdf2fab891cfdc92fe58` correctly added real OS-process races and removed the previously overclaiming local req11/req12/req13 substitutes. Independent review still found one blocking acceptance-harness gap: those races do not prove that the two public mutation owners actually contend on the same canonical lock.
 
-The prior metadata commit `7eb3d9c1891a32a7dee7eeb31d39987730adb466` marked P3 accepted and P4 active before the acceptance contract was actually closed. That closure disposition is superseded by this instruction revision. Until a new accepted P3A9 closure commit is produced and recorded:
+The subsequent metadata commit `bf24a9e5ae17724d1ecd90a9e11643534e7f79f5` therefore closed P3 and activated P4 prematurely. This instruction revision supersedes that closure disposition.
 
-- P3A9 is active;
-- cumulative P3 revision 7 is not yet formally closed;
-- P4 must be treated as **blocked**, regardless of stale `status: active` metadata elsewhere;
+Until a new P3A9 acceptance candidate satisfies this instruction and a new closure commit is recorded:
+
+- P3A9 is **active**;
+- cumulative P3 revision 7 is not formally closed;
+- P4 is **blocked**, even if older P4/README metadata still says `active` or points at `0bed3080...`;
 - no P4 executable runtime-cutover implementation may begin.
 
-This is an **acceptance/closure repair first**. Production code should remain byte-identical to the reviewed P3A9 baseline unless the newly required real-owner race or affected regression exposes an actual defect.
+This is expected to be a **test/acceptance-only repair**. Do not modify `coordinator.py` merely to satisfy the harness. Production code may change only if the new lock-identity acceptance or affected regression demonstrates a real product defect.
 
 ---
 
-## 1. Purpose and authority
+## 1. Frozen authority and protected behavior
 
-The frozen parent workplan remains the sole scientific and architectural verdict. This instruction closes one demonstrated crash-recovery defect in the existing P3 persistence owner and the missing evidence needed to prove that repair safe under concurrent restart/publication before P4 may begin.
+The frozen parent workplan remains the sole scientific/architectural verdict. P3A9 remains a persistence/restart repair, not a new scientific revision.
 
-P3A9 is **not** a new scientific revision. It preserves the complete cumulative P3 revision-7 contract through P3A8 and changes only recovery of an already-valid immutable execution-head chain plus acceptance evidence for the owning persistence/reconciliation path.
-
-Accepted authority remains:
+The authoritative chain remains:
 
 ```text
 P2 reducer/statistical owner
-  -> P3 immutable boundary batches
+  -> P3 immutable complete boundary batches
   -> P3 immutable execution heads
   -> P3 typed resolver/reconciler
   -> rebuildable current_head.json pointer
 ```
 
-`current_head.json` remains a recovery/localization pointer only. Immutable P3 evidence and deterministic reducer replay remain the scientific execution authority.
+The following remain frozen:
 
-P4 is blocked until this repair has semantic/conformance closure, functional closure, and a committed accepted P3 closure point.
+- all P1/P2 scientific/statistical semantics;
+- all cumulative P3 revision-7 execution, owner, evidence, checkpoint, EMA/LIVE, TRAIN2/EVAL2 failure, and restart semantics;
+- immutable batches/heads as durable scientific execution evidence;
+- deterministic P2 reducer replay as the sole post-state/recovery authority;
+- `current_head.json` as a rebuildable localization pointer, not scientific authority;
+- unique-linear-successor recovery from a stale pointer;
+- fork/orphan corruption remains fail-closed;
+- `commit_target_size_boundary_batch(...)` remains the public complete-boundary/head commit owner;
+- `reconcile_target_size_screen_root(...)` remains the public screen reconciliation owner;
+- both public mutation owners serialize head/pointer mutation through the single canonical `root/.screen_commit.lock` domain;
+- no second replay owner, mutable scientific head authority, compatibility fallback, PID authority, or P4-side recovery path;
+- version-agnostic product naming;
+- long GPU/real-production qualification remains deferred.
+
+The reviewed production source currently opens the same exact lock path in both public owners:
+
+```text
+root_path / ".screen_commit.lock"
+```
+
+and acquires `fcntl.LOCK_EX`. The acceptance repair below must prove that property without replacing either public owner.
 
 ---
 
-## 2. Demonstrated defect and reviewed baseline
+## 2. Exact remaining acceptance defect
 
-Boundary publication is effectively:
-
-```text
-publish immutable boundary batch
- -> derive reducer post-state
- -> publish immutable heads/<head-digest>.json
- -> atomically replace current_head.json
-```
-
-A crash after the immutable successor head is durable but before the pointer replacement can leave:
+Instruction revision 2 required process-level races. Candidate `0bed3080...` added:
 
 ```text
-current_head.json -> H_g
-heads/ contains H_g and valid child H_g+1
+Race A: commit_target_size_boundary_batch(...) vs reconcile_target_size_screen_root(...)
+Race B: reconcile_target_size_screen_root(...) vs reconcile_target_size_screen_root(...)
 ```
 
-The pre-P3A9 reconciler validated the pointer ancestry and rejected immutable heads outside that ancestry as orphans. Therefore a valid crash-left successor could be rejected instead of deterministically recovered.
+on the same stale-pointer durable graph.
 
-The candidate at `4315b0ab4c13bbb45b963f3d816b5bb08aac75c0` repairs that behavior in the existing coordinator by replaying authenticated ancestry plus a unique linear successor chain under the existing screen-commit lock and advancing the pointer only after deterministic scientific replay. That design remains the required baseline unless the new acceptance below proves a concrete implementation defect.
-
-The remaining blocker is not a new recovery algorithm requirement. It is the absence of proxy-proof evidence for the already-frozen concurrency invariant:
+Those are valid concurrency regression tests and must remain, but they are not sufficient proof of canonical lock ownership. In the tested stale-pointer state, both operations target the same already-valid successor and use idempotent immutable publication/atomic pointer replacement. Therefore the following broken implementation could still pass those races:
 
 ```text
-reconciliation racing legitimate P3 head publication/retry
-must serialize through the canonical screen commit lock
-and must converge on one authenticated history without fork or deadlock.
+commit owner uses no lock (or a different lock)
+reconcile owner uses no lock (or a different lock)
+both happen to converge on the same H1
 ```
+
+P3A9 closure therefore requires a **discriminating lock-identity test**: evidence must fail if either public owner stops contending on the exact canonical `.screen_commit.lock`, even when the underlying mutation would otherwise converge harmlessly.
+
+The candidate also called the final post-race reconciliation directly in the parent pytest process while describing it as a third process. That must be replaced with an actual newly spawned child process.
 
 ---
 
-## 3. Required product behavior
+## 3. Required implementation scope
 
-### 3.1 Owning implementation
+### 3.1 Default path — tests only
 
-The owning P3 implementation remains:
+Expected changed executable surface:
 
-`mdstats/training_data/target_size_execution/coordinator.py`
+`tests/test_mlff_target_size_p3a9_head_pointer_reconciliation.py`
 
-`reconcile_target_size_screen_root(...)` and `commit_target_size_boundary_batch(...)` remain the public semantic owners under acceptance. Their internal locked helpers may be reused, but tests must not substitute for either public owner.
+Do not change production P3 source if the new acceptance passes against the reviewed baseline.
 
-Do **not** create a P4-specific replay routine, a second execution-head state machine, a second lock domain, or a compatibility wrapper that bypasses the existing P3 resolver.
+Retain the existing focused crash/replay tests and the two process races from `0bed3080...`, subject to the robustness corrections in this instruction.
 
-Reuse the canonical P3 screen/head serialization and the same `.screen_commit.lock` ownership used by boundary-head publication.
+### 3.2 Public semantic owners under acceptance
 
-### 3.2 Required reconciliation semantics
+The tests must invoke the real public functions:
 
-When reconciliation may mutate `current_head.json`:
+```python
+commit_target_size_boundary_batch(...)
+reconcile_target_size_screen_root(...)
+```
 
-1. Acquire the same canonical screen-commit serialization used by boundary-head publication. Do not introduce an independently ordered second head-commit lock.
-2. If `current_head.json` exists, load it through typed P3 deserialization and require the corresponding immutable `heads/<digest>.json` record to exist with exactly the same authenticated content.
-3. Load immutable heads through the existing typed resolver/deserializer; raw JSON fields or filenames are not authority.
-4. Build ancestry only from authenticated immutable `parent_head_digest` relations.
-5. Reconstruct/replay the reducer state of the current pointer ancestry using the accepted P3/P2 scientific replay path.
-6. From the current authenticated tip, inspect immutable descendants and accept only a **unique linear successor chain**.
-7. For each successor, require all of the following before advancing:
-   - exactly one authenticated child from the current accepted head;
-   - exact parent-head identity;
-   - referenced boundary batch resolves through P3;
-   - batch pre-state equals the exact replayed current reducer state;
-   - all normal P3 batch/completion/evidence validation executes;
-   - the frozen P2 reducer re-derives the successor post-state;
-   - the re-derived post-state agrees exactly with the immutable head record.
-8. Continue recursively only while each accepted head has exactly one validated child.
-9. More than one authenticated child from any accepted head is a fork/conflicting history and must fail closed.
-10. Any immutable head outside the accepted ancestry or unique validated successor chain remains an orphan/fork and must fail closed. Filesystem ordering, modification time, filename ordering, or "newest" heuristics may not choose a winner.
-11. Only after the complete successor chain has passed typed loading and deterministic scientific replay may the reconciler atomically advance `current_head.json` to the validated tip.
-12. If `current_head.json` is absent, retain the existing unique-tip repair behavior only after full typed ancestry validation and deterministic scientific replay.
-13. Preserve the existing complete-batch-without-head recovery path. An unreferenced complete boundary batch may be committed only when it is the unique exact successor of the current reducer state under the existing commit owner.
-14. Never accept a serialized `post_state` merely because its digest/schema parses. Re-derive the state through the accepted reducer owner.
-15. Preserve create-or-verify immutable publication, historical owner proof, generation/attempt semantics, TRAIN2/EVAL2 evidence semantics, and checkpoint provenance unchanged.
+The tests may **not** use either private locked helper as the operation under acceptance:
 
-### 3.3 Idempotency, locking, and concurrency
+```python
+_commit_target_size_boundary_batch_locked(...)
+_reconcile_target_size_screen_root_locked(...)
+```
 
-The repaired path must remain safe under restart, duplicate invocation, and concurrent process execution:
+The tests may not monkeypatch `fcntl.flock`, monkeypatch either public owner, mock atomic pointer publication, or replace P3 typed persistence/reducer replay with a test-local implementation.
 
-- an exact retry after pointer repair returns the same authenticated tip;
-- reconciliation racing another legitimate P3 head commit/retry cannot manufacture a second history;
-- two concurrent reconcilers of the same crash-left root converge on the same authenticated tip;
-- canonical P3 locking prevents pointer/head mutators from choosing different descendants;
-- a fork that already exists remains an error rather than being "healed" by choosing one branch;
-- process identity/PID is not authority;
-- no deadlock, lock leak, or partially advanced pointer may result from ordinary exception paths.
-
-Do not broaden lock scope over expensive model inference or unrelated I/O merely to make the test easy. The lock protects the logical head/pointer commit/reconciliation critical section only. Do not add sleeps, retries, process IDs, or test hooks to product code as a synchronization mechanism.
+Bounded deterministic scientific fixtures below the P3 owner boundary remain allowed exactly as in the existing P3 suite.
 
 ---
 
-## 4. Mandatory acceptance
+## 4. Mandatory canonical-lock-identity acceptance
 
-Acceptance must exercise the **real P3 resolver/reconciler and real public commit owner**. A helper-only reconstruction, test-local replay engine, direct call to `_reconcile_target_size_screen_root_locked(...)`, direct call to `_commit_target_size_boundary_batch_locked(...)`, monkeypatched lock, or mocked atomic publication cannot establish closure.
+Add the following acceptance to the P3A9 test file. The naming below is recommended and may be used verbatim.
 
-Bounded deterministic scientific fixtures remain allowed below the accepted P3 owner boundary. Expensive numerical training/inference may be reduced/faked exactly as in the existing P3 acceptance fixtures, but the resolver, reconciler, public commit owner, typed persistence, P2 reducer replay, `.screen_commit.lock`, immutable publication, and pointer publication must remain real.
+### 4.1 Test-fixture lock holder
 
-### 4.1 Focused crash/replay acceptance
+Add a small **test-only external lock-holder process** whose sole purpose is to act as an adversarial process already owning the production lock file.
 
-The focused P3A9 suite must continue to prove at minimum:
+Recommended helper behavior:
 
-1. complete boundary batch durable, immutable head absent -> existing unique-batch recovery succeeds;
-2. immutable successor head durable, `current_head.json` still on predecessor -> unique successor is scientifically replayed and pointer advances;
-3. stale pointer followed by multiple valid **linear** successors -> complete chain replays and pointer advances to the unique tip;
-4. `current_head.json` missing with one valid chain -> pointer is rebuilt only after full replay;
-5. stale pointer with one corrupted successor -> reject and do not advance pointer;
-6. stale pointer with two children from the same parent -> reject as fork;
-7. unrelated authenticated orphan head -> reject;
-8. tampered parent/batch/pre-state/post-state relation -> reject through the owning validator/reducer path;
-9. exact duplicate reconciliation/retry -> idempotent identical result;
-10. repaired crash state replays to the same reducer state, active matrix/terminal state, and scientific outcome identity as the uninterrupted control path.
-
-### 4.2 New blocking real-owner concurrency acceptance
-
-Add explicit process-level race coverage. Sequential invocation is not sufficient.
-
-#### Race A — legitimate commit/retry versus reconciliation on the same stale-pointer successor
-
-Construct the ordinary real bounded P3 screen through one committed predecessor head `H0`. Then construct the next valid complete batch `B1` and immutable successor head `H1` using the same typed/P2 identities as the existing stale-pointer crash fixture, publish `B1` and `H1`, and deliberately leave `current_head.json` pointing at `H0`.
-
-From that exact shared durable root, synchronize **two independent OS processes** immediately before they enter the public owners:
-
-```text
-worker A -> commit_target_size_boundary_batch(root, definition, H0.post_state, B1)
-worker B -> reconcile_target_size_screen_root(root, restart_authority)
+```python
+def _worker_hold_screen_commit_lock(root_path, acquired_event, release_event, queue):
+    lock_path = Path(root_path) / ".screen_commit.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        acquired_event.set()
+        if not release_event.wait(timeout=10):
+            queue.put(("holder", None, "release timeout"))
+            return
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    queue.put(("holder", "released", None))
 ```
 
-The test must use the production `.screen_commit.lock` opened by those public functions. Do not hold the lock in the parent, monkeypatch `fcntl.flock`, invoke the private locked helpers, or serialize the workers in the harness. A process barrier/event immediately before the public calls is allowed. Do not use `sleep()` ordering as the correctness oracle.
+The exact helper shape is delegated, but these semantics are mandatory:
 
-Required observations after both workers complete:
+1. it opens **exactly** `<screen-root>/.screen_commit.lock`;
+2. it signals `acquired_event` only after the exclusive `flock` has succeeded;
+3. it keeps the file descriptor open and the lock held until `release_event` is set;
+4. it has bounded timeout/failure reporting and cannot leak a child or lock;
+5. it is a test adversary only, not a replacement implementation of commit/reconcile.
 
-- both workers terminate within a bounded timeout; timeout/deadlock is failure;
-- neither worker reports a serialization/corruption/fork error;
-- both resolve/return the exact same authenticated `H1.content_digest`;
-- `current_head.json` resolves to exactly `H1`;
-- the immutable head graph contains one predecessor/successor history, not two competing children;
-- the complete batch is not duplicated into a second logical boundary result;
-- a fresh third-process `reconcile_target_size_screen_root(...)` returns the same `H1` and performs no scientific change.
+Using raw `fcntl.flock` in this holder is explicitly allowed because the holder is external contention, not the semantic owner under acceptance.
 
-This race is intentionally valid in either lock acquisition order:
+Use `multiprocessing.get_context("fork")` consistently with the existing P3A9/POSIX fixture unless repository platform policy requires an equivalent supported context.
 
-```text
-commit first     -> normal/create-or-verify H1 -> reconcile validates H1
-reconcile first  -> replay/adopt H1            -> commit becomes exact idempotent retry
-```
+### 4.2 Commit-owner lock-identity test
 
-Both orderings must be semantically legal and converge on the same history; the test need not force which process wins.
-
-#### Race B — concurrent reconcilers on the same stale-pointer root
-
-Using a real root with `H0` current and one already-durable valid successor `H1`, synchronize two independent OS processes and invoke:
+Add:
 
 ```text
-worker A -> reconcile_target_size_screen_root(root, restart_authority)
-worker B -> reconcile_target_size_screen_root(root, restart_authority)
+test_p3a9_lock_identity_commit_owner_blocks_on_canonical_lock
 ```
 
-Require:
+Construct a bounded real P3 root with:
 
-- bounded completion with no deadlock;
-- both workers return the same `H1.content_digest`;
-- `current_head.json` ends at `H1`;
-- no second head, fork, duplicate pointer authority, or alternate reducer state appears;
-- fresh-process reconciliation remains idempotent afterward.
+- committed predecessor head `H0` current;
+- next valid complete batch `B1` built from `H0.post_state`;
+- `B1` **not yet committed by the public commit owner**;
+- no successor head/pointer mutation yet.
 
-If the current test environment cannot construct `TargetSizeRestartAuthority` directly in child processes, reuse the existing P3F fresh-process reconstruction pattern. It is permissible to reconstruct the authority from the same durable scientific inputs in each child; it is not permissible to replace the real resolver/reconciler/commit owner with a test-local equivalent.
+Then execute this exact state-transition probe:
 
-Process cleanup is part of the test: failed/timed-out children must be terminated/joined so the suite does not leak workers or retain the test lock.
+1. start the external lock-holder process;
+2. wait for `acquired_event` with a bounded timeout and require success;
+3. start a separate worker process that:
+   - signals `call_started_event` immediately before entering `commit_target_size_boundary_batch(...)`;
+   - calls the **real public commit owner** with `B1`;
+   - records returned head digest or exception;
+   - sets `completed_event` in `finally`;
+4. wait for `call_started_event` and require success;
+5. while the external holder still owns `.screen_commit.lock`, require a bounded negative completion wait:
 
-### 4.3 Authoritative inherited regression — no weak substitutes
+```python
+assert not completed_event.wait(timeout=1.0)
+```
 
-The following existing tests are authoritative inherited evidence and must execute on the final P3A9 candidate:
+   An equivalent bounded value in the 0.5–2 s range is acceptable if needed for CI stability. Use `Event.wait(timeout=...)`; do **not** use `sleep()` as the ordering oracle.
+6. while the canonical lock is still held, verify durable mutation has **not** occurred:
+   - `current_head.json` still resolves to `H0`;
+   - no `heads/<H1>.json` successor produced by this commit exists;
+   - if commit normally persists `B1` only after acquiring the lock, require the batch artifact to remain absent as well;
+7. set `release_event`;
+8. join both processes with bounded timeouts and assert clean exit;
+9. retrieve the worker result and require successful commit to exactly one authenticated successor `H1`;
+10. require `current_head.json -> H1` and no competing child/fork;
+11. run a **newly spawned fresh reconciliation child process** and require it returns the same `H1.content_digest`.
 
-1. `tests/test_mlff_target_size_execution_p3f.py::test_p3f_subprocess_fresh_continuation_and_replay`
-   - proves real fresh-process continuation and terminal replay through the assembled P3 owner path.
-2. `tests/test_mlff_target_size_execution_p3f.py::test_p3f_fresh_process_train2_and_eval2_failure_replay`
-   - proves fresh-process replay of real TRAIN2 and real EVAL2 failure evidence.
-3. `tests/test_mlff_target_size_p3a4_final_review.py::test_p3a4_durable_trajectory_tampered_evaluation_state_rejected`
-   - is the authoritative cumulative P3A7/P3A8 restart-owner acceptance: a self-consistently re-keyed durable LIVE-under-EMA graph must reach `resolve_target_size_candidate_for_resume(...)` and fail specifically at canonical trajectory-policy validation before continuation authorization.
+The acceptance claim is specifically:
 
-The current P3A9-local functions named approximately:
+```text
+an independently held canonical .screen_commit.lock prevents the real public commit owner from completing or publishing head/pointer mutation until that exact lock is released.
+```
 
-- `test_p3a9_req11_success_train2_failure_eval2_failure_replay`;
-- `test_p3a9_req12_p3a7_restart_owner_rejection_preserved`;
-- `test_p3a9_req13_p3a8_owner_level_reconciliation_acceptance_preserved`;
+If the public commit owner removes its lock or switches to another lock path, this test plus the structural guard in 4.4 must fail.
 
-must **not** be counted as substitutes for the authoritative tests above in their present form. Their current names overstate what they prove:
+### 4.3 Reconcile-owner lock-identity test
 
-- a success + TRAIN2-failure fixture with the remaining cells successful does not prove EVAL2-failure replay;
-- a generic `TrainingDataInputError` from an absent/non-resumable candidate does not prove the P3A7/P3A8 canonical LIVE-under-EMA rejection;
-- a sequential reconciliation/continuation smoke test is useful but is not the authoritative P3A8 owner-level durable-tamper closure.
+Add:
 
-Implementation must either:
+```text
+test_p3a9_lock_identity_reconcile_owner_blocks_on_canonical_lock
+```
 
-- remove those redundant weak sentinel tests; or
-- rename/rewrite them so the test name and assertions claim only the narrow behavior actually exercised.
+Construct the standard stale-pointer crash state:
 
-Do not weaken, delete, skip, xfail, or replace the authoritative inherited tests to obtain closure.
+```text
+current_head.json -> H0
+batches/ contains valid B1
+heads/ contains authenticated valid H1 child of H0
+```
 
-### 4.4 Affected regression gate
+Then:
 
-If this amendment changes **tests/workplan only** and product code remains byte-identical to `4315b0ab4c13bbb45b963f3d816b5bb08aac75c0`, execute at minimum on the final candidate:
+1. start the same external holder and require it has acquired `<root>/.screen_commit.lock`;
+2. start a separate worker process that signals `call_started_event` immediately before invoking the **real public** `reconcile_target_size_screen_root(...)`;
+3. while the holder still owns the lock, require `completed_event.wait(timeout=1.0)` to return false;
+4. while still held, require `current_head.json` remains exactly `H0`;
+5. release the external holder;
+6. require the reconciliation worker completes cleanly and returns exactly `H1.content_digest`;
+7. require `current_head.json -> H1` with no alternate head/fork;
+8. spawn a new child process for a second reconciliation and require it independently returns `H1` unchanged.
+
+The acceptance claim is specifically:
+
+```text
+an independently held canonical .screen_commit.lock prevents the real public reconciler from advancing the pointer until that exact lock is released.
+```
+
+### 4.4 Mandatory targeted structural lock guard
+
+Behavioral blocking is necessary but the negative-wait interval alone must not be the only discriminator, because an unrelated slow operation could otherwise look blocked.
+
+Add one targeted structural test, recommended name:
+
+```text
+test_p3a9_public_owners_bind_same_canonical_screen_commit_lock
+```
+
+It must inspect the actual production public-owner definitions and establish for **both** `commit_target_size_boundary_batch` and `reconcile_target_size_screen_root`:
+
+- the function binds the lock path from the screen root and the literal canonical name `.screen_commit.lock`;
+- it acquires an exclusive `fcntl.flock(..., fcntl.LOCK_EX)` before entering the corresponding locked mutation path;
+- both functions use the same canonical lock-file identity, not two different files.
+
+A narrow `inspect.getsource(...)` assertion or equally narrow AST/source inspection is acceptable. Do not introduce a global source-scanning framework. Do not count a comment, test helper, or private unused function as evidence; the assertions must target the two actual public owner definitions.
+
+This structural test is deliberately paired with the behavioral holder tests:
+
+```text
+structural guard -> proves both public definitions name/acquire the same canonical lock
+external holder  -> proves that lock actually blocks each real public owner at runtime
+existing races   -> prove concurrent valid operations converge/no-deadlock under real process scheduling
+```
+
+Together these are the required proxy-proof acceptance for the shared-lock invariant.
+
+---
+
+## 5. Required corrections to the existing process races
+
+Keep the existing process-level Race A and Race B from `0bed3080...`; they remain valuable state-transition concurrency tests.
+
+### 5.1 Replace parent-process “fresh” reconciliation
+
+Where the current tests do approximately:
+
+```python
+fresh_rec = reconcile_target_size_screen_root(root, authority)
+```
+
+in the pytest parent after the race, replace that acceptance step with a newly spawned process invoking the real public reconciler.
+
+Recommended helper reuse:
+
+```text
+_worker_reconcile(...)
+```
+
+or a smaller no-barrier child helper that reconstructs/receives the same real `TargetSizeRestartAuthority` and reports the returned digest.
+
+The post-race child must be created **after** the racing workers have completed. A direct call in the parent is not a fresh-process check.
+
+### 5.2 Do not use `multiprocessing.Queue.empty()` as synchronization
+
+The current race harness drains results using `Queue.empty()`. That method is not a reliable cross-process synchronization primitive.
+
+For a test expecting exactly `N` child results, retrieve exactly `N` messages with bounded blocking calls, for example:
+
+```python
+messages = [queue.get(timeout=5) for _ in range(N)]
+```
+
+Then validate labels/digests/errors. Do not use `while not queue.empty()` or `get_nowait()` as the acceptance mechanism.
+
+For every spawned child also assert:
+
+- bounded `join(...)` completes;
+- `process.is_alive()` is false;
+- `process.exitcode == 0` unless the test intentionally expects process failure;
+- failure paths terminate/join any still-live child in `finally`;
+- queues/events are not used as authority for scientific state.
+
+### 5.3 No forced winner requirement
+
+Do not add sleeps or hooks to force whether commit or reconcile wins Race A. Both acquisition orders remain valid:
+
+```text
+commit first     -> create-or-verify/adopt H1 -> reconcile validates H1
+reconcile first  -> replay/adopt H1            -> commit exact-retries H1
+```
+
+The lock-identity holder tests prove canonical serialization; Race A only needs to prove order-independent convergence under natural scheduling.
+
+---
+
+## 6. Existing focused and inherited acceptance remains mandatory
+
+The revised harness must continue to pass all focused P3A9 crash/replay requirements already present:
+
+1. complete batch durable, head absent -> unique recovery;
+2. immutable successor durable, stale pointer -> replay and advance;
+3. multiple valid linear successors -> replay to unique tip;
+4. missing pointer with valid chain -> rebuild after full replay;
+5. corrupted successor -> reject/no pointer advance;
+6. fork -> reject;
+7. authenticated unrelated orphan -> reject;
+8. tampered parent/batch/pre/post relation -> reject through owner/reducer validation;
+9. exact duplicate retry -> idempotent;
+10. repaired crash path -> same reducer/scientific state as uninterrupted control;
+11. Race A commit-versus-reconcile -> one authenticated history/no deadlock;
+12. Race B reconcile-versus-reconcile -> one authenticated history/no deadlock;
+13. commit-owner canonical-lock holder acceptance;
+14. reconcile-owner canonical-lock holder acceptance;
+15. targeted public-owner same-lock structural acceptance;
+16. actual fresh-child post-race reconciliation.
+
+The following inherited authoritative tests must execute on the final candidate and remain the evidence for their respective contracts:
+
+```text
+tests/test_mlff_target_size_execution_p3f.py::test_p3f_subprocess_fresh_continuation_and_replay
+
+tests/test_mlff_target_size_execution_p3f.py::test_p3f_fresh_process_train2_and_eval2_failure_replay
+
+tests/test_mlff_target_size_p3a4_final_review.py::test_p3a4_durable_trajectory_tampered_evaluation_state_rejected
+```
+
+Do not recreate weaker local substitutes for these tests. Do not weaken, skip, xfail, or rename away their assertions to obtain closure.
+
+---
+
+## 7. Regression commands and evidence boundary
+
+### 7.1 Expected test-only repair
+
+If production P3 source remains byte-identical to `4315b0ab4c13bbb45b963f3d816b5bb08aac75c0`, run on the final acceptance candidate at minimum:
 
 ```bash
 pytest -q tests/test_mlff_target_size_p3a9_head_pointer_reconciliation.py
@@ -262,121 +387,106 @@ pytest -q tests/test_mlff_target_size_execution_p3e.py tests/test_mlff_target_si
 pytest -q tests/test_mlff_target_size_p3a4_final_review.py::test_p3a4_durable_trajectory_tampered_evaluation_state_rejected
 ```
 
-Equivalent repository-supported invocation is acceptable, but every listed test/module must actually execute and pass; an unavailable or skipped required check is not a pass.
+Every listed test/module must actually execute. A skipped, unavailable, timed-out, or not-collected required check is not a pass.
 
-If the new concurrency acceptance exposes a product defect and **any production P3 source changes**, rerun the complete affected cumulative P3 execution/restart surface rather than only the new race tests. At minimum include all existing `tests/test_mlff_target_size_execution_p3*.py` and cumulative `tests/test_mlff_target_size_p3a*.py` acceptance files that exercise the changed coordinator/restart/persistence path, plus any additional affected module discovered from the actual diff.
+Record enough command output in the implementation handoff to attribute the passing evidence to the exact candidate commit. No new evidence database/report schema is required.
 
-Long GPU/real-production qualification is not part of this repair and remains deferred to final release.
+### 7.2 If a production defect is exposed
+
+If any new lock-identity or race test fails because the production owner is genuinely wrong, repair only the smallest existing owning layer necessary to restore the frozen one-lock architecture.
+
+Allowed local consequences, only if proven necessary:
+
+- correct the existing `.screen_commit.lock` path/scope in a public owner;
+- correct exclusive lock acquisition/release;
+- correct exact-retry behavior after another owner wins the lock;
+- correct exception-safe release/pointer publication ordering.
+
+Forbidden:
+
+- second lock file/domain;
+- PID/process authority;
+- mtime/newest winner selection;
+- second mutable head/result authority;
+- retry loops that hide deterministic corruption;
+- P4-side replay/recovery;
+- test hooks or sleeps in production code;
+- weakening typed replay/fork/orphan validation.
+
+Any production P3 source change invalidates the narrow test-only regression boundary. Re-derive the affected surface and run the complete cumulative P3 execution/restart surface, at minimum all affected `tests/test_mlff_target_size_execution_p3*.py` and `tests/test_mlff_target_size_p3a*.py` files plus any additionally affected caller/consumer discovered from the actual diff.
+
+Long GPU/real-production qualification remains out of scope.
 
 ---
 
-## 5. Implementation instructions and decision routing
+## 8. Structural/conformance closure
 
-### 5.1 Default implementation path — expected
+Before claiming P3A9 closed, independently inspect the final candidate and establish:
 
-Because independent review found the `4315b0ab...` reconciliation algorithm sound, the expected repair is:
-
-```text
-add real commit-vs-reconcile process race
-+ add concurrent-reconciler process race
-+ remove/rename weak overclaiming P3A9 sentinel tests
-+ run authoritative inherited P3A7/P3A8 and P3F evidence
-+ run affected P3 regression
-+ no production source change
-```
-
-Do not add another lock helper, retry loop, compatibility path, replay engine, or product synchronization primitive merely to satisfy the test.
-
-### 5.2 If a race fails
-
-A failing real-owner race is evidence of a product defect, not permission to weaken the fixture. Diagnose the earliest violated invariant in the existing commit/reconcile ownership path.
-
-Allowed repair scope is the smallest owning-layer correction inside the existing P3 coordinator/persistence machinery that preserves all frozen semantics. Examples of legitimate local consequences, only if proven necessary, include:
-
-- correcting use/scope of the existing `.screen_commit.lock`;
-- correcting exact-retry handling when reconciliation wins the race;
-- correcting pointer verification/publication order inside the existing owner;
-- correcting exception-safe release of the existing lock.
-
-Do **not** introduce:
-
-- a second lock file or lock-order domain;
-- PID/process ownership as authority;
-- a winner-by-mtime/newest heuristic;
-- a second mutable head/result manifest;
-- a P4 replay path;
-- a fallback that bypasses scientific replay;
-- test-only hooks in product code.
-
-Any production source change invalidates prior affected regression evidence for that path and requires the broader gate in section 4.4.
-
-### 5.3 Structural/conformance closure
-
-Before claiming P3A9 closed, inspect the final candidate and establish:
-
-1. `reconcile_target_size_screen_root(...)` remains the sole public P3 screen reconciler;
-2. `commit_target_size_boundary_batch(...)` remains the sole public complete-boundary head commit owner;
-3. both serialize head/pointer mutation through the same canonical `.screen_commit.lock` domain;
-4. no second replay/reducer authority, lock domain, mutable scientific head authority, or P4 compatibility path was added;
-5. P2 reducer replay remains the sole scientific post-state derivation;
-6. stale-pointer successor recovery still validates complete typed ancestry/evidence before pointer advancement;
+1. the two required public semantic owners remain the production entrypoints under acceptance;
+2. both public owners acquire the exact same `root/.screen_commit.lock` with exclusive `flock`;
+3. the external-holder tests invoke the real public owners and would fail if either stopped contending on that lock;
+4. the tests do not monkeypatch `flock`, the lock path, public owners, atomic pointer publication, typed resolver, or P2 reducer replay;
+5. immutable batch/head publication and deterministic reducer replay remain unchanged unless a demonstrated product defect required a local repair;
+6. no second replay owner, lock domain, mutable head authority, or P4 compatibility path was added;
 7. fork/orphan corruption remains fail-closed;
-8. the new concurrency acceptance invokes the real public owners in independent processes and cannot remain green if those owners stop sharing the lock;
-9. the authoritative P3A7/P3A8 restart-owner test still fails specifically at canonical evaluation-state policy validation, not at a generic stale/missing-parent error;
-10. real TRAIN2 and EVAL2 fresh-process failure replay remains passing.
+8. the existing natural process races still converge without deadlock;
+9. fresh post-race reconciliation is now truly performed by a newly spawned process;
+10. inherited P3F and P3A7/P3A8 owner-level regression passes on the same final candidate;
+11. process cleanup is bounded and the test suite leaves no live child or held lock after success/failure.
+
+A green test suite does not substitute for this source/conformance inspection.
 
 ---
 
-## 6. Formal P3 closure and P4 handoff
+## 9. Formal P3 closure and P4 handoff
 
-After the amended P3A9 implementation/evidence passes:
+After the amended acceptance passes:
 
-1. perform semantic/conformance review against cumulative P3 revision 7 through this P3A9 instruction revision;
-2. complete focused concurrency acceptance and the affected P3 regression required above;
-3. commit the accepted P3A9 repair/evidence candidate;
-4. record that **new** candidate commit as the accepted cumulative P3 closure commit;
-5. update this file from `status: active` to `status: accepted` and record `accepted_closure_commit: <new-commit>`;
-6. update package README/sequencing metadata to identify the same accepted P3 closure commit;
-7. update P4 `entry_p3_closure_commit` and entry gate to that exact commit, then and only then change P4 to `status: active`;
-8. only after the metadata handoff commit may P4-A executable work begin.
+1. commit the test/acceptance candidate and record its exact SHA;
+2. run the mandatory focused + inherited affected regression on that exact candidate;
+3. perform semantic/conformance closure against cumulative P3 revision 7 through this instruction revision 3;
+4. only if both semantic and functional closure pass, update this file to `status: accepted` and record `accepted_closure_commit: <new-candidate-sha>`;
+5. update package README/sequencing metadata to the same accepted P3 closure SHA;
+6. update P4 `entry_p3_closure_commit` and entry gate to that same new SHA;
+7. only then set P4 to `status: active` and begin P4-A executable work.
 
-Do not reuse `4315b0ab4c13bbb45b963f3d816b5bb08aac75c0` as the final accepted closure commit unless the final candidate is literally that commit, which is impossible once the required concurrency acceptance is added. The historical product implementation remains useful baseline evidence, but the accepted closure identity must include the new required tests/evidence-bearing source state.
+Do **not** reuse `0bed3080ac4e3ba45f04fdf2fab891cfdc92fe58` as final closure identity because the required lock-identity/fresh-child acceptance is not present in that candidate. Do not reuse `bf24a9e5...` as closure authority; it is superseded metadata.
 
-Do not start P4 executable runtime-cutover work while P3A9 is active, while any required acceptance check is unexecuted/failing, or while P4 still points at the superseded closure commit.
+The expected next closure candidate should differ from `0bed3080...` only in the P3A9 acceptance harness unless the new tests expose a real production defect.
 
 ---
 
-## 7. Frozen / delegated / reopen boundary
+## 10. Frozen / delegated / reopen boundary
 
 ### Frozen
 
-- all P1/P2 scientific/statistical semantics;
-- all cumulative P3 revision-7 execution, evidence, owner, reducer, checkpoint, EMA/LIVE, failure, and restart semantics;
-- the reviewed P3A9 unique-linear-successor recovery design unless a real-owner race proves a defect;
-- immutable execution heads/batches as scientific evidence;
-- deterministic reducer replay as recovery authority;
-- `current_head.json` as rebuildable non-scientific pointer/index only;
-- fork/orphan corruption remains fail-closed;
-- one canonical `.screen_commit.lock` domain for head/pointer mutation;
-- no second replay owner;
+- parent scientific/statistical target-size architecture;
+- cumulative P3 revision-7 product semantics;
+- reviewed P3A9 unique-linear-successor recovery design;
+- one canonical `root/.screen_commit.lock` domain;
+- public commit/reconcile ownership;
+- immutable evidence + deterministic reducer replay;
+- fail-closed fork/orphan handling;
+- no second replay/mutable authority;
 - version-agnostic product naming;
-- full long GPU qualification deferred.
+- deferred long GPU qualification.
 
 ### Delegated
 
-- exact multiprocessing/subprocess harness mechanics used to start the two race workers;
-- whether the child reconstructs `TargetSizeRestartAuthority` using the existing P3F pattern or safely inherits/passes the real typed authority under the platform's process model;
-- exact helper names inside the test fixture used to construct the already-accepted stale-pointer crash state;
-- whether the three weak P3A9-local sentinel tests are removed or renamed/re-scoped;
-- exact broader pytest command expansion, provided the required affected files/tests actually execute.
+- exact helper names for the holder/call-start/completion events;
+- exact bounded timeout values within the ranges above if CI stability requires adjustment;
+- whether the targeted structural guard uses `inspect.getsource` or a narrow AST equivalent;
+- whether fresh-child authority is inherited under `fork` or reconstructed using the existing P3F pattern;
+- exact test function ordering within the P3A9 file.
 
 ### Reopen only on evidence
 
-Reopen P3 design only if implementation proves one of the following:
+Reopen P3 design only if the final real-owner acceptance proves one of these material premises false:
 
-- the current immutable-head representation lacks enough authenticated ancestry/state information to distinguish a unique valid successor chain from a fork without changing frozen P3 scientific semantics; or
-- the single canonical screen-commit lock cannot provide correct commit/reconcile serialization under the actual supported process model without a material ownership redesign.
+- the current single canonical filesystem lock cannot serialize commit/reconcile correctly on the supported process/filesystem model; or
+- the immutable-head representation cannot support deterministic unique-successor recovery without changing frozen scientific semantics.
 
-If either occurs, stop before P4 and reopen only the affected P3 persistence/concurrency representation. A mere failing test caused by a local lock-scope, exact-retry, pointer-publication, or fixture defect is implementation repair, not architecture reopening.
+A flaky/incorrect test helper, missing process cleanup, Queue synchronization issue, lock-path typo, local public-owner lock-scope bug, or exact-retry bug is implementation repair, not architecture reopening.
 
-Legacy compatibility, desire to avoid the process-level race tests, test runtime, or convenience of handling the crash in P4 are not reopen conditions.
+Legacy compatibility, test runtime, desire to avoid process-level acceptance, or convenience of moving recovery into P4 are not reopen conditions.
