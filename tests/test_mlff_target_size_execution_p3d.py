@@ -29,19 +29,35 @@ from mdstats.training_data.neutral_substrate import (
 )
 from mdstats.training_data.protocol import MaceOptimizerPolicy
 from mdstats.training_data.target_size_execution import (
+    TARGET_SIZE_BOUNDARY_SNAPSHOT_SCHEMA,
+    TARGET_SIZE_EVALUATION_ARTIFACT_SCHEMA,
+    TARGET_SIZE_PREDICTION_EVIDENCE_SCHEMA,
+    TargetSizeBoundarySnapshot,
+    TargetSizeBoundaryState,
     TargetSizeEval2Role,
+    TargetSizeEvaluationArtifact,
+    TargetSizePredictionEntry,
+    TargetSizePredictionEvidence,
     bind_target_size_boundary_state,
     build_target_size_candidate_trajectory,
     build_target_size_eval2_role,
     build_target_size_screen_schedule,
     evaluate_target_size_boundary,
+    materialize_target_size_candidate,
+    promote_target_size_boundary_snapshot,
+    run_target_size_direct_boundary_inference,
     run_target_size_eval2_reduction,
     target_size_boundary_metric_from_eval2_record,
     target_size_eval2_prediction_digest,
     target_size_population_correlation_blocks,
     target_size_rung_plan,
     translate_target_size_eval2_failure,
-    write_target_size_extxyz_artifact,
+    validate_target_size_boundary_snapshot,
+    validate_target_size_evaluation_artifact,
+    write_target_size_evaluation_artifact,
+)
+from mdstats.training_data.target_size_execution.common import (
+    project_target_size_candidate_preparation,
 )
 from mdstats.training_data.target_size_execution.context import (
     build_target_size_execution_context,
@@ -88,7 +104,7 @@ def _env(tmp_path: Path):
 def _boundary_state(env, tmp_path: Path, boundary: int, *, name: str = "checkpoints"):
     trajectory, schedule = env["trajectory"], env["schedule"]
     checkpoint_dir = tmp_path / name
-    checkpoint_dir.mkdir()
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
     plan = target_size_rung_plan(trajectory, schedule, boundary_epoch=boundary)
     _runtime, summary, _restored, _rng = p3c._run_rung(
         plan,
@@ -102,64 +118,74 @@ def _boundary_state(env, tmp_path: Path, boundary: int, *, name: str = "checkpoi
     )
 
 
-def _view_for(env, tmp_path: Path, frame_uids: tuple[str, ...], *, name: str):
-    aggregate = env["aggregate"]
-    artifact = write_target_size_extxyz_artifact(
-        tmp_path / name,
-        dataset_id=env["frame_authority"].dataset_id,
-        role="target_train",
-        filename=f"{name}.extxyz",
-        frame_uids=frame_uids,
+def _eval_artifact_for(env, tmp_path: Path, evaluation_size: int, *, name: str):
+    out_dir = tmp_path / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return write_target_size_evaluation_artifact(
+        out_dir,
+        definition=env["aggregate"].definition,
+        evaluation_size=evaluation_size,
         canonical_frame_authority=env["frame_authority"],
         frame_catalog=env["frames"],
         frame_data_by_run=env["frame_data_by_run"],
-        membership_digest="a" * 64,
-        common_preparation_digest=env["common"].content_digest,
-        training_weights=None,
         frame_array_index=env["index"],
     )
-    del aggregate
-    atoms = ase.io.read(str(tmp_path / name / artifact.relative_path), index=":")
-    return build_evaluation_dataset_view(
-        atoms,
-        energy_key=MaceExtxyzPolicy().energy_key,
-        forces_key=MaceExtxyzPolicy().forces_key,
-        stress_key=MaceExtxyzPolicy().stress_key,
-        focus_atomic_numbers=(),
-        condition_keys=(),
+
+
+def _materialization_for(env, tmp_path: Path):
+    definition = env["aggregate"].definition
+    trajectory = env["trajectory"]
+    projection = project_target_size_candidate_preparation(
+        env["common"], definition, trajectory.target_size
+    )
+    out_dir = tmp_path / "materialization"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return materialize_target_size_candidate(
+        trajectory,
+        projection,
+        env["common"],
+        canonical_frame_authority=env["frame_authority"],
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        output_directory=out_dir,
+        optimizer_policy=env["optimizer"],
+        frame_array_index=env["index"],
     )
 
 
-def _predictions_for(view, *, epsilon: float = 2.5e-3):
-    predictions = []
-    for frame_index in range(view.configuration_count):
-        start = int(view.force_offsets[frame_index])
-        stop = int(view.force_offsets[frame_index + 1])
-        stress = (
-            np.asarray(view.reference_stresses[frame_index], dtype=np.float64)
-            if bool(view.stress_present[frame_index])
-            else None
-        )
-        stress_3x3 = None
-        if stress is not None:
-            stress_3x3 = np.array(
-                [
-                    [stress[0], stress[5], stress[4]],
-                    [stress[5], stress[1], stress[3]],
-                    [stress[4], stress[3], stress[2]],
-                ]
+def _predictions_evaluator(view, *, epsilon: float = 2.5e-3):
+    def _eval(boundary_state, atoms_list):
+        predictions = []
+        for frame_index in range(view.configuration_count):
+            start = int(view.force_offsets[frame_index])
+            stop = int(view.force_offsets[frame_index + 1])
+            stress = (
+                np.asarray(view.reference_stresses[frame_index], dtype=np.float64)
+                if bool(view.stress_present[frame_index])
+                else None
             )
-        predictions.append(
-            SimpleNamespace(
-                energy_ev=float(view.reference_energies[frame_index]),
-                forces_ev_per_angstrom=np.asarray(
-                    view.reference_forces[start:stop], dtype=np.float64
+            stress_3x3 = None
+            if stress is not None:
+                stress_3x3 = np.array(
+                    [
+                        [stress[0], stress[5], stress[4]],
+                        [stress[5], stress[1], stress[3]],
+                        [stress[4], stress[3], stress[2]],
+                    ]
                 )
-                + epsilon,
-                stress_ev_per_angstrom3=stress_3x3,
+            predictions.append(
+                SimpleNamespace(
+                    energy_ev=float(view.reference_energies[frame_index]),
+                    forces_ev_per_angstrom=np.asarray(
+                        view.reference_forces[start:stop], dtype=np.float64
+                    )
+                    + epsilon,
+                    stress_ev_per_angstrom3=stress_3x3,
+                )
             )
-        )
-    return predictions
+        return predictions
+
+    return _eval
 
 
 def test_p3d_exact_m_ladder_roles_and_digests(tmp_path: Path) -> None:
@@ -169,15 +195,19 @@ def test_p3d_exact_m_ladder_roles_and_digests(tmp_path: Path) -> None:
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
     for boundary in env["schedule"].fidelity_epochs:
         state = _boundary_state(env, tmp_path, boundary, name=f"ckpt-{boundary}")
+        index = env["schedule"].fidelity_epochs.index(boundary)
+        evaluation_size = definition.policy.evaluation_sizes[index]
+        eval_artifact = _eval_artifact_for(
+            env, tmp_path, evaluation_size, name=f"eval-art-{boundary}"
+        )
         role = build_target_size_eval2_role(
             trajectory=env["trajectory"],
             boundary_state=state,
             definition=definition,
             schedule=env["schedule"],
             correlation_blocks=blocks,
+            evaluation_data=eval_artifact,
         )
-        index = env["schedule"].fidelity_epochs.index(boundary)
-        evaluation_size = definition.policy.evaluation_sizes[index]
         assert role.evaluation_size == evaluation_size
         assert role.evaluation_frame_uids == definition.evaluation_membership(
             evaluation_size
@@ -190,6 +220,7 @@ def test_p3d_exact_m_ladder_roles_and_digests(tmp_path: Path) -> None:
         assert role.target_size == env["trajectory"].target_size
         assert role.optimizer_seed == env["trajectory"].optimizer_seed
         assert len(role.correlation_block_ids) == evaluation_size
+        assert role.evaluation_data_digest == eval_artifact.content_digest
         # Block identities come from canonical P1 split components.
         assert set(role.correlation_block_ids) <= set(
             aggregate.split.constraint_component_digests
@@ -207,12 +238,14 @@ def test_p3d_role_authenticates_exact_boundary_checkpoint_identity(
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
     state1 = _boundary_state(env, tmp_path, 1, name="ckpt-a")
     state1_again = _boundary_state(env, tmp_path, 1, name="ckpt-b")
+    eval_artifact1 = _eval_artifact_for(env, tmp_path, 1, name="eval-1")
     role = build_target_size_eval2_role(
         trajectory=env["trajectory"],
         boundary_state=state1,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,
+        evaluation_data=eval_artifact1,
     )
     # The same authenticated boundary yields the identical role.
     assert (
@@ -222,6 +255,7 @@ def test_p3d_role_authenticates_exact_boundary_checkpoint_identity(
             definition=definition,
             schedule=env["schedule"],
             correlation_blocks=blocks,
+            evaluation_data=eval_artifact1,
         ).content_digest
         == role.content_digest
     )
@@ -242,16 +276,18 @@ def test_p3d_role_authenticates_exact_boundary_checkpoint_identity(
             definition=definition,
             schedule=env["schedule"],
             correlation_blocks=blocks,
+            evaluation_data=eval_artifact1,
         )
-    # A different boundary epoch of the same trajectory is a different role:
-    # there is no checkpoint-selection surface to confuse the two.
+    # A different boundary epoch of the same trajectory is a different role.
     state10 = _boundary_state(env, tmp_path, 10, name="ckpt-c")
+    eval_artifact10 = _eval_artifact_for(env, tmp_path, definition.policy.evaluation_sizes[2], name="eval-10")
     role10 = build_target_size_eval2_role(
         trajectory=env["trajectory"],
         boundary_state=state10,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,
+        evaluation_data=eval_artifact10,
     )
     assert role10.evaluation_size == definition.policy.evaluation_sizes[2]
     assert role10.content_digest != role.content_digest
@@ -261,25 +297,44 @@ def test_p3d_exact_mev_conversion_and_reference_equivalence(tmp_path: Path) -> N
     env = _env(tmp_path)
     definition = env["aggregate"].definition
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
-    state = _boundary_state(env, tmp_path, 1)
+    state = _boundary_state(env, tmp_path, 1, name="ckpt-mev")
+    eval_artifact = _eval_artifact_for(env, tmp_path, 1, name="eval-mev")
+    materialization = _materialization_for(env, tmp_path)
     role = build_target_size_eval2_role(
         trajectory=env["trajectory"],
         boundary_state=state,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,
+        evaluation_data=eval_artifact,
     )
-    view = _view_for(env, tmp_path, tuple(role.evaluation_frame_uids), name="m1-view")
+    view = eval_artifact.build_evaluation_view(tmp_path / "eval-mev")
     epsilon = 2.5e-3
-    predictions = _predictions_for(view, epsilon=epsilon)
-    outcome = evaluate_target_size_boundary(role, view, predictions)
+    evaluator = _predictions_evaluator(view, epsilon=epsilon)
+    pred_evidence = run_target_size_direct_boundary_inference(
+        trajectory=env["trajectory"],
+        materialization=materialization,
+        boundary_state=state,
+        role=role,
+        evaluation_data=eval_artifact,
+        root_directory=tmp_path / "eval-mev",
+        inference_evaluator=evaluator,
+    )
+    assert pred_evidence.role_digest == role.content_digest
+    assert pred_evidence.evaluation_data_digest == eval_artifact.content_digest
+    assert pred_evidence.prediction_count == role.evaluation_size
+
+    outcome = evaluate_target_size_boundary(
+        role, eval_artifact, pred_evidence, root_directory=tmp_path / "eval-mev"
+    )
     assert isinstance(outcome, mdstats.TargetSizeBoundaryMetric)
-    # Every force component shifted by exactly epsilon.
     assert math.isclose(
         outcome.target_force_rmse_mev_per_a, epsilon * 1000.0, rel_tol=1e-12
     )
-    # The EVAL2 record reduces identically to a hand oracle.
-    record = run_target_size_eval2_reduction(role, view, predictions)
+
+    record = run_target_size_eval2_reduction(
+        role, eval_artifact, pred_evidence, root_directory=tmp_path / "eval-mev"
+    )
     total_sse = sum(
         3.0 * int(view.atom_counts[i]) * epsilon * epsilon
         for i in range(view.configuration_count)
@@ -290,7 +345,6 @@ def test_p3d_exact_mev_conversion_and_reference_equivalence(tmp_path: Path) -> N
         math.sqrt(total_sse / total_components),
         rel_tol=1e-12,
     )
-    # Correlation-block reductions agree with the same closed form.
     for block in record.block_metrics:
         assert math.isclose(
             block.force_rmse_ev_per_angstrom, epsilon, rel_tol=1e-12
@@ -301,7 +355,6 @@ def test_p3d_exact_mev_conversion_and_reference_equivalence(tmp_path: Path) -> N
             rel_tol=1e-12,
         )
     assert record.target_role_digest == role.content_digest
-    # The frozen transfer applies only the *1000 conversion and exact lineage.
     metric = target_size_boundary_metric_from_eval2_record(role, record)
     assert metric.evaluation_membership_digest == role.evaluation_membership_digest
     assert metric.boundary_epoch == role.boundary_epoch
@@ -314,17 +367,13 @@ def test_p3d_blocks_stable_across_m_rungs_and_transitive_chains(tmp_path: Path) 
     blocks = target_size_population_correlation_blocks(aggregate, env["evidence"])
     m_sizes = definition.policy.evaluation_sizes
     memberships = [definition.evaluation_membership(m) for m in m_sizes]
-    # M1/M2 are exact prefixes of M3: each frame retains its full parent
-    # component identity across rungs.
     for index in range(1, 3):
         assert memberships[index - 1] == memberships[index][: m_sizes[index - 1]]
     for membership, size in zip(memberships, m_sizes):
         assert len(membership) == size
         for uid in membership:
             assert blocks[uid] in aggregate.split.constraint_component_digests
-    # No prefix-local names: the same frame has the same identity on every rung.
     assert blocks[memberships[0][0]] == blocks[memberships[2][0]]
-    # Mixed-relation transitive closure through the shared canonical owner.
     uids = tuple(f"{c}" * 64 for c in "1234")
     evidence = NeutralSplitExclusionEvidence(
         dataset_id="synthetic",
@@ -356,7 +405,6 @@ def test_p3d_blocks_stable_across_m_rungs_and_transitive_chains(tmp_path: Path) 
     )
     assert assignment[uids[0]] == assignment[uids[2]]
     assert assignment[uids[3]] != assignment[uids[0]]
-    # Non-binding evidence is rejected.
     with pytest.raises(mdstats.TrainingDataInputError):
         project_split_exclusion_constraint_components(
             uids,
@@ -364,7 +412,6 @@ def test_p3d_blocks_stable_across_m_rungs_and_transitive_chains(tmp_path: Path) 
             frame_authority_digest="0" * 64,
             neutral_unit_catalog_digest="b" * 64,
         )
-    # Evidence that does not bind the accepted P2 split is rejected.
     with pytest.raises(mdstats.TrainingDataInputError):
         target_size_population_correlation_blocks(aggregate, evidence)
 
@@ -375,13 +422,15 @@ def test_p3d_direct_role_payload_carries_no_legacy_selection_semantics(
     env = _env(tmp_path)
     definition = env["aggregate"].definition
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
-    state = _boundary_state(env, tmp_path, 1)
+    state = _boundary_state(env, tmp_path, 1, name="ckpt-legacy")
+    eval_artifact = _eval_artifact_for(env, tmp_path, 1, name="eval-legacy")
     role = build_target_size_eval2_role(
         trajectory=env["trajectory"],
         boundary_state=state,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,
+        evaluation_data=eval_artifact,
     )
     forbidden = {
         "label_domain_id",
@@ -403,23 +452,40 @@ def test_p3d_direct_role_payload_carries_no_legacy_selection_semantics(
     payload_text = json.dumps(role.to_dict())
     for token in forbidden:
         assert token not in payload_text
-    # There is exactly one selection-free decision surface: the role derives
-    # the boundary and evaluation membership from the authenticated state.
-    import inspect
 
+    import inspect
     signature = inspect.signature(build_target_size_eval2_role)
     assert "checkpoint" not in str(signature)
     assert "shortlist" not in str(signature)
-    assert "evaluation_size" not in inspect.signature(
-        build_target_size_eval2_role
-    ).parameters
-    # An artificially better earlier checkpoint cannot alter the outcome
-    # lineage: the metric binds the exact role/checkpoint boundary state.
-    view = _view_for(env, tmp_path, tuple(role.evaluation_frame_uids), name="m1")
-    better = _predictions_for(view, epsilon=0.0)
-    worse = _predictions_for(view, epsilon=9.5e-2)
-    better_metric = evaluate_target_size_boundary(role, view, better)
-    worse_metric = evaluate_target_size_boundary(role, view, worse)
+
+    materialization = _materialization_for(env, tmp_path)
+    view = eval_artifact.build_evaluation_view(tmp_path / "eval-legacy")
+    better_eval = _predictions_evaluator(view, epsilon=0.0)
+    worse_eval = _predictions_evaluator(view, epsilon=9.5e-2)
+    better_pred = run_target_size_direct_boundary_inference(
+        trajectory=env["trajectory"],
+        materialization=materialization,
+        boundary_state=state,
+        role=role,
+        evaluation_data=eval_artifact,
+        root_directory=tmp_path / "eval-legacy",
+        inference_evaluator=better_eval,
+    )
+    worse_pred = run_target_size_direct_boundary_inference(
+        trajectory=env["trajectory"],
+        materialization=materialization,
+        boundary_state=state,
+        role=role,
+        evaluation_data=eval_artifact,
+        root_directory=tmp_path / "eval-legacy",
+        inference_evaluator=worse_eval,
+    )
+    better_metric = evaluate_target_size_boundary(
+        role, eval_artifact, better_pred, root_directory=tmp_path / "eval-legacy"
+    )
+    worse_metric = evaluate_target_size_boundary(
+        role, eval_artifact, worse_pred, root_directory=tmp_path / "eval-legacy"
+    )
     assert worse_metric.target_force_rmse_mev_per_a > (
         better_metric.target_force_rmse_mev_per_a
     )
@@ -432,32 +498,63 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
     env = _env(tmp_path)
     definition = env["aggregate"].definition
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
-    state = _boundary_state(env, tmp_path, 1)
+    state = _boundary_state(env, tmp_path, 1, name="ckpt-fail")
+    eval_artifact = _eval_artifact_for(env, tmp_path, 1, name="eval-fail")
+    materialization = _materialization_for(env, tmp_path)
     role = build_target_size_eval2_role(
         trajectory=env["trajectory"],
         boundary_state=state,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,
+        evaluation_data=eval_artifact,
     )
-    view = _view_for(env, tmp_path, tuple(role.evaluation_frame_uids), name="m1")
-    predictions = _predictions_for(view)
-    broken = _predictions_for(view)
-    broken[0].forces_ev_per_angstrom[0, 2] = float("nan")
-    outcome = evaluate_target_size_boundary(role, view, broken)
+    view = eval_artifact.build_evaluation_view(tmp_path / "eval-fail")
+
+    def _broken_force_eval(bs, atoms):
+        preds = _predictions_evaluator(view)(bs, atoms)
+        preds[0].forces_ev_per_angstrom[0, 2] = float("nan")
+        return preds
+
+    broken_pred = run_target_size_direct_boundary_inference(
+        trajectory=env["trajectory"],
+        materialization=materialization,
+        boundary_state=state,
+        role=role,
+        evaluation_data=eval_artifact,
+        root_directory=tmp_path / "eval-fail",
+        inference_evaluator=_broken_force_eval,
+    )
+    outcome = evaluate_target_size_boundary(
+        role, eval_artifact, broken_pred, root_directory=tmp_path / "eval-fail"
+    )
     assert isinstance(outcome, mdstats.TargetSizeNumericalFailure)
     assert outcome.kind is NumericalFailureKind.EVAL_NONFINITE_PREDICTION
     assert outcome.boundary_epoch == role.boundary_epoch
     assert outcome.target_size == role.target_size
     assert outcome.optimizer_seed == role.optimizer_seed
     assert outcome.evaluation_membership_digest == role.evaluation_membership_digest
-    # Energy prediction non-finiteness maps to the same prediction category.
-    broken_energy = _predictions_for(view)
-    broken_energy[0].energy_ev = float("inf")
-    energy_outcome = evaluate_target_size_boundary(role, view, broken_energy)
+
+    def _broken_energy_eval(bs, atoms):
+        preds = _predictions_evaluator(view)(bs, atoms)
+        preds[0].energy_ev = float("inf")
+        return preds
+
+    broken_energy_pred = run_target_size_direct_boundary_inference(
+        trajectory=env["trajectory"],
+        materialization=materialization,
+        boundary_state=state,
+        role=role,
+        evaluation_data=eval_artifact,
+        root_directory=tmp_path / "eval-fail",
+        inference_evaluator=_broken_energy_eval,
+    )
+    energy_outcome = evaluate_target_size_boundary(
+        role, eval_artifact, broken_energy_pred, root_directory=tmp_path / "eval-fail"
+    )
     assert energy_outcome.kind is NumericalFailureKind.EVAL_NONFINITE_PREDICTION
     assert energy_outcome.content_digest != outcome.content_digest
-    # A failure not bound to this role is an execution error.
+
     foreign = Eval2NumericalEvaluationError(
         "eval_nonfinite_force_prediction",
         "foreign role",
@@ -466,11 +563,86 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
     )
     with pytest.raises(mdstats.TrainingDataInputError):
         translate_target_size_eval2_failure(role, foreign)
-    # Shape/lineage errors remain ordinary execution errors.
-    wrong_shape = _predictions_for(view)
-    wrong_shape[0].forces_ev_per_angstrom = np.zeros((1, 3))
+
+    # Negative inference tests:
+    # 1. Foreign trajectory
+    other_traj = build_target_size_candidate_trajectory(
+        definition,
+        env["context"],
+        env["common"],
+        env["schedule"],
+        target_size=env["trajectory"].target_size,
+        optimizer_policy=replace(env["optimizer"], seed=2),
+        optimizer_seed=2,
+    )
     with pytest.raises(mdstats.TrainingDataInputError):
-        evaluate_target_size_boundary(role, view, wrong_shape)
-    # Prediction populations that do not match the exact M-membership are rejected.
+        run_target_size_direct_boundary_inference(
+            trajectory=other_traj,
+            materialization=materialization,
+            boundary_state=state,
+            role=role,
+            evaluation_data=eval_artifact,
+            root_directory=tmp_path / "eval-fail",
+            inference_evaluator=_predictions_evaluator(view),
+        )
+    # 2. Foreign evaluation data
+    eval_artifact_m2 = _eval_artifact_for(
+        env, tmp_path, definition.policy.evaluation_sizes[1], name="eval-m2"
+    )
     with pytest.raises(mdstats.TrainingDataInputError):
-        evaluate_target_size_boundary(role, view, predictions + list(predictions))
+        run_target_size_direct_boundary_inference(
+            trajectory=env["trajectory"],
+            materialization=materialization,
+            boundary_state=state,
+            role=role,
+            evaluation_data=eval_artifact_m2,
+            root_directory=tmp_path / "eval-m2",
+            inference_evaluator=_predictions_evaluator(view),
+        )
+
+
+def test_p3d_boundary_snapshot_promotion_and_validation(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    state = _boundary_state(env, tmp_path, 1, name="ckpt-snap")
+    snapshot = promote_target_size_boundary_snapshot(
+        env["trajectory"],
+        state,
+        checkpoint_directory=tmp_path / "ckpt-snap",
+        snapshot_root=tmp_path / "snap_root",
+    )
+    assert snapshot.boundary_epoch == 1
+    assert snapshot.trajectory_digest == env["trajectory"].content_digest
+
+    # Validation succeeds on authentic snapshot
+    summary = validate_target_size_boundary_snapshot(
+        snapshot,
+        snapshot_root=tmp_path / "snap_root",
+        trajectory=env["trajectory"],
+        schedule=env["schedule"],
+    )
+    assert summary.completed_epochs == 1
+
+    # Tampered raw checkpoint fails
+    raw_path = tmp_path / "snap_root" / snapshot.snapshot_relative_dir / snapshot.raw_checkpoint_name
+    raw_bytes = raw_path.read_bytes()
+    raw_path.write_bytes(raw_bytes + b"tamper")
+    with pytest.raises(mdstats.TrainingDataInputError):
+        validate_target_size_boundary_snapshot(
+            snapshot,
+            snapshot_root=tmp_path / "snap_root",
+            trajectory=env["trajectory"],
+            schedule=env["schedule"],
+        )
+    raw_path.write_bytes(raw_bytes)
+
+    # Tampered companion fails
+    comp_path = tmp_path / "snap_root" / snapshot.snapshot_relative_dir / "train2_runtime.pt"
+    comp_bytes = comp_path.read_bytes()
+    comp_path.write_bytes(comp_bytes + b"tamper")
+    with pytest.raises(mdstats.TrainingDataInputError):
+        validate_target_size_boundary_snapshot(
+            snapshot,
+            snapshot_root=tmp_path / "snap_root",
+            trajectory=env["trajectory"],
+            schedule=env["schedule"],
+        )

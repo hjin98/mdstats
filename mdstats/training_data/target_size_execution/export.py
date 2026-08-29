@@ -37,6 +37,10 @@ from ..mace_export import (
 
 TARGET_SIZE_EXTXYZ_ARTIFACT_SCHEMA = "mdstats.target-size.extxyz-artifact.v1"
 TARGET_SIZE_EXTXYZ_SIDECAR_SCHEMA = "mdstats.target-size.extxyz-sidecar.v1"
+TARGET_SIZE_EVALUATION_ARTIFACT_SCHEMA = (
+    "mdstats.target-size.evaluation-artifact.v1"
+)
+TARGET_SIZE_EVALUATION_VIEW_SCHEMA = "mdstats.target-size.evaluation-view.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -594,10 +598,314 @@ def validate_target_size_extxyz_artifact(
         )
 
 
+@dataclass(frozen=True, slots=True)
+class TargetSizeEvaluationArtifact:
+    """Exact-M evaluation data authority with canonical P1 and P2 parentage."""
+
+    experiment_definition_digest: str
+    dataset_id: str
+    canonical_frame_authority_digest: str
+    evaluation_size: int
+    evaluation_frame_uids: tuple[str, ...]
+    evaluation_membership_digest: str
+    energy_key: str
+    forces_key: str
+    stress_key: str
+    extxyz_policy_digest: str
+    relative_path: str
+    sha256: str
+    sidecar_relative_path: str
+    sidecar_sha256: str
+    sidecar_digest: str
+    evaluation_view_digest: str
+    _content_digest_cache: str = field(
+        default="", init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        for name in (
+            "experiment_definition_digest",
+            "canonical_frame_authority_digest",
+            "evaluation_membership_digest",
+            "extxyz_policy_digest",
+            "sha256",
+            "sidecar_sha256",
+            "sidecar_digest",
+            "evaluation_view_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        size = int(self.evaluation_size)
+        if size <= 0:
+            raise TrainingDataInputError("evaluation_size must be a positive integer.")
+        object.__setattr__(self, "evaluation_size", size)
+        frames = tuple(
+            validate_digest(v, name="evaluation frame UID")
+            for v in self.evaluation_frame_uids
+        )
+        if len(frames) != size or len(set(frames)) != len(frames) or not frames:
+            raise TrainingDataInputError(
+                "Evaluation artifact frame count is inconsistent with evaluation_size."
+            )
+        object.__setattr__(self, "evaluation_frame_uids", frames)
+        for name in (
+            "dataset_id",
+            "energy_key",
+            "forces_key",
+            "stress_key",
+            "relative_path",
+            "sidecar_relative_path",
+        ):
+            if not str(getattr(self, name)).strip():
+                raise TrainingDataInputError(f"{name} cannot be empty.")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": TARGET_SIZE_EVALUATION_ARTIFACT_SCHEMA,
+            "experiment_definition_digest": self.experiment_definition_digest,
+            "dataset_id": self.dataset_id,
+            "canonical_frame_authority_digest": (
+                self.canonical_frame_authority_digest
+            ),
+            "evaluation_size": self.evaluation_size,
+            "evaluation_frame_uids": list(self.evaluation_frame_uids),
+            "evaluation_membership_digest": self.evaluation_membership_digest,
+            "energy_key": self.energy_key,
+            "forces_key": self.forces_key,
+            "stress_key": self.stress_key,
+            "extxyz_policy_digest": self.extxyz_policy_digest,
+            "relative_path": self.relative_path,
+            "sha256": self.sha256,
+            "sidecar_relative_path": self.sidecar_relative_path,
+            "sidecar_sha256": self.sidecar_sha256,
+            "sidecar_digest": self.sidecar_digest,
+            "evaluation_view_digest": self.evaluation_view_digest,
+        }
+
+    @property
+    def content_digest(self) -> str:
+        cached = self._content_digest_cache
+        if not cached:
+            cached = digest(self._payload())
+            object.__setattr__(self, "_content_digest_cache", cached)
+        return cached
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self._payload()
+        cached = self._content_digest_cache or digest(payload)
+        object.__setattr__(self, "_content_digest_cache", cached)
+        return {**payload, "content_digest": cached}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> TargetSizeEvaluationArtifact:
+        if payload.get("schema") != TARGET_SIZE_EVALUATION_ARTIFACT_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported target-size evaluation artifact schema."
+            )
+        result = cls(
+            experiment_definition_digest=str(
+                payload["experiment_definition_digest"]
+            ),
+            dataset_id=str(payload["dataset_id"]),
+            canonical_frame_authority_digest=str(
+                payload["canonical_frame_authority_digest"]
+            ),
+            evaluation_size=int(payload["evaluation_size"]),
+            evaluation_frame_uids=tuple(
+                str(v) for v in payload["evaluation_frame_uids"]
+            ),
+            evaluation_membership_digest=str(
+                payload["evaluation_membership_digest"]
+            ),
+            energy_key=str(payload["energy_key"]),
+            forces_key=str(payload["forces_key"]),
+            stress_key=str(payload["stress_key"]),
+            extxyz_policy_digest=str(payload["extxyz_policy_digest"]),
+            relative_path=str(payload["relative_path"]),
+            sha256=str(payload["sha256"]),
+            sidecar_relative_path=str(payload["sidecar_relative_path"]),
+            sidecar_sha256=str(payload["sidecar_sha256"]),
+            sidecar_digest=str(payload["sidecar_digest"]),
+            evaluation_view_digest=str(payload["evaluation_view_digest"]),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Target-size evaluation artifact digest mismatch."
+            )
+        return result
+
+    def build_evaluation_view(self, root_directory: str | Path) -> Any:
+        """Instantiate and wrap the evaluation dataset view from artifact bytes."""
+        from ..evaluation_views import build_evaluation_dataset_view
+
+        try:
+            import ase.io
+        except ModuleNotFoundError as exc:  # pragma: no cover
+            raise TrainingDataInputError(
+                "ASE is required to build evaluation dataset view."
+            ) from exc
+        target = Path(root_directory) / self.relative_path
+        if not target.is_file():
+            raise TrainingDataInputError(
+                f"Target-size evaluation artifact file is missing: {target}"
+            )
+        atoms = ase.io.read(str(target), index=":")
+        if len(atoms) != self.evaluation_size:
+            raise TrainingDataInputError(
+                "Evaluation dataset frame count mismatch."
+            )
+        return build_evaluation_dataset_view(
+            atoms,
+            energy_key=self.energy_key,
+            forces_key=self.forces_key,
+            stress_key=self.stress_key,
+            focus_atomic_numbers=(),
+            condition_keys=(),
+        )
+
+
+def write_target_size_evaluation_artifact(
+    output_directory: str | Path,
+    *,
+    definition: Any,
+    evaluation_size: int,
+    canonical_frame_authority: Any,
+    frame_catalog: Any,
+    frame_data_by_run: Mapping[str, Any],
+    policy: MaceExtxyzPolicy | None = None,
+    frame_array_index: Mapping[str, tuple[Any, Any, int]] | None = None,
+    filename: str | None = None,
+) -> TargetSizeEvaluationArtifact:
+    """Write one exact M_i evaluation artifact and compute its view authority."""
+    size = int(evaluation_size)
+    if size not in definition.policy.evaluation_sizes:
+        raise TrainingDataInputError(
+            f"Evaluation size {size} is not among policy evaluation sizes: "
+            f"{definition.policy.evaluation_sizes}"
+        )
+    frame_uids = definition.evaluation_membership(size)
+    membership_digest = definition.evaluation_order.membership_digest(size)
+    active = MaceExtxyzPolicy() if policy is None else policy
+    fname = filename or f"target_size_eval_m{size}.extxyz"
+    raw_artifact = write_target_size_extxyz_artifact(
+        output_directory,
+        dataset_id=canonical_frame_authority.dataset_id,
+        role=f"eval_m{size}",
+        filename=fname,
+        frame_uids=frame_uids,
+        canonical_frame_authority=canonical_frame_authority,
+        frame_catalog=frame_catalog,
+        frame_data_by_run=frame_data_by_run,
+        membership_digest=membership_digest,
+        common_preparation_digest=None,
+        training_weights=None,
+        policy=active,
+        frame_array_index=frame_array_index,
+    )
+    view_digest = digest(
+        {
+            "schema": TARGET_SIZE_EVALUATION_VIEW_SCHEMA,
+            "experiment_definition_digest": definition.content_digest,
+            "canonical_frame_authority_digest": (
+                canonical_frame_authority.content_digest
+            ),
+            "evaluation_size": size,
+            "evaluation_membership_digest": membership_digest,
+            "evaluation_frame_uids": list(frame_uids),
+            "artifact_sha256": raw_artifact.sha256,
+            "energy_key": active.energy_key,
+            "forces_key": active.forces_key,
+            "stress_key": active.stress_key,
+            "extxyz_policy_digest": active.policy_digest,
+        }
+    )
+    return TargetSizeEvaluationArtifact(
+        experiment_definition_digest=definition.content_digest,
+        dataset_id=canonical_frame_authority.dataset_id,
+        canonical_frame_authority_digest=(
+            canonical_frame_authority.content_digest
+        ),
+        evaluation_size=size,
+        evaluation_frame_uids=frame_uids,
+        evaluation_membership_digest=membership_digest,
+        energy_key=active.energy_key,
+        forces_key=active.forces_key,
+        stress_key=active.stress_key,
+        extxyz_policy_digest=active.policy_digest,
+        relative_path=raw_artifact.relative_path,
+        sha256=raw_artifact.sha256,
+        sidecar_relative_path=raw_artifact.sidecar_relative_path,
+        sidecar_sha256=raw_artifact.sidecar_sha256,
+        sidecar_digest=raw_artifact.sidecar_digest,
+        evaluation_view_digest=view_digest,
+    )
+
+
+def validate_target_size_evaluation_artifact(
+    artifact: TargetSizeEvaluationArtifact,
+    *,
+    root_directory: str | Path,
+    definition: Any,
+    canonical_frame_authority: Any,
+) -> None:
+    """Validate that durable evaluation artifact files and metadata are authentic."""
+    if artifact.experiment_definition_digest != definition.content_digest:
+        raise TrainingDataInputError(
+            "Evaluation artifact binds a different experiment definition."
+        )
+    if artifact.evaluation_size not in definition.policy.evaluation_sizes:
+        raise TrainingDataInputError(
+            "Evaluation artifact size is not in policy evaluation sizes."
+        )
+    expected_uids = definition.evaluation_membership(artifact.evaluation_size)
+    if artifact.evaluation_frame_uids != expected_uids:
+        raise TrainingDataInputError(
+            "Evaluation artifact frame UIDs do not match P2 evaluation membership."
+        )
+    expected_membership_digest = definition.evaluation_order.membership_digest(
+        artifact.evaluation_size
+    )
+    if artifact.evaluation_membership_digest != expected_membership_digest:
+        raise TrainingDataInputError(
+            "Evaluation artifact membership digest does not match P2 evaluation order."
+        )
+    if (
+        artifact.canonical_frame_authority_digest
+        != canonical_frame_authority.content_digest
+    ):
+        raise TrainingDataInputError(
+            "Evaluation artifact binds a different canonical frame authority."
+        )
+    root = Path(root_directory)
+    target = root / artifact.relative_path
+    sidecar = root / artifact.sidecar_relative_path
+    if not target.is_file() or not sidecar.is_file():
+        raise TrainingDataInputError("Evaluation artifact files are missing.")
+    if _sha256_file(target) != artifact.sha256:
+        raise TrainingDataInputError("Evaluation artifact file bytes changed.")
+    if _sha256_file(sidecar) != artifact.sidecar_sha256:
+        raise TrainingDataInputError("Evaluation artifact sidecar bytes changed.")
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    if payload.get("schema") != TARGET_SIZE_EXTXYZ_SIDECAR_SCHEMA:
+        raise TrainingDataSerializationError(
+            "Unsupported evaluation sidecar schema."
+        )
+    if digest(payload) != artifact.sidecar_digest:
+        raise TrainingDataInputError(
+            "Evaluation artifact sidecar content changed."
+        )
+
+
 __all__ = [
+    "TARGET_SIZE_EVALUATION_ARTIFACT_SCHEMA",
+    "TARGET_SIZE_EVALUATION_VIEW_SCHEMA",
     "TARGET_SIZE_EXTXYZ_ARTIFACT_SCHEMA",
     "TARGET_SIZE_EXTXYZ_SIDECAR_SCHEMA",
+    "TargetSizeEvaluationArtifact",
     "TargetSizeExtxyzArtifact",
+    "validate_target_size_evaluation_artifact",
     "validate_target_size_extxyz_artifact",
+    "write_target_size_evaluation_artifact",
     "write_target_size_extxyz_artifact",
 ]

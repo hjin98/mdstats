@@ -15,14 +15,17 @@ import tests.test_mlff_target_size_execution_p3a as p3a
 import tests.test_mlff_target_size_execution_p3c as p3c
 import tests.test_mlff_target_size_execution_p3d as p3d
 import mdstats.training_data.target_size_execution as tee
+from mdstats.training_data.neutral_substrate import build_neutral_split_exclusion_evidence
 from mdstats.training_data.protocol import MaceOptimizerPolicy
 from mdstats.training_data.target_size_execution import (
     bind_target_size_boundary_state,
     build_complete_boundary_batch,
     build_target_size_candidate_trajectory,
+    build_target_size_cell_completion_record,
     build_target_size_eval2_role,
     build_target_size_screen_schedule,
     collect_boundary_candidate_outcomes,
+    collect_boundary_cell_completion_records,
     commit_target_size_boundary_batch,
     continuation_request_from_boundary,
     derive_active_boundary_requirements,
@@ -32,11 +35,15 @@ from mdstats.training_data.target_size_execution import (
     load_current_execution_head,
     materialize_target_size_candidate,
     persist_complete_boundary_batch,
+    promote_target_size_boundary_snapshot,
     reconcile_target_size_screen_root,
     record_candidate_boundary_outcome,
+    run_target_size_direct_boundary_inference,
+    run_target_size_eval2_reduction,
     target_size_population_correlation_blocks,
     target_size_rung_plan,
     validate_target_size_continuation_request,
+    write_target_size_evaluation_artifact,
 )
 from mdstats.training_data.target_size_execution.common import (
     project_target_size_candidate_preparation,
@@ -45,7 +52,6 @@ from mdstats.training_data.target_size_execution.context import (
     build_target_size_execution_context,
 )
 from mdstats.training_data.target_size_experiment import ReducerStatus
-from mdstats.training_data.neutral_substrate import build_neutral_split_exclusion_evidence
 
 
 def _epsilon(size: int, seed: int) -> float:
@@ -66,7 +72,7 @@ def _screen_env(tmp_path: Path):
     evidence = build_neutral_split_exclusion_evidence(fa, nb)
     blocks = target_size_population_correlation_blocks(aggregate, evidence)
     root = tmp_path / "screen"
-    root.mkdir()
+    root.mkdir(parents=True, exist_ok=True)
     window = initialize_target_size_screen(root, aggregate, context, common)
     return {
         "aggregate": aggregate,
@@ -106,7 +112,7 @@ class _CandidateLane:
             env["common"], definition, size
         )
         self.checkpoint_dir = tmp_path / f"lane-{size}-{seed}"
-        self.checkpoint_dir.mkdir()
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.boundary_state = None
         self.continuation_epochs: list[int] = []
 
@@ -176,50 +182,84 @@ def test_p3f_bounded_end_to_end_through_real_owners(tmp_path: Path) -> None:
         assert requirements is not None
         boundary, evaluation_size, keys = requirements
         boundary_index = schedule.fidelity_epochs.index(boundary)
+        eval_dir = tmp_path / f"eval_data_{boundary}"
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        eval_artifact = write_target_size_evaluation_artifact(
+            eval_dir,
+            definition=definition,
+            evaluation_size=evaluation_size,
+            canonical_frame_authority=env["frame_authority"],
+            frame_catalog=env["frames"],
+            frame_data_by_run=env["frame_data_by_run"],
+            frame_array_index=env["index"],
+        )
+
         for size, seed in keys:
             if (size, seed) not in lanes:
                 lanes[(size, seed)] = _CandidateLane(env, tmp_path, size, seed)
             lane = lanes[(size, seed)]
-            # Current-generation exact export/materialization (real owner).
             if (size, seed) not in materialized:
                 materialized[(size, seed)] = lane.materialize(env, tmp_path)
-            # TRAIN2 to the exact completed boundary, via real continuation.
             boundary_state = lane.train_to_boundary(env, boundary)
+            snapshot = promote_target_size_boundary_snapshot(
+                lane.trajectory,
+                boundary_state,
+                checkpoint_directory=lane.checkpoint_dir,
+                snapshot_root=env["root"],
+            )
             role = build_target_size_eval2_role(
                 trajectory=lane.trajectory,
-                boundary_state=boundary_state,
+                boundary_state=snapshot,
                 definition=definition,
                 schedule=schedule,
                 correlation_blocks=env["blocks"],
+                evaluation_data=eval_artifact,
             )
-            # Exact-checkpoint EVAL2 on the exact active M_i membership.
             assert role.evaluation_size == definition.policy.evaluation_sizes[boundary_index]
-            view = p3d._view_for(
-                env,
-                tmp_path,
-                tuple(role.evaluation_frame_uids),
-                name=f"f1-view-{size}-{seed}-{boundary}",
+            view = eval_artifact.build_evaluation_view(eval_dir)
+            evaluator = p3d._predictions_evaluator(view, epsilon=_epsilon(size, seed))
+            pred_evidence = run_target_size_direct_boundary_inference(
+                trajectory=lane.trajectory,
+                materialization=materialized[(size, seed)],
+                boundary_state=snapshot,
+                role=role,
+                evaluation_data=eval_artifact,
+                root_directory=eval_dir,
+                inference_evaluator=evaluator,
             )
-            predictions = p3d._predictions_for(view, epsilon=_epsilon(size, seed))
-            outcome = evaluate_target_size_boundary(role, view, predictions)
+            metric_record = run_target_size_eval2_reduction(
+                role, eval_artifact, pred_evidence, root_directory=eval_dir
+            )
+            outcome = evaluate_target_size_boundary(
+                role, eval_artifact, pred_evidence, root_directory=eval_dir
+            )
+            completion_record = build_target_size_cell_completion_record(
+                window=env["window"],
+                trajectory=lane.trajectory,
+                materialization=materialized[(size, seed)],
+                boundary_snapshot=snapshot,
+                eval2_role=role,
+                evaluation_data=eval_artifact,
+                outcome=outcome,
+                prediction_evidence=pred_evidence,
+                eval2_metric_record=metric_record,
+            )
             record_candidate_boundary_outcome(
-                env["root"], env["window"], lane.trajectory, outcome
+                env["root"], env["window"], lane.trajectory, completion_record
             )
-        collected = collect_boundary_candidate_outcomes(
+        collected = collect_boundary_cell_completion_records(
             env["root"], env["window"], boundary_epoch=boundary
         )
         cells[boundary] = [
-            (outcome.target_size, outcome.optimizer_seed,
-             outcome.target_force_rmse_mev_per_a
-             if isinstance(outcome, mdstats.TargetSizeBoundaryMetric) else None)
-            for outcome in collected
+            (rec.target_size, rec.optimizer_seed,
+             rec.outcome.target_force_rmse_mev_per_a
+             if isinstance(rec.outcome, mdstats.TargetSizeBoundaryMetric) else None)
+            for rec in collected
         ]
         batch = build_complete_boundary_batch(definition, state, collected)
-        # Crash-crisp order: batch persisted before commit in a mixed run.
         persist_complete_boundary_batch(env["root"], batch)
         if boundary == schedule.fidelity_epochs[1]:
-            # Simulate a crash between batch persistence and head publication:
-            # reconciliation must apply exactly once and publish the head.
+            # Simulate a crash between batch persistence and head publication
             repaired = reconcile_target_size_screen_root(
                 env["root"], env["aggregate"], env["context"], env["common"]
             )
@@ -227,7 +267,6 @@ def test_p3f_bounded_end_to_end_through_real_owners(tmp_path: Path) -> None:
         else:
             head = commit_target_size_boundary_batch(env["root"], definition, state, batch)
         committed_heads.append(head)
-        # Restart/reopen reproduces exactly this accepted state.
         opened = reconcile_target_size_screen_root(
             env["root"], env["aggregate"], env["context"], env["common"]
         )
@@ -237,7 +276,6 @@ def test_p3f_bounded_end_to_end_through_real_owners(tmp_path: Path) -> None:
     assert state.is_terminal
     assert state.status is ReducerStatus.SELECTED
     assert len(committed_heads) == len(schedule.fidelity_epochs)
-    # Exact terminal identity comes only from the P2 terminal state.
     selected_digest = definition.training_order.candidate_digest(
         state.selected_target_size
     )
@@ -245,12 +283,8 @@ def test_p3f_bounded_end_to_end_through_real_owners(tmp_path: Path) -> None:
     assert lanes[(state.selected_target_size, definition.policy.optimizer_seeds[0])].continuation_epochs == list(
         schedule.fidelity_epochs
     )
-    # Every lane observed the exact completed epochs; the raw checkpoint index
-    # is exactly n_i - 1 throughout.
     for lane in lanes.values():
         assert lane.continuation_epochs and lane.continuation_epochs[0] == schedule.fidelity_epochs[0]
-    # Restart/reopen after terminal: reproduce identical accepted state and
-    # replay the complete history through the P2 owner.
     final_head = reconcile_target_size_screen_root(
         env["root"], env["aggregate"], env["context"], env["common"]
     )
@@ -296,7 +330,6 @@ _FORBIDDEN_AUTHORITY_TOKENS = (
 
 
 def test_p3f_absence_of_retired_scientific_authority_in_package() -> None:
-    from mdstats.training_data import target_size_execution as pkg
     import importlib
 
     modules = [
@@ -317,16 +350,12 @@ def test_p3f_absence_of_retired_scientific_authority_in_package() -> None:
 
 
 def test_p3f_p3_path_unreachable_from_production_surface() -> None:
-    # Not declared in the production namespace contract.
     assert "target_size_execution" not in training_data_pkg.__all__
-    import ast as _ast
     import inspect as _inspect
-
     import re
 
     init_source = _inspect.getsource(training_data_pkg)
     assert not re.search(r"(?<![\w])target_size_execution(?![\w])", init_source)
-    # A pristine interpreter importing the production package must not see it.
     import subprocess, sys
 
     probe = subprocess.run(
@@ -342,8 +371,6 @@ def test_p3f_p3_path_unreachable_from_production_surface() -> None:
         check=False,
     )
     assert probe.returncode == 0, probe.stderr.decode(errors="replace")
-    # No production CLI/campaign runtime references the P3 package.
-    import re as _re
     cli_modules = (
         "_campaign_cli_core",
         "campaign_cli",
@@ -361,7 +388,7 @@ def test_p3f_p3_path_unreachable_from_production_surface() -> None:
         identifiers = _module_identifiers(module)
         assert "target_size_execution" not in identifiers
         source = inspect.getsource(module)
-        assert not _re.search(r"(?<![\w])target_size_execution(?![\w])", source)
+        assert not re.search(r"(?<![\w])target_size_execution(?![\w])", source)
 
 
 def _deep_keys(payload, out: set) -> None:
@@ -383,12 +410,22 @@ def test_p3f_serialized_payloads_carry_no_retired_fields(tmp_path: Path) -> None
     lane = _CandidateLane(env, tmp_path, definition.qualified_candidate_sizes[0], 1)
     materialization = lane.materialize(env, tmp_path)
     boundary_state = lane.train_to_boundary(env, schedule.fidelity_epochs[0])
+    eval_artifact = write_target_size_evaluation_artifact(
+        tmp_path / "eval_data",
+        definition=definition,
+        evaluation_size=definition.policy.evaluation_sizes[0],
+        canonical_frame_authority=env["frame_authority"],
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+    )
     role = build_target_size_eval2_role(
         trajectory=lane.trajectory,
         boundary_state=boundary_state,
         definition=definition,
         schedule=schedule,
         correlation_blocks=env["blocks"],
+        evaluation_data=eval_artifact,
     )
 
     payloads = [
@@ -400,6 +437,7 @@ def test_p3f_serialized_payloads_carry_no_retired_fields(tmp_path: Path) -> None
         materialization.to_dict(),
         boundary_state.to_dict(),
         role.to_dict(),
+        eval_artifact.to_dict(),
     ]
     keys: set[str] = set()
     for payload in payloads:
@@ -420,7 +458,7 @@ def test_p3f_serialized_payloads_carry_no_retired_fields(tmp_path: Path) -> None
         "identical_checkpoint_pool",
     }
     assert not (keys & forbidden_keys)
-    # Scientific identity fields exist and are digest-shaped where expected.
     text = json.dumps(lane.trajectory.to_dict())
     assert "candidate_membership_digest" in text
     assert "optimizer_seed" in text
+

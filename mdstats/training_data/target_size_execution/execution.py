@@ -24,7 +24,12 @@ failure and never advances the reducer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import json
+import os
+import shutil
+import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -50,6 +55,7 @@ from .candidate import TargetSizeCandidateTrajectory
 from .schedule import TargetSizeScreenSchedule
 
 TARGET_SIZE_BOUNDARY_STATE_SCHEMA = "mdstats.target-size.boundary-state.v1"
+TARGET_SIZE_BOUNDARY_SNAPSHOT_SCHEMA = "mdstats.target-size.boundary-snapshot.v1"
 TARGET_SIZE_CONTINUATION_SCHEMA = "mdstats.target-size.continuation-request.v1"
 
 EVALUATION_MODEL_STATE_LIVE = "live"
@@ -525,22 +531,362 @@ def translate_target_size_train2_failure(
     )
 
 
+def _sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _atomic_json_write(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=str(path.parent), suffix=".tmp"
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    except BaseException:
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+        raise
+
+
+def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
+    matches = []
+    for item in directory.glob("*.pt"):
+        name = item.name
+        if f"epoch-{int(epoch)}" in name or f"epoch_{int(epoch)}" in name:
+            matches.append(item)
+    if len(matches) != 1:
+        raise TrainingDataInputError(
+            f"TRAIN2 expected exactly one raw checkpoint for durable epoch {epoch}; found {len(matches)}."
+        )
+    return matches[0]
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSizeBoundarySnapshot:
+    """Immutable preserved TRAIN2 boundary snapshot for historical proof."""
+
+    trajectory_digest: str
+    boundary_epoch: int
+    evaluation_model_state: str
+    rung_plan_digest: str
+    raw_checkpoint_name: str
+    raw_checkpoint_sha256: str
+    runtime_summary_digest: str
+    companion_sha256: str
+    optimizer_state_digest: str
+    live_parameter_digest: str
+    ema_state_digest: str | None
+    rng_state_digest: str
+    completed_updates: int
+    planned_updates: int
+    snapshot_relative_dir: str
+    rung_runtime_summary: Train2RuntimeSummary
+    _content_digest_cache: str = field(
+        default="", init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        for name in (
+            "trajectory_digest",
+            "rung_plan_digest",
+            "raw_checkpoint_sha256",
+            "runtime_summary_digest",
+            "companion_sha256",
+            "optimizer_state_digest",
+            "live_parameter_digest",
+            "rng_state_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        if self.ema_state_digest is not None:
+            object.__setattr__(
+                self,
+                "ema_state_digest",
+                validate_digest(self.ema_state_digest, name="ema_state_digest"),
+            )
+        for name in ("boundary_epoch", "completed_updates", "planned_updates"):
+            val = int(getattr(self, name))
+            if val <= 0:
+                raise TrainingDataInputError(f"{name} must be a positive integer.")
+            object.__setattr__(self, name, val)
+        if self.evaluation_model_state not in (
+            EVALUATION_MODEL_STATE_LIVE,
+            EVALUATION_MODEL_STATE_EMA,
+        ):
+            raise TrainingDataInputError(
+                "Boundary snapshot evaluation model state must be 'live' or 'ema'."
+            )
+        if (
+            self.evaluation_model_state == EVALUATION_MODEL_STATE_EMA
+            and self.ema_state_digest is None
+        ):
+            raise TrainingDataInputError(
+                "EMA boundary snapshot requires authenticated ema_state_digest."
+            )
+        for name in ("raw_checkpoint_name", "snapshot_relative_dir"):
+            if not str(getattr(self, name)).strip():
+                raise TrainingDataInputError(f"{name} cannot be empty.")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": TARGET_SIZE_BOUNDARY_SNAPSHOT_SCHEMA,
+            "trajectory_digest": self.trajectory_digest,
+            "boundary_epoch": self.boundary_epoch,
+            "evaluation_model_state": self.evaluation_model_state,
+            "rung_plan_digest": self.rung_plan_digest,
+            "raw_checkpoint_name": self.raw_checkpoint_name,
+            "raw_checkpoint_sha256": self.raw_checkpoint_sha256,
+            "runtime_summary_digest": self.runtime_summary_digest,
+            "companion_sha256": self.companion_sha256,
+            "optimizer_state_digest": self.optimizer_state_digest,
+            "live_parameter_digest": self.live_parameter_digest,
+            "ema_state_digest": self.ema_state_digest,
+            "rng_state_digest": self.rng_state_digest,
+            "completed_updates": self.completed_updates,
+            "planned_updates": self.planned_updates,
+            "snapshot_relative_dir": self.snapshot_relative_dir,
+            "rung_runtime_summary": self.rung_runtime_summary.to_dict(),
+        }
+
+    @property
+    def content_digest(self) -> str:
+        cached = self._content_digest_cache
+        if not cached:
+            cached = digest(self._payload())
+            object.__setattr__(self, "_content_digest_cache", cached)
+        return cached
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self._payload()
+        cached = self._content_digest_cache or digest(payload)
+        object.__setattr__(self, "_content_digest_cache", cached)
+        return {**payload, "content_digest": cached}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> TargetSizeBoundarySnapshot:
+        if payload.get("schema") != TARGET_SIZE_BOUNDARY_SNAPSHOT_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported target-size boundary snapshot schema."
+            )
+        result = cls(
+            trajectory_digest=str(payload["trajectory_digest"]),
+            boundary_epoch=int(payload["boundary_epoch"]),
+            evaluation_model_state=str(payload["evaluation_model_state"]),
+            rung_plan_digest=str(payload["rung_plan_digest"]),
+            raw_checkpoint_name=str(payload["raw_checkpoint_name"]),
+            raw_checkpoint_sha256=str(payload["raw_checkpoint_sha256"]),
+            runtime_summary_digest=str(payload["runtime_summary_digest"]),
+            companion_sha256=str(payload["companion_sha256"]),
+            optimizer_state_digest=str(payload["optimizer_state_digest"]),
+            live_parameter_digest=str(payload["live_parameter_digest"]),
+            ema_state_digest=(
+                None
+                if payload.get("ema_state_digest") is None
+                else str(payload["ema_state_digest"])
+            ),
+            rng_state_digest=str(payload["rng_state_digest"]),
+            completed_updates=int(payload["completed_updates"]),
+            planned_updates=int(payload["planned_updates"]),
+            snapshot_relative_dir=str(payload["snapshot_relative_dir"]),
+            rung_runtime_summary=Train2RuntimeSummary.from_dict(
+                payload["rung_runtime_summary"]
+            ),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Boundary snapshot digest mismatch."
+            )
+        return result
+
+
+def promote_target_size_boundary_snapshot(
+    trajectory: TargetSizeCandidateTrajectory,
+    boundary_state: TargetSizeBoundaryState,
+    *,
+    checkpoint_directory: str | Path,
+    snapshot_root: str | Path,
+) -> TargetSizeBoundarySnapshot:
+    """Promote one immutable boundary snapshot before active files can advance."""
+    if boundary_state.trajectory_digest != trajectory.content_digest:
+        raise TrainingDataInputError(
+            "Boundary state belongs to a different candidate trajectory."
+        )
+    checkpoint_dir = Path(checkpoint_directory)
+    summary = boundary_state.rung_runtime_summary
+    boundary_epoch = boundary_state.boundary_epoch
+    raw_checkpoint = _checkpoint_for_epoch(
+        checkpoint_dir, summary.raw_checkpoint_epoch
+    )
+    summary_path = checkpoint_dir / "train2_runtime.json"
+    companion_path = checkpoint_dir / "train2_runtime.pt"
+    if not raw_checkpoint.is_file():
+        raise TrainingDataInputError(
+            f"Raw checkpoint file is missing: {raw_checkpoint}"
+        )
+    if not summary_path.is_file():
+        raise TrainingDataInputError(
+            f"TRAIN2 runtime summary file is missing: {summary_path}"
+        )
+    if not companion_path.is_file():
+        raise TrainingDataInputError(
+            f"TRAIN2 continuation companion file is missing: {companion_path}"
+        )
+    ckpt_sha = _sha256_file(raw_checkpoint)
+    if ckpt_sha != summary.raw_checkpoint_sha256:
+        raise TrainingDataInputError(
+            "Raw checkpoint sha256 does not match runtime summary."
+        )
+    rel_dir = (
+        f"snapshots/{trajectory.content_digest[:16]}/boundary_{boundary_epoch}"
+    )
+    dest_dir = Path(snapshot_root) / rel_dir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_raw = dest_dir / raw_checkpoint.name
+    dest_summary = dest_dir / "train2_runtime.json"
+    dest_companion = dest_dir / "train2_runtime.pt"
+
+    for src, dst in (
+        (raw_checkpoint, dest_raw),
+        (summary_path, dest_summary),
+        (companion_path, dest_companion),
+    ):
+        if not dst.is_file() or _sha256_file(dst) != _sha256_file(src):
+            tmp = dst.with_suffix(dst.suffix + ".tmp")
+            shutil.copy2(src, tmp)
+            os.replace(tmp, dst)
+
+    companion_sha = _sha256_file(dest_companion)
+    summary_digest = summary.content_digest
+
+    snapshot = TargetSizeBoundarySnapshot(
+        trajectory_digest=trajectory.content_digest,
+        boundary_epoch=boundary_epoch,
+        evaluation_model_state=boundary_state.evaluation_model_state,
+        rung_plan_digest=boundary_state.rung_plan_digest,
+        raw_checkpoint_name=raw_checkpoint.name,
+        raw_checkpoint_sha256=ckpt_sha,
+        runtime_summary_digest=summary_digest,
+        companion_sha256=companion_sha,
+        optimizer_state_digest=summary.optimizer_state_digest,
+        live_parameter_digest=summary.live_parameter_digest,
+        ema_state_digest=summary.ema_state_digest,
+        rng_state_digest=summary.rng_state_digest,
+        completed_updates=summary.completed_updates,
+        planned_updates=summary.planned_updates,
+        snapshot_relative_dir=rel_dir,
+        rung_runtime_summary=summary,
+    )
+    meta_path = dest_dir / "snapshot.json"
+    _atomic_json_write(meta_path, snapshot.to_dict())
+    return snapshot
+
+
+def load_target_size_boundary_snapshot(
+    snapshot_root: str | Path,
+    snapshot_record: TargetSizeBoundarySnapshot | Mapping[str, Any],
+) -> TargetSizeBoundarySnapshot:
+    """Load and instantiate a boundary snapshot record."""
+    if isinstance(snapshot_record, TargetSizeBoundarySnapshot):
+        return snapshot_record
+    return TargetSizeBoundarySnapshot.from_dict(snapshot_record)
+
+
+def validate_target_size_boundary_snapshot(
+    snapshot: TargetSizeBoundarySnapshot,
+    *,
+    snapshot_root: str | Path,
+    trajectory: TargetSizeCandidateTrajectory,
+    schedule: TargetSizeScreenSchedule | None = None,
+) -> Train2RuntimeSummary:
+    """Validate that a preserved boundary snapshot remains authentic on restart."""
+    if snapshot.trajectory_digest != trajectory.content_digest:
+        raise TrainingDataInputError(
+            "Boundary snapshot binds a different trajectory."
+        )
+    if snapshot.evaluation_model_state != trajectory.evaluation_model_state:
+        raise TrainingDataInputError(
+            "Boundary snapshot evaluation model-state mismatch."
+        )
+    dest_dir = Path(snapshot_root) / snapshot.snapshot_relative_dir
+    dest_raw = dest_dir / snapshot.raw_checkpoint_name
+    dest_summary = dest_dir / "train2_runtime.json"
+    dest_companion = dest_dir / "train2_runtime.pt"
+    if (
+        not dest_raw.is_file()
+        or not dest_summary.is_file()
+        or not dest_companion.is_file()
+    ):
+        raise TrainingDataInputError(
+            "Preserved boundary snapshot files are missing."
+        )
+    if _sha256_file(dest_raw) != snapshot.raw_checkpoint_sha256:
+        raise TrainingDataInputError(
+            "Preserved boundary raw checkpoint bytes changed."
+        )
+    if _sha256_file(dest_companion) != snapshot.companion_sha256:
+        raise TrainingDataInputError(
+            "Preserved boundary companion bytes changed."
+        )
+    loaded_summary = load_train2_runtime_summary(dest_dir)
+    if loaded_summary.content_digest != snapshot.runtime_summary_digest:
+        raise TrainingDataInputError(
+            "Preserved boundary runtime summary digest changed."
+        )
+    if schedule is not None:
+        authenticated = validate_train2_runtime_continuation_artifacts(
+            dest_dir,
+            training_protocol_digest=(
+                trajectory.candidate_training_protocol_digest
+            ),
+            optimizer_policy_digest=(
+                trajectory.seed_neutral_training_policy_digest
+            ),
+            budget_policy=schedule.budget_policy,
+            learning_rate_policy=schedule.learning_rate_policy,
+            structures_per_epoch=trajectory.realization.structures_per_epoch,
+        )
+        if authenticated.content_digest != loaded_summary.content_digest:
+            raise TrainingDataInputError(
+                "Preserved boundary continuation artifacts failed authentication."
+            )
+    return loaded_summary
+
+
 __all__ = [
     "EVALUATION_MODEL_STATE_EMA",
     "EVALUATION_MODEL_STATE_LIVE",
+    "TARGET_SIZE_BOUNDARY_SNAPSHOT_SCHEMA",
     "TARGET_SIZE_BOUNDARY_STATE_SCHEMA",
     "TARGET_SIZE_CONTINUATION_SCHEMA",
+    "TargetSizeBoundarySnapshot",
     "TargetSizeBoundaryState",
     "TargetSizeContinuationRequest",
     "bind_target_size_boundary_state",
     "continuation_request_from_boundary",
     "initial_target_size_continuation_request",
+    "load_target_size_boundary_snapshot",
     "load_target_size_boundary_state",
+    "promote_target_size_boundary_snapshot",
     "target_size_boundary_index",
     "target_size_evaluation_membership_digest_for_boundary",
     "target_size_evaluation_model_state",
     "target_size_evaluation_size_for_boundary",
     "target_size_rung_plan",
     "translate_target_size_train2_failure",
+    "validate_target_size_boundary_snapshot",
     "validate_target_size_continuation_request",
 ]
+
