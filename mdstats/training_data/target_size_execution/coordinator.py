@@ -2785,6 +2785,112 @@ def apply_complete_boundary_batch(
     return post_state
 
 
+def _commit_target_size_boundary_batch_locked(
+    root_path: Path,
+    current_path: Path,
+    definition: TargetSizeExperimentDefinition,
+    state: TargetSizeReducerState,
+    batch: TargetSizeCompleteBoundaryBatch,
+) -> TargetSizeExecutionHead:
+    parent_head_digest = None
+    if current_path.is_file():
+        current = TargetSizeExecutionHead.from_dict(
+            json.loads(current_path.read_text(encoding="utf-8"))
+        )
+        immutable_current_path = _head_path(
+            root_path, current.content_digest
+        )
+        if not immutable_current_path.is_file():
+            raise TrainingDataInputError(
+                "Current execution head pointer has no immutable head record."
+            )
+        immutable_current = TargetSizeExecutionHead.from_dict(
+            json.loads(immutable_current_path.read_text(encoding="utf-8"))
+        )
+        if immutable_current.content_digest != current.content_digest:
+            raise TrainingDataInputError(
+                "Current execution head pointer differs from its immutable head record."
+            )
+        # Case 1: Exact retry already committed
+        if current.batch_digest == batch.content_digest:
+            if (
+                current.pre_state_digest == state.content_digest
+                and current.pre_state.content_digest == state.content_digest
+            ):
+                persisted_batch_path = _batch_path(
+                    root_path, batch.content_digest
+                )
+                if not persisted_batch_path.is_file():
+                    raise TrainingDataInputError(
+                        "Exact batch retry is missing its immutable batch record."
+                    )
+                persisted_batch = TargetSizeCompleteBoundaryBatch.from_dict(
+                    json.loads(
+                        persisted_batch_path.read_text(encoding="utf-8")
+                    )
+                )
+                if persisted_batch.content_digest != batch.content_digest:
+                    raise TrainingDataInputError(
+                        "Exact batch retry immutable record differs from the requested batch."
+                    )
+                expected_post = apply_complete_boundary_batch(
+                    definition, state, persisted_batch
+                )
+                if (
+                    current.post_state_digest != expected_post.content_digest
+                    or current.post_state.content_digest
+                    != expected_post.content_digest
+                ):
+                    raise TrainingDataInputError(
+                        "Exact batch retry post-state is not the deterministic reducer result."
+                    )
+                return current
+            raise TrainingDataInputError(
+                "Conflicting batch commit: same batch digest but different pre-state."
+            )
+
+        # Case 2: Normal successor
+        if current.post_state_digest != batch.pre_state_digest:
+            raise TrainingDataInputError(
+                "Current head does not provide this batch's exact pre-state."
+            )
+        parent_head_digest = current.content_digest
+    else:
+        # Initial batch commit
+        if batch.pre_state_digest != state.content_digest:
+            raise TrainingDataInputError(
+                "Initial batch does not bind the current pre-state."
+            )
+
+    persist_complete_boundary_batch(root_path, batch)
+    post_state = apply_complete_boundary_batch(definition, state, batch)
+    head = TargetSizeExecutionHead(
+        parent_head_digest=parent_head_digest,
+        batch_digest=batch.content_digest,
+        pre_state_digest=state.content_digest,
+        post_state_digest=post_state.content_digest,
+        pre_state=state,
+        post_state=post_state,
+    )
+    head_path = _head_path(root_path, head.content_digest)
+    _publish_create_or_verify(
+        head_path,
+        head.to_dict(),
+        deserializer=TargetSizeExecutionHead.from_dict,
+    )
+    _atomic_json_write(current_path, head.to_dict())
+
+    # Verification: ensure current pointer represents the exact immutable head
+    verified = TargetSizeExecutionHead.from_dict(
+        json.loads(current_path.read_text(encoding="utf-8"))
+    )
+    if verified.content_digest != head.content_digest:
+        raise TrainingDataInputError(
+            "Current head pointer verification failed after commit."
+        )
+    return head
+
+
 def commit_target_size_boundary_batch(
     root: str | Path,
     definition: TargetSizeExperimentDefinition,
@@ -2802,103 +2908,13 @@ def commit_target_size_boundary_batch(
     with open(lock_path, "w") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         try:
-            parent_head_digest = None
-            if current_path.is_file():
-                current = TargetSizeExecutionHead.from_dict(
-                    json.loads(current_path.read_text(encoding="utf-8"))
-                )
-                immutable_current_path = _head_path(
-                    root_path, current.content_digest
-                )
-                if not immutable_current_path.is_file():
-                    raise TrainingDataInputError(
-                        "Current execution head pointer has no immutable head record."
-                    )
-                immutable_current = TargetSizeExecutionHead.from_dict(
-                    json.loads(immutable_current_path.read_text(encoding="utf-8"))
-                )
-                if immutable_current.content_digest != current.content_digest:
-                    raise TrainingDataInputError(
-                        "Current execution head pointer differs from its immutable head record."
-                    )
-                # Case 1: Exact retry already committed
-                if current.batch_digest == batch.content_digest:
-                    if (
-                        current.pre_state_digest == state.content_digest
-                        and current.pre_state.content_digest == state.content_digest
-                    ):
-                        persisted_batch_path = _batch_path(
-                            root_path, batch.content_digest
-                        )
-                        if not persisted_batch_path.is_file():
-                            raise TrainingDataInputError(
-                                "Exact batch retry is missing its immutable batch record."
-                            )
-                        persisted_batch = TargetSizeCompleteBoundaryBatch.from_dict(
-                            json.loads(
-                                persisted_batch_path.read_text(encoding="utf-8")
-                            )
-                        )
-                        if persisted_batch.content_digest != batch.content_digest:
-                            raise TrainingDataInputError(
-                                "Exact batch retry immutable record differs from the requested batch."
-                            )
-                        expected_post = apply_complete_boundary_batch(
-                            definition, state, persisted_batch
-                        )
-                        if (
-                            current.post_state_digest != expected_post.content_digest
-                            or current.post_state.content_digest
-                            != expected_post.content_digest
-                        ):
-                            raise TrainingDataInputError(
-                                "Exact batch retry post-state is not the deterministic reducer result."
-                            )
-                        return current
-                    raise TrainingDataInputError(
-                        "Conflicting batch commit: same batch digest but different pre-state."
-                    )
-
-                # Case 2: Normal successor
-                if current.post_state_digest != batch.pre_state_digest:
-                    raise TrainingDataInputError(
-                        "Current head does not provide this batch's exact pre-state."
-                    )
-                parent_head_digest = current.content_digest
-            else:
-                # Initial batch commit
-                if batch.pre_state_digest != state.content_digest:
-                    raise TrainingDataInputError(
-                        "Initial batch does not bind the current pre-state."
-                    )
-
-            persist_complete_boundary_batch(root_path, batch)
-            post_state = apply_complete_boundary_batch(definition, state, batch)
-            head = TargetSizeExecutionHead(
-                parent_head_digest=parent_head_digest,
-                batch_digest=batch.content_digest,
-                pre_state_digest=state.content_digest,
-                post_state_digest=post_state.content_digest,
-                pre_state=state,
-                post_state=post_state,
+            return _commit_target_size_boundary_batch_locked(
+                root_path=root_path,
+                current_path=current_path,
+                definition=definition,
+                state=state,
+                batch=batch,
             )
-            head_path = _head_path(root_path, head.content_digest)
-            _publish_create_or_verify(
-                head_path,
-                head.to_dict(),
-                deserializer=TargetSizeExecutionHead.from_dict,
-            )
-            _atomic_json_write(current_path, head.to_dict())
-
-            # Verification: ensure current pointer represents the exact immutable head
-            verified = TargetSizeExecutionHead.from_dict(
-                json.loads(current_path.read_text(encoding="utf-8"))
-            )
-            if verified.content_digest != head.content_digest:
-                raise TrainingDataInputError(
-                    "Current head pointer verification failed after commit."
-                )
-            return head
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
@@ -3576,44 +3592,12 @@ def _validate_replayed_eval2_parents(
     return snapshot, eval_data, role, prediction, view, metric
 
 
-def reconcile_target_size_screen_root(
-    root: str | Path,
-    authority: TargetSizeRestartAuthority,
+def _reconcile_target_size_screen_root_locked(
+    root_path: Path,
+    auth: TargetSizeRestartAuthority,
+    window: TargetSizeScreenWindow,
 ) -> TargetSizeExecutionHead | None:
-    """Crash-safe restart reconciliation through pure deterministic replay from initial state."""
-
-    if not isinstance(authority, TargetSizeRestartAuthority):
-        raise TrainingDataInputError(
-            "Screen reconciliation requires one complete TargetSizeRestartAuthority; "
-            "legacy aggregate/context/common arguments are not accepted."
-        )
-    auth = authority
-
-    root_path = Path(root)
     active_resolver = auth.resolver
-    if active_resolver.root_directory.resolve() != root_path.resolve():
-        raise TrainingDataInputError(
-            "Restart resolver root does not match the requested screen root."
-        )
-    window_path = root_path / SCREEN_WINDOW_FILENAME
-    if not window_path.is_file():
-        return None
-    window = TargetSizeScreenWindow.from_dict(
-        json.loads(window_path.read_text(encoding="utf-8"))
-    )
-    if (
-        window.aggregate_digest != auth.aggregate.content_digest
-        or window.experiment_definition_digest
-        != auth.aggregate.definition.content_digest
-        or window.execution_context_digest != auth.context.content_digest
-        or window.common_preparation_digest != auth.common.content_digest
-        or window.initial_reducer_digest
-        != auth.aggregate.reducer_state.content_digest
-    ):
-        raise TrainingDataInputError(
-            "Screen window does not bind the current P1/P2 authority identity."
-        )
-
     definition = auth.aggregate.definition
     replayed_state = auth.aggregate.reducer_state
     current_path = root_path / CURRENT_HEAD_FILENAME
@@ -3628,6 +3612,7 @@ def reconcile_target_size_screen_root(
     # 1. Whole-root scan: Validate all heads, check stems, detect loops and forks
     heads_dir = root_path / "heads"
     all_heads: list[TargetSizeExecutionHead] = []
+    heads_by_digest: dict[str, TargetSizeExecutionHead] = {}
     if heads_dir.is_dir():
         for h_path in sorted(heads_dir.glob("*.json")):
             h_obj = active_resolver.load_typed_content_addressed(
@@ -3636,6 +3621,7 @@ def reconcile_target_size_screen_root(
                 TargetSizeExecutionHead.from_dict,
             )
             all_heads.append(h_obj)
+            heads_by_digest[h_obj.content_digest] = h_obj
 
     # Check for forks (multiple heads claiming the same parent)
     parent_to_heads: dict[str | None, list[str]] = {}
@@ -3798,7 +3784,7 @@ def reconcile_target_size_screen_root(
             + ", ".join(sorted(orphan_completion_digests))
         )
 
-    # 3. Determine the head chain
+    # 3. Determine the head chain (ancestry and unique linear successor chain)
     chain: list[TargetSizeExecutionHead] = []
     if current_head is not None:
         immutable_head_path = _head_path(root_path, current_head.content_digest)
@@ -3816,9 +3802,10 @@ def reconcile_target_size_screen_root(
                 "Current head copy differs from immutable head."
             )
 
+        # 1. Backwards walk from current_head to root
         curr = current_head
         visited = {curr.content_digest}
-        chain.append(curr)
+        ancestor_chain: list[TargetSizeExecutionHead] = [curr]
         while curr.parent_head_digest is not None:
             parent_file = _head_path(root_path, curr.parent_head_digest)
             if not parent_file.is_file():
@@ -3839,20 +3826,56 @@ def reconcile_target_size_screen_root(
                     "Ancestry loop detected in execution heads."
                 )
             visited.add(parent.content_digest)
-            chain.append(parent)
+            ancestor_chain.append(parent)
             curr = parent
-        chain.reverse()
+        ancestor_chain.reverse()
+
+        # 2. Forwards walk from current_head to unique linear tip
+        curr = current_head
+        successor_chain: list[TargetSizeExecutionHead] = []
+        while True:
+            children = parent_to_heads.get(curr.content_digest, [])
+            if len(children) > 1:
+                raise TrainingDataInputError(
+                    f"Fork detected: multiple children {children} claim parent head {curr.content_digest}."
+                )
+            if not children:
+                break
+            child_digest = children[0]
+            child_head_path = _head_path(root_path, child_digest)
+            if not child_head_path.is_file():
+                raise TrainingDataInputError(
+                    f"Child execution head {child_digest} is missing its immutable head file in heads/."
+                )
+            child_head = active_resolver.load_typed_content_addressed(
+                child_head_path,
+                child_digest,
+                TargetSizeExecutionHead.from_dict,
+            )
+            if child_head.parent_head_digest != curr.content_digest:
+                raise TrainingDataInputError(
+                    "Child head parent digest does not match current head."
+                )
+            if child_head.content_digest in visited:
+                raise TrainingDataInputError(
+                    "Ancestry loop detected in execution heads."
+                )
+            visited.add(child_head.content_digest)
+            successor_chain.append(child_head)
+            curr = child_head
+
+        chain = ancestor_chain + successor_chain
 
         chain_digests = {h.content_digest for h in chain}
         for h in all_heads:
             if h.content_digest not in chain_digests:
                 raise TrainingDataInputError(
-                    f"Orphan head detected: {h.content_digest} is not in current head ancestry chain."
+                    f"Orphan head detected: {h.content_digest} is not in current head ancestry/successor chain."
                 )
     elif all_heads:
         # Missing current head pointer repair: find the tip head
         child_parents = {
-            h.parent_head_digest for h in all_heads if h.parent_head_digest
+            h.parent_head_digest for h in all_heads if h.parent_head_digest is not None
         }
         tips = [h for h in all_heads if h.content_digest not in child_parents]
         if len(tips) != 1:
@@ -3860,9 +3883,8 @@ def reconcile_target_size_screen_root(
                 f"Cannot resolve head ancestry: found {len(tips)} candidate tips."
             )
         curr = tips[0]
-        current_head = curr
         visited = {curr.content_digest}
-        chain.append(curr)
+        chain = [curr]
         while curr.parent_head_digest is not None:
             parent_file = _head_path(root_path, curr.parent_head_digest)
             if not parent_file.is_file():
@@ -4134,6 +4156,10 @@ def reconcile_target_size_screen_root(
             raise TrainingDataInputError(
                 "Execution head pre-state digest does not match replayed reducer state."
             )
+        if head.pre_state.content_digest != replayed_state.content_digest:
+            raise TrainingDataInputError(
+                "Execution head pre-state does not match replayed reducer state."
+            )
         batch = active_resolver.load_typed_content_addressed(
             active_resolver.batch_path(head.batch_digest),
             head.batch_digest,
@@ -4145,25 +4171,36 @@ def reconcile_target_size_screen_root(
             raise TrainingDataInputError(
                 "Replayed reducer post-state does not match committed execution head."
             )
+        if head.post_state.content_digest != post_state.content_digest:
+            raise TrainingDataInputError(
+                "Execution head post-state does not match replayed reducer post-state."
+            )
         if index + 1 < len(chain) and chain[index + 1].pre_state_digest != post_state.content_digest:
             raise TrainingDataInputError(
                 "Execution head ancestry has a reducer-state discontinuity."
             )
         replayed_state = post_state
 
-    current_path = root_path / CURRENT_HEAD_FILENAME
-    if current_head is not None:
-        if replayed_state.content_digest != current_head.post_state.content_digest:
+    if chain:
+        tip_head = chain[-1]
+        if replayed_state.content_digest != tip_head.post_state.content_digest:
             raise TrainingDataInputError(
-                "Full replay diverged from current execution head post-state."
+                "Full replay diverged from tip execution head post-state."
             )
-        if not current_path.is_file():
-            _publish_create_or_verify(
-                current_path,
-                current_head.to_dict(),
-                deserializer=TargetSizeExecutionHead.from_dict,
+        if (
+            current_head is None
+            or current_head.content_digest != tip_head.content_digest
+            or not current_path.is_file()
+        ):
+            _atomic_json_write(current_path, tip_head.to_dict())
+            verified = TargetSizeExecutionHead.from_dict(
+                json.loads(current_path.read_text(encoding="utf-8"))
             )
-        head_result = current_head
+            if verified.content_digest != tip_head.content_digest:
+                raise TrainingDataInputError(
+                    "Current head pointer verification failed after reconciliation write."
+                )
+        head_result = tip_head
     else:
         head_result = None
 
@@ -4189,8 +4226,12 @@ def reconcile_target_size_screen_root(
             break
         candidate = candidates[0]
         post_state = _replay_batch(candidate, replayed_state)
-        head_result = commit_target_size_boundary_batch(
-            root_path, definition, replayed_state, candidate
+        head_result = _commit_target_size_boundary_batch_locked(
+            root_path=root_path,
+            current_path=current_path,
+            definition=definition,
+            state=replayed_state,
+            batch=candidate,
         )
         if head_result.post_state_digest != post_state.content_digest:
             raise TrainingDataInputError(
@@ -4206,6 +4247,57 @@ def reconcile_target_size_screen_root(
         )
 
     return head_result
+
+
+def reconcile_target_size_screen_root(
+    root: str | Path,
+    authority: TargetSizeRestartAuthority,
+) -> TargetSizeExecutionHead | None:
+    """Crash-safe restart reconciliation through pure deterministic replay from initial state."""
+
+    if not isinstance(authority, TargetSizeRestartAuthority):
+        raise TrainingDataInputError(
+            "Screen reconciliation requires one complete TargetSizeRestartAuthority; "
+            "legacy aggregate/context/common arguments are not accepted."
+        )
+    auth = authority
+
+    root_path = Path(root)
+    active_resolver = auth.resolver
+    if active_resolver.root_directory.resolve() != root_path.resolve():
+        raise TrainingDataInputError(
+            "Restart resolver root does not match the requested screen root."
+        )
+    window_path = root_path / SCREEN_WINDOW_FILENAME
+    if not window_path.is_file():
+        return None
+    window = TargetSizeScreenWindow.from_dict(
+        json.loads(window_path.read_text(encoding="utf-8"))
+    )
+    if (
+        window.aggregate_digest != auth.aggregate.content_digest
+        or window.experiment_definition_digest
+        != auth.aggregate.definition.content_digest
+        or window.execution_context_digest != auth.context.content_digest
+        or window.common_preparation_digest != auth.common.content_digest
+        or window.initial_reducer_digest
+        != auth.aggregate.reducer_state.content_digest
+    ):
+        raise TrainingDataInputError(
+            "Screen window does not bind the current P1/P2 authority identity."
+        )
+
+    lock_path = root_path / ".screen_commit.lock"
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            return _reconcile_target_size_screen_root_locked(
+                root_path=root_path,
+                auth=auth,
+                window=window,
+            )
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 __all__ = [
