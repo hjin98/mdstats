@@ -396,6 +396,15 @@ class CampaignStore:
                     stage TEXT NOT NULL,
                     message TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS target_size_campaign_state (
+                    state_revision TEXT PRIMARY KEY,
+                    sequence INTEGER NOT NULL UNIQUE,
+                    predecessor_revision TEXT UNIQUE,
+                    transition_identity TEXT NOT NULL UNIQUE,
+                    transition_kind TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    committed_utc TEXT NOT NULL
+                );
                 """
             )
             db.execute("INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)", ("schema", CAMPAIGN_STATE_SCHEMA))
@@ -416,6 +425,32 @@ class CampaignStore:
             db.execute("PRAGMA busy_timeout=30000")
             self._db_local.connection = db
         return db
+
+    @contextmanager
+    def exclusive_transaction(self) -> Iterable[sqlite3.Connection]:
+        """Yield one real serialized SQLite write transaction.
+
+        Target-size campaign transitions must compare the expected predecessor
+        authority and write the successor inside a single transaction.  A
+        deferred transaction would let two writers both read the same
+        predecessor and then race on the write, so the write lock is taken up
+        front with ``BEGIN IMMEDIATE``.  The caller owns the compare/write
+        logic; this method owns only transaction lifetime.
+        """
+
+        db = self._connect()
+        if db.in_transaction:
+            raise CampaignCliError(
+                "A campaign write transaction is already active on this connection; "
+                "campaign CAS transitions must not nest."
+            )
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            yield db
+        except BaseException:
+            db.rollback()
+            raise
+        db.commit()
 
     def close(self) -> None:
         db = getattr(self._db_local, "connection", None)
