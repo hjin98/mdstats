@@ -16,8 +16,8 @@ and what remains. It is coordination material, not product documentation.
 | P4-B | Regime cutover owner | **CLOSED** |
 | P4-C | Cross-store adoption, retention fence, restart, concurrency | **CLOSED** |
 | P4-D | Atomic `prepare` / `select-target-size` production switch | **CLOSED** |
-| P4-E | Terminal projection, semantic restart, invalidation | in progress |
-| P4-F | Full STOR integration, docs, structural closure | not started |
+| P4-E | Terminal projection, semantic restart, invalidation | **CLOSED** |
+| P4-F | Full STOR integration, docs, structural closure | in progress |
 | P4-G | Assembled affected-surface closure | not started |
 
 ---
@@ -555,3 +555,78 @@ retired record.
 is quarantined) and none of them can authorize a current selected target size, but their reporting
 is not yet expressed in terms of the current campaign state. This is recorded as P4-F work
 (documentation/structural closure) rather than left implicit.
+
+---
+
+## Pass P4-E — Terminal projection, semantic restart, invalidation
+
+**State: CLOSED** (semantic + functional).
+
+### What was implemented
+
+New owner `mdstats/training_data/campaign_target_size_terminal.py`.
+
+- `derive_terminal_projection(head, definition=...)` — section 5.1. `N` comes from the terminal
+  reducer state carried by the adopted immutable head; the exact `T_selected` identity is
+  **re-derived** from `definition.training_order.candidate_digest(N)` and compared with what the
+  reducer state carries, so a reducer state whose membership the training order does not produce is
+  rejected at derivation instead of persisted. A nonterminal head cannot be projected at all.
+- `commit_terminal_projection(...)` — CAS-commits the adopted head digest, the reducer digest, and
+  the derived projection **in one transition**, because they are one claim.
+  `record_terminal_selection` and `record_terminal_scientific_failure` are distinct transition
+  kinds, and the lifecycle they publish is derived from the reducer status, not chosen by P4.
+- `validate_terminal_projection(...)` — section 5.2 reload gate. It re-resolves the referenced head
+  through the real P3 resolver, checks the campaign-bound reducer digest against it, re-derives both
+  `N` and the exact `T_selected` identity, and compares them with the persisted projection. Any
+  mismatch fails closed; updating only one field cannot make divergent state valid because each
+  field is checked against its authenticated source rather than against the others.
+- `classify_target_size_invalidation(state, observed)` — section 8. Returns the changed scientific
+  authorities and the disposition. A changed authority is never repaired in place: the persisted
+  generation is retired and a fresh one is required.
+  `ensure_current_target_size_authorities` now uses this classifier, so the reason recorded in
+  campaign state names exactly which authority changed.
+
+Runtime wiring in `campaign_target_size_runtime.py`: when the P2 reducer becomes terminal, the
+screen commits the terminal projection and then **re-validates it before reporting anything**. A
+screen that is merely incomplete stays `screen_active` with no terminal projection, so it remains
+operationally resumable.
+
+### Evidence executed
+
+`tests/test_mlff_target_size_p4e_terminal_and_invalidation.py` — **23 passed**. The terminal cases
+drive the real production screen (real parser, real `CampaignStore`, real P1/P2/P3 owners) to a
+terminal P2 outcome and then assert against re-derivation.
+
+| Gate item | Covering tests |
+|---|---|
+| terminal success rederivation | `req1_terminal_selection_is_derived_and_revalidated`, `req1_fresh_process_reload_re_derives_the_identical_projection` |
+| terminal replay stays terminal | `req1_repeating_select_target_size_stays_terminal` (asserts nothing was retrained) |
+| selected-N tamper negative | `req2_mutating_only_selected_n_is_rejected` |
+| T-selected tamper negative | `req2_mutating_only_t_selected_identity_is_rejected` |
+| adopted head/reducer tamper negative | `req2_mutating_only_the_adopted_head_reference_is_rejected` |
+| forged reducer membership | `req2_reducer_state_carrying_a_foreign_membership_is_rejected` |
+| nonterminal state cannot be projected | `req2_nonterminal_head_cannot_be_projected` |
+| P1 source/canonical, protected relation, hard support, split/order/candidate set, seed, fidelity/metric, training-policy invalidation | `req3_any_changed_scientific_authority_requires_a_fresh_generation` (parametrized over all six identity fields), `req3_target_size_policy_change_does_invalidate` (real config change of `[training].seeds`) |
+| fresh generation instead of in-place repair | `req3_changed_identity_advances_the_generation_and_keeps_the_old_result` |
+| equal selected `N` alone proves nothing | `req3_equal_selected_n_alone_does_not_prove_equivalence` |
+| CV-only / production-only changes are target-size-neutral | `req3_cv_only_and_production_only_settings_are_target_size_neutral` (rebuilds the identity from a config differing only in cross-validation seed, checkpoint strategy, production horizon, and fold count; asserts the identity and the terminal result are untouched) |
+| complete-identity requirement | `req3_classification_requires_the_complete_identity` |
+| operational interruption stays resumable | `req4_operational_interruption_stays_resumable` (a rung raises mid-screen; the campaign keeps `screen_active` with no terminal projection, and a later invocation completes it) |
+| terminal scientific failure is not an interruption | `req4_terminal_scientific_failure_is_not_an_interruption` |
+| raw/live/EMA semantics stay with P3 | `req5_runtime_never_reinterprets_checkpoint_state` (AST identifier scan proving no P4 module names an evaluation-state constant or the canonical selector), `req5_resume_goes_through_the_real_p3_owner` (every continuation rung resolves through `resolve_target_size_candidate_for_resume`, which is where malformed EMA/live state is rejected — P3A5/P3A6/P3A7 remain the regression authority for that rejection) |
+
+Stage-local affected regression: all five P4 suites plus `test_mlff_campaign_cli`,
+`test_mlff_cli_semantic_orchestration`, `test_mlff_stor1_storage_accounting`, and
+`test_mlff_target_size_statistical_authorities` — **212 passed, 1 skipped, 1 failed**; the failure is
+the pre-existing `test_materialization_record_path_does_not_confer_external_cleanup_authority`.
+
+### Note recorded during the gate
+
+The bounded fixture screen now runs to a real terminal P2 selection (`N=4` on the 3-candidate
+ladder), so the P4-D assertion that the generation is left `screen_active` was widened to accept the
+terminal lifecycles. That is the production path completing, not a weakened expectation: the same
+test still asserts the execution root, screen window, and adopted head.
+
+An attempt to build a "foreign training order" by reversing `pi_train` was refused by the P2
+definition's own validator, which is the correct owner behaviour. The negative is now expressed by
+forging the reducer state's membership digest directly, which is the case the derivation must catch.

@@ -368,12 +368,13 @@ def ensure_current_target_size_authorities(
     integer or a reused record name never proves scientific equivalence.
     """
 
+    from .campaign_target_size_terminal import classify_target_size_invalidation
+
     revision = ensure_target_size_campaign_revision(store)
     fields = dict(identity)
     if revision.state.regime is TargetSizeRegime.CURRENT:
-        unchanged = all(
-            getattr(revision.state, name) == value for name, value in fields.items()
-        ) and (
+        invalidation = classify_target_size_invalidation(revision.state, fields)
+        unchanged = invalidation.is_current and (
             common_preparation_digest is None
             or revision.state.common_preparation_digest == common_preparation_digest
         )
@@ -385,11 +386,7 @@ def ensure_current_target_size_authorities(
             lifecycle=TargetSizeLifecycle.AUTHORITIES_BOUND,
             common_preparation_digest=common_preparation_digest,
             disposition="scientific_identity_changed",
-            disposition_detail=(
-                "The reconstructed current target-size scientific identity differs "
-                "from the persisted generation; a fresh canonical generation was "
-                "started instead of reinterpreting the previous one."
-            ),
+            disposition_detail=invalidation.detail,
             **fields,
         )
         return commit_target_size_campaign_transition(

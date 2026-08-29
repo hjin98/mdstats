@@ -409,7 +409,13 @@ def test_p4d_req2_select_target_size_reaches_p1_p2_p3_owners(tmp_path: Path):
     store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
     try:
         revision = load_target_size_campaign_revision(store)
-        assert revision.state.lifecycle is TargetSizeLifecycle.SCREEN_ACTIVE
+        # The bounded screen runs to a terminal P2 outcome; either way the
+        # generation owns a live execution root and an adopted head.
+        assert revision.state.lifecycle in (
+            TargetSizeLifecycle.SCREEN_ACTIVE,
+            TargetSizeLifecycle.TERMINAL_SELECTED,
+            TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
+        )
         assert revision.state.execution_root is not None
         assert revision.state.screen_window_digest is not None
         assert revision.state.adopted_execution_head_digest is not None

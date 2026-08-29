@@ -920,6 +920,11 @@ def execute_current_select_target_size(
         TargetSizeRegime,
         TargetSizeTransitionKind,
         commit_target_size_campaign_transition,
+        load_target_size_campaign_revision,
+    )
+    from .campaign_target_size_terminal import (
+        commit_terminal_projection,
+        validate_terminal_projection,
     )
     from .campaign_target_size_view import write_target_size_result_view
     from .target_size_execution import (
@@ -1041,6 +1046,20 @@ def execute_current_select_target_size(
                 f"boundary {boundary} committed: head={head.content_digest[:12]}...; "
                 f"status={state.status.value}"
             )
+
+        if state.is_terminal and head is not None:
+            # The terminal head, its reducer digest, and the derived selection
+            # are one claim, committed together.
+            revision = commit_terminal_projection(
+                store, revision, head, definition=screen.aggregate.definition
+            )
+            # Nothing is reported before the persisted projection has been
+            # re-derived from authenticated P2/P3 state.
+            validate_terminal_projection(
+                revision,
+                resolver=screen.authority.resolver,
+                definition=screen.aggregate.definition,
+            )
     except Exception as exc:
         _mark_stage(
             store, paths, "target_size_selection", StageState.FAILED, str(exc)
@@ -1059,15 +1078,15 @@ def execute_current_select_target_size(
         StageState.COMPLETE if state.is_terminal else StageState.WAITING,
         f"reducer status {state.status.value}",
     )
-    print(
-        f"Target-size reducer status: {state.status.value}."
-        + (
-            f" Selected N={state.selected_target_size}."
-            if state.selected_target_size is not None
-            else ""
-        ),
-        flush=True,
-    )
+    revision = load_target_size_campaign_revision(store)
+    if revision.state.terminal is not None:
+        _report_terminal_state(revision)
+    else:
+        print(
+            f"Target-size screen is operationally resumable: reducer status "
+            f"{state.status.value}. Re-run `select-target-size` to continue.",
+            flush=True,
+        )
     return 0
 
 
