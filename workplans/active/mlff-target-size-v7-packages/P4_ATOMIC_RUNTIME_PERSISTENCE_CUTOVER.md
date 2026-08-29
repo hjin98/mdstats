@@ -4,10 +4,12 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P4
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 4
-status: implemented
-package_revision: 7
+status: active
+package_revision: 8
 amended_date: 2026-08-29
-reopened_from_revision6_candidate: 142026700e2b1ba2f7597d5f236f66eb32f8ee29
+reopened_from_revision7_candidate: 87ed7889f7e12a0842000477f97dd1eef9fea9ac
+revision7_baseline: P4_REVISION7_IMPLEMENTED_BASELINE.md
+revision7_evidence: P4_REVISION7_IMPLEMENTATION_PROGRESS.md
 revision6_baseline: P4_REVISION6_IMPLEMENTED_BASELINE.md
 revision6_evidence: P4_REVISION6_IMPLEMENTATION_PROGRESS.md
 revision5_baseline: P4_REVISION5_IMPLEMENTED_BASELINE.md
@@ -16,399 +18,315 @@ revision4_baseline: P4_REVISION4_IMPLEMENTED_BASELINE.md
 revision4_evidence: P4_REVISION4_IMPLEMENTATION_PROGRESS.md
 entry_p3_closure_commit: 9d195807cff0bb8042f447ac33ceb0586ed708ac
 compatibility_policy: destructive-generation-reset
-implementation_closure: Complete revision-7 reclosure: P4-C3 production-STOR-owner first-publication race with control artifact deletion, P4-E3 exposure-time current-terminal authority sealing and stale snapshot view/report protection, and P4-G3 assembled regression/integration closed cleanly with 168 passed tests
-reconciliation_reason: Revision 7 preserves the frozen parent, accepted P1-P3 semantics, the revision-6 canonical execution-root owner, and the revision-6 canonical current-terminal loader/full validation chain. Independent review found two remaining acceptance/consumer gaps: the revision-6 first-publication race still constructs CampaignOwnershipBoundary plus the retention fence directly in the child instead of traversing the production STOR ownership/removal path, and a legitimately validated terminal result can remain reusable for rendering/reporting after CampaignStore advances to a newer generation. Revision 7 repairs only those semantic-owner/currentness gaps. No target-size science, reducer, TRAIN2/EVAL2, checkpoint, provider, seed, path layout, persistence schema, or P5 scientific semantics are reopened.
+implementation_closure: P4 revision 8 reopened after independent review; P4-C3 is accepted/preserved, P4-E4 public terminal snapshot-API sealing is open, and P4-G4 is invalidated until E4 closes and fresh assembled affected regression passes
+reconciliation_reason: Revision 7 correctly closed the production-STOR first-publication owner path and introduced CampaignStore-backed current terminal view/report entrypoints. Independent review found one remaining public API escape hatch: exported build_target_size_result_view(...) and write_target_size_result_view(...) still accept a self-consistent historical TargetSizeCampaignRevision plus ValidatedTargetSizeTerminalResult and can render/write that stale terminal snapshot after prepare advances CampaignStore to a newer generation. Revision 8 closes only that public terminal snapshot exposure surface. No target-size science, P3 execution/reducer/replay, canonical root ownership, CampaignStore schema, terminal-loader validation chain, STOR behavior, or P5 scientific semantics are reopened.
 ---
 
-# P4 revision 7 — production STOR owner and exposure-time currentness closure
+# P4 revision 8 — public terminal snapshot API sealing and final reclosure
 
 ## 0. Authority, preserved state, and scope
 
 The frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the sole scientific and architectural verdict. Cumulative P3 revision 7 through P3A9 remains accepted at `9d195807cff0bb8042f447ac33ceb0586ed708ac` and is not reopened.
 
-`P4_REVISION6_IMPLEMENTED_BASELINE.md` preserves the exact revision-6 implementation package reviewed at `142026700e2b1ba2f7597d5f236f66eb32f8ee29`; `P4_REVISION6_IMPLEMENTATION_PROGRESS.md` preserves its evidence record. Revision-4 and revision-5 baselines/evidence remain preserved adjacent.
+`P4_REVISION7_IMPLEMENTED_BASELINE.md` preserves the exact revision-7 candidate reviewed at `87ed7889f7e12a0842000477f97dd1eef9fea9ac`; `P4_REVISION7_IMPLEMENTATION_PROGRESS.md` preserves its evidence record. Revision-4 through revision-6 baselines/evidence remain preserved adjacent.
 
-Revision 7 is a narrow implementation-repair overlay. It reopens only:
+Revision 8 is a narrow implementation repair. It reopens only:
 
-1. **P4-C3 — first-publication retention acceptance through the actual production STOR ownership/removal path**;
-2. **P4-E3 — exposure-time CampaignStore currentness for every public/current terminal result view, write, report, and downstream current-result consumer**;
-3. **P4-G3 — fresh assembled closure after C3/E3**.
+1. **P4-E4 — seal the public/exported terminal result-view API so historical snapshots cannot be exposed as current authority**;
+2. **P4-F affected structural/result-view integration** only as required by E4;
+3. **P4-G4 — fresh assembled reclosure after E4**.
 
-The following revision-6 product work is **preserved and must not be redesigned merely to satisfy this review**:
+The following revision-7 work is **accepted and preserved** unless the E4 implementation directly changes it:
 
-- the single dependency-leaf canonical execution-root owner in `campaign_target_size_paths.py` and its reuse by runtime/retention;
-- deterministic pre-`OPEN_ATTEMPT` root derivation and persisted locator semantics;
-- `load_validated_target_size_terminal_result(...)` always loading the current CampaignStore revision first and treating `expected_revision` only as an assertion token;
-- the full P1/P2/common-preparation/P3-context/head/reducer/terminal-projection validation chain;
-- P4-A/P4-B state/CAS/destructive-cutover semantics;
-- accepted P1-P3 science, reducer, checkpoint, replay, provider, and seed semantics;
-- nonterminal target-size screen behavior except for affected regression.
+- P4-A CampaignStore state/CAS/transition identity;
+- P4-B destructive regime cutover;
+- P4-C2 single canonical execution-root owner;
+- **P4-C3 production-STOR first-publication race and control-artifact deletion acceptance**;
+- P4-D production `prepare` / `select-target-size` cutover architecture;
+- P4-E2 canonical `load_validated_target_size_terminal_result(...)` CampaignStore-first validation chain;
+- P4-E3 current exposure owners introduced in revision 7: `expose_current_target_size_terminal_result(...)`, `write_current_target_size_result_view(...)`, and `report_current_target_size_terminal_state(...)`, subject only to caller/API sealing required below;
+- P1-P3 science, TRAIN2/EVAL2, reducer, checkpoint, replay, provider, seed, and immutable-evidence semantics;
+- canonical root layout and STOR retention behavior.
 
-P5 remains blocked until revision 7 receives both semantic/conformance and functional closure. The workplan remains bound to Protocol 5.8.0; do not silently reinterpret it under a later protocol version.
-
----
-
-## 1. Independent-review findings being repaired
-
-### 1.1 P4-C3 finding — the race test proves a hand-built fence, not production STOR
-
-Revision 6 correctly drives real `prepare -> select-target-size`, wraps the real P3 initializer, calls that initializer exactly once, and targets the actual root argument observed from production runtime while CampaignStore is still `AUTHORITIES_BOUND` with no persisted execution root.
-
-The cleanup child, however, constructs `CampaignOwnershipBoundary(...)` itself, injects `build_target_size_retention_fence(...)` itself, calls `destructive_authorization(...)` directly, and unlinks authorized files directly. That is below/beside the production STOR semantic owner. The test can remain green if production `_campaign_ownership_boundary(...)` stops installing the retention fence or if the real cleanup/removal helper bypasses that boundary.
-
-The revision-6 helper also includes the root directory in its target list but only deletes `path.is_file()` targets, so it does not establish that production STOR would refuse destructive removal of the root directory itself.
-
-This is an **acceptance-boundary nonconformance**, not a defect in the revision-6 canonical root constructor.
-
-### 1.2 P4-E3 finding — a validated snapshot can outlive its currentness
-
-Revision 6 correctly makes the canonical terminal loader establish currentness from CampaignStore before it returns a `ValidatedTargetSizeTerminalResult`.
-
-Currentness is temporal, however. A result legitimately validated while terminal generation `g1` is current can be retained in memory. If scientific identity then changes and real `prepare` advances CampaignStore to `g2`, the retained `g1` validated object still matches its retained `g1` revision. The current terminal view builder can therefore render `g1_revision + g1_validated`, and `_report_terminal_state(g1_validated)` can report stale `g1`, without consulting CampaignStore again.
-
-The missing invariant is therefore:
-
-> A validated terminal object proves the snapshot that was current when validation ran; it is not perpetual authority that the same generation is still current when a public/current result is exposed.
-
-This is a **current-result consumer/exposure defect**, not a reason to duplicate or weaken the revision-6 terminal loader.
+P5 remains blocked until revision 8 receives semantic/conformance and functional closure. The workplan remains bound to Protocol 5.8.0.
 
 ---
 
-## 2. Frozen revision-7 end state
+## 1. Independent-review blocker being repaired
 
-### 2.1 Production STOR owns destructive authorization and removal
-
-For the first-publication race, the semantic owner under acceptance is the complete production path:
+Revision 7 correctly routes production terminal completion/reload through CampaignStore-backed current exposure entrypoints. However, `campaign_target_size_view.py` still exports the generic snapshot functions:
 
 ```text
-real select-target-size
-  -> real build_screen_context
-  -> canonical execution-root owner
-  -> real initialize_target_size_screen publication
-  -> independent process
-       -> production config/path loading
-       -> real CampaignStore
-       -> production _campaign_ownership_boundary(...)
-       -> production destructive cleanup/removal helper
+build_target_size_result_view(revision, validated_result=..., resolver=...)
+write_target_size_result_view(path, revision, validated_result=..., resolver=...)
 ```
 
-The exact existing production function names may be reconciled if repository code has renamed them, but the semantic boundary may not be replaced by constructing `CampaignOwnershipBoundary`, a retention fence, or deletion logic in the test.
+A `ValidatedTargetSizeTerminalResult` proves that its revision was current **when validation ran**. It does not prove that revision remains current later.
 
-The production cleanup path must reject destructive removal of:
-
-- the **actual observed execution-root directory** passed by runtime to the real P3 initializer; and
-- representative freshly published P3 files under that root;
-
-while the same cleanup path remains capable of deleting a deliberately prepared, unrelated, campaign-owned reclaimable control artifact. This control proves the test is not passing because cleanup was globally disabled or the boundary protects everything.
-
-### 2.2 A current terminal result must re-establish currentness at exposure time
-
-`ValidatedTargetSizeTerminalResult` remains a useful validated snapshot/transport object. It is **not** independently sufficient authority for a public operation whose semantic claim is “the current target-size result.”
-
-Every public/current terminal exposure must establish CampaignStore currentness in that invocation immediately before exposing terminal authority. This applies to:
-
-- terminal result-view generation/publication used as the current result file;
-- CLI terminal stdout/reporting;
-- repeated terminal `select-target-size` reload;
-- initial terminal completion before its first terminal view/report publication;
-- later P5-facing current-target-size consumption.
-
-The preferred architecture is one public/current exposure owner or a small set of public entrypoints sharing one currentness owner:
+The exact remaining failure is:
 
 ```text
-current terminal exposure(cfg, paths, store, optional expected token/snapshot)
-  -> load_validated_target_size_terminal_result(...)
-       -> reload actual current CampaignStore revision
-       -> full existing P1/P2/common/P3/head/reducer/projection validation
-  -> pure render/format from the returned currently validated result
-  -> atomic file publication and/or stdout/downstream return
+terminal g1
+  -> canonical loader returns legitimate g1_validated
+  -> retain g1_revision + g1_validated
+  -> change target-size scientific identity
+  -> real prepare advances CampaignStore to nonterminal g2
+  -> exported write_target_size_result_view(
+         canonical_result_path,
+         g1_revision,
+         validated_result=g1_validated,
+     )
+  -> stale g1 terminal payload is written without consulting CampaignStore
 ```
 
-A pure renderer/formatter may accept a validated snapshot internally, but if it does not itself consult CampaignStore it must not be the public/current authority boundary. It may be private or explicitly historical/non-current. Public/current consumers must route through exposure-time validation.
-
-### 2.3 No new authority or persistence topology
-
-Revision 7 must not introduce:
-
-- a second execution-root formula, pending-root manifest, mutable root registry, or new generation counter;
-- a second terminal loader, reducer, replay engine, identity implementation, or compatibility fallback;
-- a new persistence schema merely to track freshness of in-memory terminal snapshots;
-- trust in dataclass construction/type identity as a security/currentness primitive;
-- a broad new lock solely to hide the stale-object defect unless repository evidence demonstrates a real concurrency invariant that cannot be satisfied by the existing CampaignStore ownership/CAS model.
-
-Currentness is established by consulting the existing authoritative CampaignStore and full canonical loader, not by synchronizing another copy of current state.
+`g1_revision` and `g1_validated` are internally self-consistent, so matching them to each other is insufficient. This is a **public current-authority escape hatch**, not a defect in the canonical loader or revision-7 current exposure facade.
 
 ---
 
-## 3. Stage P4-C3 — production STOR owner first-publication acceptance
+## 2. Frozen revision-8 end state
+
+### 2.1 Public API authority rule
+
+There must be no exported/public function that can render, write, report, or return a terminal target-size result as current authority using only snapshot objects such as:
+
+- `TargetSizeCampaignRevision`;
+- `ValidatedTargetSizeTerminalResult`;
+- `TargetSizeTerminalProjection`;
+- a P3 resolver/definition;
+- any combination of those without authoritative `cfg + paths + CampaignStore` currentness validation in the same invocation.
+
+For terminal state, the public/current authority path is:
+
+```text
+public current terminal consumer
+  -> cfg + paths + CampaignStore
+  -> expose_current_target_size_terminal_result(...)
+       -> load_validated_target_size_terminal_result(...)
+            -> reload actual current CampaignStore revision
+            -> full existing P1/P2/common/P3/head/reducer/projection validation
+  -> private/pure snapshot formatter
+  -> current file publication / stdout / downstream return
+```
+
+`ValidatedTargetSizeTerminalResult` remains a snapshot/transport object **inside** that current exposure call. It is not itself a public currentness token.
+
+### 2.2 Required treatment of generic view helpers
+
+The implementer must close the exported snapshot bypass by one of these engineering-equivalent realizations, with the first preferred for clarity:
+
+**Preferred realization — private terminal formatter:**
+
+1. Move terminal-capable pure formatting/writing behind private/internal helpers, e.g. `_build_target_size_snapshot_view(...)` and, if needed, `_write_target_size_snapshot_view(...)`.
+2. Remove terminal-capable snapshot helpers from `__all__` and from the supported public/current API surface.
+3. `write_current_target_size_result_view(...)` may call the private formatter only **after** it obtains a freshly current `ValidatedTargetSizeTerminalResult` from the canonical exposure owner.
+4. Nonterminal progress rendering may remain public because it carries no terminal scientific authority.
+
+**Allowed compatibility realization — public generic names become nonterminal-only:**
+
+If repository compatibility requires keeping `build_target_size_result_view(...)` and/or `write_target_size_result_view(...)` public, they must reject **every terminal revision unconditionally**, even if a matching `ValidatedTargetSizeTerminalResult`, resolver, or definition is supplied. Terminal rendering/writing then exists only behind the CampaignStore-backed current API.
+
+The following is **not sufficient**:
+
+- leaving exported `build_target_size_result_view(...)` / `write_target_size_result_view(...)` terminal-capable and merely documenting them as “snapshot” or “non-authoritative”;
+- requiring only that `validated_result.revision == revision`;
+- renaming the old function while keeping it exported and terminal-capable;
+- adding another boolean such as `current=True` / `trusted=True` / `historical=True` that bypasses CampaignStore;
+- trusting dataclass type identity, generation number, result-file contents, or P3 evidence alone as proof of currentness.
+
+### 2.3 Historical/debug rendering
+
+If terminal historical rendering is genuinely required for tests/debugging, it may exist only as an explicitly non-current internal/private helper. It must not be the supported current-result API and must not provide an exported arbitrary-path writer capable of overwriting the canonical current result file.
+
+No new persistence schema, freshness cache, generation registry, compatibility database, or second terminal loader is permitted for this repair.
+
+---
+
+## 3. Stage P4-E4 — public terminal snapshot API sealing
 
 ### 3.1 Implementation obligations
 
-1. Preserve `campaign_target_size_paths.py` as the single canonical root-construction owner and preserve runtime/retention imports from it.
-2. Replace the revision-6 mandatory race child’s hand-built cleanup path with the actual production STOR ownership-boundary constructor and production destructive cleanup/removal helper.
-3. The child must load the real campaign configuration/path objects by the same production configuration machinery used by STOR, then open the real CampaignStore at the configured state DB.
-4. The child must call the existing production ownership-boundary assembly (currently expected to be `_campaign_ownership_boundary(cfg, paths, store)` or the exact owning successor in current code). The test may not manually inject `build_target_size_retention_fence(...)` into `CampaignOwnershipBoundary(...)`.
-5. The child must invoke destructive attempts through the production cleanup/removal helper consumed by normal STOR cleanup. It may observe the report/result, but it may not replace production removal with direct `destructive_authorization`, `Path.unlink`, `Path.rmdir`, or `shutil.rmtree` logic.
-6. Exercise both the actual observed root **directory** and representative freshly published P3 files. A directory target must genuinely reach the same production removal decision path; merely adding it to a list that only handles files is insufficient.
-7. Add one unrelated, campaign-owned, demonstrably reclaimable control artifact outside the protected target-size evidence graph and submit it through the same production cleanup call. It must be removed/authorized while the observed target-size root/evidence are denied/skipped and remain intact.
-8. Preserve existing containment, symlink-escape, external-path, reconciliation-frontier, publication-window, and lock-order behavior. Do not broaden the retention fence to make the acceptance test pass.
+1. Preserve `load_validated_target_size_terminal_result(...)` as the single canonical current-terminal loader.
+2. Preserve `expose_current_target_size_terminal_result(cfg, paths, store, ...)` as the current-result exposure owner, or a semantically equivalent single owner if locally refactored.
+3. Preserve `write_current_target_size_result_view(...)` and `report_current_target_size_terminal_state(...)` as CampaignStore-backed current consumers.
+4. Inspect **all exported/public functions** in `campaign_target_size_view.py` and affected re-export modules. Any function that lacks authoritative CampaignStore context must not accept/render/write terminal scientific state as a current result.
+5. Seal `build_target_size_result_view(...)` and `write_target_size_result_view(...)` specifically:
+   - preferred: make the terminal-capable implementation private and remove these terminal-capable helpers from `__all__`; or
+   - if their public names must remain, make them nonterminal-only and reject terminal revisions before creating/writing payloads.
+6. If a private terminal formatter remains, ensure production current terminal callers reach it only downstream of `expose_current_target_size_terminal_result(...)`/canonical loader in the same invocation.
+7. Keep nonterminal diagnostic/progress view behavior working. Nonterminal view files remain derived and non-authoritative.
+8. Do not alter terminal scientific projection contents, selection N/T, reducer semantics, result schema fields, P3 evidence semantics, CampaignStore transitions, or current root/STOR behavior merely to seal this API.
+9. Search for production callers of the generic snapshot helpers and migrate any terminal-capable caller to the current exposure owner. Tests may invoke private snapshot helpers only for pure-formatting unit coverage; such tests cannot establish currentness.
+10. Keep the P5-facing seam pointed at the CampaignStore-backed current exposure owner; P5 must never consume the result-view file or a retained validated snapshot as current authority.
 
-### 3.2 Mandatory proxy-proof race
+### 3.2 Exact mandatory bypass regression
 
-The acceptance test must execute this sequence without substituting either semantic owner:
-
-```text
-real prepare
-  -> CampaignStore current generation is AUTHORITIES_BOUND
-     attempt=None, execution_root=None, adopted_head=None
-  -> start real select-target-size through real parser/function path
-  -> production build_screen_context derives root through canonical root owner
-  -> synchronization wrapper calls real initialize_target_size_screen exactly once
-  -> after real initializer returns, capture its actual root argument and published files
-  -> wrapper blocks before OPEN_ATTEMPT can persist execution_root/attempt
-  -> verify CampaignStore still AUTHORITIES_BOUND with no attempt/root/adopted head
-  -> spawn independent process
-       -> load real cfg/paths
-       -> open real CampaignStore
-       -> call production STOR ownership-boundary constructor
-       -> call production cleanup/removal helper on:
-            A. actual observed root directory
-            B. representative first-publication files under it
-            C. unrelated reclaimable campaign-owned control artifact
-       -> A/B are denied/skipped and survive
-       -> C is allowed/removed
-  -> release wrapper
-  -> real select-target-size resumes with bounded numerical seams
-  -> execution reaches OPEN_ATTEMPT/reconciliation and preferably bounded terminal completion
-```
-
-### 3.3 Forbidden substitutions for the mandatory C3 claim
-
-The mandatory C3 acceptance **must not**:
-
-- instantiate `CampaignOwnershipBoundary(...)` directly in the spawned cleanup child;
-- call `build_target_size_retention_fence(...)` directly in that child;
-- call `destructive_authorization(...)` directly as the acceptance deletion decision;
-- use direct filesystem deletion as a replacement for the production cleanup/removal helper;
-- manually construct `.mdstats/target-size/g<N>` or otherwise calculate the target root separately from the observed runtime initializer argument;
-- patch the canonical root constructor to return a test-selected path;
-- replace the real P3 initializer rather than wrapping/calling it exactly once.
-
-Direct fence/boundary tests may remain as focused unit coverage, but they do not close P4-C3.
-
-Allowed test doubles remain bounded expensive trainer/inference seams below the already accepted P3/runtime owner.
-
-### 3.4 C3 stage-local acceptance
-
-At minimum rerun after the final C3 executable edit:
-
-- `tests/test_mlff_target_size_p4c_cross_store_adoption.py`;
-- affected P4-D runtime-cutover tests;
-- affected P4-F STOR/storage/structural tests;
-- storage accounting/reclamation/cleanup tests plausibly intersecting the production removal helper;
-- canonical root uniqueness checks;
-- existing external/symlink/reclaimable-residue negatives.
-
-P4-C3 closes only if source inspection confirms the mandatory race traverses the production STOR owner and the test would fail if production boundary assembly omitted the target-size retention fence or production removal bypassed the boundary.
-
----
-
-## 4. Stage P4-E3 — exposure-time current-terminal authority
-
-### 4.1 Implementation obligations
-
-1. Preserve `load_validated_target_size_terminal_result(...)` as the single canonical current-terminal loader and preserve its full revision-6 validation chain.
-2. Treat any caller-supplied revision or prior `ValidatedTargetSizeTerminalResult` only as an expected/stale assertion token where useful; neither may substitute for reloading the current CampaignStore revision at a public/current exposure.
-3. Introduce or refactor the **public/current terminal exposure owner** so it has access to `cfg`, `paths`, and `store` (or equivalent authoritative context), invokes the canonical loader in the same exposure call, and only then renders/writes/reports/returns the current terminal result.
-4. Route both terminal branches of `select-target-size` through this exposure-time currentness owner:
-   - repeated invocation when CampaignStore is already terminal;
-   - initial terminal completion immediately after terminal projection commit.
-5. Route the current terminal result-file writer through the same currentness contract. A stale validated snapshot alone must not be sufficient to create or overwrite the current `target-size-state.json` terminal view.
-6. Route current CLI terminal reporting through the same currentness contract. A stale validated snapshot alone must not print selected N or terminal-scientific-failure output as current.
-7. Define the P5-facing current-result API in the same way: when P5 later consumes selected N/T, it must invoke the canonical current exposure/load path rather than trusting a retained terminal snapshot or result-view file.
-8. Keep nonterminal diagnostic view behavior compatible. Raw nonterminal revisions may still be rendered as non-authoritative progress views where current-terminal authority is not claimed.
-9. If `build_target_size_result_view(...)`, `write_target_size_result_view(...)`, or `_report_terminal_state(...)` remain pure snapshot-formatting helpers, make their authority explicit through API visibility/naming/caller routing: they must not themselves be the public/current result boundary. No production current consumer may call them from a stale snapshot without first re-establishing currentness in the same invocation.
-10. Do not duplicate P1/P2/P3 terminal validation to avoid a loader call. If optimization is justified, factor shared validation behind the canonical current loader/exposure owner while still reloading/confirming the current CampaignStore revision first.
-
-### 4.2 Mandatory stale-snapshot acceptance — exact missing case
-
-Use real CampaignStore transitions and retain a genuinely valid result, not a fabricated dataclass:
+Construct the historical pair through the real authority path:
 
 ```text
 real terminal generation g1
-  -> call canonical loader while g1 is current
-  -> retain g1_revision and legitimate g1_validated
+  -> load current g1 through canonical current exposure
+  -> retain legitimate g1_revision and g1_validated
   -> keep g1 immutable P3 evidence intact
-  -> change a target-size scientific identity
+  -> change target-size scientific identity
   -> real prepare
   -> CampaignStore advances/binds nonterminal g2
 ```
 
-From that exact state, prove all of the following.
+Then test the **old escape surface itself**, not only the new facade.
 
-#### A. Stale current-view/write exposure fails before publication
+#### A. Legacy/generic terminal writer cannot publish g1
 
-Invoke the public/current terminal view/write exposure while supplying `g1_revision`, `g1_validated`, or another supported expected token if that API permits one. It must reload current CampaignStore state and reject stale `g1` before publishing a terminal result.
-
-Prove output atomicity against stale authority:
-
-- either remove the current terminal result-view file before the stale attempt and assert it is not created; or
-- record its exact pre-attempt content/digest and assert a stale attempt does not overwrite/change it.
-
-A helper-only assertion that `g2_revision + g1_validated` mismatches is insufficient. The mandatory case is a self-consistent historical pair: **`g1_revision + legitimate g1_validated` after g2 is current**.
-
-#### B. Stale current-report exposure fails before stdout
-
-From the same `g1 -> g2` state, invoke the public/current terminal reporting/exposure route with the retained legitimate `g1_validated` if the API accepts it. It must reject after consulting current CampaignStore and must not print stale terminal authority.
-
-Capture stdout and assert absence of stale terminal messages, including selected-N / “already selected and frozen” / “scientifically terminal” output.
-
-A unit test that only passes a raw `TargetSizeTerminalProjection` to a type-checking formatter is useful focused coverage but does not close E3.
-
-#### C. Unchanged current terminal still works with zero numerical work
-
-For an unchanged terminal current generation, the public/current exposure route must:
-
-- reload and authenticate current authority;
-- render/write/report the same terminal projection;
-- perform zero new TRAIN2/EVAL2/trainer/inference work;
-- tolerate stale/missing rebuildable `current_head.json` exactly as accepted by P3A9/revision 6 while requiring immutable adopted evidence.
-
-#### D. Existing corruption/invalidation matrix remains mandatory
-
-Retain fresh affected regression for:
-
-- missing immutable adopted head;
-- corrupt immutable head/reducer evidence;
-- tampered CampaignStore terminal state;
-- changed optimizer seeds/training order;
-- changed fidelity boundaries;
-- target/evaluation policy or metric/practical-equivalence changes;
-- neutral partition/protected-relation/hard-support changes;
-- common preparation/training/execution-context changes;
-- target-size-neutral CV-only/production-only changes remaining neutral and not advancing/retraining target-size screening;
-- terminal scientific-failure reload and corruption negatives;
-- stale/missing rebuildable `current_head.json`.
-
-### 4.3 Structural/currentness acceptance
-
-Inspect the assembled code to prove:
-
-- exactly one canonical current terminal loader remains;
-- current terminal view-file publication and CLI reporting route through exposure-time CampaignStore validation;
-- no public/current terminal API treats `ValidatedTargetSizeTerminalResult` or raw `TargetSizeCampaignRevision` alone as perpetual current authority;
-- no second currentness cache, mutable freshness flag, parallel generation registry, or result-file authority has been introduced;
-- current terminal result files remain derived/non-authoritative and can be rebuilt only from currently authenticated CampaignStore + P3 authority.
-
-### 4.4 E3 stage-local regression
-
-At minimum rerun after final E3 executable edits:
-
-- `tests/test_mlff_target_size_p4e_terminal_and_invalidation.py` including the exact stale-snapshot view/write/report cases above;
-- affected P4-D `select-target-size` runtime tests;
-- affected P4-F result-view/storage/structural tests;
-- P3A9 resolver/reconciliation tests if current terminal exposure still resolves/reconciles adopted P3 evidence;
-- any direct current-result consumer tests added for the P5-facing API seam.
-
----
-
-## 5. Stage P4-G3 — assembled reclosure
-
-P4-G3 is blocked until both P4-C3 and P4-E3 achieve semantic/conformance and functional closure.
-
-After all C3/E3 executable edits are assembled, re-derive the affected surface and run fresh final regression. At minimum include the P4-A through P4-G affected suites and P3A9 where terminal resolver/reconciliation is intersected. Run the broader/full repository suite only if the final affected surface cannot be bounded confidently.
-
-Mandatory assembled integration must include a bounded real-owner sequence equivalent to:
+If `write_target_size_result_view(...)` remains importable/public:
 
 ```text
-real prepare
-  -> bounded real select-target-size reaches terminal
-  -> fresh-process/current terminal reload validates with zero retraining
-  -> real production STOR cleanup executes without deleting current target-size authority
-  -> second current terminal reload validates and returns identical N/T/reason
+write_target_size_result_view(
+    paths.results / "target-size-state.json",
+    g1_revision,
+    validated_result=g1_validated,
+)
 ```
 
-Also include assembled negatives for:
+must fail before publication because terminal use is unsupported outside the current owner.
 
-- missing/corrupt immutable terminal P3 evidence;
-- changed target-size scientific identity requiring `prepare`/fresh generation;
-- retained legitimate old-generation validated snapshot after a fresh generation becomes current;
-- the first-publication STOR race through real production ownership/removal.
+If the function is intentionally removed/private, acceptance must instead prove it is absent from the supported export surface and no exported replacement has equivalent terminal snapshot capability.
 
-Structural/absence checks on the final candidate must confirm:
+For the canonical result file:
 
-- one canonical execution-root construction owner;
-- one canonical current-terminal loader/currentness validation core;
-- no public/current stale-snapshot terminal exposure bypass;
-- no duplicate root/generation/current-state authority;
-- no V7/version-prefixed production code naming introduced by this repair.
+- remove it before the attempt and prove it is not created; **or**
+- record exact pre-attempt bytes/digest and prove the stale attempt does not change them.
 
-Only after fresh P4-G3 closure may P4 metadata return to `status: implemented`/formal reclosure and P5 become eligible to begin.
+#### B. Legacy/generic terminal builder cannot supply a public current payload
 
-Full long GPU/real-production qualification remains deferred to final release. Revision 7 requires bounded functional, persistence, concurrency, and real-owner acceptance only.
+If `build_target_size_result_view(...)` remains public, calling it with `g1_revision + g1_validated` after g2 is current must reject terminal use. If it becomes private/internal, prove it is not exported as current API.
+
+Returning a stale terminal dictionary from an exported generic builder counts as a bypass even if it does not itself perform file I/O, because downstream callers can publish or consume it as current without CampaignStore.
+
+#### C. Current facade still rejects stale g1 and accepts unchanged current terminal
+
+Retain the revision-7 current-facade tests:
+
+- after g2 exists, `write_current_target_size_result_view(...)` rejects stale `expected_revision=g1_revision` and does not publish stale data;
+- `report_current_target_size_terminal_state(...)` rejects stale g1 before stdout;
+- unchanged current terminal reload validates and reports/writes identically with zero new TRAIN2/EVAL2/trainer/inference work;
+- stale/missing rebuildable `current_head.json` remains recoverable while missing/corrupt immutable adopted evidence fails closed.
+
+### 3.3 Mandatory structural/export acceptance
+
+Add source/API-surface checks that would fail if the bypass is reintroduced:
+
+1. Enumerate `campaign_target_size_view.__all__` (and any package-level re-export surface if applicable).
+2. Prove no exported function lacking `cfg/paths/store` or equivalent authoritative context can successfully process a terminal `TargetSizeCampaignRevision` into a terminal result payload/file.
+3. Specifically prove no exported arbitrary-path writer accepts `revision + validated_result` for terminal state.
+4. Search production code for calls to any private terminal snapshot formatter. Every terminal production call must be downstream of the CampaignStore-backed current exposure owner in the same invocation.
+5. Confirm exactly one canonical current-terminal loader remains and no second freshness/currentness authority was introduced.
+6. Confirm the result file remains derived/non-authoritative and is never read as the source of current N/T.
+
+Do not satisfy this with name-string checks alone. Pair structural inspection with the executable stale-g1 regression above.
+
+### 3.4 E4 stage-local regression
+
+After the final E4 executable edit, at minimum run:
+
+- `tests/test_mlff_target_size_p4e_terminal_and_invalidation.py` including the exact legacy/generic `g1_revision + g1_validated` bypass reproducer;
+- affected P4-D terminal completion/reload runtime tests;
+- affected P4-F result-view/storage/structural tests;
+- P3A9 resolver/reconciliation tests because current terminal exposure authenticates adopted immutable evidence;
+- any tests covering package/module public exports or P5-facing current-result seam.
+
+P4-C3 need not be reopened or rerun as a stage-local requirement unless E4 changes C3/STOR/root code. Its accepted evidence remains preserved.
 
 ---
 
-## 6. Implementation authority
+## 4. Stage P4-G4 — assembled reclosure
+
+P4-G4 is blocked until P4-E4 achieves both semantic/conformance and functional closure.
+
+After all E4 edits are assembled:
+
+1. Re-derive the affected surface from the final candidate.
+2. Run fresh final affected regression covering P4-A through P4-G suites plus P3A9. The existing bounded suite is cheap enough that the default final command should include all eight previously assembled suites unless repository impact analysis identifies an additional affected suite.
+3. Re-run the bounded assembled real-owner integration:
+
+```text
+prepare
+  -> bounded select-target-size terminal
+  -> fresh current terminal reload, zero retraining
+  -> production STOR cleanup, current target-size evidence survives
+  -> second current terminal reload, identical N/T/reason
+```
+
+4. Include assembled negatives for missing/corrupt immutable terminal P3 evidence and changed scientific identity requiring `prepare`/fresh generation.
+5. Include the exact retained `g1_revision + legitimate g1_validated` attempt against every remaining exported generic result-view API after g2 becomes current.
+6. Structural/absence closure must confirm:
+   - one canonical execution-root owner;
+   - one canonical current-terminal loader/currentness core;
+   - no exported/public terminal snapshot renderer/writer bypass;
+   - no production current terminal caller bypasses CampaignStore-backed exposure;
+   - no duplicate generation/current-state authority;
+   - no V7/version-prefixed production naming introduced by this repair.
+
+Only after fresh G4 closure may P4 metadata return to `status: implemented` and the package README be changed to formal P4 reclosure / P5 eligibility.
+
+Long GPU/real-production qualification remains deferred to final release. Revision 8 requires bounded functional/API/persistence integration only.
+
+---
+
+## 5. Implementation authority
 
 ### Frozen
 
-- Parent scientific/architectural decisions and P1-P3 accepted semantics.
+- Frozen parent scientific/architectural decisions and accepted P1-P3 semantics.
 - Protocol binding at 5.8.0.
-- Revision-6 single canonical execution-root owner and deterministic root layout ownership.
-- Revision-6 canonical current-terminal loader and complete authority-validation chain.
+- P4-C3 production STOR acceptance at revision 7.
+- Single canonical execution-root owner.
 - CampaignStore as sole current generation/revision authority.
-- Production STOR boundary/removal path as the semantic owner for destructive first-publication acceptance.
-- Exposure-time CampaignStore validation before any operation claims a terminal result is current.
-- P5 remains blocked until formal P4 revision-7 reclosure.
+- Single canonical CampaignStore-first terminal loader and complete validation chain.
+- Revision-7 current terminal exposure facade (`expose_current...`, current writer, current reporter) or semantically equivalent one-owner local refactor.
+- Terminal result files are derived/non-authoritative.
+- No public terminal result is current without CampaignStore currentness validation in that same exposure invocation.
+- P5 remains blocked until formal revision-8 reclosure.
 
 ### Delegated
 
-- Exact module/function name for the current terminal exposure facade.
-- Whether pure render/report helpers become private, explicitly historical/non-current, or accept authoritative context themselves, provided no public/current stale-snapshot route remains.
-- Whether `expected_revision`/validated snapshot assertion tokens are retained for intra-command race detection; they remain assertions only.
-- Synchronization details of the deterministic first-publication test, provided the real runtime initializer and real production STOR owner execute.
-- Bounded fixture/data choices and numerical fakes below the accepted semantic-owner boundaries.
+- Exact private helper names and factoring for pure snapshot formatting.
+- Whether legacy generic view names are removed from exports or retained as nonterminal-only compatibility APIs.
+- Whether `validated_result` remains an argument on private formatting helpers.
+- Local import organization and internal call factoring, provided the authority boundary above is preserved.
 
 ### Reopen only on evidence
 
-Reopen design only if implementation evidence demonstrates one of the following:
-
-- no reusable production STOR boundary/removal owner exists, such that satisfying C3 would require defining a materially new cleanup architecture;
-- the existing CampaignStore/CAS ownership model cannot provide exposure-time currentness without a demonstrable race requiring a new concurrency contract;
-- a preserved revision-6 root or terminal-loader design is shown materially incorrect rather than merely inconvenient to test.
-
-If any trigger fires, reopen only the affected surface and preserve all unrelated accepted evidence. Do not broaden into P1-P3 science or P5 design by convenience.
+Reopen design only if repository evidence demonstrates that a supported external compatibility contract requires public historical terminal snapshot rendering/writing and cannot be safely separated from the current-result API. If that occurs, stop and redesign only the API separation surface; do not reopen science, CampaignStore, P3, STOR, or P5 semantics by convenience.
 
 ---
 
-## 7. Handoff closure
+## 6. Handoff closure
 
-The revision-7 implementation contract is complete only if the implementer can recover the following without replaying this review:
+The implementer should be able to recover the complete revision-8 target without replaying this review:
 
 ```text
-C3 protected concern:
-  first-publication bytes survive the actual production STOR deletion path,
-  not merely a hand-built equivalent boundary.
+Preserved:
+  P4-C3 real production STOR race is accepted.
+  Canonical root owner and CampaignStore-first terminal loader are accepted.
+  Revision-7 current view/report facade is the correct direction.
 
-C3 required proof:
-  real runtime root/P3 publication + independent process + production STOR boundary/removal,
-  protected directory/files survive, reclaimable control is deleted.
+Remaining defect:
+  exported generic build/write helpers still let a legitimate historical
+  g1_revision + g1_validated produce terminal output after g2 is current.
 
-E3 protected concern:
-  “validated when g1 was current” does not mean “g1 is still current now.”
+Required product state:
+  terminal-capable snapshot formatting is private/internal, OR public generic
+  helpers are strictly nonterminal-only. No exported snapshot-only terminal
+  renderer/writer may exist.
 
-E3 required proof:
-  retain legitimate g1 validated snapshot -> real prepare advances to g2 ->
-  public/current view/write/report cannot expose g1 and produces no stale file/stdout.
-
-Preserved design:
-  one root owner + one canonical terminal loader + full P1/P2/P3 validation +
-  CampaignStore current-generation authority + all accepted P1-P3 science.
+Required proof:
+  terminal g1 -> legitimate g1 pair -> real prepare -> g2 -> invoke old generic
+  escape surface directly -> no terminal payload/file can be produced; canonical
+  result file unchanged/absent; current facade still works for the actual current
+  terminal generation.
 
 Final closure:
-  C3 + E3 stage-local regression -> fresh assembled G3 regression/integration ->
+  E4 semantic + stage regression -> fresh G4 affected regression/integration ->
   formal P4 reclosure -> only then P5.
 ```
 
-No proxy test, helper-only success, green regression suite, or metadata status may substitute for those semantic-owner outcomes.
+A renamed/exported snapshot writer, documentation-only warning, type check, or green current-facade test does not satisfy revision 8 if a caller can still publish a terminal snapshot without consulting CampaignStore.
