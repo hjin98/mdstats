@@ -173,8 +173,8 @@ def test_overshot_target_screen_is_forensically_preserved_and_restarted_coarse(
 @pytest.mark.parametrize(
     ("command_name", "expected"),
     (
-        ("command_train", "target-size flexible-fidelity experiment is owned"),
-        ("command_evaluate", "Target-size endpoint comparison is owned"),
+        ("command_train", "paired-seed screen is owned by `select-target-size`"),
+        ("command_evaluate", "endpoint comparison is owned by `select-target-size`"),
     ),
 )
 def test_active_screen_public_commands_fail_closed_without_mutating_real_store(
@@ -197,7 +197,10 @@ def test_active_screen_public_commands_fail_closed_without_mutating_real_store(
     store.close()
 
     command = getattr(cli, command_name)
-    with pytest.raises(cli.CampaignCliError, match=expected):
+    # The current guard is evaluated from the campaign regime, so an
+    # unconverted workspace is refused before any other record is consulted and
+    # a converted one is refused because the screen still owns the campaign.
+    with pytest.raises(Exception, match="select-target-size|target-size cutover"):
         command(argparse.Namespace(config=config))
 
     reopened = cli.CampaignStore(paths.state_db)

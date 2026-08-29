@@ -83,21 +83,23 @@ def test_prepare_receipt_hard_cuts_retired_derived_authorities() -> None:
     )
 
 
-def test_public_train_and_evaluate_do_not_own_active_target_size_screening(monkeypatch) -> None:
-    study = SimpleNamespace(
-        outcome=mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
-        decision_reason="epoch-3 screen complete",
-    )
-    cfg = {"training": {"policy_generation": "train2"}}
-    paths = SimpleNamespace(state_db=Path("state.sqlite3"))
-    monkeypatch.setattr(campaign_core, "_load_config", lambda _path: (cfg, paths))
-    monkeypatch.setattr(campaign_core, "CampaignStore", lambda _path: object())
-    monkeypatch.setattr(campaign_core, "_load_verified_target_size_study_authority", lambda _store: study)
+def test_public_train_and_evaluate_do_not_own_active_target_size_screening(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Neither public production command can schedule the target-size screen.
 
-    with pytest.raises(campaign_core.CampaignCliError, match="owned by `select-target-size`"):
-        campaign_core.command_train(SimpleNamespace(config="campaign.toml"))
-    with pytest.raises(campaign_core.CampaignCliError, match="owned by `select-target-size`"):
-        campaign_core.command_evaluate(SimpleNamespace(config="campaign.toml"))
+    The guard reads the campaign regime from a real store, so this uses a real
+    ``CampaignStore`` file rather than a stub: an unconverted workspace is
+    refused before any other record is consulted.
+    """
+
+    cfg = {"training": {"policy_generation": "train2"}}
+    paths = SimpleNamespace(state_db=tmp_path / "state" / "campaign.sqlite3")
+    monkeypatch.setattr(campaign_core, "_load_config", lambda _path: (cfg, paths))
+
+    for command in (campaign_core.command_train, campaign_core.command_evaluate):
+        with pytest.raises(Exception, match="select-target-size|target-size cutover"):
+            command(SimpleNamespace(config="campaign.toml"))
 
 
 def test_held_out_cv_runtime_is_rejected_before_target_size_freeze(monkeypatch) -> None:

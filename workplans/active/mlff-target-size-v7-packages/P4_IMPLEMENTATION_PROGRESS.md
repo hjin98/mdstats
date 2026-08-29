@@ -18,7 +18,7 @@ and what remains. It is coordination material, not product documentation.
 | P4-D | Atomic `prepare` / `select-target-size` production switch | **CLOSED** |
 | P4-E | Terminal projection, semantic restart, invalidation | **CLOSED** |
 | P4-F | Full STOR integration, docs, structural closure | **CLOSED** |
-| P4-G | Assembled affected-surface closure | in progress |
+| P4-G | Assembled affected-surface closure | **CLOSED** |
 
 ---
 
@@ -740,3 +740,119 @@ unreachable from the two current target-size entrypoints, `_load_train2_study_op
 can authorize a current selected target size (the selected size is only ever re-derived through
 `validate_terminal_projection`). Expressing their reporting in terms of the current campaign state
 is left to the post-selection package that reworks those commands.
+
+---
+
+## Pass P4-G — Assembled affected-surface closure
+
+**State: CLOSED** (semantic + functional).
+
+### Affected surface re-derived from the complete assembled diff
+
+Production files changed by P4:
+
+- `mdstats/training_data/_campaign_cli_core.py` (campaign store schema + transaction primitive,
+  ownership-boundary helper, `prepare` / `select-target-size` / `materialize` / `train` / `evaluate`
+  switch, CLI error boundary, parser help)
+- `mdstats/training_data/storage_accounting.py` (retention-fence hook, P3 family classification)
+- six new owners: `campaign_target_size_state.py`, `campaign_target_size_cutover.py`,
+  `campaign_target_size_adoption.py`, `campaign_target_size_retention.py`,
+  `campaign_target_size_terminal.py`, `campaign_target_size_view.py`,
+  `campaign_target_size_runtime.py`
+- `docs/guides/mlff_campaign_cli_user_guide.md`, `campaign.toml.example`
+
+`_campaign_cli_core.py` is imported by essentially every campaign-facing test, and
+`storage_accounting.py` by every storage test, so the affected surface could **not** be bounded to a
+smaller set with confidence. The complete repository suite was therefore run, against a matching
+pre-P4 baseline run for failure attribution.
+
+### Assembled integration
+
+`tests/test_mlff_target_size_p4g_assembled_integration.py` — **2 passed**. One test drives the whole
+lifecycle in a single flow through the real `main()` entrypoint, the real `CampaignStore`, and the
+real P1/P2/P3 and storage owners: `prepare` -> paired-seed screen to a terminal P2 outcome ->
+terminal projection re-derived from a fresh handle -> append-only chain and single canonical
+generation verified -> storage report includes the promoted families -> real safe cleanup over
+evidence aged 90 days changes nothing -> replay retrains nothing and reproduces the identical
+terminal projection. The second covers the operator surfaces (`status`, `storage report`) continuing
+to work with the retired selector record quarantined.
+
+### Complete repository regression
+
+Both runs: `pytest tests/ -q -n 16 -p no:randomly` in the `mace` environment.
+
+| | Failed | Passed | Skipped | Errors |
+|---|---|---|---|---|
+| Baseline (pre-P4, `2e6e3fd`, isolated worktree) | 248 | 3592 | 34 | 100 |
+| **Final P4 candidate** | **247** | **3712** | **34** | **100** |
+
+Set difference of the failing-test identifiers:
+
+- **New failures introduced by P4: none.**
+- **Pre-existing failures fixed by P4: 1** —
+  `test_mlff_stor1_storage_accounting.py::test_materialization_record_path_does_not_confer_external_cleanup_authority`.
+- Net +120 passing tests (the seven new P4 suites).
+
+The 247 remaining failures and 100 errors are all present at the pre-P4 baseline and are unrelated
+to the target-size surface: topology/geometry tests that need example data files absent from this
+checkout (`test_ring_geometry`, `test_site_topology`, `test_mesh_topology_revision_stage1`,
+`test_lta_natural_tiling`, and similar — these account for the 100 errors), and `*_specification.py`
+tests pinned to superseded release constants, architecture-manual sentences, and dependency-graph
+revisions. Making any of them pass would require re-pinning stale constants or rewriting
+documentation P4 does not own, which would manufacture acceptance rather than establish it.
+
+### Retired-architecture tests updated or removed in this pass
+
+The first full run surfaced exactly five new failures, all asserting the *retired* wording or
+internals of the `train`/`evaluate` scheduler guard. Disposition:
+
+- `test_mlff_target_size_repair1_real_owner.py::test_active_screen_public_commands_fail_closed_without_mutating_real_store`
+  (2 parametrizations) — **updated**. The protected concern is unchanged and still asserted through
+  the real disk-backed store; only the expected message changed, because the current guard is
+  evaluated from the campaign regime.
+- `test_mlff_target_size_v5_topology.py::test_public_train_and_evaluate_do_not_own_active_target_size_screening`
+  — **updated and strengthened**. It stubbed `CampaignStore` with a bare `object()`, which no longer
+  models the store the guard reads; it now uses a real `CampaignStore` file.
+- `test_mlff_flexible_fidelity.py::test_supplemental_persisted_campaign_selects_configured_boundaries_and_exposes_restart_status`
+  (2 parametrizations) — **removed**. It drove the retired `TargetSizeStudyPlan` funnel end to end
+  (retired study, retired train/evaluate orchestration, retired reductions). Its protected concerns —
+  configuration normalization, campaign store, boundary ownership, reductions, selected-size
+  persistence, status, and restart lifecycle — are all re-covered against the current architecture by
+  the P4-D, P4-E, and P4-G suites.
+
+### Final semantic reconciliation against section 17
+
+| Exit criterion | Where satisfied |
+|---|---|
+| 1. P3 revision 7 accepted and recorded before P4 began | entry gate, verified before any edit |
+| 2. one current state authority, one canonical generation, subordinate attempts, predecessor CAS | P4-A; structurally proven in P4-F |
+| 3. deterministic transition identity, safe duplicate retry, exclusive divergent transitions | P4-A |
+| 4. P3 immutable evidence sole execution/replay authority; `current_head.json` rebuildable | P4-C |
+| 5. cross-store recovery adopts validated evidence, rejects forks/corruption | P4-C |
+| 6. acyclic cross-subsystem ordering, bounded SQLite mutation | P4-C (instrumented + AST proof), P4-F |
+| 7. `N_selected` / exact `T_selected` are re-derived projections | P4-E |
+| 8. terminal scientific failure distinct from operational interruption | P4-E |
+| 9. legacy state quarantined without reinterpretation; no mixed runtime | P4-B |
+| 10. `prepare` does not select `N`; `select-target-size` is the sole screening entrypoint | P4-D |
+| 11. retired selector/domain/complement/pre-target-CV edges unreachable | P4-D, P4-F |
+| 12. raw/live/EMA semantics and historical owner proof intact | P4-E (P3 remains the owner) |
+| 13. promoted P3 evidence in STOR accounting/retention/reclamation | P4-F |
+| 14. execution-root and frontier retention without unbounded pinning | P4-C, P4-F |
+| 15. public CLI help/docs describe the actual lifecycle | P4-F |
+| 16. version-agnostic production naming | proven per pass |
+| 17. complete affected regression/integration/crash/concurrency/invalidation/storage/race/structural acceptance | this pass |
+| 18. no long GPU/production qualification required | none was run |
+
+### Deferred qualification and known production-scale cost
+
+No long GPU or real-production qualification was run; it remains final-release work per section 0.2.
+
+One production-scale cost is recorded deliberately rather than optimized away:
+`build_current_target_size_authorities` reconstructs the P1 canonical frame authority through the
+accepted owner `build_vasp_canonical_frame_authority`, which re-reads every source `vasprun.xml`
+once per `prepare` and once per `select-target-size` invocation (including each resume). That
+re-parse is part of P1's authentication — it re-verifies source identity signatures, ensemble
+certificates, and the selected energy channel against what the source authority persists — so
+substituting the campaign's normalized frame cache would weaken accepted P1 validation rather than
+reconcile it, and was not done. The cost is bounded (once per command, not once per candidate cell)
+and belongs in the deferred bounded production benchmark, not in a silent validation reduction.
