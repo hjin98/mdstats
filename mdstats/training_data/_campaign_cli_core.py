@@ -16348,38 +16348,53 @@ def _execute_train_current_authority(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_train(args: argparse.Namespace) -> int:
-    """Train only the selected production/CV workload for TRAIN2 campaigns."""
+def _require_post_selection_production_path(
+    store: "CampaignStore", *, command: str, owner_sentence: str
+) -> None:
+    """Fail closed for the public production commands under the current runtime.
 
-    import mdstats
+    The regime is checked before any other record so ordinary training and
+    evaluation can never schedule the target-size screen, whatever state the
+    workspace happens to hold. A campaign that has not frozen a size is simply
+    directed at the owning command; a campaign that has frozen one is told that
+    the post-selection path is not part of this release rather than being run
+    against retired production records.
+    """
+
+    from .campaign_target_size_cutover import require_current_target_size_runtime
+
+    revision = require_current_target_size_runtime(store)
+    if revision.state.lifecycle is not TargetSizeLifecycle.TERMINAL_SELECTED:
+        raise CampaignCliError(
+            f"Public `{command}` is reserved for the frozen production/CV workload. "
+            + owner_sentence
+        )
+    raise CampaignCliError(
+        "The post-selection production/CV path is not available in this release. The "
+        "current target-size architecture froze a selected size at canonical "
+        f"generation {revision.state.generation}; retired production records are never "
+        "reinterpreted as current authority, and the selected-size production path is "
+        "delivered by the successor package."
+    )
+
+
+def command_train(args: argparse.Namespace) -> int:
+    """Train only the selected production/CV workload.
+
+    Ordinary training can never become a second target-size screening
+    scheduler, so the guard is evaluated from the campaign regime before any
+    other record is consulted.
+    """
 
     cfg, paths = _load_config(args.config)
     if _training_policy_generation(cfg) == "train2":
-        store = CampaignStore(paths.state_db)
-        from .campaign_target_size_cutover import require_current_target_size_runtime
-
-        # The scheduler guard must fire before any retired record is consulted:
-        # ordinary `train` can never become a second target-size screening
-        # scheduler, whatever state the workspace happens to hold.
-        revision = require_current_target_size_runtime(store)
-        if revision.state.lifecycle is not TargetSizeLifecycle.TERMINAL_SELECTED:
-            raise CampaignCliError(
-                "Public `train` is reserved for the frozen production/CV workload. "
+        _require_post_selection_production_path(
+            CampaignStore(paths.state_db),
+            command="train",
+            owner_sentence=(
                 "The target-size paired-seed screen is owned by `select-target-size`."
-            )
-        study = _load_verified_target_size_study_authority(store)
-        if study.outcome != mdstats.OUTCOME_SELECTED:
-            raise CampaignCliError(
-                "TRAIN2 public `train` is reserved for the frozen production/CV workload. "
-                "The target-size flexible-fidelity experiment is owned by `select-target-size`."
-            )
-        try:
-            _require_train2_preflight_authorization(cfg, paths, store, study)
-        except CampaignCliError as exc:
-            raise CampaignCliError(
-                "Production training requires the selected-size production/CV DATA8 matrix and "
-                "a preflight receipt bound to that exact matrix. Run `materialize`, then `preflight`."
-            ) from exc
+            ),
+        )
     return _execute_train_current_authority(args)
 
 
@@ -22996,37 +23011,21 @@ def _execute_evaluate_current_authority(args: argparse.Namespace) -> int:
 
 
 def command_evaluate(args: argparse.Namespace) -> int:
-    """Evaluate only selected production/CV trajectories for TRAIN2 campaigns."""
+    """Evaluate only selected production/CV trajectories.
 
-    import mdstats
+    Like `train`, the guard is evaluated from the campaign regime first so this
+    command can never become a second target-size screening scheduler.
+    """
 
     cfg, paths = _load_config(args.config)
     if _training_policy_generation(cfg) == "train2":
-        store = CampaignStore(paths.state_db)
-        from .campaign_target_size_cutover import require_current_target_size_runtime
-
-        # The scheduler guard must fire before any retired record is consulted:
-        # ordinary `evaluate` can never become a second target-size screening
-        # scheduler, whatever state the workspace happens to hold.
-        revision = require_current_target_size_runtime(store)
-        if revision.state.lifecycle is not TargetSizeLifecycle.TERMINAL_SELECTED:
-            raise CampaignCliError(
-                "Public `evaluate` is reserved for the frozen production/CV workload. "
+        _require_post_selection_production_path(
+            CampaignStore(paths.state_db),
+            command="evaluate",
+            owner_sentence=(
                 "Target-size endpoint comparison is owned by `select-target-size`."
-            )
-        study = _load_verified_target_size_study_authority(store)
-        if study.outcome != mdstats.OUTCOME_SELECTED:
-            raise CampaignCliError(
-                "TRAIN2 public `evaluate` is reserved for production checkpoint selection. "
-                "Target-size endpoint comparison is owned by `select-target-size`."
-            )
-        try:
-            _require_train2_preflight_authorization(cfg, paths, store, study)
-        except CampaignCliError as exc:
-            raise CampaignCliError(
-                "Production evaluation requires the selected-size production/CV DATA8 matrix and "
-                "its matching preflight receipt. Run `materialize`, then `preflight`."
-            ) from exc
+            ),
+        )
     return _execute_evaluate_current_authority(args)
 
 
