@@ -1,146 +1,92 @@
 # P4 implementation progress and evidence log
 
-Working record for `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` **package revision 5**.
-Authority: frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` plus the revision-5 overlay in the P4 package.
+Working record for `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` **package revision 6**.
+Authority: frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` plus the revision-6 overlay in the P4 package.
 
-The complete revision-4 implementation/evidence log is preserved unchanged in
-`P4_REVISION4_IMPLEMENTATION_PROGRESS.md`. Reuse that evidence only where the revision-5 workplan
-explicitly says it remains valid.
+The complete revision-5 candidate and evidence are preserved in:
 
-## Revision-5 status summary
+- `P4_REVISION5_IMPLEMENTED_BASELINE.md`;
+- `P4_REVISION5_IMPLEMENTATION_PROGRESS.md`.
+
+Revision-4 baseline/evidence remain preserved unchanged.
+
+## Revision-6 status summary
 
 | Pass | Scope | State |
 |---|---|---|
 | Entry/P3 | accepted P3 revision 7 through P3A9 | **CLOSED / PRESERVED** |
 | P4-A | CampaignStore state, canonical generation, CAS, transition identity | **CLOSED / PRESERVED** |
 | P4-B | destructive regime cutover | **CLOSED / PRESERVED** |
-| P4-C1 | first-publication execution-root retention fence | **CLOSED** |
-| P4-D | production switch architecture | **CLOSED** |
-| P4-E1 | terminal real-owner reload, invalidation, terminal-view validation | **CLOSED** |
-| P4-F | STOR/docs/structural integration | **CLOSED** |
-| P4-G1 | final assembled affected-surface closure | **CLOSED** |
+| P4-C2 | one canonical execution-root owner + real-runtime first-publication retention race | **OPEN** |
+| P4-D | production switch architecture | **CLOSED / AFFECTED REGRESSION REQUIRED** |
+| P4-E2 | current-terminal authority/currentness + terminal view/report sealing | **OPEN** |
+| P4-F | STOR/docs/structural integration | **CLOSED / AFFECTED REGRESSION REQUIRED** |
+| P4-G2 | final assembled affected-surface closure | **OPEN / BLOCKED ON C2+E2** |
 
-## Reopening authority
+## Independent-review blockers routed to revision 6
 
-Independent review of the revision-4 closure identified one genuine blocking defect and one required
-hardening consequence:
+### P4-C2
 
-1. The real `execute_current_select_target_size()` terminal branch can report the persisted terminal
-   projection and return before reconstructing/revalidating current P1/P2/P3 authority. This means a
-   missing/corrupt adopted P3 head or a changed target-size scientific identity can be hidden by the
-   early terminal return. Direct helper tests of `validate_terminal_projection(...)` do not prove
-   the production caller invokes it.
-2. The execution root can be created/initialized before the later campaign transition has persisted
-   an `execution_root` locator, while the retention fence is inert when no locator exists. Revision 4
-   already protects the later P3-publication -> SQLite-adoption frontier, but revision 5 must also
-   prove protection from the **first** real P3 publication.
+Revision-5 runtime and retention independently construct the `.mdstats/target-size/g<N>` execution-root layout. The revision-5 first-publication test also manually chooses that same path and directly calls P3 initialization rather than traversing the production `select-target-size` root owner. This can remain green if runtime and STOR later diverge.
 
-P4 closure commit under review: `53800cf3e4862326643b1708863f9b07573669ef`.
-Reviewed branch tip differs only by generated documentation PDF:
-`a66d32ffb3b3da2b1d51d2e8d970bd0083839f23`.
+Required closure evidence:
+
+- one dependency-leaf canonical root constructor imported by runtime and retention;
+- no duplicate root-name/path formula in those owners;
+- real `prepare -> select-target-size` path;
+- wrapper around real `initialize_target_size_screen` calls real initializer exactly once and pauses after first publication;
+- actual root comes from the runtime call argument, not test reconstruction;
+- while CampaignStore remains `AUTHORITIES_BOUND` with `attempt=None`, `execution_root=None`, and no adopted head, an independent process builds the real `_campaign_ownership_boundary` and performs production destructive authorization/removal against that actual root/files;
+- zero protected first-publication files removed;
+- runtime resumes successfully;
+- external/symlink/ambiguous paths remain denied and unrelated reclaimable residue remains reclaimable.
+
+The existing direct-initializer first-publication test does not close this claim by itself.
+
+### P4-E2
+
+Revision-5 terminal reload correctly validates the public repeated CLI path, but the reusable loader can accept a caller-supplied historical revision and the terminal view can render raw terminal revision + old resolver/definition. Both can reauthenticate an internally valid historical generation after CampaignStore has advanced.
+
+Required closure evidence:
+
+- canonical current-terminal loader always loads the actual current CampaignStore revision first;
+- caller-provided revision, if retained at all, is only a strict expected-current assertion and must match current state revision/sequence/generation;
+- terminal views/reporter consume only a validated-current terminal result, not raw terminal projection/revision;
+- build terminal g1, change target-size scientific identity, run real `prepare` to bind g2, then prove g1 cannot be returned/rendered/reported as current despite intact g1 P3 evidence;
+- unchanged current terminal reload still validates/reports with zero numerical work;
+- revision-5 corruption/invalidation/terminal-failure cases remain passing.
 
 ## Evidence invalidation
 
 ### Preserved
 
-- P4-A state/CAS/transition-identity evidence;
-- P4-B cutover/quarantine evidence;
-- accepted P1/P2/P3 scientific and restart semantics;
-- revision-4 nonterminal target-size execution evidence not intersected by the caller/root changes;
-- revision-4 documentation evidence not made false by the revision-5 implementation.
+- P1-P3 scientific/reducer/execution semantics;
+- P4-A CAS/transition-identity evidence;
+- P4-B destructive cutover/quarantine evidence;
+- revision-5 terminal helper behavior not intersecting currentness, subject to fresh P4-E2 regression;
+- nonterminal screen science not intersected by root/helper refactor, subject to affected P4-D regression.
 
 ### Must rerun
 
-- P4-C retention/storage race tests covering first publication;
-- P4-D `select-target-size` caller regression affected by terminal-flow refactoring;
-- all P4-E terminal/invalidation tests, with the new mandatory real-CLI negatives;
-- P4-F STOR tests affected by canonical-root protection changes;
-- P3A9 resolver/reconciliation regression if the terminal loader touches those call paths;
-- final P4-G1 assembled integration and affected-surface regression.
+- P4-C retention/root/storage race tests;
+- P4-D `select-target-size` affected regression;
+- all P4-E terminal/currentness/view/report tests;
+- P4-F STOR/structural tests affected by root ownership and view changes;
+- P3A9 resolver/reconciliation tests if terminal loader routing touches those surfaces;
+- final P4-G2 assembled integration and affected-surface regression.
 
-## Mandatory evidence to record before reclosure
+## Closure discipline
 
-### P4-C1
+Do not mark P4-C2 or P4-E2 closed from helper-level tests. Their semantic owners are respectively:
 
-Record the exact production point at which the canonical generation root becomes deletion-protected,
-and the real-owner race test proving:
+```text
+real select-target-size -> real P3 first publication -> real production STOR authorization
+```
 
-- real CampaignStore/SQLite;
-- real P3 screen initializer executes once;
-- real production STOR destructive authorization runs from an independent process/connection during
-  the first-publication interval;
-- root and freshly published evidence cannot be deleted despite no adopted head;
-- unrelated reclaimable residue is not permanently pinned;
-- no CampaignStore write transaction encloses P3 mutation/I/O.
+and
 
-### P4-E1
+```text
+real CampaignStore current revision -> full current terminal validation -> terminal view/report/current consumer
+```
 
-Record real parser + real CampaignStore + real P1/P2 + real P3 resolver/reconciler results for:
-
-- unchanged fresh-process terminal selection reload, including stale/missing rebuildable
-  `current_head.json`, with zero retraining;
-- missing immutable adopted head -> corruption before terminal result exposure;
-- corrupt immutable adopted head -> corruption before terminal result exposure;
-- tampered CampaignStore terminal state -> rejection;
-- target-size scientific identity changes covering seeds/order, fidelity, metric/policy,
-  partition/protected relation/hard support, and common preparation/training/execution context ->
-  fail closed with guidance to `prepare`, no stale terminal output;
-- CV-only/production-only changes -> identical validated terminal result, same target-size generation,
-  zero retraining;
-- terminal scientific failure unchanged reload -> validated terminal failure; missing/corrupt P3
-  evidence -> corruption instead of persisted-failure output;
-- terminal result view cannot render current terminal state from a raw CampaignStore revision alone.
-
-Direct calls to `validate_terminal_projection(...)` remain useful focused tests but do **not** close
-these real-caller claims.
-
-## Revision-5 execution and reclosure evidence
-
-### P4-C1: First-publication retention fence hardening
-- **Implementation:** Updated `retention_fence_for_revision()` in `mdstats/training_data/campaign_target_size_retention.py` to derive canonical generation root `workspace / ".mdstats" / "target-size" / f"g{generation}"` when `execution_root` is not yet set in state for protected active lifecycles (`AUTHORITIES_BOUND`, `AWAITING_AUTHORITIES`, `SCREEN_ACTIVE`, `TERMINAL_SELECTED`, `TERMINAL_SCIENTIFIC_FAILURE`).
-- **Validation Test:** `test_p4c_first_publication_retention_fence_protects_root_before_open_attempt_transition` in `tests/test_mlff_target_size_p4c_cross_store_adoption.py`.
-- **Command & Output:**
-  ```bash
-  conda run -n mace pytest -n 16 tests/test_mlff_target_size_p4c_cross_store_adoption.py
-  # Result: 24 passed in 25.10s
-  ```
-
-### P4-E1: Reusable validated terminal reload, invalidation, real CLI caller, and result-view validation
-- **Implementation:**
-  - Implemented `ValidatedTargetSizeTerminalResult` and `load_validated_target_size_terminal_result()` in `mdstats/training_data/campaign_target_size_terminal.py`.
-  - Updated `build_target_size_result_view()` and `write_target_size_result_view()` in `mdstats/training_data/campaign_target_size_view.py` to enforce validation for terminal projections (requiring `resolver` and `definition`).
-  - Refactored `execute_current_select_target_size()` in `mdstats/training_data/campaign_target_size_runtime.py` to route all terminal executions through `load_validated_target_size_terminal_result()`, validating authorities, context, root, adopted head, and re-derived projection before reporting or updating result view.
-- **Validation Tests (8 Mandatory Real-Caller CLI Negatives and Cases):**
-  - `test_p4e_mandatory1_unchanged_fresh_process_reload_with_stale_or_missing_pointer`
-  - `test_p4e_mandatory2_missing_immutable_adopted_head_fails_closed`
-  - `test_p4e_mandatory3_corrupt_immutable_adopted_head_fails_closed`
-  - `test_p4e_mandatory4_persisted_campaign_tamper_fails_closed`
-  - `test_p4e_mandatory5_scientific_configuration_invalidation_fails_closed` (parameterized across seeds, fidelity, target/eval policy, partition budgets, deferrals)
-  - `test_p4e_mandatory6_target_size_neutral_changes_validate_and_stay_terminal`
-  - `test_p4e_mandatory7_terminal_scientific_failure_reload_and_corruption_negative`
-  - `test_p4e_mandatory8_terminal_view_bypass_negative`
-- **Command & Output:**
-  ```bash
-  conda run -n mace pytest -n 16 tests/test_mlff_target_size_p4e_terminal_and_invalidation.py
-  # Result: 36 passed in 51.80s
-  ```
-
-### P4-G1: Final assembled affected-surface closure and regression
-- **Affected Suites Executed:**
-  ```bash
-  conda run -n mace pytest -n 16 \
-    tests/test_mlff_target_size_p4a_campaign_state_cas.py \
-    tests/test_mlff_target_size_p4b_regime_cutover.py \
-    tests/test_mlff_target_size_p4c_cross_store_adoption.py \
-    tests/test_mlff_target_size_p4d_runtime_cutover.py \
-    tests/test_mlff_target_size_p4e_terminal_and_invalidation.py \
-    tests/test_mlff_target_size_p4f_storage_docs_structure.py \
-    tests/test_mlff_target_size_p4g_assembled_integration.py \
-    tests/test_mlff_target_size_p3a9_head_pointer_reconciliation.py
-  # Result: 161 passed in 74.60s (0:01:14)
-  ```
-- **Structural Integrity:**
-  - Zero duplicate terminal loaders or generation/root authorities created.
-  - Zero raw/unvalidated terminal returns.
-  - Full conformance with frozen parent workplan and Protocol 5 dual closure.
-
+P4 metadata remains `status: active` and P5 remains blocked until both stages and fresh P4-G2 assembled closure pass.
