@@ -12,6 +12,7 @@ from dataclasses import replace
 import ase
 import pytest
 import torch
+from torch_ema import ExponentialMovingAverage
 
 import tests.test_mlff_target_size_execution_p3c as p3c
 import tests.test_mlff_target_size_execution_p3e as p3e
@@ -90,34 +91,90 @@ def _small_architecture() -> dict[str, object]:
     return architecture
 
 
-def _fixture(tmp_path: Path, *, evaluation_model_state: str = EVALUATION_MODEL_STATE_LIVE):
+def _fixture(
+    tmp_path: Path,
+    *,
+    with_ema: bool = False,
+    evaluation_model_state: str = EVALUATION_MODEL_STATE_LIVE,
+):
     config = _configuration()
     model = build_mace_model_from_configuration(config)
-    state = OrderedDict(
-        (str(name), value.detach().cpu().clone())
-        for name, value in model.state_dict().items()
-    )
-    live = [parameter.detach().cpu().clone() for parameter in model.parameters()]
     architecture_digest = mace_model_execution_architecture_digest(model)
-
+    tmp_path.mkdir(parents=True, exist_ok=True)
     raw_checkpoint_path = tmp_path / "checkpoint-epoch-0.pt"
-    torch.save(
-        {
-            "model": state,
-            "optimizer": {},
-            "lr_scheduler": {},
-        },
-        raw_checkpoint_path,
-    )
 
-    ema_state = None
-    ema_digest = None
-    if evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
-        shadow = [value.clone() for value in live]
-        ema_state = {"shadow_params": shadow}
+    if with_ema or evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
+        ema = ExponentialMovingAverage(model.parameters(), decay=0.9)
+        with torch.no_grad():
+            for parameter in model.parameters():
+                parameter.add_(0.05)
+        ema.update()
+        with torch.no_grad():
+            for parameter in model.parameters():
+                parameter.add_(0.10)
+
+        with ema.average_parameters():
+            state = OrderedDict(
+                (str(name), value.detach().cpu().clone())
+                for name, value in model.state_dict().items()
+            )
+            torch.save(
+                {
+                    "model": state,
+                    "optimizer": {},
+                    "lr_scheduler": {},
+                },
+                raw_checkpoint_path,
+            )
+
+        live = [parameter.detach().cpu().clone() for parameter in model.parameters()]
+        shadow = [value.detach().cpu().clone() for value in ema.shadow_params]
+
+        # Section 4.5 anti-proxy invariant
+        assert not all(
+            torch.equal(l, s) for l, s in zip(live, shadow, strict=True)
+        ), "Fixture invariant failed: live parameters must differ from EMA shadow"
+        state_params = [
+            state[name] for name, _ in model.named_parameters()
+        ]
+        assert all(
+            torch.equal(r, s) for r, s in zip(state_params, shadow, strict=True)
+        ), "Fixture invariant failed: checkpoint parameters must equal EMA shadow"
+        assert not all(
+            torch.equal(r, l) for r, l in zip(state_params, live, strict=True)
+        ), "Fixture invariant failed: checkpoint parameters must differ from live state"
+        assert all(
+            torch.equal(m.detach().cpu(), l)
+            for m, l in zip(model.parameters(), live, strict=True)
+        ), "Fixture invariant failed: model parameters must return to live state outside context"
+
+        ema_state = {
+            "decay": 0.9,
+            "num_updates": 1,
+            "shadow_params": shadow,
+            "collected_params": None,
+        }
         ema_digest = _tensor_state_digest(
             shadow, schema="mdstats.train2-ema-state.v1"
         )
+    else:
+        state = OrderedDict(
+            (str(name), value.detach().cpu().clone())
+            for name, value in model.state_dict().items()
+        )
+        live = [parameter.detach().cpu().clone() for parameter in model.parameters()]
+        shadow = None
+        ema_state = None
+        ema_digest = None
+        torch.save(
+            {
+                "model": state,
+                "optimizer": {},
+                "lr_scheduler": {},
+            },
+            raw_checkpoint_path,
+        )
+
     companion = {
         "schema": TRAIN2_RUNTIME_COMPANION_SCHEMA,
         "live_parameters": live,
@@ -140,6 +197,7 @@ def _fixture(tmp_path: Path, *, evaluation_model_state: str = EVALUATION_MODEL_S
         "model": model,
         "state": state,
         "live": live,
+        "shadow": shadow,
         "architecture_digest": architecture_digest,
         "companion": companion,
         "summary": summary,
@@ -165,7 +223,7 @@ def _authenticate(fixture, *, allow_forward_override: bool = False, config=None)
 def test_p3a4_real_mace_state_dict_reconstructs_one_provider_and_forwards(
     tmp_path: Path,
 ) -> None:
-    fixture = _fixture(tmp_path)
+    fixture = _fixture(tmp_path, with_ema=False)
 
     provider, evaluated_digest, _companion = _authenticate(fixture)
 
@@ -191,11 +249,55 @@ def test_p3a4_real_mace_state_dict_reconstructs_one_provider_and_forwards(
     )
 
 
-def test_p3a4_real_mace_no_override_runs_through_boundary_snapshot_owner(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_p3a4_real_mace_ema_checkpoint_semantics_reproducer(
+    tmp_path: Path,
 ) -> None:
-    """The production direct-inference owner also consumes the real snapshot."""
+    """Real MACE EMA checkpoint-semantics reproducer (Section 4.1).
 
+    Proves that:
+    1. A real MACE model reconstructed through candidate config with real EMA
+       has divergent live vs shadow parameter states.
+    2. Saving under real ``ema.average_parameters()`` produces checkpoint model
+       parameters equal to the EMA shadow, differing from live parameters.
+    3. Exiting ``ema.average_parameters()`` restores live parameters.
+    4. The production target-size provider authentication path authenticates the
+       raw checkpoint parameters against the EMA shadow, restores the provider
+       to the authenticated live state, and tiny CPU forward succeeds with no override.
+    """
+    fixture = _fixture(
+        tmp_path, with_ema=True, evaluation_model_state=EVALUATION_MODEL_STATE_LIVE
+    )
+
+    provider, evaluated_digest, _companion = _authenticate(
+        fixture, allow_forward_override=False
+    )
+
+    assert isinstance(provider, MaceCalculatorProvider)
+    assert not isinstance(provider.model, _AuthenticatedParameterShell)
+    assert provider.model is provider._calculator.models[0]
+    assert provider.runtime_architecture_digest
+    assert evaluated_digest == fixture["summary"].live_parameter_digest
+    assert all(
+        torch.equal(p.detach().cpu(), l)
+        for p, l in zip(provider.model.parameters(), fixture["live"], strict=True)
+    )
+
+    prediction = provider.predict(
+        ase.Atoms("H2", positions=((0.0, 0.0, 0.0), (0.0, 0.0, 0.74)))
+    )
+    assert torch.isfinite(torch.as_tensor(prediction.energy_ev))
+    assert torch.isfinite(
+        torch.as_tensor(prediction.forces_ev_per_angstrom.copy())
+    ).all()
+
+
+def _run_direct_inference_test(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    with_ema: bool,
+    evaluation_model_state: str,
+) -> None:
     env = p3e._env(tmp_path)
     definition = env["aggregate"].definition
     requirements = p3e.derive_active_boundary_requirements(
@@ -213,6 +315,8 @@ def test_p3a4_real_mace_no_override_runs_through_boundary_snapshot_owner(
         optimizer_policy=env["optimizer"],
         optimizer_seed=seed,
     )
+    if trajectory.evaluation_model_state != evaluation_model_state:
+        trajectory = replace(trajectory, evaluation_model_state=evaluation_model_state)
     projection = project_target_size_candidate_preparation(
         env["common"], definition, size
     )
@@ -237,16 +341,8 @@ def test_p3a4_real_mace_no_override_runs_through_boundary_snapshot_owner(
         ).read_text(encoding="utf-8")
     )
     model = build_mace_model_from_configuration(config_payload)
-    state = OrderedDict(
-        (str(name), value.detach().cpu().clone())
-        for name, value in model.state_dict().items()
-    )
-    live = [parameter.detach().cpu().clone() for parameter in model.parameters()]
-    shadow = [value.clone() for value in live]
     architecture_digest = mace_model_execution_architecture_digest(model)
 
-    # Use the real TRAIN2 boundary summary/companion geometry, then replace
-    # only the synthetic model state with a real MACE 0.3.16 checkpoint state.
     checkpoint_directory = tmp_path / "real-boundary-source"
     checkpoint_directory.mkdir(parents=True, exist_ok=True)
     plan = target_size_rung_plan(
@@ -260,16 +356,64 @@ def test_p3a4_real_mace_no_override_runs_through_boundary_snapshot_owner(
         seed=1,
     )
     raw_checkpoint_path = checkpoint_directory / "model_run-7_epoch-0.pt"
-    torch.save(
-        {"model": state, "optimizer": {}, "lr_scheduler": {}},
-        raw_checkpoint_path,
-    )
+
+    if with_ema:
+        ema = ExponentialMovingAverage(model.parameters(), decay=0.9)
+        with torch.no_grad():
+            for parameter in model.parameters():
+                parameter.add_(0.05)
+        ema.update()
+        with torch.no_grad():
+            for parameter in model.parameters():
+                parameter.add_(0.10)
+
+        with ema.average_parameters():
+            state = OrderedDict(
+                (str(name), value.detach().cpu().clone())
+                for name, value in model.state_dict().items()
+            )
+            torch.save(
+                {"model": state, "optimizer": {}, "lr_scheduler": {}},
+                raw_checkpoint_path,
+            )
+
+        live = [parameter.detach().cpu().clone() for parameter in model.parameters()]
+        shadow = [value.detach().cpu().clone() for value in ema.shadow_params]
+
+        assert not all(
+            torch.equal(l, s) for l, s in zip(live, shadow, strict=True)
+        ), "Fixture invariant failed: live parameters must differ from EMA shadow"
+        state_params = [state[name] for name, _ in model.named_parameters()]
+        assert all(
+            torch.equal(r, s) for r, s in zip(state_params, shadow, strict=True)
+        ), "Fixture invariant failed: checkpoint parameters must equal EMA shadow"
+
+        ema_state = {
+            "decay": 0.9,
+            "num_updates": 1,
+            "shadow_params": shadow,
+            "collected_params": None,
+        }
+        ema_digest = _tensor_state_digest(
+            shadow, schema="mdstats.train2-ema-state.v1"
+        )
+    else:
+        state = OrderedDict(
+            (str(name), value.detach().cpu().clone())
+            for name, value in model.state_dict().items()
+        )
+        live = [parameter.detach().cpu().clone() for parameter in model.parameters()]
+        shadow = None
+        ema_state = None
+        ema_digest = None
+        torch.save(
+            {"model": state, "optimizer": {}, "lr_scheduler": {}},
+            raw_checkpoint_path,
+        )
+
     raw_sha = _sha256(raw_checkpoint_path)
     live_digest = _tensor_state_digest(
         live, schema="mdstats.train2-live-parameters.v1"
-    )
-    ema_digest = _tensor_state_digest(
-        shadow, schema="mdstats.train2-ema-state.v1"
     )
     companion_path = checkpoint_directory / "train2_runtime.pt"
     companion = torch.load(
@@ -277,11 +421,7 @@ def test_p3a4_real_mace_no_override_runs_through_boundary_snapshot_owner(
     )
     companion["raw_checkpoint_sha256"] = raw_sha
     companion["live_parameters"] = live
-    companion["ema_state"] = {
-        **dict(companion["ema_state"]),
-        "shadow_params": shadow,
-        "collected_params": None,
-    }
+    companion["ema_state"] = ema_state
     companion["model_architecture_digest"] = architecture_digest
     torch.save(companion, companion_path)
     optimizer_state_digest = digest(
@@ -383,11 +523,207 @@ def test_p3a4_real_mace_no_override_runs_through_boundary_snapshot_owner(
     assert evidence.device == provider.device == "cpu"
     assert evidence.default_dtype == provider.default_dtype == "float64"
     assert evidence.backend_policy == provider.backend_policy == "eager"
-    assert evidence.evaluated_model_state_digest == (
-        ema_digest
-        if trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_EMA
-        else live_digest
+
+    if evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
+        assert evidence.evaluated_model_state_digest == ema_digest
+        assert all(
+            torch.equal(p.detach().cpu(), s)
+            for p, s in zip(provider.model.parameters(), shadow, strict=True)
+        )
+    else:
+        assert evidence.evaluated_model_state_digest == live_digest
+        assert all(
+            torch.equal(p.detach().cpu(), l)
+            for p, l in zip(provider.model.parameters(), live, strict=True)
+        )
+
+
+def test_p3a4_real_mace_no_override_direct_inference_live_with_ema_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Production direct inference: LIVE evaluation with EMA enabled in TRAIN2 (Section 4.2)."""
+    _run_direct_inference_test(
+        tmp_path,
+        monkeypatch,
+        with_ema=True,
+        evaluation_model_state=EVALUATION_MODEL_STATE_LIVE,
     )
+
+
+def test_p3a4_real_mace_no_override_direct_inference_ema_with_divergent_shadow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Production direct inference: EMA evaluation with divergent shadow (Section 4.3)."""
+    _run_direct_inference_test(
+        tmp_path,
+        monkeypatch,
+        with_ema=True,
+        evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
+    )
+
+
+def test_p3a4_ema_enabled_raw_state_mismatch_rejected(tmp_path: Path) -> None:
+    """EMA-enabled raw-state mismatch is rejected before forward (Section 4.4 #1)."""
+    fixture = _fixture(
+        tmp_path, with_ema=True, evaluation_model_state=EVALUATION_MODEL_STATE_EMA
+    )
+    bad_state = OrderedDict(fixture["state"])
+    parameter_name = next(
+        name for name in bad_state if name in dict(fixture["model"].named_parameters())
+    )
+    bad_state[parameter_name] = bad_state[parameter_name].clone()
+    bad_state[parameter_name].reshape(-1)[0] += 1.0e-3
+    torch.save(
+        {"model": bad_state, "optimizer": {}, "lr_scheduler": {}},
+        fixture["raw_checkpoint_path"],
+    )
+
+    with pytest.raises(TrainingDataInputError, match="checkpoint model parameters"):
+        _authenticate(fixture)
+
+
+def test_p3a4_ema_disabled_raw_state_mismatch_rejected(tmp_path: Path) -> None:
+    """EMA-disabled raw-state mismatch is rejected before forward (Section 4.4 #2)."""
+    fixture = _fixture(
+        tmp_path, with_ema=False, evaluation_model_state=EVALUATION_MODEL_STATE_LIVE
+    )
+    bad_state = OrderedDict(fixture["state"])
+    parameter_name = next(
+        name for name in bad_state if name in dict(fixture["model"].named_parameters())
+    )
+    bad_state[parameter_name] = bad_state[parameter_name].clone()
+    bad_state[parameter_name].reshape(-1)[0] += 1.0e-3
+    torch.save(
+        {"model": bad_state, "optimizer": {}, "lr_scheduler": {}},
+        fixture["raw_checkpoint_path"],
+    )
+
+    with pytest.raises(TrainingDataInputError, match="checkpoint model parameters"):
+        _authenticate(fixture)
+
+
+def test_p3a4_altered_live_companion_is_rejected(tmp_path: Path) -> None:
+    """Altered live companion is rejected (Section 4.4 #3)."""
+    fixture = _fixture(tmp_path, with_ema=True)
+    altered_live = [value.clone() for value in fixture["live"]]
+    altered_live[0].reshape(-1)[0] += 1.0e-3
+    altered_companion = dict(fixture["companion"])
+    altered_companion["live_parameters"] = altered_live
+    torch.save(altered_companion, fixture["companion_path"])
+
+    with pytest.raises(TrainingDataInputError, match="live parameter digest"):
+        _authenticate(fixture)
+
+
+def test_p3a4_altered_ema_shadow_is_rejected(tmp_path: Path) -> None:
+    """Altered EMA shadow is rejected (Section 4.4 #4)."""
+    # 1. Altered shadow values in companion
+    fixture = _fixture(
+        tmp_path / "altered-val", with_ema=True, evaluation_model_state=EVALUATION_MODEL_STATE_EMA
+    )
+    altered_shadow = [value.clone() for value in fixture["shadow"]]
+    altered_shadow[0].reshape(-1)[0] += 1.0e-3
+    altered_companion = dict(fixture["companion"])
+    altered_companion["ema_state"] = {
+        **fixture["companion"]["ema_state"],
+        "shadow_params": altered_shadow,
+    }
+    torch.save(altered_companion, fixture["companion_path"])
+
+    with pytest.raises(TrainingDataInputError, match="(checkpoint model parameters|EMA state digest|EMA shadow)"):
+        _authenticate(fixture)
+
+    # 2. Altered shadow cardinality (missing parameter)
+    fixture_card = _fixture(
+        tmp_path / "altered-card", with_ema=True, evaluation_model_state=EVALUATION_MODEL_STATE_EMA
+    )
+    altered_companion_card = dict(fixture_card["companion"])
+    altered_companion_card["ema_state"] = {
+        **fixture_card["companion"]["ema_state"],
+        "shadow_params": list(fixture_card["shadow"][:-1]),
+    }
+    torch.save(altered_companion_card, fixture_card["companion_path"])
+
+    with pytest.raises(TrainingDataInputError, match="(cardinality|checkpoint parameter cardinality|EMA shadow)"):
+        _authenticate(fixture_card)
+
+    # 3. Altered shadow shape
+    fixture_shape = _fixture(
+        tmp_path / "altered-shape", with_ema=True, evaluation_model_state=EVALUATION_MODEL_STATE_EMA
+    )
+    bad_shape_shadow = [value.clone() for value in fixture_shape["shadow"]]
+    bad_shape_shadow[0] = bad_shape_shadow[0].unsqueeze(0)
+    altered_companion_shape = dict(fixture_shape["companion"])
+    altered_companion_shape["ema_state"] = {
+        **fixture_shape["companion"]["ema_state"],
+        "shadow_params": bad_shape_shadow,
+    }
+    torch.save(altered_companion_shape, fixture_shape["companion_path"])
+
+    with pytest.raises((TrainingDataInputError, MaceModelStateCompatibilityError), match="(shape|checkpoint parameter)"):
+        _authenticate(fixture_shape)
+
+
+def test_p3a4_checkpoint_semantics_independent_of_evaluation_choice(
+    tmp_path: Path,
+) -> None:
+    """Raw checkpoint expectations depend on TRAIN2 EMA state, not EVAL2 choice (Section 4.4 #5)."""
+    live_eval_fixture = _fixture(
+        tmp_path / "live-eval",
+        with_ema=True,
+        evaluation_model_state=EVALUATION_MODEL_STATE_LIVE,
+    )
+    provider_live, digest_live, _ = _authenticate(live_eval_fixture)
+    assert digest_live == live_eval_fixture["summary"].live_parameter_digest
+    assert all(
+        torch.equal(p.detach().cpu(), l)
+        for p, l in zip(
+            provider_live.model.parameters(),
+            live_eval_fixture["live"],
+            strict=True,
+        )
+    )
+
+    ema_eval_fixture = dict(live_eval_fixture)
+    ema_eval_fixture["trajectory"] = SimpleNamespace(
+        evaluation_model_state=EVALUATION_MODEL_STATE_EMA
+    )
+    provider_ema, digest_ema, _ = _authenticate(ema_eval_fixture)
+    assert digest_ema == live_eval_fixture["summary"].ema_state_digest
+    assert all(
+        torch.equal(p.detach().cpu(), s)
+        for p, s in zip(
+            provider_ema.model.parameters(),
+            live_eval_fixture["shadow"],
+            strict=True,
+        )
+    )
+
+    bad_checkpoint_fixture = _fixture(
+        tmp_path / "bad-raw",
+        with_ema=True,
+        evaluation_model_state=EVALUATION_MODEL_STATE_LIVE,
+    )
+    live_param_state = OrderedDict(bad_checkpoint_fixture["state"])
+    for (name, _), live_val in zip(
+        bad_checkpoint_fixture["model"].named_parameters(),
+        bad_checkpoint_fixture["live"],
+        strict=True,
+    ):
+        live_param_state[name] = live_val.clone()
+    torch.save(
+        {"model": live_param_state, "optimizer": {}, "lr_scheduler": {}},
+        bad_checkpoint_fixture["raw_checkpoint_path"],
+    )
+
+    with pytest.raises(TrainingDataInputError, match="checkpoint model parameters"):
+        _authenticate(bad_checkpoint_fixture)
+
+    bad_checkpoint_fixture["trajectory"] = SimpleNamespace(
+        evaluation_model_state=EVALUATION_MODEL_STATE_EMA
+    )
+    with pytest.raises(TrainingDataInputError, match="checkpoint model parameters"):
+        _authenticate(bad_checkpoint_fixture)
 
 
 def test_p3a4_incompatible_real_mace_state_dict_is_rejected_before_forward(
@@ -405,49 +741,6 @@ def test_p3a4_incompatible_real_mace_state_dict_is_rejected_before_forward(
     )
 
     with pytest.raises(MaceModelStateCompatibilityError, match="shape"):
-        _authenticate(fixture)
-
-
-def test_p3a4_raw_state_value_mismatch_is_rejected_before_forward(
-    tmp_path: Path,
-) -> None:
-    fixture = _fixture(tmp_path)
-    bad_state = OrderedDict(fixture["state"])
-    parameter_name = next(
-        name for name in bad_state if name in dict(fixture["model"].named_parameters())
-    )
-    bad_state[parameter_name] = bad_state[parameter_name].clone()
-    bad_state[parameter_name].reshape(-1)[0] += 1.0e-3
-    torch.save(
-        {"model": bad_state, "optimizer": {}, "lr_scheduler": {}},
-        fixture["raw_checkpoint_path"],
-    )
-
-    with pytest.raises(TrainingDataInputError, match="checkpoint model parameters"):
-        _authenticate(fixture)
-
-
-def test_p3a4_altered_live_companion_is_rejected(tmp_path: Path) -> None:
-    fixture = _fixture(tmp_path)
-    altered_live = [value.clone() for value in fixture["live"]]
-    altered_live[0].reshape(-1)[0] += 1.0e-3
-    altered_companion = dict(fixture["companion"])
-    altered_companion["live_parameters"] = altered_live
-    torch.save(altered_companion, fixture["companion_path"])
-
-    with pytest.raises(TrainingDataInputError, match="live parameter digest"):
-        _authenticate(fixture)
-
-
-def test_p3a4_ema_shadow_mismatch_is_rejected(tmp_path: Path) -> None:
-    fixture = _fixture(tmp_path, evaluation_model_state=EVALUATION_MODEL_STATE_EMA)
-    altered_shadow = [value.clone() for value in fixture["live"]]
-    altered_shadow[0].reshape(-1)[0] += 1.0e-3
-    altered_companion = dict(fixture["companion"])
-    altered_companion["ema_state"] = {"shadow_params": altered_shadow}
-    torch.save(altered_companion, fixture["companion_path"])
-
-    with pytest.raises(TrainingDataInputError, match="EMA state digest"):
         _authenticate(fixture)
 
 

@@ -554,12 +554,18 @@ def validate_target_size_candidate_trajectory(
         raise TrainingDataInputError(
             "Trajectory seed-neutral training policy digest does not match execution context."
         )
-    expected_eval_state = "ema" if optimizer_policy.ema else "live"
-    if trajectory.evaluation_model_state != expected_eval_state:
-        raise TrainingDataInputError(
-            f"Trajectory evaluation_model_state '{trajectory.evaluation_model_state}' "
-            f"does not match optimizer policy EMA convention '{expected_eval_state}'."
-        )
+    if optimizer_policy.ema:
+        if trajectory.evaluation_model_state not in ("ema", "live"):
+            raise TrainingDataInputError(
+                f"Trajectory evaluation_model_state '{trajectory.evaluation_model_state}' "
+                "must be 'ema' or 'live' when optimizer policy EMA is enabled."
+            )
+    else:
+        if trajectory.evaluation_model_state != "live":
+            raise TrainingDataInputError(
+                f"Trajectory evaluation_model_state '{trajectory.evaluation_model_state}' "
+                "must be 'live' when optimizer policy EMA is disabled."
+            )
     projection = project_target_size_candidate_preparation(
         common, definition, trajectory.target_size
     )

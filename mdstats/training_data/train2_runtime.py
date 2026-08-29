@@ -294,6 +294,114 @@ def _verify_train2_continuation_content_digests(
         )
 
 
+def verify_train2_checkpoint_model_parameters(
+    raw_parameters: Sequence[Any] | Mapping[str, Any],
+    *,
+    companion: Mapping[str, Any],
+    summary: Any,
+) -> None:
+    """Authenticate raw MACE checkpoint model parameter values against TRAIN2 provenance.
+
+    When EMA is enabled, MACE 0.3.16 saves checkpoints inside
+    ``with ema.average_parameters():``, replacing model parameters with EMA
+    shadow values. Therefore, raw checkpoint parameters must match the
+    authenticated EMA shadow state. When EMA is disabled, raw checkpoint
+    parameters match the authenticated live continuation state.
+
+    This rule is derived strictly from authenticated TRAIN2 EMA presence in
+    the runtime summary/companion, independent of downstream EVAL2 evaluation choice.
+    """
+    import torch
+
+    if isinstance(raw_parameters, Mapping):
+        raw_list = list(raw_parameters.values())
+    else:
+        raw_list = list(raw_parameters)
+
+    ema_state_digest = getattr(summary, "ema_state_digest", None)
+    if isinstance(summary, Mapping) and ema_state_digest is None:
+        ema_state_digest = summary.get("ema_state_digest")
+
+    if ema_state_digest is not None:
+        ema_state = companion.get("ema_state")
+        if not isinstance(ema_state, Mapping):
+            raise TrainingDataInputError(
+                "TRAIN2 continuation companion EMA state is missing."
+            )
+        shadow_params = ema_state.get("shadow_params")
+        if not isinstance(shadow_params, list) or not shadow_params:
+            raise TrainingDataInputError(
+                "TRAIN2 continuation companion EMA shadow parameters are missing."
+            )
+        if len(raw_list) != len(shadow_params):
+            raise TrainingDataInputError(
+                f"TRAIN2 checkpoint parameter cardinality ({len(raw_list)}) "
+                f"differs from EMA shadow cardinality ({len(shadow_params)})."
+            )
+        for index, (raw_val, shadow_val) in enumerate(
+            zip(raw_list, shadow_params, strict=True)
+        ):
+            if not torch.is_tensor(raw_val) or not torch.is_tensor(shadow_val):
+                raise TrainingDataInputError(
+                    f"TRAIN2 checkpoint parameter at index {index} is not a tensor."
+                )
+            if (
+                tuple(raw_val.shape) != tuple(shadow_val.shape)
+                or raw_val.dtype != shadow_val.dtype
+            ):
+                raise TrainingDataInputError(
+                    f"TRAIN2 checkpoint parameter at index {index} shape/dtype "
+                    "differs from EMA shadow."
+                )
+            if not bool(torch.equal(raw_val.detach().cpu(), shadow_val.detach().cpu())):
+                raise TrainingDataInputError(
+                    "TRAIN2 checkpoint model parameters do not match the "
+                    "authenticated EMA shadow state."
+                )
+    else:
+        live = companion.get("live_parameters")
+        if not isinstance(live, list) or not live:
+            raise TrainingDataInputError(
+                "TRAIN2 continuation companion live parameters are missing."
+            )
+        if len(raw_list) != len(live):
+            raise TrainingDataInputError(
+                f"TRAIN2 checkpoint parameter cardinality ({len(raw_list)}) "
+                f"differs from live parameter cardinality ({len(live)})."
+            )
+        live_digest = getattr(summary, "live_parameter_digest", None)
+        if isinstance(summary, Mapping) and live_digest is None:
+            live_digest = summary.get("live_parameter_digest")
+        raw_digest = _tensor_state_digest(
+            raw_list, schema="mdstats.train2-live-parameters.v1"
+        )
+        if live_digest is not None and raw_digest != live_digest:
+            raise TrainingDataInputError(
+                "TRAIN2 checkpoint model parameters do not match the "
+                "authenticated live continuation state."
+            )
+        for index, (raw_val, live_val) in enumerate(
+            zip(raw_list, live, strict=True)
+        ):
+            if not torch.is_tensor(raw_val) or not torch.is_tensor(live_val):
+                raise TrainingDataInputError(
+                    f"TRAIN2 checkpoint parameter at index {index} is not a tensor."
+                )
+            if (
+                tuple(raw_val.shape) != tuple(live_val.shape)
+                or raw_val.dtype != live_val.dtype
+            ):
+                raise TrainingDataInputError(
+                    f"TRAIN2 checkpoint parameter at index {index} shape/dtype "
+                    "differs from live state."
+                )
+            if not bool(torch.equal(raw_val.detach().cpu(), live_val.detach().cpu())):
+                raise TrainingDataInputError(
+                    "TRAIN2 checkpoint model parameters do not match the "
+                    "authenticated live continuation state."
+                )
+
+
 def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
     matches = []
     for item in directory.glob("*.pt"):
@@ -1247,4 +1355,5 @@ __all__ = [
     "train2_runtime_should_pause_after_epoch",
     "validate_train2_runtime_continuation_artifacts",
     "load_train2_runtime_summary",
+    "verify_train2_checkpoint_model_parameters",
 ]

@@ -151,7 +151,11 @@ def _authenticate_target_size_provider(
         build_mace_model_from_configuration,
         mace_model_execution_architecture_digest,
     )
-    from ..train2_runtime import TRAIN2_RUNTIME_COMPANION_SCHEMA, _tensor_state_digest
+    from ..train2_runtime import (
+        TRAIN2_RUNTIME_COMPANION_SCHEMA,
+        _tensor_state_digest,
+        verify_train2_checkpoint_model_parameters,
+    )
 
     raw_checkpoint = raw_checkpoint_path.read_bytes()
     if hashlib.sha256(raw_checkpoint).hexdigest() != validate_digest(
@@ -280,13 +284,11 @@ def _authenticate_target_size_provider(
             raw_checkpoint_state[name]
             for name, _parameter in provider.model.named_parameters()
         )
-        raw_parameter_digest = _tensor_state_digest(
-            raw_parameter_values, schema="mdstats.train2-live-parameters.v1"
+        verify_train2_checkpoint_model_parameters(
+            raw_parameter_values,
+            companion=companion,
+            summary=summary,
         )
-        if raw_parameter_digest != summary.live_parameter_digest:
-            raise TrainingDataInputError(
-                "TRAIN2 checkpoint model parameters do not match the authenticated live continuation state."
-            )
         loaded_architecture_digest = mace_model_execution_architecture_digest(
             provider.model
         )
