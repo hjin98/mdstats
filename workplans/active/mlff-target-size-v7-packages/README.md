@@ -4,7 +4,7 @@ These files decompose `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_A
 
 A requirement omitted from a package is **not waived** if it is frozen by V7. A package may not reinterpret V7 to preserve legacy code/tests. Newly discovered necessary implementation consequences that preserve V7 are incorporated locally; reopen design only on a V7-listed reopen condition or equivalent material evidence.
 
-P3 revision 5 consists of the consolidated base contract in `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` **plus** the mandatory Review-2 amendment in `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md` **plus** the mandatory Review-3 closure amendment in `P3_REVIEW3_EXECUTION_OWNER_IMMUTABILITY_CLOSURE_FIX.md`. Review-2 remains authoritative; Review-3 is cumulative and adds exact closure instructions for the still-open D/E/F implementation gaps found at implementation commit `d7e1aead580d3cecad6eec16219bda00317b1dfc`. P1/P2 and P3-A/B/C remain frozen except for the explicit validation/persistence consequences required by the amendments. P4 remains blocked until the cumulative revision-5 P3 exit gate passes.
+P3 revision 6 consists of the consolidated base contract in `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` **plus** the mandatory Review-2 amendment in `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md` **plus** the mandatory Review-3 amendment in `P3_REVIEW3_EXECUTION_OWNER_IMMUTABILITY_CLOSURE_FIX.md` **plus** the mandatory final Review-4 closure amendment in `P3_REVIEW4_FINAL_OWNER_REPLAY_CLOSURE_FIX.md`. Review-2 and Review-3 remain authoritative; Review-4 is cumulative and removes the remaining implementation ambiguity found at `262cd3b114e6cbc39f67361257a97cb39030c18a` (`P3A2`). P1/P2 and P3-A/B/C scientific semantics remain frozen except for the validator/persistence consequences explicitly required by the amendments. P4 remains blocked until the cumulative revision-6 P3 exit gate passes.
 
 ## Mandatory sequence
 
@@ -14,7 +14,8 @@ P1 neutral scientific substrate
   -> P3 candidate execution and paired-seed screen
        base revision-3 contract
        + mandatory revision-4 Review-2 authenticated-evaluation/restart amendment
-       + mandatory revision-5 Review-3 execution-owner/immutability closure amendment
+       + mandatory revision-5 Review-3 execution-owner/immutability amendment
+       + mandatory revision-6 Review-4 final owner/replay closure amendment
   -> P4 atomic runtime/persistence cutover
   -> P5 post-selection CV and final production
   -> P6 destructive cleanup and assembled closure
@@ -30,7 +31,7 @@ Do not start dependent executable work until the previous package has both **sem
 - P5 must not feed CV evidence or configuration back into target-size selection.
 - P6 deletes unreachable retired topology only after the V7 current runtime is functionally closed.
 - Stage-local affected regression is required after every material behavior-changing pass before dependent work proceeds.
-- Real-owner acceptance may use bounded scientific fixtures and fake expensive training/prediction below the owner boundary, but may not mock or bypass the orchestration/persistence/state-transition owner being accepted.
+- Real-owner acceptance may use bounded scientific fixtures and fake expensive training/prediction only below the owner boundary, after all provenance/state/input validation whose behavior is under acceptance has executed.
 - Full long GPU/real-production qualification remains deferred to final release; bounded functional, reference-equivalence, and resource checks remain required where affected.
 
 ## Packages
@@ -40,6 +41,7 @@ Do not start dependent executable work until the previous package has both **sem
 3. `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` — canonical common preparation, exact candidate realization/materialization, paired optimizer seeds, exact completed-epoch TRAIN2 continuation, exact-checkpoint M-ladder EVAL2, complete-boundary crash-safe reducer commit, and restart closure.
    - `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md` — mandatory revision-4 corrective authority: exact ordered M_i input authentication, exact boundary live/EMA inference provenance, immutable historical TRAIN2 boundary snapshots, per-cell execution-proof records, completion-bound batches, and deterministic full-history restart replay.
    - `P3_REVIEW3_EXECUTION_OWNER_IMMUTABILITY_CLOSURE_FIX.md` — mandatory revision-5 cumulative closure authority: real validator execution inside direct inference, shared static-MACE inference reuse, policy-faithful live/EMA state, self-authenticating predictions, re-derivation validators, create-or-verify immutable publication, explicit success/TRAIN2-failure/EVAL2-failure cell evidence, resolvable full restart graph, conflict-safe concurrency, and fresh-process assembled replay.
+   - `P3_REVIEW4_FINAL_OWNER_REPLAY_CLOSURE_FIX.md` — mandatory revision-6 final closure authority: no optional accepted-path validation, immutable-snapshot-only direct inference, shared provider/state loading with actual loaded-state digest proof, ExtXYZ byte-order authentication for exact M, mandatory prediction-to-metric/failure linkage, complete resolver coverage for snapshot/rung/continuation/failure ancestry, non-destructive idempotent publication, exclusive logical-cell commit, fixed full scientific replay algorithm, and fresh-process success/TRAIN2-failure/EVAL2-failure acceptance.
 4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — atomic current-runtime, state-schema, receipt, restart and invalidation transition.
 5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — exact-T_selected CV and fresh final-production path.
 6. `P6_DESTRUCTIVE_CLEANUP_FINAL_CLOSURE.md` — remove retired architecture and perform assembled final acceptance.
