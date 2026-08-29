@@ -17,8 +17,8 @@ and what remains. It is coordination material, not product documentation.
 | P4-C | Cross-store adoption, retention fence, restart, concurrency | **CLOSED** |
 | P4-D | Atomic `prepare` / `select-target-size` production switch | **CLOSED** |
 | P4-E | Terminal projection, semantic restart, invalidation | **CLOSED** |
-| P4-F | Full STOR integration, docs, structural closure | in progress |
-| P4-G | Assembled affected-surface closure | not started |
+| P4-F | Full STOR integration, docs, structural closure | **CLOSED** |
+| P4-G | Assembled affected-surface closure | in progress |
 
 ---
 
@@ -630,3 +630,113 @@ test still asserts the execution root, screen window, and adopted head.
 An attempt to build a "foreign training order" by reversing `pi_train` was refused by the P2
 definition's own validator, which is the correct owner behaviour. The negative is now expressed by
 forging the reducer state's membership digest directly, which is the case the derivation must catch.
+
+---
+
+## Pass P4-F — Full STOR integration, docs, structural closure
+
+**State: CLOSED** (semantic + functional).
+
+### What was implemented
+
+**Storage accounting (`storage_accounting.py`)** — `_family_for` now classifies promoted P3
+evidence explicitly instead of pooling it into the generic internal bucket. New helper
+`_target_size_family` maps the campaign-owned execution root
+(`.mdstats/target-size/g<N>/...`) onto the section 10.2 artifact families:
+
+| Path | Family | Retention class |
+|---|---|---|
+| `heads`, `batches`, `completions`, `progress`, `trajectories`, `continuations`, `planned_rungs`, `screen_window.json`, `current_head.json` | `target_size_execution_graph` | restart_critical |
+| `bulk/snapshots`, `snapshots` | `target_size_boundary_snapshots` | restart_critical |
+| `bulk/train2` | `target_size_training_runtime` | restart_critical |
+| `bulk/materializations`, `materializations` | `target_size_candidate_materializations` | restart_critical |
+| `bulk/evaluations`, `evaluation_artifacts`, `roles`, `predictions`, `metrics` | `target_size_evaluation_evidence` | evaluation_capsule |
+| `failures` | `target_size_failure_evidence` | protected_diagnostic |
+
+All are `prohibited` for both automatic and manual reclamation: whether any of it can be reclaimed
+is decided by the retention fence plus reconciliation (P4-C), never by a storage tier.
+
+**Documentation** — `docs/guides/mlff_campaign_cli_user_guide.md` now states plainly that
+`prepare` rebuilds the substrate and **does not select a target size**, that the first `prepare`
+performs the one-time destructive cutover with retired records quarantined rather than migrated
+(and how to resume an interrupted cutover), that `select-target-size` is the only current screening
+entrypoint and the only command that decides `N`, that the selected size and exact selected data are
+re-derived rather than stored decisions, that a terminal scientific outcome is a result rather than
+an interruption, and that `materialize` is unavailable in this release and fails closed. Parser help
+for `prepare`, `select-target-size`, and `materialize` was rewritten to match, along with the
+pipeline stage description. `campaign.toml.example` now documents that the `[partition]` keys define
+the neutral partition the target-size substrate is built on — so changing one requires a fresh
+canonical generation — while cross-validation and production-only settings never invalidate a
+target-size result.
+
+### Evidence executed
+
+`tests/test_mlff_target_size_p4f_storage_docs_structure.py` — **18 passed**. Storage claims run
+through the real `build_campaign_storage_report`, the real `command_storage`, the real
+`_campaign_cleanup` owner, and the real `CampaignOwnershipBoundary`.
+
+| Gate item | Covering tests |
+|---|---|
+| storage report includes promoted families/bytes | `req1_storage_report_accounts_promoted_target_size_families`, `req1_storage_command_reports_target_size_bytes` |
+| safe cleanup preserves the execution root | `req2_safe_cleanup_preserves_the_execution_root` (ages every file 30 days, runs real `_campaign_cleanup` with `dry_run=False`, byte-compares the tree) |
+| fresh-process replay after safe cleanup is identical | `req2_fresh_process_replay_after_safe_cleanup_is_identical` (reopens the store, re-derives the identical terminal state, and a fresh `select-target-size` retrains nothing) |
+| higher tiers cannot reclaim target-size evidence | `req2_manual_cache_tier_cannot_reclaim_target_size_evidence` (every aged file denied) |
+| external/symlink/ambiguous paths remain protected | `req2_external_and_symlink_paths_stay_denied` |
+| docs describe the actual lifecycle | `req3_user_guide_states_prepare_does_not_select`, `req3_user_guide_does_not_claim_a_retired_lifecycle`, `req3_parser_help_describes_the_current_commands`, `req3_config_example_documents_partition_identity_coupling` |
+| no second algorithmic owner | `req4_no_second_target_size_algorithm_owner` |
+| no version-prefixed product names | `req4_no_version_prefixed_production_names` |
+| `target_size_study` unreachable from current entrypoints | `req4_target_size_study_is_unreachable_from_current_entrypoints` (transitive call-graph walk from `command_prepare` / `command_select_target_size`) |
+| exactly one mutable current authority and one canonical generation | `req4_exactly_one_mutable_current_target_size_authority` (only one class in the whole P4 surface binds regime + generation + lifecycle) |
+| `current_head.json` is not campaign authority | `req4_current_head_pointer_is_not_campaign_authority` |
+| no domain map / pre-target CV / complement authority | `req4_no_current_domain_or_pre_target_cv_authority` |
+| no reverse nested lock/transaction path | `req4_no_reverse_nested_lock_or_transaction_path` |
+| every destructive production path carries the fence | `req4_every_destructive_production_path_carries_the_fence` (exactly one `CampaignOwnershipBoundary` construction remains in production, inside the fenced helper) |
+
+The concurrent cleanup/adoption race required by section 10.5 is covered by P4-C
+(`test_p4c_cleanup_racing_publication_and_adoption_deletes_nothing_adoptable`, a separate spawned
+process running real destructive authorization) and
+`test_p4c_production_cleanup_owner_consumes_the_retention_fence`.
+
+Stage-local affected regression: all six P4 suites plus `test_mlff_stor1_storage_accounting`,
+`test_mlff_campaign_cli`, `test_mlff_cli_semantic_orchestration`,
+`test_mlff_rev3_storage_evaluation_optimizations`, and
+`test_mlff_data9b3_campaign_cli_specification` — **214 passed, 1 skipped, 3 failed** (see below).
+
+### Pre-existing failure resolved
+
+`tests/test_mlff_stor1_storage_accounting.py::test_materialization_record_path_does_not_confer_external_cleanup_authority`
+— **now passing.** Diagnosis: the test monkeypatched `_current_materialization_roots` on the
+`campaign_cli` *facade*, while the cleanup owner resolves that helper from `_campaign_cli_core`, so
+the substitution never took effect and the assertion could not be reached. Production behaviour was
+correct throughout (verified directly); the test was ineffective. It now patches the core module and
+genuinely exercises the ownership check.
+
+### Pre-existing failures NOT resolved (out of P4 scope, reported truthfully)
+
+`tests/test_mlff_data9b3_campaign_cli_specification.py` — 3 failures, all present before any P4
+edit and all caused by documentation-authority drift unrelated to the target-size surface:
+
+- `test_data9b3_version_and_user_surface` pins `mdstats.__version__ == "0.20.140a0"`; the package is
+  at `0.20.242a0`.
+- `test_data9b3_architecture_and_stage_plan_integration` asserts an architecture-manual sentence
+  about DATA9B3 "implemented in 0.20.58a0"; the manual is at architecture revision 106 and no longer
+  contains it.
+- `test_data9b3_dependency_graph_contract` asserts dependency-graph `schema_version == 26`; the
+  graph file declares `2`.
+
+None of these concerns target-size behaviour, and none can be made to pass without either re-pinning
+a stale release constant or rewriting architecture documentation that P4 does not own. Re-pinning
+them would manufacture acceptance rather than establish it, so they are left failing and carried
+into the P4-G report as known unresolved documentation drift belonging to a documentation
+reconciliation task.
+
+### Carryover resolved from P4-D
+
+The P4-D note about `preflight` / `status` / `advance` still reading the retired study record stands
+as a **reporting** limitation only: the structural test
+`req4_target_size_study_is_unreachable_from_current_entrypoints` proves the retired loader is
+unreachable from the two current target-size entrypoints, `_load_train2_study_optional` returns
+`None` once the record is quarantined so those commands degrade safely, and no old-runtime loader
+can authorize a current selected target size (the selected size is only ever re-derived through
+`validate_terminal_projection`). Expressing their reporting in terms of the current campaign state
+is left to the post-selection package that reworks those commands.

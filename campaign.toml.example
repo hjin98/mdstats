@@ -46,8 +46,21 @@ mobile_atomic_numbers = [3, 11, 19]
 all_atomic_numbers = [3, 8, 11, 13, 14, 19]
 
 [partition]
+# These settings now define the neutral statistical partition that the current
+# target-size substrate is built on. Changing one changes the target-size
+# scientific identity, which requires a fresh canonical generation rather than an
+# in-place repair. Cross-validation and production-only settings are deliberately
+# excluded from that identity and never invalidate a target-size result.
 minimum_block_frames = 32
 purge_units_between_roles = 1
+# Optional; each unset key keeps the accepted neutral-substrate default.
+# explicit_block_length_frames = 0
+# development_minimum_independent_units = 8
+# outer_monitor_minimum_independent_units = 2
+# calibration_minimum_independent_units = 2
+# locked_interpolation_test_minimum_independent_units = 2
+# allow_calibration_deferral = false
+# minimum_units_per_condition_for_full_outer_roles = 7
 
 [random]
 # Randomized PCA/range-finder seed used only when a DATA7 feature block is too

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+from mdstats.training_data import _campaign_cli_core as campaign_cli_core
 from mdstats.training_data import campaign_cli
 from mdstats.training_data.storage_accounting import (
     ArtifactOwnershipClass,
@@ -176,8 +177,11 @@ def test_materialization_record_path_does_not_confer_external_cleanup_authority(
     old = __import__("time").time() - 24 * 3600
     os.utime(stale, (old, old))
 
+    # The cleanup owner resolves this helper from the core module, so the
+    # substitution has to be installed there; patching the facade re-export
+    # leaves the production lookup untouched.
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli_core,
         "_current_materialization_roots",
         lambda _store: {external_root.resolve()},
     )

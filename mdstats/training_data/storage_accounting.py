@@ -377,6 +377,110 @@ class CampaignOwnershipBoundary:
         return True, (reason or "path is retained by an active lifecycle retention fence")
 
 
+_TARGET_SIZE_RESTART_CAPABILITIES = (
+    "target_size_screen_restart",
+    "deterministic_scientific_replay",
+)
+
+
+def _target_size_family(
+    parts: tuple[str, ...],
+) -> tuple[str, ArtifactRetentionClass, str, str, tuple[str, ...]]:
+    """Classify promoted target-size execution evidence.
+
+    This evidence is the scientific execution authority for the current
+    target-size generation: heads, batches, and completions define the replay
+    graph, and the checkpoint/materialization/evaluation ancestry is what makes
+    that graph re-verifiable.  Reclamation of any of it is decided by the
+    retention fence plus reconciliation, never by a storage tier, so nothing
+    here is automatically or manually eligible.
+    """
+
+    # parts[0] == ".mdstats", parts[1] == "target-size", parts[2] == generation
+    tail = parts[3:]
+    section = tail[0] if tail else ""
+    if section == "bulk":
+        bulk = tail[1] if len(tail) > 1 else ""
+        if bulk == "snapshots":
+            return (
+                "target_size_boundary_snapshots",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_boundary_continuation", "exact_checkpoint_reevaluation"),
+            )
+        if bulk == "train2":
+            return (
+                "target_size_training_runtime",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_completed_epoch_continuation",),
+            )
+        if bulk == "materializations":
+            return (
+                "target_size_candidate_materializations",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_candidate_membership", "candidate_reexecution"),
+            )
+        if bulk == "evaluations":
+            return (
+                "target_size_evaluation_evidence",
+                ArtifactRetentionClass.EVALUATION_CAPSULE,
+                "prohibited",
+                "prohibited",
+                ("exact_m_ladder_reevaluation",),
+            )
+        return (
+            "target_size_execution_bulk",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            _TARGET_SIZE_RESTART_CAPABILITIES,
+        )
+    if section in {"evaluation_artifacts", "roles", "predictions", "metrics"}:
+        return (
+            "target_size_evaluation_evidence",
+            ArtifactRetentionClass.EVALUATION_CAPSULE,
+            "prohibited",
+            "prohibited",
+            ("exact_m_ladder_reevaluation", "metric_reanalysis"),
+        )
+    if section == "failures":
+        return (
+            "target_size_failure_evidence",
+            ArtifactRetentionClass.PROTECTED_DIAGNOSTIC,
+            "prohibited",
+            "prohibited",
+            ("scientific_failure_provenance",),
+        )
+    if section == "snapshots":
+        return (
+            "target_size_boundary_snapshots",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            ("exact_boundary_continuation", "exact_checkpoint_reevaluation"),
+        )
+    if section == "materializations":
+        return (
+            "target_size_candidate_materializations",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            ("exact_candidate_membership", "candidate_reexecution"),
+        )
+    return (
+        "target_size_execution_graph",
+        ArtifactRetentionClass.RESTART_CRITICAL,
+        "prohibited",
+        "prohibited",
+        _TARGET_SIZE_RESTART_CAPABILITIES,
+    )
+
+
 def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, tuple[str, ...]]:
     parts = relative.parts
     posix = relative.as_posix()
@@ -403,6 +507,8 @@ def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, 
             return ("run_models", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "compact_after_production_export", ("cheap_alternative_model_recovery",))
         return ("training_run_runtime", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "manual_review_only", ("training_restart_or_diagnostics",))
     if parts[0] == ".mdstats":
+        if len(parts) >= 2 and parts[1] == "target-size":
+            return _target_size_family(parts)
         if len(parts) >= 2 and parts[1] in {"campaign.sqlite3", "records", "hash-receipts.sqlite3"}:
             return ("campaign_state_and_provenance", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("campaign_state", "scientific_provenance"))
         if len(parts) >= 2 and parts[1] in {"frame-cache", "data7-cache", "data8-fixed-cache", "evaluation-graphs"}:

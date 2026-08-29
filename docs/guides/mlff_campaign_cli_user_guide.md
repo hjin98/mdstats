@@ -199,10 +199,21 @@ After source or tolerance changes, refresh the proposals before approval:
 python tools/mdstats-mlff-campaign.py --config campaign.toml prepare --refresh-inferences
 ```
 
-`prepare` is restartable. For current TRAIN2 campaigns it performs the correlation-aware split, evaluates the
-foundation model on authorized frames, selects/fits the target-size screening inputs, writes the complete qualified-size x screening-seed DATA8 candidate matrix, and requires the screening DATA9A gate to pass. It does not train the configured `n1/n2/n3` target-size trajectories or create the later selected-size CV production matrix. VASP sources are decoded once into a checksummed
-normalized frame cache, and subsequent stages reuse that cache. DATA4 is stored
-as checksummed content-addressed shards rather than a giant SQLite JSON value.
+`prepare` is restartable. For current campaigns it rebuilds the target-size scientific substrate and nothing
+more: the source and canonical frame authority, the neutral statistical base and its protected split-exclusion
+relations, the target-size experiment definition, and the one common preparation shared by every candidate size.
+
+**`prepare` does not select a target size.** It does not train a candidate, run the reducer, rank checkpoints,
+or build a per-size materialization. The candidate ladder it reports is a configured experiment definition, not a
+decision. Everything that decides `N` belongs to `select-target-size`.
+
+The first `prepare` on an existing workspace also performs the one-time destructive target-size cutover. Retired
+selected-size, selector, role-domain, and coverage-selection records are quarantined rather than migrated: they
+are never reinterpreted as current authority, and no mixed old/new runtime exists. If the cutover is interrupted,
+re-run `prepare` to resume that exact cutover; the original process does not need to survive.
+
+VASP sources are decoded once into a checksummed normalized frame cache, and subsequent stages reuse that cache.
+DATA4 is stored as checksummed content-addressed shards rather than a giant SQLite JSON value.
 Use `status` after an interruption; rerun the same command to resume.
 
 The campaign prints per-source and per-stage progress with elapsed time and ETA.
@@ -253,9 +264,28 @@ committing the RTX 3090 to a long campaign.
 python tools/mdstats-mlff-campaign.py --config campaign.toml select-target-size
 ```
 
-For current TRAIN2 campaigns this single restartable command owns the complete target-size experiment. It trains the qualified candidate sizes to the exact configured coarse boundary `n1`, evaluates only those checkpoints and reduces the population, continues survivors to `n2`, then continues finalists to `n3` and freezes one `N*`. Where the deterministic continuation schedule needs a total extent, it derives that value directly from terminal boundary `n3`; it is not a second screening authority. The independent `[training].max_num_epochs` value `n` is reserved for a fresh selected-size production campaign and is not a fourth ordinary screening command. New campaigns default to screen `(n1,n2,n3) = (1,3,10)` and production `n = 30`. Epoch is a controlled variable here: an earlier checkpoint cannot substitute for the configured boundary even when it scores better. Rerunning the command after interruption resumes from the authenticated current boundary; no additional `prepare` or `preflight` is required while the screening DATA8 matrix is unchanged.
+This single restartable command is the only current screening entrypoint, and the only one that trains
+candidates or decides `N`. It trains the qualified candidate sizes to the exact configured coarse boundary `n1`,
+evaluates only those checkpoints and reduces the population, continues survivors to `n2`, then continues
+finalists to `n3` and freezes one `N*`. Where the deterministic continuation schedule needs a total extent, it
+derives that value directly from terminal boundary `n3`; it is not a second screening authority. The independent
+`[training].max_num_epochs` value `n` is reserved for a fresh selected-size production campaign and is not a
+fourth ordinary screening command. New campaigns default to screen `(n1,n2,n3) = (1,3,10)` and production
+`n = 30`. Epoch is a controlled variable here: an earlier checkpoint cannot substitute for the configured
+boundary even when it scores better.
 
-A successful final decision prints `Target data size selected and frozen: n=<N>` and directs the next operation to `materialize`. A typed scientific terminal outcome such as insufficient comparable candidates or nonconvergence at the fixed ceiling preserves its evidence and exposes no production next step.
+Before scheduling anything new, the command reconciles the existing execution evidence, so re-running it after an
+interruption resumes from the authenticated current boundary instead of repeating completed work. Ordinary
+`train` and `evaluate` refuse to schedule the screen; they can never become a second screening scheduler.
+
+The selected size and the exact selected data are never editable fields. They are re-derived from the
+authenticated terminal reducer state and the training order every time they are loaded, and any divergence
+between what is stored and what re-derives fails closed.
+
+A successful final decision reports the frozen `N`. A typed scientific terminal outcome such as insufficient
+comparable candidates or nonconvergence at the configured ceiling is a **result**, not an interruption: it
+preserves its evidence, stays terminal on reload, and exposes no production next step. An incomplete screen with
+no terminal outcome stays operationally resumable instead.
 
 ## 6. Materialize the selected production/CV workload
 
@@ -264,7 +294,11 @@ python tools/mdstats-mlff-campaign.py --config campaign.toml materialize
 python tools/mdstats-mlff-campaign.py --config campaign.toml preflight
 ```
 
-`materialize` is valid only after `N*` is frozen. It reuses the existing preparation machinery to realize exactly the selected-size final-development and configured CV DATA7/DATA8 topology. It does not rerun target-size selection and cannot change `N*`. Because this creates a different active DATA8 matrix, the screening preflight no longer authorizes training; run `preflight` once for the selected production/CV matrix. An unchanged `materialize` rerun is idempotent and does not reopen completed production training/evaluation receipts.
+`materialize` is **unavailable in this release** and fails closed with an explanatory message. The selected size is
+now an authenticated projection of terminal statistical and execution state, so the retired per-variant
+materialization records can no longer supply it, and those records are never reinterpreted as current authority.
+The post-selection production and cross-validation path is delivered by the successor package; until then,
+`select-target-size` remains the last step of the current lifecycle.
 
 ## 7. Inspect, run, and resume production training
 

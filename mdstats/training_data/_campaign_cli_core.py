@@ -162,7 +162,7 @@ class StageState(str, Enum):
 
 HISTORICAL_PIPELINE = (
     ("doctor", "environment and input checks"),
-    ("prepare", "source audit, partitioning, model sweep, and MACE data"),
+    ("prepare", "current target-size scientific substrate; selects nothing"),
     ("preflight", "bounded real-MACE and accelerator smoke test"),
     ("train", "restartable fold/final fine-tuning jobs"),
     ("evaluate", "adaptive full-model selection or historical protocol comparison"),
@@ -29577,7 +29577,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "prepare",
-        help="build initial target-size screening artifacts for TRAIN2; safely resumable",
+        help=(
+            "rebuild the current target-size scientific substrate: source and frame "
+            "authority, the neutral statistical base, the target-size experiment "
+            "definition, and the one common preparation. It does not select a target "
+            "size, train a candidate, or rank anything; safely resumable"
+        ),
     )
     p.add_argument("--approve-manifest", action="store_true", help="approve the reviewed manifest and return; then run plain prepare")
     p.add_argument(
@@ -29611,13 +29616,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "select-target-size",
-        help="run/resume the complete TRAIN2 configurable-fidelity target-size selection funnel",
+        help=(
+            "run/resume the complete configurable-fidelity paired-seed target-size "
+            "screen; this is the only command that trains candidates and decides N"
+        ),
     )
     p.set_defaults(func=command_select_target_size)
 
     p = sub.add_parser(
         "materialize",
-        help="realize the frozen selected-size production and CV DATA7/DATA8 workload",
+        help=(
+            "realize the frozen selected-size production/CV workload; unavailable in "
+            "this release, which fails closed rather than reinterpreting retired "
+            "selected-size records"
+        ),
     )
     p.add_argument(
         "--max-new-domains",
