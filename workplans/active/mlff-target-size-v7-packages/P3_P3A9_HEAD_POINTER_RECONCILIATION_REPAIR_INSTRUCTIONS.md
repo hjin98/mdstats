@@ -4,7 +4,8 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P3-P3A9
 parent_package_id: CODE-MLFF-TARGET-SIZE-V7-P3
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
-status: active
+status: accepted
+accepted_closure_commit: 0bed3080ac4e3ba45f04fdf2fab891cfdc92fe58
 repair_revision: 7
 instruction_revision: 2
 created_date: 2026-08-29
