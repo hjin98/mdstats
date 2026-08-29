@@ -67,6 +67,32 @@ class Eval2NumericalEvaluationError(RuntimeError):
         })
         super().__init__(f"{self.failure_code}: {self.reason}")
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": EVAL2_NUMERICAL_FAILURE_SCHEMA,
+            "failure_code": self.failure_code,
+            "reason": self.reason,
+            "target_role_digest": self.target_role_digest,
+            "prediction_digest": self.prediction_digest,
+            "content_digest": self.content_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> Eval2NumericalEvaluationError:
+        if payload.get("schema") != EVAL2_NUMERICAL_FAILURE_SCHEMA:
+            raise TrainingDataSerializationError("Invalid EVAL2 numerical failure schema.")
+        result = cls(
+            failure_code=str(payload["failure_code"]),
+            reason=str(payload.get("reason", "")),
+            target_role_digest=str(payload["target_role_digest"]),
+            prediction_digest=str(payload["prediction_digest"]),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "EVAL2 numerical failure digest mismatch."
+            )
+        return result
+
 
 # AUDIT-EVAL-PERF1 execution-only cache.  The authoritative target-role and
 # prediction digests remain the scientific identity; this cache only retains

@@ -42,6 +42,10 @@ from .common import (
     project_target_size_candidate_preparation,
 )
 from .context import TargetSizeExecutionContext
+from .persistence import (
+    publish_immutable_bytes_create_or_verify,
+    publish_immutable_json_create_or_verify,
+)
 from .export import (
     TargetSizeExtxyzArtifact,
     validate_target_size_extxyz_artifact,
@@ -800,7 +804,7 @@ def materialize_target_size_candidate(
     frame_data_by_run: Mapping[str, Any],
     output_directory: str | Path,
     optimizer_policy: MaceOptimizerPolicy,
-    extxyz_policy: MaceExtxyzPolicy | None = None,
+    extxyz_policy: MaceExtxyzPolicy,
     frame_array_index: Mapping[str, tuple[Any, Any, int]] | None = None,
 ) -> TargetSizeCandidateMaterialization:
     """Materialize one candidate exactly and idempotently.
@@ -816,7 +820,11 @@ def materialize_target_size_candidate(
 
     root = Path(output_directory)
     root.mkdir(parents=True, exist_ok=True)
-    active_policy = MaceExtxyzPolicy() if extxyz_policy is None else extxyz_policy
+    if not isinstance(extxyz_policy, MaceExtxyzPolicy):
+        raise TrainingDataInputError(
+            "Candidate materialization requires the accepted MaceExtxyzPolicy."
+        )
+    active_policy = extxyz_policy
     if trajectory.target_size != projection.target_size or (
         trajectory.candidate_membership_digest
         != projection.candidate_membership_digest
@@ -868,13 +876,10 @@ def materialize_target_size_candidate(
     )
     config_path = root / f"mace_config_n{trajectory.target_size}_seed{trajectory.optimizer_seed}.yaml"
     config_bytes = json.dumps(config, indent=2, sort_keys=True).encode("utf-8")
-    temporary = config_path.with_suffix(config_path.suffix + ".tmp")
-    with temporary.open("wb") as handle:
-        handle.write(config_bytes)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, config_path)
     config_sha256 = hashlib.sha256(config_bytes).hexdigest()
+    publish_immutable_bytes_create_or_verify(
+        config_path, config_bytes, expected_sha256=config_sha256
+    )
     record = TargetSizeCandidateMaterialization(
         trajectory_digest=trajectory.content_digest,
         target_train_artifact=target_train,
@@ -884,26 +889,11 @@ def materialize_target_size_candidate(
         mace_config_digest=digest(config),
         output_directory=str(root),
     )
-    if record_path.is_file():
-        try:
-            existing = TargetSizeCandidateMaterialization.from_dict(
-                json.loads(record_path.read_text(encoding="utf-8"))
-            )
-        except (TrainingDataSerializationError, TrainingDataInputError, ValueError):
-            raise TrainingDataInputError(
-                "Candidate materialization record is corrupt."
-            ) from None
-        if existing.content_digest != record.content_digest:
-            raise TrainingDataInputError(
-                "A different candidate materialization already exists at this path."
-            )
-    else:
-        temporary_record = record_path.with_suffix(record_path.suffix + ".tmp")
-        temporary_record.write_text(
-            json.dumps(record.to_dict(), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(temporary_record, record_path)
+    publish_immutable_json_create_or_verify(
+        record_path,
+        record.to_dict(),
+        deserializer=TargetSizeCandidateMaterialization.from_dict,
+    )
     return record
 
 
@@ -917,6 +907,10 @@ def validate_target_size_materialization(
     definition: TargetSizeExperimentDefinition | None = None,
     common: TargetSizeCommonPreparation | None = None,
     optimizer_policy: MaceOptimizerPolicy | None = None,
+    extxyz_policy: MaceExtxyzPolicy | None = None,
+    frame_catalog: Any | None = None,
+    frame_data_by_run: Mapping[str, Any] | None = None,
+    frame_array_index: Mapping[str, tuple[Any, Any, int]] | None = None,
 ) -> None:
     """Restart authentication of a durable candidate materialization."""
 
@@ -970,27 +964,54 @@ def validate_target_size_materialization(
         if materialization_directory is not None
         else (record.output_directory or ".")
     )
+    if not isinstance(extxyz_policy, MaceExtxyzPolicy):
+        raise TrainingDataInputError(
+            "Materialization validation requires the accepted MaceExtxyzPolicy."
+        )
+    active_extxyz_policy = extxyz_policy
     validate_target_size_extxyz_artifact(
         record.target_train_artifact,
         root_directory=root,
         canonical_frame_authority=canonical_frame_authority,
+        policy=active_extxyz_policy,
+        frame_catalog=frame_catalog,
+        frame_data_by_run=frame_data_by_run,
+        frame_array_index=frame_array_index,
     )
     validate_target_size_extxyz_artifact(
         record.harness_validation_artifact,
         root_directory=root,
         canonical_frame_authority=canonical_frame_authority,
+        policy=active_extxyz_policy,
+        frame_catalog=frame_catalog,
+        frame_data_by_run=frame_data_by_run,
+        frame_array_index=frame_array_index,
     )
-    config_path = root / record.mace_config_relative_path
+    relative_config = Path(record.mace_config_relative_path)
+    if relative_config.is_absolute() or ".." in relative_config.parts:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration path must remain inside the materialization root."
+        )
+    config_path = (root / relative_config).resolve()
+    try:
+        config_path.relative_to(root.resolve())
+    except ValueError as exc:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration path resolves outside the materialization root."
+        ) from exc
     if not config_path.is_file():
         raise TrainingDataInputError("Candidate MACE configuration is missing.")
     import hashlib
 
-    if (
-        hashlib.sha256(config_path.read_bytes()).hexdigest()
-        != record.mace_config_sha256
-    ):
+    config_bytes = config_path.read_bytes()
+    if hashlib.sha256(config_bytes).hexdigest() != record.mace_config_sha256:
         raise TrainingDataInputError("Candidate MACE configuration bytes changed.")
-    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(config_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise TrainingDataSerializationError(
+            "Candidate MACE configuration cannot be parsed."
+        ) from exc
     if digest(payload) != record.mace_config_digest:
         raise TrainingDataInputError("Candidate MACE configuration content changed.")
     if payload.get("schema") != TARGET_SIZE_MACE_CONFIG_SCHEMA:
@@ -1019,7 +1040,7 @@ def validate_target_size_materialization(
                 optimizer_policy=optimizer_policy,
                 target_train=record.target_train_artifact,
                 harness_validation=record.harness_validation_artifact,
-                extxyz_policy=MaceExtxyzPolicy(),
+                extxyz_policy=active_extxyz_policy,
             )
             if record.mace_config_digest != digest(expected_config):
                 raise TrainingDataInputError(

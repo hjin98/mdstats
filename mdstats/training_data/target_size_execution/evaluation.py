@@ -21,6 +21,7 @@ is reachable from this layer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import io
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -38,6 +39,7 @@ from ..eval2 import (
     Eval2TargetMetricRecord,
     eval2_target_metrics_from_prediction_view,
 )
+from ..mace_export import MaceExtxyzPolicy
 from ..neutral_substrate import (
     NeutralSplitExclusionEvidence,
     frame_split_exclusion_component_membership,
@@ -120,6 +122,197 @@ def target_size_population_correlation_blocks(
             "Correlation-block projection diverges from the accepted P2 split components."
         )
     return dict(assignment)
+
+
+def _authenticate_target_size_provider(
+    *,
+    raw_checkpoint_path: Path,
+    raw_checkpoint_sha256: str,
+    companion_path: Path,
+    companion_sha256: str,
+    summary: Any,
+    trajectory: TargetSizeCandidateTrajectory,
+    config_payload: Mapping[str, Any],
+    allow_forward_override: bool,
+) -> tuple[Any, str, Mapping[str, Any]]:
+    """Authenticate one TRAIN2 state through the shared provider owner.
+
+    The returned provider is the same model owner that must perform the
+    subsequent forward.  Replay uses this helper without forwarding so it can
+    prove prediction provenance against the actual durable state rather than
+    trusting serialized identity fields alone.
+    """
+
+    import hashlib
+    import torch
+
+    from ..model_features import MaceCalculatorProvider
+    from ..train2_runtime import TRAIN2_RUNTIME_COMPANION_SCHEMA, _tensor_state_digest
+
+    raw_checkpoint = raw_checkpoint_path.read_bytes()
+    if hashlib.sha256(raw_checkpoint).hexdigest() != validate_digest(
+        raw_checkpoint_sha256, name="raw_checkpoint_sha256"
+    ):
+        raise TrainingDataInputError(
+            "TRAIN2 raw checkpoint bytes changed before provider authentication."
+        )
+    try:
+        raw_model = torch.load(
+            io.BytesIO(raw_checkpoint), map_location="cpu", weights_only=False
+        )
+    except TypeError:  # pragma: no cover - older torch
+        try:
+            raw_model = torch.load(io.BytesIO(raw_checkpoint), map_location="cpu")
+        except Exception as exc:
+            raise TrainingDataInputError(
+                "Authenticated TRAIN2 raw checkpoint cannot be loaded."
+            ) from exc
+    except Exception as exc:
+        raise TrainingDataInputError(
+            "Authenticated TRAIN2 raw checkpoint cannot be loaded."
+        ) from exc
+
+    raw_model_candidate = raw_model
+    if isinstance(raw_model_candidate, (tuple, list)):
+        if len(raw_model_candidate) != 1:
+            raw_model_candidate = None
+        else:
+            raw_model_candidate = raw_model_candidate[0]
+    if isinstance(raw_model_candidate, Mapping) and "model" in raw_model_candidate:
+        raw_model_candidate = raw_model_candidate.get("model")
+    if not (
+        hasattr(raw_model_candidate, "named_parameters")
+        and hasattr(raw_model_candidate, "named_modules")
+    ):
+        raw_model_candidate = None
+
+    raw_companion = companion_path.read_bytes()
+    if hashlib.sha256(raw_companion).hexdigest() != validate_digest(
+        companion_sha256, name="companion_sha256"
+    ):
+        raise TrainingDataInputError(
+            "TRAIN2 continuation companion bytes changed before provider authentication."
+        )
+    try:
+        companion = torch.load(
+            io.BytesIO(raw_companion), map_location="cpu", weights_only=False
+        )
+    except TypeError:  # pragma: no cover - older torch
+        companion = torch.load(io.BytesIO(raw_companion), map_location="cpu")
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            "Authenticated TRAIN2 continuation companion cannot be loaded."
+        ) from exc
+    if (
+        not isinstance(companion, Mapping)
+        or companion.get("schema") != TRAIN2_RUNTIME_COMPANION_SCHEMA
+    ):
+        raise TrainingDataSerializationError(
+            "Unsupported TRAIN2 continuation companion schema."
+        )
+    live_parameters = companion.get("live_parameters")
+    if not isinstance(live_parameters, list) or not live_parameters:
+        raise TrainingDataInputError(
+            "Authenticated TRAIN2 continuation companion has no live parameter state."
+        )
+    device = str(config_payload.get("device", ""))
+    dtype_str = str(config_payload.get("default_dtype", ""))
+    if not device or not dtype_str:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration must state device and default dtype."
+        )
+    provider_kwargs = {
+        "checkpoint_locator": str(raw_checkpoint_path),
+        "checkpoint_sha256": raw_checkpoint_sha256,
+        "device": device,
+        "default_dtype": dtype_str,
+        "supported_atomic_numbers": tuple(
+            int(value) for value in config_payload.get("atomic_numbers", ())
+        ),
+        "requested_atomic_numbers": tuple(
+            int(value) for value in config_payload.get("atomic_numbers", ())
+        ),
+        "allow_forward_override": allow_forward_override,
+    }
+    # A deployable serialized model is an architecture source only.  The
+    # authenticated snapshot companion remains the sole accepted learned-state
+    # source and is copied into this same provider before any forward.  Older
+    # bounded fixtures contain only parameter state, in which case the explicit
+    # forward-override seam may use the provider-owned parameter shell.
+    provider_model = raw_model_candidate
+    if provider_model is None:
+        provider_model = companion.get("model")
+    if provider_model is not None:
+        if not hasattr(provider_model, "named_parameters"):
+            raise TrainingDataInputError(
+                "TRAIN2 continuation companion model is not a torch model."
+            )
+        provider = MaceCalculatorProvider.from_authenticated_model(
+            provider_model, **provider_kwargs
+        )
+        provider.load_authenticated_parameter_state(
+            live_parameters, state_name="live"
+        )
+    else:
+        provider = MaceCalculatorProvider.from_authenticated_parameter_state(
+            live_parameters, **provider_kwargs
+        )
+
+    live_model_parameters = tuple(
+        parameter for _name, parameter in provider.model.named_parameters()
+    )
+    computed_live_digest = _tensor_state_digest(
+        live_model_parameters, schema="mdstats.train2-live-parameters.v1"
+    )
+    if computed_live_digest != summary.live_parameter_digest:
+        raise TrainingDataInputError(
+            "Loaded provider model live parameter digest does not match summary live parameter digest."
+        )
+
+    if trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_LIVE:
+        evaluated_model_state_digest = computed_live_digest
+    elif trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
+        if summary.ema_state_digest is None:
+            raise TrainingDataInputError(
+                "EMA trajectory convention requires authenticated EMA boundary state."
+            )
+        ema_state = companion.get("ema_state")
+        if not isinstance(ema_state, Mapping):
+            raise TrainingDataInputError("EMA state missing in continuation companion.")
+        shadow_params = ema_state.get("shadow_params")
+        if not isinstance(shadow_params, list) or not shadow_params:
+            raise TrainingDataInputError(
+                "EMA shadow parameter state is missing or invalid."
+            )
+        provider.load_authenticated_parameter_state(shadow_params, state_name="EMA shadow")
+        collected = ema_state.get("collected_params")
+        if collected is not None and not isinstance(collected, list):
+            raise TrainingDataInputError("EMA collected parameter state is invalid.")
+        ema_values = tuple(shadow_params) + tuple(collected or ())
+        computed_ema_digest = _tensor_state_digest(
+            ema_values, schema="mdstats.train2-ema-state.v1"
+        )
+        if computed_ema_digest != summary.ema_state_digest:
+            raise TrainingDataInputError(
+                "Loaded provider EMA state digest does not match summary EMA state digest."
+            )
+        provider_ema_digest = _tensor_state_digest(
+            tuple(parameter for _name, parameter in provider.model.named_parameters()),
+            schema="mdstats.train2-ema-state.v1",
+        )
+        expected_provider_ema_digest = _tensor_state_digest(
+            tuple(shadow_params), schema="mdstats.train2-ema-state.v1"
+        )
+        if provider_ema_digest != expected_provider_ema_digest:
+            raise TrainingDataInputError(
+                "Provider model EMA state digest differs from the authenticated applied state."
+            )
+        evaluated_model_state_digest = computed_ema_digest
+    else:
+        raise TrainingDataInputError(
+            f"Unsupported evaluation model state: {trajectory.evaluation_model_state!r}"
+        )
+    return provider, evaluated_model_state_digest, companion
 
 
 @dataclass(frozen=True, slots=True)
@@ -429,11 +622,11 @@ class TargetSizePredictionEvidence:
     prediction_count: int
     prediction_payload_digest: str
     predictions: tuple[TargetSizePredictionEntry, ...]
-    device: str = "cpu"
-    default_dtype: str = "float64"
-    execution_architecture: str = "mace"
-    backend_policy: str = "eager"
-    batch_size: int = 4
+    device: str
+    default_dtype: str
+    execution_architecture: str
+    backend_policy: str
+    batch_size: int
     _content_digest_cache: str = field(
         default="", init=False, repr=False, compare=False
     )
@@ -556,13 +749,11 @@ class TargetSizePredictionEvidence:
                 TargetSizePredictionEntry.from_dict(item)
                 for item in payload["predictions"]
             ),
-            device=str(payload.get("device", "cpu")),
-            default_dtype=str(payload.get("default_dtype", "float64")),
-            execution_architecture=str(
-                payload.get("execution_architecture", "mace")
-            ),
-            backend_policy=str(payload.get("backend_policy", "eager")),
-            batch_size=int(payload.get("batch_size", 4)),
+            device=str(payload["device"]),
+            default_dtype=str(payload["default_dtype"]),
+            execution_architecture=str(payload["execution_architecture"]),
+            backend_policy=str(payload["backend_policy"]),
+            batch_size=int(payload["batch_size"]),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -644,6 +835,10 @@ def run_target_size_direct_boundary_inference(
     inference_forward: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
     inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]]
     | None = None,
+    extxyz_policy: MaceExtxyzPolicy,
+    frame_catalog: Any,
+    frame_data_by_run: Mapping[str, Any],
+    frame_array_index: Mapping[str, tuple[Any, Any, int]],
 ) -> TargetSizePredictionEvidence:
     """Real semantic owner for single exact boundary checkpoint inference."""
     if not isinstance(boundary_state, TargetSizeBoundarySnapshot):
@@ -661,6 +856,19 @@ def run_target_size_direct_boundary_inference(
     ):
         if val is None:
             raise TrainingDataInputError(f"Mandatory scientific authority '{name}' is missing.")
+    if not isinstance(extxyz_policy, MaceExtxyzPolicy):
+        raise TrainingDataInputError(
+            "Direct EVAL2 inference requires the accepted MaceExtxyzPolicy."
+        )
+    for name, val in (
+        ("frame_catalog", frame_catalog),
+        ("frame_data_by_run", frame_data_by_run),
+        ("frame_array_index", frame_array_index),
+    ):
+        if val is None:
+            raise TrainingDataInputError(
+                f"Direct EVAL2 inference requires canonical P1 authority '{name}'."
+            )
 
     mat_dir = Path(
         materialization_directory
@@ -702,6 +910,10 @@ def run_target_size_direct_boundary_inference(
         definition=definition,
         common=common,
         optimizer_policy=optimizer_policy,
+        extxyz_policy=extxyz_policy,
+        frame_catalog=frame_catalog,
+        frame_data_by_run=frame_data_by_run,
+        frame_array_index=frame_array_index,
     )
 
     # 3. Snapshot validation
@@ -776,6 +988,10 @@ def run_target_size_direct_boundary_inference(
         root_directory=eval_dir,
         definition=definition,
         canonical_frame_authority=canonical_frame_authority,
+        policy=extxyz_policy,
+        frame_catalog=frame_catalog,
+        frame_data_by_run=frame_data_by_run,
+        frame_array_index=frame_array_index,
     )
 
     # 6. Live vs EMA evaluation check & parameter-state authentication
@@ -787,106 +1003,58 @@ def run_target_size_direct_boundary_inference(
             "Boundary state evaluation model-state mismatch."
         )
 
-    from ..train2_runtime import _tensor_state_digest
-    import torch
+    import hashlib
+    import json
 
     ckpt_dir = snap_root / boundary_state.snapshot_relative_dir
     summary = boundary_state.rung_runtime_summary
-    raw_checkpoint_path = (
-        ckpt_dir / summary.raw_checkpoint_name
-        if hasattr(summary, "raw_checkpoint_name")
-        else ckpt_dir / f"epoch-{summary.raw_checkpoint_epoch}.pt"
-    )
-    if not raw_checkpoint_path.is_file():
-        candidates = list(
-            ckpt_dir.glob(f"*epoch*{summary.raw_checkpoint_epoch}*.pt")
-        )
-        if not candidates:
-            raise TrainingDataInputError(
-                f"Raw checkpoint not found for epoch {summary.raw_checkpoint_epoch} in {ckpt_dir}"
-            )
-        raw_checkpoint_path = candidates[0]
-
-    device = getattr(optimizer_policy, "device", "cpu")
-    dtype_str = getattr(
-        trajectory.realization, "default_dtype", "float64"
-    )
-    model = torch.load(
-        raw_checkpoint_path, map_location=device, weights_only=False
-    )
-
-    shadow_params: list[Any] = []
-    if trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_LIVE:
-        if isinstance(model, torch.nn.Module):
-            model_params = list(model.parameters())
-        else:
-            companion_path = ckpt_dir / "train2_runtime.pt"
-            if not companion_path.is_file():
-                raise TrainingDataInputError(
-                    f"Continuation companion missing in {ckpt_dir}"
-                )
-            companion = torch.load(
-                companion_path, map_location=device, weights_only=False
-            )
-            model_params = companion.get("live_parameters", [])
-        computed_live_digest = _tensor_state_digest(
-            model_params, schema="mdstats.train2-live-parameters.v1"
-        )
-        if computed_live_digest != summary.live_parameter_digest:
-            raise TrainingDataInputError(
-                "Loaded model live parameter digest does not match summary live parameter digest."
-            )
-        evaluated_model_state_digest = summary.live_parameter_digest
-    elif trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
-        if summary.ema_state_digest is None:
-            raise TrainingDataInputError(
-                "EMA trajectory convention requires authenticated EMA boundary state."
-            )
-        companion_path = ckpt_dir / "train2_runtime.pt"
-        if not companion_path.is_file():
-            raise TrainingDataInputError(
-                f"Continuation companion missing in {ckpt_dir}"
-            )
-        companion = torch.load(
-            companion_path, map_location=device, weights_only=False
-        )
-        ema_state = companion.get("ema_state")
-        if ema_state is None or "shadow_params" not in ema_state:
-            raise TrainingDataInputError(
-                "EMA state missing in continuation companion."
-            )
-        shadow_params = ema_state["shadow_params"]
-        if isinstance(model, torch.nn.Module):
-            model_params = list(model.parameters())
-        else:
-            model_params = companion.get("live_parameters", [])
-        if len(model_params) != len(shadow_params):
-            raise TrainingDataInputError(
-                f"EMA shadow parameter cardinality mismatch: expected {len(model_params)}, got {len(shadow_params)}."
-            )
-        for p, shadow in zip(model_params, shadow_params):
-            if p.shape != shadow.shape or p.dtype != shadow.dtype:
-                raise TrainingDataInputError(
-                    f"EMA shadow parameter shape/dtype mismatch: param ({p.shape}, {p.dtype}) vs shadow ({shadow.shape}, {shadow.dtype})."
-                )
-            if hasattr(p, "data") and isinstance(p.data, torch.Tensor):
-                p.data.copy_(shadow)
-        ema_values = list(shadow_params)
-        collected = ema_state.get("collected_params")
-        if collected is not None and isinstance(collected, list):
-            ema_values.extend(collected)
-        computed_ema_digest = _tensor_state_digest(
-            ema_values, schema="mdstats.train2-ema-state.v1"
-        )
-        if computed_ema_digest != summary.ema_state_digest:
-            raise TrainingDataInputError(
-                "Loaded EMA state digest does not match summary EMA state digest."
-            )
-        evaluated_model_state_digest = summary.ema_state_digest
-    else:
+    companion_path = ckpt_dir / "train2_runtime.pt"
+    if not companion_path.is_file():
         raise TrainingDataInputError(
-            f"Unsupported evaluation model state: {trajectory.evaluation_model_state!r}"
+            f"Continuation companion missing in {ckpt_dir}"
         )
+    config_path = mat_dir / materialization.mace_config_relative_path
+    try:
+        config_bytes = config_path.read_bytes()
+        config_payload = json.loads(config_bytes.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration cannot be read for provider construction."
+        ) from exc
+    if hashlib.sha256(config_bytes).hexdigest() != materialization.mace_config_sha256:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration bytes changed before provider construction."
+        )
+    if digest(config_payload) != materialization.mace_config_digest:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration content changed before provider construction."
+        )
+    device = str(config_payload.get("device", ""))
+    dtype_str = str(config_payload.get("default_dtype", ""))
+    if not device or not dtype_str:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration must state device and default dtype."
+        )
+    if device != str(getattr(optimizer_policy, "device", device)):
+        raise TrainingDataInputError(
+            "Candidate MACE configuration device differs from the accepted optimizer policy."
+        )
+    if dtype_str != str(trajectory.realization.default_dtype):
+        raise TrainingDataInputError(
+            "Candidate MACE configuration dtype differs from the accepted trajectory realization."
+        )
+
+    forward_fn = inference_forward if inference_forward is not None else inference_evaluator
+    provider, evaluated_model_state_digest, _companion = _authenticate_target_size_provider(
+        raw_checkpoint_path=ckpt_dir / boundary_state.raw_checkpoint_name,
+        raw_checkpoint_sha256=summary.raw_checkpoint_sha256,
+        companion_path=companion_path,
+        companion_sha256=boundary_state.companion_sha256,
+        summary=summary,
+        trajectory=trajectory,
+        config_payload=config_payload,
+        allow_forward_override=forward_fn is not None,
+    )
 
     try:
         import ase.io
@@ -898,32 +1066,22 @@ def run_target_size_direct_boundary_inference(
         raise TrainingDataInputError(
             f"Evaluation artifact file is missing: {target_path}"
         )
-    atoms_list = ase.io.read(str(target_path), index=":")
+    raw_bytes = target_path.read_bytes()
+    if hashlib.sha256(raw_bytes).hexdigest() != evaluation_data.sha256:
+        raise TrainingDataInputError(
+            "Evaluation artifact file SHA-256 changed on disk."
+        )
+    atoms_list = ase.io.read(
+        io.StringIO(raw_bytes.decode("utf-8")), format="extxyz", index=":"
+    )
     if len(atoms_list) != evaluation_data.evaluation_size:
         raise TrainingDataInputError(
             "Evaluation artifact frame count mismatch."
         )
 
-    forward_fn = (
-        inference_forward
-        if inference_forward is not None
-        else inference_evaluator
-    )
     if forward_fn is not None:
-        raw_predictions = forward_fn(boundary_state, atoms_list)
+        raw_predictions = forward_fn(provider, atoms_list)
     else:
-        from ..model_features import MaceCalculatorProvider
-
-        provider = MaceCalculatorProvider.from_model_path(
-            raw_checkpoint_path,
-            device=device,
-            default_dtype=dtype_str,
-        )
-        if trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
-            provider_model = getattr(provider._calculator, "models", [None])[0]
-            if provider_model is not None:
-                for p, shadow in zip(provider_model.parameters(), shadow_params):
-                    p.data.copy_(shadow)
         raw_predictions = provider.predict_batch(atoms_list)
 
     if len(raw_predictions) != evaluation_data.evaluation_size:
@@ -951,6 +1109,7 @@ def run_target_size_direct_boundary_inference(
     prediction_payload_digest = target_size_eval2_prediction_digest(
         role, entries
     )
+    arch_digest = provider.runtime_architecture_digest
     return TargetSizePredictionEvidence(
         role_digest=role.content_digest,
         trajectory_digest=trajectory.content_digest,
@@ -966,6 +1125,11 @@ def run_target_size_direct_boundary_inference(
         prediction_count=len(entries),
         prediction_payload_digest=prediction_payload_digest,
         predictions=tuple(entries),
+        device=provider.device,
+        default_dtype=provider.default_dtype,
+        execution_architecture=str(arch_digest),
+        backend_policy=provider.backend_policy,
+        batch_size=len(atoms_list),
     )
 
 
@@ -1028,7 +1192,10 @@ def run_target_size_eval2_reduction(
             "Prediction evidence payload digest does not match predictions."
         )
 
-    from .export import TargetSizeAuthenticatedEvaluationView
+    from .export import (
+        TargetSizeAuthenticatedEvaluationView,
+        _evaluation_view_authentication_marker,
+    )
 
     active_view = view
     if isinstance(active_view, TargetSizeAuthenticatedEvaluationView):
@@ -1047,20 +1214,51 @@ def run_target_size_eval2_reduction(
             raise TrainingDataInputError(
                 "Authenticated view view digest mismatch."
             )
-        underlying_view = active_view.view
-    elif active_view is not None:
-        if not hasattr(active_view, "evaluation_view_digest"):
-            raise TrainingDataInputError(
-                "Generic EvaluationDatasetView without provenance identity is inadmissible."
-            )
         if (
-            getattr(active_view, "evaluation_view_digest", None)
-            != evaluation_data.evaluation_view_digest
+            active_view.evaluation_size != evaluation_data.evaluation_size
+            or active_view.evaluation_frame_uids
+            != evaluation_data.evaluation_frame_uids
+            or active_view.evaluation_membership_digest
+            != evaluation_data.evaluation_membership_digest
+            or active_view.canonical_frame_authority_digest
+            != evaluation_data.canonical_frame_authority_digest
+            or active_view.extxyz_policy_digest
+            != evaluation_data.extxyz_policy_digest
+            or active_view.energy_key != evaluation_data.energy_key
+            or active_view.forces_key != evaluation_data.forces_key
+            or active_view.stress_key != evaluation_data.stress_key
         ):
             raise TrainingDataInputError(
-                "Supplied evaluation view does not match evaluation data artifact view digest."
+                "Authenticated view fields do not match the evaluation artifact."
             )
-        underlying_view = active_view
+        expected_marker = _evaluation_view_authentication_marker(
+            artifact_content_digest=active_view.artifact_content_digest,
+            artifact_sha256=active_view.artifact_sha256,
+            evaluation_view_digest=active_view.evaluation_view_digest,
+            evaluation_size=active_view.evaluation_size,
+            evaluation_frame_uids=active_view.evaluation_frame_uids,
+            evaluation_membership_digest=active_view.evaluation_membership_digest,
+            canonical_frame_authority_digest=active_view.canonical_frame_authority_digest,
+            extxyz_policy_digest=active_view.extxyz_policy_digest,
+            energy_key=active_view.energy_key,
+            forces_key=active_view.forces_key,
+            stress_key=active_view.stress_key,
+            view=active_view.view,
+        )
+        if not active_view._authentication_marker or active_view._authentication_marker != expected_marker:
+            raise TrainingDataInputError(
+                "Authenticated view was not produced by the exact-byte evaluation artifact owner."
+            )
+        if getattr(active_view.view, "evaluation_view_digest", evaluation_data.evaluation_view_digest) != evaluation_data.evaluation_view_digest:
+            raise TrainingDataInputError(
+                "Authenticated view underlying data carries a different artifact identity."
+            )
+        underlying_view = active_view.view
+    elif active_view is not None:
+        raise TrainingDataInputError(
+            "Generic EvaluationDatasetView or unauthenticated view is inadmissible; "
+            "TargetSizeAuthenticatedEvaluationView is required."
+        )
     else:
         if root_directory is None:
             raise TrainingDataInputError(

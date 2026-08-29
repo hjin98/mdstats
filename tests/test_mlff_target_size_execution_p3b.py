@@ -12,6 +12,7 @@ import pytest
 import mdstats
 import tests.test_mlff_target_size_execution_p3a as p3a
 from mdstats.training_data._common import digest
+from mdstats.training_data.mace_export import MaceExtxyzPolicy
 from mdstats.training_data.protocol import MaceOptimizerPolicy
 from mdstats.training_data.target_size_execution import (
     TargetSizeCandidateTrajectory,
@@ -89,13 +90,17 @@ def test_p3b_exact_tn_membership_and_digest_through_real_owner(
         frame_data_by_run=frame_data_by_run,
         output_directory=out,
         optimizer_policy=MaceOptimizerPolicy(max_num_epochs=schedule.n3, batch_size=4),
+        extxyz_policy=MaceExtxyzPolicy(),
         frame_array_index=index,
     )
     assert record.target_train_artifact.frame_uids == tuple(membership)
     assert record.target_train_artifact.configuration_count == len(membership)
     # Restart authentication through the real owner.
     validate_target_size_materialization(
-        record, trajectory, canonical_frame_authority=fa
+        record,
+        trajectory,
+        canonical_frame_authority=fa,
+        extxyz_policy=MaceExtxyzPolicy(),
     )
 
 
@@ -287,6 +292,7 @@ def test_p3b_rematerialization_is_idempotent(tmp_path: Path) -> None:
         frame_data_by_run=frame_data_by_run,
         output_directory=out,
         optimizer_policy=optimizer,
+        extxyz_policy=MaceExtxyzPolicy(),
         frame_array_index=index,
     )
     second = materialize_target_size_candidate(
@@ -296,6 +302,7 @@ def test_p3b_rematerialization_is_idempotent(tmp_path: Path) -> None:
         frame_data_by_run=frame_data_by_run,
         output_directory=out,
         optimizer_policy=optimizer,
+        extxyz_policy=MaceExtxyzPolicy(),
         frame_array_index=index,
     )
     assert first.content_digest == second.content_digest
@@ -317,6 +324,7 @@ def test_p3b_rematerialization_is_idempotent(tmp_path: Path) -> None:
             frame_data_by_run=frame_data_by_run,
             output_directory=out,
             optimizer_policy=optimizer,
+            extxyz_policy=MaceExtxyzPolicy(),
             frame_array_index=index,
         )
 
@@ -377,7 +385,12 @@ def test_p3b_export_authenticates_against_canonical_authority(tmp_path: Path) ->
     )
 
     with pytest.raises(mdstats.TrainingDataInputError):
-        validate_target_size_extxyz_artifact(artifact, root_directory=out, canonical_frame_authority=fa)
+        validate_target_size_extxyz_artifact(
+            artifact,
+            root_directory=out,
+            canonical_frame_authority=fa,
+            policy=MaceExtxyzPolicy(),
+        )
     target_file.write_bytes(original)
 
 
@@ -407,6 +420,7 @@ def test_p3b_harness_validation_is_fixed_and_non_controlling(tmp_path: Path) -> 
                 frame_data_by_run=frame_data_by_run,
                 output_directory=out,
                 optimizer_policy=replace(optimizer, seed=seed),
+                extxyz_policy=MaceExtxyzPolicy(),
                 frame_array_index=index,
             )
             harness_digests.add(record.harness_validation_artifact.content_digest)
@@ -443,6 +457,7 @@ def test_p3b_mace_config_binds_exact_seed_and_target_artifact(tmp_path: Path) ->
         frame_data_by_run=frame_data_by_run,
         output_directory=out,
         optimizer_policy=replace(optimizer, seed=2),
+        extxyz_policy=MaceExtxyzPolicy(),
         frame_array_index=index,
     )
     config = json.loads((out / record.mace_config_relative_path).read_text())
@@ -452,7 +467,12 @@ def test_p3b_mace_config_binds_exact_seed_and_target_artifact(tmp_path: Path) ->
     # E0s come from the common fitted references.
     fitted = dict(common.fitted_atomic_references.reference_energies_ev)
     assert {int(k): v for k, v in config["E0s"].items()} == fitted
-    validate_target_size_materialization(record, trajectory, canonical_frame_authority=fa)
+    validate_target_size_materialization(
+        record,
+        trajectory,
+        canonical_frame_authority=fa,
+        extxyz_policy=MaceExtxyzPolicy(),
+    )
 
 
 def test_p3b_structural_absence_no_legacy_authority_in_p3_records(tmp_path: Path) -> None:
@@ -478,6 +498,7 @@ def test_p3b_structural_absence_no_legacy_authority_in_p3_records(tmp_path: Path
         frame_data_by_run=frame_data_by_run,
         output_directory=out,
         optimizer_policy=optimizer,
+        extxyz_policy=MaceExtxyzPolicy(),
         frame_array_index=index,
     )
     forbidden = {

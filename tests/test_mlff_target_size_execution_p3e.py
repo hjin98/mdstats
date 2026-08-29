@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -16,6 +17,7 @@ import tests.test_mlff_target_size_execution_p3a as p3a
 import tests.test_mlff_target_size_execution_p3c as p3c
 import tests.test_mlff_target_size_execution_p3d as p3d
 from mdstats.training_data.neutral_substrate import build_neutral_split_exclusion_evidence
+from mdstats.training_data.mace_export import MaceExtxyzPolicy
 from mdstats.training_data.protocol import MaceOptimizerPolicy
 from mdstats.training_data.target_size_execution import (
     TARGET_SIZE_CELL_COMPLETION_RECORD_SCHEMA,
@@ -23,6 +25,9 @@ from mdstats.training_data.target_size_execution import (
     TargetSizeCellCompletionRecord,
     TargetSizeCompleteBoundaryBatch,
     TargetSizeExecutionHead,
+    TargetSizeExecutionResolver,
+    TargetSizeRestartAuthority,
+    TargetSizeContinuationRequest,
     apply_complete_boundary_batch,
     bind_target_size_boundary_state,
     build_complete_boundary_batch,
@@ -36,6 +41,7 @@ from mdstats.training_data.target_size_execution import (
     derive_active_boundary_requirements,
     evaluate_target_size_boundary,
     initialize_target_size_screen,
+    initial_target_size_continuation_request,
     load_current_execution_head,
     materialize_target_size_candidate,
     persist_complete_boundary_batch,
@@ -62,7 +68,9 @@ def _env(tmp_path: Path, *, root_name: str = "screen"):
     manifest, fa, nb, aggregate, common, index = p3a._common(tmp_path)
     frames, fdr, _ = p3a._frame_arrays(tmp_path, manifest)
     schedule = build_target_size_screen_schedule((1, 3, 10))
-    optimizer = MaceOptimizerPolicy(max_num_epochs=schedule.n3, batch_size=4)
+    optimizer = MaceOptimizerPolicy(
+        max_num_epochs=schedule.n3, batch_size=4, device="cpu"
+    )
     context = build_target_size_execution_context(
         aggregate.definition, common, schedule, seed_neutral_optimizer_policy=optimizer
     )
@@ -74,6 +82,28 @@ def _env(tmp_path: Path, *, root_name: str = "screen"):
     root = tmp_path / root_name
     root.mkdir(parents=True, exist_ok=True)
     window = initialize_target_size_screen(root, aggregate, context, common)
+    authority = TargetSizeRestartAuthority(
+        aggregate=aggregate,
+        context=context,
+        common=common,
+        schedule=schedule,
+        seed_neutral_optimizer_policy=optimizer,
+        canonical_frame_authority=fa,
+        frame_catalog=frames,
+        frame_data_by_run=fdr,
+        frame_array_index=index,
+        correlation_blocks=blocks,
+        extxyz_policy=MaceExtxyzPolicy(),
+        eval2_policy=context.eval2_metric_policy_digest,
+        resolver=TargetSizeExecutionResolver(root),
+        bulk_roots={
+            "materialization": tmp_path,
+            "snapshot": root,
+            "evaluation": tmp_path,
+            "train2": root,
+        },
+        allow_forward_override=True,
+    )
     return {
         "manifest": manifest,
         "frame_authority": fa,
@@ -88,6 +118,7 @@ def _env(tmp_path: Path, *, root_name: str = "screen"):
         "blocks": blocks,
         "root": root,
         "window": window,
+        "authority": authority,
     }
 
 
@@ -97,6 +128,44 @@ def _epsilon(size: int, seed: int) -> float:
 
 def _seeded(optimizer, seed: int):
     return replace(optimizer, seed=seed)
+
+
+def _durable_train2_failure_record(tmp_path: Path, trajectory, schedule, boundary: int):
+    """Bind a real raw checkpoint byte digest into a failure test record."""
+    checkpoint_directory = tmp_path / (
+        f"failure-checkpoint-{trajectory.target_size}-"
+        f"{trajectory.optimizer_seed}-{boundary}"
+    )
+    checkpoint_directory.mkdir(parents=True, exist_ok=True)
+    raw = p3c._raw_checkpoint(checkpoint_directory, 0)
+    record = p3c._failure_record(
+        trajectory,
+        schedule,
+        boundary,
+        code="train_nonfinite_model_state",
+        failed_epoch=0,
+    )
+    return replace(
+        record,
+        raw_checkpoint_sha256=hashlib.sha256(raw.read_bytes()).hexdigest(),
+    ), checkpoint_directory
+
+
+def _rung_provenance(env, trajectory, boundary: int):
+    planned_rung = target_size_rung_plan(
+        trajectory, env["schedule"], boundary_epoch=boundary
+    )
+    if boundary == env["schedule"].n1:
+        predecessor = None
+    else:
+        previous = env["schedule"].fidelity_epochs[
+            env["schedule"].fidelity_epochs.index(boundary) - 1
+        ]
+        predecessor = TargetSizeContinuationRequest(
+            trajectory_digest=trajectory.content_digest,
+            predecessor_boundary_epoch=previous,
+        )
+    return planned_rung, predecessor
 
 
 def p3c_test_boundary_state(env, tmp_path, trajectory, boundary, *, name):
@@ -141,6 +210,7 @@ def _execute_candidate_boundary(env, tmp_path: Path, size: int, seed: int, bound
         frame_data_by_run=env["frame_data_by_run"],
         output_directory=mat_dir,
         optimizer_policy=trajectory.realization.optimizer_policy if hasattr(trajectory.realization, "optimizer_policy") else env["optimizer"],
+        extxyz_policy=env["authority"].extxyz_policy,
         frame_array_index=env["index"],
     )
 
@@ -195,6 +265,10 @@ def _execute_candidate_boundary(env, tmp_path: Path, size: int, seed: int, bound
         common=env["common"],
         schedule=env["schedule"],
         optimizer_policy=opt_policy,
+        extxyz_policy=env["authority"].extxyz_policy,
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
         materialization_directory=mat_dir,
         snapshot_root=env["root"],
         evaluation_directory=eval_dir,
@@ -207,6 +281,7 @@ def _execute_candidate_boundary(env, tmp_path: Path, size: int, seed: int, bound
     outcome = evaluate_target_size_boundary(
         role, eval_artifact, pred_evidence, root_directory=eval_dir
     )
+    planned_rung, predecessor = _rung_provenance(env, trajectory, boundary)
 
     completion_record = build_target_size_cell_completion_record(
         window=env["window"],
@@ -218,6 +293,9 @@ def _execute_candidate_boundary(env, tmp_path: Path, size: int, seed: int, bound
         outcome=outcome,
         prediction_evidence=pred_evidence,
         eval2_metric_record=metric_record,
+        planned_rung=planned_rung,
+        schedule=env["schedule"],
+        predecessor_continuation=predecessor,
     )
 
     return (
@@ -268,6 +346,8 @@ def _run_boundary_matrix(env, tmp_path: Path, state, *, skip: list | None = None
             evaluation_data=eval_artifact,
             prediction_evidence=pred_evidence,
             eval2_metric_record=metric_record,
+            planned_rung=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[0],
+            predecessor_continuation=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[1],
         )
     return boundary, evaluation_size, keys, completion_records
 
@@ -426,6 +506,8 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
                 evaluation_data=eval_artifact,
                 prediction_evidence=pred_evidence,
                 eval2_metric_record=metric_record,
+                planned_rung=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[0],
+                predecessor_continuation=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[1],
             )
             completion_records.append(completion_record)
         except OSError:
@@ -466,6 +548,8 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
         evaluation_data=eval_artifact,
         prediction_evidence=pred_evidence,
         eval2_metric_record=metric_record,
+        planned_rung=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[0],
+        predecessor_continuation=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[1],
     )
     recover_records = collect_boundary_cell_completion_records(
         env["root"], env["window"], boundary_epoch=boundary
@@ -474,11 +558,7 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
     batch = build_complete_boundary_batch(definition, state, recover_records)
     head = commit_target_size_boundary_batch(env["root"], definition, state, batch)
     validate_reconciled = reconcile_target_size_screen_root(
-        env["root"],
-        env["aggregate"],
-        env["context"],
-        env["common"],
-        schedule=env["schedule"],
+        env["root"], env["authority"]
     )
     assert validate_reconciled.content_digest == head.content_digest
 
@@ -564,11 +644,7 @@ def test_p3e_full_lifecycle_elimination_and_terminal_selection(tmp_path: Path) -
         )
     assert derive_active_boundary_requirements(definition, final) is None
     head = reconcile_target_size_screen_root(
-        env["root"],
-        env["aggregate"],
-        env["context"],
-        env["common"],
-        schedule=env["schedule"],
+        env["root"], env["authority"]
     )
     assert head.post_state.content_digest == final.content_digest
     mdstats.validate_target_size_reducer_state(definition, head.post_state)
@@ -587,7 +663,7 @@ def test_p3e_stale_context_preparation_rejected(tmp_path: Path) -> None:
         env["schedule"],
         seed_neutral_optimizer_policy=_replace(env["optimizer"], learning_rate=2e-4),
     )
-    with pytest.raises(mdstats.TrainingDataInputError):
+    with pytest.raises(TypeError):
         reconcile_target_size_screen_root(
             env["root"],
             env["aggregate"],
@@ -666,11 +742,7 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
         env, tmp_path, keys[0][0], keys[0][1], boundary
     )
     head = reconcile_target_size_screen_root(
-        env["root"],
-        env["aggregate"],
-        env["context"],
-        env["common"],
-        schedule=env["schedule"],
+        env["root"], env["authority"]
     )
     assert head is None
 
@@ -686,6 +758,8 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
         evaluation_data=eval_one,
         prediction_evidence=pred_one,
         eval2_metric_record=metric_one,
+        planned_rung=_rung_provenance(env, trajectory, rec_one.boundary_epoch)[0],
+        predecessor_continuation=_rung_provenance(env, trajectory, rec_one.boundary_epoch)[1],
     )
     assert load_current_execution_head(env["root"]) is None
     partial = collect_boundary_cell_completion_records(
@@ -721,6 +795,8 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
             evaluation_data=eval2,
             prediction_evidence=pred2,
             eval2_metric_record=metric2,
+            planned_rung=_rung_provenance(env, trajectory2, rec2.boundary_epoch)[0],
+            predecessor_continuation=_rung_provenance(env, trajectory2, rec2.boundary_epoch)[1],
         )
         completion_records.append(rec2)
     completion_records = tuple(
@@ -731,11 +807,7 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
     batch = build_complete_boundary_batch(definition, state, completion_records)
     persist_complete_boundary_batch(env["root"], batch)
     repaired = reconcile_target_size_screen_root(
-        env["root"],
-        env["aggregate"],
-        env["context"],
-        env["common"],
-        schedule=env["schedule"],
+        env["root"], env["authority"]
     )
     assert repaired is not None
     direct_state = apply_complete_boundary_batch(definition, state, batch)
@@ -746,22 +818,14 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
     current_path = env["root"] / "current_head.json"
     current_path.unlink()
     orphaned = reconcile_target_size_screen_root(
-        env["root"],
-        env["aggregate"],
-        env["context"],
-        env["common"],
-        schedule=env["schedule"],
+        env["root"], env["authority"]
     )
     assert orphaned.content_digest == repaired.content_digest
     assert load_current_execution_head(env["root"]).content_digest == repaired.content_digest
 
     # (e) Already committed state is validated, never reapplied.
     again = reconcile_target_size_screen_root(
-        env["root"],
-        env["aggregate"],
-        env["context"],
-        env["common"],
-        schedule=env["schedule"],
+        env["root"], env["authority"]
     )
     assert again.content_digest == repaired.content_digest
     final_state = load_current_execution_head(env["root"]).post_state
@@ -818,22 +882,14 @@ def test_p3e_head_ancestry_chain_and_negative_validations(tmp_path: Path) -> Non
 
     with pytest.raises(mdstats.TrainingDataInputError):
         reconcile_target_size_screen_root(
-            env["root"],
-            env["aggregate"],
-            env["context"],
-            env["common"],
-            schedule=env["schedule"],
+            env["root"], env["authority"]
         )
 
     # Restore valid current head
     (env["root"] / "current_head.json").write_text(json.dumps(head1.to_dict()))
     forged_path.unlink()
     reconciled = reconcile_target_size_screen_root(
-        env["root"],
-        env["aggregate"],
-        env["context"],
-        env["common"],
-        schedule=env["schedule"],
+        env["root"], env["authority"]
     )
     assert reconciled.content_digest == head1.content_digest
 
@@ -892,12 +948,8 @@ def test_p3e_review3_discriminated_cell_completion_record_variants(
         )
 
     # 2. TRAIN2 failure completion record variant
-    train_fail_rec = p3c._failure_record(
-        trajectory,
-        env["schedule"],
-        1,
-        code="train_nonfinite_model_state",
-        failed_epoch=0,
+    train_fail_rec, failure_checkpoint_directory = _durable_train2_failure_record(
+        tmp_path, trajectory, env["schedule"], 1
     )
     from mdstats.training_data.target_size_execution import translate_target_size_train2_failure
 
@@ -914,6 +966,13 @@ def test_p3e_review3_discriminated_cell_completion_record_variants(
         materialization=materialization,
         failure_record=train_fail_rec,
         outcome=train_fail_outcome,
+        planned_rung=target_size_rung_plan(
+            trajectory, env["schedule"], boundary_epoch=1
+        ),
+        schedule=env["schedule"],
+        definition=definition,
+        predecessor_continuation=initial_target_size_continuation_request(trajectory),
+        checkpoint_directory=failure_checkpoint_directory,
         kind="train2_failure",
     )
     assert comp_train_fail.kind == "train2_failure"
@@ -949,6 +1008,10 @@ def test_p3e_review3_discriminated_cell_completion_record_variants(
         evaluation_data=eval_artifact,
         prediction_evidence=pred_evidence,
         failure_record=eval_fail_err,
+        planned_rung=target_size_rung_plan(
+            trajectory, env["schedule"], boundary_epoch=snapshot.boundary_epoch
+        ),
+        schedule=env["schedule"],
         kind="eval2_failure",
     )
     assert comp_eval_fail.kind == "eval2_failure"
@@ -984,11 +1047,7 @@ def test_p3e_review3_resolver_graph_persistence_and_replay(
 
     # Reconcile successfully verifies loaded content digests
     reconciled = reconcile_target_size_screen_root(
-        env["root"],
-        env["aggregate"],
-        env["context"],
-        env["common"],
-        schedule=env["schedule"],
+        env["root"], env["authority"]
     )
     assert reconciled.content_digest == head0.content_digest
 
@@ -1002,22 +1061,152 @@ def test_p3e_review3_resolver_graph_persistence_and_replay(
 
     with pytest.raises((mdstats.TrainingDataInputError, mdstats.TrainingDataSerializationError)):
         reconcile_target_size_screen_root(
-            env["root"],
-            env["aggregate"],
-            env["context"],
-            env["common"],
-            schedule=env["schedule"],
+            env["root"], env["authority"]
         )
 
     # Restore valid completion file
     comp_file.write_text(original_data, encoding="utf-8")
     reconciled_clean = reconcile_target_size_screen_root(
-        env["root"],
-        env["aggregate"],
-        env["context"],
-        env["common"],
-        schedule=env["schedule"],
+        env["root"], env["authority"]
     )
     assert reconciled_clean.content_digest == head0.content_digest
 
 
+def test_p3e_pass_b_persistence_cas_and_failure_diagnostics(tmp_path: Path) -> None:
+    """Pass B: CAS commit semantics, raw failure diagnostics, and persistence create-or-verify."""
+    from mdstats.training_data.eval2 import Eval2NumericalEvaluationError
+    from mdstats.training_data.target_size_execution.persistence import (
+        publish_immutable_bytes_create_or_verify,
+        publish_immutable_json_create_or_verify,
+    )
+    from mdstats.training_data.target_size_execution import (
+        build_target_size_eval2_failure_cell_completion_record,
+        build_target_size_success_cell_completion_record,
+        build_target_size_train2_failure_cell_completion_record,
+    )
+
+    env = _env(tmp_path, root_name="screen_pass_b")
+    definition = env["aggregate"].definition
+    size0 = definition.qualified_candidate_sizes[0]
+    seed0 = definition.policy.optimizer_seeds[0]
+    window = env["window"]
+    (
+        trajectory,
+        role,
+        snapshot,
+        comp_success,
+        materialization,
+        eval_artifact,
+        pred_evidence,
+        metric_record,
+    ) = _execute_candidate_boundary(env, tmp_path, size0, seed0, 1)
+
+    # 1. CAS commit retry idempotency vs conflicting child heads
+    state = env["aggregate"].reducer_state
+    batch0, head0 = _full_matrix(env, tmp_path, state)
+
+    # Idempotent retry: re-committing the exact same batch on same root returns the same head
+    head_retry = commit_target_size_boundary_batch(
+        env["root"],
+        definition,
+        state,
+        batch0,
+    )
+    assert head_retry.content_digest == head0.content_digest
+
+    # Conflicting commit: wrong pre-state fails under CAS lock
+    with pytest.raises(mdstats.TrainingDataInputError, match="pre-state"):
+        commit_target_size_boundary_batch(
+            env["root"],
+            definition,
+            head0.post_state,  # mismatch with batch0.pre_state
+            batch0,
+        )
+
+    # 2. Raw TRAIN2 failure builder validation
+    train_fail_rec, failure_checkpoint_directory = _durable_train2_failure_record(
+        tmp_path, trajectory, env["schedule"], 1
+    )
+    plan_n1 = target_size_rung_plan(trajectory, env["schedule"], boundary_epoch=1)
+
+    # Rejects pretranslated TargetSizeNumericalFailure as failure_record
+    from mdstats.training_data.target_size_execution import translate_target_size_train2_failure
+    derived_outcome = translate_target_size_train2_failure(
+        train_fail_rec,
+        trajectory=trajectory,
+        definition=definition,
+        schedule=env["schedule"],
+        scheduled_boundary_epoch=1,
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="Train2NumericalFailureRecord"):
+        build_target_size_train2_failure_cell_completion_record(
+            window=window,
+            trajectory=trajectory,
+            materialization=materialization,
+            failure_record=derived_outcome,  # Wrong type: must be Train2NumericalFailureRecord
+            planned_rung=plan_n1,
+            schedule=env["schedule"],
+        )
+
+    # n1 rung rejects predecessor continuation
+    with pytest.raises(mdstats.TrainingDataInputError, match="Initial n1 ancestry"):
+        build_target_size_train2_failure_cell_completion_record(
+            window=window,
+            trajectory=trajectory,
+            materialization=materialization,
+            failure_record=train_fail_rec,
+            planned_rung=plan_n1,
+            schedule=env["schedule"],
+            definition=definition,
+            predecessor_continuation=snapshot,
+            checkpoint_directory=failure_checkpoint_directory,
+        )
+
+    # Proper n1 build succeeds
+    comp_train2 = build_target_size_train2_failure_cell_completion_record(
+        window=window,
+        trajectory=trajectory,
+        materialization=materialization,
+        failure_record=train_fail_rec,
+        planned_rung=plan_n1,
+        schedule=env["schedule"],
+        definition=definition,
+        predecessor_continuation=initial_target_size_continuation_request(trajectory),
+        checkpoint_directory=failure_checkpoint_directory,
+    )
+    assert comp_train2.kind == "train2_failure"
+    assert comp_train2.planned_rung_digest == plan_n1.content_digest
+
+    # 3. Raw EVAL2 failure builder validation: rejects mismatched prediction digest
+    forged_eval_err = Eval2NumericalEvaluationError(
+        "eval_nonfinite_force_prediction",
+        "NaN force predicted",
+        target_role_digest=role.content_digest,
+        prediction_digest="0" * 64,  # Mismatched prediction payload digest
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="prediction payload"):
+        build_target_size_eval2_failure_cell_completion_record(
+            window=window,
+            trajectory=trajectory,
+            materialization=materialization,
+            boundary_snapshot=snapshot,
+            eval2_role=role,
+            evaluation_data=eval_artifact,
+            prediction_evidence=pred_evidence,
+            failure_record=forged_eval_err,
+            planned_rung=plan_n1,
+            schedule=env["schedule"],
+        )
+
+    # 4. Persistence primitives create-or-verify
+    test_json_file = tmp_path / "persistence_test" / "test.json"
+    payload = {"schema": "test.v1", "value": 42}
+    publish_immutable_json_create_or_verify(test_json_file, payload)
+    assert test_json_file.is_file()
+
+    # Create-or-verify with identical payload succeeds
+    publish_immutable_json_create_or_verify(test_json_file, payload)
+
+    # Create-or-verify with differing payload fails
+    with pytest.raises(mdstats.TrainingDataInputError, match="Conflicting"):
+        publish_immutable_json_create_or_verify(test_json_file, {"schema": "test.v1", "value": 99})

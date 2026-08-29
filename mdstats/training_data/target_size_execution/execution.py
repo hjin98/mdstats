@@ -26,9 +26,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import shutil
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -52,6 +49,10 @@ from ..train2_runtime import (
     validate_train2_runtime_continuation_artifacts,
 )
 from .candidate import TargetSizeCandidateTrajectory
+from .persistence import (
+    publish_immutable_bytes_create_or_verify,
+    publish_immutable_json_create_or_verify,
+)
 from .schedule import TargetSizeScreenSchedule
 
 TARGET_SIZE_BOUNDARY_STATE_SCHEMA = "mdstats.target-size.boundary-state.v1"
@@ -539,25 +540,6 @@ def _sha256_file(path: Path) -> str:
     return hasher.hexdigest()
 
 
-def _atomic_json_write(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        dir=str(path.parent), suffix=".tmp"
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_name, path)
-    except BaseException:
-        try:
-            os.unlink(temporary_name)
-        except OSError:
-            pass
-        raise
-
-
 def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
     matches = []
     for item in directory.glob("*.pt"):
@@ -637,6 +619,15 @@ class TargetSizeBoundarySnapshot:
         for name in ("raw_checkpoint_name", "snapshot_relative_dir"):
             if not str(getattr(self, name)).strip():
                 raise TrainingDataInputError(f"{name} cannot be empty.")
+        if Path(self.raw_checkpoint_name).name != self.raw_checkpoint_name:
+            raise TrainingDataInputError(
+                "raw_checkpoint_name must be a single relative filename."
+            )
+        relative_snapshot = Path(self.snapshot_relative_dir)
+        if relative_snapshot.is_absolute() or ".." in relative_snapshot.parts:
+            raise TrainingDataInputError(
+                "snapshot_relative_dir must remain within the snapshot root."
+            )
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -760,18 +751,19 @@ def promote_target_size_boundary_snapshot(
 
     for src, dst in (
         (raw_checkpoint, dest_raw),
-        (summary_path, dest_summary),
         (companion_path, dest_companion),
     ):
-        if dst.is_file():
-            if _sha256_file(dst) != _sha256_file(src):
-                raise TrainingDataInputError(
-                    f"Conflicting snapshot file already exists at {dst}."
-                )
-        else:
-            tmp = dst.with_suffix(dst.suffix + ".tmp")
-            shutil.copy2(src, tmp)
-            os.replace(tmp, dst)
+        raw_bytes = src.read_bytes()
+        publish_immutable_bytes_create_or_verify(
+            dst,
+            raw_bytes,
+            expected_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+        )
+    publish_immutable_json_create_or_verify(
+        dest_summary,
+        summary.to_dict(),
+        deserializer=Train2RuntimeSummary.from_dict,
+    )
 
     companion_sha = _sha256_file(dest_companion)
     summary_digest = summary.content_digest
@@ -795,16 +787,11 @@ def promote_target_size_boundary_snapshot(
         rung_runtime_summary=summary,
     )
     meta_path = dest_dir / "snapshot.json"
-    if meta_path.is_file():
-        existing_snapshot = TargetSizeBoundarySnapshot.from_dict(
-            json.loads(meta_path.read_text(encoding="utf-8"))
-        )
-        if existing_snapshot.content_digest != snapshot.content_digest:
-            raise TrainingDataInputError(
-                f"Conflicting snapshot metadata already exists at {meta_path}."
-            )
-    else:
-        _atomic_json_write(meta_path, snapshot.to_dict())
+    publish_immutable_json_create_or_verify(
+        meta_path,
+        snapshot.to_dict(),
+        deserializer=TargetSizeBoundarySnapshot.from_dict,
+    )
     return snapshot
 
 
@@ -834,7 +821,14 @@ def validate_target_size_boundary_snapshot(
         raise TrainingDataInputError(
             "Boundary snapshot evaluation model-state mismatch."
         )
-    dest_dir = Path(snapshot_root) / snapshot.snapshot_relative_dir
+    snapshot_root_path = Path(snapshot_root).resolve()
+    dest_dir = (snapshot_root_path / snapshot.snapshot_relative_dir).resolve()
+    try:
+        dest_dir.relative_to(snapshot_root_path)
+    except ValueError as exc:
+        raise TrainingDataInputError(
+            "Preserved boundary snapshot directory resolves outside snapshot root."
+        ) from exc
     dest_raw = dest_dir / snapshot.raw_checkpoint_name
     dest_summary = dest_dir / "train2_runtime.json"
     dest_companion = dest_dir / "train2_runtime.pt"
@@ -858,6 +852,18 @@ def validate_target_size_boundary_snapshot(
     if loaded_summary.content_digest != snapshot.runtime_summary_digest:
         raise TrainingDataInputError(
             "Preserved boundary runtime summary digest changed."
+        )
+    if (
+        snapshot.raw_checkpoint_sha256 != loaded_summary.raw_checkpoint_sha256
+        or snapshot.optimizer_state_digest != loaded_summary.optimizer_state_digest
+        or snapshot.live_parameter_digest != loaded_summary.live_parameter_digest
+        or snapshot.ema_state_digest != loaded_summary.ema_state_digest
+        or snapshot.rng_state_digest != loaded_summary.rng_state_digest
+        or snapshot.completed_updates != loaded_summary.completed_updates
+        or snapshot.planned_updates != loaded_summary.planned_updates
+    ):
+        raise TrainingDataInputError(
+            "Preserved boundary snapshot metadata disagrees with its runtime summary."
         )
     if schedule is not None:
         authenticated = validate_train2_runtime_continuation_artifacts(
@@ -903,4 +909,3 @@ __all__ = [
     "validate_target_size_boundary_snapshot",
     "validate_target_size_continuation_request",
 ]
-

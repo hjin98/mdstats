@@ -1611,6 +1611,72 @@ class MaceModelStateCompatibilityError(TrainingDataInputError):
     """A model cannot safely reuse an existing mutable MACE shell."""
 
 
+class _AuthenticatedParameterShell:
+    """Small provider-owned shell for bounded forward-override qualification.
+
+    TRAIN2's raw continuation companion intentionally stores parameter state,
+    not a deployable MACE whole-model serialization.  A real MACE model is
+    therefore required for production prediction, but bounded CPU tests still
+    need to exercise the same provider/state-authentication owner while
+    replacing only the expensive forward arithmetic.  This shell is accepted
+    solely by ``from_authenticated_parameter_state(...,
+    allow_forward_override=True)``; its calculator cannot perform prediction
+    and is never a production fallback.
+    """
+
+    def __init__(self, parameters: Sequence[Any]):
+        import torch
+
+        values = tuple(parameters)
+        if not values:
+            raise TrainingDataInputError(
+                "Authenticated provider state requires at least one parameter."
+            )
+        self._parameter_list = torch.nn.ParameterList(
+            [torch.nn.Parameter(torch.zeros_like(value, device="cpu")) for value in values]
+        )
+
+    def named_parameters(self, prefix: str = "", recurse: bool = True):
+        return self._parameter_list.named_parameters(prefix=prefix, recurse=recurse)
+
+    def named_modules(self, memo: Any = None, prefix: str = ""):
+        # The canonical architecture authority only needs a deterministic
+        # module census.  Keep the shell deliberately minimal and explicit.
+        del memo
+        yield prefix, self
+
+    def named_buffers(self, prefix: str = "", recurse: bool = True):
+        del prefix, recurse
+        return iter(())
+
+    def parameters(self, recurse: bool = True):
+        return self._parameter_list.parameters(recurse=recurse)
+
+
+class _AuthenticatedParameterCalculator:
+    """Non-predicting calculator wrapper used only below the test seam."""
+
+    model_type = "authenticated-parameter-shell"
+    num_models = 1
+    use_compile = False
+    _enable_cueq = False
+    _enable_oeq = False
+    pad_num_atoms = 0
+    pad_num_edges = 0
+    available_heads: tuple[str, ...] = ()
+
+    def __init__(self, model: Any, *, device: str, default_dtype: str):
+        self.models = [model]
+        self.device = str(device)
+        self.default_dtype = str(default_dtype)
+
+    def get_descriptors(self, *_args: Any, **_kwargs: Any) -> Any:
+        raise TrainingDataInputError(
+            "The authenticated parameter shell has no production descriptor calculator; "
+            "use a deployable MACE model for numerical prediction."
+        )
+
+
 class MaceCalculatorProvider:
     """Lazy optional adapter around a MACE ASE calculator."""
 
@@ -2168,6 +2234,245 @@ class MaceCalculatorProvider:
         checkpoint_identity: ModelCheckpointIdentity,
     ) -> "MaceCalculatorProvider":
         return cls(calculator, checkpoint_identity)
+
+    @classmethod
+    def from_authenticated_model(
+        cls,
+        model: Any,
+        *,
+        checkpoint_locator: str | Path,
+        checkpoint_sha256: str,
+        device: str,
+        default_dtype: str,
+        supported_atomic_numbers: Sequence[int] = (),
+        requested_atomic_numbers: Sequence[int] = (),
+        allow_forward_override: bool = False,
+        calculator_kwargs: Mapping[str, Any] | None = None,
+    ) -> "MaceCalculatorProvider":
+        """Construct one provider around an already authenticated model shell.
+
+        The model instance passed here is the sole state owner used for both
+        live/EMA authentication and subsequent prediction.  Full MACE models
+        are wrapped by the real ``MACECalculator``.  The only non-MACE path is
+        the explicit bounded forward-override shell described above; it fails
+        closed when no override is supplied.
+        """
+
+        if not hasattr(model, "named_parameters") or not hasattr(model, "named_modules"):
+            raise TrainingDataInputError(
+                "Authenticated provider model must expose named_parameters() and named_modules()."
+            )
+        requested_device = str(device)
+        if requested_device.startswith("cuda"):
+            try:
+                import torch
+            except ModuleNotFoundError as exc:  # pragma: no cover - provider requires torch
+                raise TrainingDataInputError(
+                    "CUDA provider realization requires torch."
+                ) from exc
+            if not bool(torch.cuda.is_available()):
+                raise TrainingDataInputError(
+                    "Authenticated provider requested CUDA, but CUDA is unavailable on this host."
+                )
+        active_kwargs = dict(calculator_kwargs or {})
+        model_is_mace = all(
+            hasattr(model, name)
+            for name in ("r_max", "atomic_numbers", "interactions", "products")
+        )
+        if model_is_mace:
+            try:
+                from mace.calculators import MACECalculator
+            except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+                raise TrainingDataInputError(
+                    "Authenticated MACE provider construction requires mace-torch."
+                ) from exc
+            try:
+                calculator = MACECalculator(
+                    models=[model],
+                    device=requested_device,
+                    default_dtype=str(default_dtype),
+                    **active_kwargs,
+                )
+            except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+                raise TrainingDataInputError(
+                    "Authenticated MACE model cannot be realized by the shared calculator owner."
+                ) from exc
+        else:
+            if not allow_forward_override:
+                raise TrainingDataInputError(
+                    "A deployable MACE model is required when no bounded forward override is supplied."
+                )
+            calculator = _AuthenticatedParameterCalculator(
+                model, device=requested_device, default_dtype=str(default_dtype)
+            )
+
+        try:
+            import mace
+
+            model_version = str(getattr(mace, "__version__", "unknown"))
+        except ModuleNotFoundError:  # pragma: no cover - calculator construction already imports MACE
+            model_version = "unknown"
+        identity = ModelCheckpointIdentity(
+            model_family="MACE",
+            checkpoint_locator=str(checkpoint_locator),
+            checkpoint_sha256=validate_digest(
+                checkpoint_sha256, name="checkpoint_sha256"
+            ),
+            calculator_class=f"{type(calculator).__module__}.{type(calculator).__qualname__}",
+            model_version=model_version,
+            supported_atomic_numbers=tuple(int(value) for value in supported_atomic_numbers),
+            model_supported_atomic_numbers=tuple(int(value) for value in supported_atomic_numbers),
+            requested_atomic_numbers=tuple(int(value) for value in requested_atomic_numbers),
+            device=requested_device,
+            default_dtype=str(default_dtype),
+            metadata=(
+                ("authenticated_state_owner", "provider_model"),
+                ("forward_override_allowed", str(bool(allow_forward_override)).lower()),
+                ("acceleration_backend", "eager"),
+            ),
+        )
+        return cls(calculator, identity)
+
+    @classmethod
+    def from_authenticated_parameter_state(
+        cls,
+        parameters: Sequence[Any],
+        *,
+        checkpoint_locator: str | Path,
+        checkpoint_sha256: str,
+        device: str,
+        default_dtype: str,
+        supported_atomic_numbers: Sequence[int] = (),
+        requested_atomic_numbers: Sequence[int] = (),
+        allow_forward_override: bool = False,
+    ) -> "MaceCalculatorProvider":
+        """Build a provider shell and authenticate a parameter sequence once."""
+
+        import torch
+
+        values = tuple(parameters)
+        if not values:
+            raise TrainingDataInputError(
+                "Authenticated provider state requires at least one parameter."
+            )
+        if any(not torch.is_tensor(value) for value in values):
+            raise TrainingDataInputError(
+                "Authenticated provider parameters must be tensors."
+            )
+        model = _AuthenticatedParameterShell(values)
+        provider = cls.from_authenticated_model(
+            model,
+            checkpoint_locator=checkpoint_locator,
+            checkpoint_sha256=checkpoint_sha256,
+            device=device,
+            default_dtype=default_dtype,
+            supported_atomic_numbers=supported_atomic_numbers,
+            requested_atomic_numbers=requested_atomic_numbers,
+            allow_forward_override=allow_forward_override,
+        )
+        provider.load_authenticated_parameter_state(values, state_name="live")
+        return provider
+
+    @property
+    def model(self) -> Any:
+        self._raise_if_poisoned()
+        models = getattr(self._calculator, "models", None)
+        if not isinstance(models, (tuple, list)) or len(models) != 1:
+            raise TrainingDataInputError(
+                "Authenticated MACE provider must own exactly one model."
+            )
+        return models[0]
+
+    @property
+    def device(self) -> str:
+        self._raise_if_poisoned()
+        return str(getattr(self._calculator, "device", self._checkpoint_identity.device))
+
+    @property
+    def default_dtype(self) -> str:
+        self._raise_if_poisoned()
+        return str(
+            getattr(self._calculator, "default_dtype", self._checkpoint_identity.default_dtype)
+        )
+
+    @property
+    def backend_policy(self) -> str:
+        self._raise_if_poisoned()
+        calculator = self._calculator
+        if bool(getattr(calculator, "use_compile", False)):
+            return "compile"
+        if bool(getattr(calculator, "_enable_cueq", False)):
+            return "cueq"
+        if bool(getattr(calculator, "_enable_oeq", False)):
+            return "oeq"
+        return "eager"
+
+    def load_authenticated_parameter_state(
+        self,
+        values: Sequence[Any] | Mapping[str, Any],
+        *,
+        state_name: str,
+    ) -> tuple[Any, ...]:
+        """Validate and apply one complete ordered state to the provider model.
+
+        All compatibility checks happen before mutation.  A mutation failure
+        poisons the provider so a partially changed shell cannot reach forward.
+        """
+
+        self._raise_if_poisoned()
+        import torch
+
+        named = tuple(self.model.named_parameters())
+        if not named:
+            raise MaceModelStateCompatibilityError(
+                "Authenticated provider model has no parameters."
+            )
+        if isinstance(values, Mapping):
+            observed_names = tuple(str(name) for name in values.keys())
+            expected_names = tuple(str(name) for name, _ in named)
+            if observed_names != expected_names:
+                raise MaceModelStateCompatibilityError(
+                    f"{state_name} parameter keys/order differ from the provider model."
+                )
+            incoming = tuple(values[name] for name, _ in named)
+        else:
+            incoming = tuple(values)
+        if len(incoming) != len(named):
+            raise MaceModelStateCompatibilityError(
+                f"{state_name} parameter cardinality differs from the provider model."
+            )
+        for index, ((name, resident), source) in enumerate(zip(named, incoming, strict=True)):
+            if not torch.is_tensor(source):
+                raise MaceModelStateCompatibilityError(
+                    f"{state_name} parameter {name!r} at index {index} is not a tensor."
+                )
+            if tuple(source.shape) != tuple(resident.shape):
+                raise MaceModelStateCompatibilityError(
+                    f"{state_name} parameter {name!r} shape differs from the provider model."
+                )
+            if source.dtype != resident.dtype:
+                raise MaceModelStateCompatibilityError(
+                    f"{state_name} parameter {name!r} dtype differs from the provider model."
+                )
+            if not bool(torch.isfinite(source.detach()).all().item()):
+                raise MaceModelStateCompatibilityError(
+                    f"{state_name} parameter {name!r} contains non-finite values."
+                )
+        try:
+            with torch.no_grad():
+                for (_, resident), source in zip(named, incoming, strict=True):
+                    resident.copy_(source.detach().to(device=resident.device))
+        except Exception as exc:
+            self._poisoned = True
+            self._poison_reason = str(exc)
+            self._descriptor_adapter_cache = None
+            self._runtime_architecture_digest_cache = None
+            raise MaceModelStateCompatibilityError(
+                f"{state_name} parameter application failed; the provider shell is poisoned."
+            ) from exc
+        self._descriptor_adapter_cache = None
+        self._runtime_architecture_digest_cache = None
+        return tuple(resident for _, resident in named)
 
     @classmethod
     @mace_runtime_warning_handled("MACE descriptor calculator construction")

@@ -42,7 +42,9 @@ from mdstats.training_data.target_size_execution.context import (
 def _env(tmp_path: Path):
     manifest, fa, nb, aggregate, common, index = p3a._common(tmp_path)
     schedule = build_target_size_screen_schedule((1, 3, 10))
-    optimizer = MaceOptimizerPolicy(max_num_epochs=schedule.n3, batch_size=4)
+    optimizer = MaceOptimizerPolicy(
+        max_num_epochs=schedule.n3, batch_size=4, device="cpu"
+    )
     context = build_target_size_execution_context(
         aggregate.definition, common, schedule, seed_neutral_optimizer_policy=optimizer
     )
@@ -94,7 +96,7 @@ def _run_rung(
         metrics.write_text("", encoding="utf-8")
     handler = SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir)))
     train_loader = [object()] * updates_per_epoch
-    model = torch.nn.Linear(3, 2)
+    model = torch.nn.Linear(3, 2, dtype=torch.float64)
     optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4, momentum=0.9)
     ema = ExponentialMovingAverage(model.parameters(), decay=0.95)
     runtime = runtime_mod._Train2Runtime(

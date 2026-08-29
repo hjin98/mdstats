@@ -71,7 +71,9 @@ def _env(tmp_path: Path):
     )
     frames, frame_data_by_run, _ = p3a._frame_arrays(tmp_path, manifest)
     schedule = build_target_size_screen_schedule((1, 3, 10))
-    optimizer = MaceOptimizerPolicy(max_num_epochs=schedule.n3, batch_size=4)
+    optimizer = MaceOptimizerPolicy(
+        max_num_epochs=schedule.n3, batch_size=4, device="cpu"
+    )
     context = build_target_size_execution_context(
         aggregate.definition, common, schedule, seed_neutral_optimizer_policy=optimizer
     )
@@ -162,6 +164,7 @@ def _materialization_for(env, tmp_path: Path):
         frame_data_by_run=env["frame_data_by_run"],
         output_directory=out_dir,
         optimizer_policy=env["optimizer"],
+        extxyz_policy=MaceExtxyzPolicy(),
         frame_array_index=env["index"],
     )
 
@@ -342,6 +345,10 @@ def test_p3d_exact_mev_conversion_and_reference_equivalence(tmp_path: Path) -> N
         common=env["common"],
         schedule=env["schedule"],
         optimizer_policy=env["optimizer"],
+        extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
         materialization_directory=tmp_path / "materialization",
         snapshot_root=tmp_path / "snap_root_mev",
         evaluation_directory=tmp_path / "eval-mev",
@@ -507,7 +514,11 @@ def test_p3d_direct_role_payload_carries_no_legacy_selection_semantics(
         common=env["common"],
         schedule=env["schedule"],
         optimizer_policy=env["optimizer"],
-        materialization_directory=tmp_path / "materialization",
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
         snapshot_root=tmp_path / "snap_root_legacy",
         evaluation_directory=tmp_path / "eval-legacy",
         inference_evaluator=better_eval,
@@ -524,7 +535,11 @@ def test_p3d_direct_role_payload_carries_no_legacy_selection_semantics(
         common=env["common"],
         schedule=env["schedule"],
         optimizer_policy=env["optimizer"],
-        materialization_directory=tmp_path / "materialization",
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
         snapshot_root=tmp_path / "snap_root_legacy",
         evaluation_directory=tmp_path / "eval-legacy",
         inference_evaluator=worse_eval,
@@ -583,7 +598,11 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
         common=env["common"],
         schedule=env["schedule"],
         optimizer_policy=env["optimizer"],
-        materialization_directory=tmp_path / "materialization",
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
         snapshot_root=tmp_path / "snap_root_fail",
         evaluation_directory=tmp_path / "eval-fail",
         inference_evaluator=_broken_force_eval,
@@ -615,7 +634,11 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
         common=env["common"],
         schedule=env["schedule"],
         optimizer_policy=env["optimizer"],
-        materialization_directory=tmp_path / "materialization",
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
         snapshot_root=tmp_path / "snap_root_fail",
         evaluation_directory=tmp_path / "eval-fail",
         inference_evaluator=_broken_energy_eval,
@@ -659,7 +682,11 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
             common=env["common"],
             schedule=env["schedule"],
             optimizer_policy=env["optimizer"],
-            materialization_directory=tmp_path / "materialization",
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
             snapshot_root=tmp_path / "snap_root_fail",
             evaluation_directory=tmp_path / "eval-fail",
             inference_evaluator=_predictions_evaluator(view),
@@ -681,7 +708,11 @@ def test_p3d_eval2_failure_translation_and_execution_error_separation(
             common=env["common"],
             schedule=env["schedule"],
             optimizer_policy=env["optimizer"],
-            materialization_directory=tmp_path / "materialization",
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
             snapshot_root=tmp_path / "snap_root_fail",
             evaluation_directory=tmp_path / "eval-m2",
             inference_evaluator=_predictions_evaluator(view),
@@ -780,7 +811,11 @@ def test_p3d_review3_prediction_evidence_immutability_and_authentication(
         common=env["common"],
         schedule=env["schedule"],
         optimizer_policy=env["optimizer"],
-        materialization_directory=tmp_path / "materialization",
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
         snapshot_root=tmp_path / "snap_root_r3",
         evaluation_directory=tmp_path / "eval-r3",
         inference_evaluator=evaluator,
@@ -863,39 +898,57 @@ def test_p3d_review3_evaluation_view_bypass_prevention(tmp_path: Path) -> None:
         common=env["common"],
         schedule=env["schedule"],
         optimizer_policy=env["optimizer"],
-        materialization_directory=tmp_path / "materialization",
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
         snapshot_root=tmp_path / "snap_root_bypass",
         evaluation_directory=tmp_path / "eval-bypass",
         inference_evaluator=evaluator,
     )
 
-    # Reduction with matching view succeeds
+    auth_view = eval_artifact.build_authenticated_evaluation_view(tmp_path / "eval-bypass")
+
+    # Reduction with authenticated view succeeds
     rec = run_target_size_eval2_reduction(
         role,
         eval_artifact,
         evidence,
-        view=view,
+        view=auth_view,
     )
     assert rec.configuration_count == role.evaluation_size
 
     # Reduction with mismatched view digest fails
-    fake_view = SimpleNamespace(
+    from mdstats.training_data.target_size_execution.export import TargetSizeAuthenticatedEvaluationView
+    mismatched_view = TargetSizeAuthenticatedEvaluationView(
+        artifact_content_digest=eval_artifact.content_digest,
+        artifact_sha256=eval_artifact.sha256,
         evaluation_view_digest="0" * 64,
-        configuration_count=role.evaluation_size,
+        evaluation_size=eval_artifact.evaluation_size,
+        evaluation_frame_uids=eval_artifact.evaluation_frame_uids,
+        evaluation_membership_digest=eval_artifact.evaluation_membership_digest,
+        canonical_frame_authority_digest=eval_artifact.canonical_frame_authority_digest,
+        extxyz_policy_digest=eval_artifact.extxyz_policy_digest,
+        energy_key=eval_artifact.energy_key,
+        forces_key=eval_artifact.forces_key,
+        stress_key=eval_artifact.stress_key,
+        view=auth_view.view,
     )
     with pytest.raises(mdstats.TrainingDataInputError):
         run_target_size_eval2_reduction(
             role,
             eval_artifact,
             evidence,
-            view=fake_view,
+            view=mismatched_view,
         )
 
-    # Generic view without evaluation_view_digest is rejected
+    # Generic view or unauthenticated object is rejected
     generic_view = SimpleNamespace(
+        evaluation_view_digest=eval_artifact.evaluation_view_digest,
         configuration_count=role.evaluation_size,
     )
-    with pytest.raises(mdstats.TrainingDataInputError, match="Generic EvaluationDatasetView"):
+    with pytest.raises(mdstats.TrainingDataInputError, match="Generic EvaluationDatasetView or unauthenticated view"):
         run_target_size_eval2_reduction(
             role,
             eval_artifact,
@@ -918,6 +971,10 @@ def test_p3d_review4_exact_m_byte_and_frame_order_validation(tmp_path: Path) -> 
         root_directory=tmp_path / "eval-r4",
         definition=env["aggregate"].definition,
         canonical_frame_authority=env["frame_authority"],
+        policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
     )
 
     # Reordered ExtXYZ frames on disk must fail
@@ -932,5 +989,112 @@ def test_p3d_review4_exact_m_byte_and_frame_order_validation(tmp_path: Path) -> 
                 root_directory=tmp_path / "eval-r4",
                 definition=env["aggregate"].definition,
                 canonical_frame_authority=env["frame_authority"],
+                policy=MaceExtxyzPolicy(),
+                frame_catalog=env["frames"],
+                frame_data_by_run=env["frame_data_by_run"],
+                frame_array_index=env["index"],
             )
         ase.io.write(str(extxyz_file), frames)
+
+
+def test_p3d_provider_state_authentication_and_exact_m_integrity(tmp_path: Path) -> None:
+    """Pass A: Authenticated provider state and exact-M sealed input checks."""
+    import torch
+    from mdstats.training_data.model_features import MaceCalculatorProvider
+
+    env = _env(tmp_path)
+    state = _boundary_state(env, tmp_path, 1, name="ckpt-pass-a")
+    snapshot = promote_target_size_boundary_snapshot(
+        env["trajectory"],
+        state,
+        checkpoint_directory=tmp_path / "ckpt-pass-a",
+        snapshot_root=tmp_path / "snap_pass_a",
+    )
+    eval_artifact = _eval_artifact_for(
+        env,
+        tmp_path,
+        env["aggregate"].definition.policy.evaluation_sizes[0],
+        name="eval-pass-a",
+    )
+    blocks = target_size_population_correlation_blocks(
+        env["aggregate"], env["evidence"]
+    )
+    role = build_target_size_eval2_role(
+        trajectory=env["trajectory"],
+        boundary_state=snapshot,
+        definition=env["aggregate"].definition,
+        schedule=env["schedule"],
+        correlation_blocks=blocks,
+        evaluation_data=eval_artifact,
+    )
+    mat = _materialization_for(env, tmp_path)
+
+    # 1. Successful inference with real provider
+    auth_view = eval_artifact.build_authenticated_evaluation_view(tmp_path / "eval-pass-a")
+    evaluator = _predictions_evaluator(auth_view.view)
+    evidence = run_target_size_direct_boundary_inference(
+        trajectory=env["trajectory"],
+        materialization=mat,
+        boundary_state=snapshot,
+        role=role,
+        evaluation_data=eval_artifact,
+        canonical_frame_authority=env["frame_authority"],
+        definition=env["aggregate"].definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=env["optimizer"],
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
+        snapshot_root=tmp_path / "snap_pass_a",
+        evaluation_directory=tmp_path / "eval-pass-a",
+        inference_evaluator=evaluator,
+    )
+    assert evidence.prediction_count == role.evaluation_size
+    assert evidence.execution_architecture != ""
+    assert evidence.device == env["optimizer"].device
+    assert evidence.default_dtype == "float64"
+
+    # 2. Tampered checkpoint model live parameters reject before forward
+    snap_dir = tmp_path / "snap_pass_a" / snapshot.snapshot_relative_dir
+    companion_path = snap_dir / "train2_runtime.pt"
+    if companion_path.is_file():
+        companion_obj = torch.load(companion_path, map_location="cpu", weights_only=False)
+        with torch.no_grad():
+            for p in companion_obj["live_parameters"]:
+                p.add_(1.0)
+                break
+        torch.save(companion_obj, companion_path)
+    else:
+        raw_ckpt = snap_dir / snapshot.raw_checkpoint_name
+        model_obj = torch.load(raw_ckpt, map_location="cpu", weights_only=False)
+        with torch.no_grad():
+            for p in model_obj.parameters():
+                p.add_(1.0)
+                break
+        torch.save(model_obj, raw_ckpt)
+    with pytest.raises(mdstats.TrainingDataInputError, match="snapshot|digest|Loaded provider|companion bytes changed"):
+        run_target_size_direct_boundary_inference(
+            trajectory=env["trajectory"],
+            materialization=mat,
+            boundary_state=snapshot,
+            role=role,
+            evaluation_data=eval_artifact,
+            canonical_frame_authority=env["frame_authority"],
+            definition=env["aggregate"].definition,
+            context=env["context"],
+            common=env["common"],
+            schedule=env["schedule"],
+            optimizer_policy=env["optimizer"],
+       extxyz_policy=MaceExtxyzPolicy(),
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+       materialization_directory=tmp_path / "materialization",
+            snapshot_root=tmp_path / "snap_pass_a",
+            evaluation_directory=tmp_path / "eval-pass-a",
+            inference_evaluator=evaluator,
+        )

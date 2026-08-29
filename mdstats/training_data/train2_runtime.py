@@ -55,19 +55,22 @@ def _sha256(path: Path) -> str:
 
 
 def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    # Keep mutable TRAIN2 summaries under the same crash-safe persistence
+    # owner as target-size snapshots and heads.  The import is lazy because
+    # the target-size package imports this runtime module while initializing.
+    from .target_size_execution.persistence import publish_mutable_json_atomic
+
+    publish_mutable_json_atomic(path, payload)
 
 
 def _atomic_torch_save(path: Path, payload: Mapping[str, Any]) -> None:
     import torch
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    torch.save(dict(payload), tmp)
-    os.replace(tmp, path)
+    from .target_size_execution.persistence import publish_mutable_bytes_atomic
+
+    buffer = io.BytesIO()
+    torch.save(dict(payload), buffer)
+    publish_mutable_bytes_atomic(path, buffer.getvalue())
 
 
 class Train2NumericalFailure(RuntimeError):
@@ -786,7 +789,15 @@ class _Train2Runtime:
             raise TrainingDataInputError(
                 "TRAIN2 numerical-failure sidecar already records different scientific evidence."
             )
-        _atomic_json(self.numerical_failure_path, record.to_dict())
+        from .target_size_execution.persistence import (
+            publish_immutable_json_create_or_verify,
+        )
+
+        publish_immutable_json_create_or_verify(
+            self.numerical_failure_path,
+            record.to_dict(),
+            deserializer=Train2NumericalFailureRecord.from_dict,
+        )
         raise Train2NumericalFailure(code, reason)
 
     def persist_epoch(self, *, epoch: int) -> Train2RuntimeSummary | None:
