@@ -1926,6 +1926,439 @@ def _candidate_outcome_path(
     return root / "progress" / str(boundary_epoch) / f"{key}.json"
 
 
+def _resolve_publication_parent(
+    resolver: TargetSizeExecutionResolver,
+    expected_digest: str | None,
+    supplied: Any | None,
+    *,
+    name: str,
+    loader: Callable[[str], Any],
+) -> Any | None:
+    """Resolve one supplied-or-omitted parent through the typed CAS owner."""
+
+    if expected_digest is None:
+        if supplied is not None:
+            raise TrainingDataInputError(
+                f"Completion does not bind a {name} parent, but one was supplied."
+            )
+        return None
+    expected = validate_digest(expected_digest, name=f"{name}_digest")
+    if supplied is None:
+        supplied = loader(expected)
+    observed = getattr(supplied, "content_digest", None)
+    if observed != expected:
+        raise TrainingDataInputError(
+            f"Supplied/resolved {name} parent does not match its completion digest."
+        )
+    return supplied
+
+
+def _resolve_publication_parent_graph(
+    root: str | Path,
+    authority: TargetSizeRestartAuthority,
+    trajectory: Any,
+    completion_record: TargetSizeCellCompletionRecord,
+    *,
+    materialization: Any | None,
+    boundary_snapshot: Any | None,
+    eval2_role: Any | None,
+    evaluation_data: Any | None,
+    prediction_evidence: Any | None,
+    eval2_metric_record: Any | None,
+    failure_record: Any | None,
+    planned_rung: Any | None,
+    predecessor_continuation: Any | None,
+    failure_checkpoint_directory: str | Path | None,
+) -> dict[str, Any | None]:
+    """Resolve and type-check the complete variant-specific publication graph.
+
+    This phase intentionally performs no completion/progress writes.  Omitted
+    arguments are only conveniences for an idempotent retry: every omitted
+    digest-bound parent is loaded from the same typed resolver used by replay.
+    """
+
+    if not isinstance(authority, TargetSizeRestartAuthority):
+        raise TrainingDataInputError(
+            "Completion publication requires one complete TargetSizeRestartAuthority."
+        )
+    root_path = Path(root).resolve()
+    if authority.resolver.root_directory != root_path:
+        raise TrainingDataInputError(
+            "Completion publication root does not match the restart resolver root."
+        )
+
+    from ..eval2 import Eval2NumericalEvaluationError, Eval2TargetMetricRecord
+    from ..train2_runtime import Train2NumericalFailureRecord, Train2RuntimePlan
+    from .candidate import (
+        TargetSizeCandidateMaterialization,
+        TargetSizeCandidateTrajectory,
+    )
+    from .evaluation import TargetSizeEval2Role, TargetSizePredictionEvidence
+    from .execution import TargetSizeBoundarySnapshot
+    from .export import TargetSizeEvaluationArtifact
+
+    if not isinstance(trajectory, TargetSizeCandidateTrajectory):
+        raise TrainingDataInputError(
+            "Completion publication requires a typed candidate trajectory."
+        )
+    if (
+        completion_record.trajectory_digest != trajectory.content_digest
+        or completion_record.experiment_definition_digest
+        != authority.aggregate.definition.content_digest
+        or completion_record.execution_context_digest
+        != authority.context.content_digest
+        or completion_record.common_preparation_digest
+        != authority.common.content_digest
+        or trajectory.target_size != completion_record.target_size
+        or trajectory.optimizer_seed != completion_record.optimizer_seed
+    ):
+        raise TrainingDataInputError(
+            "Completion record does not bind the accepted trajectory/P1/P2 cell identity."
+        )
+
+    resolved_materialization = _resolve_publication_parent(
+        authority.resolver,
+        completion_record.materialization_digest,
+        materialization,
+        name="candidate materialization",
+        loader=lambda value: authority.resolver.load_typed_content_addressed(
+            authority.resolver.materialization_path(value),
+            value,
+            TargetSizeCandidateMaterialization.from_dict,
+        ),
+    )
+    if not isinstance(resolved_materialization, TargetSizeCandidateMaterialization):
+        raise TrainingDataInputError(
+            "Completion publication candidate materialization has the wrong type."
+        )
+
+    resolved_planned_rung = _resolve_publication_parent(
+        authority.resolver,
+        completion_record.planned_rung_digest,
+        planned_rung,
+        name="planned rung",
+        loader=lambda value: authority.resolver.load_typed_content_addressed(
+            authority.resolver.planned_rung_path(value),
+            value,
+            Train2RuntimePlan.from_dict,
+        ),
+    )
+    if not isinstance(resolved_planned_rung, Train2RuntimePlan):
+        raise TrainingDataInputError(
+            "Completion publication planned rung has the wrong type."
+        )
+
+    resolved_predecessor = _resolve_publication_parent(
+        authority.resolver,
+        completion_record.predecessor_continuation_digest,
+        predecessor_continuation,
+        name="predecessor continuation",
+        loader=lambda value: _load_predecessor_continuation(authority.resolver, value),
+    )
+
+    resolved_snapshot = _resolve_publication_parent(
+        authority.resolver,
+        completion_record.boundary_snapshot_digest,
+        boundary_snapshot,
+        name="boundary snapshot",
+        loader=lambda value: authority.resolver.load_typed_content_addressed(
+            authority.resolver.snapshot_path(value),
+            value,
+            TargetSizeBoundarySnapshot.from_dict,
+        ),
+    )
+    if resolved_snapshot is not None and not isinstance(
+        resolved_snapshot, TargetSizeBoundarySnapshot
+    ):
+        raise TrainingDataInputError(
+            "Completion publication boundary snapshot has the wrong type."
+        )
+
+    resolved_role = _resolve_publication_parent(
+        authority.resolver,
+        completion_record.eval2_role_digest,
+        eval2_role,
+        name="EVAL2 role",
+        loader=lambda value: authority.resolver.load_typed_content_addressed(
+            authority.resolver.role_path(value),
+            value,
+            TargetSizeEval2Role.from_dict,
+        ),
+    )
+    if resolved_role is not None and not isinstance(resolved_role, TargetSizeEval2Role):
+        raise TrainingDataInputError("Completion publication EVAL2 role has the wrong type.")
+
+    resolved_evaluation_data = _resolve_publication_parent(
+        authority.resolver,
+        completion_record.evaluation_data_digest,
+        evaluation_data,
+        name="evaluation artifact",
+        loader=lambda value: authority.resolver.load_typed_content_addressed(
+            authority.resolver.evaluation_artifact_path(value),
+            value,
+            TargetSizeEvaluationArtifact.from_dict,
+        ),
+    )
+    if resolved_evaluation_data is not None and not isinstance(
+        resolved_evaluation_data, TargetSizeEvaluationArtifact
+    ):
+        raise TrainingDataInputError(
+            "Completion publication evaluation artifact has the wrong type."
+        )
+
+    resolved_prediction = _resolve_publication_parent(
+        authority.resolver,
+        completion_record.prediction_evidence_digest,
+        prediction_evidence,
+        name="prediction evidence",
+        loader=lambda value: authority.resolver.load_typed_content_addressed(
+            authority.resolver.prediction_evidence_path(value),
+            value,
+            TargetSizePredictionEvidence.from_dict,
+        ),
+    )
+    if resolved_prediction is not None and not isinstance(
+        resolved_prediction, TargetSizePredictionEvidence
+    ):
+        raise TrainingDataInputError(
+            "Completion publication prediction evidence has the wrong type."
+        )
+
+    resolved_metric = _resolve_publication_parent(
+        authority.resolver,
+        completion_record.eval2_metric_record_digest,
+        eval2_metric_record,
+        name="EVAL2 metric",
+        loader=lambda value: authority.resolver.load_typed_content_addressed(
+            authority.resolver.eval2_metric_path(value),
+            value,
+            Eval2TargetMetricRecord.from_dict,
+        ),
+    )
+    if resolved_metric is not None and not isinstance(
+        resolved_metric, Eval2TargetMetricRecord
+    ):
+        raise TrainingDataInputError("Completion publication EVAL2 metric has the wrong type.")
+
+    resolved_failure = _resolve_publication_parent(
+        authority.resolver,
+        completion_record.failure_record_digest,
+        failure_record,
+        name="raw numerical failure",
+        loader=lambda value: authority.resolver.load_raw_failure(value),
+    )
+    if completion_record.kind == "train2_failure":
+        if not isinstance(resolved_failure, Train2NumericalFailureRecord):
+            raise TrainingDataInputError(
+                "TRAIN2 completion publication requires a raw Train2NumericalFailureRecord."
+            )
+        if any(
+            value is not None
+            for value in (
+                resolved_snapshot,
+                resolved_role,
+                resolved_evaluation_data,
+                resolved_prediction,
+                resolved_metric,
+            )
+        ):
+            raise TrainingDataInputError(
+                "TRAIN2 failure publication received EVAL2-only parents."
+            )
+        raw_name = str(getattr(resolved_failure, "raw_checkpoint_name", ""))
+        raw_sha = getattr(resolved_failure, "raw_checkpoint_sha256", None)
+        if not raw_name or Path(raw_name).name != raw_name or raw_sha is None:
+            raise TrainingDataInputError(
+                "TRAIN2 failure publication requires a safe raw checkpoint identity."
+            )
+        raw_sha = validate_digest(raw_sha, name="raw_checkpoint_sha256")
+        if failure_checkpoint_directory is None:
+            source_raw = authority.resolver.failure_bulk_directory(
+                resolved_failure.content_digest
+            ) / raw_name
+        else:
+            source_raw = Path(failure_checkpoint_directory).resolve() / raw_name
+        if not source_raw.is_file():
+            raise TrainingDataInputError(
+                "TRAIN2 failure publication requires durable raw checkpoint bytes."
+            )
+        import hashlib
+
+        if hashlib.sha256(source_raw.read_bytes()).hexdigest() != raw_sha:
+            raise TrainingDataInputError(
+                "TRAIN2 failure publication raw checkpoint SHA-256 mismatch."
+            )
+    elif completion_record.kind == "eval2_failure":
+        if not isinstance(resolved_failure, Eval2NumericalEvaluationError):
+            raise TrainingDataInputError(
+                "EVAL2 completion publication requires a raw Eval2NumericalEvaluationError."
+            )
+        if any(
+            value is None
+            for value in (
+                resolved_snapshot,
+                resolved_role,
+                resolved_evaluation_data,
+                resolved_prediction,
+            )
+        ):
+            raise TrainingDataInputError(
+                "EVAL2 failure publication is missing a mandatory scientific parent."
+            )
+        if resolved_failure.prediction_digest != resolved_prediction.prediction_payload_digest:
+            raise TrainingDataInputError(
+                "EVAL2 failure error does not bind the exact prediction payload."
+            )
+    elif completion_record.kind == "success":
+        if any(
+            value is None
+            for value in (
+                resolved_snapshot,
+                resolved_role,
+                resolved_evaluation_data,
+                resolved_prediction,
+                resolved_metric,
+            )
+        ):
+            raise TrainingDataInputError(
+                "Success completion publication is missing a mandatory scientific parent."
+            )
+        if resolved_failure is not None:
+            raise TrainingDataInputError(
+                "Success completion publication received a failure parent."
+            )
+    else:  # pragma: no cover - completion record constructor already guards this
+        raise TrainingDataInputError(
+            f"Unsupported completion publication kind: {completion_record.kind!r}"
+        )
+
+    return {
+        "materialization": resolved_materialization,
+        "planned_rung": resolved_planned_rung,
+        "predecessor_continuation": resolved_predecessor,
+        "boundary_snapshot": resolved_snapshot,
+        "eval2_role": resolved_role,
+        "evaluation_data": resolved_evaluation_data,
+        "prediction_evidence": resolved_prediction,
+        "eval2_metric_record": resolved_metric,
+        "failure_record": resolved_failure,
+    }
+
+
+def _reverify_published_parent_graph(
+    authority: TargetSizeRestartAuthority,
+    completion_record: TargetSizeCellCompletionRecord,
+) -> None:
+    """Run the same replay/scientific authorities before completion publication."""
+
+    trajectory, optimizer_policy, _projection, materialization = (
+        _validate_replayed_candidate_lineage(authority, completion_record)
+    )
+    planned_rung, _predecessor = _load_and_validate_replayed_rung_ancestry(
+        authority, completion_record, trajectory
+    )
+    if completion_record.kind == "success":
+        from .evaluation import target_size_boundary_metric_from_eval2_record
+
+        snapshot, _eval_data, role, _prediction, _view, metric = (
+            _validate_replayed_eval2_parents(
+                authority,
+                completion_record,
+                trajectory,
+                optimizer_policy,
+                materialization,
+            )
+        )
+        if snapshot.rung_plan_digest != planned_rung.content_digest:
+            raise TrainingDataInputError(
+                "Published success snapshot does not bind the exact planned rung."
+            )
+        if metric is None:
+            raise TrainingDataInputError(
+                "Success completion replay did not resolve its EVAL2 metric parent."
+            )
+        derived = target_size_boundary_metric_from_eval2_record(role, metric)
+        if derived.content_digest != completion_record.outcome.content_digest:
+            raise TrainingDataInputError(
+                "Published success outcome differs from its authenticated replay metric."
+            )
+    elif completion_record.kind == "eval2_failure":
+        from .evaluation import translate_target_size_eval2_failure
+        from ..eval2 import Eval2NumericalEvaluationError
+
+        snapshot, _eval_data, role, prediction, _view, metric = (
+            _validate_replayed_eval2_parents(
+                authority,
+                completion_record,
+                trajectory,
+                optimizer_policy,
+                materialization,
+            )
+        )
+        if snapshot.rung_plan_digest != planned_rung.content_digest:
+            raise TrainingDataInputError(
+                "Published EVAL2 failure snapshot does not bind the exact planned rung."
+            )
+        if metric is not None:
+            raise TrainingDataInputError(
+                "EVAL2 failure completion replay unexpectedly resolved a metric parent."
+            )
+        failure = authority.resolver.load_raw_failure(
+            completion_record.failure_record_digest or ""
+        )
+        if not isinstance(failure, Eval2NumericalEvaluationError):
+            raise TrainingDataInputError(
+                "EVAL2 failure replay did not resolve its raw error parent."
+            )
+        if failure.prediction_digest != prediction.prediction_payload_digest:
+            raise TrainingDataInputError(
+                "EVAL2 failure replay error/prediction linkage is foreign."
+            )
+        derived = translate_target_size_eval2_failure(role, failure)
+        if derived.content_digest != completion_record.outcome.content_digest:
+            raise TrainingDataInputError(
+                "Published EVAL2 failure outcome differs from its raw replay evidence."
+            )
+    else:
+        from .execution import translate_target_size_train2_failure
+        from ..train2_runtime import Train2NumericalFailureRecord
+
+        failure = authority.resolver.load_raw_failure(
+            completion_record.failure_record_digest or ""
+        )
+        if not isinstance(failure, Train2NumericalFailureRecord):
+            raise TrainingDataInputError(
+                "TRAIN2 failure replay did not resolve its raw failure parent."
+            )
+        raw_name = str(failure.raw_checkpoint_name)
+        raw_path = authority.resolver.failure_bulk_directory(
+            failure.content_digest
+        ) / raw_name
+        if not raw_path.is_file():
+            raise TrainingDataInputError(
+                "TRAIN2 failure replay is missing its raw checkpoint bulk parent."
+            )
+        import hashlib
+
+        if failure.raw_checkpoint_sha256 is None or hashlib.sha256(
+            raw_path.read_bytes()
+        ).hexdigest() != failure.raw_checkpoint_sha256:
+            raise TrainingDataInputError(
+                "TRAIN2 failure replay raw checkpoint bytes do not match the raw failure record."
+            )
+        derived = translate_target_size_train2_failure(
+            failure,
+            trajectory=trajectory,
+            definition=authority.aggregate.definition,
+            schedule=authority.schedule,
+            scheduled_boundary_epoch=completion_record.boundary_epoch,
+        )
+        if derived.content_digest != completion_record.outcome.content_digest:
+            raise TrainingDataInputError(
+                "Published TRAIN2 failure outcome differs from its raw replay evidence."
+            )
+
+
 def record_candidate_boundary_outcome(
     root: str | Path,
     window: TargetSizeScreenWindow,
@@ -1942,8 +2375,9 @@ def record_candidate_boundary_outcome(
     planned_rung: Any | None = None,
     predecessor_continuation: Any | None = None,
     failure_checkpoint_directory: str | Path | None = None,
+    restart_authority: TargetSizeRestartAuthority | None = None,
 ) -> TargetSizeCandidateOutcome:
-    """Publish one content-addressed completion record and progress outcome."""
+    """Publish one completion only after its complete durable parent graph passes replay."""
 
     if completion_record.window_digest != window.content_digest:
         raise TrainingDataInputError(
@@ -1954,63 +2388,53 @@ def record_candidate_boundary_outcome(
             "Completion record belongs to a different trajectory."
         )
     resolver = TargetSizeExecutionResolver(Path(root))
-    if completion_record.kind != "success" and failure_record is None:
+    if restart_authority is None:
         raise TrainingDataInputError(
-            "Scientific failure completion publication requires its raw failure record."
+            "Completion publication requires the complete restart authority so omitted parents cannot bypass replay."
         )
-    if completion_record.kind == "train2_failure" and failure_checkpoint_directory is None:
-        if failure_record is None:
-            raise TrainingDataInputError(
-                "TRAIN2 failure publication requires the durable raw checkpoint directory."
-            )
-        existing_raw = (
-            resolver.failure_bulk_directory(failure_record.content_digest)
-            / str(getattr(failure_record, "raw_checkpoint_name", ""))
-        )
-        if not existing_raw.is_file():
-            raise TrainingDataInputError(
-                "TRAIN2 failure publication requires the durable raw checkpoint directory."
-            )
-    # Idempotent retries may omit parents that were already published by the
-    # first attempt.  Resolve those references only through the same typed CAS
-    # owner; a missing parent still fails closed.
-    if planned_rung is None and completion_record.planned_rung_digest is not None:
-        from ..train2_runtime import Train2RuntimePlan
-
-        planned_rung = resolver.load_typed_content_addressed(
-            resolver.planned_rung_path(completion_record.planned_rung_digest),
-            completion_record.planned_rung_digest,
-            Train2RuntimePlan.from_dict,
-        )
+    durable_window = restart_authority.resolver.load_typed_logical(
+        restart_authority.resolver.root_directory / SCREEN_WINDOW_FILENAME,
+        TargetSizeScreenWindow.from_dict,
+    )
     if (
-        predecessor_continuation is None
-        and completion_record.predecessor_continuation_digest is not None
-    ):
-        predecessor_continuation = _load_predecessor_continuation(
-            resolver, completion_record.predecessor_continuation_digest
-        )
-    if completion_record.failure_record_digest is not None and (
-        failure_record is None
-        or failure_record.content_digest != completion_record.failure_record_digest
-    ):
-        raise TrainingDataInputError(
-            "Published failure record does not match completion failure_record_digest."
-        )
-    if completion_record.planned_rung_digest is not None and (
-        planned_rung is None
-        or planned_rung.content_digest != completion_record.planned_rung_digest
+        durable_window.content_digest != window.content_digest
+        or durable_window.aggregate_digest
+        != restart_authority.aggregate.content_digest
+        or durable_window.experiment_definition_digest
+        != restart_authority.aggregate.definition.content_digest
+        or durable_window.execution_context_digest
+        != restart_authority.context.content_digest
+        or durable_window.common_preparation_digest
+        != restart_authority.common.content_digest
     ):
         raise TrainingDataInputError(
-            "Published planned rung does not match completion planned_rung_digest."
+            "Completion publication window does not bind the durable restart authority."
         )
-    if completion_record.predecessor_continuation_digest is not None and (
-        predecessor_continuation is None
-        or predecessor_continuation.content_digest
-        != completion_record.predecessor_continuation_digest
-    ):
-        raise TrainingDataInputError(
-            "Published predecessor continuation does not match completion provenance."
-        )
+    resolved_graph = _resolve_publication_parent_graph(
+        root,
+        restart_authority,
+        trajectory,
+        completion_record,
+        materialization=materialization,
+        boundary_snapshot=boundary_snapshot,
+        eval2_role=eval2_role,
+        evaluation_data=evaluation_data,
+        prediction_evidence=prediction_evidence,
+        eval2_metric_record=eval2_metric_record,
+        failure_record=failure_record,
+        planned_rung=planned_rung,
+        predecessor_continuation=predecessor_continuation,
+        failure_checkpoint_directory=failure_checkpoint_directory,
+    )
+    materialization = resolved_graph["materialization"]
+    boundary_snapshot = resolved_graph["boundary_snapshot"]
+    eval2_role = resolved_graph["eval2_role"]
+    evaluation_data = resolved_graph["evaluation_data"]
+    prediction_evidence = resolved_graph["prediction_evidence"]
+    eval2_metric_record = resolved_graph["eval2_metric_record"]
+    failure_record = resolved_graph["failure_record"]
+    planned_rung = resolved_graph["planned_rung"]
+    predecessor_continuation = resolved_graph["predecessor_continuation"]
     if planned_rung is not None and hasattr(planned_rung, "to_dict"):
         rung_path = resolver.planned_rung_path(planned_rung.content_digest)
         _publish_create_or_verify(
@@ -2155,14 +2579,11 @@ def record_candidate_boundary_outcome(
                 expected_sha256=validate_digest(raw_sha, name="raw_checkpoint_sha256"),
             )
 
-    comp_path = resolver.completion_path(
-        completion_record.boundary_epoch, completion_record.content_digest
-    )
-    _publish_create_or_verify(
-        comp_path,
-        completion_record.to_dict(),
-        deserializer=TargetSizeCellCompletionRecord.from_dict,
-    )
+    # Every parent is now present at its canonical path.  Re-run the exact
+    # candidate-lineage, rung-ancestry, EVAL2/provider, bulk, and raw-failure
+    # validators used during restart before exposing either authoritative
+    # completion or logical progress.
+    _reverify_published_parent_graph(restart_authority, completion_record)
 
     progress = TargetSizeCandidateOutcome(
         window_digest=window.content_digest,
@@ -2177,12 +2598,47 @@ def record_candidate_boundary_outcome(
         progress.boundary_epoch,
         progress,
     )
-    res = _publish_create_or_verify(
-        progress_path,
-        progress.to_dict(),
-        deserializer=TargetSizeCandidateOutcome.from_dict,
-    )
-    return res
+    # Serialize the final completion/progress pair per logical screen root.
+    # This closes the race in which two different completion records pass the
+    # preflight concurrently and the losing record would otherwise become an
+    # orphan after the progress-slot conflict.
+    import fcntl
+
+    publication_lock_path = resolver.root_directory / ".screen_publication.lock"
+    with publication_lock_path.open("a+") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            # Preflight the logical cell slot before publishing a new
+            # completion.  A conflicting progress pointer must not leave a
+            # newly written orphan completion behind.
+            if progress_path.exists():
+                if not progress_path.is_file():
+                    raise TrainingDataInputError(
+                        f"Progress path exists but is not a file: {progress_path}"
+                    )
+                existing_progress = resolver.load_progress(progress_path)
+                if existing_progress.content_digest != progress.content_digest:
+                    raise TrainingDataInputError(
+                        "Conflicting immutable progress record already exists for this logical cell."
+                    )
+
+            comp_path = resolver.completion_path(
+                completion_record.boundary_epoch, completion_record.content_digest
+            )
+            _publish_create_or_verify(
+                comp_path,
+                completion_record.to_dict(),
+                deserializer=TargetSizeCellCompletionRecord.from_dict,
+            )
+
+            res = _publish_create_or_verify(
+                progress_path,
+                progress.to_dict(),
+                deserializer=TargetSizeCandidateOutcome.from_dict,
+            )
+            return res
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def collect_boundary_cell_completion_records(
@@ -3110,6 +3566,13 @@ def _validate_replayed_eval2_parents(
             record.eval2_metric_record_digest,
             Eval2TargetMetricRecord.from_dict,
         )
+        if (
+            metric.target_role_digest != role.content_digest
+            or metric.prediction_digest != prediction.prediction_payload_digest
+        ):
+            raise TrainingDataInputError(
+                "Replay EVAL2 metric does not bind the exact role and prediction payload."
+            )
     return snapshot, eval_data, role, prediction, view, metric
 
 

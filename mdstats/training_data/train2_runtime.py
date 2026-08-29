@@ -280,6 +280,18 @@ def _verify_train2_continuation_content_digests(
             "TRAIN2 continuation companion RNG content does not match its "
             "authenticated summary digest."
         )
+    architecture_digest = payload.get("model_architecture_digest")
+    if summary.model_architecture_digest is None:
+        if architecture_digest is not None:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion carries a model architecture identity "
+                "but its authenticated summary records none."
+            )
+    elif architecture_digest != summary.model_architecture_digest:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion model architecture identity does not match "
+            "its authenticated summary."
+        )
 
 
 def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
@@ -478,13 +490,14 @@ class Train2RuntimeSummary:
     rng_state_digest: str
     group_base_learning_rates: tuple[float, ...]
     complete_budget: bool
+    model_architecture_digest: str | None = None
 
     @property
     def content_digest(self) -> str:
         return digest(self._payload())
 
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": TRAIN2_RUNTIME_SUMMARY_SCHEMA,
             "plan_digest": self.plan_digest,
             "training_protocol_digest": self.training_protocol_digest,
@@ -513,6 +526,11 @@ class Train2RuntimeSummary:
             "group_base_learning_rates": list(self.group_base_learning_rates),
             "complete_budget": self.complete_budget,
         }
+        if self.model_architecture_digest is not None:
+            payload["model_architecture_digest"] = validate_digest(
+                self.model_architecture_digest, name="model_architecture_digest"
+            )
+        return payload
 
     def to_dict(self) -> dict[str, Any]:
         return {**self._payload(), "content_digest": self.content_digest}
@@ -548,11 +566,21 @@ class Train2RuntimeSummary:
             rng_state_digest=str(payload["rng_state_digest"]),
             group_base_learning_rates=tuple(float(v) for v in payload["group_base_learning_rates"]),
             complete_budget=bool(payload["complete_budget"]),
+            model_architecture_digest=(
+                None
+                if payload.get("model_architecture_digest") is None
+                else str(payload["model_architecture_digest"])
+            ),
         )
         for name in ("plan_digest", "training_protocol_digest", "optimizer_policy_digest", "budget_policy_digest", "lr_policy_digest", "raw_checkpoint_sha256", "optimizer_state_digest", "live_parameter_digest", "rng_state_digest"):
             validate_digest(getattr(result, name), name=name)
         if result.ema_state_digest is not None:
             validate_digest(result.ema_state_digest, name="ema_state_digest")
+        if result.model_architecture_digest is not None:
+            validate_digest(
+                result.model_architecture_digest,
+                name="model_architecture_digest",
+            )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("TRAIN2 runtime-summary digest mismatch.")
         return result
@@ -712,6 +740,21 @@ class _Train2Runtime:
         # and compare canonical content digests before any restart state is
         # applied to the resumed model/process.
         _verify_train2_continuation_content_digests(payload, summary)
+        if summary.model_architecture_digest is not None:
+            from .model_features import mace_model_execution_architecture_digest
+
+            try:
+                observed_architecture_digest = mace_model_execution_architecture_digest(
+                    self.model
+                )
+            except (TrainingDataInputError, RuntimeError, TypeError, ValueError) as exc:
+                raise TrainingDataSerializationError(
+                    "TRAIN2 continuation requires a reconstructible MACE model architecture."
+                ) from exc
+            if observed_architecture_digest != summary.model_architecture_digest:
+                raise TrainingDataSerializationError(
+                    "TRAIN2 continuation model architecture differs from its authenticated summary."
+                )
         live = payload.get("live_parameters")
         parameters = list(self.model.parameters())
         if not isinstance(live, list) or len(live) != len(parameters):
@@ -862,6 +905,22 @@ class _Train2Runtime:
         checkpoint_sha = _sha256(raw)
         checkpoint_hash_seconds = time.perf_counter() - checkpoint_hash_started
         live_digest = _tensor_state_digest(live_parameters, schema="mdstats.train2-live-parameters.v1")
+        model_architecture_digest = None
+        if all(
+            hasattr(self.model, name)
+            for name in ("r_max", "atomic_numbers", "interactions", "products")
+        ):
+            from .model_features import mace_model_execution_architecture_digest
+
+            try:
+                model_architecture_digest = mace_model_execution_architecture_digest(
+                    self.model
+                )
+            except (TrainingDataInputError, RuntimeError, TypeError, ValueError) as exc:
+                raise TrainingDataInputError(
+                    "TRAIN2 could not authenticate the real MACE execution architecture "
+                    f"at durable epoch {completed_epochs}: {exc}"
+                ) from exc
         state_hash_seconds = time.perf_counter() - state_hash_started - checkpoint_hash_seconds
         optimizer_state_digest = digest({
             "schema": "mdstats.train2-optimizer-state-reference.v1",
@@ -891,6 +950,8 @@ class _Train2Runtime:
             "rng_state": rng_state,
             "group_base_learning_rates": list(self.group_base_lrs),
         }
+        if model_architecture_digest is not None:
+            companion["model_architecture_digest"] = model_architecture_digest
         companion_write_started = time.perf_counter()
         _atomic_torch_save(self.companion_path, companion)
         companion_write_seconds = time.perf_counter() - companion_write_started
@@ -921,6 +982,7 @@ class _Train2Runtime:
             rng_state_digest=rng_digest,
             group_base_learning_rates=self.group_base_lrs,
             complete_budget=(completed_epochs == self.plan.budget_policy.planned_epochs),
+            model_architecture_digest=model_architecture_digest,
         )
         summary_write_started = time.perf_counter()
         _atomic_json(self.summary_path, summary.to_dict())

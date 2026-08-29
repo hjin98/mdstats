@@ -68,6 +68,7 @@ MACE_MONITOR_GRAPH_POLICY_VERSION = "mdstats.mlff-opt-eval3.graph.2026-08.v1"
 MACE_MODEL_EXECUTION_ARCHITECTURE_SCHEMA = "mdstats.mace-model-execution-architecture.v1"
 MACE_PROVIDER_SHELL_EXECUTION_POLICY_SCHEMA = "mdstats.mace-provider-shell-execution-policy.v1"
 MACE_RUNTIME_ARCHITECTURE_SCHEMA = "mdstats.mace-runtime-architecture.v2"
+MACE_CANDIDATE_ARCHITECTURE_SCHEMA = "mdstats.target-size.mace-architecture.v1"
 STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA = "mdstats.static-inference-runtime-profile.v6"
 STATIC_INFERENCE_EVIDENCE_SEMANTICS = (
     "persistent-provider-required-residency-plus-2d-failure-learning.v6"
@@ -250,6 +251,472 @@ def _mace_model_execution_architecture_descriptor(model: Any) -> dict[str, Any]:
         "parameters": parameters,
         "buffers": buffers,
     }
+
+
+def mace_model_execution_architecture_digest(model: Any) -> str:
+    """Return the shared weight-independent identity of one MACE model.
+
+    TRAIN2 persists this model-only identity alongside its continuation state.
+    The provider uses the same descriptor after reconstructing the model from
+    candidate configuration, so a configuration change such as ``r_max`` is
+    rejected before checkpoint state can reach inference.
+    """
+
+    return digest(_mace_model_execution_architecture_descriptor(model))
+
+
+def _mace_candidate_architecture_from_args(args: Any) -> dict[str, Any]:
+    """Project the pinned MACE parser namespace into JSON-safe architecture data."""
+
+    interaction_first = str(getattr(args, "interaction_first", ""))
+    # MACE 0.3.16's ``_build_model`` normalizes the residual default for the
+    # first block when the model family is ``MACE``.  Persist the realized
+    # value, not the parser spelling that would be silently rewritten.
+    if interaction_first not in {
+        "RealAgnosticInteractionBlock",
+        "RealAgnosticDensityInteractionBlock",
+    }:
+        interaction_first = "RealAgnosticInteractionBlock"
+    radial_mlp = getattr(args, "radial_MLP", "[64, 64, 64]")
+    if isinstance(radial_mlp, str):
+        import ast
+
+        try:
+            radial_mlp = ast.literal_eval(radial_mlp)
+        except (SyntaxError, ValueError) as exc:
+            raise TrainingDataInputError(
+                "MACE candidate architecture radial_MLP is not a literal sequence."
+            ) from exc
+    return {
+        "schema": MACE_CANDIDATE_ARCHITECTURE_SCHEMA,
+        "model": str(getattr(args, "model", "MACE")),
+        "r_max": float(getattr(args, "r_max", 5.0)),
+        "num_radial_basis": int(getattr(args, "num_radial_basis", 8)),
+        "num_cutoff_basis": int(getattr(args, "num_cutoff_basis", 5)),
+        "max_ell": int(getattr(args, "max_ell", 3)),
+        "interaction": str(
+            getattr(args, "interaction", "RealAgnosticResidualInteractionBlock")
+        ),
+        "interaction_first": interaction_first,
+        "num_interactions": int(getattr(args, "num_interactions", 2)),
+        "hidden_irreps": str(getattr(args, "hidden_irreps", "")),
+        "edge_irreps": (
+            None
+            if getattr(args, "edge_irreps", None) is None
+            else str(getattr(args, "edge_irreps"))
+        ),
+        "num_channels": (
+            None
+            if getattr(args, "num_channels", None) is None
+            else int(getattr(args, "num_channels"))
+        ),
+        "max_L": (
+            None
+            if getattr(args, "max_L", None) is None
+            else int(getattr(args, "max_L"))
+        ),
+        "MLP_irreps": str(getattr(args, "MLP_irreps", "16x0e")),
+        "radial_MLP": [int(value) for value in radial_mlp],
+        "radial_type": str(getattr(args, "radial_type", "bessel")),
+        "pair_repulsion": bool(getattr(args, "pair_repulsion", False)),
+        "distance_transform": (
+            None
+            if getattr(args, "distance_transform", None) in (None, "None")
+            else str(getattr(args, "distance_transform"))
+        ),
+        "apply_cutoff": bool(getattr(args, "apply_cutoff", True)),
+        "correlation": int(getattr(args, "correlation", 3)),
+        "gate": str(getattr(args, "gate", "silu")),
+        "use_reduced_cg": bool(getattr(args, "use_reduced_cg", False)),
+        "use_so3": bool(getattr(args, "use_so3", False)),
+        "use_edge_irreps_first": bool(
+            getattr(args, "use_edge_irreps_first", False)
+        ),
+        "use_agnostic_product": bool(
+            getattr(args, "use_agnostic_product", False)
+        ),
+        "use_embedding_readout": bool(
+            getattr(args, "use_embedding_readout", False)
+        ),
+        "use_last_readout_only": bool(
+            getattr(args, "use_last_readout_only", False)
+        ),
+        "embedding_specs": getattr(args, "embedding_specs", None),
+        "avg_num_neighbors": float(getattr(args, "avg_num_neighbors", 1.0)),
+        # ``no_scaling`` makes construction independent of a data loader while
+        # keeping the scale/shift an explicit part of the accepted config.
+        "scaling": "no_scaling",
+        "mean": 0.0,
+        "std": 1.0,
+        "loss": "universal",
+        "heads": ["target_head"],
+    }
+
+
+def _validate_mace_candidate_architecture(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Canonicalize candidate architecture without creating a model."""
+
+    if value.get("schema") != MACE_CANDIDATE_ARCHITECTURE_SCHEMA:
+        raise TrainingDataSerializationError(
+            "Unsupported target-size MACE architecture schema."
+        )
+    required = {
+        "schema",
+        "model",
+        "r_max",
+        "num_radial_basis",
+        "num_cutoff_basis",
+        "max_ell",
+        "interaction",
+        "interaction_first",
+        "num_interactions",
+        "hidden_irreps",
+        "edge_irreps",
+        "num_channels",
+        "max_L",
+        "MLP_irreps",
+        "radial_MLP",
+        "radial_type",
+        "pair_repulsion",
+        "distance_transform",
+        "apply_cutoff",
+        "correlation",
+        "gate",
+        "use_reduced_cg",
+        "use_so3",
+        "use_edge_irreps_first",
+        "use_agnostic_product",
+        "use_embedding_readout",
+        "use_last_readout_only",
+        "embedding_specs",
+        "avg_num_neighbors",
+        "scaling",
+        "mean",
+        "std",
+        "loss",
+        "heads",
+    }
+    if set(value) != required:
+        missing = sorted(required.difference(value))
+        extra = sorted(set(value).difference(required))
+        raise TrainingDataInputError(
+            "Target-size MACE architecture keys are not exact; "
+            f"missing={missing}, extra={extra}."
+        )
+    if str(value["model"]) != "MACE":
+        raise TrainingDataInputError(
+            "Target-size P3 reconstruction accepts only the pinned MACE model family."
+        )
+    try:
+        r_max = float(value["r_max"])
+        avg_num_neighbors = float(value["avg_num_neighbors"])
+        mean = float(value["mean"])
+        std = float(value["std"])
+    except (TypeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            "Target-size MACE architecture contains a non-numeric scalar."
+        ) from exc
+    if not math.isfinite(r_max) or r_max <= 0.0:
+        raise TrainingDataInputError("Target-size MACE architecture r_max must be positive and finite.")
+    if not math.isfinite(avg_num_neighbors) or avg_num_neighbors <= 0.0:
+        raise TrainingDataInputError(
+            "Target-size MACE architecture avg_num_neighbors must be positive and finite."
+        )
+    if not math.isfinite(mean) or not math.isfinite(std) or std <= 0.0:
+        raise TrainingDataInputError(
+            "Target-size MACE architecture mean/std must be finite with std > 0."
+        )
+    integer_fields = (
+        "num_radial_basis",
+        "num_cutoff_basis",
+        "max_ell",
+        "num_interactions",
+        "correlation",
+    )
+    integers: dict[str, int] = {}
+    for name in integer_fields:
+        raw = value[name]
+        lower_bound = 0 if name == "max_ell" else 1
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw < lower_bound:
+            raise TrainingDataInputError(
+                f"Target-size MACE architecture {name} must be a non-negative integer."
+                if name == "max_ell"
+                else f"Target-size MACE architecture {name} must be a positive integer."
+            )
+        integers[name] = int(raw)
+    hidden_irreps = str(value["hidden_irreps"]).strip()
+    mlp_irreps = str(value["MLP_irreps"]).strip()
+    if not hidden_irreps or not mlp_irreps:
+        raise TrainingDataInputError(
+            "Target-size MACE architecture requires hidden_irreps and MLP_irreps."
+        )
+    radial_mlp = value["radial_MLP"]
+    if not isinstance(radial_mlp, (list, tuple)) or not radial_mlp:
+        raise TrainingDataInputError("Target-size MACE architecture radial_MLP is invalid.")
+    radial_mlp_values: list[int] = []
+    for item in radial_mlp:
+        if isinstance(item, bool) or not isinstance(item, int) or item <= 0:
+            raise TrainingDataInputError(
+                "Target-size MACE architecture radial_MLP values must be positive integers."
+            )
+        radial_mlp_values.append(int(item))
+    heads = value["heads"]
+    if not isinstance(heads, (list, tuple)) or tuple(str(item) for item in heads) != (
+        "target_head",
+    ):
+        raise TrainingDataInputError(
+            "Target-size P3 MACE reconstruction requires exactly the target_head head."
+        )
+    boolean_fields = (
+        "pair_repulsion",
+        "apply_cutoff",
+        "use_reduced_cg",
+        "use_so3",
+        "use_edge_irreps_first",
+        "use_agnostic_product",
+        "use_embedding_readout",
+        "use_last_readout_only",
+    )
+    for name in boolean_fields:
+        if not isinstance(value[name], bool):
+            raise TrainingDataInputError(
+                f"Target-size MACE architecture {name} must be boolean."
+            )
+    if str(value["scaling"]) != "no_scaling" or str(value["loss"]) != "universal":
+        raise TrainingDataInputError(
+            "Target-size MACE architecture must use the accepted no_scaling/universal realization."
+        )
+    interaction_first = str(value["interaction_first"])
+    if interaction_first not in {
+        "RealAgnosticInteractionBlock",
+        "RealAgnosticDensityInteractionBlock",
+    }:
+        raise TrainingDataInputError(
+            "Target-size MACE architecture interaction_first is not realizable by MACE 0.3.16."
+        )
+    distance_transform = value["distance_transform"]
+    if distance_transform not in (None, "Agnesi", "Soft"):
+        raise TrainingDataInputError(
+            "Target-size MACE architecture distance_transform is unsupported."
+        )
+    edge_irreps = value["edge_irreps"]
+    if edge_irreps is not None and not str(edge_irreps).strip():
+        edge_irreps = None
+    num_channels = value["num_channels"]
+    max_l = value["max_L"]
+    if num_channels is not None and (
+        isinstance(num_channels, bool) or not isinstance(num_channels, int) or num_channels <= 0
+    ):
+        raise TrainingDataInputError("Target-size MACE architecture num_channels is invalid.")
+    if max_l is not None and (
+        isinstance(max_l, bool) or not isinstance(max_l, int) or max_l < 0
+    ):
+        raise TrainingDataInputError("Target-size MACE architecture max_L is invalid.")
+    result = {
+        "schema": MACE_CANDIDATE_ARCHITECTURE_SCHEMA,
+        "model": "MACE",
+        "r_max": r_max,
+        **integers,
+        "interaction": str(value["interaction"]),
+        "interaction_first": interaction_first,
+        "hidden_irreps": hidden_irreps,
+        "edge_irreps": None if edge_irreps is None else str(edge_irreps),
+        "num_channels": None if num_channels is None else int(num_channels),
+        "max_L": None if max_l is None else int(max_l),
+        "MLP_irreps": mlp_irreps,
+        "radial_MLP": radial_mlp_values,
+        "radial_type": str(value["radial_type"]),
+        "pair_repulsion": bool(value["pair_repulsion"]),
+        "distance_transform": distance_transform,
+        "apply_cutoff": bool(value["apply_cutoff"]),
+        "gate": str(value["gate"]),
+        "use_reduced_cg": bool(value["use_reduced_cg"]),
+        "use_so3": bool(value["use_so3"]),
+        "use_edge_irreps_first": bool(value["use_edge_irreps_first"]),
+        "use_agnostic_product": bool(value["use_agnostic_product"]),
+        "use_embedding_readout": bool(value["use_embedding_readout"]),
+        "use_last_readout_only": bool(value["use_last_readout_only"]),
+        "embedding_specs": value["embedding_specs"],
+        "avg_num_neighbors": avg_num_neighbors,
+        "scaling": "no_scaling",
+        "mean": mean,
+        "std": std,
+        "loss": "universal",
+        "heads": ["target_head"],
+    }
+    return result
+
+
+def mace_candidate_architecture_defaults() -> dict[str, Any]:
+    """Return the pinned MACE 0.3.16 candidate architecture defaults.
+
+    The candidate materialization records this projection as its explicit
+    configuration authority.  It is derived from the same parser/build owner
+    used to instantiate the real model, so the target-size path does not carry
+    a second hand-written MACE compatibility definition.
+    """
+
+    try:
+        from mace.tools import build_default_arg_parser
+        from mace.tools.arg_parser_tools import check_args
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+        raise TrainingDataInputError(
+            "Target-size MACE materialization requires the pinned mace-torch dependency."
+        ) from exc
+    try:
+        args = build_default_arg_parser().parse_args(["--name", "target-size"])
+        args, _messages = check_args(args)
+        return _validate_mace_candidate_architecture(
+            _mace_candidate_architecture_from_args(args)
+        )
+    except (AssertionError, TypeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            "Pinned MACE parser defaults cannot form a valid target-size architecture."
+        ) from exc
+
+
+def canonicalize_mace_candidate_architecture(
+    value: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Return a strict JSON-safe target-size MACE architecture projection."""
+
+    if value is None:
+        return mace_candidate_architecture_defaults()
+    if not isinstance(value, Mapping):
+        raise TrainingDataInputError("Target-size MACE architecture must be a mapping.")
+    return _validate_mace_candidate_architecture(value)
+
+
+def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> Any:
+    """Construct one real MACE 0.3.16 model from candidate configuration.
+
+    This is the shared construction owner used by target-size EVAL2.  It uses
+    MACE's own parser/configuration builder and never consumes a checkpoint
+    state dictionary or a continuation companion as an architecture source.
+    """
+
+    if not isinstance(config_payload, Mapping):
+        raise TrainingDataInputError("MACE model configuration must be a mapping.")
+    architecture = canonicalize_mace_candidate_architecture(
+        config_payload.get("mace_architecture")
+    )
+    try:
+        atomic_numbers = tuple(
+            sorted({int(value) for value in config_payload["atomic_numbers"]})
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            "MACE model configuration must provide atomic_numbers."
+        ) from exc
+    if not atomic_numbers or any(value <= 0 for value in atomic_numbers):
+        raise TrainingDataInputError(
+            "MACE model configuration atomic_numbers must be positive and non-empty."
+        )
+    e0_payload = config_payload.get("E0s")
+    if not isinstance(e0_payload, Mapping):
+        raise TrainingDataInputError("MACE model configuration must provide E0s.")
+    try:
+        atomic_energies = np.asarray(
+            [float(e0_payload[str(z)] if str(z) in e0_payload else e0_payload[z]) for z in atomic_numbers],
+            dtype=np.float64,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            "MACE model configuration E0s do not cover atomic_numbers."
+        ) from exc
+    if np.any(~np.isfinite(atomic_energies)):
+        raise TrainingDataInputError("MACE model configuration E0s must be finite.")
+    device = str(config_payload.get("device", "")).strip()
+    default_dtype = str(config_payload.get("default_dtype", "")).strip()
+    if device not in {"cpu", "cuda", "mps", "xpu"}:
+        raise TrainingDataInputError("MACE model configuration device is unsupported.")
+    if default_dtype not in {"float32", "float64"}:
+        raise TrainingDataInputError(
+            "MACE model configuration default_dtype must be float32 or float64."
+        )
+    try:
+        import torch
+        from mace import tools
+        from mace.tools.model_script_utils import configure_model
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+        raise TrainingDataInputError(
+            "Real target-size MACE reconstruction requires mace-torch."
+        ) from exc
+
+    try:
+        args = tools.build_default_arg_parser().parse_args(
+            ["--name", str(config_payload.get("name", "target-size"))]
+        )
+        args.model = architecture["model"]
+        args.device = device
+        args.default_dtype = default_dtype
+        args.r_max = architecture["r_max"]
+        args.num_radial_basis = architecture["num_radial_basis"]
+        args.num_cutoff_basis = architecture["num_cutoff_basis"]
+        args.max_ell = architecture["max_ell"]
+        args.interaction = architecture["interaction"]
+        args.interaction_first = architecture["interaction_first"]
+        args.num_interactions = architecture["num_interactions"]
+        args.hidden_irreps = architecture["hidden_irreps"]
+        args.edge_irreps = architecture["edge_irreps"]
+        args.num_channels = architecture["num_channels"]
+        args.max_L = architecture["max_L"]
+        args.MLP_irreps = architecture["MLP_irreps"]
+        args.radial_MLP = repr(architecture["radial_MLP"])
+        args.radial_type = architecture["radial_type"]
+        args.pair_repulsion = architecture["pair_repulsion"]
+        args.distance_transform = architecture["distance_transform"]
+        args.apply_cutoff = architecture["apply_cutoff"]
+        args.correlation = architecture["correlation"]
+        args.gate = architecture["gate"]
+        args.use_reduced_cg = architecture["use_reduced_cg"]
+        args.use_so3 = architecture["use_so3"]
+        args.use_edge_irreps_first = architecture["use_edge_irreps_first"]
+        args.use_agnostic_product = architecture["use_agnostic_product"]
+        args.use_embedding_readout = architecture["use_embedding_readout"]
+        args.use_last_readout_only = architecture["use_last_readout_only"]
+        args.embedding_specs = architecture["embedding_specs"]
+        args.avg_num_neighbors = architecture["avg_num_neighbors"]
+        args.scaling = architecture["scaling"]
+        args.mean = architecture["mean"]
+        args.std = architecture["std"]
+        args.loss = architecture["loss"]
+        args.heads = list(architecture["heads"])
+        args.compute_energy = True
+        args.compute_forces = True
+        args.compute_dipole = False
+        args.compute_polarizability = False
+        z_table = tools.AtomicNumberTable(list(atomic_numbers))
+        requested_dtype = torch.float32 if default_dtype == "float32" else torch.float64
+        previous_dtype = torch.get_default_dtype()
+        torch.set_default_dtype(requested_dtype)
+        try:
+            model, _output_args = configure_model(
+                args,
+                None,
+                atomic_energies,
+                model_foundation=None,
+                heads=list(architecture["heads"]),
+                z_table=z_table,
+                head_configs=None,
+            )
+        finally:
+            torch.set_default_dtype(previous_dtype)
+        model = model.to(device="cpu", dtype=requested_dtype)
+    except (AssertionError, AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration could not reconstruct a real MACE model."
+        ) from exc
+    if not all(
+        hasattr(model, name)
+        for name in ("r_max", "atomic_numbers", "interactions", "products")
+    ):
+        raise TrainingDataInputError(
+            "Candidate MACE configuration did not produce a deployable MACE architecture."
+        )
+    return model
 
 
 def _mace_provider_shell_execution_policy_descriptor(calculator: Any) -> dict[str, Any]:
@@ -2473,6 +2940,69 @@ class MaceCalculatorProvider:
         self._descriptor_adapter_cache = None
         self._runtime_architecture_digest_cache = None
         return tuple(resident for _, resident in named)
+
+    def load_authenticated_model_state_dict(
+        self,
+        values: Mapping[str, Any],
+        *,
+        state_name: str = "checkpoint model state",
+    ) -> tuple[Any, ...]:
+        """Strictly authenticate and apply one complete MACE ``state_dict``.
+
+        MACE 0.3.16 TRAIN2 checkpoints store ``checkpoint["model"]`` as this
+        mapping, not as a deployable model.  The model shell is already owned
+        by this provider and is never inferred from the mapping.  Validation
+        is completed before mutation; a failed mutation permanently poisons
+        the provider just like the existing parameter-state transaction.
+        """
+
+        self._raise_if_poisoned()
+        import torch
+
+        if not isinstance(values, Mapping) or not values:
+            raise MaceModelStateCompatibilityError(
+                f"{state_name} must be a non-empty state-dict mapping."
+            )
+        resident_state = self.model.state_dict()
+        expected_names = tuple(str(name) for name in resident_state.keys())
+        observed_names = tuple(str(name) for name in values.keys())
+        if observed_names != expected_names:
+            raise MaceModelStateCompatibilityError(
+                f"{state_name} keys/order differ from the reconstructed provider model."
+            )
+        for name, resident in resident_state.items():
+            source = values[name]
+            if not torch.is_tensor(source):
+                raise MaceModelStateCompatibilityError(
+                    f"{state_name} entry {name!r} is not a tensor."
+                )
+            if tuple(source.shape) != tuple(resident.shape):
+                raise MaceModelStateCompatibilityError(
+                    f"{state_name} entry {name!r} shape differs from the provider model."
+                )
+            if source.dtype != resident.dtype:
+                raise MaceModelStateCompatibilityError(
+                    f"{state_name} entry {name!r} dtype differs from the provider model."
+                )
+            if torch.is_floating_point(source) and not bool(
+                torch.isfinite(source.detach()).all().item()
+            ):
+                raise MaceModelStateCompatibilityError(
+                    f"{state_name} entry {name!r} contains non-finite values."
+                )
+        try:
+            self.model.load_state_dict(dict(values), strict=True)
+        except Exception as exc:
+            self._poisoned = True
+            self._poison_reason = str(exc)
+            self._descriptor_adapter_cache = None
+            self._runtime_architecture_digest_cache = None
+            raise MaceModelStateCompatibilityError(
+                f"{state_name} application failed; the provider shell is poisoned."
+            ) from exc
+        self._descriptor_adapter_cache = None
+        self._runtime_architecture_digest_cache = None
+        return tuple(self.model.state_dict()[name] for name in expected_names)
 
     @classmethod
     @mace_runtime_warning_handled("MACE descriptor calculator construction")

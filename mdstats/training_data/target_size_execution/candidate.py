@@ -739,7 +739,10 @@ def _mace_config_for_candidate(
     target_train: TargetSizeExtxyzArtifact,
     harness_validation: TargetSizeExtxyzArtifact,
     extxyz_policy: MaceExtxyzPolicy,
+    mace_architecture: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    from ..model_features import canonicalize_mace_candidate_architecture
+
     fitted_e0s = {
         int(z): float(value)
         for z, value in common.fitted_atomic_references.reference_energies_ev
@@ -779,6 +782,9 @@ def _mace_config_for_candidate(
         "foundation_model": None,
         "foundation_head": None,
         "multiheads_finetuning": False,
+        "mace_architecture": canonicalize_mace_candidate_architecture(
+            mace_architecture
+        ),
         "multi_head": {
             "target_head": {
                 "train_file": target_train.relative_path,
@@ -806,6 +812,7 @@ def materialize_target_size_candidate(
     optimizer_policy: MaceOptimizerPolicy,
     extxyz_policy: MaceExtxyzPolicy,
     frame_array_index: Mapping[str, tuple[Any, Any, int]] | None = None,
+    mace_architecture: Mapping[str, Any] | None = None,
 ) -> TargetSizeCandidateMaterialization:
     """Materialize one candidate exactly and idempotently.
 
@@ -873,6 +880,7 @@ def materialize_target_size_candidate(
         target_train=target_train,
         harness_validation=harness_validation,
         extxyz_policy=active_policy,
+        mace_architecture=mace_architecture,
     )
     config_path = root / f"mace_config_n{trajectory.target_size}_seed{trajectory.optimizer_seed}.yaml"
     config_bytes = json.dumps(config, indent=2, sort_keys=True).encode("utf-8")
@@ -1022,6 +1030,9 @@ def validate_target_size_materialization(
         raise TrainingDataInputError(
             "Candidate MACE configuration does not carry the authorized seed."
         )
+    from ..model_features import canonicalize_mace_candidate_architecture
+
+    canonicalize_mace_candidate_architecture(payload.get("mace_architecture"))
     if payload["target_train_file"] != record.target_train_artifact.relative_path:
         raise TrainingDataInputError(
             "Candidate MACE configuration does not point at the exact target-train artifact."
@@ -1041,6 +1052,7 @@ def validate_target_size_materialization(
                 target_train=record.target_train_artifact,
                 harness_validation=record.harness_validation_artifact,
                 extxyz_policy=active_extxyz_policy,
+                mace_architecture=payload["mace_architecture"],
             )
             if record.mace_config_digest != digest(expected_config):
                 raise TrainingDataInputError(

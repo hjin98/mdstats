@@ -146,7 +146,11 @@ def _authenticate_target_size_provider(
     import hashlib
     import torch
 
-    from ..model_features import MaceCalculatorProvider
+    from ..model_features import (
+        MaceCalculatorProvider,
+        build_mace_model_from_configuration,
+        mace_model_execution_architecture_digest,
+    )
     from ..train2_runtime import TRAIN2_RUNTIME_COMPANION_SCHEMA, _tensor_state_digest
 
     raw_checkpoint = raw_checkpoint_path.read_bytes()
@@ -172,19 +176,26 @@ def _authenticate_target_size_provider(
             "Authenticated TRAIN2 raw checkpoint cannot be loaded."
         ) from exc
 
-    raw_model_candidate = raw_model
-    if isinstance(raw_model_candidate, (tuple, list)):
-        if len(raw_model_candidate) != 1:
-            raw_model_candidate = None
-        else:
-            raw_model_candidate = raw_model_candidate[0]
-    if isinstance(raw_model_candidate, Mapping) and "model" in raw_model_candidate:
-        raw_model_candidate = raw_model_candidate.get("model")
-    if not (
-        hasattr(raw_model_candidate, "named_parameters")
-        and hasattr(raw_model_candidate, "named_modules")
-    ):
-        raw_model_candidate = None
+    if isinstance(raw_model, (tuple, list)):
+        if len(raw_model) != 1:
+            raise TrainingDataInputError(
+                "Authenticated TRAIN2 checkpoint ensemble is not supported."
+            )
+        raw_model = raw_model[0]
+    raw_checkpoint_state: Mapping[str, Any] | None = None
+    if isinstance(raw_model, Mapping) and "model" in raw_model:
+        # MACE 0.3.16 stores a training checkpoint as three sibling entries.
+        # The model entry is the state_dict only; it is never promoted to a
+        # model shell or used to infer architecture.
+        if not isinstance(raw_model.get("model"), Mapping):
+            raise TrainingDataInputError(
+                "MACE TRAIN2 checkpoint model entry must be a state-dict mapping, not a model object."
+            )
+        if "optimizer" not in raw_model or "lr_scheduler" not in raw_model:
+            raise TrainingDataInputError(
+                "MACE TRAIN2 checkpoint must contain model, optimizer, and lr_scheduler entries."
+            )
+        raw_checkpoint_state = raw_model["model"]
 
     raw_companion = companion_path.read_bytes()
     if hashlib.sha256(raw_companion).hexdigest() != validate_digest(
@@ -234,29 +245,87 @@ def _authenticate_target_size_provider(
         ),
         "allow_forward_override": allow_forward_override,
     }
-    # A deployable serialized model is an architecture source only.  The
-    # authenticated snapshot companion remains the sole accepted learned-state
-    # source and is copied into this same provider before any forward.  Older
-    # bounded fixtures contain only parameter state, in which case the explicit
-    # forward-override seam may use the provider-owned parameter shell.
-    provider_model = raw_model_candidate
-    if provider_model is None:
-        provider_model = companion.get("model")
-    if provider_model is not None:
-        if not hasattr(provider_model, "named_parameters"):
-            raise TrainingDataInputError(
-                "TRAIN2 continuation companion model is not a torch model."
-            )
+    if raw_checkpoint_state is not None:
+        # The candidate materialization/configuration is the only architecture
+        # authority.  The raw checkpoint contributes state_dict bytes only;
+        # companion['model'] is deliberately ignored in this production branch.
+        provider_model = build_mace_model_from_configuration(config_payload)
         provider = MaceCalculatorProvider.from_authenticated_model(
             provider_model, **provider_kwargs
         )
+        expected_architecture_digest = getattr(
+            summary, "model_architecture_digest", None
+        )
+        companion_architecture_digest = companion.get("model_architecture_digest")
+        if expected_architecture_digest is None:
+            raise TrainingDataInputError(
+                "Real MACE TRAIN2 evaluation requires an authenticated model architecture digest."
+            )
+        if companion_architecture_digest != expected_architecture_digest:
+            raise TrainingDataInputError(
+                "TRAIN2 companion model architecture identity differs from its runtime summary."
+            )
+        reconstructed_architecture_digest = mace_model_execution_architecture_digest(
+            provider.model
+        )
+        if reconstructed_architecture_digest != expected_architecture_digest:
+            raise TrainingDataInputError(
+                "Candidate MACE configuration reconstructs a different execution architecture "
+                "from the authenticated TRAIN2 model."
+            )
+        provider.load_authenticated_model_state_dict(
+            raw_checkpoint_state, state_name="TRAIN2 checkpoint model state"
+        )
+        raw_parameter_values = tuple(
+            raw_checkpoint_state[name]
+            for name, _parameter in provider.model.named_parameters()
+        )
+        raw_parameter_digest = _tensor_state_digest(
+            raw_parameter_values, schema="mdstats.train2-live-parameters.v1"
+        )
+        if raw_parameter_digest != summary.live_parameter_digest:
+            raise TrainingDataInputError(
+                "TRAIN2 checkpoint model parameters do not match the authenticated live continuation state."
+            )
+        loaded_architecture_digest = mace_model_execution_architecture_digest(
+            provider.model
+        )
+        if loaded_architecture_digest != expected_architecture_digest:
+            raise TrainingDataInputError(
+                "Authenticated TRAIN2 model state changed the reconstructed execution architecture."
+            )
+        # The checkpoint's parameter values are inspected for provenance, but
+        # the exact continuation companion remains authoritative for the
+        # evaluated live/EMA state.  Apply it through the same provider owner.
         provider.load_authenticated_parameter_state(
             live_parameters, state_name="live"
         )
     else:
-        provider = MaceCalculatorProvider.from_authenticated_parameter_state(
-            live_parameters, **provider_kwargs
-        )
+        # Older bounded fixtures intentionally carry only parameter state.  They
+        # may use the synthetic shell only below an explicit forward override;
+        # no-override target-size production calls fail closed before a shell is
+        # constructed.
+        if not allow_forward_override:
+            raise TrainingDataInputError(
+                "A pinned MACE TRAIN2 state_dict is required for no-override target-size evaluation; "
+                "synthetic parameter-shell reconstruction is not a production fallback."
+            )
+        provider_model = companion.get("model")
+        if provider_model is not None and not hasattr(provider_model, "named_parameters"):
+            raise TrainingDataInputError(
+                "TRAIN2 continuation companion model is not a torch model."
+            )
+        if provider_model is not None:
+            provider = MaceCalculatorProvider.from_authenticated_model(
+                provider_model, **provider_kwargs
+            )
+            provider.load_authenticated_parameter_state(
+                live_parameters, state_name="live"
+            )
+        else:
+            provider = MaceCalculatorProvider.from_authenticated_parameter_state(
+                live_parameters, **provider_kwargs
+            )
 
     live_model_parameters = tuple(
         parameter for _name, parameter in provider.model.named_parameters()
@@ -284,10 +353,31 @@ def _authenticate_target_size_provider(
             raise TrainingDataInputError(
                 "EMA shadow parameter state is missing or invalid."
             )
-        provider.load_authenticated_parameter_state(shadow_params, state_name="EMA shadow")
         collected = ema_state.get("collected_params")
-        if collected is not None and not isinstance(collected, list):
-            raise TrainingDataInputError("EMA collected parameter state is invalid.")
+        if collected is not None:
+            if not isinstance(collected, list) or len(collected) != len(shadow_params):
+                raise TrainingDataInputError(
+                    "EMA collected parameter state must have the exact shadow-state cardinality."
+                )
+            named = tuple(provider.model.named_parameters())
+            if len(named) != len(collected):
+                raise TrainingDataInputError(
+                    "EMA collected parameter state cardinality differs from the provider model."
+                )
+            for (name, resident), value in zip(named, collected, strict=True):
+                if (
+                    not torch.is_tensor(value)
+                    or tuple(value.shape) != tuple(resident.shape)
+                    or value.dtype != resident.dtype
+                    or (
+                        torch.is_floating_point(value)
+                        and not bool(torch.isfinite(value.detach()).all().item())
+                    )
+                ):
+                    raise TrainingDataInputError(
+                        f"EMA collected parameter {name!r} is incompatible with the provider model."
+                    )
+        provider.load_authenticated_parameter_state(shadow_params, state_name="EMA shadow")
         ema_values = tuple(shadow_params) + tuple(collected or ())
         computed_ema_digest = _tensor_state_digest(
             ema_values, schema="mdstats.train2-ema-state.v1"

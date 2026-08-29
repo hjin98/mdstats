@@ -327,6 +327,7 @@ def test_p3f_bounded_end_to_end_through_real_owners(tmp_path: Path) -> None:
                 eval2_metric_record=metric_record,
                 planned_rung=planned_rung,
                 predecessor_continuation=predecessor,
+                restart_authority=env["authority"],
             )
         collected = collect_boundary_cell_completion_records(
             env["root"], env["window"], boundary_epoch=boundary
@@ -649,6 +650,7 @@ def test_p3f_adversarial_restart_orphan_and_fork_heads(tmp_path: Path) -> None:
             eval2_metric_record=metric_record,
             planned_rung=planned_rung,
             predecessor_continuation=predecessor,
+            restart_authority=env["authority"],
         )
     collected = collect_boundary_cell_completion_records(
         env["root"], env["window"], boundary_epoch=boundary
@@ -920,7 +922,8 @@ def run_step(mode: str, root_dir_str: str):
                 materialization=mat, boundary_snapshot=snapshot,
                 eval2_role=role, evaluation_data=eval_artifact,
                 prediction_evidence=pred, eval2_metric_record=metric_record,
-                planned_rung=planned_rung, predecessor_continuation=predecessor
+                planned_rung=planned_rung, predecessor_continuation=predecessor,
+                restart_authority=env["authority"],
             )
         collected = collect_boundary_cell_completion_records(screen_root, window, boundary_epoch=boundary)
         batch0 = build_complete_boundary_batch(definition, state, collected)
@@ -1007,7 +1010,8 @@ def run_step(mode: str, root_dir_str: str):
                     materialization=mat, boundary_snapshot=snapshot,
                     eval2_role=role, evaluation_data=eval_artifact,
                     prediction_evidence=pred, eval2_metric_record=metric_record,
-                    planned_rung=planned_rung, predecessor_continuation=predecessor
+                    planned_rung=planned_rung, predecessor_continuation=predecessor,
+                    restart_authority=env["authority"],
                 )
             collected = collect_boundary_cell_completion_records(screen_root, window, boundary_epoch=boundary)
             batch = build_complete_boundary_batch(definition, state, collected)
@@ -1319,6 +1323,7 @@ def run_a(case, root_dir):
                 materialization=materialization, failure_record=failure,
                 planned_rung=plan, predecessor_continuation=predecessor,
                 failure_checkpoint_directory=checkpoint_dir,
+                restart_authority=env["authority"],
             )
             continue
 
@@ -1363,6 +1368,7 @@ def run_a(case, root_dir):
                 eval2_role=role, evaluation_data=eval_artifact,
                 prediction_evidence=broken_prediction, failure_record=failure,
                 planned_rung=plan, predecessor_continuation=predecessor,
+                restart_authority=env["authority"],
             )
             continue
 
@@ -1385,6 +1391,7 @@ def run_a(case, root_dir):
             eval2_role=role, evaluation_data=eval_artifact,
             prediction_evidence=prediction, eval2_metric_record=metric,
             planned_rung=plan,
+            restart_authority=env["authority"],
         )
     completions = collect_boundary_cell_completion_records(env["root"], window, boundary_epoch=boundary)
     assert len(completions) == len(keys)
@@ -1573,6 +1580,7 @@ def test_p3f_adversarial_matrix_and_error_paths(tmp_path: Path) -> None:
         eval2_metric_record=metric_rec,
         planned_rung=planned_rung,
         predecessor_continuation=predecessor,
+        restart_authority=env["authority"],
     )
     # Tamper with snapshot filename stem
     snap_file = env["root"] / "snapshots" / f"{snapshot.content_digest}.json"

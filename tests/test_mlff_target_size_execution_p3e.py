@@ -348,6 +348,7 @@ def _run_boundary_matrix(env, tmp_path: Path, state, *, skip: list | None = None
             eval2_metric_record=metric_record,
             planned_rung=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[0],
             predecessor_continuation=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[1],
+            restart_authority=env["authority"],
         )
     return boundary, evaluation_size, keys, completion_records
 
@@ -466,6 +467,98 @@ def test_p3e_partial_outcomes_never_advance_reducer(tmp_path: Path) -> None:
     assert state.completed_boundary_epochs == ()
 
 
+def test_p3e_publication_requires_complete_parent_graph_before_progress(
+    tmp_path: Path,
+) -> None:
+    env = _env(tmp_path)
+    state = env["aggregate"].reducer_state
+    requirements = derive_active_boundary_requirements(
+        env["aggregate"].definition, state
+    )
+    assert requirements is not None
+    boundary, _evaluation_size, keys = requirements
+    (
+        trajectory,
+        role,
+        snapshot,
+        completion_record,
+        materialization,
+        eval_artifact,
+        pred_evidence,
+        metric_record,
+    ) = _execute_candidate_boundary(env, tmp_path, keys[0][0], keys[0][1], boundary)
+    resolver = env["authority"].resolver
+    completion_path = resolver.completion_path(
+        boundary, completion_record.content_digest
+    )
+    progress_path = resolver.progress_path(
+        env["window"].content_digest,
+        boundary,
+        completion_record.target_size,
+        completion_record.optimizer_seed,
+    )
+    assert not resolver.materialization_path(
+        materialization.content_digest
+    ).exists()
+
+    # The completion is valid in memory, but its mandatory metadata parents
+    # have not yet been published into this screen root.  Omitted arguments
+    # must resolve through the typed resolver and fail before publication.
+    with pytest.raises(mdstats.TrainingDataInputError):
+        record_candidate_boundary_outcome(
+            env["root"],
+            env["window"],
+            trajectory,
+            completion_record,
+            restart_authority=env["authority"],
+        )
+    assert not completion_path.exists()
+    assert not progress_path.exists()
+
+    planned_rung, predecessor = _rung_provenance(
+        env, trajectory, completion_record.boundary_epoch
+    )
+    first = record_candidate_boundary_outcome(
+        env["root"],
+        env["window"],
+        trajectory,
+        completion_record,
+        materialization=materialization,
+        boundary_snapshot=snapshot,
+        eval2_role=role,
+        evaluation_data=eval_artifact,
+        prediction_evidence=pred_evidence,
+        eval2_metric_record=metric_record,
+        planned_rung=planned_rung,
+        predecessor_continuation=predecessor,
+        restart_authority=env["authority"],
+    )
+    retry = record_candidate_boundary_outcome(
+        env["root"],
+        env["window"],
+        trajectory,
+        completion_record,
+        restart_authority=env["authority"],
+    )
+    assert retry == first
+    assert completion_path.is_file()
+    assert progress_path.is_file()
+
+    # Removing a mandatory parent turns the same omitted-parent retry into a
+    # typed failure; an existing valid completion is never silently replaced.
+    resolver.evaluation_artifact_path(eval_artifact.content_digest).unlink()
+    with pytest.raises(mdstats.TrainingDataInputError):
+        record_candidate_boundary_outcome(
+            env["root"],
+            env["window"],
+            trajectory,
+            completion_record,
+            restart_authority=env["authority"],
+        )
+    assert completion_path.is_file()
+    assert progress_path.is_file()
+
+
 def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
     env = _env(tmp_path)
     definition = env["aggregate"].definition
@@ -508,6 +601,7 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
                 eval2_metric_record=metric_record,
                 planned_rung=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[0],
                 predecessor_continuation=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[1],
+                restart_authority=env["authority"],
             )
             completion_records.append(completion_record)
         except OSError:
@@ -550,6 +644,7 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
         eval2_metric_record=metric_record,
         planned_rung=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[0],
         predecessor_continuation=_rung_provenance(env, trajectory, completion_record.boundary_epoch)[1],
+        restart_authority=env["authority"],
     )
     recover_records = collect_boundary_cell_completion_records(
         env["root"], env["window"], boundary_epoch=boundary
@@ -579,7 +674,8 @@ def test_p3e_outcome_publication_idempotent_and_conflicts_rejected(tmp_path: Pat
     )
     # Re-recording the identical completion record is a no-op.
     record_candidate_boundary_outcome(
-        env["root"], env["window"], trajectory, completion_records[0]
+        env["root"], env["window"], trajectory, completion_records[0],
+        restart_authority=env["authority"],
     )
     collected = collect_boundary_cell_completion_records(
         env["root"], env["window"], boundary_epoch=boundary
@@ -601,7 +697,10 @@ def test_p3e_outcome_publication_idempotent_and_conflicts_rejected(tmp_path: Pat
         outcome_digest=forged_outcome.content_digest,
     )
     with pytest.raises(mdstats.TrainingDataInputError):
-        record_candidate_boundary_outcome(env["root"], env["window"], trajectory, forged)
+        record_candidate_boundary_outcome(
+            env["root"], env["window"], trajectory, forged,
+            restart_authority=env["authority"],
+        )
 
 
 def test_p3e_full_lifecycle_elimination_and_terminal_selection(tmp_path: Path) -> None:
@@ -704,7 +803,8 @@ def test_p3e_worker_concurrency_and_no_reducer_access(tmp_path: Path) -> None:
 
     def _worker(key):
         record_candidate_boundary_outcome(
-            env["root"], env["window"], trajectories[key], by_key[key]
+            env["root"], env["window"], trajectories[key], by_key[key],
+            restart_authority=env["authority"],
         )
 
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -760,6 +860,7 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
         eval2_metric_record=metric_one,
         planned_rung=_rung_provenance(env, trajectory, rec_one.boundary_epoch)[0],
         predecessor_continuation=_rung_provenance(env, trajectory, rec_one.boundary_epoch)[1],
+        restart_authority=env["authority"],
     )
     assert load_current_execution_head(env["root"]) is None
     partial = collect_boundary_cell_completion_records(
@@ -797,6 +898,7 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
             eval2_metric_record=metric2,
             planned_rung=_rung_provenance(env, trajectory2, rec2.boundary_epoch)[0],
             predecessor_continuation=_rung_provenance(env, trajectory2, rec2.boundary_epoch)[1],
+            restart_authority=env["authority"],
         )
         completion_records.append(rec2)
     completion_records = tuple(
