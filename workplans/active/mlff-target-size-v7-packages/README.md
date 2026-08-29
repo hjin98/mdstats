@@ -25,24 +25,23 @@ P3 revision 7 consists cumulatively of:
 
 P3A9 repaired the demonstrated execution-head publication crash case where an immutable valid successor is durable while `current_head.json` remains stale, preserving deterministic reducer replay, typed resolver recovery, process-level CAS locking serialization, and fail-closed fork/orphan semantics.
 
-**Cumulative P3 revision 7 is formally closed.** P4 was activated with entry authority bound to
+**Cumulative P3 revision 7 is formally closed.** P4 entry authority remains bound to
 `9d195807cff0bb8042f447ac33ceb0586ed708ac`.
 
-**P4 is implemented and functionally closed.** All seven passes (P4-A through P4-G) hold semantic and
-functional closure; per-pass scope and evidence are recorded in `P4_IMPLEMENTATION_PROGRESS.md`. The
-campaign store now owns one mutable current target-size authority with one canonical generation,
-subordinate attempts, and transactional predecessor CAS; the destructive cutover quarantines retired
-target-size authority without reinterpretation; reconciled P3 heads are adopted through a bounded
-cross-store CAS behind a storage retention fence that protects the reconciliation frontier;
-`prepare` rebuilds the scientific substrate and cannot select a size while `select-target-size` is
-the sole screening entrypoint; and the terminal selected size and exact selected data are
-re-derived projections of authenticated P2/P3 state. The assembled full-repository regression
-introduces no new failures against the pre-P4 baseline. Long GPU/real-production qualification
-remains deferred to final release.
+**P4 revision 5 is REOPENED and active.** Revision-4 implementation/acceptance is preserved as the
+baseline in `P4_REVISION4_IMPLEMENTED_BASELINE.md` and `P4_REVISION4_IMPLEMENTATION_PROGRESS.md`.
+Independent review found one blocking real-caller defect: a repeated terminal `select-target-size`
+invocation can report the persisted terminal projection before reconstructing and authenticating
+current P1/P2/P3 authority. Revision 5 therefore requires fail-closed real-owner terminal reload
+before any terminal output, plus a first-publication STOR hardening that protects the canonical P3
+execution root before the first screen initializer can publish reclaimable bytes. Only P4-C1,
+P4-E1, and final P4-G1 are reopened; accepted P1-P3 science and the remainder of revision-4 P4 are
+preserved subject to affected regression.
 
-P5 may treat selected target-size state as frozen current authority. The post-selection production
-and cross-validation path (`materialize`, `train`, `evaluate`) currently fails closed by design and
-is P5's to deliver.
+**P5 is blocked until P4 revision 5 recloses.** It may not treat selected target-size state as frozen
+current authority while terminal reload can bypass mandatory P1/P2/P3 revalidation.
+
+Long GPU/real-production qualification remains deferred to final release.
 
 ## Mandatory sequence
 
@@ -64,6 +63,9 @@ P1 neutral scientific substrate
        + revision-7 P3A9 stale-head successor reconciliation repair
        -> FORMAL P3 CLOSURE COMMIT
   -> P4 atomic runtime/persistence cutover
+       revision-4 implemented baseline
+       + revision-5 terminal real-owner reload / first-publication retention reclosure
+       -> FORMAL P4 RECLOSURE
   -> P5 post-selection CV and final production
   -> P6 destructive cleanup and assembled closure
 ```
@@ -77,6 +79,8 @@ Do not start dependent executable work until the previous package has both **sem
 - P3 owns scientific execution evidence/replay; P4 may consume/adopt that authority but may not recreate its replay/reducer semantics.
 - P4 is the indivisible production ownership cutover. Current `prepare`/`select-target-size` orchestration, canonical campaign generation/current-state authority, restart authentication, and current authority lookup switch together.
 - P4 must not contain predecessor repair work needed to make P3 acceptable; such repair closes under P3 before P4 activation.
+- P4 revision 5 terminal validation must execute through the real public `select-target-size` consumer; direct terminal-helper tests cannot substitute for caller-level acceptance.
+- P4 revision 5 first-publication retention must be proven through real CampaignStore, real P3 initialization, and real STOR destructive authorization; test-local deletion bypasses cannot establish the claim.
 - P5 must not feed CV evidence or configuration back into target-size selection.
 - P6 deletes unreachable retired topology only after the current runtime is functionally closed.
 - Stage-local affected regression is required after every material behavior-changing pass before dependent work proceeds.
@@ -98,6 +102,6 @@ Do not start dependent executable work until the previous package has both **sem
    - `P3_P3A6_FINAL_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` — restore canonical `target_size_evaluation_model_state(optimizer_policy)` (`EMA -> ema`, otherwise `live`) and prove pinned MACE checkpoint-owner acceptance.
    - `P3_P3A7_RESTART_OWNER_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` — prove durable noncanonical EMA/LIVE state rejects through the real `resolve_target_size_candidate_for_resume(...)` owner.
    - `P3_P3A9_HEAD_POINTER_RECONCILIATION_REPAIR_INSTRUCTIONS.md` — final revision-7 predecessor closure: recover only a unique authenticated linear successor chain after stale-pointer crash, preserve deterministic reducer replay, reject forks/orphans/corruption, and formally close P3 before P4 begins.
-4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — blocked until P3A9 closure; then performs the atomic current-runtime/state-schema/canonical-generation/restart/storage cutover.
-5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — exact-T_selected CV and fresh final-production path.
+4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — active revision-5 overlay reopening terminal real-owner reload, first-publication retention, and assembled P4 closure; revision-4 baseline is preserved in the adjacent baseline/evidence files.
+5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — exact-T_selected CV and fresh final-production path; **blocked until P4 revision 5 recloses**.
 6. `P6_DESTRUCTIVE_CLEANUP_FINAL_CLOSURE.md` — remove retired architecture and perform assembled final acceptance.
