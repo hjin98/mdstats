@@ -51,6 +51,10 @@ from .storage_accounting import (
 )
 from .storage_reclamation import append_cleanup_manifest, filesystem_identity
 from .campaign_target_size_retention import build_target_size_retention_fence
+from .campaign_target_size_state import (
+    TargetSizeCampaignStateError,
+    TargetSizeLifecycle,
+)
 from .storage_archive import (
     StorageArchiveError,
     create_cold_archive,
@@ -10745,109 +10749,49 @@ def _load_train2_study_optional(store: CampaignStore) -> Any | None:
 
 
 def command_prepare(args: argparse.Namespace) -> int:
-    """Prepare the initial target-size screening workload for TRAIN2 campaigns."""
+    """Prepare the current target-size scientific substrate.
 
-    import mdstats
+    For a current-architecture campaign this reaches the accepted P1/P2 owners
+    and the one common preparation, and it cannot select a target size. The
+    historical lifecycle keeps its own preparation path.
+    """
 
-    cfg, paths = _load_config(args.config)
+    cfg, _paths = _load_config(args.config)
     if _training_policy_generation(cfg) == "train2":
-        # A historical target-size payload is intentionally not directly
-        # restart-compatible with the decoupled study schema.  Do not reject it
-        # here, before the normal prepare/reconciliation owner can preserve its
-        # authenticated predecessor receipt and rebuild current screening
-        # authority from REPAIR2/MVQUAL2.  Current/corrupt state is still
-        # validated by that owner below; this wrapper merely avoids turning a
-        # recoverable migration into a premature public-command failure.
-        try:
-            study = _load_train2_study_optional(CampaignStore(paths.state_db))
-        except TrainingDataSerializationError:
-            study = None
-        if study is not None and study.outcome == mdstats.OUTCOME_SELECTED:
-            raise CampaignCliError(
-                "Target size is already selected and frozen. `prepare` owns only the initial "
-                "screening workload; run `materialize` for the selected production/CV workload."
-            )
-        if study is not None and study.outcome in {
-            mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
-            mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
-            mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
-        }:
-            print(
-                f"Target-size selection is scientifically terminal ({study.outcome}); "
-                "there is no production workload to prepare.",
-                flush=True,
-            )
-            return 0
+        from .campaign_target_size_runtime import execute_current_prepare
+
+        return execute_current_prepare(args)
     setattr(args, "_semantic_operation", "prepare")
     return _execute_prepare_current_authority(args)
 
 
 def command_materialize(args: argparse.Namespace) -> int:
-    """Realize the frozen selected-size production/CV workload for TRAIN2."""
+    """Realize the selected production/CV workload for a frozen target size.
 
-    import mdstats
+    The current architecture derives the selected size from authenticated
+    terminal P2/P3 state, so the retired per-variant materialization records
+    cannot supply it. This command therefore fails closed here rather than
+    reinterpreting retired authority; the post-selection production path is
+    delivered by the successor package.
+    """
 
     cfg, paths = _load_config(args.config)
     if _training_policy_generation(cfg) != "train2":
         raise CampaignCliError(
-            "`materialize` is a TRAIN2 lifecycle command. Historical campaigns continue to use `prepare`."
+            "`materialize` is a TRAIN2 lifecycle command. Historical campaigns "
+            "continue to use `prepare`."
         )
-    store = CampaignStore(paths.state_db)
-    study = _load_verified_target_size_study_authority(store)
-    if study.outcome != mdstats.OUTCOME_SELECTED:
-        raise CampaignCliError(
-            "Selected production materialization requires a frozen target size. "
-            "Run `select-target-size` first."
-        )
-    before_matrix_digest = None
-    try:
-        before_entries, _ = _validate_train2_data8_matrix(cfg, store, study)
-        before_matrix_digest = _data8_matrix_digest(before_entries)
-    except CampaignCliError:
-        # Expected on the first post-selection call while screening DATA8 is still active.
-        pass
+    from .campaign_target_size_cutover import require_current_target_size_runtime
 
-    internal = argparse.Namespace(
-        config=args.config,
-        approve_manifest=False,
-        continue_after_approval=False,
-        refresh_inferences=False,
-        rebuild_catalog=False,
-        max_new_frames=None,
-        max_new_domains=getattr(args, "max_new_domains", None),
-        _semantic_operation="materialize",
+    revision = require_current_target_size_runtime(CampaignStore(paths.state_db))
+    raise CampaignCliError(
+        "Selected production materialization is not available in this release. The "
+        "current target-size architecture is bound at canonical generation "
+        f"{revision.state.generation}; retired selected-size materialization records "
+        "are never reinterpreted as current authority, and the post-selection "
+        "production path is delivered by the successor package."
     )
-    result = _execute_prepare_current_authority(internal)
-    if result == 0:
-        after_entries, _ = _validate_train2_data8_matrix(cfg, store, study)
-        after_matrix_digest = _data8_matrix_digest(after_entries)
-        if before_matrix_digest != after_matrix_digest:
-            # These are execution receipts only.  Scientific authority remains in
-            # TargetSizeStudyPlan and the selected DATA8 matrix/preflight digest.
-            # Reopen them only when the active workload actually changed; an
-            # idempotent materialize rerun must not reopen completed production work.
-            _mark_stage(
-                store,
-                paths,
-                "preflight",
-                StageState.WAITING,
-                "selected production/CV DATA8 matrix changed; rerun preflight",
-            )
-            _mark_stage(
-                store,
-                paths,
-                "train",
-                StageState.WAITING,
-                f"selected production/CV workload n={study.selected_target_size} requires training",
-            )
-            _mark_stage(
-                store,
-                paths,
-                "evaluate",
-                StageState.WAITING,
-                f"selected production/CV workload n={study.selected_target_size} requires evaluation",
-            )
-    return result
+
 
 _DATA8_VARIANT_RE = re.compile(
     r"^(naive_fine_tuning|multihead_replay)-n(?P<size>[0-9]+)-seed(?P<seed>-?[0-9]+)$"
@@ -16412,6 +16356,17 @@ def command_train(args: argparse.Namespace) -> int:
     cfg, paths = _load_config(args.config)
     if _training_policy_generation(cfg) == "train2":
         store = CampaignStore(paths.state_db)
+        from .campaign_target_size_cutover import require_current_target_size_runtime
+
+        # The scheduler guard must fire before any retired record is consulted:
+        # ordinary `train` can never become a second target-size screening
+        # scheduler, whatever state the workspace happens to hold.
+        revision = require_current_target_size_runtime(store)
+        if revision.state.lifecycle is not TargetSizeLifecycle.TERMINAL_SELECTED:
+            raise CampaignCliError(
+                "Public `train` is reserved for the frozen production/CV workload. "
+                "The target-size paired-seed screen is owned by `select-target-size`."
+            )
         study = _load_verified_target_size_study_authority(store)
         if study.outcome != mdstats.OUTCOME_SELECTED:
             raise CampaignCliError(
@@ -16429,119 +16384,27 @@ def command_train(args: argparse.Namespace) -> int:
 
 
 def command_select_target_size(args: argparse.Namespace) -> int:
-    """Run/resume the complete TRAIN2 configurable-fidelity study."""
+    """Run or resume the complete current configurable-fidelity target-size screen.
 
-    import mdstats
+    This is the sole current screening entrypoint. It reaches the accepted
+    P1/P2/P3 owners directly; no retired selector, role-domain, coverage,
+    complement, or pre-target CV authority participates.
+    """
 
-    cfg, paths = _load_config(args.config)
+    cfg, _paths = _load_config(args.config)
     if _training_policy_generation(cfg) != "train2":
         raise CampaignCliError(
-            "`select-target-size` is available only for TRAIN2 campaigns. Historical campaigns "
-            "retain their existing train/evaluate lifecycle."
+            "`select-target-size` is available only for TRAIN2 campaigns. Historical "
+            "campaigns retain their existing train/evaluate lifecycle."
         )
-    store = CampaignStore(paths.state_db)
-    study = _load_verified_target_size_study_authority(store)
-    terminal_outcomes = {
-        mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
-        mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
-        mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
-    }
-    if study.outcome == mdstats.OUTCOME_SELECTED:
-        print(
-            f"Target data size is already selected and frozen: n={study.selected_target_size}. "
-            "Next: `materialize`.",
-            flush=True,
-        )
-        return 0
-    if study.outcome in terminal_outcomes:
-        print(
-            f"Target-size study is scientifically terminal: {study.outcome}; "
-            f"{study.decision_reason}",
-            flush=True,
-        )
-        return 0
+    from .campaign_target_size_runtime import execute_current_select_target_size
 
-    active_outcomes = {
-        mdstats.OUTCOME_AWAITING_COARSE_SCREEN,
-        mdstats.OUTCOME_AWAITING_SHORT_SCREEN,
-        mdstats.OUTCOME_AWAITING_FINAL_SCREEN,
-    }
-    if study.outcome not in active_outcomes:
-        raise CampaignCliError(
-            f"Target-size study has no executable state: {study.outcome}; {study.decision_reason}"
-        )
-
-    _require_train2_preflight_authorization(cfg, paths, store, study)
-    _print_header("Target-size selection - controlled configurable fidelity")
-    print(
-        "Epoch is controlled during this operation: only the exact configured screen boundary "
-        "checkpoints may contribute to target-size ranking.",
-        flush=True,
-    )
-    print(
-        "TARGET-SIZE-V5 effective configuration: "
-        f"fidelity_epochs={list(study.policy.fidelity_epochs)}; "
-        f"active_boundary={study.next_training_epoch}; "
-        f"future_production_horizon={int(_cfg(cfg, 'training', 'max_num_epochs', 30))}",
-        flush=True,
+    return execute_current_select_target_size(
+        args,
+        trainer=getattr(args, "_external_boundary_trainer", None),
+        inference_evaluator=getattr(args, "_external_inference_evaluator", None),
     )
 
-    while study.outcome in active_outcomes:
-        _require_train2_preflight_authorization(cfg, paths, store, study)
-        boundary = int(study.next_training_epoch)
-        sizes = tuple(int(value) for value in study.next_training_sizes)
-        print(
-            f"\nTARGET-SIZE-V5 boundary epoch {boundary}: "
-            f"boundary={boundary}; "
-            f"sizes={list(sizes)}; seeds={list(study.policy.screening_optimizer_seeds)}",
-            flush=True,
-        )
-        train_args = argparse.Namespace(
-            config=args.config,
-            dry_run=False,
-            run_id=None,
-            training_mode=None,
-            seed=None,
-            selection_size=None,
-            max_runs=None,
-            _target_size_orchestrated=True,
-        )
-        if hasattr(args, "_external_child_wrapper"):
-            train_args._external_child_wrapper = args._external_child_wrapper
-        result = _execute_train_current_authority(train_args)
-        if result != 0:
-            return result
-
-        evaluate_args = argparse.Namespace(
-            config=args.config,
-            training_mode=None,
-            seed=None,
-            selection_size=None,
-            require_complete=True,
-            _target_size_orchestrated=True,
-        )
-        result = _execute_evaluate_current_authority(evaluate_args)
-        if result != 0:
-            return result
-        study = _load_verified_target_size_study_authority(store)
-
-    if study.outcome == mdstats.OUTCOME_SELECTED:
-        print(
-            f"\nTarget-size selection complete: n={study.selected_target_size} is frozen. "
-            "Next: `materialize`.",
-            flush=True,
-        )
-        return 0
-    if study.outcome in terminal_outcomes:
-        print(
-            f"\nTarget-size study stopped with scientific outcome {study.outcome}. "
-            "No production target size is available.",
-            flush=True,
-        )
-        return 0
-    raise CampaignCliError(
-        f"Target-size study left the controlled-fidelity loop in unsupported state {study.outcome}."
-    )
 
 def _artifact_lookup(bundle: Any) -> tuple[dict[str, Any], Any | None]:
     target = {v.content_digest: v for v in bundle.target_artifacts}
@@ -23140,6 +23003,17 @@ def command_evaluate(args: argparse.Namespace) -> int:
     cfg, paths = _load_config(args.config)
     if _training_policy_generation(cfg) == "train2":
         store = CampaignStore(paths.state_db)
+        from .campaign_target_size_cutover import require_current_target_size_runtime
+
+        # The scheduler guard must fire before any retired record is consulted:
+        # ordinary `evaluate` can never become a second target-size screening
+        # scheduler, whatever state the workspace happens to hold.
+        revision = require_current_target_size_runtime(store)
+        if revision.state.lifecycle is not TargetSizeLifecycle.TERMINAL_SELECTED:
+            raise CampaignCliError(
+                "Public `evaluate` is reserved for the frozen production/CV workload. "
+                "Target-size endpoint comparison is owned by `select-target-size`."
+            )
         study = _load_verified_target_size_study_authority(store)
         if study.outcome != mdstats.OUTCOME_SELECTED:
             raise CampaignCliError(
@@ -29915,7 +29789,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             campaign_wide=True,
         ) as campaign_warning_capture:
             return int(args.func(args))
-    except CampaignCliError as exc:
+    except (CampaignCliError, TargetSizeCampaignStateError) as exc:
         try:
             if command in {name for name, _ in PIPELINE}:
                 _, paths = _load_config(args.config)

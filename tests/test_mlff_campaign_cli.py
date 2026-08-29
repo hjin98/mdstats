@@ -659,7 +659,10 @@ def test_train_cannot_bypass_target_size_selection_with_legacy_preflight_receipt
     result = campaign_cli.main(["--config", str(config), "train", "--dry-run"])
     assert result == 2
     error = capsys.readouterr().err
-    assert "target_multi_view_repair_v2" in error or "select-target-size" in error
+    # The current architecture fails closed on the regime before any retired
+    # record is consulted, so an unconverted workspace can never let `train`
+    # act as a second target-size scheduler.
+    assert "select-target-size" in error or "target-size cutover" in error
 
 
 def test_real_flat_lta_archive_discovery_when_available(tmp_path: Path) -> None:

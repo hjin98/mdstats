@@ -25,7 +25,7 @@ replays safely.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 from .campaign_target_size_state import (
     TargetSizeCampaignRevision,
@@ -250,6 +250,7 @@ def bind_current_target_size_authorities(
     policy_digest: str,
     experiment_definition_digest: str,
     aggregate_digest: str,
+    common_preparation_digest: str | None = None,
 ) -> TargetSizeCampaignRevision:
     """CAS-bind the reconstructed current P1/P2 authority identities.
 
@@ -272,6 +273,7 @@ def bind_current_target_size_authorities(
         policy_digest=policy_digest,
         experiment_definition_digest=experiment_definition_digest,
         aggregate_digest=aggregate_digest,
+        common_preparation_digest=common_preparation_digest,
         disposition="cutover_in_progress",
         disposition_detail=(
             "Current P1/P2 target-size authorities are bound; the cutover is "
@@ -312,6 +314,7 @@ def complete_target_size_cutover(
         policy_digest=revision.state.policy_digest,
         experiment_definition_digest=revision.state.experiment_definition_digest,
         aggregate_digest=revision.state.aggregate_digest,
+        common_preparation_digest=revision.state.common_preparation_digest,
     )
     return commit_target_size_campaign_transition(
         store,
@@ -349,6 +352,66 @@ def require_current_target_size_runtime(store: Any) -> TargetSizeCampaignRevisio
     return revision
 
 
+def ensure_current_target_size_authorities(
+    store: Any,
+    identity: Mapping[str, str],
+    *,
+    common_preparation_digest: str | None = None,
+) -> TargetSizeCampaignRevision:
+    """Bring the campaign to the current regime bound to exactly this identity.
+
+    An unconverted or interrupted campaign is carried through the destructive
+    cutover.  A campaign already running the current architecture keeps its
+    canonical generation while the reconstructed scientific identity is
+    unchanged; when that identity changes, the old generation is replaced by a
+    fresh one rather than being edited in place, because equality of a selected
+    integer or a reused record name never proves scientific equivalence.
+    """
+
+    revision = ensure_target_size_campaign_revision(store)
+    fields = dict(identity)
+    if revision.state.regime is TargetSizeRegime.CURRENT:
+        unchanged = all(
+            getattr(revision.state, name) == value for name, value in fields.items()
+        ) and (
+            common_preparation_digest is None
+            or revision.state.common_preparation_digest == common_preparation_digest
+        )
+        if unchanged:
+            return revision
+        successor = TargetSizeCampaignState(
+            regime=TargetSizeRegime.CURRENT,
+            generation=revision.state.generation + 1,
+            lifecycle=TargetSizeLifecycle.AUTHORITIES_BOUND,
+            common_preparation_digest=common_preparation_digest,
+            disposition="scientific_identity_changed",
+            disposition_detail=(
+                "The reconstructed current target-size scientific identity differs "
+                "from the persisted generation; a fresh canonical generation was "
+                "started instead of reinterpreting the previous one."
+            ),
+            **fields,
+        )
+        return commit_target_size_campaign_transition(
+            store,
+            kind=TargetSizeTransitionKind.ADVANCE_GENERATION,
+            expected=revision.expectation(),
+            successor=successor,
+        ).revision
+
+    transitioning = begin_target_size_cutover(store)
+    quarantine_retired_target_size_state(
+        store, generation=transitioning.state.generation
+    )
+    bound = bind_current_target_size_authorities(
+        store,
+        transitioning,
+        common_preparation_digest=common_preparation_digest,
+        **fields,
+    )
+    return complete_target_size_cutover(store, bound)
+
+
 __all__ = [
     "QUARANTINE_KEY_PREFIX",
     "RETIRED_TARGET_SIZE_RECORD_KEYS",
@@ -360,6 +423,7 @@ __all__ = [
     "begin_target_size_cutover",
     "bind_current_target_size_authorities",
     "complete_target_size_cutover",
+    "ensure_current_target_size_authorities",
     "inventory_retired_target_size_state",
     "quarantine_retired_target_size_state",
     "require_current_target_size_runtime",

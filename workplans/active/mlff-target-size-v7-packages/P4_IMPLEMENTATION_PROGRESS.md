@@ -15,8 +15,8 @@ and what remains. It is coordination material, not product documentation.
 | P4-A | CampaignStore state, canonical generation, CAS, transition identity | **CLOSED** |
 | P4-B | Regime cutover owner | **CLOSED** |
 | P4-C | Cross-store adoption, retention fence, restart, concurrency | **CLOSED** |
-| P4-D | Atomic `prepare` / `select-target-size` production switch | in progress |
-| P4-E | Terminal projection, semantic restart, invalidation | not started |
+| P4-D | Atomic `prepare` / `select-target-size` production switch | **CLOSED** |
+| P4-E | Terminal projection, semantic restart, invalidation | in progress |
 | P4-F | Full STOR integration, docs, structural closure | not started |
 | P4-G | Assembled affected-surface closure | not started |
 
@@ -422,3 +422,136 @@ Stage-local affected regression: P4-A, P4-B, P4-C suites plus `test_mlff_stor1_s
    rather than guessed.
 3. `command_storage` had no `store` in scope; it now uses the unfenced read-only boundary, which is
    correct for STOR1.
+
+---
+
+## Pass P4-D — Atomic `prepare` / `select-target-size` production switch
+
+**State: CLOSED** (semantic + functional).
+
+### What was implemented
+
+New owner `mdstats/training_data/campaign_target_size_runtime.py` — the only current production
+target-size orchestration. It owns sequencing and configuration translation; every scientific
+decision stays with its P1/P2/P3 owner.
+
+- `resolve_neutral_partition_policy(cfg)` — maps the existing `[partition]` namespace onto the
+  accepted P1 `NeutralPartitionPolicy`. Translation only; every unset key keeps the P1 default.
+- `build_current_target_size_authorities(cfg, paths, store)` — rebuilds
+  P1 (`build_source_authority_from_data2_catalog` -> `build_vasp_canonical_frame_authority` ->
+  `build_neutral_feature_evidence_from_data4_bundle` -> `build_neutral_statistical_base` ->
+  `build_neutral_split_exclusion_evidence`), P2 (`resolve_target_size_policy_from_config` ->
+  `build_target_size_statistical_aggregate`), and the one P3 common preparation. Only the
+  target-size-neutral lower-level records (`source_catalog`, `frame_catalog`, `data4`) are reused,
+  and each is re-validated by the owner that consumes it.
+- `execute_current_prepare(args)` — performs/resumes/reuses the destructive cutover, then binds the
+  reconstructed identities. **It has no code path that selects `N`, advances the reducer, trains,
+  materializes a candidate, or ranks anything.**
+- `execute_current_select_target_size(args, ...)` — the section 11.2 sequence: load/revalidate P1
+  from campaign state, construct the exact P2 experiment, construct the P3 context/screen window,
+  **reconcile the existing root before scheduling**, derive the active matrix from the authenticated
+  reducer state, execute only surviving `(N, seed)` cells through P3 owners, publish through P3,
+  commit the boundary batch, CAS-adopt the exact head, and repeat only while the P2 reducer is
+  nonterminal. No P4-local ranking or restart loop exists.
+- `TargetSizeRungRequest` / `TargetSizeBoundaryTrainer` / `MaceTargetSizeBoundaryTrainer` — the one
+  expensive-work seam. The production trainer launches the same qualified `mdstats-mace-train`
+  wrapper the rest of the campaign uses, with the P3 rung plan in
+  `TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE`, so critical-precision policy and exact completed-epoch
+  continuation stay active.
+- `mace_run_configuration(...)` — translates P3's canonical candidate configuration into MACE's
+  argument names. Pure renaming/flattening: no value is computed, defaulted, or overridden, and the
+  architecture can never shadow an optimizer or data key.
+
+CLI switch in `_campaign_cli_core.py`:
+
+- `command_prepare` routes TRAIN2 campaigns to `execute_current_prepare`; the historical
+  (non-TRAIN2) lifecycle keeps its own path.
+- `command_select_target_size` routes to `execute_current_select_target_size`, passing the two
+  private below-boundary seams (`_external_boundary_trainer`, `_external_inference_evaluator`) that
+  bounded harnesses use. `allow_forward_override` on the P3 restart authority is enabled **only**
+  when a forward seam was actually supplied, so ordinary production still requires a pinned MACE
+  state dict and refuses any reconstruction fallback.
+- `command_materialize` now fails closed: the retired per-variant materialization records are never
+  reinterpreted, and the post-selection production path belongs to P5.
+- `command_train` / `command_evaluate` consult the regime **before** any retired record, so ordinary
+  training/evaluation can never become a second target-size screening scheduler regardless of what
+  the workspace holds.
+- `main()` now presents `TargetSizeCampaignStateError` (and its cutover/adoption subclasses) as
+  clean CLI failures instead of tracebacks.
+
+### Evidence executed
+
+`tests/test_mlff_target_size_p4d_runtime_cutover.py` — **12 passed**. Real `build_parser()` argv
+parsing, a real campaign workspace and `campaign.toml`, a real `CampaignStore` SQLite file, and the
+real P1/P2/P3 owners. Only MACE's numerical work is substituted, through
+`_BoundedNumericalHarness`, after real configuration parsing, authority construction,
+materialization, provider/checkpoint authentication, publication, reconciliation, and adoption have
+executed.
+
+| Gate item | Covering tests |
+|---|---|
+| real parser + store + `prepare` proving no N selection | `req1_prepare_binds_current_authorities_and_selects_nothing` (asserts bound P1/P2/common identities and that `terminal`, `adopted_execution_head_digest`, and `attempt` are all absent, and that the operator is told `prepare` does not select) |
+| one canonical generation | `req1_prepare_is_idempotent_and_keeps_one_generation` |
+| retired records quarantined by the real command | `req1_prepare_quarantines_retired_target_size_records` |
+| real parser + store + `select-target-size` reaching P1/P2/P3 | `req2_select_target_size_reaches_p1_p2_p3_owners` (the paired-seed matrix `{1,2}` and candidate ladder come from P2; heads/batches/completions exist on disk; the campaign adopted a head; no retired record is present) |
+| restart does not rerun completed work | `req2_select_target_size_resumes_without_rerunning_completed_cells` |
+| current regime required | `req2_select_target_size_requires_the_current_regime` |
+| no retired authority in the current call graph | `req1_prepare_call_graph_reaches_no_retired_target_size_authority` (AST over `command_prepare`/`command_select_target_size`), `req1_current_runtime_owner_imports_no_retired_module` (AST import check over all six P4 modules) |
+| `materialize` fails closed | `req3_materialize_fails_closed_without_retired_authority` |
+| ordinary train/evaluate cannot schedule the screen | `req4_ordinary_train_and_evaluate_cannot_schedule_the_screen` |
+| configuration translation is not a decision | `req5_mace_run_configuration_is_translation_only` |
+| version-agnostic naming | `req6_no_version_prefixed_production_names` |
+
+Stage-local affected regression: the four P4 suites plus `test_mlff_campaign_cli`,
+`test_mlff_cli_semantic_orchestration`, `test_mlff_stor1_storage_accounting`,
+`test_mlff_data9b1_campaign_checkpoint_control`, `test_mlff_campaign_production_gate_anchor`,
+`test_mlff_mh1_config1_campaign_defaults`, and the full P3A9 recovery suite —
+**203 passed, 1 skipped, 1 failed**; the failure is the pre-existing
+`test_materialization_record_path_does_not_confer_external_cleanup_authority`.
+
+### Retired-architecture tests updated or removed (section 18 disposition)
+
+The frozen parent retires the `target_size_study` selector, prepare-time selection, and per-variant
+materialization authority, so tests that assert those behaviours encode an obsolete expectation.
+Removed from `tests/test_mlff_cli_semantic_orchestration.py`:
+
+- `test_materialize_requires_selected_train2_authority`
+- `test_materialize_idempotent_rerun_does_not_reopen_completed_production_receipts`
+- `test_materialize_new_selected_matrix_invalidates_execution_receipts`
+- `test_prepare_rejects_post_selection_semantic_reuse`
+- `test_prepare_routes_legacy_target_size_payload_to_current_reconciliation` (asserted legacy
+  payload *migration*, which the parent forbids outright)
+- `test_select_target_size_owns_complete_restartable_funnel` (3 parametrizations)
+- `test_select_target_size_selected_is_idempotent`
+- `test_selected_production_commands_require_current_matrix_preflight` (2 parametrizations)
+
+Their protected concerns are re-covered by the P4-D suite above (no N selection in `prepare`,
+`select-target-size` owning the restartable screen and resuming without rerunning, `materialize`
+failing closed, and the train/evaluate scheduler guard).
+
+Updated rather than removed:
+`tests/test_mlff_campaign_cli.py::test_train_cannot_bypass_target_size_selection_with_legacy_preflight_receipt`
+— the protected concern (train cannot bypass target-size selection) still holds; only the expected
+message changed, because the current architecture fails closed on the regime before consulting any
+retired record.
+
+### Defects found and repaired during the gate
+
+1. Replacing `command_materialize` initially removed the adjacent module-level `_DATA8_VARIANT_RE`
+   constant, breaking DATA8 variant validation; restored, and the diff re-audited for any other
+   removed top-level definition (none).
+2. `command_storage` had no campaign store in scope for the fenced boundary (carried over from
+   P4-C); it uses the unfenced read-only boundary, which is correct for STOR1.
+3. `command_train` / `command_evaluate` consulted the retired study *before* their scheduler guard,
+   so a converted workspace produced a "record missing" message instead of the guard. The guard now
+   fires first.
+4. `TargetSizeCutoverError` escaped `main()` as a traceback because it is not a `CampaignCliError`;
+   the CLI boundary now handles the typed target-size state errors.
+
+### Known scope boundary carried forward
+
+`preflight`, `status`, and `advance` still derive lifecycle hints from the retired
+`target_size_study` record. They degrade safely (the optional loader returns `None` once the record
+is quarantined) and none of them can authorize a current selected target size, but their reporting
+is not yet expressed in terms of the current campaign state. This is recorded as P4-F work
+(documentation/structural closure) rather than left implicit.
