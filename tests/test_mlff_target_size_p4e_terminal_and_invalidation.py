@@ -50,6 +50,9 @@ from mdstats.training_data.campaign_target_size_terminal import (
 from mdstats.training_data.campaign_target_size_view import (
     TARGET_SIZE_RESULT_VIEW_SCHEMA,
     build_target_size_result_view,
+    expose_current_target_size_terminal_result,
+    write_current_target_size_result_view,
+    write_nonterminal_target_size_result_view,
     write_target_size_result_view,
 )
 from mdstats.training_data.target_size_execution import (
@@ -978,7 +981,7 @@ def test_p4e_mandatory7_terminal_scientific_failure_reload_and_corruption_negati
 
 
 def test_p4e_mandatory8_terminal_view_bypass_negative(tmp_path: Path):
-    """Case 8: raw terminal CampaignStore revision alone is rejected; validated input succeeds."""
+    """Case 8: generic build/write reject terminal state unconditionally; current exposure succeeds."""
 
     config, workspace, _harness = _terminal_campaign(tmp_path)
     store = CampaignStore(_state_db(workspace))
@@ -987,17 +990,19 @@ def test_p4e_mandatory8_terminal_view_bypass_negative(tmp_path: Path):
         revision = load_target_size_campaign_revision(store)
         assert revision.state.terminal is not None
 
-        # 1. Unvalidated raw rendering without validated_result raises:
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
+        # 1. Generic builder rejects terminal revision unconditionally:
+        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
             build_target_size_result_view(revision)
-        assert "requires a ValidatedTargetSizeTerminalResult" in str(excinfo.value)
+        assert "cannot render terminal target-size state" in str(excinfo1.value)
 
-        # 2. Validated rendering with validated_result succeeds:
-        validated = load_validated_target_size_terminal_result(
+        # 2. Generic writer rejects terminal revision unconditionally:
+        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+            write_target_size_result_view(tmp_path / "stale.json", revision)
+        assert "cannot write terminal target-size state" in str(excinfo2.value)
+
+        # 3. CampaignStore-backed current exposure succeeds:
+        view = write_current_target_size_result_view(
             cfg, paths, store, expected_revision=revision
-        )
-        view = build_target_size_result_view(
-            revision, validated_result=validated
         )
         assert view["schema"] == TARGET_SIZE_RESULT_VIEW_SCHEMA
         assert view["terminal"] is not None
@@ -1067,9 +1072,9 @@ def test_p4e_mandatory_historical_revision_cannot_masquerade_as_current(
 
 
 def test_p4e_mandatory_raw_historical_terminal_view_is_rejected(tmp_path: Path):
-    """P4-E2 Mandatory Currentness Test B:
-    Raw historical terminal view is rejected even when internally self-consistent.
-    Calling build_target_size_result_view with historical g1 state fails.
+    """P4-E4 Mandatory Currentness Test B:
+    Generic build/write functions reject terminal state even when supplied with
+    a legitimate matching historical ValidatedTargetSizeTerminalResult.
     """
 
     config, workspace, _harness = _terminal_campaign(tmp_path)
@@ -1091,20 +1096,24 @@ def test_p4e_mandatory_raw_historical_terminal_view_is_rejected(tmp_path: Path):
     p4d.cli._mark_stage(store, paths, "doctor", p4d.cli.StageState.COMPLETE, "fixture")
     assert p4d._run(config, "prepare") == 0
 
-    # 1. Raw historical revision without validated_result raises:
+    # 1. Calling generic builder with g1_revision raises:
     with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
         build_target_size_result_view(g1_revision)
-    assert "requires a ValidatedTargetSizeTerminalResult" in str(excinfo1.value)
+    assert "cannot render terminal target-size state" in str(excinfo1.value)
 
-    # 2. Historical validated_result with current g2 revision raises:
-    store2 = CampaignStore(paths.state_db)
-    try:
-        g2_revision = load_target_size_campaign_revision(store2)
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
-            build_target_size_result_view(g2_revision, validated_result=g1_validated)
-        assert "belongs to a different revision" in str(excinfo2.value)
-    finally:
-        store2.close()
+    # 2. Calling generic builder with g1_revision + g1_validated raises:
+    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+        build_target_size_result_view(g1_revision, validated_result=g1_validated)
+    assert "cannot render terminal target-size state" in str(excinfo2.value)
+
+    # 3. Calling generic writer with g1_revision + g1_validated raises:
+    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo3:
+        write_target_size_result_view(
+            paths.results / "target-size-state.json",
+            g1_revision,
+            validated_result=g1_validated,
+        )
+    assert "cannot write terminal target-size state" in str(excinfo3.value)
 
 
 def test_p4e_mandatory_reporter_rejects_raw_terminal_projection():
@@ -1264,17 +1273,130 @@ def test_p4e_mandatory_stale_current_report_exposure_fails_before_stdout(
         store2.close()
 
 
-def test_p4e_structural_single_current_terminal_loader():
-    """P4-E3 Structural Check: exactly one current terminal loader and exposure boundary exists."""
-    import mdstats.training_data.campaign_target_size_terminal as terminal_mod
+def test_p4e_mandatory_legacy_generic_terminal_writer_cannot_publish_g1(
+    tmp_path: Path,
+):
+    """P4-E4 Mandatory Bypass Regression A:
+    1. Produce real terminal generation g1 and capture its legitimate g1_validated.
+    2. Advance CampaignStore to nonterminal g2 via prepare.
+    3. Attempt to publish g1 via generic write_target_size_result_view.
+    4. Must fail before publication; canonical result file is not created or modified with g1 terminal data.
+    """
+    from mdstats.training_data.campaign_target_size_view import (
+        expose_current_target_size_terminal_result,
+        write_target_size_result_view,
+    )
+
+    config, workspace, _harness = _terminal_campaign(tmp_path)
+    cfg, paths = _load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        g1_revision = load_target_size_campaign_revision(store)
+        g1_validated = expose_current_target_size_terminal_result(
+            cfg, paths, store, expected_revision=g1_revision
+        )
+    finally:
+        store.close()
+
+    result_file = paths.results / "target-size-state.json"
+    assert result_file.is_file()
+
+    # Advance CampaignStore to generation 2:
+    content = config.read_text(encoding="utf-8")
+    config.write_text(
+        content.replace("seeds = [1, 2]", "seeds = [3, 4]"), encoding="utf-8"
+    )
+    p4d.cli._mark_stage(store, paths, "doctor", p4d.cli.StageState.COMPLETE, "fixture")
+    assert p4d._run(config, "prepare") == 0
+
+    # prepare creates a nonterminal generation 2 view file:
+    assert result_file.is_file()
+    pre_bytes = result_file.read_bytes()
+
+    # Stale publish attempt via generic writer must raise and NOT overwrite with g1:
+    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
+        write_target_size_result_view(
+            result_file, g1_revision, validated_result=g1_validated
+        )
+    assert "cannot write terminal target-size state" in str(excinfo1.value)
+    assert (
+        result_file.read_bytes() == pre_bytes
+    ), "Stale write attempt modified target-size-state.json"
+
+    # Also test when destination is unlinked:
+    result_file.unlink()
+    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+        write_target_size_result_view(
+            result_file, g1_revision, validated_result=g1_validated
+        )
+    assert "cannot write terminal target-size state" in str(excinfo2.value)
+    assert not result_file.exists(), "Stale write attempt created target-size-state.json"
+
+
+def test_p4e_mandatory_legacy_generic_terminal_builder_cannot_supply_g1_payload(
+    tmp_path: Path,
+):
+    """P4-E4 Mandatory Bypass Regression B:
+    1. Produce real terminal generation g1 and capture its legitimate g1_validated.
+    2. Advance CampaignStore to nonterminal g2 via prepare.
+    3. Attempt to build terminal payload via generic build_target_size_result_view.
+    4. Must fail without returning any terminal payload.
+    """
+    from mdstats.training_data.campaign_target_size_view import (
+        build_target_size_result_view,
+        expose_current_target_size_terminal_result,
+    )
+
+    config, workspace, _harness = _terminal_campaign(tmp_path)
+    cfg, paths = _load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        g1_revision = load_target_size_campaign_revision(store)
+        g1_validated = expose_current_target_size_terminal_result(
+            cfg, paths, store, expected_revision=g1_revision
+        )
+    finally:
+        store.close()
+
+    # Advance CampaignStore to generation 2:
+    content = config.read_text(encoding="utf-8")
+    config.write_text(
+        content.replace("seeds = [1, 2]", "seeds = [3, 4]"), encoding="utf-8"
+    )
+    p4d.cli._mark_stage(store, paths, "doctor", p4d.cli.StageState.COMPLETE, "fixture")
+    assert p4d._run(config, "prepare") == 0
+
+    # Stale build attempt via generic builder must raise:
+    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
+        build_target_size_result_view(g1_revision, validated_result=g1_validated)
+    assert "cannot render terminal target-size state" in str(excinfo.value)
+
+
+def test_p4e_structural_public_api_surface_sealing():
+    """P4-E4 Structural Check:
+    1. Enumerate campaign_target_size_view.__all__.
+    2. Assert that no exported function lacking CampaignStore context accepts/processes terminal revisions.
+    3. Assert that exactly one canonical current-terminal loader exists.
+    """
     import mdstats.training_data.campaign_target_size_view as view_mod
+    import mdstats.training_data.campaign_target_size_terminal as terminal_mod
     import mdstats.training_data.campaign_target_size_runtime as runtime_mod
 
+    exported = view_mod.__all__
+    assert "TARGET_SIZE_RESULT_VIEW_SCHEMA" in exported
+    assert "expose_current_target_size_terminal_result" in exported
+    assert "write_current_target_size_result_view" in exported
+    assert "write_nonterminal_target_size_result_view" in exported
+    assert "build_target_size_result_view" in exported
+    assert "write_target_size_result_view" in exported
+
+    # Private terminal helpers must NOT be in __all__:
+    assert "_build_terminal_target_size_result_view" not in exported
+    assert "_write_terminal_target_size_result_view" not in exported
+
+    # Single canonical loader and reporter:
     assert hasattr(terminal_mod, "load_validated_target_size_terminal_result")
     assert hasattr(terminal_mod, "ValidatedTargetSizeTerminalResult")
-    assert hasattr(view_mod, "expose_current_target_size_terminal_result")
-    assert hasattr(view_mod, "write_current_target_size_result_view")
-    assert hasattr(view_mod, "write_nonterminal_target_size_result_view")
     assert hasattr(runtime_mod, "report_current_target_size_terminal_state")
 
 

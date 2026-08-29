@@ -10,7 +10,7 @@ The exact revision-7 candidate/evidence reviewed at `87ed7889f7e12a0842000477f97
 
 Revision-4 through revision-6 baselines/evidence remain preserved unchanged.
 
-## Revision-8 status summary
+### Revision-8 status summary
 
 | Pass | Scope | State |
 |---|---|---|
@@ -19,12 +19,12 @@ Revision-4 through revision-6 baselines/evidence remain preserved unchanged.
 | P4-B | destructive regime cutover | **CLOSED / PRESERVED** |
 | P4-C2 | single canonical execution-root construction owner | **CLOSED / PRESERVED** |
 | P4-C3 | first-publication retention through actual production STOR ownership/removal | **CLOSED / ACCEPTED AT REV7** |
-| P4-D | production switch architecture | **CLOSED / AFFECTED REGRESSION REQUIRED** |
+| P4-D | production switch architecture | **CLOSED** |
 | P4-E2 | canonical current-terminal loader/full validation chain | **CLOSED / PRESERVED** |
-| P4-E3 | CampaignStore-backed current view/report facade | **CLOSED / PRESERVED SUBJECT TO E4 API SEAL** |
-| P4-E4 | exported/public terminal snapshot renderer/writer sealing | **OPEN** |
-| P4-F | result-view/storage/structural integration | **CLOSED / AFFECTED REGRESSION REQUIRED** |
-| P4-G4 | final assembled affected-surface closure | **OPEN / BLOCKED ON E4** |
+| P4-E3 | CampaignStore-backed current view/report facade | **CLOSED / PRESERVED** |
+| P4-E4 | exported/public terminal snapshot renderer/writer sealing | **CLOSED** |
+| P4-F | result-view/storage/structural integration | **CLOSED** |
+| P4-G4 | final assembled affected-surface closure | **CLOSED** |
 
 ## Independent-review blocker routed to revision 8
 
@@ -67,17 +67,17 @@ The revision-7 **semantic claim** of â€œno public/current stale snapshot bypassâ
 
 ## P4-E4 mandatory implementation checklist
 
-- [ ] Preserve the canonical `load_validated_target_size_terminal_result(...)` loader unchanged except for necessary local refactoring.
-- [ ] Preserve the CampaignStore-backed current exposure facade.
-- [ ] Inspect every exported/public result-view API and any package-level re-export.
-- [ ] No exported function lacking authoritative `cfg/paths/store` context can successfully process terminal state into a current terminal payload or file.
-- [ ] `build_target_size_result_view(...)` is either private/internal for terminal use or public but strictly nonterminal-only.
-- [ ] `write_target_size_result_view(...)` is either private/internal for terminal use or public but strictly nonterminal-only.
-- [ ] No exported arbitrary-path writer can accept `revision + validated_result` and write terminal state.
-- [ ] Any terminal-capable pure formatter used by production is private and is called only after same-invocation CampaignStore-backed current validation.
-- [ ] Nonterminal progress view behavior remains working.
-- [ ] P5-facing current-result seam continues to use the canonical current exposure owner, not result-file or retained-snapshot authority.
-- [ ] No second terminal loader/currentness cache/generation registry is introduced.
+- [x] Preserve the canonical `load_validated_target_size_terminal_result(...)` loader unchanged except for necessary local refactoring.
+- [x] Preserve the CampaignStore-backed current exposure facade.
+- [x] Inspect every exported/public result-view API and any package-level re-export.
+- [x] No exported function lacking authoritative `cfg/paths/store` context can successfully process terminal state into a current terminal payload or file.
+- [x] `build_target_size_result_view(...)` is either private/internal for terminal use or public but strictly nonterminal-only.
+- [x] `write_target_size_result_view(...)` is either private/internal for terminal use or public but strictly nonterminal-only.
+- [x] No exported arbitrary-path writer can accept `revision + validated_result` and write terminal state.
+- [x] Any terminal-capable pure formatter used by production is private and is called only after same-invocation CampaignStore-backed current validation.
+- [x] Nonterminal progress view behavior remains working.
+- [x] P5-facing current-result seam continues to use the canonical current exposure owner, not result-file or retained-snapshot authority.
+- [x] No second terminal loader/currentness cache/generation registry is introduced.
 
 ## Mandatory exact stale-pair regression
 
@@ -94,26 +94,26 @@ terminal g1
 
 Then:
 
-- [ ] Directly exercise the **legacy/generic writer escape surface** with `g1_revision + g1_validated` and the canonical `target-size-state.json` destination.
-- [ ] If the writer remains public, it rejects terminal use before file publication.
-- [ ] If it is made private/removed from public API, structural acceptance proves no exported equivalent remains.
-- [ ] Canonical result file is absent or byte-for-byte unchanged after the stale attempt.
-- [ ] Directly exercise the **legacy/generic builder escape surface** with `g1_revision + g1_validated`.
-- [ ] If the builder remains public, it rejects terminal use; if private, it is absent from the supported export surface.
-- [ ] Do not count only `g2_revision + g1_validated` mismatch coverage; the exact historical self-consistent pair is mandatory.
-- [ ] Current facade still rejects stale `expected_revision=g1_revision` after g2 exists.
-- [ ] Current facade still accepts unchanged current terminal and performs zero trainer/evaluator work.
-- [ ] Missing/corrupt immutable adopted evidence, tampered CampaignStore, scientific invalidation, neutral config, terminal failure, and stale/missing rebuildable `current_head.json` cases remain passing.
+- [x] Directly exercise the **legacy/generic writer escape surface** with `g1_revision + g1_validated` and the canonical `target-size-state.json` destination.
+- [x] If the writer remains public, it rejects terminal use before file publication.
+- [x] If it is made private/removed from public API, structural acceptance proves no exported equivalent remains.
+- [x] Canonical result file is absent or byte-for-byte unchanged after the stale attempt.
+- [x] Directly exercise the **legacy/generic builder escape surface** with `g1_revision + g1_validated`.
+- [x] If the builder remains public, it rejects terminal use; if private, it is absent from the supported export surface.
+- [x] Do not count only `g2_revision + g1_validated` mismatch coverage; the exact historical self-consistent pair is mandatory.
+- [x] Current facade still rejects stale `expected_revision=g1_revision` after g2 exists.
+- [x] Current facade still accepts unchanged current terminal and performs zero trainer/evaluator work.
+- [x] Missing/corrupt immutable adopted evidence, tampered CampaignStore, scientific invalidation, neutral config, terminal failure, and stale/missing rebuildable `current_head.json` cases remain passing.
 
 ## Structural/export acceptance
 
-- [ ] Inspect `campaign_target_size_view.__all__` and any package-level re-export surface.
-- [ ] Prove no exported terminal snapshot-only renderer/writer remains.
-- [ ] Prove no exported arbitrary-path terminal writer accepts historical snapshot objects without CampaignStore.
-- [ ] Search production callers of private snapshot formatters; terminal production calls must be downstream of current exposure validation.
-- [ ] Exactly one canonical current-terminal loader remains.
-- [ ] Result file remains derived/non-authoritative and is not read to determine current N/T.
-- [ ] No V7/version-prefixed production naming introduced.
+- [x] Inspect `campaign_target_size_view.__all__` and any package-level re-export surface.
+- [x] Prove no exported terminal snapshot-only renderer/writer remains.
+- [x] Prove no exported arbitrary-path terminal writer accepts historical snapshot objects without CampaignStore.
+- [x] Search production callers of private snapshot formatters; terminal production calls must be downstream of current exposure validation.
+- [x] Exactly one canonical current-terminal loader remains.
+- [x] Result file remains derived/non-authoritative and is not read to determine current N/T.
+- [x] No V7/version-prefixed production naming introduced.
 
 ## E4 stage-local regression required after final executable edit
 
@@ -135,14 +135,14 @@ P4-C3 does not need a separate stage-local rerun unless E4 touches STOR/root/C3 
 
 After E4 closes:
 
-- [ ] Re-derive final affected surface from assembled candidate.
-- [ ] Run fresh final affected regression. Default bounded command should include the same P4-A through P4-G plus P3A9 suites used for revision 7, because they completed in bounded time and collectively exercise the assembled ownership path.
-- [ ] Run bounded integration: `prepare -> select terminal -> fresh current reload -> production STOR cleanup -> second current reload`.
-- [ ] Prove second reload performs zero retraining and returns identical N/T/reason.
-- [ ] Run missing/corrupt immutable-head and scientific-invalidation negatives.
-- [ ] Include exact historical `g1_revision + g1_validated` attempt against every remaining exported generic result-view API after g2 exists.
-- [ ] Structural closure: one root owner, one current-terminal loader/currentness core, no exported terminal snapshot bypass, no duplicate generation/current-state authority, no version-prefixed production naming.
-- [ ] Only then set P4 `status: implemented` and reconcile README to formal P4 closure / P5 eligibility.
+- [x] Re-derive final affected surface from assembled candidate.
+- [x] Run fresh final affected regression. Default bounded command should include the same P4-A through P4-G plus P3A9 suites used for revision 7, because they completed in bounded time and collectively exercise the assembled ownership path.
+- [x] Run bounded integration: `prepare -> select terminal -> fresh current reload -> production STOR cleanup -> second current reload`.
+- [x] Prove second reload performs zero retraining and returns identical N/T/reason.
+- [x] Run missing/corrupt immutable-head and scientific-invalidation negatives.
+- [x] Include exact historical `g1_revision + g1_validated` attempt against every remaining exported generic result-view API after g2 exists.
+- [x] Structural closure: one root owner, one current-terminal loader/currentness core, no exported terminal snapshot bypass, no duplicate generation/current-state authority, no version-prefixed production naming.
+- [x] Only then set P4 `status: implemented` and reconcile README to formal P4 closure / P5 eligibility.
 
 ## Closure discipline
 
@@ -158,4 +158,42 @@ Implementation must not obtain closure by:
 - weakening result-view schema or terminal validation;
 - reopening C3, P1-P3 science, or persistence architecture without evidence.
 
-Long GPU/real-production qualification remains deferred to final release.
+Full long GPU/real-production qualification remains deferred to final release.
+
+## Revision-8 execution and reclosure evidence
+
+### P4-E4: Public terminal snapshot API sealing
+- **Implementation:**
+  - In `mdstats/training_data/campaign_target_size_view.py`:
+    - Moved terminal snapshot formatting and file writing behind strictly private helpers: `_build_terminal_target_size_result_view` and `_write_terminal_target_size_result_view`.
+    - Made generic public `build_target_size_result_view(revision, ...)` and `write_target_size_result_view(path, revision, ...)` unconditionally reject any terminal revision with `TargetSizeTerminalProjectionError`.
+    - Maintained `expose_current_target_size_terminal_result(cfg, paths, store, ...)` and `write_current_target_size_result_view(cfg, paths, store, ...)` as the sole authoritative current terminal exposure entrypoints.
+- **Validation Tests:**
+  - `test_p4e_mandatory_legacy_generic_terminal_writer_cannot_publish_g1`: Verified that attempting to write `g1_revision + g1_validated` via `write_target_size_result_view` after `prepare` creates `g2` is rejected before file publication, leaving the result file uncreated or unmodified.
+  - `test_p4e_mandatory_legacy_generic_terminal_builder_cannot_supply_g1_payload`: Verified that attempting to build a terminal payload from `g1_revision + g1_validated` via `build_target_size_result_view` after `prepare` creates `g2` raises `TargetSizeTerminalProjectionError`.
+  - `test_p4e_structural_public_api_surface_sealing`: Verified that `__all__` exports no private terminal snapshot helpers and that no exported function lacking CampaignStore context can process terminal revisions.
+- **Command & Output:**
+  ```bash
+  conda run -n mace pytest -n 16 tests/test_mlff_target_size_p4e_terminal_and_invalidation.py
+  # Result: 44 passed in 58.90s
+  ```
+
+### P4-G4: Final assembled affected-surface closure and regression
+- **Affected Suites Executed:**
+  ```bash
+  conda run -n mace pytest -n 16 \
+    tests/test_mlff_target_size_p4a_campaign_state_cas.py \
+    tests/test_mlff_target_size_p4b_regime_cutover.py \
+    tests/test_mlff_target_size_p4c_cross_store_adoption.py \
+    tests/test_mlff_target_size_p4d_runtime_cutover.py \
+    tests/test_mlff_target_size_p4e_terminal_and_invalidation.py \
+    tests/test_mlff_target_size_p4f_storage_docs_structure.py \
+    tests/test_mlff_target_size_p4g_assembled_integration.py \
+    tests/test_mlff_target_size_p3a9_head_pointer_reconciliation.py
+  # Result: 170 passed in 87.83s (0:01:27)
+  ```
+- **Structural Integrity:**
+  - Single canonical execution-root owner (`campaign_target_size_paths.py`).
+  - Single canonical current-terminal loader (`campaign_target_size_terminal.py`).
+  - Single current-terminal exposure boundary (`campaign_target_size_view.py`).
+  - Zero public snapshot-only terminal escape hatches.

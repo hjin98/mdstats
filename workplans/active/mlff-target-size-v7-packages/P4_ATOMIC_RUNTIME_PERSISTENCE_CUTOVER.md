@@ -4,7 +4,7 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P4
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 4
-status: active
+status: implemented
 package_revision: 8
 amended_date: 2026-08-29
 reopened_from_revision7_candidate: 87ed7889f7e12a0842000477f97dd1eef9fea9ac
@@ -18,7 +18,7 @@ revision4_baseline: P4_REVISION4_IMPLEMENTED_BASELINE.md
 revision4_evidence: P4_REVISION4_IMPLEMENTATION_PROGRESS.md
 entry_p3_closure_commit: 9d195807cff0bb8042f447ac33ceb0586ed708ac
 compatibility_policy: destructive-generation-reset
-implementation_closure: P4 revision 8 reopened after independent review; P4-C3 is accepted/preserved, P4-E4 public terminal snapshot-API sealing is open, and P4-G4 is invalidated until E4 closes and fresh assembled affected regression passes
+implementation_closure: Complete revision-8 reclosure: P4-E4 public terminal snapshot API sealing, legacy writer/builder bypass rejection, structural export verification, and P4-G4 assembled regression closed cleanly with 170 passed tests
 reconciliation_reason: Revision 7 correctly closed the production-STOR first-publication owner path and introduced CampaignStore-backed current terminal view/report entrypoints. Independent review found one remaining public API escape hatch: exported build_target_size_result_view(...) and write_target_size_result_view(...) still accept a self-consistent historical TargetSizeCampaignRevision plus ValidatedTargetSizeTerminalResult and can render/write that stale terminal snapshot after prepare advances CampaignStore to a newer generation. Revision 8 closes only that public terminal snapshot exposure surface. No target-size science, P3 execution/reducer/replay, canonical root ownership, CampaignStore schema, terminal-loader validation chain, STOR behavior, or P5 scientific semantics are reopened.
 ---
 
