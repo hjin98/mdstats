@@ -1,10 +1,13 @@
 """P3A9 acceptance suite: stale-head successor reconciliation repair,
-deterministic scientific replay, fork/orphan rejection, CAS lock, and process-level concurrency closure."""
+deterministic scientific replay, fork/orphan rejection, CAS lock identity,
+process-level concurrency closure, and fresh-process validation."""
 
 from __future__ import annotations
 
 import copy
+import fcntl
 import hashlib
+import inspect
 import json
 import multiprocessing
 from dataclasses import replace
@@ -447,8 +450,76 @@ def test_p3a9_req10_fresh_process_restart_after_repaired_crash_state(tmp_path: P
 
 
 # ---------------------------------------------------------------------------
-# Section 4.2: Real-owner process-level concurrency acceptance
+# Section 4 / Section 5: Process-level concurrency, lock identity, and structural guards
 # ---------------------------------------------------------------------------
+
+def _worker_hold_screen_commit_lock(root_path, acquired_event, release_event, queue):
+    """External adversary holding the canonical screen-commit lock exclusively."""
+    lock_path = Path(root_path) / ".screen_commit.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        acquired_event.set()
+        if not release_event.wait(timeout=10):
+            queue.put(("holder", None, "release timeout"))
+            return
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    queue.put(("holder", "released", None))
+
+
+def _worker_commit_with_events(root_path, definition, state, batch, call_started_event, completed_event, queue):
+    """Commit worker signaling before call and setting completed in finally."""
+    try:
+        call_started_event.set()
+        head = commit_target_size_boundary_batch(root_path, definition, state, batch)
+        queue.put(("commit_worker", head.content_digest, None))
+    except Exception as e:
+        queue.put(("commit_worker", None, f"{type(e).__name__}: {e}"))
+    finally:
+        completed_event.set()
+
+
+def _worker_reconcile_with_events(root_path, authority, call_started_event, completed_event, queue):
+    """Reconcile worker signaling before call and setting completed in finally."""
+    try:
+        call_started_event.set()
+        head = reconcile_target_size_screen_root(root_path, authority)
+        digest_val = head.content_digest if head is not None else None
+        queue.put(("reconcile_worker", digest_val, None))
+    except Exception as e:
+        queue.put(("reconcile_worker", None, f"{type(e).__name__}: {e}"))
+    finally:
+        completed_event.set()
+
+
+def _worker_fresh_reconcile(root_path, authority, queue, label="fresh_reconcile"):
+    """Newly spawned fresh process for post-race / post-holder validation."""
+    try:
+        head = reconcile_target_size_screen_root(root_path, authority)
+        digest_val = head.content_digest if head is not None else None
+        queue.put((label, digest_val, None))
+    except Exception as e:
+        queue.put((label, None, f"{type(e).__name__}: {e}"))
+
+
+def _run_fresh_reconcile_child(root_path, authority, label="fresh_reconcile") -> str | None:
+    """Helper to run reconciliation strictly inside a newly spawned child process."""
+    ctx = multiprocessing.get_context("fork")
+    queue = ctx.Queue()
+    p = ctx.Process(target=_worker_fresh_reconcile, args=(root_path, authority, queue, label))
+    try:
+        p.start()
+        p.join(timeout=30)
+        assert not p.is_alive(), f"Fresh reconcile child {label} timed out"
+        assert p.exitcode == 0, f"Fresh reconcile child {label} exited with {p.exitcode}"
+        msg_label, digest_val, err = queue.get(timeout=5)
+        assert err is None, f"Fresh reconcile child {label} failed: {err}"
+        return digest_val
+    finally:
+        if p.is_alive():
+            p.terminate()
+            p.join()
+
 
 def _worker_commit(barrier, queue, root_path, definition, state, batch):
     try:
@@ -467,6 +538,202 @@ def _worker_reconcile(barrier, queue, root_path, authority, label="reconcile"):
         queue.put((label, digest_val, None))
     except Exception as e:
         queue.put((label, None, f"{type(e).__name__}: {e}"))
+
+
+# 4.2 Commit-owner lock-identity test
+def test_p3a9_lock_identity_commit_owner_blocks_on_canonical_lock(tmp_path: Path) -> None:
+    env = _env(tmp_path, root_name="screen_lock_id_commit")
+    state0 = env["aggregate"].reducer_state
+    definition = env["aggregate"].definition
+
+    # Committed predecessor H0 current
+    batch0 = _execute_boundary(env, tmp_path, state0, 1)
+    head0 = commit_target_size_boundary_batch(env["root"], definition, state0, batch0)
+    assert load_current_execution_head(env["root"]).content_digest == head0.content_digest
+
+    # Next valid complete batch B1 built but NOT committed
+    batch1 = _execute_boundary(env, tmp_path, head0.post_state, 3)
+
+    ctx = multiprocessing.get_context("fork")
+    acquired_event = ctx.Event()
+    release_event = ctx.Event()
+    call_started_event = ctx.Event()
+    completed_event = ctx.Event()
+    queue = ctx.Queue()
+
+    # 1. Start external lock holder
+    p_holder = ctx.Process(
+        target=_worker_hold_screen_commit_lock,
+        args=(env["root"], acquired_event, release_event, queue),
+    )
+    p_commit = ctx.Process(
+        target=_worker_commit_with_events,
+        args=(env["root"], definition, head0.post_state, batch1, call_started_event, completed_event, queue),
+    )
+
+    try:
+        p_holder.start()
+        assert acquired_event.wait(timeout=10), "Holder failed to acquire lock in time"
+
+        # 2. Start commit worker while lock is held
+        p_commit.start()
+        assert call_started_event.wait(timeout=10), "Commit worker failed to start call"
+
+        # 3. Verify commit worker is blocked by the external lock holder
+        assert not completed_event.wait(timeout=1.0), "Commit worker did not block on canonical lock!"
+
+        # 4. Verify durable mutation has not occurred while lock is held
+        assert load_current_execution_head(env["root"]).content_digest == head0.content_digest
+        heads_on_disk = {p.stem for p in (env["root"] / "heads").glob("*.json")}
+        assert heads_on_disk == {head0.content_digest}
+
+        # 5. Release external lock holder
+        release_event.set()
+        assert completed_event.wait(timeout=10), "Commit worker failed to complete after lock release"
+
+        p_commit.join(timeout=10)
+        p_holder.join(timeout=10)
+        assert not p_commit.is_alive()
+        assert not p_holder.is_alive()
+        assert p_commit.exitcode == 0
+        assert p_holder.exitcode == 0
+    finally:
+        release_event.set()
+        if p_commit.is_alive():
+            p_commit.terminate()
+            p_commit.join()
+        if p_holder.is_alive():
+            p_holder.terminate()
+            p_holder.join()
+
+    # Retrieve exactly 2 messages
+    results = {}
+    for _ in range(2):
+        label, val, err = queue.get(timeout=5)
+        assert err is None, f"{label} failed with: {err}"
+        results[label] = val
+
+    assert results["holder"] == "released"
+    head1_digest = results["commit_worker"]
+    assert head1_digest is not None
+
+    # Current head pointer resolves to head1
+    curr = load_current_execution_head(env["root"])
+    assert curr is not None
+    assert curr.content_digest == head1_digest
+
+    # Run newly spawned fresh reconciliation child process
+    fresh_digest = _run_fresh_reconcile_child(env["root"], env["authority"], "fresh_post_commit_lock")
+    assert fresh_digest == head1_digest
+
+
+# 4.3 Reconcile-owner lock-identity test
+def test_p3a9_lock_identity_reconcile_owner_blocks_on_canonical_lock(tmp_path: Path) -> None:
+    env = _env(tmp_path, root_name="screen_lock_id_reconcile")
+    state0 = env["aggregate"].reducer_state
+    definition = env["aggregate"].definition
+
+    # Commit boundary 1 cleanly
+    batch0 = _execute_boundary(env, tmp_path, state0, 1)
+    head0 = commit_target_size_boundary_batch(env["root"], definition, state0, batch0)
+
+    # Publish batch1 and head1, leave current_head.json pointing at head0
+    batch1 = _execute_boundary(env, tmp_path, head0.post_state, 3)
+    persist_complete_boundary_batch(env["root"], batch1)
+    post_state1 = apply_complete_boundary_batch(definition, head0.post_state, batch1)
+    head1 = TargetSizeExecutionHead(
+        parent_head_digest=head0.content_digest,
+        batch_digest=batch1.content_digest,
+        pre_state_digest=head0.post_state.content_digest,
+        post_state_digest=post_state1.content_digest,
+        pre_state=head0.post_state,
+        post_state=post_state1,
+    )
+    _publish_head_file(env["root"], head1)
+    assert load_current_execution_head(env["root"]).content_digest == head0.content_digest
+
+    ctx = multiprocessing.get_context("fork")
+    acquired_event = ctx.Event()
+    release_event = ctx.Event()
+    call_started_event = ctx.Event()
+    completed_event = ctx.Event()
+    queue = ctx.Queue()
+
+    # 1. Start external lock holder
+    p_holder = ctx.Process(
+        target=_worker_hold_screen_commit_lock,
+        args=(env["root"], acquired_event, release_event, queue),
+    )
+    p_rec = ctx.Process(
+        target=_worker_reconcile_with_events,
+        args=(env["root"], env["authority"], call_started_event, completed_event, queue),
+    )
+
+    try:
+        p_holder.start()
+        assert acquired_event.wait(timeout=10), "Holder failed to acquire lock in time"
+
+        # 2. Start reconcile worker while lock is held
+        p_rec.start()
+        assert call_started_event.wait(timeout=10), "Reconcile worker failed to start call"
+
+        # 3. Verify reconcile worker is blocked by the external lock holder
+        assert not completed_event.wait(timeout=1.0), "Reconcile worker did not block on canonical lock!"
+
+        # 4. Verify pointer is not advanced while lock is held
+        assert load_current_execution_head(env["root"]).content_digest == head0.content_digest
+
+        # 5. Release external lock holder
+        release_event.set()
+        assert completed_event.wait(timeout=10), "Reconcile worker failed to complete after lock release"
+
+        p_rec.join(timeout=10)
+        p_holder.join(timeout=10)
+        assert not p_rec.is_alive()
+        assert not p_holder.is_alive()
+        assert p_rec.exitcode == 0
+        assert p_holder.exitcode == 0
+    finally:
+        release_event.set()
+        if p_rec.is_alive():
+            p_rec.terminate()
+            p_rec.join()
+        if p_holder.is_alive():
+            p_holder.terminate()
+            p_holder.join()
+
+    # Retrieve exactly 2 messages
+    results = {}
+    for _ in range(2):
+        label, val, err = queue.get(timeout=5)
+        assert err is None, f"{label} failed with: {err}"
+        results[label] = val
+
+    assert results["holder"] == "released"
+    assert results["reconcile_worker"] == head1.content_digest
+
+    # Current head pointer resolves to head1
+    curr = load_current_execution_head(env["root"])
+    assert curr is not None
+    assert curr.content_digest == head1.content_digest
+
+    # Run newly spawned fresh reconciliation child process
+    fresh_digest = _run_fresh_reconcile_child(env["root"], env["authority"], "fresh_post_reconcile_lock")
+    assert fresh_digest == head1.content_digest
+
+
+# 4.4 Mandatory targeted structural lock guard
+def test_p3a9_public_owners_bind_same_canonical_screen_commit_lock() -> None:
+    src_commit = inspect.getsource(commit_target_size_boundary_batch)
+    src_reconcile = inspect.getsource(reconcile_target_size_screen_root)
+
+    # Both bind literal canonical lock path ".screen_commit.lock"
+    assert '".screen_commit.lock"' in src_commit or "'.screen_commit.lock'" in src_commit
+    assert '".screen_commit.lock"' in src_reconcile or "'.screen_commit.lock'" in src_reconcile
+
+    # Both acquire exclusive fcntl.LOCK_EX
+    assert "fcntl.LOCK_EX" in src_commit
+    assert "fcntl.LOCK_EX" in src_reconcile
 
 
 # Race A: Legitimate commit/retry versus reconciliation on the same stale-pointer successor
@@ -517,6 +784,8 @@ def test_p3a9_concurrency_race_a_commit_vs_reconcile(tmp_path: Path) -> None:
 
         assert not p_commit.is_alive(), "Worker commit timed out (possible deadlock)"
         assert not p_reconcile.is_alive(), "Worker reconcile timed out (possible deadlock)"
+        assert p_commit.exitcode == 0, f"Worker commit exited with code {p_commit.exitcode}"
+        assert p_reconcile.exitcode == 0, f"Worker reconcile exited with code {p_reconcile.exitcode}"
     finally:
         if p_commit.is_alive():
             p_commit.terminate()
@@ -525,9 +794,10 @@ def test_p3a9_concurrency_race_a_commit_vs_reconcile(tmp_path: Path) -> None:
             p_reconcile.terminate()
             p_reconcile.join()
 
+    # Retrieve exactly 2 messages
     results = {}
-    while not queue.empty():
-        label, digest_val, err = queue.get_nowait()
+    for _ in range(2):
+        label, digest_val, err = queue.get(timeout=5)
         assert err is None, f"Worker {label} failed: {err}"
         results[label] = digest_val
 
@@ -545,10 +815,9 @@ def test_p3a9_concurrency_race_a_commit_vs_reconcile(tmp_path: Path) -> None:
     heads_on_disk = {p.stem for p in (env["root"] / "heads").glob("*.json")}
     assert heads_on_disk == {head0.content_digest, head1.content_digest}
 
-    # Third process reconciliation returns same head1
-    fresh_rec = reconcile_target_size_screen_root(env["root"], env["authority"])
-    assert fresh_rec is not None
-    assert fresh_rec.content_digest == head1.content_digest
+    # Third fresh process reconciliation returns same head1
+    fresh_digest = _run_fresh_reconcile_child(env["root"], env["authority"], "fresh_post_race_a")
+    assert fresh_digest == head1.content_digest
 
 
 # Race B: Concurrent reconcilers on the same stale-pointer root
@@ -598,6 +867,8 @@ def test_p3a9_concurrency_race_b_concurrent_reconcilers(tmp_path: Path) -> None:
 
         assert not p_rec1.is_alive(), "Worker rec1 timed out (possible deadlock)"
         assert not p_rec2.is_alive(), "Worker rec2 timed out (possible deadlock)"
+        assert p_rec1.exitcode == 0, f"Worker rec1 exited with code {p_rec1.exitcode}"
+        assert p_rec2.exitcode == 0, f"Worker rec2 exited with code {p_rec2.exitcode}"
     finally:
         if p_rec1.is_alive():
             p_rec1.terminate()
@@ -606,9 +877,10 @@ def test_p3a9_concurrency_race_b_concurrent_reconcilers(tmp_path: Path) -> None:
             p_rec2.terminate()
             p_rec2.join()
 
+    # Retrieve exactly 2 messages
     results = {}
-    while not queue.empty():
-        label, digest_val, err = queue.get_nowait()
+    for _ in range(2):
+        label, digest_val, err = queue.get(timeout=5)
         assert err is None, f"Worker {label} failed: {err}"
         results[label] = digest_val
 
@@ -626,7 +898,6 @@ def test_p3a9_concurrency_race_b_concurrent_reconcilers(tmp_path: Path) -> None:
     heads_on_disk = {p.stem for p in (env["root"] / "heads").glob("*.json")}
     assert heads_on_disk == {head0.content_digest, head1.content_digest}
 
-    # Third process reconciliation returns same head1
-    fresh_rec = reconcile_target_size_screen_root(env["root"], env["authority"])
-    assert fresh_rec is not None
-    assert fresh_rec.content_digest == head1.content_digest
+    # Third fresh process reconciliation returns same head1
+    fresh_digest = _run_fresh_reconcile_child(env["root"], env["authority"], "fresh_post_race_b")
+    assert fresh_digest == head1.content_digest
