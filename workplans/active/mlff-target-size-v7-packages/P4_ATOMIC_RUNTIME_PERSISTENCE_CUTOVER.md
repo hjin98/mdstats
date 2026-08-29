@@ -4,14 +4,15 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P4
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 4
-status: blocked
+status: active
 package_revision: 4
 amended_date: 2026-08-29
 entry_p3_baseline_commit: 472276ee521eb2b19177299c1c9ad660dbd6ad46
+entry_p3_closure_commit: 4315b0ab4c13bbb45b963f3d816b5bb08aac75c0
 p3a9_contract_commit: cf0cfedbfadc700acde72f5a25e4fc9d0c22f7fd
 prior_p4_revision_commit: 878604128e9695a8040ff46b20f15216c4e038f4
 compatibility_policy: destructive-generation-reset
-entry_gate: cumulative-p3-revision-7-through-p3a9-must-be-accepted-and-recorded-before-p4-execution
+entry_gate: cumulative-p3-revision-7-through-p3a9-accepted-at-4315b0ab4c13bbb45b963f3d816b5bb08aac75c0
 reconciliation_reason: Revision 4 preserves the frozen parent and all accepted P1-P3 scientific semantics while closing the final P4 implementation-handoff gaps. The stale-current-head successor repair is moved out of P4 into the cumulative revision-7 P3A9 closure contract so P4 no longer depends on work inside its own blocked predecessor. P4 now freezes one canonical CampaignStore generation authority, deterministic logical-transition identity for idempotent CAS retries, explicit cross-subsystem lock/transaction ordering, and a STOR retention fence protecting active/restartable P3 execution roots and reconciliation-frontier evidence even before SQLite adoption. No scientific, statistical, TRAIN2/EVAL2, checkpoint, provider, seed, reducer, or target-size decision semantics are changed.
 ---
 

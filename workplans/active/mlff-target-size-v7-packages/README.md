@@ -6,7 +6,7 @@ A package may not reinterpret the frozen parent merely to preserve legacy code/t
 
 ## Current sequencing state
 
-P1 and P2 are accepted predecessor authorities. P3 remains the active predecessor package until cumulative revision-7 closure through P3A9 is implemented, reviewed, and committed.
+P1 and P2 are accepted predecessor authorities. Cumulative P3 revision-7 closure through P3A9 is implemented, validated, and formally closed at commit `4315b0ab4c13bbb45b963f3d816b5bb08aac75c0`.
 
 P3 revision 7 consists cumulatively of:
 
@@ -21,11 +21,11 @@ P3 revision 7 consists cumulatively of:
 - `P3_P3A6_FINAL_ACCEPTANCE_REPAIR_INSTRUCTIONS.md`;
 - `P3_P3A7_RESTART_OWNER_ACCEPTANCE_REPAIR_INSTRUCTIONS.md`;
 - the P3A8 owner-level acceptance implementation state at `472276ee521eb2b19177299c1c9ad660dbd6ad46`;
-- `P3_P3A9_HEAD_POINTER_RECONCILIATION_REPAIR_INSTRUCTIONS.md`, the final narrow revision-7 crash-recovery closure binding.
+- `P3_P3A9_HEAD_POINTER_RECONCILIATION_REPAIR_INSTRUCTIONS.md`, closed and accepted at `4315b0ab4c13bbb45b963f3d816b5bb08aac75c0`.
 
-P3A9 does **not** create revision 8 or reopen P1/P2/P3 scientific design. It repairs only the demonstrated execution-head publication crash case in which an immutable valid successor is durable while `current_head.json` remains stale. The repair must occur in the existing P3 resolver/reconciler and preserve all cumulative P3 execution, checkpoint, EMA/LIVE, owner, evidence, failure, and reducer semantics.
+P3A9 repaired the demonstrated execution-head publication crash case where an immutable valid successor is durable while `current_head.json` remains stale, preserving deterministic reducer replay, typed resolver recovery, and fail-closed fork/orphan semantics.
 
-**P4 remains blocked until cumulative P3 revision 7 through P3A9 has both semantic/conformance closure and functional closure and the accepted P3 closure commit is recorded.** P4 must then be activated with that exact commit as its entry authority. The P3A8 baseline alone does not authorize P4 execution.
+**Cumulative P3 revision 7 is formally closed.** P4 is activated with entry authority bound to `4315b0ab4c13bbb45b963f3d816b5bb08aac75c0`.
 
 ## Mandatory sequence
 
