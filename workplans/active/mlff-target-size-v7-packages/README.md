@@ -25,7 +25,24 @@ P3 revision 7 consists cumulatively of:
 
 P3A9 repaired the demonstrated execution-head publication crash case where an immutable valid successor is durable while `current_head.json` remains stale, preserving deterministic reducer replay, typed resolver recovery, process-level CAS locking serialization, and fail-closed fork/orphan semantics.
 
-**Cumulative P3 revision 7 is formally closed.** P4 is activated with entry authority bound to `9d195807cff0bb8042f447ac33ceb0586ed708ac`.
+**Cumulative P3 revision 7 is formally closed.** P4 was activated with entry authority bound to
+`9d195807cff0bb8042f447ac33ceb0586ed708ac`.
+
+**P4 is implemented and functionally closed.** All seven passes (P4-A through P4-G) hold semantic and
+functional closure; per-pass scope and evidence are recorded in `P4_IMPLEMENTATION_PROGRESS.md`. The
+campaign store now owns one mutable current target-size authority with one canonical generation,
+subordinate attempts, and transactional predecessor CAS; the destructive cutover quarantines retired
+target-size authority without reinterpretation; reconciled P3 heads are adopted through a bounded
+cross-store CAS behind a storage retention fence that protects the reconciliation frontier;
+`prepare` rebuilds the scientific substrate and cannot select a size while `select-target-size` is
+the sole screening entrypoint; and the terminal selected size and exact selected data are
+re-derived projections of authenticated P2/P3 state. The assembled full-repository regression
+introduces no new failures against the pre-P4 baseline. Long GPU/real-production qualification
+remains deferred to final release.
+
+P5 may treat selected target-size state as frozen current authority. The post-selection production
+and cross-validation path (`materialize`, `train`, `evaluate`) currently fails closed by design and
+is P5's to deliver.
 
 ## Mandatory sequence
 
