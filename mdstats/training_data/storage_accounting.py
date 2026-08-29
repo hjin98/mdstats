@@ -4,11 +4,25 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 
 
 CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG_SCHEMA = "mdstats.mlff-campaign-artifact-ownership-catalog.v1"
 CAMPAIGN_STORAGE_REPORT_SCHEMA = "mdstats.mlff-campaign-storage-report.v1"
+
+
+class RetentionFence(Protocol):
+    """Lifecycle-owned reduction of deletion authority.
+
+    A retention fence answers whether one campaign-owned path is still needed
+    by an active, restartable, or not-yet-classified lifecycle.  It is a
+    reduction only: :class:`CampaignOwnershipBoundary` consults it after its own
+    ownership and containment checks, so a fence can never widen deletion
+    authority.
+    """
+
+    def protects(self, path: Path) -> tuple[bool, str]:
+        ...
 
 
 class ArtifactOwnershipClass(str, Enum):
@@ -267,12 +281,14 @@ class CampaignOwnershipBoundary:
         workspace: Path,
         *,
         protected_inputs: Sequence[ProtectedInputPath] = (),
+        retention_fence: "RetentionFence | None" = None,
     ) -> None:
         self.workspace = Path(os.path.abspath(os.fspath(workspace)))
         self.workspace_real = _resolved(self.workspace)
         self.protected_inputs = tuple(protected_inputs)
         self._protected_real = tuple(Path(item.real_path) for item in protected_inputs)
         self._protected_lexical = tuple(Path(item.path) for item in protected_inputs)
+        self.retention_fence = retention_fence
 
     def lexical_inside_workspace(self, path: Path) -> bool:
         absolute = Path(os.path.abspath(os.fspath(path)))
@@ -329,13 +345,36 @@ class CampaignOwnershipBoundary:
             parent_real = _resolved(absolute.parent)
             if not _is_within(parent_real, self.workspace_real):
                 return False, "symlink parent escapes the campaign workspace"
+            denied, detail = self._retention_denial(absolute)
+            if denied:
+                return False, detail
             return True, "campaign-owned symlink object"
         resolved = _resolved(absolute)
         if not _is_within(resolved, self.workspace_real):
             return False, "real path escapes the campaign workspace"
         if self.overlaps_protected_input(resolved, resolve=True):
             return False, "real path overlaps a configured user/reference input"
+        denied, detail = self._retention_denial(absolute)
+        if denied:
+            return False, detail
         return True, "campaign-owned contained path"
+
+    def _retention_denial(self, absolute: Path) -> tuple[bool, str]:
+        """Consult a lifecycle retention fence, which may only reduce authority.
+
+        A fence answers whether a campaign-owned path is still required by an
+        active, restartable, or not-yet-classified lifecycle.  It can never
+        grant deletion authority: it is consulted only after every ownership,
+        containment, and protected-input check has already passed.
+        """
+
+        fence = self.retention_fence
+        if fence is None:
+            return False, ""
+        protected, reason = fence.protects(absolute)
+        if not protected:
+            return False, ""
+        return True, (reason or "path is retained by an active lifecycle retention fence")
 
 
 def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, tuple[str, ...]]:

@@ -14,8 +14,8 @@ and what remains. It is coordination material, not product documentation.
 | Entry gate | P3A9 closure + section 3 assertions | **CLOSED** |
 | P4-A | CampaignStore state, canonical generation, CAS, transition identity | **CLOSED** |
 | P4-B | Regime cutover owner | **CLOSED** |
-| P4-C | Cross-store adoption, retention fence, restart, concurrency | in progress |
-| P4-D | Atomic `prepare` / `select-target-size` production switch | not started |
+| P4-C | Cross-store adoption, retention fence, restart, concurrency | **CLOSED** |
+| P4-D | Atomic `prepare` / `select-target-size` production switch | in progress |
 | P4-E | Terminal projection, semantic restart, invalidation | not started |
 | P4-F | Full STOR integration, docs, structural closure | not started |
 | P4-G | Assembled affected-surface closure | not started |
@@ -286,3 +286,139 @@ Repeating the *exact* completion transition is idempotent by design (P4-A sectio
 first draft of the stale-revision test was wrong rather than the owner. The gate now asserts both:
 an exact retry returns the same revision, and a transition that changed one authoritative
 reference from the same stale predecessor is a typed `stale_revision` conflict.
+
+---
+
+## Pass P4-C — Cross-store adoption, retention fence, restart, concurrency
+
+**State: CLOSED** (semantic + functional).
+
+### What was implemented
+
+**`mdstats/training_data/campaign_target_size_adoption.py`** (new owner)
+
+- `adopt_reconciled_execution_head(store, revision, head, ...)` — CAS-adopts the exact immutable
+  head digest plus its post-reducer digest. Re-adopting an identity the campaign already holds is a
+  no-op, which is what makes crash recovery cheap: durable completed work is never rerun.
+- `validate_head_scientific_identity(...)` — the head's pre/post reducer states must bind the
+  campaign generation's P2 experiment definition and P3 execution context. Digest equality alone
+  never authorizes adoption.
+- `load_adopted_execution_head(resolver, revision)` — re-resolves the adopted head through the real
+  P3 resolver. A missing or unauthenticated head is `TargetSizeAdoptionCorruptionError`; scientific
+  authority is never rebuilt from the campaign summary.
+- `reconcile_and_adopt_target_size_head(...)` — the section 6.1 canonical order in one place: P3
+  reconciles and releases `.screen_commit.lock`, and only then does a short campaign transaction
+  bind the result. `current_head.json` never participates; only the immutable head object returned
+  by the real reconciler is adopted.
+
+**`mdstats/training_data/campaign_target_size_retention.py`** (new owner, section 10.3)
+
+Protection is derived from the **filesystem evidence graph**, never from what SQLite adopted —
+that is the whole point, since the dangerous window is exactly when P3 has published and the
+campaign has not yet adopted. Every head, batch, cell completion, and progress record in the
+campaign-owned execution root seeds a reachability closure that follows *every* content-digest
+token in each reachable record (an over-approximation on purpose: a safety fence should fail toward
+retention and stay correct under schema growth). Released as provably unreachable residue: only a
+member of a known content-addressed family whose identity component no reachable record mentions,
+and only once it is older than the publication window.
+
+Regime/lifecycle coupling: `transitioning` protects the whole root unconditionally; an active,
+restartable, or terminal current generation protects the frontier while releasing proven residue;
+a campaign with no current generation or no execution root produces an **inert** fence, so nothing
+is permanently pinned (section 15).
+
+**`mdstats/training_data/campaign_target_size_view.py`** (new)
+
+Non-authoritative derived projection of current state, re-resolving the adopted head through the
+real P3 resolver rather than copying reducer content into SQLite, so a view can never become a
+second result manifest. A missing view is rebuilt; committed science is never rolled back to match it.
+
+**Real STOR integration (smallest integration with the existing mechanism)**
+
+- `storage_accounting.py`: `CampaignOwnershipBoundary` gained an optional `retention_fence`
+  (typed by a new `RetentionFence` Protocol) consulted in `destructive_authorization` **after**
+  every ownership/containment/protected-input check, on both the regular and the symlink branch.
+  A fence can only *reduce* authority; it can never grant it, so external paths, symlink escapes,
+  and ambiguous ownership stay denied regardless of the closure.
+- `_campaign_cli_core.py`: one new helper `_campaign_ownership_boundary(cfg, paths, store)` now
+  builds the boundary for **every** destructive production path — automatic safe cleanup
+  (`_campaign_cleanup`), STOR2 checkpoint compaction, STOR4 manual tiers (`_build_manual_tier_report`),
+  STOR5 deduplication, `command_archive`, and `command_cleanup`. `command_storage` keeps the
+  unfenced boundary because STOR1 is read-only accounting whose only write is the report file
+  outside any execution root. There are now zero remaining direct `CampaignOwnershipBoundary(...)`
+  constructions in production code besides that helper.
+
+### Evidence executed
+
+`tests/test_mlff_target_size_p4c_cross_store_adoption.py` — **23 passed**. Real `CampaignStore`
+SQLite, the real `target_size_execution` resolver/reconciler, and the real
+`CampaignOwnershipBoundary` destructive authorization throughout.
+
+Section 6.2 recovery matrix:
+
+| Crash/restart state | Covering test |
+|---|---|
+| crash before P3 immutable publication | `recovery_crash_before_publication_leaves_campaign_unchanged` |
+| complete batch durable, head absent | `recovery_complete_batch_without_head_is_reconciled_then_adopted` |
+| successor head durable, P3 pointer stale | `recovery_stale_pointer_successor_is_reconciled_then_adopted` |
+| P3 reconciled head ahead of SQLite | `recovery_sqlite_behind_p3_adopts_without_rerunning_science` (asserts no completion file was rewritten, and that re-adoption is a no-op) |
+| SQLite references missing/corrupt P3 head | `recovery_missing_referenced_head_is_hard_corruption`, `recovery_corrupt_referenced_head_is_hard_corruption` |
+| SQLite references older head, unique valid successor chain | `recovery_stale_pointer_successor_is_reconciled_then_adopted` (adopts under the same generation and attempt) |
+| SQLite commit complete, derived view missing | `recovery_missing_derived_view_is_rebuilt_without_rolling_back` |
+| crash during cutover | P4-B `req4_fresh_process_resumes_the_exact_interrupted_transition` |
+| stale generation writer | `stale_generation_writer_cannot_mutate_or_touch_p3_history` (also byte-compares every P3 JSON before/after) |
+| two same-generation writers race | `two_same_generation_adopters_admit_one_successor` |
+| cleanup races publication -> adoption | `cleanup_racing_publication_and_adoption_deletes_nothing_adoptable` |
+
+Authority and ordering:
+
+- `current_head_pointer_is_not_campaign_authority` — deleting the rebuildable pointer does not
+  invalidate the adoption, and forging it cannot change what the campaign adopted.
+- `head_from_a_different_experiment_identity_is_rejected`,
+  `head_from_a_different_execution_context_is_rejected`.
+- `no_campaign_transaction_is_open_during_p3_reconciliation` — instruments the real reconciler and
+  asserts the campaign connection is not in a transaction while it runs.
+- `no_target_size_transaction_body_nests_reconciliation_or_cleanup` — AST proof over all four P4
+  modules that no `exclusive_transaction` body calls reconciliation, batch commit, cleanup,
+  dedup/archive, or unlink/rmtree.
+
+Retention fence:
+
+- `fence_protects_unadopted_head_and_batch_before_adoption` — the head/batch published but *not*
+  adopted are denied deletion; absence of a SQLite reference is not orphanhood.
+- `fence_protects_the_full_completion_and_snapshot_ancestry` — completions, trajectories,
+  materializations, snapshots, roles, predictions, metrics, evaluation artifacts, continuations,
+  planned rungs, and progress records are all denied.
+- `fence_releases_provably_unreachable_owned_residue` — an aged orphan is reclaimable.
+- `fence_retains_recent_evidence_that_could_still_be_referenced` — publication-window guard.
+- `fence_never_grants_authority_outside_the_workspace` — external paths and symlink escapes.
+- `production_cleanup_owner_consumes_the_retention_fence` — the real `_cleanup_remove` with the
+  real `_campaign_ownership_boundary` refuses and records skips; this is production cleanup, not a
+  test-local flag.
+- `cleanup_racing_publication_and_adoption_deletes_nothing_adoptable` — a **separate spawned
+  process** runs real destructive authorization over every JSON in the root (all aged past the
+  window) while a successor head is published-but-unadopted: zero deletions, and the successor is
+  still adoptable afterwards.
+- `fence_is_inert_when_no_current_generation_owns_a_root`,
+  `transitioning_campaign_protects_its_whole_execution_root`.
+
+Stage-local affected regression: P4-A, P4-B, P4-C suites plus `test_mlff_stor1_storage_accounting`,
+`test_mlff_campaign_cli`, `test_mlff_cli_semantic_orchestration`,
+`test_mlff_rev3_storage_evaluation_optimizations`, `test_mlff_data9b1_campaign_checkpoint_control`,
+`test_mlff_campaign_production_gate_anchor`, and the full
+`test_mlff_target_size_p3a9_head_pointer_reconciliation` recovery suite —
+**174 passed, 1 skipped, 1 failed**; the single failure is the pre-existing
+`test_materialization_record_path_does_not_confer_external_cleanup_authority`.
+
+### Defects found and repaired during the gate
+
+1. **Fence released bulk evidence.** The first fence resolved an artifact's identity from the leaf
+   filename, so `snapshots/<id>/boundary_1/snapshot.json` resolved to `snapshot` and was released.
+   Reachability is now always decided by the identity component directly under the family
+   directory, which covers both `<digest>.json` files and `<digest>/` bulk directories.
+2. **Bulk directories use shortened identities.** P3 names snapshot/failure bulk directories with a
+   truncated identity, so exact 64-character membership failed. A component shorter than 64
+   characters is now matched as a prefix, and anything shorter than 12 characters is retained
+   rather than guessed.
+3. `command_storage` had no `store` in scope; it now uses the unfenced read-only boundary, which is
+   correct for STOR1.

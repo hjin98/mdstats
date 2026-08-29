@@ -50,6 +50,7 @@ from .storage_accounting import (
     configured_protected_inputs,
 )
 from .storage_reclamation import append_cleanup_manifest, filesystem_identity
+from .campaign_target_size_retention import build_target_size_retention_fence
 from .storage_archive import (
     StorageArchiveError,
     create_cold_archive,
@@ -207,6 +208,34 @@ class CampaignPaths:
     def ensure(self) -> None:
         for path in (self.workspace, self.internal, self.data, self.runs, self.models, self.results):
             path.mkdir(parents=True, exist_ok=True)
+
+
+def _campaign_ownership_boundary(
+    cfg: Mapping[str, Any],
+    paths: "CampaignPaths",
+    store: "CampaignStore | None" = None,
+) -> CampaignOwnershipBoundary:
+    """Build the deletion-authority boundary every destructive path must use.
+
+    Beyond the configured user/reference inputs, the boundary carries the
+    target-size retention fence so that promoted P3 execution evidence which the
+    current generation can still legitimately adopt is never unlinked by
+    cleanup, deduplication, or archival - including in the window after P3
+    published a head but before the campaign store adopted it.
+    """
+
+    protected_inputs = configured_protected_inputs(
+        cfg, config_dir=paths.config_dir, config_path=paths.config
+    )
+    fence = None
+    if store is not None:
+        stale_hours = max(0.25, float(_cfg(cfg, "cleanup", "stale_age_hours", 6.0)))
+        fence = build_target_size_retention_fence(
+            store, paths.workspace, publication_window_seconds=stale_hours * 3600.0
+        )
+    return CampaignOwnershipBoundary(
+        paths.workspace, protected_inputs=protected_inputs, retention_fence=fence
+    )
 
 
 @dataclass(frozen=True)
@@ -3522,15 +3551,10 @@ def _campaign_cleanup(
 ) -> _CampaignCleanupReport:
     """Conservatively remove only artifacts not needed by current continuation."""
 
-    protected_inputs = configured_protected_inputs(
-        cfg, config_dir=paths.config_dir, config_path=paths.config
-    )
     report = _CampaignCleanupReport(
         phase=phase,
         dry_run=dry_run,
-        ownership_boundary=CampaignOwnershipBoundary(
-            paths.workspace, protected_inputs=protected_inputs
-        ),
+        ownership_boundary=_campaign_ownership_boundary(cfg, paths, store),
     )
     if not bool(_cfg(cfg, "cleanup", "enabled", True)):
         report.skipped.append("automatic cleanup disabled by [cleanup].enabled")
@@ -16723,12 +16747,7 @@ def _compact_evaluated_checkpoints(
     report = _CampaignCleanupReport(
         phase="stor2-checkpoint-compaction",
         dry_run=dry_run,
-        ownership_boundary=CampaignOwnershipBoundary(
-            paths.workspace,
-            protected_inputs=configured_protected_inputs(
-                cfg, config_dir=paths.config_dir, config_path=paths.config
-            ),
-        ),
+        ownership_boundary=_campaign_ownership_boundary(cfg, paths, store),
     )
     assert report.ownership_boundary is not None
     store_authorized, store_detail = report.ownership_boundary.destructive_authorization(store.path)
@@ -27209,9 +27228,9 @@ def command_storage(args: argparse.Namespace) -> int:
     )
     payload["historical_algorithm_evidence_keys"] = list(historical_evidence)
     destination = paths.results / "storage-report.json"
-    boundary = CampaignOwnershipBoundary(
-        paths.workspace, protected_inputs=protected_inputs
-    )
+    # STOR1 is read-only accounting; the only write is this report, which lives
+    # outside any target-size execution root, so no retention fence applies.
+    boundary = _campaign_ownership_boundary(cfg, paths)
     output_authorized, output_detail = boundary.destructive_authorization(destination)
     report_written = False
     if output_authorized:
@@ -27605,7 +27624,7 @@ def _build_manual_tier_report(
     report = _CampaignCleanupReport(
         phase=f"manual-{tier}",
         dry_run=dry_run,
-        ownership_boundary=CampaignOwnershipBoundary(paths.workspace, protected_inputs=protected_inputs),
+        ownership_boundary=_campaign_ownership_boundary(cfg, paths, store),
     )
     if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
         _manual_reclamation_add_cache_tier(report, paths)
@@ -27793,8 +27812,7 @@ def command_deduplicate(args: argparse.Namespace) -> int:
     verify_state, _ = _effective_stage(store, paths, "verify")
     if verify_state is not StageState.COMPLETE or not _has_authoritative_protocol_freeze(store):
         raise CampaignCliError("STOR5 deduplication requires completed verification and an authoritative protocol freeze.")
-    protected_inputs = configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config)
-    boundary = CampaignOwnershipBoundary(paths.workspace, protected_inputs=protected_inputs)
+    boundary = _campaign_ownership_boundary(cfg, paths, store)
     try:
         report = deduplicate_immutable_files(
             paths.workspace,
@@ -27826,12 +27844,14 @@ def command_archive(args: argparse.Namespace) -> int:
     """STOR5 create/verify/restore an authenticated reversible cold archive."""
 
     cfg, paths = _load_config(args.config)
-    protected_inputs = configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config)
-    boundary = CampaignOwnershipBoundary(paths.workspace, protected_inputs=protected_inputs)
+    boundary = _campaign_ownership_boundary(cfg, paths)
     state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
     if not state_authorized:
         raise CampaignCliError(f"Refusing archive operation because campaign state is outside ownership boundary: {state_detail}")
     store = CampaignStore(paths.state_db)
+    # The retention fence is derivable only once campaign state is open; every
+    # destructive archive action below uses the fenced boundary.
+    boundary = _campaign_ownership_boundary(cfg, paths, store)
     action = str(args.archive_action)
     if action == "create":
         running = [name for name, _ in PIPELINE if store.stage(name)[0] is StageState.RUNNING]
@@ -27879,12 +27899,7 @@ def command_cleanup(args: argparse.Namespace) -> int:
     import mdstats
 
     cfg, paths = _load_config(args.config)
-    protected_inputs = configured_protected_inputs(
-        cfg, config_dir=paths.config_dir, config_path=paths.config
-    )
-    boundary = CampaignOwnershipBoundary(
-        paths.workspace, protected_inputs=protected_inputs
-    )
+    boundary = _campaign_ownership_boundary(cfg, paths)
     state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
     if not state_authorized:
         raise CampaignCliError(
@@ -27892,6 +27907,7 @@ def command_cleanup(args: argparse.Namespace) -> int:
             f"campaign ownership boundary: {state_detail}: {paths.state_db}"
         )
     store = CampaignStore(paths.state_db)
+    boundary = _campaign_ownership_boundary(cfg, paths, store)
 
     explicit_tier = getattr(args, "tier", None)
     if explicit_tier is None:
