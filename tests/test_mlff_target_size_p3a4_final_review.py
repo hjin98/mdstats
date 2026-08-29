@@ -16,7 +16,9 @@ import torch
 from torch_ema import ExponentialMovingAverage
 
 import tests.test_mlff_target_size_execution_p3c as p3c
+import tests.test_mlff_target_size_execution_p3d as p3d
 import tests.test_mlff_target_size_execution_p3e as p3e
+import tests.test_mlff_target_size_execution_p3f as p3f
 from mdstats.training_data._common import (
     TrainingDataInputError,
     TrainingDataSerializationError,
@@ -39,16 +41,28 @@ from mdstats.training_data.target_size_execution.execution import (
     EVALUATION_MODEL_STATE_LIVE,
 )
 from mdstats.training_data.target_size_execution import (
+    TargetSizeBoundarySnapshot,
+    TargetSizeCandidateMaterialization,
+    TargetSizeCandidateOutcome,
     TargetSizeCandidateTrajectory,
+    TargetSizeCellCompletionRecord,
     bind_target_size_boundary_state,
+    build_complete_boundary_batch,
     build_target_size_candidate_trajectory,
     build_target_size_cell_completion_record,
     build_target_size_eval2_role,
+    collect_boundary_cell_completion_records,
+    commit_target_size_boundary_batch,
+    derive_active_boundary_requirements,
+    evaluate_target_size_boundary,
     initial_target_size_continuation_request,
     materialize_target_size_candidate,
     promote_target_size_boundary_snapshot,
+    reconcile_target_size_screen_root,
     record_candidate_boundary_outcome,
+    resolve_target_size_candidate_for_resume,
     run_target_size_direct_boundary_inference,
+    run_target_size_eval2_reduction,
     target_size_rung_plan,
     translate_target_size_eval2_failure,
     validate_target_size_candidate_trajectory,
@@ -677,44 +691,246 @@ def test_p3a4_candidate_trajectory_evaluation_model_state_derivation_and_validat
 def test_p3a4_durable_trajectory_tampered_evaluation_state_rejected(
     tmp_path: Path,
 ) -> None:
-    """Mandatory Section A4 item 6: restart/replay of durable trajectory with altered state fails."""
-    env = p3e._env(tmp_path)
+    """Mandatory owner-level test (P3A7 repair instructions Section 1-3):
+
+    Proves that a durable EMA-enabled candidate trajectory whose self-digest and all
+    restart-facing content-addressed references (trajectory, materialization, snapshot,
+    completion, progress) have been recomputed consistently, but whose
+    `evaluation_model_state` has been changed from canonical `ema` to noncanonical
+    `live`, is rejected by the real production restart/resume path
+    ``resolve_target_size_candidate_for_resume(...)`` specifically when that path
+    re-authenticates the trajectory against the canonical optimizer policy.
+    """
+    # 2.1 Establish a valid control root first through boundary n1
+    env = p3f._screen_env(tmp_path)
     definition = env["aggregate"].definition
-    context = env["context"]
-    common = env["common"]
     schedule = env["schedule"]
-    optimizer_ema = env["optimizer"]
+    state = env["aggregate"].reducer_state
+    requirements = derive_active_boundary_requirements(definition, state)
+    assert requirements is not None
+    n1, evaluation_size_n1, keys_n1 = requirements
+    assert n1 == schedule.n1
 
-    traj_ema = build_target_size_candidate_trajectory(
-        definition,
-        context,
-        common,
-        schedule,
-        target_size=definition.qualified_candidate_sizes[0],
-        optimizer_policy=optimizer_ema,
-        optimizer_seed=definition.policy.optimizer_seeds[0],
+    eval_dir_n1 = tmp_path / f"eval_data_{n1}"
+    eval_dir_n1.mkdir(parents=True, exist_ok=True)
+    eval_artifact_n1 = write_target_size_evaluation_artifact(
+        eval_dir_n1,
+        definition=definition,
+        evaluation_size=evaluation_size_n1,
+        canonical_frame_authority=env["frame_authority"],
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
     )
-    durable_dict = traj_ema.to_dict()
-    durable_dict["evaluation_model_state"] = EVALUATION_MODEL_STATE_LIVE
 
-    # Durable dictionary tampering without updating content_digest is rejected by deserialization
-    with pytest.raises(TrainingDataSerializationError, match="digest mismatch"):
-        TargetSizeCandidateTrajectory.from_dict(durable_dict)
+    lanes: dict[tuple[int, int], p3f._CandidateLane] = {}
+    materialized: dict[tuple[int, int], object] = {}
 
-    # Recomputing or omitting content_digest passes deserialization but fails canonical validation
-    durable_dict.pop("content_digest", None)
-    tampered_traj = TargetSizeCandidateTrajectory.from_dict(durable_dict)
-    with pytest.raises(
-        TrainingDataInputError, match="does not match optimizer policy EMA convention"
-    ):
-        validate_target_size_candidate_trajectory(
-            tampered_traj,
-            definition,
-            context,
-            common,
-            schedule,
-            optimizer_policy=optimizer_ema,
+    for size, seed in keys_n1:
+        lane = p3f._CandidateLane(env, tmp_path, size, seed)
+        lanes[(size, seed)] = lane
+        mat = lane.materialize(env, tmp_path)
+        materialized[(size, seed)] = mat
+        boundary_state = lane.train_to_boundary(env, n1)
+        snapshot = promote_target_size_boundary_snapshot(
+            lane.trajectory,
+            boundary_state,
+            checkpoint_directory=lane.checkpoint_dir,
+            snapshot_root=env["root"],
         )
+        role = build_target_size_eval2_role(
+            trajectory=lane.trajectory,
+            boundary_state=snapshot,
+            definition=definition,
+            schedule=schedule,
+            correlation_blocks=env["blocks"],
+            evaluation_data=eval_artifact_n1,
+        )
+        view = eval_artifact_n1.build_evaluation_view(eval_dir_n1)
+        evaluator = p3d._predictions_evaluator(view, epsilon=p3f._epsilon(size, seed))
+        mat_lane_dir = tmp_path / f"mat-{lane.trajectory.target_size}-{lane.trajectory.optimizer_seed}"
+        pred_evidence = run_target_size_direct_boundary_inference(
+            trajectory=lane.trajectory,
+            materialization=mat,
+            boundary_state=snapshot,
+            role=role,
+            evaluation_data=eval_artifact_n1,
+            canonical_frame_authority=env["frame_authority"],
+            definition=definition,
+            context=env["context"],
+            common=env["common"],
+            schedule=schedule,
+            optimizer_policy=lane.policy,
+            extxyz_policy=env["authority"].extxyz_policy,
+            frame_catalog=env["frames"],
+            frame_data_by_run=env["frame_data_by_run"],
+            frame_array_index=env["index"],
+            materialization_directory=mat_lane_dir,
+            snapshot_root=env["root"],
+            evaluation_directory=eval_dir_n1,
+            inference_evaluator=evaluator,
+        )
+        metric_record = run_target_size_eval2_reduction(
+            role, eval_artifact_n1, pred_evidence, root_directory=eval_dir_n1
+        )
+        outcome = evaluate_target_size_boundary(
+            role, eval_artifact_n1, pred_evidence, root_directory=eval_dir_n1
+        )
+        planned_rung, predecessor = p3f._rung_provenance(env, lane.trajectory, n1)
+        completion_record = build_target_size_cell_completion_record(
+            window=env["window"],
+            trajectory=lane.trajectory,
+            materialization=mat,
+            boundary_snapshot=snapshot,
+            eval2_role=role,
+            evaluation_data=eval_artifact_n1,
+            outcome=outcome,
+            prediction_evidence=pred_evidence,
+            eval2_metric_record=metric_record,
+            planned_rung=planned_rung,
+            schedule=schedule,
+            predecessor_continuation=predecessor,
+        )
+        record_candidate_boundary_outcome(
+            env["root"],
+            env["window"],
+            lane.trajectory,
+            completion_record,
+            materialization=mat,
+            boundary_snapshot=snapshot,
+            eval2_role=role,
+            evaluation_data=eval_artifact_n1,
+            prediction_evidence=pred_evidence,
+            eval2_metric_record=metric_record,
+            planned_rung=planned_rung,
+            predecessor_continuation=predecessor,
+            restart_authority=env["authority"],
+        )
+
+    collected_n1 = collect_boundary_cell_completion_records(
+        env["root"], env["window"], boundary_epoch=n1
+    )
+    batch_n1 = build_complete_boundary_batch(definition, state, collected_n1)
+    head_n1 = commit_target_size_boundary_batch(env["root"], definition, state, batch_n1)
+    reconciled_n1 = reconcile_target_size_screen_root(env["root"], env["authority"])
+    assert reconciled_n1 is not None
+    assert reconciled_n1.content_digest == head_n1.content_digest
+    authenticated_n1_state = reconciled_n1.post_state
+
+    # Confirm requirements for n2 and select target surviving candidate
+    req_n2 = derive_active_boundary_requirements(definition, authenticated_n1_state)
+    assert req_n2 is not None
+    n2, _eval_size_n2, keys_n2 = req_n2
+    assert n2 == schedule.fidelity_epochs[1]
+    target_size, optimizer_seed = keys_n2[0]
+
+    resolver = env["authority"].resolver
+    progress_file = resolver.progress_path(
+        env["window"].content_digest, n1, target_size, optimizer_seed
+    )
+    orig_progress = resolver.load_progress(progress_file)
+    orig_completion = resolver.load_typed_content_addressed(
+        resolver.completion_path(n1, orig_progress.completion_record_digest),
+        orig_progress.completion_record_digest,
+        TargetSizeCellCompletionRecord.from_dict,
+    )
+    orig_traj = resolver.load_typed_content_addressed(
+        resolver.trajectory_path(orig_completion.trajectory_digest),
+        orig_completion.trajectory_digest,
+        TargetSizeCandidateTrajectory.from_dict,
+    )
+    orig_mat = resolver.load_typed_content_addressed(
+        resolver.materialization_path(orig_completion.materialization_digest),
+        orig_completion.materialization_digest,
+        TargetSizeCandidateMaterialization.from_dict,
+    )
+    orig_snap = resolver.load_typed_content_addressed(
+        resolver.snapshot_path(orig_completion.boundary_snapshot_digest),
+        orig_completion.boundary_snapshot_digest,
+        TargetSizeBoundarySnapshot.from_dict,
+    )
+
+    # 2.2 Recomputed noncanonical trajectory: ema -> live
+    assert env["authority"].seed_neutral_optimizer_policy.ema is True
+    tampered_traj_dict = orig_traj.to_dict()
+    tampered_traj_dict["evaluation_model_state"] = EVALUATION_MODEL_STATE_LIVE
+    tampered_traj_dict.pop("content_digest", None)
+    tampered_traj = TargetSizeCandidateTrajectory.from_dict(tampered_traj_dict)
+    assert tampered_traj.evaluation_model_state == EVALUATION_MODEL_STATE_LIVE
+    assert tampered_traj.content_digest != orig_traj.content_digest
+    tampered_traj_path = resolver.trajectory_path(tampered_traj.content_digest)
+    tampered_traj_path.parent.mkdir(parents=True, exist_ok=True)
+    tampered_traj_path.write_text(
+        json.dumps(tampered_traj.to_dict(), sort_keys=True), encoding="utf-8"
+    )
+
+    # 2.3 Re-key materialization to tampered trajectory
+    tampered_mat_dict = orig_mat.to_dict()
+    tampered_mat_dict["trajectory_digest"] = tampered_traj.content_digest
+    tampered_mat_dict.pop("content_digest", None)
+    tampered_mat = TargetSizeCandidateMaterialization.from_dict(tampered_mat_dict)
+    tampered_mat_path = resolver.materialization_path(tampered_mat.content_digest)
+    tampered_mat_path.parent.mkdir(parents=True, exist_ok=True)
+    tampered_mat_path.write_text(
+        json.dumps(tampered_mat.to_dict(), sort_keys=True), encoding="utf-8"
+    )
+
+    # 2.4 Re-key snapshot to tampered trajectory and live evaluation state
+    tampered_snap_dict = orig_snap.to_dict()
+    tampered_snap_dict["trajectory_digest"] = tampered_traj.content_digest
+    tampered_snap_dict["evaluation_model_state"] = EVALUATION_MODEL_STATE_LIVE
+    tampered_snap_dict.pop("content_digest", None)
+    tampered_snap = TargetSizeBoundarySnapshot.from_dict(tampered_snap_dict)
+    tampered_snap_path = resolver.snapshot_path(tampered_snap.content_digest)
+    tampered_snap_path.parent.mkdir(parents=True, exist_ok=True)
+    tampered_snap_path.write_text(
+        json.dumps(tampered_snap.to_dict(), sort_keys=True), encoding="utf-8"
+    )
+
+    # 2.5 Re-key previous-boundary completion record
+    tampered_comp_dict = orig_completion.to_dict()
+    tampered_comp_dict["trajectory_digest"] = tampered_traj.content_digest
+    tampered_comp_dict["materialization_digest"] = tampered_mat.content_digest
+    tampered_comp_dict["boundary_snapshot_digest"] = tampered_snap.content_digest
+    tampered_comp_dict.pop("content_digest", None)
+    tampered_comp = TargetSizeCellCompletionRecord.from_dict(tampered_comp_dict)
+    tampered_comp_path = resolver.completion_path(n1, tampered_comp.content_digest)
+    tampered_comp_path.parent.mkdir(parents=True, exist_ok=True)
+    tampered_comp_path.write_text(
+        json.dumps(tampered_comp.to_dict(), sort_keys=True), encoding="utf-8"
+    )
+
+    # 2.6 Re-key progress pointer
+    tampered_prog_dict = orig_progress.to_dict()
+    tampered_prog_dict["trajectory_digest"] = tampered_traj.content_digest
+    tampered_prog_dict["completion_record_digest"] = tampered_comp.content_digest
+    tampered_prog_dict.pop("content_digest", None)
+    tampered_prog = TargetSizeCandidateOutcome.from_dict(tampered_prog_dict)
+    progress_file.write_text(
+        json.dumps(tampered_prog.to_dict(), sort_keys=True), encoding="utf-8"
+    )
+
+    # 3. Mandatory owner-level negative execution
+    fresh_workspace_root = tmp_path / "resume_worker_workspace"
+    with pytest.raises(
+        TrainingDataInputError,
+        match="Trajectory evaluation_model_state 'live' does not match optimizer policy EMA convention 'ema'",
+    ):
+        resolve_target_size_candidate_for_resume(
+            env["root"],
+            env["authority"],
+            boundary_epoch=n2,
+            target_size=target_size,
+            optimizer_seed=optimizer_seed,
+            state=authenticated_n1_state,
+            workspace_root=fresh_workspace_root,
+        )
+
+    # 3.2 Failure ordering / no side effects: workspace must not be populated
+    assert (
+        not fresh_workspace_root.exists()
+        or len(list(fresh_workspace_root.iterdir())) == 0
+    )
 
 
 def test_p3a4_checkpoint_parameter_validator_independent_of_evaluation_choice(
