@@ -66,6 +66,9 @@ from .split_exclusion import (
     NeutralSplitExclusionEvidence,
     NeutralSplitExclusionGroup,
     build_neutral_split_exclusion_evidence,
+    frame_split_exclusion_component_membership,
+    project_split_exclusion_constraint_components,
+    split_exclusion_component_digest,
 )
 from .sources import (
     ADVISORY_COMPATIBILITY_REPORT_SCHEMA,
@@ -152,5 +155,8 @@ __all__ = (
     "build_source_authority_from_data2_catalog",
     "build_vasp_canonical_frame_authority",
     "canonical_training_label_payload_digest",
+    "frame_split_exclusion_component_membership",
+    "project_split_exclusion_constraint_components",
+    "split_exclusion_component_digest",
     "source_record_from_data2",
 )

@@ -966,3 +966,37 @@ P3 is accepted only when one assembled implementation candidate proves:
 P4 remains blocked until this gate and all stage-local/final affected regression requirements pass.
 
 Commit/tag the accepted P3 checkpoint before beginning P4.
+
+---
+
+# 7. Execution record
+
+P3-A..P3-F are closed.  Assembled implementation evidence:
+
+- Package: `mdstats/training_data/target_size_execution/` (`common`,
+  `schedule`, `context`, `export`, `candidate`, `execution`, `evaluation`,
+  `coordinator`); **not** exported from `mdstats` / `mdstats.training_data`;
+  no production CLI/CampaignStore module references it (structurally tested).
+- Real-owner integrations: shared P1 component projection now canonical in
+  `neutral_substrate/split_exclusion.py` (P2 consumes the same owner);
+  behavior-preserving extraction `solve_atomic_reference_least_squares` in
+  `training_data/reference_fit.py`; public
+  `target_training_prefix_digest` + `target_size_active_boundary_index` in
+  `training_data/target_size_experiment.py`.
+- Focused suite: `tests/test_mlff_target_size_execution_p3{a,b,c,d,e,f}.py`
+  — 51 tests, all green (A: 12, B: 11, C: 8, D: 6, E: 10, F: 4), covering
+  F1 bounded end-to-end through real owners, F2 structural/absence
+  inspection, crash repair at every position, worker concurrency,
+  exactly-once commits, and stale-evidence rejection.
+- Final affected regression: 216 passed across the focused suite plus P2
+  statistical/reducer/restart, P1 neutral substrate, TRAIN2a/2b, EVAL2,
+  MH1-lineage surfaces.
+- Pre-existing failures unchanged (verified by clean-HEAD worktree runs):
+  `test_mlff_mace_compatibility.py` (3), `test_mlff_eval2_specification.py`
+  (3), `test_mlff_data7_specification.py` (2),
+  `test_mlff_data9a9b_production_materialization.py` (5),
+  `test_mlff_data5_specification.py::test_data5_architecture_status`,
+  `test_mlff_train2a_specification.py::test_train2a_manual_and_generated_config_contract`.
+  All fail identically at HEAD; none is P3-affected.
+
+The accepted P3 checkpoint is committed and tagged per the exit gate.

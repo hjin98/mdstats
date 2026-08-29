@@ -311,6 +311,89 @@ class AtomicReferenceFitRecord:
         return result
 
 
+@dataclass(frozen=True, slots=True)
+class _AtomicReferenceLeastSquaresResult:
+    fitted_reference_energies_ev: tuple[float, ...]
+    rank: int
+    singular_values: tuple[float, ...]
+    residual_rmse_ev: float
+    residual_mae_ev: float
+    maximum_absolute_residual_ev: float
+    rank_deficient: bool
+    transfer_warnings: tuple[str, ...]
+
+
+def solve_atomic_reference_least_squares(
+    count_matrix: np.ndarray,
+    fit_targets: np.ndarray,
+    policy: AtomicReferenceFitPolicy,
+) -> _AtomicReferenceLeastSquaresResult:
+    """Solve the composition-count least-squares E0 recipe once, shared by
+    every owner that fits atomic reference energies.
+
+    This is the low-level numeric seam extracted from the DATA7
+    ``fit_atomic_reference_energies`` recipe so later authorities (for example
+    the target-size common preparation) can reuse the exact same mathematics
+    without constructing legacy fit-domain objects.
+    """
+
+    A = np.asarray(count_matrix, dtype=np.float64)
+    target = np.asarray(fit_targets, dtype=np.float64)
+    element_count = int(A.shape[1])
+    if A.ndim != 2 or target.shape != (A.shape[0],) or element_count <= 0:
+        raise TrainingDataInputError(
+            "Atomic-reference count matrix and targets are misaligned."
+        )
+    singular_values = np.linalg.svd(A, compute_uv=False)
+    threshold = policy.relative_singular_value_tolerance * (
+        singular_values[0] if singular_values.size else 1.0
+    )
+    rank = int(np.count_nonzero(singular_values > threshold))
+    rank_deficient = rank < element_count
+    if rank_deficient and not policy.allow_rank_deficient_fixed_domain:
+        raise TrainingDataInputError(
+            "Atomic-reference count matrix is rank deficient under the active policy."
+        )
+    prior_map = dict(policy.prior_by_atomic_number)
+    prior = np.asarray(
+        [prior_map.get(index, 0.0) for index in range(element_count)],
+        dtype=np.float64,
+    )
+    if policy.ridge_lambda > 0.0:
+        augmented_A = np.vstack(
+            (A, np.sqrt(policy.ridge_lambda) * np.eye(element_count))
+        )
+        augmented_y = np.concatenate(
+            (target, np.sqrt(policy.ridge_lambda) * prior)
+        )
+        fitted, *_ = np.linalg.lstsq(
+            augmented_A, augmented_y, rcond=policy.relative_singular_value_tolerance
+        )
+    else:
+        fitted, *_ = np.linalg.lstsq(
+            A, target, rcond=policy.relative_singular_value_tolerance
+        )
+    residual = A @ fitted - target
+    warnings: list[str] = []
+    if rank_deficient:
+        warnings.extend(
+            (
+                "elemental_reference_mapping_is_minimum_norm_and_nonunique",
+                "do_not_transfer_absolute_energy_offsets_outside_the_fitted_composition_manifold",
+            )
+        )
+    return _AtomicReferenceLeastSquaresResult(
+        fitted_reference_energies_ev=tuple(float(v) for v in fitted),
+        rank=rank,
+        singular_values=tuple(float(v) for v in singular_values),
+        residual_rmse_ev=float(np.sqrt(np.mean(residual**2))),
+        residual_mae_ev=float(np.mean(np.abs(residual))),
+        maximum_absolute_residual_ev=float(np.max(np.abs(residual))),
+        rank_deficient=rank_deficient,
+        transfer_warnings=tuple(warnings),
+    )
+
+
 def fit_atomic_reference_energies(
     frame_catalog: Any,
     frame_data_by_run: Mapping[str, Any],
@@ -396,20 +479,10 @@ def fit_atomic_reference_energies(
         fit_target = target
         checkpoint_digest = None
         identity_digest = None
-    singular_values = np.linalg.svd(A, compute_uv=False)
-    threshold = active.relative_singular_value_tolerance * (singular_values[0] if singular_values.size else 1.0)
-    rank = int(np.count_nonzero(singular_values > threshold))
-    rank_deficient = rank < len(elements)
-    if rank_deficient and not active.allow_rank_deficient_fixed_domain:
-        raise TrainingDataInputError("Atomic-reference count matrix is rank deficient under the active policy.")
-    prior_map = dict(active.prior_by_atomic_number)
-    prior = np.asarray([prior_map.get(z, 0.0) for z in elements], dtype=np.float64)
-    if active.ridge_lambda > 0.0:
-        augmented_A = np.vstack((A, np.sqrt(active.ridge_lambda) * np.eye(len(elements))))
-        augmented_y = np.concatenate((fit_target, np.sqrt(active.ridge_lambda) * prior))
-        fitted, *_ = np.linalg.lstsq(augmented_A, augmented_y, rcond=active.relative_singular_value_tolerance)
-    else:
-        fitted, *_ = np.linalg.lstsq(A, fit_target, rcond=active.relative_singular_value_tolerance)
+    solve_result = solve_atomic_reference_least_squares(A, fit_target, active)
+    fitted = np.asarray(solve_result.fitted_reference_energies_ev, dtype=np.float64)
+    rank = solve_result.rank
+    rank_deficient = solve_result.rank_deficient
     residual = A @ fitted - fit_target
     correction_map = {z: float(value) for z, value in zip(elements, fitted, strict=True)}
     if active.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL:
@@ -443,7 +516,7 @@ def fit_atomic_reference_energies(
         foundation_identity_digest=identity_digest,
         serialization_schema=(ATOMIC_REFERENCE_FIT_RECORD_SCHEMA if identity_digest is not None else ATOMIC_REFERENCE_FIT_RECORD_V2_SCHEMA),
         rank=rank,
-        singular_values=tuple(float(v) for v in singular_values),
+        singular_values=solve_result.singular_values,
         null_space_dimension=len(elements) - rank,
         residual_rmse_ev=float(np.sqrt(np.mean(residual**2))),
         residual_mae_ev=float(np.mean(np.abs(residual))),

@@ -194,6 +194,113 @@ class NeutralSplitExclusionEvidence:
         return result
 
 
+def split_exclusion_component_digest(component: Any) -> str:
+    """Stable identity of one connected split-exclusion component.
+
+    This is the single canonical identity scheme for constraint components;
+    both P2 split construction and per-frame correlation-block assignment
+    must name components identically.
+    """
+
+    members = tuple(
+        sorted(validate_digest(str(uid), name="component frame UID") for uid in component)
+    )
+    if not members or len(set(members)) != len(members):
+        raise TrainingDataInputError(
+            "Split-exclusion components require unique frame UIDs."
+        )
+    return digest({"frame_uids": list(members)})
+
+
+def project_split_exclusion_constraint_components(
+    frame_uids: Any,
+    split_exclusion_evidence: NeutralSplitExclusionEvidence,
+    *,
+    frame_authority_digest: str,
+    neutral_unit_catalog_digest: str,
+) -> tuple[tuple[str, ...], ...]:
+    """Transitive closure of the complete inherited P1 relation authority.
+
+    One canonical implementation shared by P2 exact split construction and
+    any later correlation-block assignment: correlation units, exact geometry
+    duplicates, protected event windows, and condition-scoped
+    replica/structural-realization lineages are consumed only from the bound
+    evidence object.  Reduction is a deterministic union over the projected
+    groups, so a chain through unit, duplicate, and additional protected
+    relations collapses into one indivisible component.
+    """
+
+    members_uids = tuple(
+        validate_digest(str(uid), name="component frame UID") for uid in frame_uids
+    )
+    if not members_uids or len(set(members_uids)) != len(members_uids):
+        raise TrainingDataInputError(
+            "Component projection requires unique frame UIDs."
+        )
+    if (
+        split_exclusion_evidence.frame_authority_digest != frame_authority_digest
+        or split_exclusion_evidence.unit_catalog_digest
+        != neutral_unit_catalog_digest
+    ):
+        raise TrainingDataInputError(
+            "Split-exclusion relation authority does not bind this U_size population."
+        )
+    parent = {uid: uid for uid in members_uids}
+
+    def find(uid: str) -> str:
+        while parent[uid] != uid:
+            parent[uid] = parent[parent[uid]]
+            uid = parent[uid]
+        return uid
+
+    def union(left: str, right: str) -> None:
+        a, b = find(left), find(right)
+        if a != b:
+            if b < a:
+                a, b = b, a
+            parent[b] = a
+
+    members = set(members_uids)
+    for group in split_exclusion_evidence.groups_for(members):
+        first = group.frame_uids[0]
+        for uid in group.frame_uids[1:]:
+            union(first, uid)
+    components: dict[str, list[str]] = {}
+    for uid in members_uids:
+        components.setdefault(find(uid), []).append(uid)
+    return tuple(
+        sorted((tuple(sorted(v)) for v in components.values()), key=lambda v: v[0])
+    )
+
+
+def frame_split_exclusion_component_membership(
+    frame_uids: Any,
+    split_exclusion_evidence: NeutralSplitExclusionEvidence,
+    *,
+    frame_authority_digest: str,
+    neutral_unit_catalog_digest: str,
+) -> tuple[tuple[str, str], ...]:
+    """Per-frame assignment of canonical component identities.
+
+    Each frame receives the identity of its full closure component; subsets
+    of the projection therefore retain their parent component identities
+    instead of recomputing prefix-local names.
+    """
+
+    components = project_split_exclusion_constraint_components(
+        frame_uids,
+        split_exclusion_evidence,
+        frame_authority_digest=frame_authority_digest,
+        neutral_unit_catalog_digest=neutral_unit_catalog_digest,
+    )
+    assignment: list[tuple[str, str]] = []
+    for component in components:
+        identity = split_exclusion_component_digest(component)
+        for uid in component:
+            assignment.append((uid, identity))
+    return tuple(sorted(assignment))
+
+
 def _condition_scoped_lineage_groups(
     unit_catalog,
     *,

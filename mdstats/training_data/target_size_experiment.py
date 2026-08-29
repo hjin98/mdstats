@@ -27,6 +27,8 @@ from .neutral_substrate import (
     NeutralSplitExclusionEvidence,
     NeutralStatisticalBase,
     build_neutral_split_exclusion_evidence,
+    project_split_exclusion_constraint_components,
+    split_exclusion_component_digest,
 )
 from .partition import OuterRole
 
@@ -745,51 +747,17 @@ def _constraint_components(
     population: TargetSizePopulation,
     split_exclusion_evidence: NeutralSplitExclusionEvidence,
 ) -> tuple[tuple[str, ...], ...]:
-    """Transitive closure of the complete inherited P1 relation authority.
+    """Constraint components of this U_size population.
 
-    The population's unit/geometry fields are mapping evidence only.  Every
-    split-excluding relation is consumed from the single canonical P1 relation
-    input: correlation units, exact geometry duplicates, protected event
-    windows, and condition-scoped replica/structural-realization lineages.
-    Reduction is a deterministic linear-memory union over the projected groups,
-    so a chain through unit, duplicate, and additional protected relations
-    collapses into one indivisible component.
+    The transitive-closure projection is the single canonical P1-owned
+    implementation; P2 contributes no duplicate component algorithm.
     """
 
-    if (
-        split_exclusion_evidence.frame_authority_digest
-        != population.frame_authority_digest
-        or split_exclusion_evidence.unit_catalog_digest
-        != population.neutral_unit_catalog_digest
-    ):
-        raise TrainingDataInputError(
-            "Split-exclusion relation authority does not bind this U_size population."
-        )
-    parent = {uid: uid for uid in population.frame_uids}
-
-    def find(uid: str) -> str:
-        while parent[uid] != uid:
-            parent[uid] = parent[parent[uid]]
-            uid = parent[uid]
-        return uid
-
-    def union(left: str, right: str) -> None:
-        a, b = find(left), find(right)
-        if a != b:
-            if b < a:
-                a, b = b, a
-            parent[b] = a
-
-    members = set(population.frame_uids)
-    for group in split_exclusion_evidence.groups_for(members):
-        first = group.frame_uids[0]
-        for uid in group.frame_uids[1:]:
-            union(first, uid)
-    components: dict[str, list[str]] = {}
-    for uid in population.frame_uids:
-        components.setdefault(find(uid), []).append(uid)
-    return tuple(
-        sorted((tuple(sorted(v)) for v in components.values()), key=lambda v: v[0])
+    return project_split_exclusion_constraint_components(
+        population.frame_uids,
+        split_exclusion_evidence,
+        frame_authority_digest=population.frame_authority_digest,
+        neutral_unit_catalog_digest=population.neutral_unit_catalog_digest,
     )
 
 
@@ -988,7 +956,7 @@ def split_target_size_population(
             "Exact evaluation allocation leaves insufficient training support."
         )
     component_digests = tuple(
-        digest({"frame_uids": list(group)}) for group in components
+        split_exclusion_component_digest(group) for group in components
     )
     return TargetSizePopulationSplit(
         population_digest=population.content_digest,
@@ -1061,6 +1029,24 @@ def _condition_balanced_order(
     return tuple(result)
 
 
+def target_training_prefix_digest(
+    training_order_digest: str,
+    target_size: int,
+    frame_uids: Sequence[str],
+) -> str:
+    """Canonical exact-prefix membership digest shared by every authority
+    that binds a ``T_N`` membership (P2 orders and the P3 execution bridge)."""
+
+    return digest(
+        {
+            "schema": "mdstats.target-training-prefix.v1",
+            "training_order_digest": training_order_digest,
+            "target_size": int(target_size),
+            "frame_uids": list(frame_uids),
+        }
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TargetTrainingOrder:
     population_digest: str
@@ -1102,13 +1088,8 @@ class TargetTrainingOrder:
 
     def candidate_digest(self, target_size: int) -> str:
         size = _positive_int(target_size, name="target_size")
-        return digest(
-            {
-                "schema": "mdstats.target-training-prefix.v1",
-                "training_order_digest": self.content_digest,
-                "target_size": size,
-                "frame_uids": list(self.candidate_membership(size)),
-            }
+        return target_training_prefix_digest(
+            self.content_digest, size, self.candidate_membership(size)
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -2247,6 +2228,16 @@ def _evidence_mapping(
     return {str(uid): tuple(float(v) for v in vector) for uid, vector in values}
 
 
+def target_size_active_boundary_index(status: ReducerStatus) -> int:
+    """Public accessor for the active boundary index of a reducer state.
+
+    P3 orchestration derives the active screen boundary only from P2 reducer
+    authority; it never recomputes or tracks an independent index.
+    """
+
+    return _boundary_index(status)
+
+
 def validate_target_size_reducer_state(
     definition: TargetSizeExperimentDefinition,
     state: TargetSizeReducerState,
@@ -2587,5 +2578,6 @@ __all__ = (
     "resolve_target_size_policy",
     "resolve_target_size_policy_from_config",
     "split_target_size_population",
+    "target_size_active_boundary_index",
     "validate_target_size_reducer_state",
 )
