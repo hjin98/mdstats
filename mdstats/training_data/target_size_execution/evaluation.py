@@ -141,7 +141,7 @@ class TargetSizeEval2Role:
     correlation_block_ids: tuple[str, ...]
     boundary_state_digest: str
     trajectory_digest: str
-    evaluation_data_digest: str | None = None
+    evaluation_data_digest: str
 
     def __post_init__(self) -> None:
         for name in (
@@ -150,17 +150,10 @@ class TargetSizeEval2Role:
             "evaluation_membership_digest",
             "boundary_state_digest",
             "trajectory_digest",
+            "evaluation_data_digest",
         ):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
-            )
-        if self.evaluation_data_digest is not None:
-            object.__setattr__(
-                self,
-                "evaluation_data_digest",
-                validate_digest(
-                    self.evaluation_data_digest, name="evaluation_data_digest"
-                ),
             )
         for name in ("target_size", "boundary_epoch", "evaluation_size"):
             value = int(getattr(self, name))
@@ -201,7 +194,7 @@ class TargetSizeEval2Role:
         object.__setattr__(self, "correlation_block_ids", blocks)
 
     def _payload(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
+        return {
             "schema": TARGET_SIZE_EVAL2_ROLE_SCHEMA,
             "experiment_definition_digest": self.experiment_definition_digest,
             "execution_context_digest": self.execution_context_digest,
@@ -214,10 +207,8 @@ class TargetSizeEval2Role:
             "correlation_block_ids": list(self.correlation_block_ids),
             "boundary_state_digest": self.boundary_state_digest,
             "trajectory_digest": self.trajectory_digest,
+            "evaluation_data_digest": self.evaluation_data_digest,
         }
-        if self.evaluation_data_digest is not None:
-            payload["evaluation_data_digest"] = self.evaluation_data_digest
-        return payload
 
     @property
     def content_digest(self) -> str:
@@ -231,6 +222,10 @@ class TargetSizeEval2Role:
         if payload.get("schema") != TARGET_SIZE_EVAL2_ROLE_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported EVAL2 role schema."
+            )
+        if payload.get("evaluation_data_digest") is None:
+            raise TrainingDataSerializationError(
+                "EVAL2 role requires evaluation_data_digest."
             )
         result = cls(
             experiment_definition_digest=str(
@@ -252,11 +247,7 @@ class TargetSizeEval2Role:
             ),
             boundary_state_digest=str(payload["boundary_state_digest"]),
             trajectory_digest=str(payload["trajectory_digest"]),
-            evaluation_data_digest=(
-                None
-                if payload.get("evaluation_data_digest") is None
-                else str(payload["evaluation_data_digest"])
-            ),
+            evaluation_data_digest=str(payload["evaluation_data_digest"]),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("EVAL2 role digest mismatch.")
@@ -266,14 +257,24 @@ class TargetSizeEval2Role:
 def build_target_size_eval2_role(
     *,
     trajectory: TargetSizeCandidateTrajectory,
-    boundary_state: TargetSizeBoundaryState | TargetSizeBoundarySnapshot,
+    boundary_state: TargetSizeBoundarySnapshot,
     definition: TargetSizeExperimentDefinition,
     schedule: TargetSizeScreenSchedule,
     correlation_blocks: Mapping[str, str],
-    evaluation_data: TargetSizeEvaluationArtifact | None = None,
+    evaluation_data: TargetSizeEvaluationArtifact,
 ) -> TargetSizeEval2Role:
     """Authenticate one direct EVAL2 role for the exact active boundary."""
 
+    if not isinstance(boundary_state, TargetSizeBoundarySnapshot):
+        raise TrainingDataInputError(
+            "EVAL2 role requires an immutable TargetSizeBoundarySnapshot."
+        )
+    if evaluation_data is None or not isinstance(
+        evaluation_data, TargetSizeEvaluationArtifact
+    ):
+        raise TrainingDataInputError(
+            "EVAL2 role requires a validated TargetSizeEvaluationArtifact."
+        )
     if boundary_state.trajectory_digest != trajectory.content_digest:
         raise TrainingDataInputError(
             "EVAL2 role boundary state belongs to a different trajectory."
@@ -298,28 +299,26 @@ def build_target_size_eval2_role(
                 "Evaluation frame lacks its full P1 split-exclusion component identity."
             )
         blocks.append(validate_digest(block, name="correlation block identity"))
-    eval_data_digest = None
-    if evaluation_data is not None:
-        if (
-            evaluation_data.experiment_definition_digest
-            != definition.content_digest
-        ):
-            raise TrainingDataInputError(
-                "Evaluation data binds a different experiment definition."
-            )
-        if evaluation_data.evaluation_size != evaluation_size:
-            raise TrainingDataInputError(
-                "Evaluation data size does not match the active boundary."
-            )
-        if evaluation_data.evaluation_frame_uids != membership:
-            raise TrainingDataInputError(
-                "Evaluation data frame UIDs do not match P2 evaluation membership."
-            )
-        if evaluation_data.evaluation_membership_digest != membership_digest:
-            raise TrainingDataInputError(
-                "Evaluation data membership digest does not match P2 evaluation order."
-            )
-        eval_data_digest = evaluation_data.content_digest
+
+    if (
+        evaluation_data.experiment_definition_digest
+        != definition.content_digest
+    ):
+        raise TrainingDataInputError(
+            "Evaluation data binds a different experiment definition."
+        )
+    if evaluation_data.evaluation_size != evaluation_size:
+        raise TrainingDataInputError(
+            "Evaluation data size does not match the active boundary."
+        )
+    if evaluation_data.evaluation_frame_uids != membership:
+        raise TrainingDataInputError(
+            "Evaluation data frame UIDs do not match P2 evaluation membership."
+        )
+    if evaluation_data.evaluation_membership_digest != membership_digest:
+        raise TrainingDataInputError(
+            "Evaluation data membership digest does not match P2 evaluation order."
+        )
 
     return TargetSizeEval2Role(
         experiment_definition_digest=definition.content_digest,
@@ -333,7 +332,7 @@ def build_target_size_eval2_role(
         correlation_block_ids=tuple(blocks),
         boundary_state_digest=boundary_state.content_digest,
         trajectory_digest=trajectory.content_digest,
-        evaluation_data_digest=eval_data_digest,
+        evaluation_data_digest=evaluation_data.content_digest,
     )
 
 
@@ -430,6 +429,11 @@ class TargetSizePredictionEvidence:
     prediction_count: int
     prediction_payload_digest: str
     predictions: tuple[TargetSizePredictionEntry, ...]
+    device: str = "cpu"
+    default_dtype: str = "float64"
+    execution_architecture: str = "mace"
+    backend_policy: str = "eager"
+    batch_size: int = 4
     _content_digest_cache: str = field(
         default="", init=False, repr=False, compare=False
     )
@@ -477,6 +481,16 @@ class TargetSizePredictionEvidence:
                 "Prediction evidence payload digest mismatch."
             )
         object.__setattr__(self, "predictions", preds)
+        object.__setattr__(self, "device", str(self.device))
+        object.__setattr__(self, "default_dtype", str(self.default_dtype))
+        object.__setattr__(
+            self, "execution_architecture", str(self.execution_architecture)
+        )
+        object.__setattr__(self, "backend_policy", str(self.backend_policy))
+        bs = int(self.batch_size)
+        if bs <= 0:
+            raise TrainingDataInputError("Batch size must be positive.")
+        object.__setattr__(self, "batch_size", bs)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -492,6 +506,11 @@ class TargetSizePredictionEvidence:
             "evaluation_size": self.evaluation_size,
             "prediction_count": self.prediction_count,
             "prediction_payload_digest": self.prediction_payload_digest,
+            "device": self.device,
+            "default_dtype": self.default_dtype,
+            "execution_architecture": self.execution_architecture,
+            "backend_policy": self.backend_policy,
+            "batch_size": self.batch_size,
             "predictions": [item.to_dict() for item in self.predictions],
         }
 
@@ -537,6 +556,13 @@ class TargetSizePredictionEvidence:
                 TargetSizePredictionEntry.from_dict(item)
                 for item in payload["predictions"]
             ),
+            device=str(payload.get("device", "cpu")),
+            default_dtype=str(payload.get("default_dtype", "float64")),
+            execution_architecture=str(
+                payload.get("execution_architecture", "mace")
+            ),
+            backend_policy=str(payload.get("backend_policy", "eager")),
+            batch_size=int(payload.get("batch_size", 4)),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -1002,27 +1028,63 @@ def run_target_size_eval2_reduction(
             "Prediction evidence payload digest does not match predictions."
         )
 
+    from .export import TargetSizeAuthenticatedEvaluationView
+
     active_view = view
-    if active_view is None:
-        if root_directory is None:
+    if isinstance(active_view, TargetSizeAuthenticatedEvaluationView):
+        if active_view.artifact_content_digest != evaluation_data.content_digest:
             raise TrainingDataInputError(
-                "root_directory is required when view is not provided."
+                "Authenticated view artifact digest mismatch."
             )
-        active_view = evaluation_data.build_evaluation_view(root_directory)
-    else:
-        if not hasattr(active_view, "evaluation_view_digest"):
+        if active_view.artifact_sha256 != evaluation_data.sha256:
             raise TrainingDataInputError(
-                "Generic EvaluationDatasetView without provenance identity is inadmissible."
+                "Authenticated view artifact SHA-256 mismatch."
             )
         if (
             active_view.evaluation_view_digest
             != evaluation_data.evaluation_view_digest
         ):
             raise TrainingDataInputError(
+                "Authenticated view view digest mismatch."
+            )
+        underlying_view = active_view.view
+    elif active_view is not None:
+        if not hasattr(active_view, "evaluation_view_digest"):
+            raise TrainingDataInputError(
+                "Generic EvaluationDatasetView without provenance identity is inadmissible."
+            )
+        if (
+            getattr(active_view, "evaluation_view_digest", None)
+            != evaluation_data.evaluation_view_digest
+        ):
+            raise TrainingDataInputError(
                 "Supplied evaluation view does not match evaluation data artifact view digest."
             )
+        underlying_view = active_view
+    else:
+        if root_directory is None:
+            raise TrainingDataInputError(
+                "root_directory is required when view is not provided."
+            )
+        auth_view = evaluation_data.build_authenticated_evaluation_view(
+            root_directory
+        )
+        underlying_view = auth_view.view
 
-    if int(active_view.configuration_count) != role.evaluation_size:
+    if root_directory is not None:
+        target_path = Path(root_directory) / evaluation_data.relative_path
+        if target_path.is_file():
+            import hashlib
+
+            if (
+                hashlib.sha256(target_path.read_bytes()).hexdigest()
+                != evaluation_data.sha256
+            ):
+                raise TrainingDataInputError(
+                    "Evaluation artifact file SHA-256 changed on disk during reduction."
+                )
+
+    if int(underlying_view.configuration_count) != role.evaluation_size:
         raise TrainingDataInputError(
             "EVAL2 view population does not equal the exact P2 M-membership."
         )
@@ -1032,7 +1094,7 @@ def run_target_size_eval2_reduction(
         )
 
     return eval2_target_metrics_from_prediction_view(
-        active_view,
+        underlying_view,
         prediction_evidence.predictions,
         block_ids=role.correlation_block_ids,
         target_role_digest=role.content_digest,

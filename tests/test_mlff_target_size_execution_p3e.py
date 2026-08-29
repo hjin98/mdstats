@@ -474,7 +474,11 @@ def test_p3e_execution_errors_leave_reducer_unchanged(tmp_path: Path) -> None:
     batch = build_complete_boundary_batch(definition, state, recover_records)
     head = commit_target_size_boundary_batch(env["root"], definition, state, batch)
     validate_reconciled = reconcile_target_size_screen_root(
-        env["root"], env["aggregate"], env["context"], env["common"]
+        env["root"],
+        env["aggregate"],
+        env["context"],
+        env["common"],
+        schedule=env["schedule"],
     )
     assert validate_reconciled.content_digest == head.content_digest
 
@@ -560,7 +564,11 @@ def test_p3e_full_lifecycle_elimination_and_terminal_selection(tmp_path: Path) -
         )
     assert derive_active_boundary_requirements(definition, final) is None
     head = reconcile_target_size_screen_root(
-        env["root"], env["aggregate"], env["context"], env["common"]
+        env["root"],
+        env["aggregate"],
+        env["context"],
+        env["common"],
+        schedule=env["schedule"],
     )
     assert head.post_state.content_digest == final.content_digest
     mdstats.validate_target_size_reducer_state(definition, head.post_state)
@@ -581,7 +589,11 @@ def test_p3e_stale_context_preparation_rejected(tmp_path: Path) -> None:
     )
     with pytest.raises(mdstats.TrainingDataInputError):
         reconcile_target_size_screen_root(
-            env["root"], env["aggregate"], different_context, env["common"]
+            env["root"],
+            env["aggregate"],
+            different_context,
+            env["common"],
+            schedule=env["schedule"],
         )
     with pytest.raises(mdstats.TrainingDataInputError):
         initialize_target_size_screen(
@@ -654,7 +666,11 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
         env, tmp_path, keys[0][0], keys[0][1], boundary
     )
     head = reconcile_target_size_screen_root(
-        env["root"], env["aggregate"], env["context"], env["common"]
+        env["root"],
+        env["aggregate"],
+        env["context"],
+        env["common"],
+        schedule=env["schedule"],
     )
     assert head is None
 
@@ -715,7 +731,11 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
     batch = build_complete_boundary_batch(definition, state, completion_records)
     persist_complete_boundary_batch(env["root"], batch)
     repaired = reconcile_target_size_screen_root(
-        env["root"], env["aggregate"], env["context"], env["common"]
+        env["root"],
+        env["aggregate"],
+        env["context"],
+        env["common"],
+        schedule=env["schedule"],
     )
     assert repaired is not None
     direct_state = apply_complete_boundary_batch(definition, state, batch)
@@ -726,14 +746,22 @@ def test_p3e_crash_repair_convergence_all_positions(tmp_path: Path) -> None:
     current_path = env["root"] / "current_head.json"
     current_path.unlink()
     orphaned = reconcile_target_size_screen_root(
-        env["root"], env["aggregate"], env["context"], env["common"]
+        env["root"],
+        env["aggregate"],
+        env["context"],
+        env["common"],
+        schedule=env["schedule"],
     )
     assert orphaned.content_digest == repaired.content_digest
     assert load_current_execution_head(env["root"]).content_digest == repaired.content_digest
 
     # (e) Already committed state is validated, never reapplied.
     again = reconcile_target_size_screen_root(
-        env["root"], env["aggregate"], env["context"], env["common"]
+        env["root"],
+        env["aggregate"],
+        env["context"],
+        env["common"],
+        schedule=env["schedule"],
     )
     assert again.content_digest == repaired.content_digest
     final_state = load_current_execution_head(env["root"]).post_state
@@ -790,14 +818,22 @@ def test_p3e_head_ancestry_chain_and_negative_validations(tmp_path: Path) -> Non
 
     with pytest.raises(mdstats.TrainingDataInputError):
         reconcile_target_size_screen_root(
-            env["root"], env["aggregate"], env["context"], env["common"]
+            env["root"],
+            env["aggregate"],
+            env["context"],
+            env["common"],
+            schedule=env["schedule"],
         )
 
     # Restore valid current head
     (env["root"] / "current_head.json").write_text(json.dumps(head1.to_dict()))
     forged_path.unlink()
     reconciled = reconcile_target_size_screen_root(
-        env["root"], env["aggregate"], env["context"], env["common"]
+        env["root"],
+        env["aggregate"],
+        env["context"],
+        env["common"],
+        schedule=env["schedule"],
     )
     assert reconciled.content_digest == head1.content_digest
 
@@ -842,7 +878,7 @@ def test_p3e_review3_discriminated_cell_completion_record_variants(
     assert comp_success.eval2_metric_record_digest is not None
     assert comp_success.prediction_evidence_digest is not None
 
-    # Success variant cannot have NumericalFailure outcome
+    # Success variant cannot be built without mandatory evaluation evidence
     with pytest.raises(mdstats.TrainingDataInputError):
         build_target_size_cell_completion_record(
             window=window,
@@ -851,22 +887,11 @@ def test_p3e_review3_discriminated_cell_completion_record_variants(
             boundary_snapshot=snapshot,
             eval2_role=role,
             evaluation_data=eval_artifact,
-            outcome=TargetSizeNumericalFailure(
-                experiment_definition_digest=trajectory.experiment_definition_digest,
-                execution_context_digest=trajectory.execution_context_digest,
-                target_size=trajectory.target_size,
-                optimizer_seed=trajectory.optimizer_seed,
-                boundary_epoch=1,
-                evaluation_membership_digest=role.evaluation_membership_digest,
-                kind=NumericalFailureKind.TRAIN_NONFINITE_MODEL_STATE,
-                classification_evidence_digest="0" * 64,
-            ),
-            kind="success",
+            prediction_evidence=pred_evidence,
+            eval2_metric_record=None,
         )
 
     # 2. TRAIN2 failure completion record variant
-    from mdstats.training_data.target_size_execution import translate_target_size_train2_failure
-
     train_fail_rec = p3c._failure_record(
         trajectory,
         env["schedule"],
@@ -874,6 +899,8 @@ def test_p3e_review3_discriminated_cell_completion_record_variants(
         code="train_nonfinite_model_state",
         failed_epoch=0,
     )
+    from mdstats.training_data.target_size_execution import translate_target_size_train2_failure
+
     train_fail_outcome = translate_target_size_train2_failure(
         train_fail_rec,
         trajectory=trajectory,
@@ -957,7 +984,11 @@ def test_p3e_review3_resolver_graph_persistence_and_replay(
 
     # Reconcile successfully verifies loaded content digests
     reconciled = reconcile_target_size_screen_root(
-        env["root"], env["aggregate"], env["context"], env["common"]
+        env["root"],
+        env["aggregate"],
+        env["context"],
+        env["common"],
+        schedule=env["schedule"],
     )
     assert reconciled.content_digest == head0.content_digest
 
@@ -971,13 +1002,21 @@ def test_p3e_review3_resolver_graph_persistence_and_replay(
 
     with pytest.raises((mdstats.TrainingDataInputError, mdstats.TrainingDataSerializationError)):
         reconcile_target_size_screen_root(
-            env["root"], env["aggregate"], env["context"], env["common"]
+            env["root"],
+            env["aggregate"],
+            env["context"],
+            env["common"],
+            schedule=env["schedule"],
         )
 
     # Restore valid completion file
     comp_file.write_text(original_data, encoding="utf-8")
     reconciled_clean = reconcile_target_size_screen_root(
-        env["root"], env["aggregate"], env["context"], env["common"]
+        env["root"],
+        env["aggregate"],
+        env["context"],
+        env["common"],
+        schedule=env["schedule"],
     )
     assert reconciled_clean.content_digest == head0.content_digest
 

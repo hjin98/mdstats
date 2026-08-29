@@ -118,6 +118,19 @@ def _boundary_state(env, tmp_path: Path, boundary: int, *, name: str = "checkpoi
     )
 
 
+def _boundary_snapshot(env, tmp_path: Path, boundary: int, *, name: str = "checkpoints"):
+    state = _boundary_state(env, tmp_path, boundary, name=name)
+    checkpoint_dir = tmp_path / name
+    snap_dir = tmp_path / f"{name}_snap"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    return promote_target_size_boundary_snapshot(
+        env["trajectory"],
+        state,
+        checkpoint_directory=checkpoint_dir,
+        snapshot_root=snap_dir,
+    )
+
+
 def _eval_artifact_for(env, tmp_path: Path, evaluation_size: int, *, name: str):
     out_dir = tmp_path / name
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -194,7 +207,7 @@ def test_p3d_exact_m_ladder_roles_and_digests(tmp_path: Path) -> None:
     definition = aggregate.definition
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
     for boundary in env["schedule"].fidelity_epochs:
-        state = _boundary_state(env, tmp_path, boundary, name=f"ckpt-{boundary}")
+        snapshot = _boundary_snapshot(env, tmp_path, boundary, name=f"ckpt-{boundary}")
         index = env["schedule"].fidelity_epochs.index(boundary)
         evaluation_size = definition.policy.evaluation_sizes[index]
         eval_artifact = _eval_artifact_for(
@@ -202,7 +215,7 @@ def test_p3d_exact_m_ladder_roles_and_digests(tmp_path: Path) -> None:
         )
         role = build_target_size_eval2_role(
             trajectory=env["trajectory"],
-            boundary_state=state,
+            boundary_state=snapshot,
             definition=definition,
             schedule=env["schedule"],
             correlation_blocks=blocks,
@@ -216,7 +229,7 @@ def test_p3d_exact_m_ladder_roles_and_digests(tmp_path: Path) -> None:
             definition.evaluation_order.membership_digest(evaluation_size)
         )
         assert role.boundary_epoch == boundary
-        assert role.boundary_state_digest == state.content_digest
+        assert role.boundary_state_digest == snapshot.content_digest
         assert role.target_size == env["trajectory"].target_size
         assert role.optimizer_seed == env["trajectory"].optimizer_seed
         assert len(role.correlation_block_ids) == evaluation_size
@@ -236,12 +249,12 @@ def test_p3d_role_authenticates_exact_boundary_checkpoint_identity(
     env = _env(tmp_path)
     definition = env["aggregate"].definition
     blocks = target_size_population_correlation_blocks(env["aggregate"], env["evidence"])
-    state1 = _boundary_state(env, tmp_path, 1, name="ckpt-a")
-    state1_again = _boundary_state(env, tmp_path, 1, name="ckpt-b")
+    snapshot1 = _boundary_snapshot(env, tmp_path, 1, name="ckpt-a")
+    snapshot1_again = _boundary_snapshot(env, tmp_path, 1, name="ckpt-b")
     eval_artifact1 = _eval_artifact_for(env, tmp_path, 1, name="eval-1")
     role = build_target_size_eval2_role(
         trajectory=env["trajectory"],
-        boundary_state=state1,
+        boundary_state=snapshot1,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,
@@ -251,7 +264,7 @@ def test_p3d_role_authenticates_exact_boundary_checkpoint_identity(
     assert (
         build_target_size_eval2_role(
             trajectory=env["trajectory"],
-            boundary_state=state1_again,
+            boundary_state=snapshot1_again,
             definition=definition,
             schedule=env["schedule"],
             correlation_blocks=blocks,
@@ -272,18 +285,18 @@ def test_p3d_role_authenticates_exact_boundary_checkpoint_identity(
     with pytest.raises(mdstats.TrainingDataInputError):
         build_target_size_eval2_role(
             trajectory=env["trajectory"],
-            boundary_state=replace(state1, trajectory_digest=other.content_digest),
+            boundary_state=replace(snapshot1, trajectory_digest=other.content_digest),
             definition=definition,
             schedule=env["schedule"],
             correlation_blocks=blocks,
             evaluation_data=eval_artifact1,
         )
     # A different boundary epoch of the same trajectory is a different role.
-    state10 = _boundary_state(env, tmp_path, 10, name="ckpt-c")
+    snapshot10 = _boundary_snapshot(env, tmp_path, 10, name="ckpt-c")
     eval_artifact10 = _eval_artifact_for(env, tmp_path, definition.policy.evaluation_sizes[2], name="eval-10")
     role10 = build_target_size_eval2_role(
         trajectory=env["trajectory"],
-        boundary_state=state10,
+        boundary_state=snapshot10,
         definition=definition,
         schedule=env["schedule"],
         correlation_blocks=blocks,

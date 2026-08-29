@@ -567,6 +567,15 @@ def validate_target_size_candidate_trajectory(
         raise TrainingDataInputError(
             "Trajectory candidate membership is not the exact P2 T_N."
         )
+    from .context import validate_candidate_optimizer_policy
+
+    if optimizer_policy is not None:
+        validate_candidate_optimizer_policy(
+            context.seed_neutral_optimizer_policy_digest,
+            optimizer_policy,
+            authorized_seed=trajectory.optimizer_seed,
+        )
+
     expected_realization = derive_target_size_candidate_realization(
         schedule=schedule,
         projection=projection,

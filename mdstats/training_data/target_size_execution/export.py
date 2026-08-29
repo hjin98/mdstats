@@ -741,8 +741,11 @@ class TargetSizeEvaluationArtifact:
             )
         return result
 
-    def build_evaluation_view(self, root_directory: str | Path) -> Any:
-        """Instantiate and wrap the evaluation dataset view from artifact bytes."""
+    def build_authenticated_evaluation_view(
+        self, root_directory: str | Path
+    ) -> TargetSizeAuthenticatedEvaluationView:
+        """Instantiate sealed, validated evaluation dataset view from exact-M bytes."""
+        import hashlib
         from ..evaluation_views import build_evaluation_dataset_view
 
         try:
@@ -756,7 +759,17 @@ class TargetSizeEvaluationArtifact:
             raise TrainingDataInputError(
                 f"Target-size evaluation artifact file is missing: {target}"
             )
+        raw_bytes = target.read_bytes()
+        computed_sha = hashlib.sha256(raw_bytes).hexdigest()
+        if computed_sha != self.sha256:
+            raise TrainingDataInputError(
+                "Evaluation artifact file SHA-256 changed on disk."
+            )
         atoms = ase.io.read(str(target), index=":")
+        if len(atoms) != self.evaluation_size:
+            raise TrainingDataInputError(
+                "Evaluation artifact frame count mismatch."
+            )
         view = build_evaluation_dataset_view(
             atoms,
             energy_key=self.energy_key,
@@ -766,7 +779,62 @@ class TargetSizeEvaluationArtifact:
             condition_keys=(),
         )
         object.__setattr__(view, "evaluation_view_digest", self.evaluation_view_digest)
-        return view
+        return TargetSizeAuthenticatedEvaluationView(
+            artifact_content_digest=self.content_digest,
+            artifact_sha256=self.sha256,
+            evaluation_view_digest=self.evaluation_view_digest,
+            evaluation_size=self.evaluation_size,
+            evaluation_frame_uids=self.evaluation_frame_uids,
+            energy_key=self.energy_key,
+            forces_key=self.forces_key,
+            stress_key=self.stress_key,
+            view=view,
+        )
+
+    def build_evaluation_view(self, root_directory: str | Path) -> Any:
+        """Instantiate evaluation view."""
+        auth_view = self.build_authenticated_evaluation_view(root_directory)
+        return auth_view.view
+
+
+TARGET_SIZE_AUTHENTICATED_VIEW_SCHEMA = (
+    "mdstats.target-size-authenticated-view.v1"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSizeAuthenticatedEvaluationView:
+    """Dedicated immutable authenticated evaluation view wrapper."""
+
+    artifact_content_digest: str
+    artifact_sha256: str
+    evaluation_view_digest: str
+    evaluation_size: int
+    evaluation_frame_uids: tuple[str, ...]
+    energy_key: str
+    forces_key: str
+    stress_key: str
+    view: Any
+
+    def __post_init__(self) -> None:
+        for name in (
+            "artifact_content_digest",
+            "artifact_sha256",
+            "evaluation_view_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        size = int(self.evaluation_size)
+        if size <= 0:
+            raise TrainingDataInputError("Evaluation size must be positive.")
+        object.__setattr__(self, "evaluation_size", size)
+        uids = tuple(str(v) for v in self.evaluation_frame_uids)
+        if len(uids) != size:
+            raise TrainingDataInputError(
+                "Authenticated view frame count mismatch."
+            )
+        object.__setattr__(self, "evaluation_frame_uids", uids)
 
 
 def write_target_size_evaluation_artifact(
@@ -970,10 +1038,12 @@ def validate_target_size_evaluation_artifact(
 
 
 __all__ = [
+    "TARGET_SIZE_AUTHENTICATED_VIEW_SCHEMA",
     "TARGET_SIZE_EVALUATION_ARTIFACT_SCHEMA",
     "TARGET_SIZE_EVALUATION_VIEW_SCHEMA",
     "TARGET_SIZE_EXTXYZ_ARTIFACT_SCHEMA",
     "TARGET_SIZE_EXTXYZ_SIDECAR_SCHEMA",
+    "TargetSizeAuthenticatedEvaluationView",
     "TargetSizeEvaluationArtifact",
     "TargetSizeExtxyzArtifact",
     "validate_target_size_evaluation_artifact",
