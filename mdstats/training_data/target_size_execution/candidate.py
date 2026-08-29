@@ -491,6 +491,9 @@ def build_target_size_candidate_trajectory(
             "realization_digest": realization.content_digest,
         }
     )
+    from .execution import target_size_evaluation_model_state
+
+    evaluation_model_state = target_size_evaluation_model_state(optimizer_policy)
     return TargetSizeCandidateTrajectory(
         experiment_definition_digest=definition.content_digest,
         execution_context_digest=context.content_digest,
@@ -512,7 +515,7 @@ def build_target_size_candidate_trajectory(
             }
         ),
         realization=realization,
-        evaluation_model_state=("ema" if optimizer_policy.ema else "live"),
+        evaluation_model_state=evaluation_model_state,
         candidate_training_protocol_digest=candidate_protocol_digest,
     )
 
@@ -554,18 +557,14 @@ def validate_target_size_candidate_trajectory(
         raise TrainingDataInputError(
             "Trajectory seed-neutral training policy digest does not match execution context."
         )
-    if optimizer_policy.ema:
-        if trajectory.evaluation_model_state not in ("ema", "live"):
-            raise TrainingDataInputError(
-                f"Trajectory evaluation_model_state '{trajectory.evaluation_model_state}' "
-                "must be 'ema' or 'live' when optimizer policy EMA is enabled."
-            )
-    else:
-        if trajectory.evaluation_model_state != "live":
-            raise TrainingDataInputError(
-                f"Trajectory evaluation_model_state '{trajectory.evaluation_model_state}' "
-                "must be 'live' when optimizer policy EMA is disabled."
-            )
+    from .execution import target_size_evaluation_model_state
+
+    expected_eval_state = target_size_evaluation_model_state(optimizer_policy)
+    if trajectory.evaluation_model_state != expected_eval_state:
+        raise TrainingDataInputError(
+            f"Trajectory evaluation_model_state '{trajectory.evaluation_model_state}' "
+            f"does not match optimizer policy EMA convention '{expected_eval_state}'."
+        )
     projection = project_target_size_candidate_preparation(
         common, definition, trajectory.target_size
     )
