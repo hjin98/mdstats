@@ -1,10 +1,31 @@
 # MLFF target-size V7 implementation packages
 
-These files decompose `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` into six sequential implementation packages. The parent V7 workplan remains the **sole scientific and architectural authority**. These package contracts only constrain execution order, package-local scope, acceptance, and verification.
+These files decompose `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` into six sequential implementation packages. The parent V7 workplan remains the **sole scientific and architectural authority**. Package contracts constrain execution order, package-local scope, acceptance, and verification; omission from a package does not waive a frozen parent requirement.
 
-A requirement omitted from a package is **not waived** if it is frozen by V7. A package may not reinterpret V7 to preserve legacy code/tests. Newly discovered necessary implementation consequences that preserve V7 are incorporated locally; reopen design only on a V7-listed reopen condition or equivalent material evidence.
+A package may not reinterpret the frozen parent merely to preserve legacy code/tests. Newly discovered necessary implementation consequences that preserve the parent are incorporated at the owning package. Reopen design only on a parent-listed reopen condition or equivalent material evidence.
 
-P3 revision 7 consists of the consolidated base contract in `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` **plus** the mandatory Review-2 amendment in `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md` **plus** the mandatory Review-3 amendment in `P3_REVIEW3_EXECUTION_OWNER_IMMUTABILITY_CLOSURE_FIX.md` **plus** the mandatory Review-4 amendment in `P3_REVIEW4_FINAL_OWNER_REPLAY_CLOSURE_FIX.md` **plus** the mandatory Review-5 precision amendment in `P3_REVIEW5_FINAL_IMPLEMENTATION_CLOSURE_FIX.md`. Review-2/3/4 remain authoritative; Review-5 is cumulative and closes under-disclosed implementation escape hatches found at `d054c719a2a4a37f38cf200ef5918f39a128a592` (`P3A3`). The mandatory `P3_P3A4_IMPLEMENTATION_REPAIR_INSTRUCTIONS.md` and `P3_P3A4_FINAL_REVIEW_REPAIR_INSTRUCTIONS.md` are cumulative revision-7 implementation-repair bindings for nonconformances found during P3A4 review; neither creates revision 8 or reopens scientific design. The mandatory `P3_P3A5_EMA_CHECKPOINT_STATE_REPAIR_INSTRUCTIONS.md` is the subsequent narrow revision-7 binding for the checkpoint-state provenance defect found at `0ae8003ad2c05c7434da92882218e32b474a50b6` (`P3A5`). The mandatory `P3_P3A6_FINAL_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` restores the single policy-derived EMA/LIVE evaluation convention and requires positive acceptance through the real pinned MACE 0.3.16 checkpoint owner. The mandatory `P3_P3A7_RESTART_OWNER_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` is the final same-revision evidence closure for `faf9830d3b22048a18bb6180c95fbf673606e74f` (`P3A7`): the P3A7 product code and MACE checkpoint semantics are preserved unless the new real-owner test exposes a wiring defect, while durable noncanonical EMA/LIVE state must be rejected through the actual candidate-resume owner rather than only by a directly invoked validator. P1/P2 and P3-A/B/C scientific semantics remain frozen except for validator/persistence consequences required by the amendments. P4 remains blocked until the cumulative revision-7 P3 exit gate passes.
+## Current sequencing state
+
+P1 and P2 are accepted predecessor authorities. P3 remains the active predecessor package until cumulative revision-7 closure through P3A9 is implemented, reviewed, and committed.
+
+P3 revision 7 consists cumulatively of:
+
+- `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md`;
+- `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md`;
+- `P3_REVIEW3_EXECUTION_OWNER_IMMUTABILITY_CLOSURE_FIX.md`;
+- `P3_REVIEW4_FINAL_OWNER_REPLAY_CLOSURE_FIX.md`;
+- `P3_REVIEW5_FINAL_IMPLEMENTATION_CLOSURE_FIX.md`;
+- `P3_P3A4_IMPLEMENTATION_REPAIR_INSTRUCTIONS.md`;
+- `P3_P3A4_FINAL_REVIEW_REPAIR_INSTRUCTIONS.md`;
+- `P3_P3A5_EMA_CHECKPOINT_STATE_REPAIR_INSTRUCTIONS.md`;
+- `P3_P3A6_FINAL_ACCEPTANCE_REPAIR_INSTRUCTIONS.md`;
+- `P3_P3A7_RESTART_OWNER_ACCEPTANCE_REPAIR_INSTRUCTIONS.md`;
+- the P3A8 owner-level acceptance implementation state at `472276ee521eb2b19177299c1c9ad660dbd6ad46`;
+- `P3_P3A9_HEAD_POINTER_RECONCILIATION_REPAIR_INSTRUCTIONS.md`, the final narrow revision-7 crash-recovery closure binding.
+
+P3A9 does **not** create revision 8 or reopen P1/P2/P3 scientific design. It repairs only the demonstrated execution-head publication crash case in which an immutable valid successor is durable while `current_head.json` remains stale. The repair must occur in the existing P3 resolver/reconciler and preserve all cumulative P3 execution, checkpoint, EMA/LIVE, owner, evidence, failure, and reducer semantics.
+
+**P4 remains blocked until cumulative P3 revision 7 through P3A9 has both semantic/conformance closure and functional closure and the accepted P3 closure commit is recorded.** P4 must then be activated with that exact commit as its entry authority. The P3A8 baseline alone does not authorize P4 execution.
 
 ## Mandatory sequence
 
@@ -13,15 +34,18 @@ P1 neutral scientific substrate
   -> P2 target-size statistical authorities
   -> P3 candidate execution and paired-seed screen
        base revision-3 contract
-       + mandatory revision-4 Review-2 authenticated-evaluation/restart amendment
-       + mandatory revision-5 Review-3 execution-owner/immutability amendment
-       + mandatory revision-6 Review-4 owner/replay closure amendment
-       + mandatory revision-7 Review-5 final implementation-closure amendment
-       + mandatory revision-7 P3A4 implementation-repair instructions
-       + mandatory revision-7 P3A4 final-review repair instructions
-       + mandatory revision-7 P3A5 EMA checkpoint-state repair instructions
-       + mandatory revision-7 P3A6 final-acceptance repair instructions
-       + mandatory revision-7 P3A7 restart-owner acceptance repair instructions
+       + revision-4 Review-2 authenticated-evaluation/restart amendment
+       + revision-5 Review-3 execution-owner/immutability amendment
+       + revision-6 Review-4 owner/replay closure amendment
+       + revision-7 Review-5 final implementation-closure amendment
+       + revision-7 P3A4 implementation repair
+       + revision-7 P3A4 final-review repair
+       + revision-7 P3A5 EMA checkpoint-state repair
+       + revision-7 P3A6 final-acceptance repair
+       + revision-7 P3A7 restart-owner acceptance repair
+       + P3A8 owner-level closure implementation
+       + revision-7 P3A9 stale-head successor reconciliation repair
+       -> FORMAL P3 CLOSURE COMMIT
   -> P4 atomic runtime/persistence cutover
   -> P5 post-selection CV and final production
   -> P6 destructive cleanup and assembled closure
@@ -33,27 +57,30 @@ Do not start dependent executable work until the previous package has both **sem
 
 - Implement on one dedicated V7 implementation branch with a committed checkpoint after every accepted package.
 - P1-P3 may coexist with the old runtime only as **unreachable/test-only scaffolding**. No public runtime flag, fallback, dual write, or schema reinterpretation is permitted.
-- P4 is the indivisible ownership cutover. Current prepare/select-target-size orchestration, persistence generation, restart authentication, and current authority lookup switch together.
+- P3 owns scientific execution evidence/replay; P4 may consume/adopt that authority but may not recreate its replay/reducer semantics.
+- P4 is the indivisible production ownership cutover. Current `prepare`/`select-target-size` orchestration, canonical campaign generation/current-state authority, restart authentication, and current authority lookup switch together.
+- P4 must not contain predecessor repair work needed to make P3 acceptable; such repair closes under P3 before P4 activation.
 - P5 must not feed CV evidence or configuration back into target-size selection.
-- P6 deletes unreachable retired topology only after the V7 current runtime is functionally closed.
+- P6 deletes unreachable retired topology only after the current runtime is functionally closed.
 - Stage-local affected regression is required after every material behavior-changing pass before dependent work proceeds.
-- Real-owner acceptance may use bounded scientific fixtures and fake expensive training/prediction only below the owner boundary, after provider/model reconstruction, state loading, provenance/input validation, and all other accepted semantic-owner behavior has executed.
-- Full long GPU/real-production qualification remains deferred to final release; bounded functional, reference-equivalence, and resource checks remain required where affected.
+- Real-owner acceptance may use bounded scientific fixtures and fake expensive training/prediction only below the owner boundary, after required production owner behavior executes.
+- Full long GPU/real-production qualification remains deferred to final release; bounded functional, reference-equivalence, restart, storage, concurrency, and resource checks remain required where affected.
 
 ## Packages
 
 1. `P1_NEUTRAL_SCIENTIFIC_SUBSTRATE.md` — DATA2/DATA3/neutral statistical identity and provenance reset.
 2. `P2_TARGET_SIZE_STATISTICAL_AUTHORITIES.md` — configurable N/M ladders, one split, one training order, one evaluation order, and pure target-size state.
 3. `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` — canonical common preparation, exact candidate realization/materialization, paired optimizer seeds, exact completed-epoch TRAIN2 continuation, exact-checkpoint M-ladder EVAL2, complete-boundary crash-safe reducer commit, and restart closure.
-   - `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md` — mandatory revision-4 corrective authority: exact ordered M_i input authentication, exact boundary live/EMA inference provenance, immutable historical TRAIN2 boundary snapshots, per-cell execution-proof records, completion-bound batches, and deterministic full-history restart replay.
-   - `P3_REVIEW3_EXECUTION_OWNER_IMMUTABILITY_CLOSURE_FIX.md` — mandatory revision-5 cumulative closure authority: real validator execution inside direct inference, shared static-MACE inference reuse, policy-faithful live/EMA state, self-authenticating predictions, re-derivation validators, create-or-verify immutable publication, explicit success/TRAIN2-failure/EVAL2-failure cell evidence, resolvable full restart graph, conflict-safe concurrency, and fresh-process assembled replay.
-   - `P3_REVIEW4_FINAL_OWNER_REPLAY_CLOSURE_FIX.md` — mandatory revision-6 closure authority: no optional accepted-path validation, immutable-snapshot-only direct inference, shared provider/state loading with actual loaded-state digest proof, ExtXYZ byte-order authentication for exact M, mandatory prediction-to-metric/failure linkage, complete resolver coverage for snapshot/rung/continuation/failure ancestry, non-destructive idempotent publication, exclusive logical-cell commit, fixed full scientific replay algorithm, and fresh-process success/TRAIN2-failure/EVAL2-failure acceptance.
-   - `P3_REVIEW5_FINAL_IMPLEMENTATION_CLOSURE_FIX.md` — mandatory revision-7 final precision authority: one authenticated provider/model must both own the loaded live/EMA state and execute forward; exact role parents are non-optional; exact-M validation is sealed to the bytes/labels actually consumed and view provenance cannot be spoofed; full optimizer/export/materialization re-derivation is required; all immutable writers use crash-safe create-or-verify; logical-cell plus reducer-head publication use CAS/locking semantics; failure completions accept raw immediate evidence only; every resolver load is typed/content-address verified; restart has no optional authority or serialized-outcome fallback; and fresh-process acceptance must prove mid-screen continuation plus terminal/failure replay.
-   - `P3_P3A4_IMPLEMENTATION_REPAIR_INSTRUCTIONS.md` — mandatory revision-7 implementation-repair binding for the initial P3A4 review: remove the two-model inference path and fake-owner bypass; seal exact-M parsing to authenticated bytes; extend one typed crash-safe create-or-verify owner across exports/config/snapshots/graph records with exact-retry head idempotency; make TRAIN2/EVAL2 failure completion raw-evidence-only; introduce the complete non-optional scientific restart authority and typed resolver replay; and make subprocess acceptance resume through production durable ancestry with real success/TRAIN2-failure/EVAL2-failure paths.
-   - `P3_P3A4_FINAL_REVIEW_REPAIR_INSTRUCTIONS.md` — mandatory revision-7 final-review repair binding for P3A4: reconstruct a real MACE 0.3.16 provider shell from accepted candidate configuration and authenticate the raw state-dict through that same provider; require complete variant-specific parent-graph supply-or-resolve validation before completion/progress publication; and prove both owners through bounded real-owner CPU/restart acceptance.
-   - `P3_P3A5_EMA_CHECKPOINT_STATE_REPAIR_INSTRUCTIONS.md` — mandatory revision-7 narrow repair binding for P3A5: preserve real config-owned provider reconstruction while distinguishing MACE's EMA-saved raw checkpoint parameters from mdstats live continuation parameters; authenticate raw checkpoint parameters against EMA shadow when TRAIN2 EMA is enabled and against live state otherwise; keep checkpoint-save provenance independent of downstream evaluation metadata; and require divergent-live-vs-shadow real-MACE CPU acceptance. Its earlier wording that treated LIVE-vs-EMA as selectable under one EMA-enabled P3 policy is superseded by the P3A6 final-acceptance repair below.
-   - `P3_P3A6_FINAL_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` — mandatory revision-7 closure binding for P3A6: restore `target_size_evaluation_model_state(optimizer_policy)` as the sole candidate/restart evaluation-state authority (`EMA -> ema`, otherwise `live`); reject recomputed or durable trajectories that deviate from that convention; prove checkpoint-save/evaluation independence at the TRAIN2 validator rather than by manufacturing a LIVE-with-EMA trajectory; replace positive manual checkpoint serialization with the real pinned MACE 0.3.16 `CheckpointHandler.save(CheckpointState(...))` path inside real `ema.average_parameters()`; and close only after canonical EMA and non-EMA no-override CPU inference plus the complete affected P3 regression surface pass.
-   - `P3_P3A7_RESTART_OWNER_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` — mandatory revision-7 final evidence binding for P3A7: preserve the now-correct canonical evaluation-state and real-MACE checkpoint implementation; construct a schema-valid, recomputed durable LIVE-under-EMA restart graph by re-keying trajectory, materialization, predecessor snapshot, completion, and progress references; invoke the real `resolve_target_size_candidate_for_resume(...)` owner using reducer state previously authenticated through the normal `n1` commit/reconciliation path; require rejection specifically from canonical trajectory-policy validation before any continuation workspace/downstream state is authorized; and change product code only if that owner-level test exposes a genuine missing validator handoff.
-4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — atomic current-runtime, state-schema, receipt, restart and invalidation transition.
+   - `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md` — exact ordered M_i authentication, exact boundary live/EMA inference provenance, immutable TRAIN2 boundary snapshots, execution-proof records, completion-bound batches, deterministic full-history restart replay.
+   - `P3_REVIEW3_EXECUTION_OWNER_IMMUTABILITY_CLOSURE_FIX.md` — real validator execution, shared inference owner, self-authenticating predictions, typed resolver coverage, immutable publication, explicit success/failure evidence, conflict-safe concurrency, fresh-process replay.
+   - `P3_REVIEW4_FINAL_OWNER_REPLAY_CLOSURE_FIX.md` — mandatory validation, immutable-snapshot-only inference, provider/state proof, exact-M byte authentication, complete ancestry resolution, exclusive logical-cell commit, fixed scientific replay, fresh-process success/failure acceptance.
+   - `P3_REVIEW5_FINAL_IMPLEMENTATION_CLOSURE_FIX.md` — single authenticated provider/model execution owner, non-optional role parents, sealed exact-M validation, full optimizer/export/materialization re-derivation, crash-safe writers, raw failure evidence, typed resolver replay, no serialized-outcome fallback.
+   - `P3_P3A4_IMPLEMENTATION_REPAIR_INSTRUCTIONS.md` — remove two-model/fake-owner bypasses, seal exact-M parsing, extend typed publication owner, make failure completion raw-evidence-only, complete restart authority, production durable ancestry acceptance.
+   - `P3_P3A4_FINAL_REVIEW_REPAIR_INSTRUCTIONS.md` — real MACE 0.3.16 provider reconstruction/raw-state authentication, complete variant parent graph, bounded real-owner CPU/restart acceptance.
+   - `P3_P3A5_EMA_CHECKPOINT_STATE_REPAIR_INSTRUCTIONS.md` — distinguish raw EMA-saved checkpoint state from live continuation state while preserving provider ownership and checkpoint-save provenance.
+   - `P3_P3A6_FINAL_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` — restore canonical `target_size_evaluation_model_state(optimizer_policy)` (`EMA -> ema`, otherwise `live`) and prove pinned MACE checkpoint-owner acceptance.
+   - `P3_P3A7_RESTART_OWNER_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` — prove durable noncanonical EMA/LIVE state rejects through the real `resolve_target_size_candidate_for_resume(...)` owner.
+   - `P3_P3A9_HEAD_POINTER_RECONCILIATION_REPAIR_INSTRUCTIONS.md` — final revision-7 predecessor closure: recover only a unique authenticated linear successor chain after stale-pointer crash, preserve deterministic reducer replay, reject forks/orphans/corruption, and formally close P3 before P4 begins.
+4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — blocked until P3A9 closure; then performs the atomic current-runtime/state-schema/canonical-generation/restart/storage cutover.
 5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — exact-T_selected CV and fresh final-production path.
 6. `P6_DESTRUCTIVE_CLEANUP_FINAL_CLOSURE.md` — remove retired architecture and perform assembled final acceptance.

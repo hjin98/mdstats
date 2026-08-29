@@ -4,23 +4,24 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P4
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 4
-status: active
-package_revision: 3
+status: blocked
+package_revision: 4
 amended_date: 2026-08-29
-entry_p3_commit: 472276ee521eb2b19177299c1c9ad660dbd6ad46
-prior_p4_revision_commit: 4c55a283f49124972933ccfc8a700be0a8b8ee1e
+entry_p3_baseline_commit: 472276ee521eb2b19177299c1c9ad660dbd6ad46
+p3a9_contract_commit: cf0cfedbfadc700acde72f5a25e4fc9d0c22f7fd
+prior_p4_revision_commit: 878604128e9695a8040ff46b20f15216c4e038f4
 compatibility_policy: destructive-generation-reset
-entry_gate: p4-0-p3-head-recovery-repair-and-formal-p3-closure-required-before-p4-runtime-cutover
-reconciliation_reason: Revision 3 preserves the frozen parent and accepted P1-P3 scientific semantics while incorporating the final implementation-handoff review. It adds one mandatory narrow P3 execution-head crash-recovery prerequisite, makes campaign authority and same-generation compare-and-set semantics explicit, freezes selected-N/T-selected as derived projections rather than independent persisted decisions, integrates promoted P3 evidence with STOR1-STOR5 lifecycle ownership, requires public CLI/documentation cutover, and expands real-owner crash/concurrency/restart acceptance so implementation cannot satisfy P4 through proxy persistence or a parallel state machine.
+entry_gate: cumulative-p3-revision-7-through-p3a9-must-be-accepted-and-recorded-before-p4-execution
+reconciliation_reason: Revision 4 preserves the frozen parent and all accepted P1-P3 scientific semantics while closing the final P4 implementation-handoff gaps. The stale-current-head successor repair is moved out of P4 into the cumulative revision-7 P3A9 closure contract so P4 no longer depends on work inside its own blocked predecessor. P4 now freezes one canonical CampaignStore generation authority, deterministic logical-transition identity for idempotent CAS retries, explicit cross-subsystem lock/transaction ordering, and a STOR retention fence protecting active/restartable P3 execution roots and reconciliation-frontier evidence even before SQLite adoption. No scientific, statistical, TRAIN2/EVAL2, checkpoint, provider, seed, reducer, or target-size decision semantics are changed.
 ---
 
 # P4 — Atomic runtime and persistence cutover
 
-## 0. Authority, revision disposition, and implementation entry rule
+## 0. Authority, revision disposition, and entry gate
 
 The frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the sole scientific and architectural verdict. P4 does **not** reopen P1-P3 science, statistics, candidate qualification, reducer policy, TRAIN2/EVAL2 semantics, checkpoint semantics, provider ownership, seed policy, or target-size decision logic.
 
-P4 revision 3 is the implementation handoff contract. It supersedes revision 2 only for implementation precision and newly demonstrated persistence/recovery consequences. The accepted owner chain remains:
+P4 revision 4 is the implementation handoff contract for the production runtime/persistence cutover. It supersedes revision 3 only for implementation sequencing and persistence/concurrency precision. The accepted dependency direction remains:
 
 ```text
 P1 neutral_substrate
@@ -29,44 +30,54 @@ P1 neutral_substrate
   -> P4 campaign orchestration/persistence cutover
 ```
 
-P4 inherits the complete accepted P1/P2/P3 history through the P3A8 implementation state at `472276ee521eb2b19177299c1c9ad660dbd6ad46`.
+### 0.1 Mandatory predecessor closure
 
-### Mandatory entry rule
+P4 is **blocked** until cumulative P3 revision 7, including `P3_P3A9_HEAD_POINTER_RECONCILIATION_REPAIR_INSTRUCTIONS.md`, has both semantic/conformance closure and functional closure and that accepted closure commit is recorded in the package chain.
 
-**Do not begin the production runtime cutover until Pass P4-0 is implemented, accepted, and the cumulative P3 exit is formally recorded.**
+P3A9 owns the demonstrated stale-`current_head.json` / durable-successor-head crash-recovery defect. P4 must not implement that repair, duplicate it, or work around it with a second replay engine.
 
-P4-0 is a narrow repair inside the existing P3 persistence/reconciliation owner. It exists because final P4 review demonstrated a real crash window in the current implementation: an immutable successor execution head can be durable while `current_head.json` still points to its predecessor. The current P3 reconciler rejects that valid successor as an orphan rather than replaying and adopting it. This defect must be closed in P3 itself; P4 must not work around it with another replay engine.
+When P3A9 closes:
 
-P4-0 does **not** reopen P3 scientific design. It repairs only crash recovery of already-defined P3 immutable execution-head ancestry.
+1. record the accepted cumulative P3 closure commit in package metadata/README;
+2. update this package's entry metadata to bind that exact accepted P3 commit;
+3. change P4 from `blocked` to `active`;
+4. only then begin P4-A executable work.
 
-All new production code, symbols, schema names, record names, keys, and persisted authority names introduced by P4 must be **version-agnostic**. `V7` remains historical workplan/generation terminology only. Semantic product names use explicit schema/generation fields rather than `v7_` or `V7` prefixes.
+The P3A8 baseline `472276ee521eb2b19177299c1c9ad660dbd6ad46` is historical entry evidence, **not** sufficient by itself to authorize P4 execution.
 
-Full long GPU/real-production qualification remains deferred to final release. P4 requires bounded functional, regression, restart, concurrency, real-owner persistence, and CPU/reference acceptance only.
+### 0.2 Naming and qualification boundary
+
+All new production code, symbols, schema names, record names, keys, and persisted authority names introduced by P4 must be **version-agnostic**. `V7` remains historical workplan/generation terminology only.
+
+Full long GPU/real-production qualification remains deferred to final release. P4 requires bounded functional, regression, restart, concurrency, real-owner persistence, storage, CPU/reference, and assembled integration acceptance only.
 
 ---
 
-## 1. Required product outcome and non-negotiable authority invariants
+## 1. Required product outcome and authority invariants
 
-After P4, ordinary `prepare` and `select-target-size` must expose exactly one current target-size architecture. The P1-P3 graph is the only scientific authority for target-size work; the campaign store is the only mutable current-runtime authority; restart is deterministic and authenticated; and stale or retired state cannot become current through schema translation, pointer existence, process ownership, or duplicated mutable metadata.
+After P4, ordinary `prepare` and `select-target-size` expose exactly one current target-size architecture. The P1-P3 graph is the only scientific authority for target-size work; the campaign store is the only mutable current-runtime authority; restart is deterministic and authenticated; stale or retired state cannot become current through schema translation, file existence, pointer state, process ownership, or duplicated mutable metadata.
 
 The implementation must preserve all of the following simultaneously:
 
-1. **One mutable campaign authority.** The real campaign SQLite persistence owner is the sole authority for current regime, current runtime generation/attempt, mutable stage/FSM state, adopted P3 execution-head reference, and terminal target-size result visibility.
-2. **One scientific execution authority.** P3 immutable content-addressed evidence, heads, batches, completions, snapshots, predictions, metrics, failures, and typed replay graph remain the scientific execution authority.
-3. **`current_head.json` is not campaign authority.** The P3 `current_head.json` file is only a rebuildable execution-local recovery/index pointer to an authenticated immutable head. It may accelerate/localize reconciliation, but it may not independently authorize campaign generation, completion, selected `N`, or downstream selected data.
-4. **No second mutable result manifest.** If an external terminal-result file is retained for usability, it must be either immutable/content-addressed evidence or a rebuildable non-authoritative view of SQLite + authenticated P3 state. It must not be another current-state owner.
-5. **No parallel algorithmic owner.** P4 must not implement another split builder, selector, reducer, target-size scheduler, checkpoint interpreter, evaluation engine, immutable evidence graph, or restart/replay algorithm.
-6. **No fallback/dual-write regime.** Current execution may not try the promoted path and fall back to the retired path; may not write old and current authoritative records; and may not reinterpret retired schemas as current.
-7. **Terminal selection is derived, not editable.** `N_selected` and exact `T_selected` are authenticated projections of the terminal P2/P3 state. Persisted copies are materialized results for downstream use, never independent decision inputs.
-8. **Historical P3 ownership is immutable.** A new process/generation may own new operational work, but may not rewrite the owner proof of historical P3 evidence.
-9. **Same-generation writers are fenced.** Generation/attempt identity alone is insufficient. Every mutable transition must also compare the exact expected predecessor campaign-state revision in the same SQLite transaction.
-10. **Storage lifecycle cannot break replay.** Promoted P3 evidence required for current or restartable target-size state is protected by existing STOR ownership/reachability rules before any cleanup may reclaim it.
+1. **One mutable campaign authority.** The real CampaignStore/SQLite owner is the sole authority for current regime, canonical target-size generation, current subordinate attempt, mutable lifecycle/FSM state, adopted P3 execution-head reference, and terminal-result visibility.
+2. **One canonical generation authority.** P4 must reuse/evolve the existing campaign/prepare target-size generation authority discovered in the real CampaignStore. It may not introduce a second independently advancing `target_size_runtime_generation` or equivalent counter. Any new persisted generation field created during schema cutover becomes the single canonical generation authority and replaces, rather than runs beside, the retired authority.
+3. **Attempts are subordinate.** Attempt identity is scoped beneath one canonical generation. It cannot outlive, supersede, or independently authorize mutation after that generation is replaced.
+4. **One scientific execution authority.** P3 immutable content-addressed evidence, heads, batches, completions, snapshots, predictions, metrics, failures, and typed replay graph remain the scientific execution authority.
+5. **`current_head.json` is not campaign authority.** It is only a rebuildable P3-local recovery/index pointer to an authenticated immutable head. It may localize reconciliation but cannot independently authorize campaign generation, completion, selected `N`, or downstream selected data.
+6. **No second mutable result manifest.** Any filesystem result view is immutable/content-addressed evidence or a rebuildable non-authoritative projection of SQLite plus authenticated P3 state.
+7. **No parallel algorithmic owner.** P4 must not implement another split builder, selector, reducer, target-size scheduler, checkpoint interpreter, evaluation engine, immutable evidence graph, or restart/replay algorithm.
+8. **No fallback/dual-write regime.** Current execution may not try the promoted path and fall back to the retired path, write both old and current authoritative state, or reinterpret retired schemas as current.
+9. **Terminal selection is derived, not editable.** `N_selected` and exact `T_selected` are authenticated projections of terminal P2/P3 state. Persisted copies are downstream materializations, not independent decision inputs.
+10. **Historical P3 ownership is immutable.** A new process/generation may own new operational work but cannot rewrite historical P3 owner proof.
+11. **Same-generation writers are fenced.** Generation/attempt identity alone is insufficient. Every mutable campaign transition also compares the exact expected predecessor campaign-state revision in the same SQLite transaction.
+12. **Storage lifecycle cannot break replay.** Active/restartable P3 execution roots and still-undecided reconciliation-frontier evidence are protected before SQLite adoption and remain protected until reconciliation classifies them.
+13. **Cross-layer locking is acyclic.** P3 mutation/reconciliation, CampaignStore mutation, and STOR destructive actions must follow the frozen ordering in section 6.3; no implementation may hold one layer's mutation lock/transaction while waiting on a later layer in reverse order.
 
 Any implementation that satisfies the CLI superficially while violating one of these invariants fails P4.
 
 ---
 
-## 2. Frozen owner graph and implementation surfaces
+## 2. Frozen owner graph and implementation reconnaissance
 
 ### 2.1 Scientific/execution dependency direction
 
@@ -85,252 +96,253 @@ verified source/config inputs
        TRAIN2/EVAL2 / immutable evidence
        typed resolver / execution heads / reconciliation
   -> campaign CLI + real SQLite campaign persistence         # P4
-       regime + generation/attempt + state revision
-       adopted authenticated P3 head
+       regime + canonical generation + subordinate attempt
+       predecessor revision / adopted authenticated P3 head
        terminal selected-data projection
 ```
 
-P4 adapters may call these owners and may add persistence-facing records around them. They may not reproduce their algorithms.
+P4 adapters may call these owners and add persistence-facing records around them. They may not reproduce their algorithms.
 
 ### 2.2 Mandatory implementation reconnaissance before edits
 
-Before changing product code, the implementer must inspect the actual branch and identify, in implementation notes/tests, the real owners of all of the following:
+Before product edits, identify the real owners of:
 
 - `prepare` parser and `command_prepare` call graph;
 - `select-target-size` parser and `command_select_target_size` call graph;
-- the concrete CampaignStore/SQLite class or functions and transaction helpers;
-- existing current campaign generation/prepare receipt/state keys;
+- concrete CampaignStore/SQLite class/functions and transaction helpers;
+- the pre-existing campaign/prepare target-size generation authority and all consumers of it;
 - current target-size selection/restart keys and terminal selected-size fields;
-- P3 execution-root construction and resolver creation;
-- storage accounting/reclamation/archive ownership surfaces;
+- P3 execution-root construction and typed resolver/reconciler creation;
+- P3 locking used for boundary/head publication and reconciliation;
+- storage accounting/reclamation/archive ownership and destructive-operation entrypoints;
 - user-facing CLI help and campaign guide text describing `prepare`/target-size behavior.
 
-The expected high-impact surfaces include `_campaign_cli_core.py`, `campaign_cli.py`, the actual campaign persistence owner discovered from the code, `storage_accounting.py`, `storage_reclamation.py`, `storage_archive.py`, `target_size_experiment.py`, and `target_size_execution/coordinator.py`. This list is a starting map, not permission to ignore a discovered owner elsewhere.
+Expected high-impact surfaces include `_campaign_cli_core.py`, `campaign_cli.py`, the actual CampaignStore owner, `storage_accounting.py`, `storage_reclamation.py`, `storage_archive.py`, `target_size_experiment.py`, and P3 public resolver/reconciliation entrypoints. This is a starting map, not a scope cap.
 
-The implementation must remove or redirect real production call edges, not merely add a new facade beside the old runtime.
-
----
-
-## 3. Pass P4-0 — mandatory narrow P3 execution-head crash-recovery repair
-
-### 3.1 Demonstrated defect to repair
-
-Current P3 boundary commit semantics are effectively:
-
-```text
-persist immutable batch
- -> derive reducer post-state
- -> persist immutable heads/<head-digest>.json
- -> atomically replace current_head.json
-```
-
-A crash after the immutable successor head is durable but before `current_head.json` advances leaves:
-
-```text
-current_head.json -> H_g
-heads/ contains H_g and valid child H_g+1
-```
-
-The existing reconciliation path accepts a missing current pointer, but when a stale pointer exists it treats heads outside that pointer's ancestry as orphans. A valid crash-left child can therefore be rejected.
-
-### 3.2 Required repair owner and algorithm
-
-Modify the existing P3 reconciliation implementation in `mdstats/training_data/target_size_execution/coordinator.py`. Do **not** add a P4 replay routine.
-
-The repaired `reconcile_target_size_screen_root(...)` or the smallest existing helper beneath it must implement these semantics:
-
-1. Acquire the existing screen-commit serialization when reconciliation will mutate `current_head.json`. Reuse `.screen_commit.lock` or the same canonical lock owner used by `commit_target_size_boundary_batch`; do not introduce an independently ordered second head-commit lock.
-2. Load `current_head.json`, if present, through the typed P3 owner and verify that an immutable `heads/<digest>.json` record with exactly the same authenticated content exists.
-3. Load every immutable head through `TargetSizeExecutionResolver`/typed deserialization. Do not trust raw JSON fields without the existing digest/schema validation path.
-4. Construct head ancestry using immutable `parent_head_digest` relations.
-5. If a valid current pointer exists, treat that head as the currently published base and inspect immutable descendants from that base.
-6. Recover only a **unique linear successor chain**:
-   - zero children: no pointer repair is needed;
-   - exactly one child: replay that child's referenced batch from the exact current replayed reducer state using the same scientific batch replay/validation logic already used by P3 reconciliation; require exact pre-state, batch, parent, and derived post-state agreement, then continue to that child's children;
-   - more than one child from any accepted head: fail closed as a fork/conflicting scientific history.
-7. An immutable head that is neither in the accepted ancestry nor in the unique validated successor chain is an orphan/fork and must cause fail-closed reconciliation. Do not silently choose the newest file or filesystem ordering.
-8. Only after the complete successor chain has passed typed loading and deterministic scientific replay may reconciliation atomically replace `current_head.json` with the validated tip.
-9. If `current_head.json` is absent, retain the existing unique-tip repair concept, but require the complete ancestry and scientific replay to validate before creating the pointer.
-10. Preserve the existing unreferenced-complete-batch repair behavior. A batch left durable before its head may be replayed and committed only when it is the unique exact successor of the current reducer state.
-11. Never accept serialized `post_state` merely because its digest parses. Re-derive the state through the frozen P2 reducer transition and compare it with the stored head.
-12. Keep create-or-verify semantics, immutable historical records, and P3 owner proofs unchanged.
-
-### 3.3 P4-0 mandatory tests
-
-Add or extend focused P3 tests through the **real** P3 resolver/reconciler. If no existing test file cleanly owns these cases, use a focused file such as `tests/test_mlff_target_size_p3_head_recovery.py`.
-
-Prove at minimum:
-
-- crash after complete batch publication but before immutable head publication;
-- crash after immutable successor head publication but before `current_head.json` replacement;
-- missing `current_head.json` with one valid head chain;
-- stale pointer followed by two or more valid linear successor heads;
-- stale pointer with one corrupted successor head;
-- stale pointer with two competing children from the same parent -> reject;
-- unrelated/orphan immutable head -> reject;
-- duplicate exact retry remains idempotent;
-- fresh-process reconciliation after repair yields byte/identity-equivalent reducer state and selected scientific outcome to uninterrupted execution;
-- existing success, TRAIN2-failure, EVAL2-failure, P3A7 restart-owner, and P3A8 reconciliation acceptance continue to pass.
-
-### 3.4 P3 formal closure prerequisite
-
-After P4-0 passes the complete affected P3 regression surface, formally record cumulative P3 revision-7 functional/semantic closure in the package metadata/README according to repository workplan conventions. Do not mark P4 runtime-cutover passes accepted while the package chain still says P3 is active/blocked.
-
-**Gate P4-0:** P4-A and later executable cutover work are blocked until the repair and formal P3 closure are committed.
+The implementation must redirect/remove real production call edges, not add a new facade beside the old runtime.
 
 ---
 
-## 4. Campaign current-state model and transactional compare-and-set contract
+## 3. P4 entry assertions inherited from closed P3
 
-### 4.1 One mutable state record/aggregate
+P4 does not own P3A9 implementation. Before P4-A, verify against the accepted P3 closure commit that:
 
-Implement or reconcile one version-agnostic current target-size campaign-state aggregate in the real CampaignStore/SQLite owner. Exact table/column names are delegated, but the semantic state must bind, directly or through authenticated aggregate digests/references:
+- the real P3 reconciler recovers a unique authenticated linear successor chain when `current_head.json` is stale;
+- complete-batch-without-head recovery remains deterministic and fail-closed;
+- forks, unrelated orphan heads, corrupt successors, and tampered reducer ancestry reject;
+- fresh-process reconciliation is identity-equivalent to uninterrupted execution;
+- P3 success, TRAIN2-failure, EVAL2-failure, P3A7 restart-owner, and P3A8 owner-level acceptance remain passing;
+- `current_head.json` remains a P3-local rebuildable pointer rather than campaign authority.
+
+If any of these assertions is not established by the accepted P3 closure, P4 remains blocked and work routes back to P3 rather than implementing a P4 workaround.
+
+---
+
+## 4. Campaign current-state model and transactional CAS contract
+
+### 4.1 One mutable state aggregate
+
+Implement/reconcile one version-agnostic current target-size campaign-state aggregate in the real CampaignStore/SQLite owner. Exact table/column names are delegated, but the semantic state must bind, directly or through authenticated references:
 
 - schema version;
 - cutover/regime state;
-- runtime generation;
-- execution attempt identity where an attempt is active;
-- **campaign state revision / predecessor token**;
+- **canonical campaign target-size generation**;
+- subordinate execution attempt identity where active;
+- campaign state revision / predecessor token;
 - lifecycle/stage state;
 - P1 neutral/canonical/source authority identity;
 - inherited protected/split-exclusion relation authority;
 - P2 experiment definition/aggregate identity including hard-support authority;
-- P3 screen/window identity and durable root locator owned by the campaign;
-- currently adopted immutable P3 execution-head digest and reducer-state digest, when one exists;
+- P3 screen/window identity and campaign-owned durable root locator;
+- currently adopted immutable P3 execution-head digest and reducer-state digest, when present;
 - terminal-result projection when terminal;
-- stop/failure classification and replay-manifest/reference identity when applicable.
+- stop/failure classification and replay/reference identity where applicable.
 
-Do not copy the full P1-P3 immutable graph into mutable SQLite rows. Store stable identities/references and revalidate them through their owning loaders.
+Do not copy the full P1-P3 immutable graph into mutable SQLite rows. Store stable identities/references and revalidate through owning loaders.
 
-### 4.2 Required CAS predicate for every mutation
+#### Canonical generation rule
 
-Every mutable target-size campaign transition must execute in one real SQLite transaction and compare all of:
+Repository reconnaissance must identify the existing campaign/prepare target-size generation authority before schema design. P4 then either:
+
+- evolves that exact authority in place, or
+- atomically replaces it during the destructive cutover with one new canonical generation field while making the retired field unreachable/non-authoritative in the same cutover.
+
+A design in which an old campaign generation and a new target-size runtime generation can advance independently is forbidden.
+
+### 4.2 CAS predicate for every mutation
+
+Every mutable target-size campaign transition executes in one real SQLite transaction and compares:
 
 ```text
 expected regime/schema
-expected runtime generation
-expected execution attempt (if applicable)
+expected canonical generation
+expected subordinate attempt (if applicable)
 expected predecessor campaign-state revision
 ```
 
-The transition may commit only if all expected values still match the current row/state. The same transaction must advance the state revision and write the new state.
+The same transaction advances the state revision and writes the successor state.
 
-A state revision may be an authenticated digest or monotonic revision token owned by CampaignStore. It must uniquely distinguish predecessor state; process ID, timestamp, or worker-local memory alone is insufficient.
+A state revision may be an authenticated digest, monotonic token, or equivalent CampaignStore-owned CAS value. PID, wall-clock time, worker-local memory, or file modification time is insufficient.
 
 Required behavior:
 
-- writer from generation `g` cannot mutate after `g+1` has taken ownership;
-- writer from the same generation but stale predecessor revision cannot mutate after another transition committed;
-- an exact duplicate retry of an already-committed logical transition is recognized as idempotent success only after the stored result is verified identical;
-- two divergent transitions from the same predecessor cannot both commit;
-- a crashed transition owner does not permanently lock the campaign: a new process may resume by reading the exact persisted transition identity/revision and performing the next valid CAS;
-- process identity does not grant authority to rewrite historical evidence.
+- generation `g` writer cannot mutate after `g+1` owns the campaign;
+- same-generation writer with stale predecessor revision cannot mutate after another transition commits;
+- two divergent transitions from one predecessor cannot both commit;
+- crashed process does not permanently own the campaign; a fresh process resumes from persisted generation/attempt/revision;
+- process identity never authorizes historical rewrite.
 
-If the existing CampaignStore lacks a suitable transaction/CAS helper, add the smallest reusable store-level primitive. Do not implement compare-then-write as separate unlocked SQL operations in CLI code.
+### 4.3 Deterministic logical-transition identity and idempotency
 
-### 4.3 Same-generation race acceptance
+An already-committed transition may be treated as an idempotent duplicate only when its **logical transition identity** is exactly equal. That identity must deterministically bind at least:
 
-Use two independent SQLite connections/process-equivalent clients against the same real campaign database:
+```text
+operation/transition kind
+expected predecessor campaign-state revision
+canonical generation
+subordinate attempt identity, when applicable
+canonical authoritative successor payload/reference set
+```
+
+The implementation may encode this as an explicit transition-intent digest, deterministic successor-state digest, or equivalent CampaignStore-owned representation.
+
+PID, timestamp, retry count, or equality of only selected result fields is not transition identity.
+
+On duplicate retry, load and verify the stored successor is exactly the one implied by the same logical transition identity before returning idempotent success. A conflicting successor from the same predecessor is a typed stale/conflict outcome, not a duplicate.
+
+### 4.4 Same-generation race acceptance
+
+Use two independent SQLite connections/process-equivalent clients against the same real campaign DB:
 
 1. both read the same generation/attempt/revision;
 2. both attempt different next states;
 3. exactly one commits;
-4. the loser receives a typed stale/conflict result and does not overwrite the winner;
-5. exact duplicate transition retry is idempotent and returns/verifies the existing state.
+4. loser receives typed stale/conflict and cannot overwrite winner;
+5. exact duplicate logical transition retry verifies/returns the existing identical state;
+6. near-duplicate with one changed authoritative reference is rejected as conflict, not accepted as idempotent.
 
-This acceptance is mandatory; generation-only fencing does not close P4.
+If CampaignStore lacks the primitive, add the smallest reusable store-level transaction/CAS helper. Do not implement compare-then-write as unlocked CLI operations.
 
 ---
 
-## 5. Terminal result is an authenticated projection, not an independent decision
+## 5. Terminal result is an authenticated projection
 
 ### 5.1 Terminal-success derivation
 
-When P3 becomes terminal with a selected target size, the current runtime must perform this order:
+When P3 becomes terminal with a selected target size:
 
 ```text
-reconcile P3 screen through TargetSizeRestartAuthority
- -> obtain exact authenticated terminal execution head/post reducer state
- -> derive terminal selection through the P2 reducer/statistical owner
- -> derive exact T_selected through the accepted P2 training-order/T_N owner
+reconcile P3 through TargetSizeRestartAuthority
+ -> obtain exact authenticated terminal execution head/post-reducer state
+ -> derive terminal selection through P2 reducer/statistical owner
+ -> derive exact T_selected through P2 training-order/T_N owner
  -> build terminal campaign projection
- -> CAS-commit head digest + reducer digest + selected N + exact T_selected identity together
+ -> CAS-commit adopted head + reducer digest + selected N + exact T_selected identity together
 ```
 
-Use existing P2 public/pure owners where they exist. If a small pure projection helper is missing, add it adjacent to `target_size_experiment.py` so it exposes already-frozen P2 semantics; do not encode target-size decision logic in P4 CLI/store code.
+Use existing P2 owners. If a small pure projection helper is missing, add it adjacent to `target_size_experiment.py`; do not encode target-size decision logic in P4 CLI/store code.
 
-`N_selected`, `T_selected`, stop reason, and terminal status must be internally consistent with the authenticated terminal P2/P3 state.
+`N_selected`, `T_selected`, stop reason, and terminal status must be internally consistent with authenticated terminal P2/P3 state.
 
 ### 5.2 Terminal load/restart validation
 
-A completed selection may be exposed to P5/downstream code only after the loader:
+A completed selection may be exposed downstream only after the loader:
 
-1. resolves the referenced P1/P2 authorities;
-2. reconciles/resolves the referenced P3 screen/head through P3;
-3. verifies the reducer-state digest referenced by campaign state;
-4. re-derives terminal `N_selected` from that reducer state;
+1. resolves referenced P1/P2 authorities;
+2. reconciles/resolves referenced P3 screen/head through P3;
+3. verifies reducer-state digest referenced by campaign state;
+4. re-derives `N_selected` from terminal reducer state;
 5. re-derives exact `T_selected` membership/identity from P2;
-6. compares both with the persisted terminal projection.
+6. compares both with persisted terminal projection.
 
-Any mismatch is corruption/stale state and fails closed. Updating only a local digest, `N_selected`, or `T_selected` field must never make a divergent terminal record valid.
+Any mismatch fails closed. Updating only a digest, selected integer, or selected-data field cannot make divergent state valid.
 
 ### 5.3 Terminal scientific failure versus interruption
 
-A reducer-terminal configured-ceiling nonconvergence or other frozen scientific terminal failure must persist as a **terminal scientific outcome** bound to exact P3/P2 provenance. It must not be treated as an operational interruption eligible to resume the same scientific screen indefinitely.
+Reducer-terminal configured-ceiling nonconvergence or another frozen scientific terminal failure persists as a terminal scientific outcome bound to exact P2/P3 provenance. It is not an operational interruption eligible for indefinite same-screen resume.
 
-Conversely, process death, temporary resource failure, or an incomplete candidate/rung that has not produced a terminal P2/P3 outcome remains operationally resumable and must not be materialized as scientific nonconvergence.
+Process death, transient resource failure, or an incomplete rung without terminal P2/P3 outcome remains operationally resumable and cannot be materialized as scientific nonconvergence.
 
-Mandatory negative tests:
+Mandatory negatives:
 
 - mutate only persisted selected `N` -> reject;
 - mutate only exact `T_selected` identity/membership -> reject;
-- mutate adopted head/reducer reference while leaving selected fields intact -> reject;
-- terminal success fresh-process reload re-derives the identical projection;
-- terminal scientific failure reload remains terminal and cannot masquerade as resumable interruption.
+- mutate adopted head/reducer reference while selected fields remain -> reject;
+- terminal success fresh-process reload re-derives identical projection;
+- terminal scientific failure reload stays terminal and cannot masquerade as interruption.
 
 ---
 
-## 6. Cross-store visibility and recovery protocol
+## 6. Cross-store visibility, recovery, and lock ordering
 
-SQLite and filesystem evidence cannot share one physical atomic transaction. P4 therefore requires **ordered visibility, authenticated adoption, CAS mutation, and idempotent recovery**.
+SQLite and filesystem evidence cannot share one physical atomic transaction. P4 therefore uses immutable-first publication, authenticated reconciliation, bounded CAS adoption, and deterministic recovery.
 
 ### 6.1 Canonical transition order
 
-For any target-size state advancement that depends on new P3 evidence:
+For target-size advancement that depends on new P3 evidence:
 
 ```text
 1. P3 produces attempt-local work.
-2. P3 validates all scientific parents through accepted P1/P2/P3 owners.
-3. P3 publishes immutable evidence using existing create-or-verify durability.
+2. P3 validates scientific parents through accepted P1/P2/P3 owners.
+3. P3 publishes immutable evidence with existing create-or-verify durability.
 4. P3 commits/reconciles its immutable execution-head graph.
-5. P4 invokes the real P3 reconciler and receives the exact authenticated current immutable head/post-state.
-6. P4 opens a real CampaignStore transaction with regime + generation + attempt + predecessor-revision CAS.
-7. P4 binds the exact P3 screen/head/reducer identities and next campaign lifecycle state.
-8. P4 commits SQLite.
-9. Any human-readable/external view is generated only as non-authoritative derived output.
-10. Cleanup/retirement may run only after the new state is reloaded and authenticated.
+5. P3 releases its head/screen mutation lock.
+6. P4 receives the exact authenticated reconciled immutable head/post-state.
+7. P4 opens a short real CampaignStore transaction with regime + generation + attempt + predecessor CAS.
+8. P4 binds exact P3 screen/head/reducer identities and next lifecycle state.
+9. P4 commits and releases SQLite.
+10. Human-readable/external views are generated only as non-authoritative projections.
+11. Reconciliation classifies leftover filesystem evidence.
+12. STOR destructive cleanup/retirement may run only under section 10 retention rules.
 ```
 
-A campaign row may never reference an incomplete/unvalidated P3 artifact. File existence alone is never completion evidence.
+A campaign row may never reference incomplete/unvalidated P3 evidence. File existence alone is never completion evidence.
 
 ### 6.2 Required recovery matrix
 
-Implement and test the following exact states:
-
 | Crash/restart state | Required behavior |
 |---|---|
-| crash before P3 immutable publication | resume/recompute through P3 owner; campaign state unchanged |
-| complete batch durable but head absent | P3 reconciler validates unique batch and commits head |
-| immutable successor head durable but P3 pointer stale | P4-0 P3 reconciler replays unique successor chain and repairs pointer |
-| P3 reconciled head is ahead of SQLite | if all scientific identity + campaign generation/attempt match, CAS-adopt the exact head; do not rerun completed work |
-| SQLite references missing/corrupt P3 head | hard reject/corruption; never recreate authority from SQLite summary fields |
+| crash before P3 immutable publication | resume/recompute through P3; campaign state unchanged |
+| complete batch durable but head absent | closed P3 reconciler validates unique batch and commits head |
+| immutable successor head durable but P3 pointer stale | closed P3/P3A9 reconciler replays unique successor chain and repairs pointer |
+| P3 reconciled head ahead of SQLite | if scientific identity + campaign generation/attempt match, CAS-adopt exact head; do not rerun completed work |
+| SQLite references missing/corrupt P3 head | hard corruption reject; never recreate authority from SQLite summary |
 | SQLite references older head and P3 has one unique valid successor chain | reconcile P3 then CAS-adopt successor under same current generation; fork/conflict rejects |
-| SQLite commit complete but derived result/view missing | rebuild derived view from SQLite + P3; do not roll back science |
-| crash during legacy->current cutover | remain transition-owned; restart exact transition via CAS; normal current runtime blocked |
+| SQLite commit complete but derived result/view missing | rebuild view from SQLite + P3; do not roll back science |
+| crash during legacy->current cutover | remain transition-owned; restart exact transition via CAS; current runtime blocked |
 | stale generation writer resumes | typed stale/conflict; no mutation |
-| two same-generation writers race | predecessor-revision CAS permits one divergent successor only |
+| two same-generation writers race | predecessor CAS permits one divergent successor only |
+| cleanup races P3-publication -> SQLite-adoption window | section 10 retention fence preserves all still-adoptable/reconcilable evidence |
 
-Recovery must not delete authoritative, external, or potentially adoptable current-generation evidence merely to obtain a clean directory.
+### 6.3 Frozen cross-subsystem lock/transaction ordering
+
+There are three mutation domains:
+
+```text
+P3 filesystem execution/reconciliation
+CampaignStore SQLite state mutation
+STOR destructive mutation
+```
+
+Their ordering is frozen:
+
+```text
+P3 reconcile/commit
+  -> release P3 mutation lock
+CampaignStore bounded CAS transaction
+  -> commit/release SQLite
+STOR destructive classification/reclamation
+```
+
+Hard constraints:
+
+- never hold a CampaignStore SQLite write transaction while acquiring a P3 screen/head mutation lock;
+- never perform P3 reconciliation, large artifact hashing, model/provider reconstruction, or slow filesystem traversal inside the SQLite write transaction;
+- never hold a STOR destructive-operation lock/lease while waiting for CampaignStore or P3 mutation authority in reverse order;
+- STOR may perform non-destructive accounting/inspection as repository conventions allow, but destructive authorization occurs only after campaign/P3 state needed for reachability classification is stable and the retention fence has been evaluated;
+- no process-liveness lock may substitute for durable generation/revision fencing.
+
+If actual repository lock ownership makes this ordering impossible without a material architecture replacement, stop and reopen only the affected persistence/concurrency surface.
 
 ---
 
@@ -338,7 +350,7 @@ Recovery must not delete authoritative, external, or potentially adoptable curre
 
 ### 7.1 Durable regime transition
 
-Use one campaign-level durable regime/cutover marker in the real SQLite owner. Exact enum names are delegated, but semantics must distinguish at least:
+Use one campaign-level durable regime marker in the real SQLite owner with semantics equivalent to:
 
 ```text
 legacy/unconverted
@@ -348,101 +360,101 @@ current
 
 Required transition:
 
-1. CAS `legacy -> transitioning`, allocating/binding the new current runtime generation and exact predecessor state revision.
-2. Inventory retired target-size derived state before mutating it.
-3. Quarantine/reject retired derived authority. Do not translate it into P1/P2/P3 objects.
+1. CAS `legacy -> transitioning`, allocating/binding the new **canonical** target-size generation and exact predecessor revision.
+2. Inventory retired target-size derived state before mutation.
+3. Quarantine/reject retired derived authority; do not translate it into P1/P2/P3 objects.
 4. Reconstruct current P1/P2/P3 state from source inputs and only independently reusable lower-level caches through current validators.
-5. Persist current campaign references/state through CAS transitions while the regime remains `transitioning`.
-6. Validate that all required current authorities are resolvable and no retired target-size record is being used as current authority.
-7. CAS `transitioning -> current` from the exact expected transition revision.
+5. Persist current campaign references/state through CAS while regime remains `transitioning`.
+6. Validate all current authorities and prove retired target-size records are not current authority.
+7. CAS `transitioning -> current` from exact expected transition revision.
 8. Only after `current` is durable may ordinary production target-size runtime proceed.
 
-A fresh process must be able to resume an interrupted `transitioning` state by persisted transition identity/revision; it must not depend on the original PID surviving.
+A fresh process resumes interrupted `transitioning` state from persisted transition identity/revision; original PID survival is irrelevant.
 
-### 7.2 No mixed per-row runtime
+### 7.2 No mixed runtime
 
-The cutover is campaign/runtime-wide. Do not lazily migrate target-size rows such that some datasets execute the retired selector while others execute P1-P3. While `transitioning`, target-size commands either resume the transition or fail with actionable guidance; they do not execute a mixed regime.
+Cutover is campaign/runtime-wide. Do not lazily migrate rows such that some datasets execute retired selection while others execute P1-P3. While `transitioning`, target-size commands resume transition or fail with actionable guidance.
 
 ### 7.3 Retired-state inventory
 
-At minimum, current target-size authority must stop consuming/reject or quarantine:
+At minimum stop consuming/reject/quarantine as current authority:
 
-- `target_size_study.py` selector state as current authority;
+- `target_size_study.py` selector state;
 - prepare-time selected-N/selector outcomes;
 - `TargetDataRoleFreeze` target-size authority;
 - FEAS/MVIDX/MVSEL/REPAIR/MVSTATE/MVQUAL current-runtime selection records;
-- compatibility-domain/label-domain target-size maps and `domain_prefix_digests`;
+- compatibility/label-domain target-size maps and `domain_prefix_digests`;
 - per-domain prescribed target/evaluation materialization authority;
 - complement/coarse EVAL2 target-size roles;
 - pre-target CV/MLCV role/catalog dependencies;
-- V5/current-generation target-size receipts/migration aliases;
-- old selected-N records that cannot resolve the complete P1/P2/P3 authority chain;
+- retired target-size prepare receipts/migration aliases;
+- old selected-N records lacking the full current P1/P2/P3 authority chain;
 - incompatible resumable checkpoints/continuations;
-- orphaned incomplete attempts that cannot authenticate to a current generation.
+- orphaned incomplete attempts unable to authenticate to current generation.
 
-Raw source files, manifests, precise provenance parsing, and lower-level content-addressed caches may be reused only where their current owner proves recipe/identity equivalence independent of retired target-size semantics.
+Raw source files, manifests, provenance parsing, and lower-level content-addressed caches may be reused only where the current owner proves recipe/identity equivalence independent of retired target-size semantics.
 
-P4 does not destructively delete historical scientific evidence merely because its runtime is retired. P6 owns broad topology deletion. P4 may remove/quarantine only mutable current-state records necessary to make the cutover unambiguous and recoverable.
+P4 does not broadly delete historical scientific evidence. P6 owns broad topology deletion. P4 removes/quarantines only mutable current-state records necessary for unambiguous cutover and safe recovery.
 
 ---
 
 ## 8. Current invalidation matrix and failure disposition
 
-The current loader/caller must classify mismatches rather than silently repairing them. The implementation must encode and test this minimum matrix:
+The current loader/caller classifies mismatches rather than silently repairing them.
 
 | Changed/bad authority | Disposition |
 |---|---|
-| malformed schema, impossible digest, changed artifact bytes, typed-content mismatch | hard corruption reject |
-| P1 source/canonical/neutral identity change | invalidate target-size descendants; start/rebuild fresh current generation |
-| inherited protected/split-exclusion relation change | invalidate P2/P3/terminal target-size state; fresh generation |
-| P2 target-size policy, hard-support obligation, target/eval powers, fidelity, metric, practical-equivalence policy | fresh generation |
+| malformed schema/digest, changed artifact bytes, typed-content mismatch | hard corruption reject |
+| P1 source/canonical/neutral identity change | invalidate descendants; fresh current generation |
+| protected/split-exclusion relation change | invalidate P2/P3/terminal target-size state; fresh generation |
+| P2 target-size policy, hard support, target/eval powers, fidelity, metric, practical-equivalence policy | fresh generation |
 | `U_size`, `P_train/M3`, `pi_train`, `pi_eval`, qualified candidate set/order change | fresh generation |
 | ordered optimizer seed set change | fresh generation |
-| common preparation/training recipe/optimizer policy/evaluation-model-state policy change | fresh generation |
+| common preparation/training recipe/optimizer/evaluation-state policy change | fresh generation |
 | materialization/export/source/checkpoint/evaluation identity change | reject stale evidence and rebuild under fresh valid generation as scientifically appropriate |
-| P3 screen/window/plan/boundary identity change | stale current state; fresh generation unless exact current owner proves same experiment |
+| P3 screen/window/plan/boundary identity change | stale current state; fresh generation unless exact owner proves same experiment |
 | execution owner/generation mismatch | typed stale/conflict or corruption; never transfer old owner |
-| required live/EMA/raw-checkpoint state missing or incompatible | fail through P3 checkpoint owner; no state downgrade |
-| current schema/regime version mismatch | reject/quarantine; explicit destructive-generation transition |
+| required live/EMA/raw checkpoint state missing/incompatible | fail through P3 checkpoint owner; no downgrade |
+| current schema/regime mismatch | reject/quarantine; explicit destructive transition |
 | retired target-size schema/record | reject/quarantine; never reinterpret |
-| CV-only fold count/seed/settings change | target-size identity/result preserved; invalidate CV descendants only |
-| production-only final horizon/adaptive settings change | target-size identity/result preserved; invalidate production descendants only |
+| CV-only fold count/seed/settings change | preserve target-size identity/result; invalidate CV descendants only |
+| production-only horizon/adaptive settings change | preserve target-size identity/result; invalidate production descendants only |
 
-A mismatch may not preserve a terminal selected `N` unless current P1/P2/P3 owners independently re-derive the exact same current result under the same current scientific identity. Equality of the integer `N` alone is never equivalence proof.
+Equality of selected integer `N` alone never proves equivalence after invalidation.
 
 ---
 
-## 9. P3 checkpoint/restart semantics P4 must preserve exactly
+## 9. P3 checkpoint/restart semantics P4 preserves exactly
 
-P4 may persist references to P3 checkpoint evidence but may not reinterpret it.
+P4 may persist references to P3 checkpoint evidence but cannot reinterpret it.
 
 For TRAIN2 boundaries:
 
-- raw MACE checkpoint bytes remain authenticated by their bound digest;
-- when EMA is enabled, raw checkpoint model parameters represent the accepted MACE checkpoint-save EMA-shadow state;
+- raw MACE checkpoint bytes remain authenticated by bound digest;
+- with EMA enabled, raw checkpoint model parameters represent accepted MACE checkpoint-save EMA-shadow state;
 - companion `live_parameters` represent authenticated continuation/live optimization state;
-- authenticated EMA shadow remains the canonical evaluation state when the frozen optimizer policy requires EMA;
-- without EMA, raw checkpoint/live state follows the accepted non-EMA contract;
-- evaluation-state choice is derived from the canonical optimizer-policy owner, never editable persistence metadata;
+- authenticated EMA shadow is canonical evaluation state when frozen optimizer policy requires EMA;
+- without EMA, raw checkpoint/live state follows accepted non-EMA contract;
+- evaluation-state choice derives from canonical optimizer-policy owner, never editable persistence metadata;
 - numerical checkpoint validity does not grant execution ownership;
-- restart must preserve exact raw/live/EMA distinctions through the real P3 owner;
-- missing/malformed/noncanonical state fails closed and may not silently fall back to another representation.
+- restart preserves exact raw/live/EMA distinctions through real P3 owner;
+- missing/malformed/noncanonical state fails closed without representation fallback.
 
-All P3A5/P3A6/P3A7 real-owner acceptance remains regression authority for P4.
+P3A5/P3A6/P3A7 and later cumulative P3 restart acceptance remain regression authority.
 
 ---
 
-## 10. STOR1-STOR5 lifecycle integration for promoted P3 evidence
+## 10. STOR1-STOR5 lifecycle integration and retention fence
 
-P3 was previously isolated scaffolding; after P4 its evidence becomes production campaign state. The existing storage subsystem must therefore understand and protect its lifetimes.
+P3 evidence becomes production campaign state after P4. Existing storage accounting/reclamation/archive machinery must understand and protect its lifecycle.
 
 ### 10.1 Reuse existing storage owners
 
-Integrate through existing `storage_accounting.py`, `storage_reclamation.py`, `storage_archive.py`, and their real CLI/ownership helpers. Do not create a target-size-specific deletion queue or bypass STOR containment/ownership checks.
+Integrate through existing `storage_accounting.py`, `storage_reclamation.py`, `storage_archive.py`, and real CLI/ownership helpers. Do not create a target-size-specific deleter/queue or bypass STOR containment/ownership checks.
 
 ### 10.2 Artifact families to classify/account
 
-At minimum account the promoted P3 families actually present in the implementation:
+At minimum account the promoted P3 families actually present:
 
 - screen/window identity;
 - immutable boundary batches and execution heads;
@@ -450,36 +462,62 @@ At minimum account the promoted P3 families actually present in the implementati
 - cell completions;
 - candidate trajectories/materializations;
 - planned rungs and continuation requests;
-- boundary snapshots and their raw checkpoint/companion/runtime-summary bytes;
+- boundary snapshots plus raw checkpoint/companion/runtime-summary bytes;
 - EVAL2 roles and exact-M evaluation artifacts;
 - predictions and metric records;
 - raw TRAIN2/EVAL2 failure records and failure checkpoint bytes;
 - current-generation attempt-local/staging files under campaign ownership.
 
-### 10.3 Required retention classes
+### 10.3 Active/restartable execution-root retention fence
 
-Storage planning must distinguish at least:
+While a target-size campaign generation is `transitioning`, active, operationally interrupted/restartable, or awaiting authenticated adoption of newly published P3 state, the campaign-owned **P3 execution root** is a STOR protected root.
 
-- **current/restart-required**: protected from deletion;
-- **current terminal provenance**: retained unless an existing later STOR tier explicitly proves preserved capability;
-- **active attempt**: protected;
-- **crash-left but still adoptable/reconcilable current-generation evidence**: protected until reconciliation classifies it;
-- **historical retained immutable evidence**: retained/auditable under existing policy;
-- **provably unreachable campaign-owned temporary/orphan evidence**: reclamation eligible only through existing STOR ownership + reachability + capability checks;
-- **external or ownership-ambiguous path**: never deletion-authorized merely because a P3 record references it.
+Protection cannot depend solely on the P3 head already adopted by SQLite. Before SQLite adoption, the following remain protected when they belong to the current generation/attempt and have not yet been rejected by reconciliation:
 
-Do not solve disk growth by deleting unknown heads/batches/checkpoints during restart. Reconciliation first establishes reachability/authority; reclamation runs afterward through STOR.
+- the authenticated current P3 ancestry;
+- immutable batches/heads/completions and their required evidence that can still be part of a unique valid successor chain;
+- complete boundary batches that P3 can still reconcile into a head;
+- checkpoint/materialization/evaluation/failure ancestry required to validate such heads/batches;
+- attempt-local publication/staging material that the existing P3 owner still classifies as resumable/recoverable rather than disposable.
 
-### 10.4 Storage acceptance
+This set is the **reconciliation frontier**. It is protected until the real P3 reconciler plus current campaign generation/attempt classification decides whether each item is adopted/reachable, retained historical evidence, corrupt/conflicting, or provably unreachable campaign-owned residue.
+
+Consequences:
+
+- absence of an SQLite reference is **not** by itself proof that a current-generation P3 artifact is orphaned;
+- safe cleanup must not race ahead of reconciliation and delete a valid successor merely because the adoption CAS has not yet committed;
+- reconciliation runs before reclamation classification for ambiguous current-generation P3 evidence;
+- after classification and authenticated campaign adoption/reload, existing STOR ownership + reachability + capability rules decide retention/reclamation;
+- external, symlink-escaped, or ownership-ambiguous paths never gain deletion authority from a P3 reference.
+
+Use the smallest integration with existing STOR reachability/protection mechanisms. Do not make the whole target-size workspace permanently non-reclaimable; protection is tied to current/restartable generation state and unresolved reconciliation capability.
+
+### 10.4 Retention classes
+
+Storage planning distinguishes at least:
+
+- current/restart-required — protected;
+- current terminal provenance — retained unless an existing later STOR tier proves preserved capability;
+- active attempt — protected;
+- unresolved reconciliation-frontier evidence — protected;
+- historical retained immutable evidence — auditable under existing policy;
+- provably unreachable campaign-owned temporary/orphan evidence — reclamation eligible only through existing STOR ownership/reachability/capability checks;
+- external/ownership-ambiguous path — never deletion-authorized merely because referenced.
+
+### 10.5 Storage acceptance, including concurrent race
 
 Prove through real storage owners that:
 
-- `storage report` includes the promoted target-size artifact families/bytes;
-- safe cleanup during an interrupted screen preserves everything required for fresh-process reconciliation and candidate continuation;
-- safe cleanup after a crash does not delete an unreferenced-but-adoptable immutable head/batch before reconciliation;
-- external references, symlink escapes, and ownership-ambiguous files remain protected;
-- after a safe cleanup, fresh-process P3 reconciliation and campaign restart still succeed with identical scientific state;
-- no new target-size retention logic weakens STOR1-STOR5 guarantees.
+- `storage report` includes promoted target-size artifact families/bytes;
+- safe cleanup during interrupted screen preserves fresh-process reconciliation and candidate continuation;
+- safe cleanup after crash preserves an unreferenced-but-adoptable immutable head/batch before reconciliation;
+- **cleanup racing the P3 publication -> reconciliation -> SQLite adoption window cannot unlink any head, batch, completion, checkpoint/materialization/evaluation/failure ancestry, or other evidence the current generation can still legitimately adopt**;
+- once reconciliation classifies evidence as provably unreachable and campaign state is reloaded/authenticated, existing STOR safe cleanup can reclaim eligible campaign-owned residue;
+- external references, symlink escapes, and ambiguous ownership remain protected;
+- fresh-process replay after safe cleanup yields identical scientific state;
+- no target-size retention logic weakens STOR1-STOR5 guarantees.
+
+The race acceptance must exercise real STOR destructive authorization and real P3/campaign state; a test-local "do not delete" flag that production cleanup does not consume is insufficient.
 
 ---
 
@@ -487,44 +525,44 @@ Prove through real storage owners that:
 
 ### 11.1 `prepare`
 
-After cutover, the real `prepare` path may construct/load the P1 neutral substrate and deterministic prerequisites/common preparation that are scientifically independent of candidate `N`, but it must not:
+After cutover, real `prepare` may construct/load P1 neutral substrate and deterministic prerequisites/common preparation independent of candidate `N`, but it must not:
 
 - select `N`;
-- execute the P2 paired-screen reducer;
+- execute P2 paired-screen reducer;
 - train target-size candidates;
 - perform target-size EVAL2 ranking;
 - construct pre-target CV plans;
 - create compatibility-domain/per-domain target-size authority merely for legacy code.
 
-Any prerequisite persisted by `prepare` must be version-agnostic and authenticated to current P1/current campaign regime.
+Any prerequisite persisted by `prepare` is version-agnostic and authenticated to current P1/current campaign regime.
 
 ### 11.2 `select-target-size`
 
-The real `select-target-size` path must:
+Real `select-target-size` must:
 
 1. load/revalidate current P1 authority from campaign state;
-2. construct/load the exact P2 experiment through `target_size_experiment` owners;
+2. construct/load exact P2 experiment through `target_size_experiment` owners;
 3. construct/load P3 common preparation/execution context/screen window;
-4. reconcile any existing P3 root before scheduling new work;
-5. derive the active P2 matrix from the authenticated reducer state;
-6. execute only the required surviving `(N, optimizer_seed)` cells through P3 candidate/TRAIN2/EVAL2 owners;
-7. publish outcomes through P3 completion/batch/head owners;
-8. reconcile the resulting P3 head;
-9. CAS-adopt the exact P3 head/reducer identity into campaign state;
-10. repeat only while the P2 reducer is nonterminal;
-11. on terminal success, derive and atomically persist the terminal projection from section 5;
-12. on terminal scientific failure, persist the authenticated failure terminal state;
-13. return/report from the current campaign projection only after reload/revalidation.
+4. reconcile existing P3 root before new scheduling;
+5. derive active P2 matrix from authenticated reducer state;
+6. execute only required surviving `(N, optimizer_seed)` cells through P3 candidate/TRAIN2/EVAL2 owners;
+7. publish through P3 completion/batch/head owners;
+8. reconcile resulting P3 head;
+9. CAS-adopt exact P3 head/reducer identity into campaign state;
+10. repeat only while P2 reducer is nonterminal;
+11. on terminal success derive/atomically persist terminal projection from section 5;
+12. on terminal scientific failure persist authenticated terminal failure state;
+13. report only after current campaign projection reload/revalidation.
 
-P4 must not create a local ranking loop that bypasses the P2 reducer or a local restart loop that bypasses P3 reconciliation.
+No P4-local ranking or restart loop may bypass P2 reducer/P3 reconciliation.
 
 ### 11.3 Retired call-edge removal
 
-In the same coherent cutover, remove production call edges from `prepare`/`select-target-size` to retired target-size role/domain/selector authorities. `target_size_study.py` and older modules may remain physically present until P6 only if unreachable from current target-size production entrypoints and not imported as current authority.
+In the same coherent cutover, remove production call edges from `prepare`/`select-target-size` to retired role/domain/selector authorities. `target_size_study.py` and old modules may remain physically until P6 only if unreachable from current target-size production entrypoints and not imported as current authority.
 
-Preserve the guard that ordinary public `train`/`evaluate` commands cannot become a second target-size screening scheduler.
+Preserve the guard that public ordinary `train`/`evaluate` cannot become a second target-size screening scheduler.
 
-Forbidden implementation patterns:
+Forbidden:
 
 - runtime old/new feature flag;
 - try-current/fallback-retired;
@@ -532,192 +570,160 @@ Forbidden implementation patterns:
 - old-schema alias interpreted as current;
 - wrapper rebuilding retired label-domain maps internally;
 - P4-local selector/reducer/replay engine;
-- manual selected-N override path;
-- using file existence or a worker PID as current-state proof.
+- manual selected-N override;
+- file existence/PID as current-state proof.
 
 ---
 
-## 12. Material implementation passes and acceptance gates
+## 12. Material implementation passes and gates
 
-Execute these passes in order. Do not combine them into one opaque edit. After each behavior-changing pass, run the listed affected regression before proceeding. Continue through the sequence unless a genuine design/repository blocker is demonstrated.
+Execute in order after the P3A9 entry gate has closed. Each behavior-changing pass requires semantic/conformance closure plus focused and affected regression before dependent work.
 
-### Pass P4-0 — P3 head-pointer recovery prerequisite
+### Pass P4-A — CampaignStore state, canonical generation, CAS, transition identity
 
-Implement section 3 exactly in the existing P3 reconciler.
-
-**Primary owner:** `target_size_execution/coordinator.py` and its existing P3 tests.
-
-**Must not touch:** P2 reducer science, TRAIN2/EVAL2 policy, provider inference semantics.
-
-**Gate:** complete section 3.3 tests + affected P3 suite + formal P3 closure metadata.
-
-### Pass P4-A — CampaignStore current-state schema and CAS primitive
-
-1. Locate the real CampaignStore/SQLite owner.
+1. Locate real CampaignStore and existing generation owner.
 2. Add/reconcile version-agnostic target-size regime/current-state records.
-3. Add one transaction-level CAS operation checking regime + generation + attempt + predecessor revision.
-4. Add typed stale/conflict/corruption outcomes as appropriate to existing error conventions.
-5. Add terminal projection record fields/references but do not wire the public runtime yet.
+3. Consolidate to one canonical target-size generation authority; retire any parallel current authority in the eventual cutover design.
+4. Add one transaction-level CAS checking regime + generation + attempt + predecessor revision.
+5. Add deterministic logical-transition identity/idempotent retry verification.
+6. Add typed stale/conflict/corruption outcomes per existing conventions.
+7. Add terminal projection fields/references without public runtime wiring yet.
 
 **Gate:**
 
-- schema/serialization round-trip;
+- schema/serialization roundtrip;
 - real SQLite close/reopen;
-- transaction rollback leaves predecessor unchanged;
-- older generation rejection;
+- rollback leaves predecessor unchanged;
+- older-generation rejection;
 - same-generation stale-revision rejection;
-- same-predecessor divergent-writer race admits exactly one successor;
-- exact duplicate retry idempotency;
+- divergent same-predecessor race admits exactly one successor;
+- exact logical duplicate retry idempotent;
+- near-duplicate changed-reference retry conflicts;
+- structural proof there is one canonical target-size generation authority;
 - retired schema cannot deserialize/relabel as current;
 - no `v7_`/`V7` new production key/symbol.
 
-### Pass P4-B — Regime cutover/migration owner
+### Pass P4-B — Regime cutover owner
 
 1. Implement durable `legacy -> transitioning -> current` semantics in CampaignStore.
-2. Implement exact transition CAS/restart behavior.
-3. Inventory and quarantine/reject retired target-size derived state.
-4. Permit only validator-proven reusable low-level inputs/caches.
+2. Allocate/bind canonical generation through exact CAS transition.
+3. Inventory/quarantine/reject retired derived target-size state.
+4. Permit only validator-proven reusable lower-level inputs/caches.
 5. Add actionable fail-closed guidance for incompatible old workspaces.
-6. Keep public target-size orchestration on its coherent pre-switch state until P4-D; do not expose half-wired current runtime.
+6. Keep public target-size orchestration coherently pre-switch until P4-D; no half-wired runtime.
 
-**Gate:**
+**Gate:** fresh current campaign; legacy enters transition once; crash resumes exact transition; competing transition rejected; no row-wise mixed execution; old selected-N/selector records never become current P2/P3 authority.
 
-- fresh current-generation campaign;
-- legacy campaign enters transition once;
-- crash during transition resumes from exact persisted transition revision;
-- second process cannot start conflicting transition;
-- no row-by-row mixed old/current target-size execution;
-- old selected-N/selector records never become P2/P3 authority.
+### Pass P4-C — Cross-store adoption, retention fence, restart, concurrency
 
-### Pass P4-C — Cross-store adoption, restart, and concurrency
+1. Wire P3 reconciled head into CampaignStore CAS adoption.
+2. Implement section 6 recovery matrix and section 6.3 ordering.
+3. Implement the section 10.3 active/restartable execution-root retention fence before any safe cleanup can encounter promoted P3 evidence.
+4. Ensure SQLite adopts immutable head/reducer identities, not `current_head.json` as authority.
+5. Ensure stale/generation races return typed conflicts without P3-history mutation.
+6. Keep external result views non-authoritative.
 
-1. Wire P3 reconciliation result into CampaignStore CAS adoption.
-2. Implement the section 6 recovery matrix.
-3. Ensure SQLite adopts authenticated immutable head/reducer identities, not `current_head.json` as campaign authority.
-4. Ensure stale/generation races return typed conflicts without mutating P3 history.
-5. Keep optional external views non-authoritative.
-
-**Gate:** every section 6.2 crash case, with real SQLite and real P3 resolver/reconciler. In-memory stores or fake persistence cannot close this gate.
+**Gate:** every section 6.2 crash case with real SQLite and real P3 resolver/reconciler, plus concurrent cleanup race proving the retention fence. In-memory stores/fake persistence/fake STOR destructive authorization cannot close this gate.
 
 ### Pass P4-D — Atomic `prepare` / `select-target-size` production switch
 
-1. Rewrite the real orchestration edges according to section 11.
+1. Rewrite real orchestration edges per section 11.
 2. Use P1/P2/P3 owners directly.
 3. Remove reachable old target-size call edges in the same coherent switch.
-4. Preserve shared optimized execution/materialization/inference machinery where P3 already reuses it.
+4. Preserve shared optimized execution/materialization/inference machinery P3 already reuses.
 5. Preserve ordinary `train`/`evaluate` scheduler guards.
+6. Ensure the cutover leaves only the canonical generation/current-state authority reachable.
 
-**Gate:**
+**Gate:** bounded real parser + CampaignStore + `prepare` integration proving no N selection; bounded real parser + CampaignStore + `select-target-size` reaching P1/P2/P3; no old selector/domain/complement/CV authority in current call graph; one current generation authority; stage-local affected CLI regression.
 
-- bounded real parser + CampaignStore + `prepare` integration proving no N selection;
-- bounded real parser + CampaignStore + `select-target-size` integration reaching P1/P2/P3 owners;
-- no old selector/domain/complement/CV authority in the current call graph;
-- stage-local affected CLI regression.
+Expensive training/prediction may be replaced below the accepted owner boundary only after real config parsing, authority construction, provider/state validation, materialization validation, and orchestration ownership execute.
 
-Expensive training/prediction may be replaced below the accepted owner boundary only after real config parsing, authority construction, provider/state validation, materialization validation, and orchestration ownership have executed.
+### Pass P4-E — Terminal projection, semantic restart, invalidation
 
-### Pass P4-E — Terminal projection, semantic restart, and invalidation
+1. Implement terminal derivation/reload validation.
+2. Wire section 8 invalidation classes through real current loader/caller.
+3. Preserve raw/live/EMA restart semantics.
+4. Distinguish terminal scientific failure from operational interruption.
 
-1. Implement section 5 terminal derivation/reload validation.
-2. Wire every section 8 invalidation class through the real current loader/caller.
-3. Preserve P3 raw/live/EMA semantics on restart.
-4. Make terminal scientific failure distinct from operational interruption.
+**Gate:** terminal success rederivation; selected-N/T-selected/head tamper negatives; protected/hard-support change invalidation; seed/order/fidelity/metric/training-policy invalidation; EMA/live malformed restart rejection through real owner; CV-only/production-only changes target-size-neutral; fresh-process mid-screen continuation and terminal replay.
 
-**Gate:**
+### Pass P4-F — Full STOR integration, docs, structural closure
 
-- terminal success exact rederivation;
-- selected-N-only/T-selected-only/head-only tamper negatives;
-- protected-relation/hard-support change invalidation;
-- seed/order/fidelity/metric/training-policy invalidation;
-- EMA/live malformed restart rejection through real owner;
-- CV-only and production-only changes do not invalidate target-size state;
-- fresh-process mid-screen continuation and terminal replay.
-
-### Pass P4-F — STOR integration, public documentation, and structural closure
-
-1. Integrate P3 artifact families into STOR accounting/reachability/retention.
-2. Run storage acceptance from section 10.4.
-3. Update public CLI/help/documentation surfaces that describe the changed lifecycle, at minimum the actually affected parts of:
+1. Complete P3 artifact-family accounting/reachability/retention in existing STOR owners.
+2. Run section 10.5 storage acceptance including concurrent cleanup/adoption race.
+3. Update affected public CLI/help/docs, at minimum the actually affected parts of:
    - `docs/guides/mlff_campaign_cli_user_guide.md`;
-   - parser/help text owned by `_campaign_cli_core.py`/current CLI parser;
-   - `campaign.toml.example` if exposed configuration semantics changed;
-   - current architecture/source-map documentation when needed to keep public/current documentation truthful.
-4. Make documentation state clearly that `prepare` no longer performs target-size selection/training and that `select-target-size` owns the current P2/P3 screen.
-5. Run structural searches/import checks proving retired target-size owners are unreachable.
+   - parser/help text owned by current campaign CLI;
+   - `campaign.toml.example` if exposed config semantics changed;
+   - current architecture/source-map docs where needed for truthfulness.
+4. State clearly that `prepare` no longer performs target-size selection/training and `select-target-size` owns current P2/P3 screening.
+5. Run structural searches/import checks proving retired target-size owners unreachable and only one mutable current authority/generation remains.
 
-**Gate:**
-
-- storage report/safe-cleanup tests;
-- docs/help tests/lint where available;
-- no current docs claim the retired prepare/select lifecycle;
-- no new version-prefixed product names;
-- `target_size_study.py` and retired runtime modules are not reachable from current target-size CLI authority.
+**Gate:** storage report/safe-cleanup/race tests; docs/help tests/lint where available; no current docs claim retired lifecycle; no version-prefixed product names; old selector/runtime modules unreachable from current CLI authority.
 
 ### Pass P4-G — Assembled affected-surface closure
 
-Re-derive the affected surface from the complete P4 diff rather than reusing the planned file list blindly.
+Re-derive affected surface from complete P4 diff. Run:
 
-Run:
-
-- all P4-0 P3 recovery regressions;
-- complete affected P1/P2/P3 regression where the integration diff can affect their callers;
+- all accepted P3A9 recovery regressions if P4 changes can plausibly affect their callers/roots;
+- complete affected P1/P2/P3 regression where integration diff affects callers;
 - complete affected campaign persistence/CLI regression;
 - restart/invalidation matrix;
-- concurrency/CAS matrix;
-- STOR regression for touched ownership/reclamation paths;
+- concurrency/CAS/transition-identity matrix;
+- STOR regression for touched ownership/reclamation paths, including concurrent publication/adoption cleanup race;
 - structural absence/uniqueness checks;
 - bounded real-owner `prepare -> select-target-size -> terminal projection reload` integration;
-- broader repository suite if affected-surface inspection cannot independently prove a smaller suite sufficient.
+- broader repository suite if affected-surface inspection cannot independently bound a smaller set.
 
-Do not run long GPU/real-production qualification as a P4 exit requirement.
+Do not run long GPU/real-production qualification as P4 exit requirement.
 
 ---
 
-## 13. Mandatory real-owner acceptance matrix
+## 13. Mandatory real-owner acceptance
 
-P4 is not accepted by unit-testing record constructors alone. The following scenarios must pass through the production owners named here.
+P4 is not accepted by record-constructor unit tests alone.
 
 ### Persistence/concurrency
 
 - real CampaignStore/SQLite reopen preserves current state;
 - transaction rollback cannot expose partial state;
+- exactly one canonical target-size generation owner is reachable;
 - generation `g` writer loses after `g+1` takeover;
-- two writers in same generation from the same predecessor revision: one divergent successor only;
-- exact same logical retry verifies/returns identical stored state;
-- cutover transition is restartable by a new process without PID ownership.
+- two same-generation writers from same predecessor admit one divergent successor;
+- exact logical retry verifies/returns identical state;
+- near-duplicate is conflict;
+- cutover restart does not depend on PID;
+- no SQLite write transaction nests P3 reconciliation or STOR destructive work.
 
-### P3 crash/replay
+### P3 crash/replay/adoption
 
-- missing pointer;
-- stale pointer with unique successor head;
-- stale pointer with multi-head linear successor chain;
-- forked successor heads reject;
-- unreferenced complete batch adopts only after full replay;
+- accepted P3A9 unique-successor recovery remains valid;
+- missing pointer, stale pointer, linear successors, fork rejection, and complete-batch recovery remain through real P3 owner;
 - success/TRAIN2-failure/EVAL2-failure fresh-process replay;
-- P3A7 canonical restart-owner rejection still passes;
-- current campaign adopts only the reconciled immutable head digest.
+- campaign adopts only reconciled immutable head digest;
+- SQLite-behind-P3 crash state adopts without rerunning completed science.
 
 ### Scientific identity/invalidation
 
-- P1 source/canonical identity mismatch;
+- P1 source/canonical mismatch;
 - protected relation mismatch;
 - P2 hard-support mismatch;
 - split/order/candidate-set mismatch;
-- optimizer seed mismatch/reorder;
+- optimizer-seed mismatch/reorder;
 - fidelity/evaluation-power mismatch;
 - common preparation/training policy mismatch;
-- evaluation-model-state/EMA mismatch;
-- checkpoint/artifact byte corruption;
+- evaluation-state/EMA mismatch;
+- checkpoint/artifact corruption;
 - schema/regime mismatch;
-- CV-only and production-only changes remain target-size-neutral.
+- CV-only/production-only changes remain target-size-neutral.
 
 ### Terminal projection
 
 - terminal reducer -> exactly one selected `N` + exact `T_selected` projection;
-- persisted selected-N mismatch rejects;
-- persisted T-selected mismatch rejects;
+- selected-N mismatch rejects;
+- T-selected mismatch rejects;
 - adopted head/reducer mismatch rejects;
-- configured-ceiling nonconvergence remains a terminal scientific result;
+- configured-ceiling nonconvergence remains terminal scientific result;
 - operational interruption remains resumable.
 
 ### Runtime cutover
@@ -725,165 +731,194 @@ P4 is not accepted by unit-testing record constructors alone. The following scen
 - real `prepare` reaches current P1 path but cannot select `N`;
 - real `select-target-size` reaches P2/P3 and no retired selector;
 - no pre-target CV dependency;
-- no complement/coarse EVAL2 target-size role;
-- public ordinary `train`/`evaluate` cannot schedule the target-size screen;
+- no complement/coarse target-size EVAL2 role;
+- ordinary `train`/`evaluate` cannot schedule screen;
 - old current-runtime records fail closed with reset/reprepare guidance.
 
 ### Storage
 
 - P3 bytes appear in storage accounting;
-- active/restart-required evidence is protected;
-- adoptable crash-left evidence survives safe cleanup until reconciliation;
+- active/restart-required execution root is protected independent of adopted SQLite head;
+- reconciliation-frontier evidence survives safe cleanup;
+- cleanup racing publication/reconciliation/adoption cannot delete legitimately adoptable evidence;
+- provably unreachable owned residue becomes reclaimable after classification;
 - external/symlink/ambiguous ownership cannot acquire deletion authority;
 - fresh-process replay after safe cleanup is identical.
 
-Mocks/fakes may replace expensive numerical work only **below** the real semantic owner boundary. They may not replace CampaignStore, P3 resolver/reconciler, P1/P2 authority construction, state/provider authentication, or the CLI parser when the acceptance claim concerns those owners.
+Mocks/fakes may replace expensive numerical work only **below** the real semantic-owner boundary. They may not replace CampaignStore, P3 resolver/reconciler, P1/P2 authority construction, state/provider authentication, STOR destructive authorization when storage safety is claimed, or the CLI parser when those owners are under acceptance.
 
 ---
 
-## 14. Failure taxonomy and required operational behavior
+## 14. Failure taxonomy
 
-Use existing project exception/result conventions where possible, but preserve these semantic classes:
+Preserve these semantic classes:
 
-1. **Corruption/tampering** — bad digest/schema/bytes/typed graph. Hard reject; do not auto-recompute over evidence while claiming continuation.
-2. **Scientific incompatibility/invalidation** — valid prior state belongs to different current scientific identity. Quarantine/retire current authority and start a justified fresh generation.
-3. **Stale writer/revision conflict** — valid writer lost generation or predecessor CAS. Abort that mutation with typed conflict; do not rewrite history.
+1. **Corruption/tampering** — bad digest/schema/bytes/typed graph. Hard reject; no auto-recompute while claiming continuation.
+2. **Scientific incompatibility/invalidation** — valid prior state belongs to different scientific identity. Quarantine/retire authority and start justified fresh generation.
+3. **Stale writer/revision conflict** — writer lost generation/predecessor CAS. Abort mutation; do not rewrite history.
 4. **Operational interruption** — incomplete current work without terminal scientific outcome. Resume through P3/current CampaignStore state.
-5. **Terminal scientific failure/nonconvergence** — authenticated terminal reducer/scientific outcome. Persist terminal state; do not loop as interruption.
-6. **Incomplete cutover** — regime is `transitioning`. Resume exact cutover or fail with actionable transition guidance; do not run mixed runtime.
-7. **Legacy incompatible workspace** — old derived target-size authority. Reject with destructive reset/reprepare guidance; do not migrate/reinterpret.
+5. **Terminal scientific failure/nonconvergence** — authenticated terminal reducer/scientific outcome. Persist terminal; do not loop as interruption.
+6. **Incomplete cutover** — regime is transitioning. Resume exact cutover or fail with actionable guidance; no mixed runtime.
+7. **Legacy incompatible workspace** — old derived target-size authority. Reject with destructive reset/reprepare guidance; no migration/reinterpretation.
 
-Do not collapse these classes into a generic "missing cache, recompute everything" path.
+Do not collapse these into generic "missing cache, recompute everything" behavior.
 
 ---
 
 ## 15. Performance and implementation-economy constraints
 
-P4 is an integration/cutover package, not permission to replace proven optimized machinery.
+P4 is integration/cutover, not permission to replace proven optimized machinery.
 
-- Reuse existing optimized DATA8/TRAIN2/EVAL2/provider/inference/materialization paths already consumed by P3.
-- Reuse P3 create-or-verify publication and resolver validation.
-- Reuse CampaignStore transactions rather than adding a second database.
-- Reuse STOR ownership/accounting/reclamation rather than adding target-size-specific cleanup.
-- Avoid rehashing/copying large immutable artifacts merely to duplicate them into SQLite.
-- Store references/digests and revalidate through owners.
-- Do not introduce per-domain loops or pre-target CV work retired by the parent.
-- Crash recovery should reuse durable completed evidence rather than rerun expensive training/evaluation.
-- No P4 performance optimization may weaken provenance, restart exactness, CAS fencing, or scientific validation.
+- reuse optimized DATA8/TRAIN2/EVAL2/provider/inference/materialization paths already consumed by P3;
+- reuse P3 create-or-verify publication and resolver validation;
+- reuse CampaignStore rather than adding another DB;
+- reuse STOR ownership/accounting/reclamation rather than target-size-specific cleanup;
+- avoid rehashing/copying large immutable artifacts into SQLite;
+- store references/digests and revalidate through owners;
+- do not introduce per-domain loops or pre-target CV work retired by parent;
+- recovery reuses durable completed evidence rather than rerunning expensive training/evaluation;
+- keep SQLite CAS transactions short and free of slow P3/STOR I/O;
+- retention fence must not permanently pin proven unreachable historical residue;
+- no performance optimization weakens provenance, restart exactness, CAS fencing, storage safety, or scientific validation.
 
-Bounded resource/performance checks are appropriate for accidentally repeated hashing/copying or obvious serialization regressions. Long machine-specific production benchmarking remains final-release work.
+Bounded checks for repeated hashing/copying, serialization, lock contention, and cleanup/recovery regressions are appropriate. Long machine-specific production benchmarking remains final-release work.
 
 ---
 
 ## 16. Structural closure checks
 
-At P4 exit, automated AST/import/search inspection plus real call-path tests must establish:
+At P4 exit, AST/import/search inspection plus real call-path tests establish:
 
 - production `prepare` and `select-target-size` depend on accepted P1/P2/P3 owners;
-- no second target-size split/reducer/trainer/evaluator/restart implementation exists in P4;
-- `target_size_study.py` is unreachable from current target-size production entrypoints;
-- old FEAS/MVIDX/MVSEL/REPAIR/MVSTATE/MVQUAL/domain/complement/CV-coupled target-size call edges are absent from current orchestration;
-- current target-size state contains no compatibility-domain map or pre-target CV plan authority;
-- SQLite is the only mutable campaign-current/terminal-result authority;
-- P3 `current_head.json` is not read as sufficient campaign completion/selection authority;
-- no new `v7_`/`V7` product code/symbol/schema/record key was introduced;
-- no old-runtime state loader can authorize a current selected target size;
-- storage cleanup cannot unlink required P3 current/restart evidence.
+- no second target-size split/reducer/trainer/evaluator/restart implementation in P4;
+- `target_size_study.py` unreachable from current target-size production entrypoints;
+- retired FEAS/MVIDX/MVSEL/REPAIR/MVSTATE/MVQUAL/domain/complement/CV-coupled call edges absent from current orchestration;
+- current target-size state has no compatibility-domain map/pre-target CV plan authority;
+- exactly one canonical mutable target-size generation/current-state authority exists in CampaignStore;
+- P3 `current_head.json` is not sufficient campaign completion/selection authority;
+- no new `v7_`/`V7` product code/symbol/schema/record key;
+- no old-runtime loader can authorize current selected target size;
+- safe cleanup cannot unlink active/restart-required/reconciliation-frontier P3 evidence;
+- no reverse nested lock/transaction path violates section 6.3.
 
-Physical removal of all retired files remains P6 unless a specific mutable state record must be removed in P4 to prevent ambiguous current authority.
+Physical removal of all retired files remains P6 unless a mutable state record must be removed in P4 to prevent ambiguous current authority.
 
 ---
 
 ## 17. P4 exit criteria
 
-P4 is complete only when all of the following are true:
+P4 is complete only when:
 
-1. P4-0 repaired the demonstrated P3 stale-pointer/immutable-successor crash window through the existing P3 reconciler.
-2. Cumulative P3 exit is formally recorded before P4 current-runtime cutover acceptance.
-3. The real campaign store has one current target-size state authority with regime, generation/attempt, and predecessor-state CAS fencing.
-4. Same-generation divergent writers cannot both commit.
-5. P3 immutable evidence remains the sole scientific execution/replay authority; `current_head.json` is only a rebuildable local pointer.
-6. Cross-store recovery adopts validated complete evidence and rejects forks/corruption without fabricating a physical cross-store transaction.
-7. `N_selected` and exact `T_selected` are re-derived authenticated projections of terminal P2/P3 state, not independent decision fields.
-8. Terminal scientific failure is distinct from operational interruption.
-9. Legacy target-size derived state is rejected/quarantined without reinterpretation; no mixed old/current runtime exists.
-10. Current `prepare` does not select `N`; current `select-target-size` uses P2/P3 and is the sole screening entrypoint.
-11. Retired selector/domain/complement/pre-target-CV target-size call edges are unreachable from current runtime.
-12. P3 raw/live/EMA checkpoint semantics and historical owner proof remain intact.
-13. Promoted P3 evidence participates in existing STOR accounting/retention/reclamation with restart-required evidence protected.
-14. Public CLI help/user documentation describes the actual new lifecycle.
-15. New production naming remains version-agnostic.
-16. Complete affected regression, integration, crash, concurrency, invalidation, storage, and structural acceptance passes.
-17. No long GPU/real-production qualification was required for P4 closure.
+1. cumulative P3 revision 7 through P3A9 was accepted and formally recorded **before P4 execution began**;
+2. real CampaignStore has one current target-size state authority and one canonical generation with subordinate attempts + predecessor CAS fencing;
+3. deterministic logical-transition identity makes exact duplicate retry safe and divergent same-predecessor transitions exclusive;
+4. P3 immutable evidence remains sole scientific execution/replay authority; `current_head.json` remains rebuildable local pointer;
+5. cross-store recovery adopts validated complete evidence and rejects forks/corruption without fake physical transaction;
+6. cross-subsystem lock ordering is acyclic and SQLite mutation remains bounded;
+7. `N_selected` and exact `T_selected` are re-derived terminal projections, not independent decisions;
+8. terminal scientific failure differs from operational interruption;
+9. legacy derived state is rejected/quarantined without reinterpretation; no mixed runtime;
+10. current `prepare` does not select `N`; current `select-target-size` uses P2/P3 as sole screening entrypoint;
+11. retired selector/domain/complement/pre-target-CV call edges are unreachable;
+12. raw/live/EMA semantics and historical owner proof remain intact;
+13. promoted P3 evidence participates in STOR accounting/retention/reclamation;
+14. active/restartable execution-root + reconciliation-frontier retention prevents cleanup/adoption races without unbounded permanent retention;
+15. public CLI help/docs describe actual lifecycle;
+16. production naming remains version-agnostic;
+17. complete affected regression, integration, crash, concurrency, invalidation, storage, race, and structural acceptance passes;
+18. no long GPU/real-production qualification was required for P4 closure.
 
-Only after these conditions pass may P5 treat selected target-size state as frozen current authority.
+Only then may P5 treat selected target-size state as frozen current authority.
 
 ---
 
 ## 18. Implementer execution discipline
 
-The implementer must use the following working discipline for this package:
+1. Verify P4 metadata is active and binds the accepted cumulative P3-through-P3A9 closure commit. If not, do not start P4 executable work.
+2. Perform section 2.2 reconnaissance before editing.
+3. Verify section 3 inherited P3 entry assertions; if false, route to P3 repair rather than work around them.
+4. Implement P4-A through P4-G in order; close each material pass semantically and functionally before dependent work.
+5. When a gate fails, repair the smallest owning layer; do not bypass with compatibility shim, second authority, or test-only alternate path.
+6. Preserve P1-P3 semantics unless a section 19 redesign trigger is genuinely demonstrated.
+7. Prefer existing owners over new modules when ownership fits.
+8. New persistence/storage helpers must be exercised by production callers before their tests count as acceptance.
+9. Keep expensive numerical fakes below real-owner boundary in section 13.
+10. Re-derive final affected surface from actual assembled diff.
+11. Report separately: stage-local gates; final affected regression/integration; deferred long GPU/real-production qualification.
 
-1. Start from the accepted branch state and verify `entry_p3_commit` is an ancestor.
-2. Perform the mandatory implementation reconnaissance from section 2.2 before editing.
-3. Implement P4-0 first and stop P4 cutover work if its real P3 acceptance cannot be closed without reopening frozen science.
-4. Commit/checkpoint accepted P4-0 before P4-A.
-5. Implement P4-A through P4-G in order; after every material pass run its gate before proceeding.
-6. When a gate fails, diagnose the violated owner/invariant. Repair the smallest owning layer; do not bypass the test with a compatibility shim or test-only alternate path.
-7. Preserve accepted P1-P3 semantics unless a real implementation contradiction meeting section 19 reopen criteria is demonstrated.
-8. Prefer modifying existing owners over adding new modules when an existing owner naturally owns the behavior.
-9. New persistence helpers must be exercised by production callers before their tests count as acceptance.
-10. Keep all expensive numerical fakes below the real owner boundary defined in section 13.
-11. Re-derive the final affected test surface from the actual diff before closure.
-12. Report separately at completion:
-    - P4-0 P3 prerequisite repair evidence;
-    - stage-local gate results;
-    - final affected regression/integration results;
-    - deferred long GPU/real-production qualification.
-
-Do not stop merely because old tests encode retired architecture. Update/remove those expectations only when the frozen parent proves they are obsolete. Stop/reopen only for a genuine material blocker.
+Old tests that encode retired architecture may be updated/removed only where frozen parent proves expectation obsolete. Stop/reopen only for a genuine material blocker.
 
 ---
 
-## 19. Frozen decisions, delegated details, and reopen conditions
+## 19. Implementation authority
 
-### Frozen by this package/parent
+### Frozen
 
-- P1/P2/P3 scientific semantics and ownership boundaries;
-- one current campaign mutable authority;
+- frozen parent and all accepted P1/P2/P3 scientific semantics/ownership;
+- P3A9 belongs to P3 closure and must be accepted before P4 starts;
+- one current CampaignStore mutable authority and one canonical target-size generation;
+- attempts subordinate to canonical generation;
 - P3 immutable scientific evidence/replay authority;
-- P3 `current_head.json` is non-authoritative outside P3 recovery/localization;
-- generation **and predecessor-revision** transactional CAS;
-- selected-N/T-selected derivation from terminal authenticated state;
+- `current_head.json` non-authoritative outside P3 recovery/localization;
+- generation + predecessor-revision transactional CAS;
+- deterministic logical-transition identity for duplicate retry;
+- terminal N/T derivation from authenticated state;
 - one destructive-generation cutover with no mixed runtime;
 - no retired-state reinterpretation;
-- storage lifecycle protection for current/restart evidence;
+- P3 -> CampaignStore -> STOR mutation ordering from section 6.3;
+- active/restartable execution-root and reconciliation-frontier storage protection;
 - version-agnostic production naming;
 - long GPU qualification deferred.
 
-### Delegated implementation details
+### Delegated
 
 The implementer may choose, consistent with repository conventions:
 
-- exact SQLite table/column names;
-- exact semantic schema names and integer/string representation;
-- whether campaign state revision is a monotonic integer, authenticated digest, or equivalent store-owned CAS token;
+- exact SQLite table/column/schema names;
+- monotonic integer vs authenticated digest vs equivalent CampaignStore-owned state revision;
+- explicit transition-intent digest vs equivalent deterministic successor identity;
 - exact transaction helper names;
 - exact regime enum spellings;
-- whether a human-readable terminal result view is stored only in SQLite or mirrored to a non-authoritative filesystem view;
-- exact test filenames when extending an existing better-owned test module;
-- small adapter refactors at CLI/store boundaries required to consume P1/P2/P3 owners.
+- exact representation by which the existing generation authority is evolved/replaced during cutover, provided only one canonical authority remains;
+- exact STOR protected-root/reachability representation, provided production cleanup consumes it and section 10 semantics hold;
+- whether human-readable terminal result view is SQLite-only or mirrored non-authoritatively;
+- exact test filenames;
+- small CLI/store adapter refactors needed to consume P1/P2/P3 owners.
 
-Delegation does not permit weakening any invariant or acceptance case above.
+Delegation cannot weaken frozen invariants or acceptance.
 
 ### Reopen only on material evidence
 
-Reopen design only if implementation proves one of the following:
+Reopen only if implementation proves one of:
 
-- the real CampaignStore cannot provide transactional generation + predecessor-state CAS without a material persistence-architecture replacement;
-- the P3 immutable execution graph cannot be referenced/revalidated durably from campaign state without changing frozen P3 scientific semantics;
-- the P4-0 head-recovery defect cannot be repaired within existing P3 ancestry/replay semantics;
-- a frozen parent requirement is internally contradictory with the accepted P1-P3 implementation;
-- current STOR ownership semantics make it impossible to protect required P3 evidence without a material storage-architecture change.
+- real CampaignStore cannot provide transactional canonical-generation + predecessor-state CAS without material persistence replacement;
+- existing campaign generation ownership cannot be consolidated to one canonical authority without material cross-campaign redesign;
+- P3 immutable graph cannot be durably referenced/revalidated from campaign state without changing frozen P3 science;
+- accepted P3A9 closure is insufficient for the cross-store recovery states P4 must adopt;
+- existing lock ownership makes the frozen acyclic P3 -> CampaignStore -> STOR ordering impossible without material architecture change;
+- current STOR ownership/reachability model cannot protect unresolved current-generation P3 reconciliation-frontier evidence without material storage-architecture change;
+- a frozen parent requirement is internally contradictory with accepted P1-P3 implementation.
 
-Legacy tests, old workspace compatibility, convenience of reusing retired selected-N state, or desire to avoid updating public documentation are **not** reopen conditions.
+Legacy tests, old workspace compatibility, convenience of reusing retired selected-N state, desire for a second generation counter, or desire to avoid public documentation updates are not reopen conditions.
+
+---
+
+## 20. Handoff closure
+
+This revision preserves every material protected concern from the parent and P4 revision 3 while eliminating the circular predecessor gate and closing the final persistence/concurrency escape hatches:
+
+```text
+parent scientific reset + accepted P1/P2/P3 semantics
++ P3A9 crash-recovery closure before P4
++ one canonical campaign generation/current authority
++ predecessor CAS + deterministic transition identity
++ immutable-first P3 publication / bounded SQLite adoption
++ acyclic P3 -> CampaignStore -> STOR mutation ordering
++ pre-adoption execution-root/reconciliation-frontier retention
++ derived terminal N/T projection
++ destructive no-fallback runtime cutover
++ real-owner regression/integration/storage-race acceptance
+-> lossless P4 implementation contract
+```
+
+No known material requirement, protected concern, frozen decision, persistence/recovery consequence, storage-lifecycle consequence, or required acceptance boundary remains intentionally delegated to implementation interpretation.
