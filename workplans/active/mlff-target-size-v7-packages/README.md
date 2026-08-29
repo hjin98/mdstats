@@ -4,7 +4,7 @@ These files decompose `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_A
 
 A requirement omitted from a package is **not waived** if it is frozen by V7. A package may not reinterpret V7 to preserve legacy code/tests. Newly discovered necessary implementation consequences that preserve V7 are incorporated locally; reopen design only on a V7-listed reopen condition or equivalent material evidence.
 
-P3 revision 4 consists of the consolidated base contract in `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` **plus** the mandatory Review-2 amendment in `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md`. The Review-2 amendment supersedes weaker revision-3 D/E/F interpretations and the revision-3 execution-record claim that P3 was closed. P1/P2 and P3-A/B/C remain frozen except for the explicit durability references required by the amendment. P4 remains blocked until the revision-4 P3 exit gate passes.
+P3 revision 5 consists of the consolidated base contract in `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` **plus** the mandatory Review-2 amendment in `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md` **plus** the mandatory Review-3 closure amendment in `P3_REVIEW3_EXECUTION_OWNER_IMMUTABILITY_CLOSURE_FIX.md`. Review-2 remains authoritative; Review-3 is cumulative and adds exact closure instructions for the still-open D/E/F implementation gaps found at implementation commit `d7e1aead580d3cecad6eec16219bda00317b1dfc`. P1/P2 and P3-A/B/C remain frozen except for the explicit validation/persistence consequences required by the amendments. P4 remains blocked until the cumulative revision-5 P3 exit gate passes.
 
 ## Mandatory sequence
 
@@ -14,6 +14,7 @@ P1 neutral scientific substrate
   -> P3 candidate execution and paired-seed screen
        base revision-3 contract
        + mandatory revision-4 Review-2 authenticated-evaluation/restart amendment
+       + mandatory revision-5 Review-3 execution-owner/immutability closure amendment
   -> P4 atomic runtime/persistence cutover
   -> P5 post-selection CV and final production
   -> P6 destructive cleanup and assembled closure
@@ -38,6 +39,7 @@ Do not start dependent executable work until the previous package has both **sem
 2. `P2_TARGET_SIZE_STATISTICAL_AUTHORITIES.md` — configurable N/M ladders, one split, one training order, one evaluation order, and pure target-size state.
 3. `P3_CANDIDATE_EXECUTION_PAIRED_SCREEN.md` — canonical common preparation, exact candidate realization/materialization, paired optimizer seeds, exact completed-epoch TRAIN2 continuation, exact-checkpoint M-ladder EVAL2, complete-boundary crash-safe reducer commit, and restart closure.
    - `P3_REVIEW2_AUTHENTICATED_EVAL_RESTART_FIX.md` — mandatory revision-4 corrective authority: exact ordered M_i input authentication, exact boundary live/EMA inference provenance, immutable historical TRAIN2 boundary snapshots, per-cell execution-proof records, completion-bound batches, and deterministic full-history restart replay.
+   - `P3_REVIEW3_EXECUTION_OWNER_IMMUTABILITY_CLOSURE_FIX.md` — mandatory revision-5 cumulative closure authority: real validator execution inside direct inference, shared static-MACE inference reuse, policy-faithful live/EMA state, self-authenticating predictions, re-derivation validators, create-or-verify immutable publication, explicit success/TRAIN2-failure/EVAL2-failure cell evidence, resolvable full restart graph, conflict-safe concurrency, and fresh-process assembled replay.
 4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — atomic current-runtime, state-schema, receipt, restart and invalidation transition.
 5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — exact-T_selected CV and fresh final-production path.
 6. `P6_DESTRUCTIVE_CLEANUP_FINAL_CLOSURE.md` — remove retired architecture and perform assembled final acceptance.
