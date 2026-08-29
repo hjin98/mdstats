@@ -759,27 +759,73 @@ def test_p4c_fence_never_grants_authority_outside_the_workspace(tmp_path: Path):
         store.close()
 
 
-def _cleanup_race_child(workspace_text: str, targets: list[str], queue) -> None:
-    """A separate process running real STOR destructive authorization."""
+def _cleanup_production_race_child(
+    workspace_text: str,
+    targets: list[str],
+    queue,
+    *,
+    config_path_text: str | None = None,
+    return_list: bool = False,
+) -> None:
+    """A separate process running real production STOR cleanup / removal against real campaign."""
+    from mdstats.training_data._campaign_cli_core import (
+        CampaignPaths,
+        CampaignStore,
+        _CampaignCleanupReport,
+        _campaign_ownership_boundary,
+        _cleanup_remove,
+        _load_config,
+    )
 
-    store = CampaignStore(Path(workspace_text) / ".mdstats" / "campaign.sqlite3")
+    workspace = Path(workspace_text)
+    if config_path_text is not None:
+        cfg, paths = _load_config(Path(config_path_text))
+    else:
+        config_candidate = workspace / "campaign.toml"
+        if config_candidate.is_file():
+            cfg, paths = _load_config(config_candidate)
+        else:
+            cfg = {}
+            internal = workspace / ".mdstats"
+            paths = CampaignPaths(
+                config=config_candidate,
+                config_dir=workspace,
+                workspace=workspace,
+                state_db=internal / "campaign.sqlite3",
+                manifest=workspace / "manifest.json",
+                internal=internal,
+                data=workspace / "data",
+                runs=workspace / "runs",
+                models=workspace / "models",
+                results=workspace / "results",
+            )
+    store = CampaignStore(paths.state_db)
     try:
-        boundary = CampaignOwnershipBoundary(
-            Path(workspace_text),
-            retention_fence=build_target_size_retention_fence(
-                store, Path(workspace_text), publication_window_seconds=0.0
-            ),
+        boundary = _campaign_ownership_boundary(cfg, paths, store)
+        report = _CampaignCleanupReport(
+            phase="test-p4c3-race",
+            dry_run=False,
+            ownership_boundary=boundary,
         )
-        deleted: list[str] = []
         for target in targets:
-            path = Path(target)
-            authorized, _ = boundary.destructive_authorization(path)
-            if authorized and path.is_file():
-                path.unlink()
-                deleted.append(target)
-        queue.put(deleted)
+            _cleanup_remove(
+                report,
+                Path(target),
+                reason="production STOR race target candidate",
+                cleanup_class="test_candidate",
+            )
+        removed_paths = [str(action["path"]) for action in report.actions]
+        skipped_messages = list(report.skipped)
+        if return_list:
+            queue.put(removed_paths)
+        else:
+            queue.put({"removed": removed_paths, "skipped": skipped_messages})
     finally:
         store.close()
+
+
+def _cleanup_race_child(workspace_text: str, targets: list[str], queue) -> None:
+    _cleanup_production_race_child(workspace_text, targets, queue, return_list=True)
 
 
 def test_p4c_cleanup_racing_publication_and_adoption_deletes_nothing_adoptable(
@@ -931,12 +977,13 @@ def test_p4c_transitioning_campaign_protects_its_whole_execution_root(
 def test_p4c_real_runtime_first_publication_retention_race(
     tmp_path: Path, monkeypatch
 ):
-    """P4-C2 mandatory acceptance: drive the real select-target-size runtime,
+    """P4-C3 mandatory acceptance: drive the real select-target-size runtime,
     intercept real initialize_target_size_screen with a synchronization wrapper,
     observe the actual root argument passed by production runtime, prove SQLite
     is still in AUTHORITIES_BOUND with no execution_root, and prove an independent
     process running real STOR cleanup is denied deletion of the runtime-created root
-    and freshly published P3 files. Then resume and complete the screen.
+    directory and freshly published P3 files, while successfully deleting an
+    unrelated reclaimable control artifact. Then resume and complete the screen.
     """
     import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
     import mdstats.training_data.target_size_execution as p3
@@ -962,27 +1009,49 @@ def test_p4c_real_runtime_first_publication_retention_race(
         finally:
             store_check.close()
 
-        # 2. Derive targets from the actual runtime observed root and published files:
+        # 2. Derive targets from the actual runtime observed root directory and published files:
         published_files = sorted(observed_root.rglob("*.json"))
         assert published_files, "P3 screen initialization produced no files"
-        targets = [str(observed_root)] + [str(p) for p in published_files]
 
-        # 3. Independent child process runs real STOR destructive cleanup authorization:
+        # 3. Create an unrelated campaign-owned reclaimable control artifact:
+        control_dir = workspace / "data" / "reclaimable_control_dir"
+        control_dir.mkdir(parents=True, exist_ok=True)
+        control_file = control_dir / "unrelated_reclaimable_file.tmp"
+        control_file.write_text("reclaimable data payload", encoding="utf-8")
+        assert control_file.is_file()
+
+        targets = [str(observed_root)] + [str(p) for p in published_files] + [str(control_file)]
+
+        # 4. Independent child process runs real production STOR cleanup / removal:
         mp_context = multiprocessing.get_context("spawn")
         queue = mp_context.Queue()
         child = mp_context.Process(
-            target=_cleanup_race_child, args=(str(workspace), targets, queue)
+            target=_cleanup_production_race_child,
+            args=(str(workspace), targets, queue),
+            kwargs={"config_path_text": str(config)},
         )
         child.start()
         child.join(timeout=300)
         assert child.exitcode == 0
-        deleted = queue.get(timeout=30)
-        assert deleted == [], f"STOR deleted protected first-publication files: {deleted}"
+        cleanup_result = queue.get(timeout=30)
+        removed = cleanup_result["removed"] if isinstance(cleanup_result, dict) else cleanup_result
 
-        # 4. Verify all published files and root directory remain intact:
+        # 5. Verify the control artifact was deleted by production cleanup:
+        assert (
+            str(control_file) in removed
+            or str(control_file.resolve()) in [Path(r).resolve().as_posix() for r in removed]
+        ), f"Control artifact was not removed by production cleanup: removed={removed}"
+        assert not control_file.exists(), "Reclaimable control file was not deleted"
+
+        # 6. Verify zero protected root/files were removed by production cleanup:
+        protected_targets = [str(observed_root)] + [str(p) for p in published_files]
+        for p_str in protected_targets:
+            assert p_str not in removed, f"STOR deleted protected path: {p_str}"
+
+        # 7. Verify all published files and the root directory remain intact on disk:
         for p in published_files:
             assert p.is_file(), f"File was deleted: {p}"
-        assert observed_root.is_dir()
+        assert observed_root.is_dir(), f"Observed root directory was deleted: {observed_root}"
 
         race_checked = True
         return window

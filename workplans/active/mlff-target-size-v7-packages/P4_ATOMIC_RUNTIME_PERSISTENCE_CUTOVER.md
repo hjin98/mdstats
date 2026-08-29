@@ -4,7 +4,7 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P4
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 4
-status: active
+status: implemented
 package_revision: 7
 amended_date: 2026-08-29
 reopened_from_revision6_candidate: 142026700e2b1ba2f7597d5f236f66eb32f8ee29
@@ -16,7 +16,7 @@ revision4_baseline: P4_REVISION4_IMPLEMENTED_BASELINE.md
 revision4_evidence: P4_REVISION4_IMPLEMENTATION_PROGRESS.md
 entry_p3_closure_commit: 9d195807cff0bb8042f447ac33ceb0586ed708ac
 compatibility_policy: destructive-generation-reset
-implementation_closure: P4 revision 7 reopened after independent review; P4-C3 production-STOR-owner first-publication acceptance and P4-E3 exposure-time current-terminal authority are open; P4-G3 is invalidated until both close
+implementation_closure: Complete revision-7 reclosure: P4-C3 production-STOR-owner first-publication race with control artifact deletion, P4-E3 exposure-time current-terminal authority sealing and stale snapshot view/report protection, and P4-G3 assembled regression/integration closed cleanly with 168 passed tests
 reconciliation_reason: Revision 7 preserves the frozen parent, accepted P1-P3 semantics, the revision-6 canonical execution-root owner, and the revision-6 canonical current-terminal loader/full validation chain. Independent review found two remaining acceptance/consumer gaps: the revision-6 first-publication race still constructs CampaignOwnershipBoundary plus the retention fence directly in the child instead of traversing the production STOR ownership/removal path, and a legitimately validated terminal result can remain reusable for rendering/reporting after CampaignStore advances to a newer generation. Revision 7 repairs only those semantic-owner/currentness gaps. No target-size science, reducer, TRAIN2/EVAL2, checkpoint, provider, seed, path layout, persistence schema, or P5 scientific semantics are reopened.
 ---
 

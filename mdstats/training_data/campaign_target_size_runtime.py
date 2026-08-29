@@ -936,15 +936,16 @@ def execute_current_select_target_size(
         TargetSizeLifecycle.TERMINAL_SELECTED,
         TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
     ):
-        validated = load_validated_target_size_terminal_result(
+        from .campaign_target_size_view import (
+            write_current_target_size_result_view,
+        )
+
+        write_current_target_size_result_view(
             cfg, paths, store, expected_revision=revision
         )
-        write_target_size_result_view(
-            paths.results / "target-size-state.json",
-            revision,
-            validated_result=validated,
+        report_current_target_size_terminal_state(
+            cfg, paths, store, expected_revision=revision
         )
-        _report_terminal_state(validated)
         return 0
 
     _print_header("Target-size selection - controlled configurable fidelity")
@@ -969,7 +970,6 @@ def execute_current_select_target_size(
         f"screening canonical generation {revision.state.generation}",
     )
     state = screen.aggregate.reducer_state
-    validated = None
     try:
         revision = commit_target_size_campaign_transition(
             store,
@@ -1058,20 +1058,20 @@ def execute_current_select_target_size(
             revision = commit_terminal_projection(
                 store, revision, head, definition=screen.aggregate.definition
             )
-            validated = load_validated_target_size_terminal_result(
-                cfg, paths, store, expected_revision=revision
-            )
     except Exception as exc:
         _mark_stage(
             store, paths, "target_size_selection", StageState.FAILED, str(exc)
         )
         raise
 
-    if state.is_terminal and validated is not None:
-        write_target_size_result_view(
-            paths.results / "target-size-state.json",
-            revision,
-            validated_result=validated,
+    from .campaign_target_size_view import (
+        write_current_target_size_result_view,
+        write_nonterminal_target_size_result_view,
+    )
+
+    if state.is_terminal:
+        write_current_target_size_result_view(
+            cfg, paths, store, expected_revision=revision
         )
         _mark_stage(
             store,
@@ -1080,9 +1080,11 @@ def execute_current_select_target_size(
             StageState.COMPLETE,
             f"reducer status {state.status.value}",
         )
-        _report_terminal_state(validated)
+        report_current_target_size_terminal_state(
+            cfg, paths, store, expected_revision=revision
+        )
     else:
-        write_target_size_result_view(
+        write_nonterminal_target_size_result_view(
             paths.results / "target-size-state.json",
             revision,
             resolver=screen.authority.resolver,
@@ -1100,6 +1102,30 @@ def execute_current_select_target_size(
             flush=True,
         )
     return 0
+
+
+def report_current_target_size_terminal_state(
+    cfg: Any,
+    paths: Any,
+    store: Any,
+    *,
+    expected_revision: Any | None = None,
+) -> Any:
+    """Authoritative exposure-time entrypoint for CLI terminal reporting.
+
+    This function re-establishes CampaignStore currentness and executes the full
+    canonical P1/P2/P3 validation chain immediately before emitting stdout.
+    """
+
+    from .campaign_target_size_view import (
+        expose_current_target_size_terminal_result,
+    )
+
+    validated = expose_current_target_size_terminal_result(
+        cfg, paths, store, expected_revision=expected_revision
+    )
+    _report_terminal_state(validated)
+    return validated
 
 
 def _report_terminal_state(validated_result: Any) -> None:
@@ -1140,6 +1166,7 @@ __all__ = [
     "execute_current_prepare",
     "execute_current_select_target_size",
     "mace_run_configuration",
+    "report_current_target_size_terminal_state",
     "resolve_neutral_partition_policy",
     "current_target_size_execution_root",
     "current_target_size_execution_root_locator",

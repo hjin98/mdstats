@@ -1133,11 +1133,149 @@ def test_p4e_mandatory_reporter_rejects_raw_terminal_projection():
     assert "requires a ValidatedTargetSizeTerminalResult" in str(excinfo.value)
 
 
+def test_p4e_mandatory_stale_current_view_write_exposure_fails_before_publication(
+    tmp_path: Path,
+):
+    """P4-E3 Mandatory Stale-Snapshot Acceptance A:
+    1. Produce terminal generation g1 and capture its terminal revision and legitimate g1_validated.
+    2. Advance CampaignStore to generation g2 via prepare.
+    3. Call write_current_target_size_result_view(cfg2, paths2, store2, expected_revision=g1_revision)
+       or write_current_target_size_result_view(cfg2, paths2, store2).
+    4. Must reload current CampaignStore state, detect that current is g2 (nonterminal / mismatch),
+       and raise TargetSizeTerminalProjectionError.
+    5. Prove file atomicity: the target-size-state.json file is either absent or its pre-attempt content is unchanged.
+    """
+    from mdstats.training_data.campaign_target_size_view import (
+        expose_current_target_size_terminal_result,
+        write_current_target_size_result_view,
+    )
+
+    config, workspace, _harness = _terminal_campaign(tmp_path)
+    cfg, paths = _load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        g1_revision = load_target_size_campaign_revision(store)
+        _g1_validated = expose_current_target_size_terminal_result(
+            cfg, paths, store, expected_revision=g1_revision
+        )
+    finally:
+        store.close()
+
+    view_file = paths.results / "target-size-state.json"
+    assert view_file.is_file()
+
+    # Advance CampaignStore to generation 2:
+    content = config.read_text(encoding="utf-8")
+    config.write_text(
+        content.replace("seeds = [1, 2]", "seeds = [3, 4]"), encoding="utf-8"
+    )
+    p4d.cli._mark_stage(store, paths, "doctor", p4d.cli.StageState.COMPLETE, "fixture")
+    assert p4d._run(config, "prepare") == 0
+
+    # Delete view file to test creation atomicity:
+    view_file.unlink()
+
+    cfg2, paths2 = _load_config(config)
+    store2 = CampaignStore(paths2.state_db)
+    try:
+        # A1: Stale write with expected_revision=g1_revision must fail and NOT write the file
+        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
+            write_current_target_size_result_view(
+                cfg2, paths2, store2, expected_revision=g1_revision
+            )
+        assert "does not match the current CampaignStore revision" in str(
+            excinfo1.value
+        )
+        assert not view_file.exists(), "Stale write attempt created target-size-state.json"
+
+        # A2: Stale write without expected_revision must fail because current g2 is nonterminal
+        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+            write_current_target_size_result_view(cfg2, paths2, store2)
+        assert "is not in a terminal state" in str(excinfo2.value)
+        assert not view_file.exists(), "Stale write attempt created target-size-state.json"
+    finally:
+        store2.close()
+
+
+def test_p4e_mandatory_stale_current_report_exposure_fails_before_stdout(
+    tmp_path: Path, capsys
+):
+    """P4-E3 Mandatory Stale-Snapshot Acceptance B:
+    1. Produce terminal generation g1 and capture its terminal revision and legitimate g1_validated.
+    2. Advance CampaignStore to generation g2 via prepare.
+    3. Call report_current_target_size_terminal_state(cfg2, paths2, store2, expected_revision=g1_revision)
+       or report_current_target_size_terminal_state(cfg2, paths2, store2).
+    4. Must raise TargetSizeTerminalProjectionError.
+    5. Capture stdout and assert absence of stale terminal messages (no 'Target size is already selected',
+       no 'N=', no 'scientifically terminal').
+    """
+    from mdstats.training_data.campaign_target_size_runtime import (
+        report_current_target_size_terminal_state,
+    )
+    from mdstats.training_data.campaign_target_size_view import (
+        expose_current_target_size_terminal_result,
+    )
+
+    config, workspace, _harness = _terminal_campaign(tmp_path)
+    cfg, paths = _load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        g1_revision = load_target_size_campaign_revision(store)
+        _g1_validated = expose_current_target_size_terminal_result(
+            cfg, paths, store, expected_revision=g1_revision
+        )
+    finally:
+        store.close()
+
+    # Advance CampaignStore to generation 2:
+    content = config.read_text(encoding="utf-8")
+    config.write_text(
+        content.replace("seeds = [1, 2]", "seeds = [3, 4]"), encoding="utf-8"
+    )
+    p4d.cli._mark_stage(store, paths, "doctor", p4d.cli.StageState.COMPLETE, "fixture")
+    assert p4d._run(config, "prepare") == 0
+    _ = capsys.readouterr()
+
+    cfg2, paths2 = _load_config(config)
+    store2 = CampaignStore(paths2.state_db)
+    try:
+        # B1: Stale report with expected_revision=g1_revision raises before emitting stdout:
+        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
+            report_current_target_size_terminal_state(
+                cfg2, paths2, store2, expected_revision=g1_revision
+            )
+        assert "does not match the current CampaignStore revision" in str(
+            excinfo1.value
+        )
+        out1 = capsys.readouterr().out
+        assert "Target size is already selected" not in out1
+        assert "scientifically terminal" not in out1
+        assert "N=" not in out1
+
+        # B2: Stale report without expected_revision raises before emitting stdout:
+        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+            report_current_target_size_terminal_state(cfg2, paths2, store2)
+        assert "is not in a terminal state" in str(excinfo2.value)
+        out2 = capsys.readouterr().out
+        assert "Target size is already selected" not in out2
+        assert "scientifically terminal" not in out2
+        assert "N=" not in out2
+    finally:
+        store2.close()
+
+
 def test_p4e_structural_single_current_terminal_loader():
-    """P4-E2 Structural Check: exactly one current terminal loader exists."""
+    """P4-E3 Structural Check: exactly one current terminal loader and exposure boundary exists."""
     import mdstats.training_data.campaign_target_size_terminal as terminal_mod
+    import mdstats.training_data.campaign_target_size_view as view_mod
+    import mdstats.training_data.campaign_target_size_runtime as runtime_mod
 
     assert hasattr(terminal_mod, "load_validated_target_size_terminal_result")
     assert hasattr(terminal_mod, "ValidatedTargetSizeTerminalResult")
+    assert hasattr(view_mod, "expose_current_target_size_terminal_result")
+    assert hasattr(view_mod, "write_current_target_size_result_view")
+    assert hasattr(view_mod, "write_nonterminal_target_size_result_view")
+    assert hasattr(runtime_mod, "report_current_target_size_terminal_state")
+
 
 

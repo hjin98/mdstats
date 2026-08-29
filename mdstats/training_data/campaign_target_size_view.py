@@ -139,8 +139,71 @@ def write_target_size_result_view(
     return payload
 
 
+def write_nonterminal_target_size_result_view(
+    path: str | os.PathLike[str],
+    revision: TargetSizeCampaignRevision,
+    *,
+    resolver: Any | None = None,
+) -> dict[str, Any]:
+    """Atomically write a non-authoritative progress view for active/waiting state."""
+
+    if revision.state.terminal is not None:
+        from .campaign_target_size_terminal import TargetSizeTerminalProjectionError
+
+        raise TargetSizeTerminalProjectionError(
+            "write_nonterminal_target_size_result_view cannot be used for terminal state. "
+            "Use write_current_target_size_result_view to ensure exposure-time CampaignStore currentness."
+        )
+    return write_target_size_result_view(path, revision, resolver=resolver)
+
+
+def expose_current_target_size_terminal_result(
+    cfg: Any,
+    paths: Any,
+    store: Any,
+    *,
+    expected_revision: TargetSizeCampaignRevision | None = None,
+) -> Any:
+    """Authoritative exposure-time entrypoint for the current terminal target-size result.
+
+    This function re-establishes CampaignStore currentness and executes the full
+    canonical P1/P2/P3 validation chain in the same invocation. It is the single
+    exposure boundary for all current-terminal views, reporting, and P5 consumption.
+    """
+
+    from .campaign_target_size_terminal import (
+        load_validated_target_size_terminal_result,
+    )
+
+    return load_validated_target_size_terminal_result(
+        cfg, paths, store, expected_revision=expected_revision
+    )
+
+
+def write_current_target_size_result_view(
+    cfg: Any,
+    paths: Any,
+    store: Any,
+    *,
+    path: str | os.PathLike[str] | None = None,
+    expected_revision: TargetSizeCampaignRevision | None = None,
+) -> dict[str, Any]:
+    """Atomically write the current terminal result view after exposure-time currentness validation."""
+
+    validated = expose_current_target_size_terminal_result(
+        cfg, paths, store, expected_revision=expected_revision
+    )
+    destination = Path(path) if path is not None else (Path(paths.results) / "target-size-state.json")
+    return write_target_size_result_view(
+        destination, validated.revision, validated_result=validated
+    )
+
+
 __all__ = [
     "TARGET_SIZE_RESULT_VIEW_SCHEMA",
     "build_target_size_result_view",
+    "expose_current_target_size_terminal_result",
+    "write_current_target_size_result_view",
+    "write_nonterminal_target_size_result_view",
     "write_target_size_result_view",
 ]
