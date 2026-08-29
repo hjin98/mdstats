@@ -924,10 +924,12 @@ def execute_current_select_target_size(
     )
     from .campaign_target_size_terminal import (
         commit_terminal_projection,
+        load_validated_target_size_terminal_result,
         validate_terminal_projection,
     )
     from .campaign_target_size_view import write_target_size_result_view
     from .target_size_execution import (
+        TargetSizeExecutionResolver,
         build_complete_boundary_batch,
         commit_target_size_boundary_batch,
         derive_active_boundary_requirements,
@@ -940,7 +942,19 @@ def execute_current_select_target_size(
         TargetSizeLifecycle.TERMINAL_SELECTED,
         TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
     ):
-        _report_terminal_state(revision)
+        validated = load_validated_target_size_terminal_result(
+            cfg, paths, store, revision=revision
+        )
+        resolver = TargetSizeExecutionResolver(
+            current_target_size_execution_root(paths, revision.state.generation)
+        )
+        write_target_size_result_view(
+            paths.results / "target-size-state.json",
+            revision,
+            resolver=resolver,
+            definition=validated.authorities.aggregate.definition,
+        )
+        _report_terminal_state(validated)
         return 0
 
     _print_header("Target-size selection - controlled configurable fidelity")
@@ -1070,6 +1084,7 @@ def execute_current_select_target_size(
         paths.results / "target-size-state.json",
         revision,
         resolver=screen.authority.resolver,
+        definition=screen.aggregate.definition,
     )
     _mark_stage(
         store,
@@ -1080,7 +1095,7 @@ def execute_current_select_target_size(
     )
     revision = load_target_size_campaign_revision(store)
     if revision.state.terminal is not None:
-        _report_terminal_state(revision)
+        _report_terminal_state(revision.state.terminal)
     else:
         print(
             f"Target-size screen is operationally resumable: reducer status "
@@ -1090,10 +1105,22 @@ def execute_current_select_target_size(
     return 0
 
 
-def _report_terminal_state(revision: Any) -> None:
-    terminal = revision.state.terminal
-    if terminal is None:  # pragma: no cover - defensive
-        return
+def _report_terminal_state(terminal_or_validated: Any) -> None:
+    from .campaign_target_size_terminal import (
+        TargetSizeTerminalProjection,
+        TargetSizeTerminalProjectionError,
+        ValidatedTargetSizeTerminalResult,
+    )
+
+    if isinstance(terminal_or_validated, ValidatedTargetSizeTerminalResult):
+        terminal = terminal_or_validated.projection
+    elif isinstance(terminal_or_validated, TargetSizeTerminalProjection):
+        terminal = terminal_or_validated
+    else:
+        raise TargetSizeTerminalProjectionError(
+            "Terminal state reporting requires a validated terminal result or projection, "
+            f"not {type(terminal_or_validated).__name__}."
+        )
     if terminal.is_selection:
         print(
             f"Target size is already selected and frozen: N={terminal.selected_target_size}.",

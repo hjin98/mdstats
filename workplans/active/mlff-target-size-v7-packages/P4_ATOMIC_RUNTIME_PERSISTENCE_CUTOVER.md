@@ -4,7 +4,7 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P4
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 4
-status: active
+status: implemented
 package_revision: 5
 amended_date: 2026-08-29
 reopened_from_p4_closure_commit: 53800cf3e4862326643b1708863f9b07573669ef
@@ -13,7 +13,7 @@ revision4_baseline: P4_REVISION4_IMPLEMENTED_BASELINE.md
 revision4_evidence: P4_REVISION4_IMPLEMENTATION_PROGRESS.md
 entry_p3_closure_commit: 9d195807cff0bb8042f447ac33ceb0586ed708ac
 compatibility_policy: destructive-generation-reset
-implementation_closure: P4 reopened after independent review; P4-E terminal real-owner reload and P4-C first-publication retention hardening are open, and P4-G assembled closure is invalidated until both close
+implementation_closure: Complete revision-5 reclosure: P4-C1 first-publication retention fence, P4-E1 validated terminal reload and invalidation through real owners, and P4-G1 assembled regression/integration closed cleanly with 161 passed tests
 reconciliation_reason: Revision 5 preserves the frozen parent, accepted P1-P3 semantics, and the accepted revision-4 P4 architecture. It reopens only two implementation surfaces exposed by independent review: the public terminal select-target-size path can currently report persisted terminal state before mandatory P1/P2/P3 revalidation, and the first P3 execution-root publication can occur before STOR has a provable current-generation retention fence. P4-A, P4-B, the nonterminal/cutover substance of P4-D, and P4-F remain accepted baseline work subject only to affected regression. No scientific, statistical, reducer, TRAIN2/EVAL2, checkpoint, provider, seed, target-size decision, or post-selection P5 semantics are changed.
 ---
 

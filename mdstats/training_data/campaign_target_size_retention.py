@@ -292,6 +292,9 @@ def build_target_size_retention_fence(
     )
 
 
+TARGET_SIZE_EXECUTION_ROOT_NAME = "target-size"
+
+
 def retention_fence_for_revision(
     revision: TargetSizeCampaignRevision | None,
     workspace: str | os.PathLike[str],
@@ -301,11 +304,19 @@ def retention_fence_for_revision(
     if revision is None or revision.state.regime is TargetSizeRegime.LEGACY:
         return _no_fence("campaign has no current target-size generation")
     state = revision.state
-    if state.execution_root is None:
+    if state.execution_root is not None:
+        root = _absolute(Path(workspace) / state.execution_root)
+    elif state.generation is not None and state.lifecycle in _PROTECTED_ACTIVE_LIFECYCLES:
+        root = _absolute(
+            Path(workspace)
+            / ".mdstats"
+            / TARGET_SIZE_EXECUTION_ROOT_NAME
+            / f"g{int(state.generation)}"
+        )
+    else:
         return _no_fence(
             "current target-size generation owns no durable execution root yet"
         )
-    root = _absolute(Path(workspace) / state.execution_root)
     if state.regime is TargetSizeRegime.TRANSITIONING:
         return TargetSizeRetentionFence(
             execution_root=root,
@@ -334,6 +345,7 @@ def retention_fence_for_revision(
 __all__ = [
     "CONTENT_ADDRESSED_SUBDIRECTORIES",
     "SEED_SUBDIRECTORIES",
+    "TARGET_SIZE_EXECUTION_ROOT_NAME",
     "TargetSizeRetentionFence",
     "build_target_size_retention_fence",
     "retention_fence_for_revision",

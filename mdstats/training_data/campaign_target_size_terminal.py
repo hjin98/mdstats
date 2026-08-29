@@ -268,12 +268,162 @@ def classify_target_size_invalidation(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class ValidatedTargetSizeTerminalResult:
+    """Authenticated bundle returned by the validated terminal loader.
+
+    A consumer holding this object has established that:
+    1. Campaign regime is CURRENT and lifecycle is terminal;
+    2. Current P1/P2 scientific authorities were reconstructed through accepted owners;
+    3. Target-size scientific identity matches the canonical generation;
+    4. P3 execution context matches the canonical generation;
+    5. The persisted execution root was resolved through the real P3 owner;
+    6. The adopted execution head and reducer state were authenticated;
+    7. Terminal N and exact T_selected identity were re-derived from the authenticated
+       terminal reducer state and P2 training order;
+    8. The persisted terminal projection matches the re-derived projection.
+    """
+
+    revision: TargetSizeCampaignRevision
+    authorities: Any
+    head: Any
+    projection: TargetSizeTerminalProjection
+
+    @property
+    def is_selection(self) -> bool:
+        return self.projection.is_selection
+
+    @property
+    def selected_target_size(self) -> int | None:
+        return self.projection.selected_target_size
+
+    @property
+    def selected_membership_digest(self) -> str | None:
+        return self.projection.selected_membership_digest
+
+    @property
+    def reducer_status(self) -> str:
+        return self.projection.reducer_status
+
+    @property
+    def terminal_reason_codes(self) -> tuple[str, ...]:
+        return self.projection.terminal_reason_codes
+
+
+def load_validated_target_size_terminal_result(
+    cfg: Mapping[str, Any],
+    paths: Any,
+    store: Any,
+    *,
+    revision: TargetSizeCampaignRevision | None = None,
+) -> ValidatedTargetSizeTerminalResult:
+    """Reconstruct, authenticate, and re-derive the terminal target-size state.
+
+    This is the single authoritative terminal-load path for select-target-size
+    replay and downstream P5 consumption. Nothing persisted is trusted: current
+    P1/P2 authorities are reconstructed from source inputs, scientific and
+    context identities are verified against the persisted generation, the
+    persisted execution root and adopted immutable head are re-authenticated
+    through P3 owners, and the terminal selection is re-derived before returning.
+    """
+
+    from ._campaign_cli_core import _cfg, _optimizer_policy
+    from .campaign_target_size_cutover import require_current_target_size_runtime
+    from .campaign_target_size_runtime import (
+        build_current_target_size_authorities,
+        current_target_size_execution_root,
+    )
+    from .target_size_execution import (
+        TargetSizeExecutionResolver,
+        build_target_size_execution_context,
+        build_target_size_screen_schedule,
+    )
+
+    if revision is None:
+        revision = require_current_target_size_runtime(store)
+    state = revision.state
+    if state.lifecycle not in (
+        TargetSizeLifecycle.TERMINAL_SELECTED,
+        TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
+    ):
+        raise TargetSizeTerminalProjectionError(
+            f"Campaign canonical generation {state.generation} is not in a terminal state "
+            f"(lifecycle={state.lifecycle.value})."
+        )
+    if state.terminal is None:
+        raise TargetSizeTerminalProjectionError(
+            f"Campaign canonical generation {state.generation} has no persisted terminal projection."
+        )
+
+    authorities = build_current_target_size_authorities(cfg, paths, store)
+
+    invalidation = classify_target_size_invalidation(state, authorities.identity)
+    if not invalidation.is_current:
+        raise TargetSizeTerminalProjectionError(
+            "The reconstructed target-size scientific identity does not match the persisted "
+            f"terminal generation ({', '.join(invalidation.changed_fields)}). Run `prepare` to bind "
+            "a fresh canonical generation; prior terminal results cannot be exposed or "
+            "reinterpreted under a changed identity."
+        )
+
+    if state.common_preparation_digest != authorities.common.content_digest:
+        raise TargetSizeTerminalProjectionError(
+            "The reconstructed common preparation digest does not match the persisted "
+            "terminal generation. Run `prepare` to bind a fresh canonical generation."
+        )
+
+    aggregate = authorities.aggregate
+    definition = aggregate.definition
+    schedule = build_target_size_screen_schedule(definition.policy.fidelity_epochs)
+    seeds = tuple(definition.policy.optimizer_seeds)
+    optimizer_policy = _optimizer_policy(
+        cfg,
+        seed=int(seeds[0]),
+        num_workers=int(_cfg(cfg, "training", "num_workers", 0)),
+        paths=paths,
+        planned_epochs=int(schedule.n3),
+    )
+    context = build_target_size_execution_context(
+        definition,
+        authorities.common,
+        schedule,
+        seed_neutral_optimizer_policy=optimizer_policy,
+    )
+    if state.execution_context_digest != context.content_digest:
+        raise TargetSizeTerminalProjectionError(
+            "The reconstructed P3 execution context does not match the persisted terminal "
+            "generation. Run `prepare` to bind a fresh canonical generation."
+        )
+
+    root = current_target_size_execution_root(paths, state.generation)
+    if not root.is_dir():
+        from .campaign_target_size_adoption import TargetSizeAdoptionCorruptionError
+
+        raise TargetSizeAdoptionCorruptionError(
+            f"The campaign-owned target-size execution root {root} does not exist."
+        )
+    resolver = TargetSizeExecutionResolver(root)
+
+    head = validate_terminal_projection(
+        revision, resolver=resolver, definition=definition
+    )
+
+    return ValidatedTargetSizeTerminalResult(
+        revision=revision,
+        authorities=authorities,
+        head=head,
+        projection=state.terminal,
+    )
+
+
 __all__ = [
     "SCIENTIFIC_IDENTITY_FIELDS",
     "TargetSizeInvalidation",
     "TargetSizeTerminalProjectionError",
+    "ValidatedTargetSizeTerminalResult",
     "classify_target_size_invalidation",
     "commit_terminal_projection",
     "derive_terminal_projection",
+    "load_validated_target_size_terminal_result",
     "validate_terminal_projection",
 ]

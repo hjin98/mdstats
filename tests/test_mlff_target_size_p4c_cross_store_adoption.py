@@ -926,3 +926,112 @@ def test_p4c_transitioning_campaign_protects_its_whole_execution_root(
         assert "destructive target-size cutover" in detail
     finally:
         store.close()
+
+
+def test_p4c_first_publication_retention_fence_protects_root_before_open_attempt_transition(
+    tmp_path: Path,
+):
+    """P4-C1 mandatory acceptance: the canonical current-generation root is
+    protected by the production retention fence from the very first P3
+    publication, before any OPEN_ATTEMPT transition or head adoption is
+    recorded in SQLite.
+    """
+
+    env = _env(tmp_path, root_name=".mdstats/target-size/g1")
+    store = CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
+    aggregate = env["aggregate"]
+    transitioning = begin_target_size_cutover(store)
+    bound = bind_current_target_size_authorities(
+        store,
+        transitioning,
+        frame_authority_digest=aggregate.frame_authority_digest,
+        neutral_statistical_base_digest=aggregate.neutral_statistical_base_digest,
+        split_exclusion_digest=digest({"fixture": "split-exclusion"}),
+        policy_digest=aggregate.policy.content_digest,
+        experiment_definition_digest=aggregate.definition.content_digest,
+        aggregate_digest=aggregate.content_digest,
+        common_preparation_digest=env["common"].content_digest,
+    )
+    current = complete_target_size_cutover(store, bound)
+    assert current.state.lifecycle is TargetSizeLifecycle.AUTHORITIES_BOUND
+    assert current.state.execution_root is None
+    assert current.state.adopted_execution_head_digest is None
+    store.close()
+
+    canonical_root = env["root"]
+    assert canonical_root == tmp_path / ".mdstats" / "target-size" / f"g{current.state.generation}"
+
+    # Real P3 screen initialization executes once beneath the canonical root:
+    from mdstats.training_data.target_size_execution import initialize_target_size_screen
+    window = initialize_target_size_screen(
+        canonical_root, aggregate, env["context"], env["common"]
+    )
+    assert window is not None
+    published_files = sorted(canonical_root.rglob("*.json"))
+    assert published_files, "P3 screen initialization produced no files"
+
+    # SQLite is still in AUTHORITIES_BOUND with no execution_root or attempt stored:
+    store_check = CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
+    persisted = load_target_size_campaign_revision(store_check)
+    store_check.close()
+    assert persisted.state.lifecycle is TargetSizeLifecycle.AUTHORITIES_BOUND
+    assert persisted.state.execution_root is None
+
+    # An independent process runs real STOR destructive authorization:
+    targets = [str(canonical_root)] + [str(p) for p in published_files]
+    context = multiprocessing.get_context("spawn")
+    queue = context.Queue()
+    child = context.Process(
+        target=_cleanup_race_child, args=(str(tmp_path), targets, queue)
+    )
+    child.start()
+    child.join(timeout=300)
+    assert child.exitcode == 0
+    deleted = queue.get(timeout=30)
+    assert deleted == [], f"STOR deleted protected first-publication files: {deleted}"
+
+    # Verify all published P3 files and directories are intact:
+    for p in published_files:
+        assert p.is_file(), f"File was deleted: {p}"
+    assert canonical_root.is_dir()
+
+    # The screen remains fully resumable and advances to head adoption:
+    store_resume = CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
+    try:
+        screen_active = commit_target_size_campaign_transition(
+            store_resume,
+            kind=TargetSizeTransitionKind.OPEN_ATTEMPT,
+            expected=current.expectation(),
+            successor=TargetSizeCampaignState(
+                regime=TargetSizeRegime.CURRENT,
+                generation=current.state.generation,
+                lifecycle=TargetSizeLifecycle.SCREEN_ACTIVE,
+                attempt=window.content_digest,
+                frame_authority_digest=current.state.frame_authority_digest,
+                neutral_statistical_base_digest=(
+                    current.state.neutral_statistical_base_digest
+                ),
+                split_exclusion_digest=current.state.split_exclusion_digest,
+                policy_digest=current.state.policy_digest,
+                experiment_definition_digest=current.state.experiment_definition_digest,
+                aggregate_digest=current.state.aggregate_digest,
+                execution_context_digest=env["context"].content_digest,
+                common_preparation_digest=env["common"].content_digest,
+                screen_window_digest=window.content_digest,
+                execution_root=f".mdstats/target-size/g{current.state.generation}",
+            ),
+        ).revision
+
+        # Complete one boundary and adopt the head:
+        batch0 = _execute_boundary(env, tmp_path, aggregate.reducer_state, 1)
+        head0 = commit_target_size_boundary_batch(
+            canonical_root, aggregate.definition, aggregate.reducer_state, batch0
+        )
+        after, adopted_head = reconcile_and_adopt_target_size_head(
+            store_resume, screen_active, root=canonical_root, authority=env["authority"]
+        )
+        assert adopted_head.content_digest == head0.content_digest
+        assert after.state.adopted_execution_head_digest == head0.content_digest
+    finally:
+        store_resume.close()
+

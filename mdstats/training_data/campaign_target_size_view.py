@@ -26,11 +26,35 @@ TARGET_SIZE_RESULT_VIEW_SCHEMA = "mdstats.target-size-result-view.v1"
 
 
 def build_target_size_result_view(
-    revision: TargetSizeCampaignRevision, *, resolver: Any | None = None
+    revision: TargetSizeCampaignRevision,
+    *,
+    resolver: Any | None = None,
+    definition: Any | None = None,
 ) -> dict[str, Any]:
-    """Render the current target-size campaign state as a derived view."""
+    """Render the current target-size campaign state as a derived view.
+
+    Nonterminal views render nonterminal metadata without authoritative scientific
+    selection. Terminal views require authenticated resolver and P2 experiment
+    definition to validate the terminal projection before rendering.
+    """
+
+    from .campaign_target_size_terminal import (
+        TargetSizeTerminalProjectionError,
+        validate_terminal_projection,
+    )
 
     state = revision.state
+    if state.terminal is not None:
+        if resolver is None or definition is None:
+            raise TargetSizeTerminalProjectionError(
+                "Rendering a terminal target-size result view requires both a resolver "
+                "and P2 experiment definition for validated re-derivation; a raw terminal "
+                "revision cannot be rendered alone."
+            )
+        validate_terminal_projection(
+            revision, resolver=resolver, definition=definition
+        )
+
     payload: dict[str, Any] = {
         "schema": TARGET_SIZE_RESULT_VIEW_SCHEMA,
         "authoritative": False,
@@ -69,10 +93,13 @@ def write_target_size_result_view(
     revision: TargetSizeCampaignRevision,
     *,
     resolver: Any | None = None,
+    definition: Any | None = None,
 ) -> dict[str, Any]:
     """Atomically (re)write the derived view; safe to repeat after any crash."""
 
-    payload = build_target_size_result_view(revision, resolver=resolver)
+    payload = build_target_size_result_view(
+        revision, resolver=resolver, definition=definition
+    )
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary_name = tempfile.mkstemp(

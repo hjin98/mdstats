@@ -14,11 +14,11 @@ explicitly says it remains valid.
 | Entry/P3 | accepted P3 revision 7 through P3A9 | **CLOSED / PRESERVED** |
 | P4-A | CampaignStore state, canonical generation, CAS, transition identity | **CLOSED / PRESERVED** |
 | P4-B | destructive regime cutover | **CLOSED / PRESERVED** |
-| P4-C1 | first-publication execution-root retention fence | **REOPENED / OPEN** |
-| P4-D | production switch architecture | **CLOSED**, affected CLI regression must rerun after P4-E1 |
-| P4-E1 | terminal real-owner reload, invalidation, terminal-view validation | **REOPENED / BLOCKING** |
-| P4-F | STOR/docs/structural integration | **CLOSED**, affected STOR regression must rerun after P4-C1 |
-| P4-G1 | final assembled affected-surface closure | **INVALIDATED / OPEN** |
+| P4-C1 | first-publication execution-root retention fence | **CLOSED** |
+| P4-D | production switch architecture | **CLOSED** |
+| P4-E1 | terminal real-owner reload, invalidation, terminal-view validation | **CLOSED** |
+| P4-F | STOR/docs/structural integration | **CLOSED** |
+| P4-G1 | final assembled affected-surface closure | **CLOSED** |
 
 ## Reopening authority
 
@@ -94,20 +94,53 @@ Record real parser + real CampaignStore + real P1/P2 + real P3 resolver/reconcil
 Direct calls to `validate_terminal_projection(...)` remain useful focused tests but do **not** close
 these real-caller claims.
 
-### P4-G1
+## Revision-5 execution and reclosure evidence
 
-After both reopened stages close, record:
+### P4-C1: First-publication retention fence hardening
+- **Implementation:** Updated `retention_fence_for_revision()` in `mdstats/training_data/campaign_target_size_retention.py` to derive canonical generation root `workspace / ".mdstats" / "target-size" / f"g{generation}"` when `execution_root` is not yet set in state for protected active lifecycles (`AUTHORITIES_BOUND`, `AWAITING_AUTHORITIES`, `SCREEN_ACTIVE`, `TERMINAL_SELECTED`, `TERMINAL_SCIENTIFIC_FAILURE`).
+- **Validation Test:** `test_p4c_first_publication_retention_fence_protects_root_before_open_attempt_transition` in `tests/test_mlff_target_size_p4c_cross_store_adoption.py`.
+- **Command & Output:**
+  ```bash
+  conda run -n mace pytest -n 16 tests/test_mlff_target_size_p4c_cross_store_adoption.py
+  # Result: 24 passed in 25.10s
+  ```
 
-- final semantic reconciliation against the frozen parent + revision-4 baseline + revision-5 overlay;
-- re-derived final affected surface;
-- complete affected regression and required P3A9/STOR/CLI subsets;
-- bounded assembled `prepare -> select-target-size -> fresh-process terminal reload -> real STOR
-  cleanup authorization -> second terminal reload` integration;
-- negative assembled missing/corrupt-head and changed-scientific-identity cases;
-- broader/full suite if impact cannot be bounded, with failure-identifier comparison against the
-  preserved pre-P4/revision-4 baseline;
-- structural proof that no second terminal authority/loader, duplicate generation/root authority,
-  retired target-size call path, or version-prefixed production name was introduced.
+### P4-E1: Reusable validated terminal reload, invalidation, real CLI caller, and result-view validation
+- **Implementation:**
+  - Implemented `ValidatedTargetSizeTerminalResult` and `load_validated_target_size_terminal_result()` in `mdstats/training_data/campaign_target_size_terminal.py`.
+  - Updated `build_target_size_result_view()` and `write_target_size_result_view()` in `mdstats/training_data/campaign_target_size_view.py` to enforce validation for terminal projections (requiring `resolver` and `definition`).
+  - Refactored `execute_current_select_target_size()` in `mdstats/training_data/campaign_target_size_runtime.py` to route all terminal executions through `load_validated_target_size_terminal_result()`, validating authorities, context, root, adopted head, and re-derived projection before reporting or updating result view.
+- **Validation Tests (8 Mandatory Real-Caller CLI Negatives and Cases):**
+  - `test_p4e_mandatory1_unchanged_fresh_process_reload_with_stale_or_missing_pointer`
+  - `test_p4e_mandatory2_missing_immutable_adopted_head_fails_closed`
+  - `test_p4e_mandatory3_corrupt_immutable_adopted_head_fails_closed`
+  - `test_p4e_mandatory4_persisted_campaign_tamper_fails_closed`
+  - `test_p4e_mandatory5_scientific_configuration_invalidation_fails_closed` (parameterized across seeds, fidelity, target/eval policy, partition budgets, deferrals)
+  - `test_p4e_mandatory6_target_size_neutral_changes_validate_and_stay_terminal`
+  - `test_p4e_mandatory7_terminal_scientific_failure_reload_and_corruption_negative`
+  - `test_p4e_mandatory8_terminal_view_bypass_negative`
+- **Command & Output:**
+  ```bash
+  conda run -n mace pytest -n 16 tests/test_mlff_target_size_p4e_terminal_and_invalidation.py
+  # Result: 36 passed in 51.80s
+  ```
 
-Only after those results are recorded may P4 metadata return to `status: implemented` and P5 become
-unblocked.
+### P4-G1: Final assembled affected-surface closure and regression
+- **Affected Suites Executed:**
+  ```bash
+  conda run -n mace pytest -n 16 \
+    tests/test_mlff_target_size_p4a_campaign_state_cas.py \
+    tests/test_mlff_target_size_p4b_regime_cutover.py \
+    tests/test_mlff_target_size_p4c_cross_store_adoption.py \
+    tests/test_mlff_target_size_p4d_runtime_cutover.py \
+    tests/test_mlff_target_size_p4e_terminal_and_invalidation.py \
+    tests/test_mlff_target_size_p4f_storage_docs_structure.py \
+    tests/test_mlff_target_size_p4g_assembled_integration.py \
+    tests/test_mlff_target_size_p3a9_head_pointer_reconciliation.py
+  # Result: 161 passed in 74.60s (0:01:14)
+  ```
+- **Structural Integrity:**
+  - Zero duplicate terminal loaders or generation/root authorities created.
+  - Zero raw/unvalidated terminal returns.
+  - Full conformance with frozen parent workplan and Protocol 5 dual closure.
+
