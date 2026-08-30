@@ -5,666 +5,565 @@ parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 5
 status: active
-package_revision: 9
+package_revision: 10
 amended_date: 2026-08-30
 entry_p4_closure_commit: 145388e5ad11733be1c19539886e34b82cc7d7d2
+revision9_implementation_baseline_commit: 6eca41720acecabf0e53c2f7d30aa288b66951ce
 revision8_implementation_baseline_commit: 21dac6360000d909d4c48958d87aff03850ecb42
 revision7_implementation_baseline_commit: d1575a26426339d67c856ed0d66ea3e394bba30a
 revision6_implementation_baseline_commit: 81e72cdb22cdbfddae0508592b2b38b3f80aae2f
 compatibility_policy: current-generation-cutover-no-derived-migration
-reconciliation_reason: Independent review of the revision-8 implementation found three bounded P5-local closure defects after the major revision-8 fixes landed successfully. Legacy split-file replay still collapses pseudolabel and TRUE_DFT training semantics into one method identity and risks conflating training replay with the independent TRUE_DFT admissibility monitor; configurable P5 target-head identity can diverge from the hard-coded executable MACE head map; and the required assembled acceptance test still substitutes PostSelectionHarness for MacePostSelectionTrainer and exercises scratch/no-replay rather than the required non-scratch replay-enabled owner chain. Revision 9 freezes exact repairs and proxy-proof acceptance without reopening P1-P4 or the parent scientific design.
+reconciliation_reason: Independent review of P5A4 found three bounded P5-local closure defects after the revision-9 replay/head/trainer repairs landed. Current replay lineage still infers missing interface/training semantics and defaults incomplete evidence to TRUE_DFT; replay configuration can coexist with scratch or naive fine-tuning even though the method identity claims separate replay training while execution omits it; and the assembled R9C test still monkeypatches MaceCalculatorProvider.from_model_path, replacing a required foundation-baseline semantic owner rather than faking below it. Revision 10 freezes fail-closed lineage, an exact training-mode/foundation/replay compatibility matrix, and the lower allowed numerical fake boundary without reopening P1-P4 or the parent scientific design.
 ---
 
-# P5 revision 9 — legacy replay semantics, head-name parity, and real-owner assembled closure
+# P5 revision 10 — fail-closed replay lineage, mode/exposure parity, and real provider closure
 
 ## 0. Authority, scope, and precedence
 
-The frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the scientific and architectural verdict. P5 remains bound to **Protocol 5.8.0**. Revision 9 is the current P5 implementation handoff and supersedes earlier P5 revisions as the task-local authority. All still-binding P5 semantics are restated below so implementation does not need prior chat or superseded workplans to reconstruct the target.
+The frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the scientific and architectural verdict. P5 remains bound to **Protocol 5.8.0**. Revision 10 is the current snapshot-complete P5 implementation handoff and supersedes earlier P5 revisions as task-local authority.
 
 The implementation baseline under correction is:
 
 ```text
-21dac6360000d909d4c48958d87aff03850ecb42  P5A3
+6eca41720acecabf0e53c2f7d30aa288b66951ce  P5A4
 ```
 
-This is a **bounded P5 implementation repair**. Do not reopen P1-P4, target-size science, selected-set semantics, P1 split-exclusion authority, CV acceptance science, replay-retention science, M3's role, or final-production freshness unless repository evidence meets a reopen trigger in Section 9.
+This is a **bounded P5 implementation repair**. Do not reopen P1-P4, target-size science, selected-set semantics, P1 split-exclusion authority, CV acceptance science, replay-retention science, M3's role, or final-production freshness unless evidence reaches a reopen trigger in Section 8.
 
-P6 remains blocked until revision 9 reaches semantic closure, functional closure, final affected-surface regression/integration, and an independent P5 Software Design review pass.
+P6 remains blocked until revision 10 reaches semantic/conformance closure, stage-local functional closure, final affected-surface regression/integration, and an independent P5 Software Design review pass.
 
-Full production/GPU qualification remains deferred. This package requires bounded functional, regression, and integration evidence only; it must not consume long target-machine production workloads merely to close P5.
+Full production/GPU qualification remains deferred. P5 closure requires bounded CPU-safe functional/regression/integration evidence only.
 
 ---
 
 ## 1. Frozen P5 product semantics
 
-The implementation must preserve all of the following.
-
-### 1.1 Selection authority and selected data
+### 1.1 Selection authority
 
 - P4 `CampaignStore` current-terminal authority is the only current owner of `N_selected` and `T_selected`.
 - `T_selected = pi_train[:N_selected]` exactly.
-- Replay, CV, M3, final production, or any post-selection helper may not widen, redefine, or back-write the selected target set.
-- P5 evidence is a descendant of the current P4 selected binding; it can never become target-size authority.
+- Replay, CV, M3, final production, and all P5 descendants may not widen, redefine, or back-write the selected target set.
+- P5 evidence is always descendant of the current selected binding and can never become target-size authority.
 
 ### 1.2 Cross-validation
 
 - CV occurs only after P4 selection is current and terminal.
 - CV uses configured `K >= 2`, exact selected-only coverage, and the full canonical P1 split-exclusion/protected-relation projection.
-- Every required fold and every required CV seed/variant must pass.
-- Mean, majority, best-seed, partial-fold, K0/K1, or `cv_not_performed` authorization is forbidden.
-- Fold-local fitted preparation, training, checkpoint choice, and replay admissibility may not see that fold's held-out outer target set.
-- The held-out outer set evaluates a representative already frozen from the fold's legal monitor/admissibility evidence.
+- Every required fold and every required CV seed/variant must pass. Mean/majority/best-seed/partial/K0/K1/`cv_not_performed` authorization is forbidden.
+- Fold-local fitted preparation, training, checkpoint selection, and replay admissibility may not see that fold's held-out outer target set.
+- Held-out outer evaluation occurs only after the representative is frozen from legal monitor/admissibility evidence.
 
 ### 1.3 Replay science
 
-Replay has two distinct responsibilities that must never be conflated:
+Replay has two distinct roles:
 
 ```text
 replay training exposure
-    = the replay labels/artifact actually consumed by MACE training
+    = replay labels/artifact actually consumed by MACE training
 
 TRUE_DFT replay admissibility monitor
-    = independent DFT-labeled replay evidence used to measure retention
+    = independent DFT-labeled replay evidence used only to gate retention
 ```
 
 - Replay training exposure is part of the shared scientific method and therefore part of `PostSelectionMethodIdentity`.
 - TRUE_DFT replay admissibility is a hard checkpoint gate/diagnostic only.
-- Replay may reject a checkpoint but receives **zero target-ranking, tie-breaking, fold-acceptance, seed-ranking, committee-ranking, or target-size-selection credit**.
-- Candidate and foundation baseline must be evaluated on the exact same authenticated TRUE_DFT replay monitor through the existing EVAL2 reduction path.
-- Pseudolabel training replay is not independent accuracy evidence and must never be silently relabeled TRUE_DFT merely because a TRUE_DFT evaluation view exists.
+- Replay may reject a checkpoint but receives zero target ranking, tie-breaking, fold acceptance, seed/committee ranking, or target-size credit.
+- Candidate and canonical foundation baseline are evaluated on the exact same authenticated TRUE_DFT replay monitor through the existing EVAL2 reduction path.
+- Pseudolabel training replay is never independent accuracy evidence and must never be silently replaced or relabeled as TRUE_DFT training merely because a TRUE_DFT monitor exists.
 
-### 1.4 M3 and final production
+### 1.4 Final production and M3
 
 - M3 remains development/model-selection evidence only, not independent validation.
-- Final production is fresh from the full exact `T_selected`.
-- Final runs use fresh optimizer/RNG/run state and do not continue from screening or CV checkpoints/optimizer state.
-- `[training].max_num_epochs` is the sole final-production horizon authority and remains independent of target-size `n3` and the CV budget.
-- Screen/CV/final namespaces and run identities remain collision-proof.
+- Final production is fresh from the full exact `T_selected`, with fresh optimizer/RNG/run state and no continuation from screening/CV checkpoint or optimizer state.
+- `[training].max_num_epochs` is final-production horizon authority only and remains independent from target-size `n3` and CV budget.
+- Screen/CV/final namespaces and evidence identities remain collision-proof.
 - Policy -> plan -> realized evidence remains acyclic.
 
 ---
 
-## 2. Revision-8 repairs that are already accepted and must not regress
+## 2. Accepted implementation state that revision 10 must preserve
 
-Revision 9 does **not** reopen these implementations. Preserve them unless a direct dependency of the three revision-9 fixes requires a local mechanical adjustment.
+The following revision-8/revision-9 repairs are accepted and must not regress.
 
-### 2.1 Canonical foundation identity
+### 2.1 Foundation identity and foundation baseline
 
-`resolve_post_selection_foundation_identity()` must continue to:
+`resolve_post_selection_foundation_identity()` remains fail-closed:
 
 ```text
-Path.exists/file check
+existing file
  -> inspect_mace_foundation(...)
- -> MaceFoundationSpec(family, requested_head).resolve(inspection)
- -> require inspection_state == "inspected"
+ -> MaceFoundationSpec(family, requested_head).resolve(...)
+ -> inspection_state == inspected
 ```
 
-There is no broad `except Exception` fallback to `FoundationPotentialIdentity.from_file()` for current P5 authorization.
+No broad fallback to byte-only `FoundationPotentialIdentity.from_file()` is allowed for current P5 authorization.
 
-Foundation rules remain:
+Foundation invariants remain:
 
-- omitted head remains `None` until canonical inspection;
-- singleton model may resolve its canonical singleton head;
-- multi-head model with omitted head fails closed;
-- unavailable explicit head fails closed;
-- wrong family/corrupt checkpoint/inspection failure fails before training;
-- runtime foundation path is a locator only;
-- scientific identity is `FoundationPotentialIdentity.canonical_content_digest` plus canonical head/spec semantics;
-- same bytes/head moved to a new path preserve method identity;
-- changed bytes or canonical head invalidate stale CV.
+- omitted head remains unresolved until canonical inspection;
+- singleton omitted head may resolve canonically;
+- multi-head omitted head fails;
+- unavailable explicit head, wrong family, corrupt/unsupported checkpoint, or inspection failure fails before training;
+- runtime path is locator only;
+- canonical content/head identity is scientific identity;
+- relocation with identical bytes/head preserves method identity;
+- changed bytes/head invalidates stale CV/final authorization.
 
-### 2.2 Path-free replay scientific identity and plan lineage
+The replay-retention baseline must continue to use `build_post_selection_foundation_baseline_provider()` -> real `MaceCalculatorProvider` ownership with the canonical foundation identity/head and the same TRUE_DFT monitor used for the candidate.
 
-For canonical single-source replay, the shared replay-policy digest remains path-free and binds normalized semantic policy only: enabled state, interface, training exposure/label mode, split policy, required TRUE_DFT monitor semantics, and canonical P5 head names.
+### 2.2 Replay semantic ownership
 
-Exact replay bytes belong to plan lineage, not the shared method identity. Single-source lineage must continue to bind at least:
+Preserve the revision-9 separation of replay roles. `PostSelectionReplayResolution` or equivalent transport may carry canonical artifacts but is not a new scientific authority.
 
-- canonical replay-source content identity and SHA-256;
-- `ReplaySplitManifest.content_digest`;
-- replay training-view logical/content identity and file SHA-256;
-- TRUE_DFT replay monitor-view logical/content identity and file SHA-256;
-- normalized label semantics.
-
-Missing required identities fail closed. No path hash, `None` placeholder, or exception-swallowing fallback may weaken lineage.
-
-### 2.3 Identity -> execution parity already repaired
-
-Preserve the following:
-
-- invalid dtype rejects; accepted current values are exactly `float32` and `float64`;
-- explicit unsupported training mode rejects; accepted P5 modes are exactly `scratch`, `naive_fine_tuning`, and `multihead_replay`;
-- unsupported optimizer family remains rejected rather than being represented as an identity-only knob;
-- `eval_interval` remains in shared method identity and reaches the internal P5 config and translated MACE config;
-- acceleration remains normalized through existing `MaceAccelerationPolicy` / `MaceOptimizerPolicy.acceleration_policy` ownership;
-- method `acceleration_backend` equals the canonical backend value;
-- `_optimizer_policy_for()` fails closed if the run optimizer backend disagrees with the method;
-- `optimizer_policy.acceleration_policy.training_config()` reaches MACE as the canonical `enable_cueq` / `only_cueq` realization;
-- `checkpoint_interval_epochs` remains routed through CV/final `TrainingBudgetPolicy` -> `Train2RuntimePlan`, not an invented MACE knob.
-
-### 2.4 Final pre-launch scientific-file authentication
-
-`PostSelectionRungRequest` and real `MacePostSelectionTrainer` must continue to carry/authenticate enough canonical state to verify, before child launch:
-
-1. internal P5 config bytes, SHA/digest, and schema;
-2. target training ExtXYZ bytes against its materialization artifact;
-3. target validation/checkpoint-monitor ExtXYZ bytes against its materialization artifact;
-4. foundation checkpoint bytes against canonical foundation SHA for non-scratch methods;
-5. foundation locator/head agreement between request and internal config;
-6. replay training artifact/path bytes for multihead replay;
-7. replay monitor artifact/path bytes when exposed to TRAIN2/MACE;
-8. `request.plan.true_replay_monitor_sha256` against the same authenticated TRUE_DFT monitor.
-
-Any disagreement raises `PostSelectionExecutionError` with **zero wrapper launches**. Scientific files use `sha256_file_cached`; do not add whole-file `read_bytes()` hashing for large artifacts.
-
-### 2.5 Qualified TRAIN2/MACE launch and replay baseline
-
-Preserve:
-
-- `post_selection_mace_run_configuration()` as the one internal-P5 -> parser-facing MACE translation owner;
-- executable `mace_run_config.yaml` rather than handing the internal P5 schema directly to MACE;
-- wrapper `cwd=request.materialization_directory` while artifact paths are materialization-relative;
-- copied `os.environ` plus canonical `MDSTATS_TRAIN2_RUNTIME_PLAN`;
-- `PYTHONHASHSEED` equal to optimizer seed;
-- replay-enabled `MDSTATS_TRAIN2_TRUE_REPLAY_PATH` equal to the exact authenticated TRUE_DFT replay monitor path;
-- runtime plan carrying exact replay monitor SHA and correct target/replay head names;
-- nonzero wrapper exit fails closed;
-- wrapper success without valid canonical `load_train2_runtime_summary(request.checkpoint_directory)` evidence fails closed;
-- summary plan/optimizer/budget/LR/structure geometry is authenticated before checkpoint evaluation;
-- existing wrapper completion/signal supervision remains authoritative;
-- foundation replay baseline uses real `MaceCalculatorProvider`/existing provider ownership, canonical foundation identity/head, and the exact same TRUE_DFT replay monitor as candidate;
-- replay baseline cache identity remains content/head/monitor/evaluation-policy/dtype/backend based rather than path based.
-
----
-
-## 3. Revision-9 defect A — legacy replay method identity and executable training semantics
-
-### 3.1 Problem
-
-At baseline `21dac636`, legacy split-file replay is represented by a single boolean `has_legacy_replay`, and `resolve_post_selection_replay_policy_digest()` hardcodes `training_label_mode="true_dft"` for every legacy replay configuration.
-
-That is wrong because the supported legacy replay contract distinguishes at least:
+Supported current replay training semantics are exactly:
 
 ```text
-[replay].mode = "external_pseudolabel"
-    -> MACE trains from foundation-pseudolabeled replay
+single-source or legacy external_pseudolabel
+    -> training_label_mode = foundation_pseudolabel
 
-[replay].mode = "external_true_label"
-    -> MACE trains from the canonical TRUE_DFT replay training view
+single-source or legacy external_true_label
+    -> training_label_mode = true_dft
 ```
 
-Those are scientifically different methods and must not share `PostSelectionMethodIdentity`.
+Legacy unsupported/ambiguous replay modes fail before P5 training.
 
-A second risk follows from the current orchestration's use of the TRUE_DFT replay resolver: obtaining the independent TRUE_DFT admissibility monitor must not silently replace pseudolabel replay **training** with TRUE_DFT replay training.
+Replay method identity remains path-free. Exact replay bytes belong to plan lineage, not method identity. Canonical single-source lineage binds source content/SHA, split-manifest digest, training-view identity/SHA, TRUE_DFT monitor identity/SHA, and normalized label semantics. Legacy lineage binds the actual training replay identity/SHA, independent TRUE_DFT monitor identity/SHA, normalized training-label semantic, and canonical true-label source identity when the existing replay owner exposes one.
 
-### 3.2 Frozen correction: one normalized replay-training semantic
+CV binds replay lineage. Final production and fresh restart re-resolve current replay lineage and require exact equality to the accepted CV lineage.
 
-**Primary owners:**
+### 2.3 Canonical P5 head namespace
 
-- `mdstats/training_data/post_selection_identity.py`
-- `mdstats/training_data/campaign_post_selection_runtime.py`
-- existing canonical replay/configuration owners in `replay.py` and `_campaign_cli_core.py`
-
-Do not create a second replay mode enum or a P5-specific interpretation of legacy files. Consume the repository's existing `ReplayMode`, `ReplayLabelMode`, single-source config, and canonical replay artifact resolvers.
-
-Resolve one normalized P5 replay-training semantic before method identity is constructed. It must distinguish at least:
-
-```text
-no replay
-    enabled = false
-    training_label_mode = none
-
-single-source replay
-    training_label_mode = canonical ReplaySingleSourceConfig.label_mode
-
-legacy external_pseudolabel
-    training_label_mode = foundation_pseudolabel
-
-legacy external_true_label
-    training_label_mode = true_dft
-```
-
-For another legacy mode (`none`, `mp_shortcut`, `preselected`, or future values), do **not** guess. If an existing canonical replay owner currently resolves that mode to one unambiguous supported training artifact/label semantic, consume that owner. Otherwise reject the configuration before CV/training with `TrainingDataInputError`/`PostSelectionError`.
-
-Conflicting replay configuration forms remain errors. The semantic digest must contain no filesystem paths.
-
-### 3.3 Required shared replay-policy payload
-
-Refactor `resolve_post_selection_replay_policy_digest()` as needed so it receives the normalized replay semantic rather than merely `has_legacy_replay: bool`.
-
-For legacy split replay, the payload must be equivalent to:
-
-```python
-{
-    "schema": "mdstats.post-selection-replay-policy.v3",
-    "enabled": True,
-    "interface": "legacy_split",
-    "training_exposure": "separate_multihead_replay",
-    "training_label_mode": <normalized ReplayLabelMode value>,
-    "true_dft_monitor_required": True,
-    "target_head_name": POST_SELECTION_TARGET_HEAD_NAME,
-    "replay_head_name": POST_SELECTION_REPLAY_HEAD_NAME,
-}
-```
-
-Include any other already-supported semantic policy field only when it materially changes replay training. **Do not include** `replay_train`, `replay_monitor`, `replay_true_labels`, `replay_set`, source directories, or other locators.
-
-Changing only file location with identical bytes/semantics must preserve method identity. Changing pseudolabel <-> TRUE_DFT training semantics must change the method identity before any training runs.
-
-### 3.4 Frozen correction: training replay and TRUE_DFT monitor are separate resolved roles
-
-P5 orchestration must carry two conceptually distinct products, even if an existing canonical resolver returns them together:
-
-```text
-ReplayTrainingResolution
-    train_path
-    train_artifact
-    normalized training_label_mode
-
-ReplayTrueDftMonitorResolution
-    monitor_path
-    monitor_artifact
-    label_mode = true_dft
-```
-
-Do not invent new persisted classes if existing replay owners already expose these values. A small P5 adapter/dataclass is acceptable only as a transport wrapper around canonical artifacts; it must not become a new scientific authority.
-
-Required behavior:
-
-- `multihead_replay` MACE `pt_train_file` is built from the canonical **training** replay artifact selected by configured replay mode.
-- For legacy `external_pseudolabel`, MACE must continue to train from pseudolabeled replay even when a separate TRUE_DFT replay source exists for admissibility.
-- For legacy `external_true_label`, MACE uses the canonical TRUE_DFT training replay artifact.
-- `MDSTATS_TRAIN2_TRUE_REPLAY_PATH`, candidate replay evaluation, and foundation-baseline replay evaluation use the exact independent TRUE_DFT **monitor** artifact.
-- TRUE_DFT monitor resolution may never mutate the shared training-label semantic.
-
-If the current `_resolve_true_label_replay_inputs(..., require_train=True)` API returns only TRUE_DFT train/monitor views and cannot also identify the configured training replay artifact, do not force it to serve both roles. Reuse the existing DATA8/replay training artifact resolver for training exposure and keep `_resolve_true_label_replay_inputs` (or an equivalent shared owner) for independent TRUE_DFT admissibility evidence.
-
-### 3.5 Legacy replay lineage
-
-Plan-level replay lineage must bind the exact artifacts actually governing both roles.
-
-For supported legacy replay, include at least:
-
-```text
-schema/interface = legacy_split
-normalized training_label_mode
-training replay logical/content digest + file SHA256
-TRUE_DFT monitor logical/content digest + file SHA256
-canonical separate true-label artifact/source identity when the existing replay owner exposes one
-```
-
-Do not include paths.
-
-For single-source replay, retain the revision-8 source/split/train/TRUE_DFT-monitor lineage. If training pseudolabel materialization introduces a distinct canonical training-view identity, include it rather than incorrectly treating the TRUE_DFT train view as the training artifact.
-
-CV plans bind this lineage. Final production and restart must re-resolve current replay training + TRUE_DFT monitor lineage and require exact equality to the accepted CV plan.
-
-### 3.6 R9A acceptance
-
-Direct tests must prove the **production owners**, not helper-shaped `SimpleNamespace` payloads alone:
-
-1. same legacy replay bytes/split with `external_pseudolabel` versus `external_true_label` -> different `PostSelectionMethodIdentity`;
-2. legacy pseudolabel MACE materialization points `pt_train_file` to the canonical pseudolabel training artifact;
-3. legacy TRUE_DFT mode points `pt_train_file` to the canonical TRUE_DFT training artifact;
-4. both modes use the independent authenticated TRUE_DFT replay monitor for admissibility;
-5. switching replay training mode after accepted CV prevents final authorization;
-6. relocating identical legacy files without semantic change preserves method identity and lineage;
-7. changing training replay bytes or TRUE_DFT monitor bytes invalidates lineage/fails currentness;
-8. unsupported or ambiguous legacy replay mode fails before materialization/training.
-
-After R9A, run focused tests plus affected replay/P5 identity/CV-plan/final-plan regression before proceeding to R9B.
-
----
-
-## 4. Revision-9 defect B — one authoritative P5 fine-tuning head namespace
-
-### 4.1 Problem
-
-At baseline `21dac636`, method/replay identity and `Train2RuntimePlan.target_head_name` may consume configurable `[training].selected_head_name`, while `_post_selection_mace_config()` hardcodes the actual MACE multihead map as `"target_head"` and `"pt_head"`.
-
-Therefore identity/runtime control can name one target head while executable MACE trains another.
-
-Foundation checkpoint head selection is a separate concept and remains governed by canonical `FoundationPotentialIdentity.foundation_head`. Do not conflate foundation head with the P5 fine-tuning head namespace.
-
-### 4.2 Frozen correction: current P5 uses fixed canonical fine-tuning head names
-
-Use one canonical owner for current P5 fine-tuning head names:
+Current P5 fine-tuning head names remain fixed:
 
 ```python
 POST_SELECTION_TARGET_HEAD_NAME = "target_head"
 POST_SELECTION_REPLAY_HEAD_NAME = "pt_head"
 ```
 
-The constants may live in `post_selection_identity.py` or another existing P5 policy owner with no import cycle. Do not duplicate string literals across method resolution, runtime-plan construction, and executable configuration once this correction lands.
+- omitted or explicit `target_head` is accepted;
+- any other target fine-tuning head rejects before training;
+- no new replay-head option is introduced merely for P5; any existing replay-head surface must normalize to `pt_head` or reject;
+- method/replay identity, `TargetSizeCommonTrainingPolicy`, `Train2RuntimePlan`, internal P5 configuration, executable MACE `heads`, and relevant summary/provider validation all use the same canonical names.
 
-Current-generation P5 does **not** need arbitrary fine-tuning head names. Therefore:
+Foundation checkpoint head selection remains a separate concept owned by canonical foundation identity.
 
-- omitted `[training].selected_head_name` -> canonical `target_head`;
-- explicit `[training].selected_head_name = "target_head"` -> accepted and scientifically identical to omission;
-- any other non-empty target-head value -> fail closed before plan/materialization/training;
-- if a replay-head configuration surface already exists, omitted/`pt_head` is accepted and any other value rejects; do not introduce a new user-facing replay-head option merely for this repair.
+### 2.4 Identity -> execution parity and TRAIN2
 
-### 4.3 Required consumers
+Preserve:
 
-The same canonical constants must drive:
+- accepted dtypes exactly `float32` / `float64`; invalid values reject;
+- accepted training modes exactly `scratch`, `naive_fine_tuning`, `multihead_replay` subject to the compatibility matrix in Section 4;
+- unsupported optimizer family rejects;
+- `eval_interval` is method identity and reaches the executable MACE config;
+- checkpoint interval is method identity and reaches role `TrainingBudgetPolicy` / `Train2RuntimePlan`;
+- acceleration is normalized through existing `MaceAccelerationPolicy`; method backend and optimizer backend must agree; canonical `training_config()` reaches `enable_cueq` / `only_cueq`;
+- `post_selection_mace_run_configuration()` remains the sole internal-P5 -> parser-facing MACE translator;
+- real `MacePostSelectionTrainer` authenticates internal config, target train/monitor, foundation, replay train, replay monitor, and runtime TRUE_DFT SHA before subprocess launch;
+- scientific file hashing uses `sha256_file_cached` where applicable;
+- wrapper cwd/environment remain production-owned, including exact `MDSTATS_TRAIN2_RUNTIME_PLAN`, optimizer-seed `PYTHONHASHSEED`, and replay-enabled `MDSTATS_TRAIN2_TRUE_REPLAY_PATH`;
+- nonzero wrapper exit fails;
+- successful wrapper exit without valid canonical `load_train2_runtime_summary(request.checkpoint_directory)` evidence fails;
+- canonical summary plan/optimizer/budget/LR/structure geometry remains authenticated before checkpoint evaluation.
 
-- shared replay policy digest;
-- `TargetSizeCommonTrainingPolicy.selected_head_name` or equivalent method policy field;
-- `Train2RuntimePlan.target_head_name` / `replay_head_name`;
-- internal P5 multihead config;
-- `_post_selection_mace_config()` `heads` mapping keys;
-- any provider/summary/head validation that compares run semantics with checkpoint evidence.
+### 2.5 Assembled orchestration already corrected in P5A4
 
-Required invariant:
+Preserve the real CLI/CampaignStore/P4 selected authority, real CV/final currentness, real `MacePostSelectionTrainer`, real replay training-vs-TRUE_DFT role separation, real target-only checkpoint selection, real final fresh-run orchestration, and fresh reopened-store restart validation introduced by the revision-9 implementation.
 
-```text
-method target/replay head names
-== Train2RuntimePlan target/replay head names
-== executable MACE heads mapping keys
-```
-
-No string rewrite/fallback may occur after method identity is frozen.
-
-### 4.4 R9B direct acceptance and repair of proxy guards
-
-Repair the revision-8 guard suite so the following claims execute their actual production owners rather than manually reproducing the desired assertion:
-
-- `eval_interval`: build the real canonical optimizer policy -> `_post_selection_mace_config()` -> `post_selection_mace_run_configuration()`; changing `eval_interval` must change method identity and the executable config value.
-- checkpoint interval: mutate the config and traverse method identity -> real CV/final `TrainingBudgetPolicy` -> `Train2RuntimePlan` checkpoint policy/interval semantics.
-- acceleration: resolve actual configured acceleration -> method policies -> actual `_optimizer_policy_for()` -> internal config -> translated MACE config; assert canonical training config.
-- backend mismatch: call the actual mismatch owner; do not manually compare fields and `raise PostSelectionError` inside the test.
-- runtime TRUE_DFT mismatch: actual `MacePostSelectionTrainer` with artifact/path/plan SHA disagreement must show zero wrapper launches.
-- canonical summary requirement: fake wrapper exits zero but canonical TRAIN2 summary is missing or invalid -> `PostSelectionExecutionError`.
-- head namespace: omitted and explicit canonical target head produce the same method identity; noncanonical target head rejects before materialization; runtime-plan head names exactly equal actual executable MACE `heads` keys.
-
-After R9B, run focused tests plus affected MACE-config, optimizer, acceleration, TRAIN2 runtime/wrapper, materialization, provider, and prior P5 regression before R9C.
+Do not revert to `PostSelectionHarness` as the trainer owner for the final assembled acceptance claim.
 
 ---
 
-## 5. Revision-9 defect C — assembled replay-enabled non-scratch real-owner acceptance
+## 3. Revision-10 defect A — replay lineage must be fully explicit and fail closed
 
-### 5.1 Required semantic-owner boundary
+### 3.1 Problem
 
-The existing scratch/no-replay `PostSelectionHarness` lifecycle remains useful regression coverage but **cannot close P5 assembled acceptance**.
+At baseline `6eca4172`, `compute_replay_lineage_digest()` still supports incomplete transport shapes by:
 
-Create one bounded assembled test dedicated to the revision-9 owner chain. It must traverse:
+- inferring `interface` when it is absent; and
+- defaulting missing replay training semantics to `ReplayLabelMode.TRUE_DFT` when neither the resolution nor authenticated training artifact supplies a mode.
+
+That compatibility behavior can convert incomplete/ambiguous evidence into a current scientific lineage. It is incompatible with P5's current-generation cutover and with the frozen rule that replay training exposure is the artifact/semantic actually consumed by MACE.
+
+### 3.2 Frozen correction
+
+**Primary owner:** `mdstats/training_data/post_selection_identity.py`
+
+Current P5 `compute_replay_lineage_digest()` must require explicit authenticated state. Do not infer scientific meaning from object shape.
+
+Required preconditions:
+
+```text
+interface is explicitly one of:
+    single_source
+    legacy_split
+
+train_artifact exists
+monitor_artifact exists
+training_label_mode exists and is one of:
+    true_dft
+    foundation_pseudolabel
+true_label_mode exists/resolves to exactly true_dft
+```
+
+The training artifact's label mode, when the artifact exposes one, must equal normalized `training_label_mode`. The monitor artifact's label mode, when exposed, must equal `true_dft`. Any disagreement or missing required semantic raises `PostSelectionError` / `TrainingDataInputError`; there is no semantic fallback.
+
+For all current lineage inputs require path-independent content identity plus bytes:
+
+```text
+train_artifact:
+    content_digest or canonical logical_digest
+    sha256
+
+monitor_artifact:
+    content_digest or canonical logical_digest
+    sha256
+```
+
+For `single_source`, additionally require:
+
+```text
+source_content_digest
+source_sha256
+split_manifest_digest
+```
+
+Do not use `source_sha256` as a substitute for a missing `source_content_digest` if the canonical `ReplaySourceArtifact` owns a content digest. Missing canonical identity is a hard error.
+
+For `legacy_split`, bind normalized training label mode, train identity/SHA, TRUE_DFT monitor identity/SHA, and canonical separate true-label source identity when the existing replay owner exposes it. Do not invent a path-based replacement for absent source identity.
+
+No lineage payload contains filesystem paths.
+
+### 3.3 Compatibility disposition
+
+P5's declared compatibility policy is `current-generation-cutover-no-derived-migration`. Therefore:
+
+- incomplete R8/R9-shaped helper objects are **not** valid current P5 authorization evidence;
+- no TRUE_DFT default is retained merely to keep old guard fixtures green;
+- no interface inference is retained merely to deserialize helper-shaped evidence;
+- persisted old CV/final evidence that cannot reauthenticate under the current explicit lineage is stale and must be recomputed rather than upgraded by assumption.
+
+This does not require migration of authoritative user data. It is derived P5 evidence invalidation.
+
+### 3.4 R10A direct acceptance
+
+Tests must execute the actual lineage owner and prove:
+
+1. missing `interface` rejects;
+2. unsupported `interface` rejects;
+3. missing `training_label_mode` rejects even if train/monitor SHA fields exist;
+4. missing train or monitor content identity/SHA rejects;
+5. single-source missing source content digest, source SHA, or split-manifest digest rejects;
+6. training semantic mismatching authenticated train artifact rejects;
+7. non-TRUE_DFT monitor semantic rejects;
+8. complete single-source and complete legacy lineage remain path-independent under relocation;
+9. training bytes, monitor bytes, source bytes, or split membership changes invalidate lineage as appropriate;
+10. existing R8/R9 tests are updated to construct semantically complete canonical artifacts/resolutions rather than relying on implicit defaults.
+
+Do not weaken production validation to preserve an old test shape.
+
+---
+
+## 4. Revision-10 defect B — exact training-mode / foundation / replay compatibility
+
+### 4.1 Problem
+
+At baseline `6eca4172`, replay configuration can make `replay_exposure_policy_digest` claim `training_exposure="separate_multihead_replay"` while an explicit `scratch` or `naive_fine_tuning` training mode remains accepted. Execution enables MACE multihead replay only when `training_mode == "multihead_replay"`.
+
+This permits identity to claim replay training that the executable method does not perform.
+
+### 4.2 Frozen current-P5 compatibility matrix
+
+Current P5 has exactly three supported scientific training modes and one legal foundation/replay topology for each:
+
+| training mode | foundation checkpoint | replay training source | independent TRUE_DFT monitor | executable replay training |
+| --- | --- | --- | --- | --- |
+| `scratch` | absent | absent | absent | no |
+| `naive_fine_tuning` | required | absent | absent | no |
+| `multihead_replay` | required | required | required | yes |
+
+Any other combination is invalid and must fail during canonical method-policy resolution **before** CV plan construction, materialization, or wrapper launch.
+
+Specifically:
+
+- `scratch` + configured foundation -> reject;
+- `scratch` + any P5 replay source/path/config -> reject;
+- `naive_fine_tuning` without foundation -> reject;
+- `naive_fine_tuning` + any P5 replay source/path/config -> reject;
+- `multihead_replay` without foundation -> reject;
+- `multihead_replay` without canonical replay training source -> reject;
+- `multihead_replay` without resolvable independent TRUE_DFT monitor -> reject before executable training;
+- replay source configured while mode is not `multihead_replay` -> reject rather than silently treating replay as monitor-only.
+
+Do **not** add a fourth "replay-admissibility-only" training mode or reinterpret existing modes in this repair. That would be a product-semantic redesign.
+
+### 4.3 Canonical owner and implementation consequence
+
+**Primary owner:** `resolve_post_selection_method_policies()` in `post_selection_identity.py` (or one existing policy-normalization helper called uniquely by it).
+
+Resolve in this order:
+
+```text
+canonical replay interface/semantic presence
+canonical training_mode
+canonical foundation identity/presence
+validate compatibility matrix
+construct shared method/replay policy identity
+```
+
+No downstream caller may need to repair an illegal combination.
+
+Required identity/execution invariant:
+
+```text
+method training_mode == multihead_replay
+    <=> replay_exposure_policy says separate_multihead_replay
+    <=> canonical replay training resolution exists
+    <=> MACE multiheads_finetuning is true
+    <=> executable config carries pt_train_file + canonical pt_head
+```
+
+For `scratch` and `naive_fine_tuning`, the shared replay policy is the stable disabled/no-replay policy and no replay TRAIN2/MACE fields may be emitted.
+
+The independent TRUE_DFT monitor is mandatory only for `multihead_replay` under current P5. It remains admissibility-only and receives zero target ranking credit.
+
+### 4.4 R10A compatibility acceptance
+
+Direct tests through `resolve_post_selection_method_policies()` and assembled materialization must prove all legal/illegal matrix cells.
+
+At minimum:
+
+- legal scratch resolves with no foundation/replay identity and produces non-multihead config;
+- legal naive fine-tuning resolves canonical foundation identity, no replay exposure, and produces non-multihead config;
+- legal multihead replay resolves canonical foundation + replay training + TRUE_DFT monitor and produces exact `pt_train_file` / `pt_valid_file` / `pt_head` semantics;
+- every illegal matrix combination above rejects before materialization;
+- a campaign cannot change from accepted multihead CV to naive/scratch and retain final authorization;
+- a campaign cannot add replay configuration to accepted naive/scratch CV without invalidating/rejecting the current method;
+- method/replay identity and executable MACE mode cannot disagree under any supported configuration.
+
+---
+
+## 5. Revision-10 defect C — assembled foundation-provider owner must remain real
+
+### 5.1 Problem
+
+The P5A4 assembled replay-enabled/non-scratch test correctly leaves `MacePostSelectionTrainer` real and fakes the external numerical wrapper below it, but it monkeypatches `MaceCalculatorProvider.from_model_path` for the foundation replay baseline.
+
+That replaces a required semantic owner. The test could remain green while real provider construction/head/identity validation is broken.
+
+### 5.2 Frozen real-owner boundary
+
+The final assembled test must execute production code through:
+
+```text
+build_post_selection_foundation_baseline_provider(...)
+ -> MaceCalculatorProvider.from_model_path(...)
+ -> provider object accepted by real P5/EVAL2 orchestration
+```
+
+These functions/classes are **inside** the acceptance boundary and may not be monkeypatched/replaced for the R10 assembled claim:
+
+- `build_post_selection_foundation_baseline_provider`;
+- `MaceCalculatorProvider.from_model_path`;
+- P5 foundation identity resolver/spec/head resolution;
+- provider identity/head/dtype/backend validation performed by those owners;
+- replay baseline cache-key construction;
+- EVAL2 reduction/admissibility orchestration.
+
+### 5.3 Allowed bounded fake boundary
+
+Expensive numerical MACE work may still be replaced **below** `MaceCalculatorProvider.from_model_path`.
+
+Acceptable approaches include a deterministic fake at the lowest MACE-library/model-loading or forward-calculation dependency that lets `from_model_path()` itself execute its real mdstats validation/control path. Exact helper choice is delegated to Implementation based on the existing provider internals.
+
+The allowed fake must not:
+
+- directly return a preconstructed `MaceCalculatorProvider` from a monkeypatched `from_model_path`;
+- bypass checkpoint SHA/canonical foundation identity checks;
+- bypass requested/canonical head validation;
+- bypass provider dtype/backend/inference-identity construction that `from_model_path` owns;
+- fabricate post-provider EVAL2 records or replay metrics.
+
+If a tiny real test checkpoint already allows real provider construction cheaply on CPU, prefer it over patching internals.
+
+### 5.4 R10B assembled lifecycle
+
+Retain the revision-9 non-scratch replay-enabled lifecycle and strengthen only the fake boundary. One bounded test must traverse:
 
 ```text
 real campaign config
- -> real CampaignStore and current P4 SELECTED authority
- -> real resolve_post_selection_method_policies
- -> real canonical foundation inspection/spec/head resolution
- -> real canonical replay training resolution
- -> real canonical replay TRUE_DFT monitor/source/split resolution
- -> real path-free PostSelectionMethodIdentity
- -> real authenticated replay-lineage digest
- -> real CV plan/folds from selected data + P1 relation authority
- -> real fold DATA7/DATA8 preparation/materialization
+ -> real CampaignStore/current P4 SELECTED authority
+ -> real method policy/identity resolution
+ -> real canonical foundation inspection/spec/head
+ -> real canonical replay training + independent TRUE_DFT monitor resolution
+ -> real fail-closed replay lineage
+ -> real CV plan/folds from selected/P1 authority
+ -> real DATA7/DATA8 preparation/materialization
  -> real Train2RuntimePlan
  -> real MacePostSelectionTrainer
-      -> real internal-config authentication
-      -> real target/foundation/replay pre-launch authentication
-      -> real config translation/environment/cwd
-      -> deterministic fake wrapper below the trainer
+      -> real prelaunch authentication/config/env/cwd
+      -> fake external numerical training wrapper below trainer
  -> real canonical TRAIN2 summary/checkpoint authentication
- -> real post-selection provider authentication
- -> real EVAL2 decision path
- -> candidate replay evaluation + canonical foundation baseline on same TRUE_DFT monitor
+ -> real candidate provider authentication
+ -> real build_post_selection_foundation_baseline_provider
+ -> real MaceCalculatorProvider.from_model_path
+      -> bounded fake only below provider semantic owner if necessary
+ -> real EVAL2 candidate + foundation replay evaluation on same TRUE_DFT monitor
  -> real target-only representative selection
  -> real held-out outer acceptance
- -> real all-required-fold/seed CV campaign acceptance
- -> real final-plan method + replay-lineage reauthentication
+ -> real all-required CV campaign acceptance
+ -> real final method/replay-lineage reauthentication
  -> fresh full-T_selected final orchestration
  -> real M3 development semantics
  -> real currentness-fenced publication
- -> fresh context/reopened CampaignStore restart authentication
+ -> fresh context/reopened CampaignStore restart reauthentication
 ```
 
-### 5.2 Required campaign fixture
+The test remains invalid if it injects a precomputed replay lineage, seeds `CvCampaignAcceptance`/final authorization, replaces `MacePostSelectionTrainer`, replaces `MaceCalculatorProvider.from_model_path`, bypasses CampaignStore/currentness/restart, or directly fabricates post-decision EVAL2 metrics.
 
-The assembled test must be **non-scratch and replay-enabled**.
+### 5.5 Provider counterfactuals
 
-It may reuse the existing tiny P4 campaign fixture to establish a real current `SELECTED` authority, but before P5 execution its configuration/data must include:
+The assembled/focused provider tests must prove that production provider ownership would catch at least:
 
-- a canonically inspectable foundation checkpoint and explicit canonical head when the fixture is multihead;
-- replay training data under one supported mode;
-- a canonical independent TRUE_DFT replay monitor/source sufficient for the existing replay owner;
-- enough tiny target/replay structures to satisfy bounded CV and replay evaluation.
+- foundation bytes changed after canonical identity resolution;
+- wrong/unavailable foundation head;
+- identity/head mismatch between P5 method and provider construction;
+- provider construction failure propagates and prevents replay-baseline admissibility from being synthesized;
+- candidate and foundation replay evaluations use exactly the same authenticated TRUE_DFT monitor identity/SHA.
 
-Prefer an existing tiny real MACE checkpoint fixture if one is already in the test suite. If loading a real model would make the functional test hardware/dependency-heavy, the **allowed fake boundary is below canonical P5 foundation resolution**: a deterministic low-level model/checkpoint loader may return a real `MaceFoundationInspection` shape while `resolve_post_selection_foundation_identity()` and `MaceFoundationSpec.resolve()` themselves remain unpatched and execute normally. Do not patch the P5 foundation resolver or directly inject `FoundationPotentialIdentity.from_file()` as authorization.
-
-Likewise, do not patch replay policy/lineage resolvers. Build tiny real replay files and let the existing replay owners create source/split/view artifacts.
-
-### 5.3 Real trainer; fake wrapper only below it
-
-The test must instantiate/use the real `MacePostSelectionTrainer` selected by production orchestration. It must **not** pass `_external_post_selection_trainer=PostSelectionHarness.train` and must not replace `MacePostSelectionTrainer` when claiming R9C.
-
-A deterministic fake `mdstats-mace-train` executable is allowed because the external numerical process is below the trainer semantic owner. The fake wrapper must:
-
-- receive the translated MACE config through the real trainer;
-- capture/validate cwd and required environment;
-- consume or at least authenticate the real materialized filenames it was given;
-- produce bounded canonical TRAIN2 runtime summary/checkpoint artifacts in the locations/formats expected by existing owners;
-- produce deterministic tiny checkpoint state sufficient for the real downstream checkpoint/provider authentication path, or use an accepted lower-level provider numerical seam without bypassing provider authentication.
-
-Do not write a P5-only summary or checkpoint format.
-
-### 5.4 Allowed numerical substitution
-
-To keep the test fast and CPU-safe, deterministic numerical prediction may be substituted below the real provider/EVAL2 orchestration boundary. The following must still execute as production code:
-
-- candidate checkpoint/provider authentication;
-- canonical foundation baseline provider construction/head selection;
-- artifact loading and EVAL2 reduction;
-- replay admissibility decision;
-- target-only representative selection;
-- outer acceptance;
-- campaign/final/restart authorization.
-
-The test may use tiny synthetic structures and deterministic force offsets. It does not need real long MACE optimization or GPU execution.
-
-### 5.5 Forbidden proxy substitutions
-
-The R9C claim is invalid if the test:
-
-- patches/replaces `resolve_post_selection_method_policies()`;
-- patches/replaces `resolve_post_selection_foundation_identity()` or `MaceFoundationSpec.resolve()`;
-- directly constructs `FoundationPotentialIdentity.from_file()` in place of P5 foundation authorization;
-- patches/replaces canonical replay training/source/split/TRUE_DFT resolvers;
-- precomputes a replay-lineage digest and injects it into a plan;
-- seeds `CvCampaignAcceptance` or final authorization;
-- directly constructs post-decision `Eval2CheckpointRecord` replay metrics rather than exercising the EVAL2 decision owner;
-- replaces `MacePostSelectionTrainer` with `PostSelectionHarness`;
-- replaces `CampaignStore`, currentness fencing, or restart ownership with a custom/in-memory stand-in.
-
-### 5.6 Counterfactual requirements
-
-The assembled test must fail if any of these regressions are introduced:
-
-- canonical foundation inspection is bypassed/falls back;
-- pseudolabel replay training is silently replaced by TRUE_DFT training;
-- replay paths enter scientific method/lineage identity;
-- target/replay head names diverge between method/runtime/executable MACE;
-- pre-launch target/foundation/replay authentication is bypassed;
-- candidate/foundation replay evaluation no longer uses the same TRUE_DFT monitor;
-- replay changes target-only ranking credit;
-- accepted CV replay lineage differs from current final-production lineage;
-- final production reuses CV state instead of fresh full-`T_selected` training;
-- stale P4 generation/currentness is accepted;
-- fresh restart accepts stale method/foundation/replay/final-plan evidence.
-
-After R9C, run the final affected-surface regression defined in Section 7.
+Numerical force values may remain deterministic substitutes below the provider/EVAL2 semantic owners.
 
 ---
 
-## 6. Mandatory negative/parity matrix
+## 6. Implementation stages
 
-All prior revision-8 claims remain binding. They may be covered by existing tests if those tests truly exercise the stated owner. Claim numbering is for review convenience only; do not create one test per number.
-
-### Revision-8 claims 1-38
-
-1. real foundation resolver executes without missing imports;
-2. corrupt/unsupported foundation cannot downgrade to byte-only identity;
-3. wrong foundation family fails;
-4. multi-head omitted head fails;
-5. unavailable explicit head fails;
-6. foundation relocation with same bytes/head preserves P5 method identity;
-7. foundation bytes changed at same path invalidate/fail old method/CV;
-8. replay shared method digest contains no filesystem path;
-9. replay source relocation with same bytes/policy/split preserves method identity;
-10. replay lineage contains no filesystem path;
-11. replay source byte mutation invalidates CV->final authorization;
-12. replay split seed/ratio/membership mutation invalidates the appropriate policy/lineage;
-13. TRUE_DFT monitor byte mutation fails before training/evaluation;
-14. invalid dtype rejects instead of coercing to float64;
-15. invalid training mode rejects;
-16. unsupported optimizer family remains rejected;
-17. `eval_interval` mutation changes both method identity and executable MACE config;
-18. checkpoint interval mutation changes method identity and TRAIN2 budget/checkpoint policy;
-19. acceleration backend mutation changes method identity and canonical MACE acceleration training config/policy;
-20. method acceleration backend cannot disagree with run optimizer acceleration backend;
-21. target train artifact tamper blocks wrapper launch;
-22. target monitor artifact tamper blocks wrapper launch;
-23. foundation artifact tamper blocks wrapper launch;
-24. replay train artifact tamper blocks wrapper launch;
-25. replay monitor artifact tamper blocks wrapper launch;
-26. runtime TRUE_DFT SHA/path mismatch blocks wrapper launch;
-27. internal P5 config cannot be handed directly to MACE;
-28. TRAIN2 runtime environment remains exact;
-29. canonical TRAIN2 summary is mandatory after wrapper success;
-30. canonical foundation replay baseline uses the canonical head and same TRUE_DFT monitor as candidate;
-31. replay remains zero-credit to target ordering/ties/acceptance ranking;
-32. held-out outer CV target data cannot select the checkpoint it evaluates;
-33. all required folds/seeds remain mandatory;
-34. M3 remains development/model-selection only;
-35. production horizon remains independent from `n3` and CV budget;
-36. current P4 generation race still rejects stale publication;
-37. CV/final evidence cannot modify target-size authority;
-38. restart reload reauthenticates method, foundation, replay lineage, selected binding, and final plan.
-
-### Revision-9 claims 39-48
-
-39. legacy pseudolabel replay training and legacy TRUE_DFT replay training produce distinct shared method identities;
-40. the replay training artifact actually exposed to MACE has label semantics equal to the method identity's normalized replay-training semantic;
-41. the independent TRUE_DFT monitor is admissibility-only and cannot silently replace pseudolabel replay training;
-42. relocating identical legacy replay files with unchanged semantics preserves method identity and replay lineage;
-43. changing legacy replay training semantic after accepted CV invalidates final authorization;
-44. the current P5 fine-tuning head namespace is exactly `target_head` / `pt_head` across method, runtime plan, and executable MACE configuration;
-45. any unsupported noncanonical P5 fine-tuning head configuration rejects before training;
-46. `Train2RuntimePlan.target_head_name/replay_head_name` exactly match the actual executable MACE `heads` keys;
-47. one assembled non-scratch replay-enabled lifecycle uses the real `MacePostSelectionTrainer` and real P5 foundation/replay/CV/final/currentness owners, faking only below the accepted numerical boundary;
-48. a fresh context/reopened store reauthenticates selected binding, method, canonical foundation/head, replay training + TRUE_DFT lineage, canonical head namespace, accepted CV, and final plan.
-
-A green numbered guard file is not completion if its assertions could remain green while the production owner is broken.
-
----
-
-## 7. Implementation stages and regression requirements
-
-### P5-R9A — legacy replay semantic/execution closure
+### P5-R10A — fail-closed lineage and mode/exposure parity
 
 **Expected affected files**
 
 - `mdstats/training_data/post_selection_identity.py`
-- `mdstats/training_data/campaign_post_selection_runtime.py`
-- existing replay/config modules only if a small shared canonical accessor is genuinely required
-- focused tests
+- `mdstats/training_data/campaign_post_selection_runtime.py` only if runtime assertions/adapters need tightening
+- replay/P5 guard tests
 
 **Required edits**
 
-1. Replace legacy replay boolean identity with canonical normalized training-label semantics.
-2. Separate actual replay training resolution from independent TRUE_DFT admissibility monitor resolution.
-3. Make MACE replay training consume the artifact matching configured replay-training semantic.
-4. Extend legacy plan lineage to bind actual training artifact + TRUE_DFT monitor identities without paths.
-5. Preserve single-source path-free identity/lineage and revision-8 fail-closed behavior.
+1. Remove current P5 interface inference in replay lineage.
+2. Remove implicit TRUE_DFT training-label fallback.
+3. Require canonical explicit lineage identities/semantics and fail on missing state.
+4. Enforce the exact scratch/naive/multihead foundation/replay compatibility matrix before method identity construction.
+5. Ensure replay policy identity and executable training mode are biconditionally aligned.
+6. Update old helper-shaped guards instead of retaining production compatibility fallbacks for them.
 
 **Stage closure**
 
-Run focused R9A tests plus affected replay, true-label replay, P5 identity, CV-plan, final-plan, and restart regression. Do not proceed to R9B with a newly failing affected test.
+Run focused R10A tests plus affected replay single-source/legacy, P5 identity, CV-plan/final-plan/currentness, DATA8 materialization, TRAIN2 plan/config, and restart regression. Do not proceed to R10B with a new affected failure.
 
-### P5-R9B — head parity and direct guard repair
+### P5-R10B — real provider assembled closure
 
 **Expected affected files**
 
-- `post_selection_identity.py`
-- `post_selection_execution.py`
-- `campaign_post_selection_runtime.py`
-- P5 R8/R9 tests
+- `tests/test_mlff_target_size_p5_r9_guards.py` or successor revision-10 guard file;
+- bounded test support around the existing MACE provider's lower numerical seam;
+- production provider code only if the stronger real-owner test exposes a genuine implementation consequence already implied by this contract.
 
 **Required edits**
 
-1. Define/reuse one canonical P5 target/replay head-name owner.
-2. Reject unsupported custom P5 fine-tuning head names.
-3. Route canonical names through method identity, TRAIN2 runtime plan, internal config, and executable MACE head map.
-4. Replace proxy/self-fulfilling R8 tests for claims 17-20, 26, and 29 with direct owner execution.
-5. Preserve all revision-8 pre-launch/config/summary fixes.
+1. Remove monkeypatch/replacement of `MaceCalculatorProvider.from_model_path` from the assembled acceptance test.
+2. Keep `build_post_selection_foundation_baseline_provider` and provider construction real.
+3. Move any numerical fake below provider semantic ownership or use a tiny real CPU-safe checkpoint.
+4. Retain the real trainer + fake external training-wrapper boundary already established by P5A4.
+5. Execute the complete assembled chain in Section 5 on the same candidate used for final regression.
 
 **Stage closure**
 
-Run focused R9B tests plus affected optimizer/acceleration/MACE-config, TRAIN2 runtime/wrapper, materialization/provider, foundation, and P5 regression.
-
-### P5-R9C — assembled real-owner closure
-
-**Expected affected files**
-
-- test fixture/support code
-- P5 R9 integration test
-- production code only if the assembled test exposes a real implementation consequence already implied by this workplan
-
-Build the exact owner chain in Section 5. Do not weaken the owner boundary to make the fixture easier.
-
-**Stage closure**
-
-The replay-enabled non-scratch assembled integration must pass on the same source candidate that proceeds to final regression.
+The strengthened R10B assembled integration and focused provider counterfactuals must pass before final package regression.
 
 ---
 
-## 8. Final affected-surface regression
+## 7. Final acceptance and affected-surface regression
 
-After all R9 executable changes, re-derive the affected surface from the assembled candidate. At minimum execute bounded regression covering:
+All previously accepted P5 obligations remain binding. Final completion must establish, on one assembled candidate:
 
-- P5 revision-9 guards and assembled replay-enabled non-scratch integration;
-- prior P5 revision-8/revision-7 and earlier P5 guards that protect still-binding obligations;
-- P4 selected/currentness and commit-time stale-generation fencing;
-- generalized foundation identity/head inspection and provider construction;
-- replay single-source and supported legacy normalization;
-- pseudolabel training exposure and independent TRUE_DFT replay evaluation;
-- replay source/split/view/currentness/restart behavior;
-- common DATA7/DATA8 preparation/materialization reused by P5;
-- `MaceOptimizerPolicy`, `eval_interval`, checkpoint interval, and acceleration training config;
-- TRAIN2 budget/LR/runtime/environment/wrapper/summary/checkpoint/provider authentication;
+### 7.1 Scientific/configuration identity
+
+- canonical fail-closed foundation identity/head;
+- path-free replay method identity;
+- explicit fail-closed replay lineage with no inferred interface or default label semantic;
+- pseudolabel versus TRUE_DFT training semantics remain distinct;
+- exact mode/foundation/replay compatibility matrix;
+- canonical `target_head` / `pt_head` parity;
+- method identity changes or configuration rejects whenever executable scientific semantics change.
+
+### 7.2 Execution/authentication
+
+- target/foundation/replay scientific inputs authenticate before wrapper launch;
+- replay training artifact exposed to MACE matches method training semantics;
+- independent TRUE_DFT monitor exposed to TRAIN2/EVAL2 remains separate and authenticated;
+- `eval_interval`, checkpoint interval, optimizer, dtype, acceleration, head names, training mode, foundation, and replay semantics reach the appropriate real execution owners;
+- canonical TRAIN2 summary/checkpoint/provider authentication remains mandatory.
+
+### 7.3 CV/final/restart science
+
+- replay receives zero target-ranking credit;
+- outer CV target data cannot select the checkpoint it evaluates;
+- every required fold/seed is mandatory;
+- accepted CV method + replay lineage is exactly the method + replay lineage final production reauthenticates;
+- final production remains fresh full-`T_selected` training;
+- M3 remains development-only;
+- current P4 generation races reject stale publication;
+- restart reauthenticates selected binding, method, foundation/head, replay lineage, canonical head namespace, accepted CV, and final plan.
+
+### 7.4 Real-owner acceptance
+
+- assembled non-scratch replay-enabled lifecycle uses real `MacePostSelectionTrainer`;
+- assembled foundation replay baseline uses real `build_post_selection_foundation_baseline_provider` and real `MaceCalculatorProvider.from_model_path`;
+- only external/low-level expensive numerical dependencies below those owners are faked;
+- a defect in trainer/provider/currentness/lineage semantic owners would make the assembled evidence fail.
+
+### 7.5 Minimum final regression surface
+
+After all revision-10 executable edits, re-derive the affected surface. At minimum run bounded regression covering:
+
+- revision-10 focused and assembled guards;
+- prior revision-9/revision-8 guards for still-binding obligations, corrected where old fixture shape relied on removed fallbacks;
+- P4 selected/currentness/stale-generation fencing;
+- foundation inspection/head/provider construction;
+- replay single-source and supported legacy pseudolabel/TRUE_DFT paths;
+- replay source/split/train/TRUE_DFT lineage and relocation/tamper behavior;
+- common DATA7/DATA8 preparation/materialization;
+- MACE config, optimizer, eval/checkpoint intervals, acceleration;
+- TRAIN2 runtime/environment/wrapper/summary/checkpoint/provider authentication;
 - EVAL2 target/replay admissibility and target-only ordering;
-- CV plan/fold/acceptance, all-required seed/fold semantics, and outer holdout ordering;
+- CV fold/seed/outer-holdout/all-required acceptance;
 - final production/M3/fresh-run semantics;
-- persistence/current-pointer/restart resolution;
+- persistence/current pointers/restart;
 - CLI/orchestrator `cross-validate` and `train-production` entrypoints.
 
-If impact analysis cannot confidently bound the affected surface after implementation, run the broader available MLFF training-data regression suite.
+If impact cannot be confidently bounded, run the broader available MLFF training-data regression suite.
 
-A required check that does not execute is not a pass. Stage-local evidence does not replace the fresh final assembled affected-surface regression/integration.
+A required check that does not execute is not a pass. No GitHub CI status is required if the repository does not provide one, but Implementation must report the actually executed regression/integration commands and results. Green helper tests cannot substitute for missing real-owner execution.
 
-Do **not** run long production/GPU qualification for this package. CPU-safe bounded tests and deterministic numerical substitutes below the accepted owner boundary are sufficient for functional closure.
+Do **not** run long production/GPU qualification for this package.
 
 ---
 
-## 9. Completion conditions and reopen triggers
+## 8. Completion conditions and design-reopen triggers
 
-P5 revision 9 may be marked implemented only when all are true on one assembled candidate:
+P5 revision 10 may be marked implemented only when all are true:
 
 ```text
-semantic closure
-+ canonical foundation fail-closed behavior preserved
-+ single-source and legacy replay scientific identity path-free
-+ legacy pseudolabel vs TRUE_DFT training semantics distinguished
-+ replay training artifact matches method identity
-+ independent TRUE_DFT monitor remains admissibility-only
-+ exact replay lineage reauthenticated CV -> final -> restart
-+ one canonical target_head/pt_head namespace across identity/runtime/MACE
-+ complete retained method identity -> execution parity
-+ all scientific training inputs authenticated before wrapper launch
-+ qualified TRAIN2 translation/environment/summary path preserved
-+ canonical candidate/foundation replay admissibility path preserved
-+ stage-local affected regression passed for R9A and R9B
-+ replay-enabled non-scratch real-owner R9C integration passed
+semantic/conformance closure
++ canonical foundation behavior preserved
++ replay lineage fully explicit and fail closed
++ no implicit current-P5 lineage compatibility fallback
++ exact scratch/naive/multihead foundation/replay compatibility
++ replay method identity == replay execution semantics
++ canonical target_head/pt_head parity
++ all scientific training inputs authenticate before wrapper launch
++ qualified TRAIN2 path preserved
++ real candidate/foundation replay admissibility path preserved
++ real MaceCalculatorProvider.from_model_path exercised in assembled acceptance
++ stage-local R10A regression passed
++ R10B assembled real-owner integration passed
 + final affected-surface regression/integration passed
 ```
 
@@ -672,11 +571,9 @@ semantic closure
 
 Reopen only the affected P5 design surface if repository evidence proves one of these assumptions false:
 
-- existing canonical replay owners cannot expose the configured replay **training** artifact separately from independent TRUE_DFT admissibility evidence without a material replay-architecture change;
-- a currently supported legacy replay mode has materially different semantics that cannot be normalized through existing `ReplayMode`/`ReplayLabelMode` ownership;
-- current accepted MACE/TRAIN2 multihead execution requires user-configurable fine-tuning head names rather than fixed `target_head`/`pt_head` and rejecting custom names would break a governed product contract;
-- canonical foundation inspection/spec ownership cannot support a bounded real-owner fixture without changing production foundation architecture;
-- real `MacePostSelectionTrainer` cannot be exercised with a fake external wrapper while preserving canonical TRAIN2 summary/checkpoint ownership;
-- a revision-9 correction conflicts irreconcilably with a frozen parent/P1-P4 contract.
+- a governed current product contract requires replay configuration to coexist with `scratch` or `naive_fine_tuning` as an admissibility-only mode, so the frozen compatibility matrix would remove a supported capability;
+- canonical replay owners cannot expose explicit training/interface/source/split identities without material replay-architecture change;
+- a real `MaceCalculatorProvider.from_model_path` cannot be exercised in a bounded CPU-safe test while keeping the fake below provider semantics, and closing that boundary would require production provider architecture changes;
+- a revision-10 correction conflicts irreconcilably with the frozen parent/P1-P4 contract.
 
-Absent such evidence, the remaining work is implementation repair under this workplan, not redesign.
+Absent such evidence, all remaining work is implementation repair under this workplan, not redesign.
