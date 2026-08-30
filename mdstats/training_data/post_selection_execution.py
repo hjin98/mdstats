@@ -470,7 +470,10 @@ def materialize_post_selection_run(
     """
 
     from .mace_export import MaceExtxyzPolicy
-    from .target_size_execution import publish_immutable_json_create_or_verify
+    from .target_size_execution import (
+        publish_immutable_bytes_create_or_verify,
+        publish_immutable_json_create_or_verify,
+    )
 
     policy = MaceExtxyzPolicy() if extxyz_policy is None else extxyz_policy
     root = Path(output_directory)
@@ -546,8 +549,6 @@ def materialize_post_selection_run(
     config_path = root / "post_selection_mace_config.yaml"
     config_bytes = json.dumps(config, indent=2, sort_keys=True).encode("utf-8")
     config_sha256 = hashlib.sha256(config_bytes).hexdigest()
-    from .target_size_execution import publish_immutable_bytes_create_or_verify
-
     publish_immutable_bytes_create_or_verify(
         config_path, config_bytes, expected_sha256=config_sha256
     )
