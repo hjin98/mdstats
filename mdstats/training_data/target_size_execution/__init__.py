@@ -38,6 +38,7 @@ from .common import (
     build_target_size_common_preparation,
     fit_common_atomic_reference_energies,
     fit_common_configuration_weights,
+    fit_membership_frame_training_weights,
     project_target_size_candidate_preparation,
 )
 from .context import (
@@ -56,6 +57,7 @@ from .evaluation import (
     TargetSizeEval2Role,
     TargetSizePredictionEntry,
     TargetSizePredictionEvidence,
+    authenticate_train2_checkpoint_provider,
     build_target_size_eval2_role,
     evaluate_target_size_boundary,
     run_target_size_direct_boundary_inference,
@@ -124,6 +126,10 @@ from .execution import (
     translate_target_size_train2_failure,
     validate_target_size_boundary_snapshot,
     validate_target_size_continuation_request,
+)
+from .persistence import (
+    publish_immutable_bytes_create_or_verify,
+    publish_immutable_json_create_or_verify,
 )
 from .export import (
     TARGET_SIZE_EVALUATION_ARTIFACT_SCHEMA,
@@ -210,6 +216,7 @@ __all__ = [
     "build_target_size_candidate_trajectory",
     "build_target_size_cell_completion_record",
     "build_target_size_eval2_failure_cell_completion_record",
+    "authenticate_train2_checkpoint_provider",
     "build_target_size_eval2_role",
     "build_target_size_success_cell_completion_record",
     "build_target_size_train2_failure_cell_completion_record",
@@ -240,6 +247,7 @@ __all__ = [
     "derive_target_size_candidate_realization",
     "fit_common_atomic_reference_energies",
     "fit_common_configuration_weights",
+    "fit_membership_frame_training_weights",
     "materialize_target_size_candidate",
     "target_size_boundary_index",
     "target_size_evaluation_membership_digest_for_boundary",
@@ -260,6 +268,8 @@ __all__ = [
     "validate_target_size_extxyz_artifact",
     "validate_target_size_materialization",
     "write_target_size_evaluation_artifact",
+    "publish_immutable_bytes_create_or_verify",
+    "publish_immutable_json_create_or_verify",
     "write_target_size_extxyz_artifact",
     "seed_neutral_optimizer_policy_digest",
     "validate_candidate_optimizer_policy",

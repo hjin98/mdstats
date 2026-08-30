@@ -3425,7 +3425,7 @@ def _validate_replayed_eval2_parents(
     from .evaluation import (
         TargetSizeEval2Role,
         TargetSizePredictionEvidence,
-        _authenticate_target_size_provider,
+        authenticate_train2_checkpoint_provider,
         run_target_size_eval2_reduction,
         target_size_boundary_metric_from_eval2_record,
     )
@@ -3541,13 +3541,13 @@ def _validate_replayed_eval2_parents(
         raise TrainingDataInputError("Replay prediction device differs from optimizer policy.")
     if str(config_payload.get("default_dtype", "")) != str(trajectory.realization.default_dtype):
         raise TrainingDataInputError("Replay prediction dtype differs from trajectory realization.")
-    provider, evaluated_digest, _companion = _authenticate_target_size_provider(
+    provider, evaluated_digest, _companion = authenticate_train2_checkpoint_provider(
         raw_checkpoint_path=snapshot_dir / snapshot.raw_checkpoint_name,
         raw_checkpoint_sha256=snapshot.raw_checkpoint_sha256,
         companion_path=snapshot_dir / "train2_runtime.pt",
         companion_sha256=snapshot.companion_sha256,
         summary=snapshot.rung_runtime_summary,
-        trajectory=trajectory,
+        evaluation_model_state=trajectory.evaluation_model_state,
         config_payload=config_payload,
         allow_forward_override=authority.allow_forward_override,
     )

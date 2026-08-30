@@ -801,6 +801,31 @@ def inventory_mace_checkpoints(
 ) -> CandidateCheckpointCatalog:
     """Inventory checkpoint bytes without importing or trusting MACE metadata."""
 
+    return inventory_checkpoint_files(
+        root_directory,
+        run_plan_digest=run_plan.content_digest,
+        run_id=run_plan.run_id,
+        pattern=pattern,
+        epoch_pattern=epoch_pattern,
+    )
+
+
+def inventory_checkpoint_files(
+    root_directory: str | Path,
+    *,
+    run_plan_digest: str,
+    run_id: str,
+    pattern: str = "*.pt",
+    epoch_pattern: str = r"(?:epoch[-_]?)(\d+)",
+) -> CandidateCheckpointCatalog:
+    """Inventory checkpoint bytes for any run identity.
+
+    Checkpoint inventory is a property of the bytes on disk and the owning run,
+    not of any particular run-plan schema, so this owner takes the run identity
+    directly.  That lets target-size screening and post-selection runs share one
+    inventory implementation instead of maintaining two.
+    """
+
     root = Path(root_directory).resolve()
     if not root.is_dir():
         raise TrainingDataInputError(f"Checkpoint root does not exist: {root!s}.")
@@ -821,8 +846,8 @@ def inventory_mace_checkpoints(
         sha = _sha256_file(path)
         records.append(
             CheckpointFileRecord(
-                run_plan_digest=run_plan.content_digest,
-                candidate_id=f"{run_plan.run_id}:epoch-{epoch}",
+                run_plan_digest=run_plan_digest,
+                candidate_id=f"{run_id}:epoch-{epoch}",
                 epoch=epoch,
                 relative_path=relative.as_posix(),
                 sha256=sha,
@@ -830,7 +855,7 @@ def inventory_mace_checkpoints(
             )
         )
     return CandidateCheckpointCatalog(
-        run_plan_digest=run_plan.content_digest,
+        run_plan_digest=run_plan_digest,
         root_directory=str(root),
         checkpoints=tuple(records),
         pattern=pattern,

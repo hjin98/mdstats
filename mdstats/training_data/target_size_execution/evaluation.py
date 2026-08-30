@@ -124,14 +124,14 @@ def target_size_population_correlation_blocks(
     return dict(assignment)
 
 
-def _authenticate_target_size_provider(
+def authenticate_train2_checkpoint_provider(
     *,
     raw_checkpoint_path: Path,
     raw_checkpoint_sha256: str,
     companion_path: Path,
     companion_sha256: str,
     summary: Any,
-    trajectory: TargetSizeCandidateTrajectory,
+    evaluation_model_state: str,
     config_payload: Mapping[str, Any],
     allow_forward_override: bool,
 ) -> tuple[Any, str, Mapping[str, Any]]:
@@ -340,9 +340,9 @@ def _authenticate_target_size_provider(
             "Loaded provider model live parameter digest does not match summary live parameter digest."
         )
 
-    if trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_LIVE:
+    if evaluation_model_state == EVALUATION_MODEL_STATE_LIVE:
         evaluated_model_state_digest = computed_live_digest
-    elif trajectory.evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
+    elif evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
         if summary.ema_state_digest is None:
             raise TrainingDataInputError(
                 "EMA trajectory convention requires authenticated EMA boundary state."
@@ -402,7 +402,7 @@ def _authenticate_target_size_provider(
         evaluated_model_state_digest = computed_ema_digest
     else:
         raise TrainingDataInputError(
-            f"Unsupported evaluation model state: {trajectory.evaluation_model_state!r}"
+            f"Unsupported evaluation model state: {evaluation_model_state!r}"
         )
     return provider, evaluated_model_state_digest, companion
 
@@ -1137,13 +1137,13 @@ def run_target_size_direct_boundary_inference(
         )
 
     forward_fn = inference_forward if inference_forward is not None else inference_evaluator
-    provider, evaluated_model_state_digest, _companion = _authenticate_target_size_provider(
+    provider, evaluated_model_state_digest, _companion = authenticate_train2_checkpoint_provider(
         raw_checkpoint_path=ckpt_dir / boundary_state.raw_checkpoint_name,
         raw_checkpoint_sha256=summary.raw_checkpoint_sha256,
         companion_path=companion_path,
         companion_sha256=boundary_state.companion_sha256,
         summary=summary,
-        trajectory=trajectory,
+        evaluation_model_state=trajectory.evaluation_model_state,
         config_payload=config_payload,
         allow_forward_override=forward_fn is not None,
     )
@@ -1484,6 +1484,7 @@ __all__ = [
     "TargetSizeEval2Role",
     "TargetSizePredictionEntry",
     "TargetSizePredictionEvidence",
+    "authenticate_train2_checkpoint_provider",
     "build_target_size_eval2_role",
     "evaluate_target_size_boundary",
     "run_target_size_direct_boundary_inference",

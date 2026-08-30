@@ -1050,6 +1050,29 @@ def project_target_size_candidate_preparation(
     )
 
 
+def fit_membership_frame_training_weights(
+    frame_array_index: Mapping[str, tuple[Any, Any, int]],
+    membership: Sequence[str],
+    *,
+    objective_policy: TrainingObjectivePolicy,
+    configuration_weights: Mapping[str, FrameTrainingWeight],
+) -> tuple[FrameTrainingWeight, ...]:
+    """Freeze per-frame training weights over one exact membership.
+
+    This is the shared objective-weighting seam.  The common P3 preparation and
+    any downstream fold-local or final-production preparation produce their
+    weights through this one recipe, so that "the same method" means the same
+    arithmetic applied to whatever membership the caller is authorized to fit.
+    """
+
+    return _fitted_frame_weights(
+        frame_array_index,
+        membership,
+        objective_policy=objective_policy,
+        configuration_weights=configuration_weights,
+    )
+
+
 __all__ = [
     "CommonAtomicReferenceFit",
     "EVAL2_TARGET_METRIC_POLICY_DIGEST",
@@ -1064,5 +1087,6 @@ __all__ = [
     "build_target_size_common_preparation",
     "fit_common_atomic_reference_energies",
     "fit_common_configuration_weights",
+    "fit_membership_frame_training_weights",
     "project_target_size_candidate_preparation",
 ]

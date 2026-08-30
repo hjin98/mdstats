@@ -499,20 +499,36 @@ def resolve_shared_optimizer_settings(config: Mapping[str, Any]) -> dict[str, An
     }
 
 
-def resolve_post_selection_method_identity(
-    config: Mapping[str, Any],
-    *,
-    common_training_policy: Any = None,
-    learning_rate_schedule_policy: Any = None,
-    checkpoint_admissibility_policy: Any = None,
-    checkpoint_selection_policy: Any = None,
-    extxyz_policy: Any = None,
-) -> PostSelectionMethodIdentity:
-    """Resolve the shared method identity from configuration alone.
+@dataclass(frozen=True, slots=True)
+class PostSelectionMethodPolicies:
+    """The accepted policy objects the shared method identity summarizes.
 
-    Every default here is an accepted current policy object, so a campaign that
-    configures nothing still names one exact method.  No argument may be a
-    fitted product, a fold membership, or an evaluation result.
+    Both the identity and the execution owners resolve the method through this
+    one function, so the policy a run actually executes and the digest that
+    claims to describe it cannot drift apart.
+    """
+
+    common_training: Any
+    learning_rate_schedule: Any
+    checkpoint_admissibility: Any
+    checkpoint_selection: Any
+    extxyz: Any
+    training_mode: str
+    acceleration_backend: str
+    checkpoint_interval_epochs: int
+    device: str
+
+
+def resolve_post_selection_method_policies(
+    config: Mapping[str, Any],
+) -> PostSelectionMethodPolicies:
+    """Resolve the shared method's policy objects from configuration alone.
+
+    Replay admissibility follows the campaign's configured replay corpus: a
+    campaign with no TRUE_DFT replay source does not acquire a replay
+    constraint it cannot satisfy, and one that configures replay cannot lose it.
+    Either way replay only ever gates admissibility - the selection policy below
+    is target-only.
     """
 
     from .mace_export import MaceExtxyzPolicy
@@ -524,28 +540,9 @@ def resolve_post_selection_method_identity(
     )
 
     training = _table(config, "training")
+    acceptance = _table(config, "acceptance")
     acceleration = _table(config, "acceleration")
-    common = (
-        TargetSizeCommonTrainingPolicy()
-        if common_training_policy is None
-        else common_training_policy
-    )
-    schedule = (
-        LearningRateSchedulePolicy()
-        if learning_rate_schedule_policy is None
-        else learning_rate_schedule_policy
-    )
-    admissibility = (
-        CheckpointAdmissibilityPolicy()
-        if checkpoint_admissibility_policy is None
-        else checkpoint_admissibility_policy
-    )
-    selection = (
-        CheckpointSelectionPolicy()
-        if checkpoint_selection_policy is None
-        else checkpoint_selection_policy
-    )
-    export_policy = MaceExtxyzPolicy() if extxyz_policy is None else extxyz_policy
+    paths = _table(config, "paths")
 
     modes = training.get("modes")
     if isinstance(modes, (tuple, list)) and modes:
@@ -557,25 +554,92 @@ def resolve_post_selection_method_identity(
     else:
         training_mode = str(training.get("mode", "multihead_replay"))
 
+    replay_enabled = bool(str(paths.get("replay_true_labels", "")).strip())
+    replay_budget_mev = float(
+        acceptance.get("allowed_replay_degradation_mev_per_a", 30.0)
+    )
     source_backend = str(acceleration.get("backend", "e3nn")).strip().lower()
-    backend = str(acceleration.get("training_backend", source_backend)).strip().lower()
+    return PostSelectionMethodPolicies(
+        common_training=TargetSizeCommonTrainingPolicy(),
+        learning_rate_schedule=LearningRateSchedulePolicy(
+            base_learning_rate=float(training.get("learning_rate", 1.0e-4)),
+            warmup_end_fraction=float(
+                training.get("train2_warmup_end_fraction", 0.05)
+            ),
+            adaptation_end_fraction=float(
+                training.get("train2_adaptation_end_fraction", 0.80)
+            ),
+            initial_multiplier=float(
+                training.get("train2_initial_lr_multiplier", 0.10)
+            ),
+            adaptation_end_multiplier=float(
+                training.get("train2_refinement_start_lr_multiplier", 0.10)
+            ),
+            final_multiplier=float(training.get("train2_final_lr_multiplier", 0.01)),
+            update_driven=True,
+            validation_can_mutate_schedule=False,
+            native_adaptive_scheduler_enabled=False,
+        ),
+        checkpoint_admissibility=CheckpointAdmissibilityPolicy(
+            maximum_target_force_rmse_ev_per_angstrom=float(
+                acceptance.get("maximum_target_force_rmse_ev_per_angstrom", 0.030)
+            ),
+            replay_enabled=replay_enabled,
+            replay_degradation_budget_ev_per_angstrom=(
+                replay_budget_mev / 1000.0 if replay_enabled else None
+            ),
+            replay_label_requirement="true_dft",
+            required_physical_gates=(),
+        ),
+        checkpoint_selection=CheckpointSelectionPolicy(),
+        extxyz=MaceExtxyzPolicy(),
+        training_mode=training_mode,
+        acceleration_backend=str(
+            acceleration.get("training_backend", source_backend)
+        )
+        .strip()
+        .lower(),
+        checkpoint_interval_epochs=int(training.get("checkpoint_interval_epochs", 1)),
+        device=str(training.get("device", "cuda")),
+    )
 
+
+def resolve_post_selection_method_identity(
+    config: Mapping[str, Any],
+    *,
+    policies: PostSelectionMethodPolicies | None = None,
+) -> PostSelectionMethodIdentity:
+    """Summarize the resolved shared method policies into one digest.
+
+    No argument may be a fitted product, a fold membership, or an evaluation
+    result: the identity must be computable before any of those exist.
+    """
+
+    resolved = (
+        resolve_post_selection_method_policies(config) if policies is None else policies
+    )
     return PostSelectionMethodIdentity(
         method_recipe_version="mdstats.post-selection-method.2026-08.v1",
-        training_mode=training_mode,
-        common_training_policy_digest=common.content_digest,
-        learning_rate_schedule_policy_digest=schedule.policy_digest,
-        checkpoint_admissibility_policy_digest=admissibility.policy_digest,
-        checkpoint_selection_policy_digest=selection.policy_digest,
+        training_mode=resolved.training_mode,
+        common_training_policy_digest=resolved.common_training.content_digest,
+        learning_rate_schedule_policy_digest=(
+            resolved.learning_rate_schedule.policy_digest
+        ),
+        checkpoint_admissibility_policy_digest=(
+            resolved.checkpoint_admissibility.policy_digest
+        ),
+        checkpoint_selection_policy_digest=resolved.checkpoint_selection.policy_digest,
         shared_optimizer_settings_digest=digest(
             resolve_shared_optimizer_settings(config)
         ),
-        replay_exposure_policy_digest=common.replay_exposure_policy_digest,
-        extxyz_policy_digest=export_policy.policy_digest,
-        checkpoint_interval_epochs=int(training.get("checkpoint_interval_epochs", 1)),
-        default_dtype=str(common.default_dtype),
-        device=str(training.get("device", "cuda")),
-        acceleration_backend=backend,
+        replay_exposure_policy_digest=(
+            resolved.common_training.replay_exposure_policy_digest
+        ),
+        extxyz_policy_digest=resolved.extxyz.policy_digest,
+        checkpoint_interval_epochs=resolved.checkpoint_interval_epochs,
+        default_dtype=str(resolved.common_training.default_dtype),
+        device=resolved.device,
+        acceleration_backend=resolved.acceleration_backend,
     )
 
 
@@ -687,10 +751,12 @@ __all__ = [
     "CvValidationPolicyIdentity",
     "FinalProductionPolicyIdentity",
     "PostSelectionMethodIdentity",
+    "PostSelectionMethodPolicies",
     "cv_training_budget_policy",
     "final_production_training_budget_policy",
     "resolve_cv_validation_policy_identity",
     "resolve_final_production_policy_identity",
     "resolve_post_selection_method_identity",
+    "resolve_post_selection_method_policies",
     "resolve_shared_optimizer_settings",
 ]

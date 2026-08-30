@@ -1,0 +1,1096 @@
+"""Materialization, TRAIN2 execution, and EVAL2 evidence below the P5 plans.
+
+Everything in this module is a *descendant*: it binds the CV or final-production
+run plan it was produced under, and it can never rewrite that plan, the policy
+identities above it, or the selected binding at the root.  That direction is the
+whole invalidation contract - corrupt or changed fitted evidence invalidates
+itself, not its parents.
+
+Two scientific rules shape the code rather than merely being asserted by it.
+Fold-local preparation is fitted from the fold's authorized *training* frames
+only, so the held-out outer fold cannot leak into E0, weights, or checkpoint
+choice.  And nothing here forks a second training engine: preparation reuses the
+shared DATA7 fitting seam, export reuses the shared DATA8 ExtXYZ owner, training
+reuses the TRAIN2 runtime plan, and evaluation reuses the EVAL2 reduction and
+its target-only admissibility/ordering owners.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import os
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Mapping, Protocol, Sequence
+
+from ._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+    digest,
+    validate_digest,
+)
+from .campaign_post_selection import (
+    CurrentSelectedTrainingContext,
+    PostSelectionError,
+)
+from .post_selection_identity import PostSelectionMethodIdentity
+
+POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v1"
+POST_SELECTION_MATERIALIZATION_SCHEMA = "mdstats.post-selection-materialization.v1"
+POST_SELECTION_MACE_CONFIG_SCHEMA = "mdstats.post-selection-mace-config.v1"
+POST_SELECTION_EVAL_ROLE_SCHEMA = "mdstats.post-selection-eval2-role.v1"
+POST_SELECTION_RUN_EVIDENCE_SCHEMA = "mdstats.post-selection-run-evidence.v1"
+
+#: Dataset roles a post-selection run materializes.  ``target_train`` receives
+#: gradients; ``checkpoint_monitor`` may control checkpoint choice;
+#: ``outer_evaluation`` is held out until the representative is frozen.
+DATASET_ROLE_TARGET_TRAIN = "target_train"
+DATASET_ROLE_CHECKPOINT_MONITOR = "checkpoint_monitor"
+DATASET_ROLE_OUTER_EVALUATION = "outer_evaluation"
+
+
+class PostSelectionExecutionError(PostSelectionError):
+    """A post-selection execution owner refused to produce or accept evidence."""
+
+
+# ---------------------------------------------------------------------------
+# Fitted preparation (fold-local or final)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class PostSelectionFittedPreparation:
+    """Atomic references and training weights fitted over one exact membership.
+
+    The membership is an authorization boundary, not a convenience: a CV fold
+    fits only from its gradient-training frames, and final production fits from
+    the full ``T_selected``.  The record binds the run plan that authorized the
+    fit so a fitted product can always be traced to the exact evidence it was
+    allowed to see.
+    """
+
+    owner_plan_digest: str
+    dataset_role: str
+    common_training_policy_digest: str
+    membership: tuple[str, ...]
+    membership_digest: str
+    fitted_atomic_reference_digest: str
+    fitted_weights_digest: str
+    fitted_atomic_references: Any
+    fitted_frame_weights: tuple[Any, ...]
+
+    def __post_init__(self) -> None:
+        for name in (
+            "owner_plan_digest",
+            "common_training_policy_digest",
+            "membership_digest",
+            "fitted_atomic_reference_digest",
+            "fitted_weights_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        membership = tuple(str(v) for v in self.membership)
+        if not membership or len(set(membership)) != len(membership):
+            raise TrainingDataInputError(
+                "A fitted preparation requires a unique non-empty membership."
+            )
+        if digest({"frame_uids": list(membership)}) != self.membership_digest:
+            raise TrainingDataInputError(
+                "Fitted preparation membership does not match its digest."
+            )
+        weights = tuple(self.fitted_frame_weights)
+        if tuple(item.frame_uid for item in weights) != tuple(sorted(membership)):
+            raise TrainingDataInputError(
+                "Fitted weights must cover exactly the fitted membership."
+            )
+        if (
+            digest({"frame_weights": [item.to_dict() for item in weights]})
+            != self.fitted_weights_digest
+        ):
+            raise TrainingDataInputError(
+                "Fitted weights do not match their digest."
+            )
+        object.__setattr__(self, "membership", membership)
+        object.__setattr__(self, "fitted_frame_weights", weights)
+        object.__setattr__(self, "dataset_role", str(self.dataset_role))
+
+    def frame_weight_table(self) -> Any:
+        from .objectives import FrameTrainingWeightTable
+
+        return FrameTrainingWeightTable.from_records(self.fitted_frame_weights)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": POST_SELECTION_PREPARATION_SCHEMA,
+            "owner_plan_digest": self.owner_plan_digest,
+            "dataset_role": self.dataset_role,
+            "common_training_policy_digest": self.common_training_policy_digest,
+            "membership": list(self.membership),
+            "membership_digest": self.membership_digest,
+            "fitted_atomic_reference_digest": self.fitted_atomic_reference_digest,
+            "fitted_weights_digest": self.fitted_weights_digest,
+            "fitted_atomic_references": self.fitted_atomic_references.to_dict(),
+            "fitted_frame_weights": [
+                item.to_dict() for item in self.fitted_frame_weights
+            ],
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionFittedPreparation":
+        from .objectives import FrameTrainingWeight
+        from .target_size_execution import CommonAtomicReferenceFit
+
+        if payload.get("schema") != POST_SELECTION_PREPARATION_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported post-selection fitted-preparation schema."
+            )
+        result = cls(
+            owner_plan_digest=str(payload["owner_plan_digest"]),
+            dataset_role=str(payload["dataset_role"]),
+            common_training_policy_digest=str(
+                payload["common_training_policy_digest"]
+            ),
+            membership=tuple(str(v) for v in payload["membership"]),
+            membership_digest=str(payload["membership_digest"]),
+            fitted_atomic_reference_digest=str(
+                payload["fitted_atomic_reference_digest"]
+            ),
+            fitted_weights_digest=str(payload["fitted_weights_digest"]),
+            fitted_atomic_references=CommonAtomicReferenceFit.from_dict(
+                payload["fitted_atomic_references"]
+            ),
+            fitted_frame_weights=tuple(
+                FrameTrainingWeight.from_dict(item)
+                for item in payload["fitted_frame_weights"]
+            ),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Post-selection fitted-preparation digest mismatch."
+            )
+        return result
+
+
+def fit_post_selection_preparation(
+    context: CurrentSelectedTrainingContext,
+    *,
+    membership: Sequence[str],
+    owner_plan_digest: str,
+    common_training_policy: Any = None,
+    dataset_role: str = DATASET_ROLE_TARGET_TRAIN,
+) -> PostSelectionFittedPreparation:
+    """Fit E0 and training weights from one authorized training membership.
+
+    The membership is checked against ``T_selected`` before anything is fitted,
+    so a caller cannot widen the fit domain past the selected data even by
+    mistake.
+    """
+
+    from .target_size_execution import (
+        TargetSizeCommonTrainingPolicy,
+        fit_common_atomic_reference_energies,
+        fit_common_configuration_weights,
+        fit_membership_frame_training_weights,
+    )
+
+    policy = (
+        TargetSizeCommonTrainingPolicy()
+        if common_training_policy is None
+        else common_training_policy
+    )
+    frames = tuple(str(v) for v in membership)
+    outside = set(frames) - set(context.selected_membership)
+    if outside:
+        raise PostSelectionExecutionError(
+            f"{len(outside)} frame(s) in this preparation membership are outside "
+            "T_selected; post-selection preparation is fitted only from selected "
+            "training data."
+        )
+    authorities = context.authorities
+    atomic_references = fit_common_atomic_reference_energies(
+        authorities.frame_catalog,
+        authorities.frame_data_by_run,
+        frames,
+        policy=policy.atomic_reference_policy,
+        frame_array_index=authorities.frame_array_index,
+        foundation_checkpoint_digest=policy.foundation_checkpoint_digest,
+        foundation_identity_digest=policy.foundation_checkpoint_digest,
+    )
+    configuration_weights = fit_common_configuration_weights(
+        authorities.aggregate.population,
+        frames,
+        policy=policy.configuration_weight_policy,
+    )
+    fitted_weights = fit_membership_frame_training_weights(
+        authorities.frame_array_index,
+        frames,
+        objective_policy=policy.objective_policy,
+        configuration_weights={
+            item.frame_uid: item for item in configuration_weights
+        },
+    )
+    return PostSelectionFittedPreparation(
+        owner_plan_digest=str(owner_plan_digest),
+        dataset_role=dataset_role,
+        common_training_policy_digest=policy.content_digest,
+        membership=frames,
+        membership_digest=digest({"frame_uids": list(frames)}),
+        fitted_atomic_reference_digest=atomic_references.content_digest,
+        fitted_weights_digest=digest(
+            {"frame_weights": [item.to_dict() for item in fitted_weights]}
+        ),
+        fitted_atomic_references=atomic_references,
+        fitted_frame_weights=fitted_weights,
+    )
+
+
+# ---------------------------------------------------------------------------
+# DATA8 materialization
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class PostSelectionMaterialization:
+    """The exact DATA8 workload one post-selection run executes."""
+
+    run_plan_digest: str
+    run_identity: str
+    preparation_digest: str
+    target_train_artifact: Any
+    checkpoint_monitor_artifact: Any
+    outer_evaluation_artifact: Any
+    mace_config_relative_path: str
+    mace_config_sha256: str
+    mace_config_digest: str
+    output_directory: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "run_plan_digest",
+            "run_identity",
+            "preparation_digest",
+            "mace_config_sha256",
+            "mace_config_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        for name in ("mace_config_relative_path", "output_directory"):
+            if not str(getattr(self, name)).strip():
+                raise TrainingDataInputError(f"{name} cannot be empty.")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": POST_SELECTION_MATERIALIZATION_SCHEMA,
+            "run_plan_digest": self.run_plan_digest,
+            "run_identity": self.run_identity,
+            "preparation_digest": self.preparation_digest,
+            "target_train_artifact": self.target_train_artifact.to_dict(),
+            "checkpoint_monitor_artifact": self.checkpoint_monitor_artifact.to_dict(),
+            "outer_evaluation_artifact": (
+                None
+                if self.outer_evaluation_artifact is None
+                else self.outer_evaluation_artifact.to_dict()
+            ),
+            "mace_config_relative_path": self.mace_config_relative_path,
+            "mace_config_sha256": self.mace_config_sha256,
+            "mace_config_digest": self.mace_config_digest,
+            "output_directory": self.output_directory,
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionMaterialization":
+        from .target_size_execution import TargetSizeExtxyzArtifact
+
+        if payload.get("schema") != POST_SELECTION_MATERIALIZATION_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported post-selection materialization schema."
+            )
+        result = cls(
+            run_plan_digest=str(payload["run_plan_digest"]),
+            run_identity=str(payload["run_identity"]),
+            preparation_digest=str(payload["preparation_digest"]),
+            target_train_artifact=TargetSizeExtxyzArtifact.from_dict(
+                payload["target_train_artifact"]
+            ),
+            checkpoint_monitor_artifact=TargetSizeExtxyzArtifact.from_dict(
+                payload["checkpoint_monitor_artifact"]
+            ),
+            outer_evaluation_artifact=(
+                None
+                if payload.get("outer_evaluation_artifact") is None
+                else TargetSizeExtxyzArtifact.from_dict(
+                    payload["outer_evaluation_artifact"]
+                )
+            ),
+            mace_config_relative_path=str(payload["mace_config_relative_path"]),
+            mace_config_sha256=str(payload["mace_config_sha256"]),
+            mace_config_digest=str(payload["mace_config_digest"]),
+            output_directory=str(payload["output_directory"]),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Post-selection materialization digest mismatch."
+            )
+        return result
+
+
+def _write_role_artifact(
+    context: CurrentSelectedTrainingContext,
+    *,
+    output_directory: Path,
+    role: str,
+    frame_uids: Sequence[str],
+    extxyz_policy: Any,
+    preparation: PostSelectionFittedPreparation | None,
+) -> Any:
+    from .target_size_execution import write_target_size_extxyz_artifact
+
+    authorities = context.authorities
+    frames = tuple(str(v) for v in frame_uids)
+    return write_target_size_extxyz_artifact(
+        output_directory,
+        dataset_id=str(authorities.frame_authority.dataset_id),
+        role=role,
+        filename=f"{role}.extxyz",
+        frame_uids=frames,
+        canonical_frame_authority=authorities.frame_authority,
+        frame_catalog=authorities.frame_catalog,
+        frame_data_by_run=authorities.frame_data_by_run,
+        membership_digest=digest({"frame_uids": list(frames)}),
+        common_preparation_digest=(
+            None if preparation is None else preparation.content_digest
+        ),
+        training_weights=(
+            None if preparation is None else preparation.frame_weight_table()
+        ),
+        policy=extxyz_policy,
+        frame_array_index=authorities.frame_array_index,
+    )
+
+
+def _post_selection_mace_config(
+    *,
+    run_identity: str,
+    optimizer_seed: int,
+    planned_epochs: int,
+    preparation: PostSelectionFittedPreparation,
+    optimizer_policy: Any,
+    target_train: Any,
+    monitor: Any,
+    extxyz_policy: Any,
+    method: PostSelectionMethodIdentity,
+) -> dict[str, Any]:
+    """Translate the frozen post-selection run description into MACE arguments.
+
+    Nothing is decided here.  Every value already belongs to the run plan, the
+    fitted preparation, or the accepted optimizer policy; this is a rename.
+    """
+
+    from .model_features import canonicalize_mace_candidate_architecture
+
+    fitted_e0s = {
+        int(z): float(value)
+        for z, value in preparation.fitted_atomic_references.reference_energies_ev
+    }
+    atomic_numbers = set(int(z) for z in target_train.atomic_numbers) | set(
+        int(z) for z in monitor.atomic_numbers
+    )
+    missing = sorted(atomic_numbers - set(fitted_e0s))
+    if missing:
+        raise PostSelectionExecutionError(
+            f"The fold-local E0 fit is missing atomic numbers {missing}; the "
+            "authorized training membership does not cover this workload."
+        )
+    return {
+        "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "name": f"post-selection-{run_identity[:16]}",
+        "seed": int(optimizer_seed),
+        "target_train_file": target_train.relative_path,
+        "target_valid_file": monitor.relative_path,
+        "atomic_numbers": sorted(atomic_numbers),
+        "E0s": {str(z): fitted_e0s[z] for z in sorted(atomic_numbers)},
+        "energy_key": extxyz_policy.energy_key,
+        "forces_key": extxyz_policy.forces_key,
+        "stress_key": extxyz_policy.stress_key,
+        "lr": float(optimizer_policy.learning_rate),
+        "batch_size": int(optimizer_policy.batch_size),
+        "valid_batch_size": int(optimizer_policy.valid_batch_size),
+        "num_workers": int(optimizer_policy.num_workers),
+        "max_num_epochs": int(planned_epochs),
+        "ema": bool(optimizer_policy.ema),
+        "ema_decay": float(optimizer_policy.ema_decay),
+        "amsgrad": bool(optimizer_policy.amsgrad),
+        "weight_decay": float(optimizer_policy.weight_decay),
+        "clip_grad": float(optimizer_policy.clip_grad),
+        "default_dtype": str(method.default_dtype),
+        "device": str(optimizer_policy.device),
+        "method_identity_digest": method.content_digest,
+        "mace_architecture": canonicalize_mace_candidate_architecture(None),
+    }
+
+
+def materialize_post_selection_run(
+    context: CurrentSelectedTrainingContext,
+    *,
+    run_plan: Any,
+    method: PostSelectionMethodIdentity,
+    training_frame_uids: Sequence[str],
+    monitor_frame_uids: Sequence[str],
+    outer_evaluation_frame_uids: Sequence[str] | None = None,
+    optimizer_policy: Any,
+    extxyz_policy: Any = None,
+    output_directory: str | os.PathLike[str],
+    preparation: PostSelectionFittedPreparation | None = None,
+) -> tuple[PostSelectionFittedPreparation, PostSelectionMaterialization]:
+    """Fit, export, and configure one post-selection run, idempotently.
+
+    Role separation is enforced before any bytes are written: the three
+    memberships must be pairwise disjoint and entirely inside ``T_selected``
+    (the final-production monitor is the frozen M3 reserve, which is outside
+    ``T_selected`` by construction and is passed through unchanged).
+    """
+
+    from .mace_export import MaceExtxyzPolicy
+    from .target_size_execution import publish_immutable_json_create_or_verify
+
+    policy = MaceExtxyzPolicy() if extxyz_policy is None else extxyz_policy
+    root = Path(output_directory)
+    root.mkdir(parents=True, exist_ok=True)
+    training = tuple(str(v) for v in training_frame_uids)
+    monitor_frames = tuple(str(v) for v in monitor_frame_uids)
+    outer = (
+        ()
+        if outer_evaluation_frame_uids is None
+        else tuple(str(v) for v in outer_evaluation_frame_uids)
+    )
+    groups = (set(training), set(monitor_frames), set(outer))
+    for position, left in enumerate(groups):
+        for right in groups[position + 1 :]:
+            if left & right:
+                raise PostSelectionExecutionError(
+                    "Post-selection training, checkpoint-monitor, and outer "
+                    "evaluation memberships must be disjoint."
+                )
+    fitted = (
+        fit_post_selection_preparation(
+            context,
+            membership=training,
+            owner_plan_digest=run_plan.content_digest,
+        )
+        if preparation is None
+        else preparation
+    )
+    if set(fitted.membership) != set(training):
+        raise PostSelectionExecutionError(
+            "The supplied fitted preparation was fitted from a different "
+            "membership than this run trains on."
+        )
+    target_train = _write_role_artifact(
+        context,
+        output_directory=root,
+        role=DATASET_ROLE_TARGET_TRAIN,
+        frame_uids=training,
+        extxyz_policy=policy,
+        preparation=fitted,
+    )
+    monitor = _write_role_artifact(
+        context,
+        output_directory=root,
+        role=DATASET_ROLE_CHECKPOINT_MONITOR,
+        frame_uids=monitor_frames,
+        extxyz_policy=policy,
+        preparation=None,
+    )
+    evaluation = (
+        None
+        if not outer
+        else _write_role_artifact(
+            context,
+            output_directory=root,
+            role=DATASET_ROLE_OUTER_EVALUATION,
+            frame_uids=outer,
+            extxyz_policy=policy,
+            preparation=None,
+        )
+    )
+    config = _post_selection_mace_config(
+        run_identity=run_plan.run_identity,
+        optimizer_seed=run_plan.optimizer_seed,
+        planned_epochs=run_plan.planned_epochs,
+        preparation=fitted,
+        optimizer_policy=optimizer_policy,
+        target_train=target_train,
+        monitor=monitor,
+        extxyz_policy=policy,
+        method=method,
+    )
+    config_path = root / "post_selection_mace_config.yaml"
+    config_bytes = json.dumps(config, indent=2, sort_keys=True).encode("utf-8")
+    config_sha256 = hashlib.sha256(config_bytes).hexdigest()
+    from .target_size_execution import publish_immutable_bytes_create_or_verify
+
+    publish_immutable_bytes_create_or_verify(
+        config_path, config_bytes, expected_sha256=config_sha256
+    )
+    record = PostSelectionMaterialization(
+        run_plan_digest=run_plan.content_digest,
+        run_identity=run_plan.run_identity,
+        preparation_digest=fitted.content_digest,
+        target_train_artifact=target_train,
+        checkpoint_monitor_artifact=monitor,
+        outer_evaluation_artifact=evaluation,
+        mace_config_relative_path=config_path.name,
+        mace_config_sha256=config_sha256,
+        mace_config_digest=digest(config),
+        output_directory=str(root),
+    )
+    publish_immutable_json_create_or_verify(
+        root / "materialization.json",
+        record.to_dict(),
+        deserializer=PostSelectionMaterialization.from_dict,
+    )
+    return fitted, record
+
+
+# ---------------------------------------------------------------------------
+# TRAIN2 execution
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class PostSelectionRungRequest:
+    """Everything one post-selection TRAIN2 run needs, already authenticated."""
+
+    plan: Any
+    run_plan: Any
+    materialization: PostSelectionMaterialization
+    materialization_directory: Path
+    checkpoint_directory: Path
+    optimizer_policy: Any
+    start_epoch: int = 0
+
+
+class PostSelectionTrainer(Protocol):
+    """The one accepted substitution point for expensive post-selection training.
+
+    It sits strictly below the owner boundary: the run plan, fitted preparation,
+    materialization, and TRAIN2 runtime plan handed to it were all produced by
+    real owners, and the summary it returns is re-authenticated before it can
+    become evidence.
+    """
+
+    def __call__(self, request: PostSelectionRungRequest) -> Any:
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class MacePostSelectionTrainer:
+    """Production executor: run the qualified MACE wrapper for one P5 run."""
+
+    wrapper_path: Path
+    environment: Mapping[str, str] | None = None
+    timeout_seconds: float | None = None
+
+    def __call__(self, request: PostSelectionRungRequest) -> Any:
+        import mdstats
+
+        run_root = request.checkpoint_directory.parent
+        directories = (
+            run_root / "models",
+            run_root / "logs",
+            run_root / "results",
+            request.checkpoint_directory,
+        )
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
+        source = json.loads(
+            (
+                request.materialization_directory
+                / request.materialization.mace_config_relative_path
+            ).read_text(encoding="utf-8")
+        )
+        run_config = post_selection_mace_run_configuration(source)
+        config_path = run_root / "mace_run_config.yaml"
+        config_path.write_text(
+            json.dumps(run_config, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        environment = dict(os.environ)
+        environment.update(dict(self.environment or {}))
+        environment[mdstats.TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE] = json.dumps(
+            request.plan.to_dict(), sort_keys=True, separators=(",", ":")
+        )
+        environment["PYTHONHASHSEED"] = str(int(request.run_plan.optimizer_seed))
+        command = [
+            str(self.wrapper_path),
+            "--config",
+            str(config_path),
+            "--model_dir",
+            str(run_root / "models"),
+            "--checkpoints_dir",
+            str(request.checkpoint_directory),
+            "--log_dir",
+            str(run_root / "logs"),
+            "--results_dir",
+            str(run_root / "results"),
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=str(request.materialization_directory),
+            env=environment,
+            timeout=self.timeout_seconds,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise PostSelectionExecutionError(
+                "Post-selection TRAIN2 run "
+                f"{request.run_plan.run_identity[:12]}... failed with exit status "
+                f"{completed.returncode}. Logs: {run_root / 'logs'}"
+            )
+        return mdstats.load_train2_runtime_summary(request.checkpoint_directory)
+
+
+_MACE_CONFIG_PASSTHROUGH_KEYS = (
+    "name",
+    "seed",
+    "atomic_numbers",
+    "E0s",
+    "energy_key",
+    "forces_key",
+    "stress_key",
+    "lr",
+    "batch_size",
+    "valid_batch_size",
+    "num_workers",
+    "max_num_epochs",
+    "ema",
+    "ema_decay",
+    "amsgrad",
+    "weight_decay",
+    "clip_grad",
+    "default_dtype",
+    "device",
+)
+
+
+def post_selection_mace_run_configuration(
+    config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Rename the frozen post-selection configuration into MACE's argument names."""
+
+    if config.get("schema") != POST_SELECTION_MACE_CONFIG_SCHEMA:
+        raise PostSelectionExecutionError(
+            "Post-selection MACE configuration does not carry the accepted schema."
+        )
+    result: dict[str, Any] = {
+        key: config[key] for key in _MACE_CONFIG_PASSTHROUGH_KEYS if key in config
+    }
+    result["train_file"] = config["target_train_file"]
+    result["valid_file"] = config["target_valid_file"]
+    for key, value in dict(config.get("mace_architecture") or {}).items():
+        result.setdefault(str(key), value)
+    return result
+
+
+def post_selection_runtime_plan(
+    *,
+    method: PostSelectionMethodIdentity,
+    optimizer_policy: Any,
+    budget_policy: Any,
+    structures_per_epoch: int,
+    learning_rate_policy: Any = None,
+) -> Any:
+    """Build the TRAIN2 runtime plan for one post-selection role.
+
+    The budget arrives from the *role* policy - the CV budget for a fold, the
+    configured production horizon for a final run - while the method identity
+    and the LR/optimizer policies are shared.  That is the identity split made
+    executable.
+    """
+
+    from .train2_policy import LearningRateSchedulePolicy
+    from .train2_runtime import Train2RuntimePlan
+
+    return Train2RuntimePlan(
+        training_protocol_digest=method.content_digest,
+        optimizer_policy_digest=optimizer_policy.policy_digest,
+        budget_policy=budget_policy,
+        learning_rate_policy=(
+            LearningRateSchedulePolicy()
+            if learning_rate_policy is None
+            else learning_rate_policy
+        ),
+        structures_per_epoch=int(structures_per_epoch),
+        replay_monitor_enabled=False,
+        execution_epoch_limit=int(budget_policy.planned_epochs),
+    )
+
+
+# ---------------------------------------------------------------------------
+# EVAL2 evidence
+# ---------------------------------------------------------------------------
+
+
+def post_selection_eval_role_digest(
+    *, run_plan: Any, dataset_role: str, artifact: Any
+) -> str:
+    """Identity of one exact (run, dataset role, evaluation membership) position."""
+
+    return digest(
+        {
+            "schema": POST_SELECTION_EVAL_ROLE_SCHEMA,
+            "run_plan_digest": run_plan.content_digest,
+            "run_identity": run_plan.run_identity,
+            "run_role": run_plan.run_role,
+            "dataset_role": str(dataset_role),
+            "evaluation_membership_digest": artifact.membership_digest,
+            "evaluation_frame_uids": list(artifact.frame_uids),
+            "artifact_sha256": artifact.sha256,
+        }
+    )
+
+
+def _authenticated_atoms(artifact: Any, root_directory: Path) -> list[Any]:
+    import ase.io
+
+    path = root_directory / artifact.relative_path
+    if not path.is_file():
+        raise PostSelectionExecutionError(
+            f"Post-selection evaluation artifact is missing: {path}"
+        )
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != artifact.sha256:
+        raise PostSelectionExecutionError(
+            "Post-selection evaluation artifact bytes changed on disk."
+        )
+    return ase.io.read(io.StringIO(raw.decode("utf-8")), format="extxyz", index=":")
+
+
+def evaluate_post_selection_dataset(
+    *,
+    run_plan: Any,
+    artifact: Any,
+    dataset_role: str,
+    root_directory: str | os.PathLike[str],
+    provider: Any,
+    block_ids: Sequence[str],
+    extxyz_policy: Any = None,
+    inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
+) -> Any:
+    """Reduce one authenticated dataset evaluation through the EVAL2 engine.
+
+    The artifact bytes are re-hashed before they are read, and the reduction is
+    the shared EVAL2 owner rather than a P5-local metric implementation, so a
+    post-selection metric means exactly what a screening metric means.
+    """
+
+    import numpy as np
+
+    from .eval2 import eval2_target_metrics_from_prediction_view
+    from .evaluation_views import build_evaluation_dataset_view
+
+    root = Path(root_directory)
+    atoms_list = _authenticated_atoms(artifact, root)
+    if len(atoms_list) != len(artifact.frame_uids):
+        raise PostSelectionExecutionError(
+            "Post-selection evaluation artifact frame count mismatch."
+        )
+    if len(block_ids) != len(atoms_list):
+        raise PostSelectionExecutionError(
+            "Post-selection evaluation requires one split-exclusion component "
+            "identity per evaluated frame."
+        )
+    from .mace_export import MaceExtxyzPolicy
+
+    keys = MaceExtxyzPolicy() if extxyz_policy is None else extxyz_policy
+    if keys.policy_digest != artifact.extxyz_policy_digest:
+        raise PostSelectionExecutionError(
+            "The evaluation artifact was exported under a different ExtXYZ policy "
+            "than this evaluation reads it with."
+        )
+    view = build_evaluation_dataset_view(
+        atoms_list,
+        energy_key=keys.energy_key,
+        forces_key=keys.forces_key,
+        stress_key=keys.stress_key,
+        focus_atomic_numbers=(),
+        condition_keys=(),
+    )
+    if inference_evaluator is not None:
+        raw_predictions = inference_evaluator(provider, atoms_list)
+    else:
+        raw_predictions = provider.predict_batch(atoms_list)
+    if len(raw_predictions) != len(atoms_list):
+        raise PostSelectionExecutionError(
+            "Post-selection inference returned the wrong number of predictions."
+        )
+    role_digest = post_selection_eval_role_digest(
+        run_plan=run_plan, dataset_role=dataset_role, artifact=artifact
+    )
+    prediction_digest = digest(
+        {
+            "schema": "mdstats.post-selection-eval2-predictions.v1",
+            "role_digest": role_digest,
+            "predictions": [
+                {
+                    "energy_ev": float(item.energy_ev),
+                    "forces_ev_per_angstrom": np.asarray(
+                        item.forces_ev_per_angstrom, dtype=np.float64
+                    ).tolist(),
+                }
+                for item in raw_predictions
+            ],
+        }
+    )
+    return eval2_target_metrics_from_prediction_view(
+        view,
+        raw_predictions,
+        block_ids=list(block_ids),
+        target_role_digest=role_digest,
+        prediction_digest=prediction_digest,
+    )
+
+
+def post_selection_checkpoint_catalog(
+    *, run_plan: Any, checkpoint_directory: str | os.PathLike[str]
+) -> Any:
+    """Inventory the durable checkpoint bytes this run actually produced.
+
+    The glob matches only epoch-stamped checkpoints, which is what the TRAIN2
+    naming convention writes; the continuation companion and any other sibling
+    ``.pt`` state in the same directory is deliberately not a candidate.
+    """
+
+    from .campaign_control import inventory_checkpoint_files
+
+    return inventory_checkpoint_files(
+        checkpoint_directory,
+        run_plan_digest=run_plan.content_digest,
+        run_id=run_plan.run_identity,
+        pattern="*epoch*.pt",
+    )
+
+
+def post_selection_checkpoint_candidates(
+    *,
+    run_plan: Any,
+    checkpoint_directory: str | os.PathLike[str],
+    runtime_plan: Any,
+) -> tuple[Any, ...]:
+    """Authenticate this run's TRAIN2 history into EVAL2 trajectory points."""
+
+    from .eval2 import read_train2_trajectory_points
+
+    catalog = post_selection_checkpoint_catalog(
+        run_plan=run_plan, checkpoint_directory=checkpoint_directory
+    )
+    return read_train2_trajectory_points(
+        checkpoint_directory,
+        checkpoint_catalog=catalog,
+        target_head_name=runtime_plan.target_head_name,
+    )
+
+
+def authenticate_post_selection_provider(
+    *,
+    materialization: PostSelectionMaterialization,
+    materialization_directory: str | os.PathLike[str],
+    checkpoint_directory: str | os.PathLike[str],
+    checkpoint_name: str,
+    checkpoint_sha256: str,
+    summary: Any,
+    evaluation_model_state: str,
+    allow_forward_override: bool,
+) -> tuple[Any, str]:
+    """Authenticate one post-selection checkpoint through the shared provider owner.
+
+    This is the same TRAIN2 provider authentication the target-size screen uses;
+    post-selection evaluation does not get a weaker checkpoint-provenance rule
+    just because it happens later in the lifecycle.
+    """
+
+    from .target_size_execution import authenticate_train2_checkpoint_provider
+
+    material_root = Path(materialization_directory)
+    config_path = material_root / materialization.mace_config_relative_path
+    config_bytes = config_path.read_bytes()
+    if hashlib.sha256(config_bytes).hexdigest() != materialization.mace_config_sha256:
+        raise PostSelectionExecutionError(
+            "Post-selection MACE configuration bytes changed before evaluation."
+        )
+    config_payload = json.loads(config_bytes.decode("utf-8"))
+    if digest(config_payload) != materialization.mace_config_digest:
+        raise PostSelectionExecutionError(
+            "Post-selection MACE configuration content changed before evaluation."
+        )
+    checkpoint_root = Path(checkpoint_directory)
+    provider, evaluated_digest, _companion = authenticate_train2_checkpoint_provider(
+        raw_checkpoint_path=checkpoint_root / checkpoint_name,
+        raw_checkpoint_sha256=checkpoint_sha256,
+        companion_path=checkpoint_root / "train2_runtime.pt",
+        companion_sha256=_companion_sha256(checkpoint_root),
+        summary=summary,
+        evaluation_model_state=evaluation_model_state,
+        config_payload=config_payload,
+        allow_forward_override=allow_forward_override,
+    )
+    return provider, evaluated_digest
+
+
+def _companion_sha256(checkpoint_directory: Path) -> str:
+    companion = checkpoint_directory / "train2_runtime.pt"
+    if not companion.is_file():
+        raise PostSelectionExecutionError(
+            f"TRAIN2 continuation companion missing in {checkpoint_directory}."
+        )
+    return hashlib.sha256(companion.read_bytes()).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class PostSelectionRunEvidence:
+    """Realized evidence of one post-selection run, bound to its plan."""
+
+    run_plan_digest: str
+    run_identity: str
+    run_role: str
+    materialization_digest: str
+    preparation_digest: str
+    runtime_summary_digest: str
+    representative_candidate_identity: str
+    representative_checkpoint_sha256: str
+    representative_record_digest: str
+    monitor_metric_record_digest: str
+    outer_metric_record_digest: str | None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "run_plan_digest",
+            "run_identity",
+            "materialization_digest",
+            "preparation_digest",
+            "runtime_summary_digest",
+            "representative_checkpoint_sha256",
+            "representative_record_digest",
+            "monitor_metric_record_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        if self.outer_metric_record_digest is not None:
+            object.__setattr__(
+                self,
+                "outer_metric_record_digest",
+                validate_digest(
+                    self.outer_metric_record_digest,
+                    name="outer_metric_record_digest",
+                ),
+            )
+        identity = str(self.representative_candidate_identity).strip()
+        if not identity:
+            raise TrainingDataInputError(
+                "Run evidence requires its frozen representative identity."
+            )
+        object.__setattr__(self, "representative_candidate_identity", identity)
+        object.__setattr__(self, "run_role", str(self.run_role))
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": POST_SELECTION_RUN_EVIDENCE_SCHEMA,
+            "run_plan_digest": self.run_plan_digest,
+            "run_identity": self.run_identity,
+            "run_role": self.run_role,
+            "materialization_digest": self.materialization_digest,
+            "preparation_digest": self.preparation_digest,
+            "runtime_summary_digest": self.runtime_summary_digest,
+            "representative_candidate_identity": self.representative_candidate_identity,
+            "representative_checkpoint_sha256": self.representative_checkpoint_sha256,
+            "representative_record_digest": self.representative_record_digest,
+            "monitor_metric_record_digest": self.monitor_metric_record_digest,
+            "outer_metric_record_digest": self.outer_metric_record_digest,
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionRunEvidence":
+        if payload.get("schema") != POST_SELECTION_RUN_EVIDENCE_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported post-selection run-evidence schema."
+            )
+        result = cls(
+            run_plan_digest=str(payload["run_plan_digest"]),
+            run_identity=str(payload["run_identity"]),
+            run_role=str(payload["run_role"]),
+            materialization_digest=str(payload["materialization_digest"]),
+            preparation_digest=str(payload["preparation_digest"]),
+            runtime_summary_digest=str(payload["runtime_summary_digest"]),
+            representative_candidate_identity=str(
+                payload["representative_candidate_identity"]
+            ),
+            representative_checkpoint_sha256=str(
+                payload["representative_checkpoint_sha256"]
+            ),
+            representative_record_digest=str(payload["representative_record_digest"]),
+            monitor_metric_record_digest=str(payload["monitor_metric_record_digest"]),
+            outer_metric_record_digest=(
+                None
+                if payload.get("outer_metric_record_digest") is None
+                else str(payload["outer_metric_record_digest"])
+            ),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Post-selection run-evidence digest mismatch."
+            )
+        return result
+
+
+__all__ = [
+    "DATASET_ROLE_CHECKPOINT_MONITOR",
+    "DATASET_ROLE_OUTER_EVALUATION",
+    "DATASET_ROLE_TARGET_TRAIN",
+    "POST_SELECTION_EVAL_ROLE_SCHEMA",
+    "POST_SELECTION_MACE_CONFIG_SCHEMA",
+    "POST_SELECTION_MATERIALIZATION_SCHEMA",
+    "POST_SELECTION_PREPARATION_SCHEMA",
+    "POST_SELECTION_RUN_EVIDENCE_SCHEMA",
+    "MacePostSelectionTrainer",
+    "PostSelectionExecutionError",
+    "PostSelectionFittedPreparation",
+    "PostSelectionMaterialization",
+    "PostSelectionRunEvidence",
+    "PostSelectionRungRequest",
+    "PostSelectionTrainer",
+    "authenticate_post_selection_provider",
+    "evaluate_post_selection_dataset",
+    "fit_post_selection_preparation",
+    "materialize_post_selection_run",
+    "post_selection_checkpoint_candidates",
+    "post_selection_checkpoint_catalog",
+    "post_selection_eval_role_digest",
+    "post_selection_mace_run_configuration",
+    "post_selection_runtime_plan",
+]

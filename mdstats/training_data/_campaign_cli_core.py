@@ -10770,9 +10770,10 @@ def command_materialize(args: argparse.Namespace) -> int:
 
     The current architecture derives the selected size from authenticated
     terminal P2/P3 state, so the retired per-variant materialization records
-    cannot supply it. This command therefore fails closed here rather than
-    reinterpreting retired authority; the post-selection production path is
-    delivered by the successor package.
+    cannot supply it. Post-selection materialization is not a standalone step
+    any more: it is owned by `cross-validate` and `train-production`, which
+    materialize exactly the fold-local or full-``T_selected`` workload their own
+    plan authorizes.
     """
 
     cfg, paths = _load_config(args.config)
@@ -10785,11 +10786,11 @@ def command_materialize(args: argparse.Namespace) -> int:
 
     revision = require_current_target_size_runtime(CampaignStore(paths.state_db))
     raise CampaignCliError(
-        "Selected production materialization is not available in this release. The "
-        "current target-size architecture is bound at canonical generation "
-        f"{revision.state.generation}; retired selected-size materialization records "
-        "are never reinterpreted as current authority, and the post-selection "
-        "production path is delivered by the successor package."
+        "`materialize` is not the post-selection owner. The current target-size "
+        f"architecture is bound at canonical generation {revision.state.generation}; "
+        "retired selected-size materialization records are never reinterpreted as "
+        "current authority. Run `cross-validate`, then `train-production`: each "
+        "materializes exactly the workload its own authenticated plan authorizes."
     )
 
 
@@ -16370,11 +16371,12 @@ def _require_post_selection_production_path(
             + owner_sentence
         )
     raise CampaignCliError(
-        "The post-selection production/CV path is not available in this release. The "
-        "current target-size architecture froze a selected size at canonical "
-        f"generation {revision.state.generation}; retired production records are never "
-        "reinterpreted as current authority, and the selected-size production path is "
-        "delivered by the successor package."
+        f"Public `{command}` is not the post-selection owner. The current "
+        "target-size architecture froze a selected size at canonical generation "
+        f"{revision.state.generation}; post-selection cross-validation is owned by "
+        "`cross-validate` and fresh final training by `train-production`, which "
+        "reauthenticate that selection instead of reinterpreting retired "
+        "production records."
     )
 
 
@@ -16419,6 +16421,39 @@ def command_select_target_size(args: argparse.Namespace) -> int:
         trainer=getattr(args, "_external_boundary_trainer", None),
         inference_evaluator=getattr(args, "_external_inference_evaluator", None),
     )
+
+
+def command_cross_validate(args: argparse.Namespace) -> int:
+    """Run or resume the current post-selection cross-validation.
+
+    The command exists only for TRAIN2 campaigns; historical campaigns keep
+    their original train/evaluate lifecycle and never gain a post-selection CV
+    owner retroactively.
+    """
+
+    cfg, _paths = _load_config(args.config)
+    if _training_policy_generation(cfg) != "train2":
+        raise CampaignCliError(
+            "`cross-validate` is available only for TRAIN2 campaigns. Historical "
+            "campaigns retain their existing train/evaluate lifecycle."
+        )
+    from .campaign_post_selection_runtime import execute_current_cross_validate
+
+    return execute_current_cross_validate(args)
+
+
+def command_train_production(args: argparse.Namespace) -> int:
+    """Train the fresh final production run(s) on the full selected dataset."""
+
+    cfg, _paths = _load_config(args.config)
+    if _training_policy_generation(cfg) != "train2":
+        raise CampaignCliError(
+            "`train-production` is available only for TRAIN2 campaigns. Historical "
+            "campaigns retain their existing train/evaluate lifecycle."
+        )
+    from .campaign_post_selection_runtime import execute_current_train_production
+
+    return execute_current_train_production(args)
 
 
 def _artifact_lookup(bundle: Any) -> tuple[dict[str, Any], Any | None]:
@@ -29621,6 +29656,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.set_defaults(func=command_select_target_size)
+
+    p = sub.add_parser(
+        "cross-validate",
+        help=(
+            "run/resume the complete selected-only post-selection cross-validation "
+            "of the frozen training method; this is the only command that decides "
+            "whether the method is accepted for production"
+        ),
+    )
+    p.set_defaults(func=command_cross_validate)
+
+    p = sub.add_parser(
+        "train-production",
+        help=(
+            "train the fresh final production run(s) on the full selected dataset "
+            "under the cross-validation-accepted method and the configured "
+            "[training].max_num_epochs horizon"
+        ),
+    )
+    p.set_defaults(func=command_train_production)
 
     p = sub.add_parser(
         "materialize",
