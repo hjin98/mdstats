@@ -100,6 +100,15 @@ around: `test_mlff_target_size_p3a4_final_review.py` now calls the renamed share
 owner, and `test_mlff_campaign_cli.py` / `test_mlff_target_size_p4f_storage_docs_structure.py`
 expect the two new commands and the redirected `materialize` narrative.
 
+Because the diff crosses widely shared CLI/execution/storage surfaces, the complete
+repository suite was run on the final candidate and on the pre-P5 baseline
+(`5bf53c99ce31d1438c21bae81c0f30c79176bdc4`) under identical conditions. The two failure
+sets are **identical** — 247 failed / 92 errors on both, with no new failures and none
+fixed — while the candidate passes 3814 against the baseline's 3735. Those pre-existing
+failures are historical release-version/specification-synchronization assertions and
+tests needing external LTA reference data absent from this environment; none of them is
+in the P5 affected surface.
+
 ## 4. Not done here
 
 - **Independent review** has not run. P5 is implemented, not accepted; P6 stays blocked.
