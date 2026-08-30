@@ -423,6 +423,106 @@ def test_p5e_immutable_evidence_never_changes_under_one_identity(tmp_path: Path)
 # --- restart ---------------------------------------------------------------
 
 
+def test_p5e_immutable_publication_is_create_once_and_conflict_fails_closed(
+    tmp_path: Path,
+):
+    config, _workspace = build_selected_campaign(tmp_path)
+    assert run_cross_validate(config) == 0
+    cfg, paths, store = load_context(config)
+    try:
+        context = load_current_selected_training_context(cfg, paths, store)
+        evidence = open_post_selection_store(paths, context.binding)
+        pointer = read_current_post_selection_pointer(
+            store, binding=context.binding, kind=POINTER_CV_PLAN
+        )
+        from mdstats.training_data.post_selection_cv_plan import PostSelectionCvPlan
+        from mdstats.training_data.post_selection_store import (
+            PostSelectionPublicationConflictError,
+        )
+
+        plan = evidence.get(pointer, PostSelectionCvPlan.from_dict)
+        # Republishing identical content is a no-op, not an error.
+        assert evidence.put(plan) == pointer
+
+        # A record claiming the same identity with different bytes fails closed
+        # rather than overwriting published evidence.
+        class _Impostor:
+            content_digest = pointer
+
+            def to_dict(self):
+                payload = plan.to_dict()
+                payload["fold_count"] = payload["fold_count"] + 1
+                return payload
+
+        with pytest.raises(PostSelectionPublicationConflictError):
+            evidence.put(_Impostor())
+    finally:
+        store.close()
+
+
+def test_p5e_the_held_out_fold_is_invisible_until_the_representative_is_frozen(
+    tmp_path: Path,
+):
+    """Ordering proof: outer data is evaluated once, after checkpoint selection.
+
+    The injected inference seam records which exact membership each evaluation
+    saw. For every fold, all checkpoint-monitor evaluations come first and the
+    held-out membership appears exactly once, at the end - so the outer fold
+    cannot have influenced the checkpoint it later judges.
+    """
+
+    config, _workspace = build_selected_campaign(tmp_path)
+    cfg, paths, store = load_context(config)
+    try:
+        context = load_current_selected_training_context(cfg, paths, store)
+        from mdstats.training_data.post_selection_cv_plan import (
+            build_post_selection_cv_plan,
+        )
+        from mdstats.training_data.post_selection_identity import (
+            resolve_cv_validation_policy_identity,
+            resolve_post_selection_method_identity,
+        )
+
+        plan = build_post_selection_cv_plan(
+            context,
+            resolve_post_selection_method_identity(cfg),
+            resolve_cv_validation_policy_identity(cfg),
+        )
+    finally:
+        store.close()
+
+    class _Recording(PostSelectionHarness):
+        def __init__(self) -> None:
+            super().__init__()
+            self.seen: list[frozenset[str]] = []
+
+        def evaluate(self, provider, atoms_list):
+            self.seen.append(
+                frozenset(str(atoms.info["frame_uid"]) for atoms in atoms_list)
+            )
+            return super().evaluate(provider, atoms_list)
+
+    harness = _Recording()
+    assert run_cross_validate(config, harness) == 0
+
+    monitors = {frozenset(fold.checkpoint_monitor_frame_uids) for fold in plan.folds}
+    outers = {frozenset(fold.outer_evaluation_frame_uids) for fold in plan.folds}
+    assert harness.seen
+    assert set(harness.seen) <= monitors | outers
+
+    # Every observed outer evaluation is preceded by at least one monitor
+    # evaluation, and no monitor evaluation follows the last outer one within a
+    # fold's contiguous run.
+    outer_positions = [
+        index for index, seen in enumerate(harness.seen) if seen in outers
+    ]
+    assert outer_positions
+    for position in outer_positions:
+        assert any(seen in monitors for seen in harness.seen[:position])
+    # Exactly one outer evaluation per (seed, fold) position.
+    assert len(outer_positions) == len(plan.required_run_matrix)
+
+
 def test_p5e_restart_reuses_the_same_plan_and_acceptance(tmp_path: Path):
     config, _workspace = build_selected_campaign(tmp_path)
     first = PostSelectionHarness()

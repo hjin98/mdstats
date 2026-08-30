@@ -124,6 +124,24 @@ def test_p5f_the_only_campaign_state_write_is_the_fenced_pointer():
     assert "INSERT OR REPLACE INTO meta" in body
 
 
+def test_p5f_no_screening_continuation_owner_is_reachable_from_post_selection():
+    """Absence: a screening trajectory can never be resumed as a P5 run."""
+
+    offenders: list[tuple[str, str]] = []
+    for name, source in _sources().items():
+        for marker in (
+            "resolve_target_size_candidate_for_resume",
+            "TargetSizeContinuationRequest",
+            "continuation_request_from_boundary",
+            "build_target_size_candidate_trajectory",
+            "promote_target_size_boundary_snapshot",
+            "restart_latest",
+        ):
+            if marker in source:
+                offenders.append((name, marker))
+    assert not offenders, offenders
+
+
 def test_p5f_no_target_size_result_json_is_read_as_authority():
     offenders: list[tuple[str, str]] = []
     for name, source in _sources().items():

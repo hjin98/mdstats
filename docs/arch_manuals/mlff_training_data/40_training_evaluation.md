@@ -93,9 +93,34 @@ The target-size experiment is a special protocol-comparison control described in
 
 Epoch has deliberately different semantics in the two phases. During target-size selection, epoch is a **controlled variable**: the configured coarse, short, and final screens consume only exact `n1`, `n2`, and `n3` checkpoints. An earlier checkpoint is inadmissible even when it scores better, because substituting it would confound target-data size with achieved training fidelity. The public `select-target-size` operation owns this complete restartable `n1 -> n2 -> n3` experiment; generated campaigns default to `(n1,n2,n3)/n = (1,3,10)/30`, with `n` consumed only by fresh post-selection production.
 
-After `N_selected` is frozen, ordinary production/CV training resumes under the frozen protocol. Production checkpoint epoch is then a **selectable model variable**: production `evaluate` may choose an earlier admissible checkpoint when it is better under the frozen checkpoint-selection policy, even though the configured training horizon remains `n` epochs. Its target-oriented stopping and LR-refinement semantics are part of `TrainingProtocolIdentity`; changing them after protocol comparison invalidates the comparison.
+After `N_selected` is frozen, ordinary production/CV training resumes under the frozen protocol. Production checkpoint epoch is then a **selectable model variable**: an earlier admissible checkpoint may be chosen when it is better under the frozen checkpoint-selection policy, even though the configured training horizon remains `n` epochs. Its target-oriented stopping and LR-refinement semantics are part of the shared post-selection method identity; changing them after protocol comparison invalidates the comparison.
 
-The stable TRAIN2 command boundary is therefore `prepare -> preflight -> select-target-size -> materialize -> preflight -> train -> evaluate -> verify`. `prepare` owns only the initial screening workload; `materialize` owns only the selected-size final-development/CV realization; both `preflight` occurrences have the same operational meaning and are bound to the exact current DATA8 matrix. The screening preflight remains valid throughout an unchanged `n1/n2/n3` candidate matrix, while selected-production materialization changes that matrix and therefore requires a new preflight.
+The stable TRAIN2 command boundary is therefore `prepare -> preflight -> select-target-size -> cross-validate -> train-production -> verify`. `prepare` owns only the initial screening workload; the two post-selection commands materialize exactly the workload their own authenticated plan authorizes, so there is no separate selected-size `materialize` step.
+
+## Post-selection ownership: method, policies, plans, evidence
+
+Everything downstream of selection is arranged as a strictly acyclic dependency graph, because a policy that authorizes work cannot be defined by that work's results:
+
+```text
+current P4 SELECTED authority
+  -> current selected-training context
+  -> shared post-selection method identity
+  -> CV validation policy | final-production policy
+  -> CV plan              | final-production plan
+  -> fold/final materialization, TRAIN2, EVAL2 evidence
+```
+
+The **shared method identity** binds only what cross-validation validates and final production must therefore execute: the preparation/objective recipe, the foundation and initialization family, the optimizer family and its non-role-specific settings, the LR-schedule policy, the checkpoint admissibility and target-only ordering semantics, and the precision/backend lock. It contains no fold membership, no fitted product, no `M3`, and no epoch budget.
+
+The two **role-specific policies** sit beside it. The CV validation policy owns the fold count (`K >= 2`), the partition seed, the fold-construction algorithm identity, the monitor/purge allocation, the CV-only training budget, and the target-only acceptance predicate together with the all-required-fold/all-required-seed aggregation rule. The final-production policy owns `[training].max_num_epochs`, the production seed matrix, and the committee policy. Neither owns the other's fields, which is what makes the invalidation consequences match the accepted DAG: a production horizon edit leaves the selection and the accepted cross-validation evidence current, and a fold-count edit leaves the selection and the production-only policy identity unchanged.
+
+**Plans** below them bind the exact current scientific lineage that policies deliberately exclude. The CV plan binds the current selected binding, the canonical P1 relation authority, the selected-only projected components, the exact per-fold role memberships, and the required run matrix. The final-production plan binds the full `T_selected`, the accepted cross-validation authorization, and the frozen `M3` development lineage. `M3` lives here rather than in the production policy because it is inherited P2/P4 evidence, not an operator setting.
+
+**Evidence** - fitted preparations, materializations, checkpoints, EVAL2 records, acceptance records - descends from a plan and binds it. Corrupt or changed evidence invalidates itself; it never rewrites the plan or policy that authorized it.
+
+Post-selection cross-validation consumes exactly `T_selected` and allocates fold roles over whole P1 split-exclusion components, so a non-separable pair cannot straddle training and evaluation, and a related but unselected frame never enters the universe. Each fold freezes its representative on its own checkpoint monitor under target-only ordering, after mandatory admissibility, and only then evaluates the held-out fold. Replay constrains admissibility and receives no ranking or acceptance credit. Final production is fresh training on the complete `T_selected`: it continues no screening or fold trajectory, and its execution namespace is disjoint from both even when `N` and the numeric seed coincide.
+
+Post-selection descendants are immutable and content-addressed under a campaign-owned root per canonical generation. There is no mutable post-selection current-state authority: a current read re-resolves P4 currentness and then looks only inside that binding's namespace, and publication re-checks the current campaign revision inside the same transaction that would make a pointer current, so work begun under a superseded generation loses the race deterministically.
 
 ## Gate TRAIN2B
 

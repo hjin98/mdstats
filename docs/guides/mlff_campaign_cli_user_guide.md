@@ -287,18 +287,66 @@ comparable candidates or nonconvergence at the configured ceiling is a **result*
 preserves its evidence, stays terminal on reload, and exposes no production next step. An incomplete screen with
 no terminal outcome stays operationally resumable instead.
 
-## 6. Materialize the selected production/CV workload
+## 6. Cross-validate the frozen training method
 
 ```bash
-python tools/mdstats-mlff-campaign.py --config campaign.toml materialize
-python tools/mdstats-mlff-campaign.py --config campaign.toml preflight
+python tools/mdstats-mlff-campaign.py --config campaign.toml cross-validate
 ```
 
-`materialize` is **unavailable in this release** and fails closed with an explanatory message. The selected size is
-now an authenticated projection of terminal statistical and execution state, so the retired per-variant
-materialization records can no longer supply it, and those records are never reinterpreted as current authority.
-The post-selection production and cross-validation path is delivered by the successor package; until then,
-`select-target-size` remains the last step of the current lifecycle.
+Cross-validation happens **after** `N*` is frozen, and its universe is exactly the selected dataset
+`T_selected`. It answers a different question from target-size selection: not "how much data?", which is
+already decided, but "is this training method sound on that data?".
+
+The plan is built from the canonical P1 split-exclusion relation authority projected onto `T_selected`.
+Roles are allocated over whole relation components, so two frames that are non-separable - because they
+share a correlation unit, a geometry duplicate, a protected event window, or a replica/structural lineage -
+are never split across training and evaluation. Every eligible component is held out as outer evaluation
+exactly once across the `K` folds, and `K >= 2` is required: there is no zero-fold path that authorizes
+production without actual cross-validation. If the configured `K` cannot be satisfied on the selected data,
+the command fails before any training rather than quietly reducing the fold count.
+
+Within a fold, order is the science. The fold trains fresh, its representative checkpoint is chosen on its
+own checkpoint monitor using **target metrics only**, and only then is the held-out fold evaluated. Replay
+evidence can make a checkpoint inadmissible through the TRAIN2 admissibility policy, but it earns no score
+bonus, weight, or tie-break.
+
+Acceptance is exact rather than aggregate: every required fold of every required CV seed must satisfy the
+configured target-only predicate. A good mean cannot carry a failing fold, a missing fold is not a pass, and
+cross-fold dispersion is recorded as a diagnostic without gating. A cross-validation failure is a
+*methodological* result: it never selects another `N`, reruns the target-size screen, or reinterprets the
+frozen selection.
+
+Configure it under `[post_selection.cv]`. Note that `cross_validation_folds` and `fold_partition_seed` under
+`[training.*]` belong to the retired pre-target lifecycle and are not this authority.
+
+## 6b. Train the fresh final production model
+
+```bash
+python tools/mdstats-mlff-campaign.py --config campaign.toml train-production
+```
+
+Final production is new training on the **full exact** `T_selected` under precisely the method that
+cross-validation accepted - not a promotion of whichever fold or screening run happened to score well. Each
+configured production seed starts from the canonical initialization with a fresh optimizer and fresh RNG
+state, and screening or fold trajectories are not admissible parents. Screen, CV-fold, and production runs
+keep disjoint run identities, checkpoint roots, and restart ownership even when their `N` and numeric seed
+coincide.
+
+The production epoch horizon is `[training].max_num_epochs`. It is independent of the screening ladder's
+`n3` and of the cross-validation budget, so raising it invalidates only production descendants: the frozen
+selection and the accepted cross-validation evidence both remain current, and no CV rerun is required.
+Final model selection uses the frozen `M3` development reserve, which is inherited P2 evidence rather than a
+production setting; locked and calibration evidence remain strictly downstream and cannot influence
+checkpoint, seed, or horizon choice.
+
+Both commands re-establish the current selection through the canonical loader before doing anything, and
+publish their results under a commit-time currentness fence. Work that began under an older canonical
+generation stays available as historical evidence but can never become current after `prepare` has committed
+a newer one.
+
+`materialize` remains **unavailable**: post-selection materialization is not a standalone step any more.
+Each of the two commands above materializes exactly the fold-local or full-`T_selected` workload that its own
+authenticated plan authorizes.
 
 ## 7. Inspect, run, and resume production training
 

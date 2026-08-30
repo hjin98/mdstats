@@ -404,6 +404,11 @@ def execute_post_selection_cross_validation(
         selected, context.method, context.cv_policy, projection=projection
     )
     store = context.evidence_store
+    # The policy identities are persisted as records, not just as digests, so a
+    # later reader can reproduce exactly which resolved configuration authorized
+    # this campaign without re-reading a possibly edited campaign.toml.
+    store.put(context.method)
+    store.put(context.cv_policy)
     store.put(projection)
     store.put(plan)
     publish_current_post_selection_pointer(
@@ -525,6 +530,8 @@ def execute_final_production(
         policy=context.production_policy,
     )
     store = context.evidence_store
+    store.put(context.method)
+    store.put(context.production_policy)
     store.put(final_plan)
     publish_current_post_selection_pointer(
         context.store,

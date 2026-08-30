@@ -28975,6 +28975,37 @@ seeds = [1, 2]
 cross_validation_folds = 3
 fold_partition_seed = 104729
 
+[post_selection.cv]
+# Post-selection cross-validation of the frozen training method, run by
+# `cross-validate` after `select-target-size` has frozen N and T_selected.
+# Its universe is exactly T_selected; the historical
+# [training.*].cross_validation_folds keys above belong to the retired
+# pre-target CV lifecycle and are not this authority.
+# K >= 2 is required: there is no current zero-fold production bypass.
+fold_count = 5
+partition_seed = 104729
+# Required CV seeds/variants. Every fold of every seed must pass.
+seeds = [0]
+# The cross-validation training budget. It is deliberately its own value:
+# [training].max_num_epochs is the production horizon, and editing that must not
+# invalidate accepted cross-validation evidence.
+max_num_epochs = 30
+# One split-exclusion component per fold is reserved as that fold's own
+# checkpoint monitor; the held-out outer fold never controls checkpoint choice.
+checkpoint_monitor_components_per_fold = 1
+purge_components_between_roles = 0
+# The target-only outer-fold acceptance predicate. Replay evidence gates
+# admissibility but contributes no acceptance or ranking credit.
+acceptance_metric = "target_force_rmse_ev_per_angstrom"
+acceptance_maximum = 0.030
+
+[post_selection.production]
+# Fresh final training on the full exact T_selected, run by `train-production`
+# after cross-validation accepts the method. Its epoch horizon is
+# [training].max_num_epochs and is independent of target-size screening n3.
+seeds = [1]
+committee_policy = "all_qualified_final_seeds"
+
 [runtime]
 # DATA8 is source-locked to this MACE interface. Change only after requalification.
 mace_version = "0.3.16"
@@ -29372,16 +29403,37 @@ TRAIN2 has one stable public lifecycle:
 3. prepare             Build the initial leakage-safe target-size screening DATA7/DATA8 matrix.
 4. preflight           Verify that exact screening matrix and run the required real one-epoch smoke.
 5. select-target-size  Run/resume the complete configurable-fidelity target-size experiment and freeze N*.
-6. materialize         Realize the selected N* final-development and held-out CV production matrix.
-7. preflight           Re-run the same operational smoke contract for the changed production matrix.
-8. train               Train/resume only the frozen selected-size production/CV workload.
-9. evaluate            Evaluate production trajectories and select admissible checkpoints; an earlier epoch may beat the configured production horizon.
-10. verify             Run the existing physical/deployment/locked verification sequence.
+6. cross-validate      Cross-validate the frozen training method on exactly T_selected.
+7. train-production    Train the fresh final production run(s) on the full T_selected.
+8. verify              Run the existing physical/deployment/locked verification sequence.
 
 During `select-target-size`, epoch is a controlled variable: only exact configured
-coarse, short, and final-screen checkpoints may affect target-size ranking. Production
-`evaluate` answers a different question: target size is already frozen and the
-best admissible checkpoint epoch may be selected from the trajectory.
+coarse, short, and final-screen checkpoints may affect target-size ranking.
+
+Post-selection work
+-------------------
+`cross-validate` and `train-production` are the two current post-selection owners.
+Both re-establish the current P4 selection before they do anything, so a stale
+generation can never be resumed or republished as current.
+
+`cross-validate` builds a complete K-fold plan (K >= 2) whose universe is exactly
+T_selected, allocating roles over the inherited P1 split-exclusion components so a
+correlated pair is never split across training and evaluation. Each fold trains
+fresh, chooses its representative checkpoint on its own monitor using target
+metrics only, and is then judged on its held-out fold. Every required fold of
+every required CV seed must pass the configured predicate: a good average cannot
+carry a failing fold, and there is no zero-fold bypass. Replay evidence gates
+checkpoint admissibility but earns no ranking or acceptance credit.
+
+`train-production` then trains fresh model(s) on the full T_selected under exactly
+the cross-validated method. Its epoch horizon is `[training].max_num_epochs`,
+which is independent of the screening ladder's n3 and of the CV budget: changing
+it does not invalidate accepted cross-validation evidence. Final model selection
+uses the frozen M3 development reserve; locked and calibration evidence stay
+strictly downstream.
+
+`materialize`, `train`, and `evaluate` are not post-selection owners; they direct
+you at the two commands above.
 
 Historical adaptive/MLCV campaigns retain their original prepare -> preflight ->
 train -> evaluate -> verify lifecycle.
@@ -29404,8 +29456,13 @@ plan creates K different leakage-safe train/evaluation partitions; the additiona
 `final` job trains on the complete development set. The generated default is
 multi-head replay only: (3 folds + 1 final) x 2 seeds = 8 jobs. Naive/native
 target-only fine-tuning remains an opt-in comparison under
-`[training.naive_fine_tuning]`. Configure either method independently. Use one seed
-and `cross_validation_folds = 0` for exactly one final-only model.
+`[training.naive_fine_tuning]`. Configure either method independently.
+
+The `cross_validation_folds` and `fold_partition_seed` keys under `[training.*]`
+belong to the retired pre-target CV lifecycle and are not the current
+post-selection CV authority. Current cross-validation is configured under
+`[post_selection.cv]` and its production counterpart under
+`[post_selection.production]`.
 
 After a conventional MLCV campaign has completed SELECT1/AGG1/FINAL1 but before
 VERIFY1 freezes production authority, append one optimizer realization with
@@ -29680,9 +29737,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(
         "materialize",
         help=(
-            "realize the frozen selected-size production/CV workload; unavailable in "
-            "this release, which fails closed rather than reinterpreting retired "
-            "selected-size records"
+            "not the post-selection owner; fails closed and directs you at "
+            "`cross-validate` and `train-production`, which materialize exactly the "
+            "workload their own authenticated plan authorizes"
         ),
     )
     p.add_argument(

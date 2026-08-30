@@ -170,10 +170,12 @@ Ordinary target-success early stopping is disabled during the size experiment be
 The TRAIN2 CLI is a projection of existing scientific/execution authorities, not an additional persistent lifecycle authority. Its stable lifecycle is:
 
 ```text
-prepare -> preflight -> select-target-size -> materialize -> preflight -> train -> evaluate -> verify
+prepare -> preflight -> select-target-size -> cross-validate -> train-production -> verify
 ```
 
-`select-target-size` is the sole public owner of the restartable `n1/n2/n3` controlled-fidelity loop. It reuses one screening DATA8 matrix and one matrix-bound preflight across all configured boundaries. Once `selected_target_size` is frozen, `materialize` realizes exactly that size across the final-development and configured CV topology; because this changes the active DATA8 matrix, the earlier screening preflight cannot authorize production training. Public `train` and `evaluate` are then restricted to the selected production/CV workload. `status` and `advance` derive these semantic steps from `TargetSizeStudyPlan`, active DATA8 identities, the preflight matrix digest, and existing execution/evaluation receipts; they do not write a second scientific state machine.
+`select-target-size` is the sole public owner of the restartable `n1/n2/n3` controlled-fidelity loop. It reuses one screening DATA8 matrix and one matrix-bound preflight across all configured boundaries.
+
+Once `selected_target_size` is frozen, `cross-validate` and `train-production` are the two public post-selection owners. Both re-establish the current selection through the canonical terminal loader in the same invocation, so neither a caller-held object nor a persisted descendant is ever current authority. `cross-validate` owns the complete selected-only K-fold plan and the target-only acceptance verdict; `train-production` owns fresh full-`T_selected` training under the method that verdict accepted. Each materializes exactly the workload its own plan authorizes, so there is no separate selected-size `materialize` step and no second preflight boundary. Public `materialize`, `train`, and `evaluate` fail closed and direct the operator at these owners rather than reinterpreting retired production records. `status` and `advance` continue to derive semantic steps from existing authorities and receipts; they do not write a second scientific state machine.
 
 ### Successive-fidelity funnel
 

@@ -242,7 +242,9 @@ def test_p4f_req3_user_guide_does_not_claim_a_retired_lifecycle():
     # candidate matrix or that materialize realizes a selected-size topology.
     assert "writes the complete qualified-size x screening-seed DATA8 candidate matrix" not in text
     assert "`materialize` is valid only after `N*` is frozen." not in text
-    assert "unavailable in this release" in text
+    # Post-selection materialization is owned by the two post-selection commands,
+    # so the standalone step stays unavailable.
+    assert "`materialize` remains **unavailable**" in text
 
 
 def test_p4f_req3_parser_help_describes_the_current_commands():
