@@ -10,7 +10,7 @@ amended_date: 2026-08-29
 entry_p4_closure_commit: 145388e5ad11733be1c19539886e34b82cc7d7d2
 revision1_baseline_commit: 5bf53c99ce31d1438c21bae81c0f30c79176bdc4
 compatibility_policy: current-generation-cutover-no-derived-migration
-reconciliation_reason: P4 revision 8 is formally closed, so P5 is no longer blocked. Revision 2 reconciles the P5 entry contract with the implemented CampaignStore-backed P4 current-terminal authority, corrects T_selected terminology to mean the exact selected target dataset rather than an epoch, cuts current post-selection CV authority away from legacy DATA5 label-domain/CV lineage, and freezes a fresh final-production path whose epoch horizon is independent of target-size screening n3. The frozen parent remains the sole scientific and architectural verdict.
+reconciliation_reason: P4 revision 8 is formally closed, so P5 is no longer blocked. Revision 2 reconciles the P5 entry contract with the implemented CampaignStore-backed P4 current-terminal authority, corrects T_selected terminology to mean the exact selected target dataset rather than an epoch, cuts current post-selection CV authority away from legacy DATA5 label-domain/CV lineage, and freezes a fresh final-production path whose configured [training].max_num_epochs horizon is independent of target-size screening n3. The frozen parent remains the sole scientific and architectural verdict.
 ---
 
 # P5 revision 2 — post-selection CV and fresh final production
@@ -46,9 +46,9 @@ Therefore:
 - `N_selected` is the selected target-training cardinality;
 - `T_selected` is the exact ordered selected target-frame membership/prefix;
 - target-size screening fidelity is `n1 -> n2 -> n3`;
-- the final-production epoch horizon is a separate downstream quantity, referred to in this package as `production_horizon` (or the existing version-agnostic TRAIN2 budget field that owns the same meaning).
+- the final-production epoch horizon is the resolved `[training].max_num_epochs`, materialized through the existing version-agnostic TRAIN2 budget owner, and is a separate downstream quantity from screening fidelity.
 
-P5 MUST NOT introduce or preserve any API/documentation meaning in which `T_selected` denotes an epoch, checkpoint boundary, or training horizon. P5 MUST NOT infer `production_horizon` from `n3`.
+P5 MUST NOT introduce or preserve any API/documentation meaning in which `T_selected` denotes an epoch, checkpoint boundary, or training horizon. P5 MUST NOT infer or overwrite the production horizon from `n3`.
 
 ### 0.2 Preserved accepted predecessor behavior
 
@@ -111,7 +111,7 @@ Known reconciliation drifts that P5 must close:
 
 1. current legacy `MlcvRoleCatalog` is explicitly derived from DATA5/label-domain/unit-ID/CV lineage; the parent requires new MLCV role records to descend from exact `T_selected` membership and neutral correlation groups;
 2. existing MLCV checkpoint/aggregate/final structures contain useful role guards, evaluation and aggregation semantics, but their persisted lineage must not preserve old DATA5 CV authority on the current path;
-3. existing TRAIN2 `TrainingBudgetPolicy.planned_epochs` is a reusable execution budget owner, but target-size `n3` cannot become the production budget by inheritance, default propagation, checkpoint continuation, or name conflation;
+3. existing TRAIN2 `TrainingBudgetPolicy.planned_epochs` is a reusable execution budget owner, but final production must resolve that budget from `[training].max_num_epochs`; target-size `n3` cannot become the production budget by inheritance, default propagation, checkpoint continuation, or name conflation;
 4. existing final-selection/committee machinery cannot substitute selection among old screening/CV trajectories for the parent-required fresh final-production run;
 5. no existing pre-target CV plan may be revived merely to satisfy old MLCV constructor expectations.
 
@@ -297,7 +297,7 @@ Fold-local checkpoint selection/monitoring may choose representatives for CV met
 
 ---
 
-## 6. Pass P5-D — downstream production policy and fresh final-production training
+## 6. Pass P5-D — configured production policy and fresh final-production training
 
 After accepted post-selection methodological validation, construct a genuinely fresh final-production run.
 
@@ -321,29 +321,31 @@ Final production MUST:
 
 Existing MLCV final-selection/committee records may be retained only where their semantics remain valid downstream. They cannot turn a screening/CV representative into the parent-required fresh final-production training run.
 
-### 6.3 Production horizon is independent of screening `n3`
+### 6.3 Production horizon authority: `[training].max_num_epochs`
 
-The final production training budget/horizon is a P5/downstream policy input. Reuse the version-agnostic TRAIN2 budget owner where appropriate, but bind its `planned_epochs` (or repository-equivalent field) to the production policy rather than to target-size screening fidelity.
+The frozen parent explicitly keeps `[training].max_num_epochs` as the production epoch horizon. P5 MUST preserve that configuration authority and materialize it through the existing version-agnostic TRAIN2 budget owner (for example `TrainingBudgetPolicy.planned_epochs`) rather than create a new P5 horizon-selection authority.
 
 Rules:
 
-- no `production_horizon = n3` derivation;
+- resolved `production_horizon = [training].max_num_epochs` for the final-production run;
+- no `production_horizon = n3` derivation or target-size override;
 - no fallback to the last screening checkpoint epoch;
+- no CV-selected replacement horizon unless a future parent-level scientific revision explicitly changes this authority;
 - no reuse of target-size continuation state to reach the production horizon;
-- a configured/selected downstream production horizon is content-addressed in the final run plan;
-- changing production horizon invalidates only the affected downstream production descendants unless the training method itself changes in a way that the parent declares target-size-scientific.
+- the resolved production horizon is content-addressed in the final run plan;
+- changing `[training].max_num_epochs` invalidates the affected downstream production descendants according to the existing scientific-identity DAG, but P5 itself must not translate that setting into target-size `n3`.
 
-Acceptance MUST include a case with `production_horizon != n3` and prove the actual TRAIN2 final run receives/executes the production budget while P4 selection remains unchanged.
+Acceptance MUST include a configuration with `[training].max_num_epochs != n3` and prove the actual TRAIN2 final run receives/executes `[training].max_num_epochs` while P4 selection remains unchanged. A coincidental equal numeric value is legal only when independently configured; equality must never arise from a dependency edge.
 
 ### 6.4 Locked/final evidence discipline
 
-P5 does not authorize leakage of locked-test evidence into training, target-size selection, CV tuning, production-horizon choice, checkpoint choice, or seed choice. Any final validation/physical verification/locked evaluation retains its existing downstream role and must not be relabeled independent if it influenced model choice.
+P5 does not authorize leakage of locked-test evidence into training, target-size selection, CV tuning, production-horizon configuration, checkpoint choice, or seed choice. Any final validation/physical verification/locked evaluation retains its existing downstream role and must not be relabeled independent if it influenced model choice.
 
 ### Acceptance closure
 
 - exact final DATA8 target membership equals full ordered `T_selected` and nothing else;
 - fresh initialization/optimizer/RNG provenance is distinct from screening and CV trajectories;
-- production horizon differs from `n3` in an explicit regression fixture and the actual runtime follows the production value;
+- `[training].max_num_epochs` differs from `n3` in an explicit regression fixture and the actual runtime follows the configured production value;
 - no screening/CV checkpoint is accepted as the final-production starting state;
 - bounded real-owner final-production entry reaches shared DATA8/TRAIN2 scheduling/materialization;
 - affected final-selection/production/materialization/TRAIN2 regression passes.
@@ -359,7 +361,7 @@ P5 descendants must be restartable without creating a second upstream authority.
 1. **P4 current generation/selection changes**: stale P5 selection binding, CV state and final-production state become non-current and must be rejected before current publication/resume.
 2. **P4 remains the same current selected terminal result**: missing rebuildable P5 views may be recreated without target-size recomputation.
 3. **CV-only fold count/partition seed/monitor policy changes**: invalidate affected CV and production descendants only; do not invalidate/rebuild P4 target-size state.
-4. **Final-production-only budget/output/runtime setting changes**: invalidate affected final-production descendants only, unless the setting is scientifically part of the training method whose target-size convergence was measured.
+4. **Final-production-only output/runtime changes**: invalidate affected final-production descendants only when scientifically appropriate; `[training].max_num_epochs` follows the existing parent scientific-identity DAG and is never silently reclassified by P5.
 5. **Material training-method/protocol change**: follow the parent scientific identity DAG; if it changes the method whose target-size convergence is being claimed, a new target-size experiment is required rather than a P5-local override.
 6. **Corrupt/incomplete downstream evidence**: fail/rebuild downstream evidence according to its ownership; never repair it by altering target-size selection.
 
@@ -378,7 +380,7 @@ Currentness comparisons must use content/revision lineage, not timestamps or exi
 - same-current-selection restart reuses valid P5 evidence without rerunning P4;
 - real g1 selected -> partial/complete P5 -> real prepare g2 -> old P5 resume/publication rejects before numerical work/public exposure;
 - CV-only config mutation leaves P4 current selection unchanged;
-- production-only budget mutation leaves P4 and unaffected CV evidence unchanged where scientifically allowed;
+- final-production-only output/runtime mutation leaves P4 and unaffected CV evidence unchanged where scientifically allowed;
 - corruption/fork/conflict/concurrent-publication tests fail closed at the owning downstream layer;
 - affected CampaignStore/storage/restart regression passes.
 
@@ -406,7 +408,7 @@ Prove by source/import/call-graph inspection plus tests:
 - zero current P5 reads of target-size result JSON as authority;
 - zero old DATA5/label-domain CV authority edges from current P5 orchestration;
 - zero CV/final-production -> target-size mutation edges;
-- zero production-horizon -> screening-`n3` derivation edges;
+- zero `[training].max_num_epochs` -> target-size `n3` or target-size `n3` -> production-budget derivation edges;
 - zero duplicate current-selection caches/registries;
 - zero V7-prefixed production symbols introduced by P5.
 
@@ -429,7 +431,7 @@ real config + real CampaignStore
  -> exact T_selected post-selection CV plan
  -> bounded CV DATA7/DATA8/TRAIN2/EVAL2 execution
  -> CV aggregate/outcome without P4 mutation
- -> accepted downstream production policy
+ -> configured [training].max_num_epochs production budget
  -> fresh final-production DATA8/TRAIN2 entry on full T_selected
  -> persist/reload P5 descendants
  -> re-load current P4 terminal selection
@@ -443,7 +445,7 @@ Final assertions:
 - each CV fold is inside `T_selected` and group-safe;
 - final production uses full `T_selected`;
 - fresh final optimizer/init does not descend from screening/CV continuation state;
-- actual final production horizon comes from downstream production policy and is demonstrably independent of `n3`;
+- actual final production horizon is the resolved `[training].max_num_epochs` and is demonstrably independent of `n3`;
 - restart returns the same current downstream result only after fresh P4 currentness validation.
 
 ### 9.2 Mandatory negative matrix
@@ -458,7 +460,7 @@ At minimum include:
 - screening checkpoint/optimizer continuation offered to a CV fold rejects or is structurally unreachable;
 - screening/CV checkpoint/optimizer continuation offered to final production rejects or is structurally unreachable;
 - CV failure cannot invoke target-size reducer/reselection;
-- `production_horizon == n3` is allowed only if independently configured/selected to the same numeric value; tests must prove there is no identity/derivation dependency by using unequal values;
+- with `[training].max_num_epochs != n3`, final TRAIN2 receives the configured production horizon; if the two values are equal in another configuration, structural tests still prove no dependency edge;
 - locked-test evidence cannot influence P5 selection/tuning paths;
 - stale/missing derived target-size result JSON cannot supersede CampaignStore authority.
 
@@ -472,6 +474,7 @@ Re-derive the affected surface from the complete P5 implementation diff. At mini
 - MLCV roles/select/aggregate/final/verification/monitor tests actually reused;
 - DATA7/DATA8 materialization;
 - TRAIN2/EVAL2 policy/runtime/checkpoint/provider tests;
+- configuration resolution for `[training].max_num_epochs`;
 - CampaignStore/storage/restart/concurrency tests;
 - CLI/orchestrator tests;
 - assembled P4 -> P5 integration.
@@ -491,7 +494,7 @@ P5 MUST NOT:
 - add a second target-size current-state file/cache/registry;
 - reintroduce label-domain fanout or pre-target CV planning;
 - reinterpret `T_selected` as a training epoch;
-- make screening `n3` the production horizon authority;
+- make screening `n3` the production horizon authority or create a competing P5 horizon-selection authority to `[training].max_num_epochs`;
 - use CV to choose another `N_selected`;
 - use locked-test evidence to tune/select the production model;
 - fork a second DATA8/TRAIN2/EVAL2 execution engine;
@@ -511,6 +514,6 @@ Stop and return to design if implementation shows any of the following is necess
 
 P5 revision 2 is accepted only when:
 
-> The current P4-selected dataset is reauthenticated at downstream exposure time, frozen exactly as `T_selected = pi_train[:N_selected]`, used exclusively for post-selection CV, and then used in full by a genuinely fresh final-production run. CV cannot alter or enlarge the selected dataset, legacy DATA5 label-domain CV authority is absent from the current path, final production does not continue screening/CV optimizer state, and its production horizon is scientifically and programmatically independent of target-size screening `n3`.
+> The current P4-selected dataset is reauthenticated at downstream exposure time, frozen exactly as `T_selected = pi_train[:N_selected]`, used exclusively for post-selection CV, and then used in full by a genuinely fresh final-production run. CV cannot alter or enlarge the selected dataset, legacy DATA5 label-domain CV authority is absent from the current path, final production does not continue screening/CV optimizer state, and its resolved `[training].max_num_epochs` production horizon is scientifically and programmatically independent of target-size screening `n3`.
 
 After P5 implementation, stage-local closure, fresh assembled affected regression, and independent review all pass, mark this package implemented/accepted and commit the P5 closure checkpoint. P6 remains blocked until that formal P5 closure.
