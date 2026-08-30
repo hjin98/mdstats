@@ -5,22 +5,24 @@ parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 6
 status: active
-package_revision: 2
+package_revision: 3
 amended_date: 2026-08-30
 entry_p5_accepted_baseline_commit: 1670275487d29bbcde4c59efafdef9d1f8b0ced7
 entry_p5_accepted_baseline_tree: 17e2c5609974712bda1efd3375f09f42da830f68
 entry_p5_workplan_revision: 11
 compatibility_policy: destructive-generation-reset-current-generation-cutover-no-derived-migration
-reconciliation_reason: P6 is rebased onto the accepted P5A6 implementation. The original cleanup outline was scientifically aligned but not snapshot-complete for destructive implementation: it assumed residual old code was already unreachable, did not classify mixed legacy/current ownership before deletion, did not freeze the hardened P4 persistence/currentness/STOR boundaries or the complete P5 real-owner/provider-lifecycle chain, stopped assembled acceptance at final-production entry instead of completed publication and restart reauthentication, and lacked stage-local affected regression after destructive executable edits. Revision 2 closes those implementation-handoff gaps without reopening P1-P5 science.
+reconciliation_reason: Revision 3 closes the remaining Design-review gaps in revision 2 without reopening P1-P5 or the frozen parent. It forbids semantic compatibility reading/migration of retired V5/V6 target-size derived state except for minimal reject-only generation detection; preserves validation-only reference oracles and benchmarks when they independently validate retained current implementations; restores the frozen parent's explicit restart/invalidation matrix; makes real production CLI parsing/dispatch mandatory in assembled acceptance; preserves accepted scheduling/cache/checkpoint/accelerator/resource owners; narrows design-reopen conditions so ordinary incomplete cutover remains implementation reconciliation; and restores explicit documentation/PDF and three-way final qualification reporting requirements.
 ---
 
-# P6 revision 2 — destructive cleanup and assembled final closure
+# P6 revision 3 — destructive cleanup and assembled final closure
 
 ## 0. Authority, accepted baseline, scope, and precedence
 
-The frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the sole scientific and architectural verdict for the target-size reset. P6 is bound to **Protocol 5.8.0** and must not silently reinterpret this package under a later protocol revision.
+The frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the sole scientific and architectural verdict for the target-size reset. P6 translates the parent's final destructive-cleanup and closure obligations onto the accepted P1-P5 implementation. It does not supersede or reinterpret the parent.
 
-The exact accepted implementation baseline for destructive cleanup is:
+P6 is bound to **Protocol 5.8.0**. Do not silently reinterpret this package under a later protocol version.
+
+The exact accepted implementation baseline for P6 is:
 
 ```text
 1670275487d29bbcde4c59efafdef9d1f8b0ced7  P5A6
@@ -32,643 +34,861 @@ with tree:
 17e2c5609974712bda1efd3375f09f42da830f68
 ```
 
-P6 is a **destructive cleanup plus final assembled-closure package**. It is not permission to redesign accepted P1-P5 science, change the selected-set semantics, weaken currentness/restart checks, add compatibility fallbacks, or simplify real-owner acceptance boundaries merely to make deletion easier.
+P6 is a **destructive cleanup plus final assembled-closure package**. It is not permission to redesign accepted P1-P5 science, alter selected-set semantics, weaken persistence/currentness/restart checks, revive compatibility-domain target-size topology, add migration fallbacks for retired derived state, or replace real semantic owners with proxies merely to make cleanup easier.
 
-P6 implementation starts from the exact baseline above. If branch HEAD changes before implementation begins, implementation must first reconcile the intervening diff. A material change to any protected owner in Section 3 is a reopen trigger; do not silently apply this cleanup plan to a different semantic baseline.
+If branch HEAD changes before P6 implementation begins, implementation must reconcile the intervening diff against this package before destructive edits. A local change that still satisfies the frozen architecture is implementation reconciliation. Reopen Design only under Section 11.
 
-Full production-scale/long target-machine GPU qualification remains deferred. P6 closure requires bounded functional, regression, integration, determinism, reference-equivalence, and resource-lifecycle evidence. It does **not** require long real-data training or performance qualification on the target GPU.
+Full production-scale/long target-machine GPU qualification remains deferred to the established final-release phase. P6 closure requires bounded CPU-safe functional, regression, integration, determinism, reference-equivalence, persistence/restart, and resource-lifecycle evidence. It must not counterfeit production-scale GPU qualification from bounded tests.
 
 ---
 
-## 1. Frozen assembled product state that P6 must preserve
+## 1. Frozen assembled product state P6 must preserve
 
-P6 removes retired topology around the accepted architecture. The following end state is frozen.
+### 1.1 Parent scientific lifecycle
 
-### 1.1 Parent scientific architecture
-
-The assembled current path remains:
+The current assembled lifecycle remains:
 
 ```text
-precise provenance / numerical-label identity
- -> neutral current substrate
- -> one P_train / M3 development split
+precise provenance / canonical numerical-label identity
+ -> neutral current statistical/correlation substrate
+ -> one P_train / M3 target-size development split
  -> one canonical pi_train
- -> one canonical pi_eval / M-ladder
+ -> one canonical pi_eval / M1 subset M2 subset M3 ladder
  -> paired optimizer-seed target-size screen
  -> one current P4 reducer
  -> N_selected
  -> T_selected = pi_train[:N_selected]
  -> post-selection CV on exact T_selected
  -> fresh final production on exact full T_selected
+ -> current publication/restart-authenticated downstream state
 ```
 
 Preserve all of the following:
 
-- provenance is precise and advisory and does not recreate compatibility-domain numerical branching;
-- the neutral substrate has no compatibility-domain partition axis and no pre-target-size CV authority;
-- common deterministic preparation is shared across candidate sizes and optimizer seeds;
-- only optimizer seeds are screening replicates;
-- exact continuation/restart and exact `M_i` evaluation semantics remain intact;
+- electronic-structure provenance is precise descriptive/advisory evidence and does not recreate compatibility-domain numerical branching;
+- canonical numerical label identity is separate from provenance grouping;
+- the neutral pre-target substrate has no compatibility-domain partition axis and no pre-target-size CV authority;
+- one deterministic common target-size preparation is shared across candidate sizes and optimizer seeds;
+- only the ordered optimizer-seed set is the target-size stochastic replicate dimension;
+- current default/current-policy screen uses the same ordered two seeds `[1, 2]` for every `N` unless a future accepted policy changes it;
+- exact `n1 -> n2 -> n3` continuation/restart and exact `M_i` evaluation semantics remain intact;
+- target-side metric/practical-equivalence policy alone owns target-size ranking, with smaller `N` preferred inside practical equivalence;
+- replay/CV/physical/deployment evidence cannot rank or tie-break target size;
+- configured-ceiling nonconvergence remains typed rather than inventing a rescue size;
 - post-selection CV cannot feed back into target-size selection;
-- final production is fresh, uses the full exact selected set, and uses `[training].max_num_epochs` as its final horizon authority independently of screening/CV horizons.
+- final production is fresh, uses full exact `T_selected`, fresh optimizer/RNG/run state, and `[training].max_num_epochs` as its independent production horizon authority.
 
-### 1.2 Current-generation rule
+### 1.2 Destructive current-generation rule
 
-P6 completes the current-generation cutover. Retired V5/V6 derived topology may be removed rather than migrated. However:
+P6 completes the destructive current-generation cutover.
 
-- valid current P1-P5 state produced by the accepted generation must remain reloadable and restart-authenticatable;
-- retired derived state must never be inferred, reconstructed, or promoted into current V7 authority through a fallback;
-- any retained historical/compatibility reader is read-only/non-authoritative for current selection, CV, final authorization, publication, and current-pointer decisions;
-- historical snapshots may remain historical, but they must not appear in current package exports, current source maps, current configuration examples, or current architecture documentation as supported authority.
+- Valid current P1-P5 state created by the accepted V7 generation must remain reloadable and restart-authenticatable.
+- Retired V5/V6 **derived target-size** state is not migrated, semantically read forward, reconstructed, or rebound into V7.
+- Obsolete target-size state may be recognized only enough to reject it with actionable reset/reprepare guidance before any candidate/checkpoint/derived target-size reuse.
+- Raw scientific inputs and independently valid low-level content/recipe caches may still be reused when their recipes are genuinely independent of retired target-size/domain semantics.
+- Historical documentation/evidence may remain clearly historical, but it must not appear in current package exports, current source maps, current configuration examples, or current architecture documentation as supported authority.
+
+### 1.3 No mixed current architecture
+
+After P6, the current runtime must not expose a hidden dual architecture:
+
+```text
+V7 current owner -> direct current implementation
+```
+
+Forbidden:
+
+- V7-or-V5 runtime feature flags;
+- try-V7/fallback-V5;
+- V7 objects rebuilt from retired per-domain target-size maps;
+- writing both old and new target-size authoritative records;
+- compatibility aliases that reinterpret V5/V6 target-size schemas as V7;
+- keeping obsolete CV/domain requirements solely to preserve old tests;
+- wrapping `TargetDataRoleFreeze`, FEAS/MVIDX/MVSEL/REPAIR/MVQUAL, old complement EVAL2 roles, or old per-domain materialization and presenting them as the V7 scientific owner.
 
 ---
 
-## 2. P6-A — mandatory current-baseline census and disposition ledger
+## 2. P6-A — mandatory P5A6 census and disposition before destructive deletion
 
-### 2.1 Purpose
+### 2.1 Census surface
 
-The original P6 entry condition assumed every retained old surface was already unreachable. That assumption is removed.
+Before destructive executable edits, inspect the exact P5A6 tree and enumerate every material legacy-looking or current-mixed surface across:
 
-At P6 entry, a legacy surface may still be importable, publicly exported, serialized, tested, documented, or otherwise reachable. That is acceptable **only if it no longer owns or influences current P1-P5 scientific decisions**. P6 must census those residual surfaces and then remove or reclassify them safely.
+1. Python modules/classes/functions/constants/enums/schema/version identifiers;
+2. `mdstats.training_data`, top-level package imports, and automatically generated `__all__` surfaces;
+3. CLI commands/options, configuration keys/defaults, parser branches, help text and examples;
+4. CampaignStore/SQLite fields, serializers/deserializers, payload schemas, receipt/manifest keys, current pointers, restart/reopen and reconstruction paths;
+5. filesystem path/layout helpers, cleanup/retention owners, caches/checkpoints and promotion/publication helpers;
+6. P1-P5 production call edges and dependency imports;
+7. tests, fixtures, golden payloads, benchmarks, reference implementations and helper factories;
+8. current architecture/specification/source-map/user documentation and generated-documentation inputs.
 
-For example, the P5A6 package still imports legacy target-data-role symbols through `mdstats.training_data`; public reachability is therefore not evidence that the old object remains valid current scientific authority, nor is scientific retirement evidence that the public/API residue has already disappeared.
-
-### 2.2 Census surface
-
-Before destructive executable edits, inspect the P5A6 tree and enumerate all plausible retired/current-mixed surfaces across:
-
-1. Python modules, classes, dataclasses, functions, constants, enums, and schema/version identifiers;
-2. `mdstats.training_data` and other package-level imports/exports, including automatically generated `__all__` surfaces;
-3. CLI commands/options, configuration keys/defaults, parser branches, and help text;
-4. CampaignStore/SQLite fields, state values, serializers/deserializers, JSON/YAML payloads, receipt/manifest keys, current pointers, restart/reopen paths, and reconstruction helpers;
-5. filesystem path/layout helpers and cleanup/retention ownership;
-6. current call edges and dependency imports from P1-P5 runtime owners;
-7. tests, fixtures, golden payloads, benchmarks, and helper factories;
-8. architecture manuals/specifications, current source maps, user-facing examples, README/help text, and generated documentation inputs.
-
-Search explicitly for the retired target-size concepts already named by the parent/original P6, including at minimum:
+At minimum search for materially equivalent instances of:
 
 ```text
-TargetDataRoleFreeze / per-domain role authority
+TargetDataRoleFreeze / TargetDataDomainRoleFreeze
 FEAS1
 MVIDX1
 MVSEL2
 REPAIR2
 MVSTATE2
 MVQUAL / MVQUAL2
-fixed target-size / fixed ceiling authority
-per-domain target-size candidate maps
-per-domain target-size prefix digests
-complement/coarse target-size EVAL2 populations
-old per-domain target-size evaluation/materialization fields
-old DATA5/MLCV preselection target-size coupling
-V5 prepare-contract / receipt / migration aliases
+FIXED_TARGET_SIZES / fixed target-size ceiling authority
+domain_prefix_digests
+per-domain target-size candidate/materializability/qualification maps
+size_development_complement / size_development_coarse
+prescribed_final_development_prefixes
+prescribed_training_domain_prefixes
+prescribed_target_size_evaluation_frames
+preselection cross_validation_plans used by target size
+old DATA5/MLCV target-size coupling
+V5/V6 target-size prepare contract / receipt / migration aliases
 legacy target-size reconstruction helpers
 compatibility-domain training eligibility/fanout used as current authority
-old numerical-label / label-domain partition authority used by target-size selection
+label_domain_id participating in current numerical-label/partition/target-size identity
 ```
 
-This list is a minimum search set, not a ceiling. Implementation must add materially equivalent aliases/schemas discovered from the repository.
+This is a minimum search set, not a ceiling. Add discovered aliases and equivalent schemas to the census.
 
-### 2.3 Required disposition classes
+### 2.2 Required disposition classes
 
-Every material legacy-looking surface must receive exactly one disposition before deletion/refactor:
+Every material legacy-looking surface receives exactly one disposition before refactor/deletion:
 
 | Class | Meaning | Required action |
 |---|---|---|
-| R1 | retired current scientific/authorization authority | delete implementation/current call edge and unexport |
+| R1 | retired current scientific/authorization/runtime authority | remove current call edge/implementation as applicable and unexport |
 | R2 | current V7/shared neutral implementation | retain under canonical current owner |
-| R3 | mixed legacy + current/shared implementation | cut current/shared functionality to canonical owner first, prove cutover, then remove legacy authority |
-| R4 | diagnostic/advisory compatibility functionality | retain only if it cannot authorize selection/training/CV/final/current publication |
-| R5 | supported persistence/compatibility reader | retain read-only/non-authoritative; no reconstruction/promotion to V7 |
-| R6 | independently supported product feature outside target-size V7 | preserve its independent contract; do not delete merely because the module is old |
-| R7 | historical-only source/evidence | may remain only in clearly historical/archive context, not current runtime/API/docs |
+| R3 | mixed legacy + current/shared implementation | cut current/shared responsibility to canonical owner first, prove it, then remove retired authority |
+| R4 | advisory/diagnostic compatibility/provenance helper | retain only if observational and unable to authorize selection/training/CV/final/current publication |
+| R5 | current-generation or independently supported **non-target-size** compatibility reader | retain read-only/non-authoritative under explicit supported contract; no promotion/reconstruction into current authority |
+| R6 | independently supported product feature outside target-size V7 | preserve its independent product contract |
+| R7 | historical-only source/evidence/docs | retain only in clearly historical/archive context, never current runtime/API/docs |
+| R8 | validation-only reference/oracle/benchmark for a retained current implementation | retain outside production authority when it provides material independent equivalence/performance evidence |
 
-The implementation evidence must record the disposition and the concrete current caller/purpose for every R2-R6 retention decision. “Tests still import it” is not an independent supported purpose.
+For every retained R2-R6/R8 item, implementation evidence must record the concrete current/independent purpose. “An old test imports it” is not a supported purpose.
 
-### 2.4 Cutover-before-delete rule
+### 2.3 Hard R5 exclusion for retired target-size state
 
-If a targeted legacy module contains any R2/R3 functionality, destructive deletion is forbidden until:
+R5 **must not** be used to preserve semantic readers/migrators for retired V5/V6 target-size derived state.
 
-1. the legitimate current/shared responsibility is identified;
-2. it is moved to or routed through the canonical neutral/current owner without changing scientific behavior;
-3. all current callers are updated;
-4. focused semantic tests pass through the new owner;
-5. stage-local affected regression for the cutover passes;
-6. only then is the retired legacy authority/module/export removed.
+The following are R1/R7, not R5, unless the frozen parent is explicitly reopened:
 
-Do not preserve a dead wrapper solely to make an old test green. Do not delete a shared implementation merely because its filename contains a retired concept.
+- V5/V6 target-size candidate/state/qualification plans;
+- old target-size prepare contracts/receipts;
+- FEAS/MVIDX/MVSEL/REPAIR/MVSTATE/MVQUAL persisted semantic readers;
+- per-domain target-size derived maps/prefix/evaluation records;
+- migration adapters that turn retired target-size state into current V7 objects;
+- reconstruction helpers that infer current V7 target-size authority from old payload shape.
 
-### 2.5 P6-A acceptance
+A **minimal reject-only generation detector** may remain if needed to identify an obsolete workspace and emit actionable reset/reprepare guidance. Such a detector may inspect only enough metadata/header/version information to determine that the workspace is obsolete. It must reject **before** semantic deserialization, candidate/checkpoint reuse, or descendant reconstruction.
 
-P6-A closes when the census/disposition ledger is complete enough that every destructive edit in P6-B has an explicit semantic reason and no current/shared owner is being deleted by inference from naming alone.
+Acceptance must prove both:
 
-P6-A is primarily reconciliation/design work. If it makes no executable changes, it needs semantic review evidence rather than an artificial test gate. Any executable cutover performed while completing the census must close with the stage-local tests required by Section 2.4.
+1. an old target-size workspace is rejected before any target-size candidate/checkpoint/derived-state reuse; and
+2. no retired target-size migration/receipt/current semantic reader remains publicly exposed as supported current API.
+
+### 2.4 R8 validation-only retention rule
+
+A current optimized implementation may legitimately retain a simple/reference/oracle path or benchmark even when no production runtime caller invokes that validation artifact.
+
+R8 is valid only when:
+
+- the implementation under test is R2/R3/R6 and remains current/supported;
+- the oracle/reference is independent enough to detect implementation drift rather than reproducing the same algorithmic defect;
+- the benchmark/equivalence harness exercises the **current** implementation and current scientific semantics;
+- it does not itself become current scientific authority or runtime state;
+- its maintenance cost is justified by material correctness/performance assurance.
+
+A benchmark whose central contract is to reopen persisted V5/V6 target-size authorities and execute fixed old topology is **not** R8. For example, an MVQUAL/M5 benchmark that explicitly reopens V5 state and exercises fixed-eight MVQUAL2 is obsolete and must be deleted, archived as history, or rewritten to benchmark a retained current V7 kernel through a current/reference boundary.
+
+### 2.5 Cutover-before-delete rule
+
+For any R3 surface:
+
+1. identify the legitimate current/shared responsibility;
+2. move it to or route it through the canonical current/neutral owner without changing accepted science;
+3. update all current callers;
+4. run focused semantic tests through the new owner;
+5. run stage-local affected regression for the cutover;
+6. only then remove the retired legacy authority/module/export.
+
+Do not delete shared machinery because its filename is old. Do not preserve a dead wrapper solely to keep old tests green.
+
+### 2.6 P6-A closure
+
+P6-A closes when the census/disposition is complete enough that every destructive edit has an explicit semantic reason and every retention has an explicit current/independent purpose.
+
+P6-A is reconciliation unless it changes executable code. Any executable R3 cutover performed during the census must close with focused checks plus stage-local affected regression before dependent deletion continues.
 
 ---
 
-## 3. Protected P1-P5 owners and invariants during cleanup
+## 3. Protected P1-P5 owners and implementation machinery
 
-The following are task-local preservation requirements. P6 implementation must not rely on rereading historical workplans to rediscover them.
+These task-local preservation requirements are normative in P6. Implementation must not need historical chat/review context to recover them.
 
-### 3.1 P1/P2 substrate and split authority
+### 3.1 P1/P2 substrate and protected relations
 
 Preserve:
 
-- canonical current frame/source/label/provenance identities required by the neutral substrate;
-- duplicate/correlation/protected-relation evidence that remains part of the accepted neutral/current scientific base;
-- the canonical P1 split-exclusion/protected-relation authority consumed by post-selection CV;
-- separation between precise provenance and numerical-label identity;
-- absence of compatibility-domain partitioning from current target-size science.
+- canonical current frame/source/numerical-label/provenance identities;
+- precise provenance separated from canonical numerical label identity;
+- duplicate/correlation/protected-relation evidence used by the accepted neutral substrate;
+- canonical P1 split-exclusion/protected-relation authority consumed by later CV;
+- absence of compatibility-domain partitioning from current target-size science;
+- mechanically unusable labels still failing cleanly while heterogeneous but canonicalizable provenance remains usable.
 
-Generic partition/identity machinery with an independent current purpose is not deletable merely because old target-size topology also used it.
+Generic partition/identity machinery with an independent current purpose is not deletable merely because old target-size topology once used it.
 
-### 3.2 P3 target-size execution authority
+### 3.2 P3 target-size science and execution
 
-Preserve the accepted single target-size execution chain:
+Preserve:
 
-- one canonical `pi_train` and candidate-size ladder;
-- one canonical `pi_eval`/M-ladder evaluation policy;
-- paired optimizer seeds only;
-- common deterministic preparation shared across `N` and seed;
-- exact continuation/restart semantics;
-- exact boundary/evaluation semantics;
-- retained optimized kernels only where a current caller or independent supported feature actually uses them.
+- one current `P_train/M3` target-size split;
+- one canonical `pi_train` and exact prefixes `T_N = pi_train[:N]`;
+- one canonical `pi_eval` with exact nested `M1 subset M2 subset M3`;
+- one target-size scheduler/execution authority;
+- same ordered optimizer seeds at every `N`;
+- one common deterministic preparation identity across `N` and optimizer seed;
+- exact continuation of model/optimizer/RNG state across fidelity boundaries;
+- no ordinary early stop truncating required screen boundaries;
+- exact direct M-rung EVAL2 populations, not complements;
+- configured-ceiling typed nonconvergence;
+- public ordinary `train`/`evaluate` cannot become a second screen owner.
 
-P6 may remove old selector/repair/planning authorities; it may not replace the accepted P3 scientific owner with a compatibility wrapper or a simplified proxy.
+### 3.3 P4 CampaignStore/STOR/currentness/selected authority
 
-### 3.3 P4 persistence, destructive ownership, currentness, and selected authority
-
-P4 `CampaignStore` current-generation/current-terminal authority remains the sole current owner of target-size terminal selection. Preserve:
+P4 `CampaignStore` remains the sole current terminal selected-set authority:
 
 ```text
 N_selected
 T_selected = pi_train[:N_selected]
 ```
 
-and the complete currentness model:
+Preserve:
 
-- canonical execution-root ownership remains dependency-leaf/current-owner controlled;
-- destructive cleanup/removal continues through the production STOR ownership/retention-fence path;
-- the canonical terminal loader establishes currentness from the current CampaignStore revision rather than trusting a caller-supplied stale snapshot;
-- a previously validated terminal object is not perpetual authority after CampaignStore advances;
-- every public/current terminal view/report/downstream current-result consumer re-establishes exposure-time currentness as required by the accepted P4 implementation;
-- stale generation/current-pointer evidence fails closed rather than being reconstructed from retired schemas;
-- destructive cutover may discard obsolete derived topology, but it must not damage the current P4 execution root or current P1-P5 evidence.
+- current-generation/current-terminal ownership;
+- canonical execution-root ownership through the production STOR ownership/retention-fence path;
+- destructive cleanup through established ownership rather than ad hoc file deletion of current evidence;
+- terminal currentness established from the current CampaignStore revision, not caller-supplied stale snapshots;
+- exposure-time currentness for public/current terminal views and downstream consumers;
+- stale generation/current-pointer evidence failing closed;
+- current P1-P5 evidence surviving P6 cleanup;
+- current state reopen/restart authenticity after cleanup.
 
-If P6 changes any serializer, schema, store field, store reader, cleanup helper, current-pointer path, or type imported by persisted current evidence, stage-local restart/currentness regression is mandatory.
+If P6 touches serializers, schemas, store fields/readers, cleanup helpers, pointers, type names imported by persisted state, or storage layout, stage-local persistence/restart/currentness regression is mandatory.
 
-### 3.4 P5 identity, CV, final, TRAIN2/EVAL2, provider, and lifecycle authority
+### 3.4 P5 CV/final/replay/foundation/TRAIN2/EVAL2 authority
 
-Preserve all accepted P5 semantics, including:
+Preserve all accepted P5 semantics:
 
-- P4 current selected binding is the only input selection authority;
-- CV starts only from current terminal selection, uses exact selected-only coverage, configured `K >= 2`, full P1 split exclusion, and requires every required fold and seed/variant to pass;
+- P4 current selected binding is the only selected-data input authority;
+- CV starts only after current terminal selection, consumes exact selected-only coverage, uses configured `K >= 2`, preserves full P1 split exclusion, and requires every required fold/seed/variant;
 - no mean/majority/best-seed/partial/K0/K1 authorization;
-- fold-local fitted preparation/training/checkpoint/replay admissibility cannot see that fold's held-out outer target set;
-- held-out outer evaluation occurs only after representative freeze;
-- replay training exposure and TRUE_DFT replay admissibility remain distinct;
-- TRUE_DFT replay receives zero target ranking/tie/seed/size-selection credit;
-- candidate and canonical foundation baseline use the exact same authenticated TRUE_DFT replay monitor;
-- the exact supported training-mode topology remains `scratch`, `naive_fine_tuning`, and `multihead_replay`, with no monitor-only fourth mode;
-- P5 target/replay head names remain `target_head` / `pt_head`;
-- foundation checkpoint head selection remains foundation-owned and separate;
-- fail-closed replay/foundation/method/content identity remains current;
-- real `MacePostSelectionTrainer` owns TRAIN2 request/config/environment/prelaunch authentication;
-- real candidate provider authentication remains in the evaluation chain;
-- real `build_post_selection_foundation_baseline_provider()` remains in the chain;
-- real `MaceCalculatorProvider.from_model_path()` remains in the chain;
-- real EVAL2 reduction/admissibility/target-only representative selection remains in the chain;
+- fold-local preparation/training/checkpoint/replay admissibility cannot see that fold's held-out outer target set;
+- representative freezes before held-out outer evaluation;
+- replay training exposure and TRUE_DFT replay admissibility monitor remain distinct;
+- TRUE_DFT replay gives zero target-size ranking/tie/fold/seed credit;
+- candidate and foundation baseline use the same authenticated TRUE_DFT monitor;
+- supported training modes remain exactly `scratch`, `naive_fine_tuning`, `multihead_replay`, with no replay-monitor-only fourth mode;
+- canonical post-selection heads remain `target_head` / `pt_head`;
+- foundation checkpoint head remains a separate foundation-owned concept;
+- foundation/replay/method/content identity is fail closed;
 - M3 remains development/model-selection evidence only;
-- final production is a fresh run over full exact `T_selected` with fresh optimizer/RNG/run state;
+- final production starts fresh on full exact `T_selected`;
 - final authorization/publication remains currentness-fenced and restart-authenticatable.
 
-Provider lifetime/resource ownership from P5A6 is also frozen:
+Real semantic owners that must remain in the assembled path include:
+
+- `MacePostSelectionTrainer` for TRAIN2 request/config/environment/prelaunch authentication;
+- real candidate provider authentication;
+- `build_post_selection_foundation_baseline_provider()`;
+- `MaceCalculatorProvider.from_model_path()`;
+- real EVAL2 reduction/admissibility/target-only representative selection;
+- real CampaignStore/currentness/final publication/restart owners.
+
+### 3.5 P5 provider lifetime/non-overlap
+
+Preserve the accepted provider lifecycle:
 
 ```text
 candidate provider acquire
- -> target evaluation
- -> candidate TRUE_DFT replay evaluation when applicable
+ -> target EVAL2
+ -> candidate TRUE_DFT replay EVAL2 when applicable
  -> candidate close in exception-safe finally
- -> only then foundation baseline provider construction
- -> foundation TRUE_DFT replay evaluation
+ -> candidate no longer owned
+ -> only then foundation provider construction
+ -> foundation TRUE_DFT replay EVAL2
  -> foundation close in exception-safe finally
 
 outer representative provider acquire
- -> outer evaluation
- -> close in exception-safe finally
+ -> held-out outer EVAL2
+ -> outer close in exception-safe finally
 ```
 
-Do not replace this with garbage-collection timing, a new P6 VRAM manager, or a provider cache that changes residency semantics.
+Do not replace this with GC timing, a new P6 VRAM manager, a live provider cache, or direct P6 CUDA cleanup that duplicates provider lifecycle ownership.
+
+### 3.6 Shared DATA8/TRAIN2/performance/resource owners
+
+P6 cleanup must preserve semantically valid execution/performance machinery from the frozen parent, including where used by current P3-P5 paths:
+
+- fixed-file/content-valid caches and atomic promotion/publication;
+- replay staging;
+- foundation checkpoint/head staging;
+- MACE config generation;
+- accelerator backend selection and precision behavior;
+- shared TRAIN2 lifecycle/resource ownership;
+- checkpoint publication and exact continuation;
+- existing parallel scheduling/concurrent-job control;
+- structured progress/telemetry;
+- CPU/RAM/VRAM/disk/I/O resource budgets and admission behavior;
+- bounded worker/thread policy and nested-parallelism protections;
+- failure propagation and cleanup of owned child/process/temp resources.
+
+P6 may simplify/remove machinery only when the census proves it is retired topology rather than current execution infrastructure. If imports or owners above are moved/refactored, run focused scheduling/resource/restart regression in addition to scientific regression.
 
 ---
 
-## 4. P6-B — cut over mixed owners, then destructively remove retired runtime/API/schema surfaces
+## 4. P6-B — destructive cleanup after safe cutover
 
-### 4.1 Deletion scope
+### 4.1 Delete/unexport retired current surfaces
 
-After P6-A classification and any required R3 cutover, delete or unexport as applicable:
+After P6-A classification and required R3 cutover, remove as applicable:
 
-- compatibility-domain training eligibility/fanout paths that no longer serve a supported advisory/diagnostic purpose;
-- old DATA3 compatibility-domain numerical-label identity/current schemas used only by retired topology;
+- compatibility-domain training eligibility/fanout paths with no supported advisory purpose;
+- old DATA3 compatibility-domain numerical-label identity schemas used only by retired topology;
 - old label-domain partition condition/unit schemas used only as retired target-size authority;
-- `TargetDataRoleFreeze` target-size authority and equivalent per-domain role authorities;
+- `TargetDataRoleFreeze` and equivalent per-domain target-size role authorities;
 - public/persisted FEAS1/MVIDX1/MVSEL2/REPAIR2/MVSTATE2/MVQUAL target-size plan/state authorities;
-- fixed target-size/ceiling authorities;
-- target-size `domain_prefix_digests` and retired per-domain candidate maps;
+- fixed target-size/fixed-ceiling scientific authorities;
+- `domain_prefix_digests` and retired per-domain target-size candidate maps;
 - complement/coarse target-size EVAL2 population authorities;
-- old target-size candidate per-domain prefix/evaluation/materialization fields;
+- old per-domain target-size prefix/evaluation/materialization fields;
 - old preselection DATA5/MLCV target-size/CV coupling;
-- V5 prepare-contract/receipt/migration aliases and reconstruction helpers that have no current supported reader role;
-- current package imports/exports that advertise retired plans as supported authority;
-- CLI/config/help surfaces that advertise retired current behavior;
-- current documentation/source-map entries that point to retired authority.
+- V5/V6 target-size prepare-contract/receipt/migration semantic readers and reconstruction helpers;
+- package imports/exports advertising retired plans as current;
+- CLI/config/help surfaces advertising retired current behavior;
+- current docs/source-map entries naming retired authority as current;
+- tests/fixtures/benchmarks whose only contract is retired topology.
 
-The current `mdstats.training_data` package builds public exports from imported globals. Removing a legacy implementation while leaving its package import is not sufficient: the import/export surface must be reconciled so the retired symbol is no longer advertised as current.
+The package currently builds broad public exports from imported globals. Removing an implementation while leaving a package import is not sufficient: package exports must be reconciled so retired target-size authority is not publicly advertised.
 
-### 4.2 Retained implementation rule
+### 4.2 Preserve legitimate shared/validation functionality
 
-Retain/refactor optimized sparse/vectorized selector/repair/EVAL2/DATA8/TRAIN2 kernels, reference oracles, and useful benchmarks **only** if the P6-A ledger identifies:
-
-- a concrete current P1-P5 caller; or
-- an independently supported non-target-size product feature.
-
-If retained implementation currently lives in a retired-authority module, move the retained implementation to a neutral/current owner first when that improves ownership clarity and removes the retired semantic namespace. Avoid gratuitous relocation when the module is already a legitimate neutral owner.
+- R2/R3 current kernels survive under legitimate current owners.
+- R6 independent product features survive under their independent contracts.
+- R8 oracles/reference implementations/benchmarks survive only when they validate current implementation semantics.
+- Retained validation artifacts remain outside current runtime authority and must not create duplicate product state.
 
 ### 4.3 MLCV rule
 
-Do not interpret “remove old DATA5/MLCV coupling” as permission to delete independently supported MLCV functionality.
+Remove preselection target-size/MLCV coupling and any MLCV path able to authorize/influence target-size selection.
 
-- remove preselection target-size/CV coupling and any MLCV path that can authorize or influence current target-size selection;
-- retain independent MLCV functionality if it has a supported current product purpose outside this retired coupling;
-- retained MLCV must not recreate a pre-target-size CV authority through an alias, helper, or compatibility path.
+Independently supported MLCV functionality may remain when:
+
+- it has a real product purpose outside retired target-size coupling;
+- it descends from current selected-data identity when used in the current post-selection lifecycle;
+- it cannot recreate pre-target-size CV authority via alias/helper/compatibility path.
 
 ### 4.4 Persistence/deserialization rule
 
 When deleting schemas/types:
 
-- current P5A6-generation persisted evidence must continue to deserialize/reopen where the accepted product contract requires it;
-- obsolete derived V5/V6 evidence may fail closed under destructive generation reset;
-- do not add fallback inference from old payload shape to current V7 authority;
-- do not silently accept an old schema by dropping unknown fields or synthesizing missing current identity;
-- if a compatibility reader is retained, prove that it cannot mutate current state or authorize selection/CV/final publication.
+- valid current-generation P5A6 evidence required by the accepted current product remains reopenable;
+- obsolete target-size V5/V6 derived state fails closed;
+- no old target-size payload-shape inference may synthesize missing V7 identity;
+- no generic “ignore unknown fields” behavior may silently turn retired target-size state into current state;
+- reject-only legacy generation detection must occur before semantic target-size deserialization/reuse;
+- retained non-target-size compatibility readers are read-only/non-authoritative and cannot mutate current selection/CV/final publication state.
 
-### 4.5 Test disposition rule
-
-Classify tests by contract, not by filename/age:
+### 4.5 Test disposition
 
 ```text
 obsolete-authority-only test
     -> delete
 
-old test containing still-valid neutral numerical/reference behavior
-    -> rewrite/move against the canonical current owner
+old test containing still-valid neutral/current behavior
+    -> rewrite/move against canonical owner
 
-supported compatibility-reader test
-    -> retain as explicitly non-authoritative compatibility evidence
+current-generation compatibility/restart test
+    -> retain
 
-current P1-P5 regression
-    -> preserve and rerun when affected
+retired target-size migration-reader test
+    -> replace with reject-before-reuse test
+
+R8 reference/oracle/equivalence test
+    -> retain when it validates current implementation
 
 historical-only artifact/test
-    -> retain only if clearly historical and excluded from current acceptance
+    -> retain only when clearly historical and excluded from current acceptance
 ```
 
-Never weaken production validation to preserve an old helper/test shape.
+Do not weaken production validation to keep an obsolete test shape green.
 
-### 4.6 P6-B stage-local verification
+### 4.6 P6-B stage-local closure
 
-After the material executable cleanup/cutover stage, run all of the following before proceeding:
+After each material executable cutover/cleanup stage and before dependent implementation proceeds, complete both semantic and functional closure.
 
-1. package import/public-export tests;
-2. structural absence checks for forbidden retired names/concepts/current call edges;
-3. focused tests through each canonical owner touched by a cutover;
-4. current caller tests proving retained optimized/shared kernels remain reachable through current owners;
-5. affected persistence/restart/currentness tests if any persisted/store surface was touched;
-6. affected CLI/config tests if parser/help/config surfaces were touched;
-7. a **stage-local affected regression** across every module/package materially changed or transitively affected by the cleanup.
+At minimum run:
 
-A green import/grep test is not sufficient functional closure. A failure in current-owner regression must be repaired before P6-C.
+1. package import/public-export checks;
+2. structural absence/current-call-edge checks for the retired surface changed in that stage;
+3. focused tests through each canonical owner affected by R3 cutover;
+4. current-caller tests for retained shared kernels;
+5. affected persistence/restart/currentness tests when persistence/imported persisted types changed;
+6. affected CLI/config tests when parser/help/config changed;
+7. affected scheduling/resource/checkpoint/cache tests when shared execution machinery changed;
+8. stage-local affected regression over every materially/transitively affected executable surface.
 
-Record the exact commands, counts, failures/skips, and disposition of every failure in P6 implementation evidence.
+A green import/grep check is not functional closure. Record exact commands, executed counts, failures/skips and dispositions.
 
 ---
 
-## 5. P6-C — test/spec/document/public-surface reconciliation
+## 5. P6-C — current tests/specifications/docs/public surface
 
-### 5.1 Current tests and specifications
+### 5.1 Replace obsolete topology assertions
 
-Replace obsolete topology assertions rather than weakening V7 to keep them green. Delete/rewrite assertions whose only contract is:
+Delete/rewrite assertions whose only contract is:
 
 - fixed target-size universe/ceiling;
-- prepare must run MVSEL2 -> REPAIR2 -> MVQUAL2 -> target-size;
+- mandatory MVSEL2 -> REPAIR2 -> MVQUAL2 target-size route;
 - old prepare receipt keys;
-- label-domain namespace resolution for target-size;
+- label-domain namespace resolution for target size;
 - per-final/CV-domain target-size materialization;
 - complement/coarse target evaluation;
-- preselection CV/MLCV ownership of target-size choice.
+- preselection CV/MLCV ownership of target-size choice;
+- semantic migration of retired target-size state.
 
 Preserve or strengthen behavioral coverage for:
 
-- one public target-size scheduler/execution authority;
-- paired optimizer seeds;
+- one public target-size scheduler;
+- paired optimizer seeds and separate seed namespaces;
 - exact continuation/restart;
 - exact selected-data freeze before CV;
 - final-production horizon independence;
 - real DATA8/TRAIN2/EVAL2 semantic owners;
-- P4 currentness, destructive-ownership, and stale-generation rejection;
-- P5 replay/foundation/mode identity;
-- P5 provider construction and explicit provider retirement;
+- P4 currentness/destructive ownership/stale-generation rejection;
+- P5 replay/foundation/mode/head/lineage identity;
+- P5 provider construction and explicit provider retirement/non-overlap;
 - numerical failure semantics;
-- optimized-kernel reference/performance equivalence for retained kernels only.
+- current optimized-kernel reference equivalence and bounded performance where applicable;
+- reject-before-reuse handling for obsolete target-size workspaces.
 
-### 5.2 Documentation and source maps
+### 5.2 Documentation/source maps
 
-Reconcile current architecture manuals, specifications, source maps, CLI help, and config examples with the assembled implementation.
+Reconcile current architecture manuals, specifications, source maps, CLI help, config examples and generated-documentation inputs.
 
 Requirements:
 
 - no current document presents retired target-size topology as current authority;
 - current source maps point to actual P1-P5 owners after cleanup;
-- current examples expose only current supported configuration;
-- historical snapshots remain clearly historical and need not be rewritten into current architecture;
-- generated documentation inputs remain reproducible;
-- do not delete useful historical rationale merely to make a search for retired terms empty; structural absence applies to current authority/runtime surfaces, not clearly marked historical records.
+- current examples expose only supported current configuration;
+- historical snapshots remain clearly historical;
+- generated documentation remains reproducible;
+- useful historical rationale need not be erased merely to remove a retired search term.
 
-### 5.3 P6-C verification
+Run applicable documentation link/reference/lint/build checks **including required PDF generation/build checks present in the repository/project documentation workflow**. If a required PDF build cannot execute because a documented external dependency is unavailable, report it as unavailable/blocking or explicitly project-deferred according to repository policy; do not count it as passed.
 
-Run:
+### 5.3 P6-C stage closure
 
-1. documentation link/reference/lint/build checks applicable to touched docs;
-2. test collection/import checks after test deletions/moves;
-3. public API/source-map review against the P6-A disposition ledger;
-4. any stage-local affected functional tests required by executable changes made during P6-C.
-
-Documentation-only edits do not require artificial executable stages, but any code/test-helper/config change does.
+If P6-C is documentation-only, executable regression need not be invented. Any code/config/test-helper/public API change made here is executable and requires focused checks plus the corresponding stage-local affected regression.
 
 ---
 
-## 6. P6-D — final accepted-contract reconciliation before broad tests
+## 6. P6-D — final semantic/source conformance before final test pass
 
-Before final broad regression, inspect the complete assembled P6 diff against the frozen parent plus the protected owner snapshot in Sections 1 and 3.
+Before broad final tests, inspect the complete assembled P6 candidate against the frozen parent and this P6 snapshot.
 
-Explicitly verify, from current source/call edges rather than test names alone:
+Verify from production source/call edges, not test names alone:
 
-1. provenance is advisory and separate from numerical-label identity;
-2. neutral substrate has no compatibility-domain partition axis or pre-target CV authority;
-3. there is one current `P_train/M3`, one `pi_train`, one `pi_eval/M` ladder, and one P4 target-size reducer;
-4. common deterministic preparation is shared across `N`/seed;
-5. only optimizer seeds are screening replicates;
-6. exact continuation and exact `M_i` evaluation remain intact;
+1. provenance remains advisory and separate from numerical-label identity;
+2. neutral substrate has no compatibility-domain target-size partition axis or pre-target CV authority;
+3. exactly one current `P_train/M3`, one `pi_train`, one `pi_eval/M` ladder and one P4 reducer exist;
+4. common preparation remains shared across `N`/seed;
+5. only optimizer seeds are screen replicates;
+6. exact continuation and exact direct `M_i` evaluation remain intact;
 7. current persistence/runtime authority is current-generation only;
-8. P4 `CampaignStore` currentness and selected binding remain authoritative;
-9. stale validated snapshots cannot be exposed as current after generation advancement;
-10. CV consumes exact current `T_selected`, full protected-relation exclusion, and cannot feed back into selection;
-11. final production is fresh on full exact `T_selected`;
-12. P5 replay/foundation/mode/head/lineage semantics remain fail closed;
+8. CampaignStore selected binding/currentness remains authoritative;
+9. stale validated snapshots cannot be exposed as current after CampaignStore advances;
+10. CV consumes exact current `T_selected`, preserves protected-relation exclusions, and cannot feed back into selection;
+11. final production is fresh on full exact `T_selected` with independent production horizon;
+12. replay/foundation/mode/head/lineage semantics remain fail closed;
 13. real TRAIN2/provider/EVAL2 owners remain in the assembled path;
-14. P5 provider close/non-overlap semantics remain intact;
-15. retired scientific authorities are absent from current runtime/API instead of hidden behind wrappers;
-16. every retained legacy-looking surface has an R2-R6 justification in the disposition ledger.
+14. provider close/non-overlap remains intact;
+15. fixed-file/cache/atomic-promotion/checkpoint/scheduler/resource/accelerator/precision machinery used by current execution remains intact or legitimately reconciled;
+16. retired target-size authorities are absent from current runtime/API rather than hidden behind wrappers;
+17. retired target-size semantic migration/read-forward paths are absent; only reject-only obsolete-generation detection may remain;
+18. every retained legacy-looking surface has an R2-R6/R8 justification;
+19. every retained R8 oracle/benchmark validates current semantics rather than retired topology.
 
-A material omission is repaired before P6-E. Green tests do not substitute for this conformance pass.
-
-If this review discovers that current accepted behavior still genuinely depends on a supposedly retired scientific authority, stop destructive deletion for that surface and apply the reopen rules in Section 10 rather than masking the dependency.
+A material omission is repaired before final functional closure. Green tests do not substitute for this conformance pass.
 
 ---
 
 ## 7. P6-E — fresh final affected-surface regression
 
-### 7.1 Re-derive the final affected surface
+### 7.1 Re-derive from final candidate
 
-Derive the affected regression surface from the **final P6 candidate diff**, including deleted modules and transitive import/caller effects. Do not reuse only the original P6 deletion list.
+Derive the final affected regression surface from the **assembled final P6 diff**, including deleted modules and transitive import/caller effects. Do not rely only on the original deletion list or stage-local test set.
 
-At minimum include every still-material affected area across:
+At minimum consider:
 
-- DATA2/DATA3/current identity/provenance;
+- DATA2/DATA3 provenance/numerical identity;
 - duplicate/protected-relation/neutral statistical base;
-- current target-size preparation and selection;
-- current P3 screen/restart;
+- P3 target-size preparation/screen/restart;
 - P4 CampaignStore/state/currentness/retention/destructive ownership/terminal selection;
 - DATA7/DATA8;
-- TRAIN2 and wrapper/prelaunch authentication;
+- TRAIN2 wrapper/prelaunch/config/checkpoint/resource/scheduling paths;
 - EVAL2/provider authentication/reduction/provider lifetime;
+- accelerator/precision/config realization if touched;
 - CLI/config/public imports;
-- persistence/restart/reopen;
-- post-selection CV and any independently supported MLCV surface touched;
-- fresh final production and publication.
+- persistence/restart/reopen/obsolete-workspace rejection;
+- post-selection CV and independently supported MLCV touched by cleanup;
+- fresh final production/publication/reopen;
+- current docs/source maps/generated docs.
 
 ### 7.2 Required final regression
 
-Run:
+Run on the same final candidate:
 
-1. all focused tests material to retained P1-P5 behavior touched by P6;
-2. complete affected regression derived above;
-3. broader/full repository CPU-safe suite because P6 crosses package exports, foundational identities, persistence, and orchestration boundaries unless the implementation can independently demonstrate a smaller complete bound;
-4. repository/project-required static/type/lint/build checks that apply to changed files;
-5. documentation build/lint/reference checks where applicable.
+1. all focused tests material to affected retained P1-P5 behavior;
+2. complete affected-surface regression derived above;
+3. broader/full repository CPU-safe suite because P6 crosses package exports, foundational identity, persistence and orchestration boundaries unless implementation can independently prove a smaller complete bound;
+4. repository/project-required static/type/lint/build checks for changed files;
+5. applicable documentation link/reference/lint/build/PDF checks.
 
-A required check that does not execute is not a pass. Attribute only demonstrably pre-existing unrelated failures, with evidence.
+A required check that does not execute is not a pass. Only demonstrably pre-existing unrelated failures may be attributed rather than repaired.
 
-Long production-scale GPU/real-data qualification is not part of this gate. Existing intentionally deferred/target-machine qualification remains explicitly reported as deferred rather than silently counted as passing.
+Long production-scale GPU/real-data qualification remains outside this functional gate.
 
 ---
 
-## 8. P6-F — bounded assembled real-owner integration through completed final publication and restart
+## 8. P6-F — mandatory restart/invalidation matrix
 
-### 8.1 Required assembled path
+The frozen parent requires not only deterministic restart but correct **scope of invalidation**. P6 final acceptance must execute a bounded matrix proving both what becomes stale and what remains reusable/current when one policy/input dimension changes.
 
-Execute a bounded end-to-end semantic path on the same final P6 candidate:
+Use current production identities/state transitions and real CampaignStore/restart owners. Do not emulate invalidation logic in the harness.
+
+### 8.1 Target-size-scientific changes — invalidate target-size descendants
+
+For each materially supported dimension below, modify only that dimension and prove target-size evidence/descendants are invalidated/rebuilt as required while unrelated upstream raw/current inputs remain reusable where their recipe is unchanged:
+
+- actual source/frame membership;
+- canonical numerical label values;
+- canonical numerical label interpretation/conversion policy;
+- target-size candidate powers / configured ceiling;
+- evaluation-size powers / M-ladder membership policy;
+- fidelity epochs/boundaries;
+- ordered optimizer seed set;
+- training-order policy/features affecting `pi_train`;
+- `P_train/M3` split or `pi_eval` ordering policy;
+- common preparation/training scientific policy;
+- target-size metric/practical-equivalence policy;
+- foundation/replay scientific identity when part of the target-size experiment.
+
+Acceptance: old target-size candidate/terminal/current selected evidence cannot remain current under the modified scientific identity, and downstream CV/final evidence that depends on that selected authority cannot remain current.
+
+### 8.2 Advisory provenance-only change — must not invalidate training math
+
+Change only advisory provenance grouping/report presentation while canonical source membership, canonical numerical labels/interpretation and current training policy remain unchanged.
+
+Acceptance:
+
+- frame UID and canonical numerical label identity remain unchanged where the parent requires;
+- neutral partition/training membership remains unchanged;
+- target-size scientific identity/result remains reusable/current;
+- only advisory provenance/report evidence that actually depends on the changed presentation is invalidated/rebuilt.
+
+### 8.3 CV-only changes — invalidate CV descendants only
+
+Change CV-only settings such as fold count and/or CV partition seed while target-size scientific inputs/policy remain unchanged.
+
+Acceptance:
+
+- P4 `N_selected/T_selected` remains current and unchanged;
+- target-size candidates/terminal evidence are not rebuilt or rebound;
+- affected CV plans/evidence become stale/rebuilt;
+- final evidence depending on CV acceptance is invalidated as required.
+
+### 8.4 Final-production-only changes — invalidate production descendants only
+
+Change a production-only budget/adaptive/runtime policy that is explicitly outside target-size and CV scientific identity.
+
+Acceptance:
+
+- target-size selected authority remains current;
+- accepted CV evidence remains current when scientifically unaffected;
+- only final-production descendants whose identity includes the changed production policy become stale/rebuilt.
+
+### 8.5 Obsolete generation rejection
+
+Present representative retired V5/V6 target-size derived workspace metadata/state.
+
+Acceptance:
+
+- current runtime detects obsolete generation through the real load/preflight path;
+- rejection occurs before semantic old target-size state is deserialized into current authority, before candidate/checkpoint reuse, and before descendant publication;
+- message/action is an explicit destructive reset/reprepare requirement;
+- no migration adapter silently reconstructs V7 authority.
+
+### 8.6 Corruption/currentness counterfactuals
+
+Include representative negative cases for:
+
+- missing/corrupt current persisted identity required for restart;
+- stale current pointer/generation after CampaignStore advancement;
+- stale terminal object exposure after store revision changes;
+- final publication identity mismatch on reopen.
+
+These may be focused owner tests rather than one giant matrix test, but collectively must exercise the real current owners.
+
+---
+
+## 9. P6-G — mandatory assembled real-owner integration through real CLI and completed final publication
+
+### 9.1 Required entry boundary: real production CLI parsing/dispatch
+
+At least one bounded assembled lifecycle must enter through the **actual production CLI parser and command-dispatch owner** for the current workflow. Internal helper-only invocation is insufficient for this claim.
+
+The integration must exercise the real current command path for the relevant sequence, including the actual production equivalents of:
 
 ```text
-real config/source ingestion
+prepare
+ -> select-target-size
+ -> current selected-data freeze/publication
+ -> post-selection cross-validation command/path
+ -> final-production command/path
+```
+
+Use the repository's actual current command names/dispatch functions. Invoking the real CLI `main()`/argument parser directly in-process is acceptable when it executes the same parser/dispatch semantics as the user-facing command. A shell subprocess is not required solely for ceremony. What is forbidden is bypassing CLI parsing/dispatch and manually seeding post-CLI state while claiming CLI integration.
+
+### 9.2 Required assembled lifecycle
+
+On the same final P6 candidate, execute a bounded semantic path:
+
+```text
+real CLI/config/source ingestion
  -> current neutral substrate
  -> current preparation authorities
- -> bounded real P3 target-size paired screen
+ -> bounded real P3 paired target-size screen
  -> real P4 reducer
  -> real CampaignStore current terminal selection
  -> persist exact N_selected / T_selected
  -> close and reopen store/process context
  -> reauthenticate current terminal selected authority
- -> create/run real post-selection CV orchestration
- -> all-required bounded CV campaign acceptance
+ -> real CLI/current post-selection CV creation/execution
+ -> all-required bounded CV acceptance
  -> reauthenticate method/foundation/replay/current selected binding
- -> fresh full-T_selected final-production orchestration
+ -> real CLI/current fresh full-T_selected final-production orchestration
  -> final run completes through real final semantic owner
  -> final evidence/current publication completes
  -> close providers/store/process context
  -> reopen CampaignStore/current context
- -> reauthenticate current selected binding + CV + final publication
+ -> reauthenticate selected binding + CV + final publication
 ```
 
-Do not stop acceptance at “final-production entry”. P6 final closure must exercise completed bounded final production, publication/currentness, and reopened-store reauthentication.
+Do not stop at final-production entry.
 
-### 8.2 Owners that must remain real
+### 9.3 Semantic owners that must remain real
 
-The assembled acceptance must traverse the actual current semantic owners, including as applicable:
+The assembled acceptance must traverse, as applicable to the current supported mode:
 
-- production config parser/resolution;
-- real CLI/current orchestration entry points;
+- production CLI parser and command dispatch;
+- production config resolution;
 - real CampaignStore/SQLite and P4 state/currentness transitions;
 - current P3 screen owners and P4 reducer/terminal projection;
-- real selected binding from CampaignStore;
-- real P5 method/foundation/replay identity resolution;
-- real CV/final currentness and authorization;
-- real DATA7/DATA8 materialization ownership;
-- real `Train2RuntimePlan` construction;
-- real `MacePostSelectionTrainer` request/prelaunch authentication/config/env/cwd ownership;
+- selected binding from CampaignStore;
+- P5 method/foundation/replay identity resolution;
+- CV/final currentness and authorization;
+- DATA7/DATA8 materialization ownership;
+- `Train2RuntimePlan` construction;
+- `MacePostSelectionTrainer` request/prelaunch authentication/config/environment/cwd ownership;
 - canonical TRAIN2 summary/checkpoint authentication;
-- real candidate provider authentication;
-- real `build_post_selection_foundation_baseline_provider()`;
-- real `MaceCalculatorProvider.from_model_path()`;
-- real EVAL2 reduction/admissibility/target-only checkpoint/representative selection;
-- real provider acquisition/retirement orchestration from P5A6;
-- real final evidence/current publication;
-- real restart/currentness reauthentication after reopen.
+- candidate provider authentication;
+- `build_post_selection_foundation_baseline_provider()`;
+- `MaceCalculatorProvider.from_model_path()`;
+- EVAL2 reduction/admissibility/target-only checkpoint/representative selection;
+- provider acquisition/retirement scopes;
+- final evidence/current publication;
+- restart/currentness reauthentication after reopen.
 
-### 8.3 Allowed bounded fakes
+### 9.4 Allowed bounded fakes
 
-To keep P6 functional closure CPU-safe and bounded, expensive scientific numerical work may be substituted only **below** the semantic owners listed above:
+Expensive scientific numerical work may be substituted **below** the semantic owners above:
 
-- external MACE numerical training may use the existing accepted bounded fake/wrapper seam below `MacePostSelectionTrainer`;
-- low-level MACE model-load/forward numerical dependency may be bounded/faked only where existing P5 acceptance already permits it while retaining the real mdstats provider owner;
-- tiny synthetic scientific datasets/checkpoints may be used when they exercise the real owner and identity checks.
+- external MACE numerical training may use the already accepted bounded fake/wrapper seam below `MacePostSelectionTrainer`;
+- low-level MACE model-load/forward numerical dependency may be bounded/faked only at seams already accepted by P5 while retaining the real mdstats provider owner;
+- tiny synthetic scientific datasets/checkpoints may be used when they exercise real identity/state owners.
 
-Forbidden substitutions include:
+Forbidden:
 
 - injected/precomputed selected authority;
 - injected/precomputed replay lineage;
-- seeded CV acceptance or seeded final authorization;
+- seeded CV/final authorization;
 - replacing `MacePostSelectionTrainer`;
-- replacing `build_post_selection_foundation_baseline_provider()`;
+- replacing the foundation baseline provider builder;
 - replacing `MaceCalculatorProvider.from_model_path()`;
 - bypassing CampaignStore/currentness/restart;
 - fabricated post-decision EVAL2 metrics;
 - bypassing provider close scopes;
-- helper-only/proxy execution that stays green when the real current owner is broken.
+- bypassing CLI parser/dispatch while claiming CLI integration;
+- a proxy harness that could remain green while a required owner above is materially broken.
 
-### 8.4 Counterfactual acceptance
+### 9.5 Representative counterfactuals
 
-Focused and/or assembled tests must collectively demonstrate failure for representative broken current-owner cases affected by cleanup, including where applicable:
+Focused and/or assembled tests must collectively demonstrate failure for representative broken-owner conditions affected by cleanup, including:
 
-- stale generation/current terminal exposure after CampaignStore advances;
-- retired derived state attempting to masquerade as current V7 authority;
-- missing/corrupt current persisted identity required for restart;
+- stale CampaignStore generation/current terminal exposure;
+- obsolete target-size state attempting semantic read-forward;
 - broken TRAIN2 authentication/summary;
 - provider construction/authentication failure;
-- provider evaluation exception still triggering explicit close;
+- provider evaluation exception still causing explicit close;
 - final publication/currentness mismatch on reopen.
 
-These counterfactuals need not all live in one monolithic integration test. Prefer focused owner tests plus one readable assembled lifecycle test.
+---
+
+## 10. P6-H — deterministic/reference/resource closure
+
+### 10.1 Determinism
+
+Verify deterministic reproduction of current split/orders/target-size evidence for fixed bounded inputs/seeds and exact restart behavior at affected P3/P4/P5 boundaries.
+
+### 10.2 Reference/oracle equivalence
+
+For each retained optimized current kernel for which an R8 oracle/reference exists or is materially justified, run applicable equivalence checks using exact equality for discrete identities/orderings and scientifically justified tolerances for floating observables.
+
+Do not retain a dead old kernel merely to keep a reference test. Do not delete a useful independent oracle merely because production code does not call it.
+
+### 10.3 Scheduling/resource/performance regression
+
+When P6 touches shared execution imports or machinery, run bounded checks sufficient to detect accidental regression in:
+
+- repeated per-domain/redundant work;
+- CPU worker/process/thread oversubscription;
+- RAM/VRAM admission and provider overlap;
+- disk/I/O/cache behavior;
+- checkpoint/atomic promotion/restart;
+- scheduler failure propagation/cleanup;
+- accelerator/precision realization where affected.
+
+Always rerun affected P5 provider-lifecycle guards if provider execution/imports are touched.
+
+### 10.4 M-ladder scientific qualification
+
+Functional tests do not prove the default M ladder preserves the same size decision as a larger reference population.
+
+If representative qualification evidence exists, evaluate the frozen parent requirements for M1 competitive retention, M2 finalist retention, M3 selected-N agreement, support/correlation representativeness, and sensible same-cardinality ordering comparison.
+
+If representative evidence is unavailable, report **`deferred/unavailable`**, not passed. Do not tune M using post-selection CV/calibration/locked evidence and do not manufacture decision-preservation from synthetic timing.
+
+Long target-machine GPU/real-data qualification remains deferred.
 
 ---
 
-## 9. P6-G — deterministic/reference/resource closure
+## 11. Reconciliation versus Design reopen
 
-Run bounded non-production checks needed to show that cleanup did not degrade engineering fitness.
+### 11.1 Implementation reconciliation — do not reopen Design
 
-### 9.1 Determinism and restart
+The following remain implementation work when frozen parent semantics can be preserved:
 
-Verify:
+- discovering an old module that still has a legitimate current/shared kernel that can be cut over under R3;
+- discovering a supposedly retired current call edge that is simply an incomplete old->V7 cutover and can be redirected to an already accepted P1-P5 owner;
+- moving neutral/shared code to a canonical module;
+- deleting unexpected aliases/imports/docs/tests/benchmarks that are clearly retired;
+- adding newly discovered affected regression coverage;
+- replacing a retired target-size semantic reader with reject-only obsolete-generation detection;
+- preserving an independent non-target-size product feature through bounded neutral-owner refactor.
 
-- deterministic reproduction of current selection/evidence for fixed bounded inputs/seeds;
-- exact restart/reopen behavior at affected P3/P4/P5 boundaries;
-- no retired fallback changes current identity/digest/currentness decisions.
+Do not reopen merely because repository reality contains more cleanup than the initial search list.
 
-### 9.2 Reference equivalence
+### 11.2 Reopen Design only on evidence
 
-For every optimized selector/repair/EVAL2/etc. kernel retained under R2/R3/R6 because it has a concrete current/independent caller, run its applicable reference-oracle/equivalence tests.
+Stop the affected destructive work and amend Design only if evidence shows one of:
 
-Do **not** retain a dead kernel merely because the original P6 mentioned a reference test for it.
+1. a material current scientific/authorization responsibility genuinely requires a retired architecture concept and cannot be represented by the frozen V7 owners without changing accepted semantics;
+2. cleanup requires changing frozen target-size/CV/final scientific decisions rather than removing/reconciling retired topology;
+3. valid current P5A6 persisted state cannot be reopened without a material current-generation schema migration not already authorized by P1-P5/P6;
+4. an independently supported non-target-size product responsibility cannot survive without a material architecture/product-contract change;
+5. the implementation baseline materially changed in a way that invalidates protected P1-P5 ownership assumptions;
+6. a new product-level compatibility policy is required rather than destructive current-generation cutover;
+7. a frozen parent scientific reopen condition fires, including demonstrated mixed-provenance incompatibility, one-order scientific infeasibility, M-ladder decision-preservation failure, proven N-dependent training transform requirement, inadequate two-seed decision reliability, need for separate target heads/studies, material performance infeasibility, or inability of shared TRAIN2/MACE to provide the accepted non-controlling screen validation semantics.
 
-### 9.3 Resource and algorithmic closure
+Do not solve a reopen trigger by adding broad compatibility fallbacks, reconstructing old plans from partial evidence, or weakening current validation.
 
-Where P6 changes execution/resource machinery, check bounded CPU/RAM/VRAM/I/O behavior and ensure no accidental regression to repeated per-domain/scalar work.
+### 11.3 Delegated implementation choices
 
-Always rerun the affected P5 provider-lifecycle guards if cleanup touches provider execution/imports so that:
+Implementation may choose:
 
-- candidate provider retirement remains exception-safe;
-- candidate is closed before foundation-provider construction;
-- foundation and outer providers close on success/failure;
-- no new residency cache/GC-only behavior defeats the accepted lifecycle.
+- exact neutral module placement for R3 cutovers;
+- exact grouping of coherent deletions into material stages;
+- exact test-file organization;
+- exact bounded synthetic fixtures and allowed low-level fakes;
+- exact current documentation files derived from source-map impact;
+- exact R8 benchmark/oracle file location/name.
 
-M-ladder decision-preservation/performance qualification on representative production evidence may be reported `deferred/unavailable` if the required representative evidence is not available. Do not manufacture a pass from synthetic timing.
-
-Long target-machine GPU/real-data production qualification remains deferred to final release.
-
----
-
-## 10. Reopen/stop conditions and delegated implementation decisions
-
-### 10.1 Reopen triggers
-
-Implementation must stop destructive removal of the affected surface and amend/reconcile the workplan if any of the following occurs:
-
-1. a supposedly retired authority is still a genuine current P1-P5 scientific/authorization dependency;
-2. cleanup would require changing frozen target-size/CV/final scientific semantics rather than only removing retired topology;
-3. a valid current P5A6 persisted state cannot be reopened without a material schema migration not already authorized here;
-4. an independently supported non-target-size public feature would be broken and cannot be preserved by a bounded neutral-owner refactor;
-5. the exact P5A6 baseline has materially changed before implementation;
-6. a new product-level compatibility policy is required rather than the existing destructive-generation/current-generation cutover.
-
-Do not solve these by adding broad compatibility fallbacks, rebuilding old plans from partial evidence, or weakening current validation.
-
-### 10.2 Delegated implementation choices
-
-Implementation may choose, based on current repository evidence:
-
-- exact neutral module/file placement for R3 shared-kernel cutovers;
-- exact grouping of related deletions into commits/stages;
-- exact bounded synthetic fixtures and low-level numerical fakes within Section 8.3;
-- exact test file organization after obsolete-test deletion;
-- exact documentation file set derived from current source maps.
-
-These choices are delegated only when they preserve the frozen semantic owners and acceptance requirements above. Equivalent implementation preferences with no material engineering benefit do not require a design amendment.
+These choices are delegated only when all frozen owners and acceptance obligations remain intact.
 
 ---
 
-## 11. Implementation evidence and stage ledger
+## 12. Implementation evidence and final reporting
 
-P6 implementation must maintain auditable evidence, preferably in an adjacent P6 progress/evidence record or equivalent protocol-approved implementation record, containing at minimum:
+P6 implementation evidence must record at minimum:
 
 1. exact starting commit/tree;
-2. P6-A disposition ledger, including retained R2-R6 justification;
-3. materially deleted modules/symbols/schemas/public exports and why each was retired;
-4. any R3 cutover and its old/new owner mapping;
-5. stage-local test commands/results after executable cutover/cleanup stages;
-6. final affected-surface derivation;
-7. final focused/affected/broader regression commands and results;
-8. assembled real-owner integration command/result and bounded fake seams used;
-9. deterministic/reference/resource checks and results;
-10. documentation/build checks;
-11. explicit deferred production/GPU qualification items;
-12. unresolved failures, if any, with classification as new implementation issue, pre-existing unrelated issue, or reopen trigger.
+2. P6-A disposition ledger, including R2-R6/R8 retention justification;
+3. deleted modules/symbols/schemas/public exports and retirement reason;
+4. R3 old/new owner mappings;
+5. legacy target-size reader/migration removals and reject-only detector behavior;
+6. stage-local test commands/results for every material executable stage;
+7. final affected-surface derivation;
+8. final focused/affected/broader regression commands/results;
+9. restart/invalidation matrix commands/results;
+10. real-CLI assembled integration command/result and allowed fake seams used;
+11. deterministic/reference/resource checks;
+12. documentation link/lint/build/PDF checks;
+13. unresolved failures, if any, classified as implementation issue, pre-existing unrelated issue, or Design reopen trigger.
 
-Do not report a check as passed when it was not executed. Do not use absent CI status as either failure or success; report the actual commands/results executed for P6 closure.
+Do not report a check as passed when it did not execute. Absence of CI status is neither success nor failure; report actual executed commands/results.
+
+### 12.1 Mandatory three-way final status
+
+Report separately:
+
+1. **Functional V7/P6 acceptance** — conformance + regression + restart/invalidation + real-owner/real-CLI assembled integration.
+2. **M-ladder scientific decision-preservation qualification** — `passed`, `failed`, or `deferred/unavailable` based on representative evidence.
+3. **Long target-machine GPU/real-production qualification** — remains explicitly `deferred` until the final release qualification phase unless the user separately requests/runs it.
+
+A pass in one category does not imply a pass in the others.
 
 ---
 
-## 12. Final P6 exit gate
+## 13. Final P6 exit gate
 
 P6 and the complete V7 implementation are accepted only when all of the following are true on one final candidate:
 
-- implementation started from/reconciled against the exact accepted P5A6 baseline;
-- the P6-A census/disposition ledger is complete for material retired/current-mixed surfaces;
-- all R3 current/shared cutovers were proven before destructive deletion;
-- retired current scientific authorities, aliases, migration/reconstruction helpers, and unsupported public exports are structurally absent rather than hidden behind wrappers;
-- independently supported/shared current functionality survived under a legitimate owner;
+- implementation started from or explicitly reconciled against the exact P5A6 baseline;
+- P6-A census/disposition is complete for material retired/current-mixed/validation surfaces;
+- every R3 current/shared cutover was proven before destructive deletion;
+- retired target-size scientific authorities, aliases, semantic readers/migrators/reconstruction helpers and unsupported public exports are structurally absent rather than hidden behind wrappers;
+- any remaining obsolete-generation reader is reject-only and cannot semantically deserialize/reuse retired target-size state;
+- old target-size workspaces are rejected before candidate/checkpoint/derived-state reuse;
+- independently supported/shared current functionality remains under legitimate owners;
+- useful R8 reference/oracle/benchmarks validate current semantics only;
 - P1-P5 frozen scientific semantics remain unchanged;
 - P4 CampaignStore/STOR/currentness/restart/selected-set ownership remains intact;
-- P5 identity/CV/final/TRAIN2/provider/EVAL2/provider-lifecycle ownership remains intact;
-- valid current-generation state reopens and authenticates correctly;
-- obsolete derived state cannot be promoted into current V7 authority;
-- stage-local affected regression passed after material executable cleanup;
+- P5 replay/foundation/CV/final/TRAIN2/provider/EVAL2/provider-lifecycle ownership remains intact;
+- accepted fixed-file/cache/atomic-promotion/checkpoint/scheduler/telemetry/resource/accelerator/precision machinery remains intact where current paths use it;
+- valid current-generation state reopens/authenticates correctly;
+- the mandatory invalidation matrix proves correct target-size vs advisory-provenance vs CV-only vs final-only invalidation scope;
+- obsolete derived target-size state cannot be promoted into current V7 authority;
+- stage-local affected regression passed after every material executable cleanup/cutover stage;
 - final affected-surface regression and required broader CPU-safe checks passed;
-- assembled real-owner integration passed from config/source through selection, reopen, CV, **completed fresh final production**, publication, and a second reopen/currentness reauthentication;
-- retained optimized kernels passed applicable reference-equivalence checks;
-- bounded resource/lifecycle checks relevant to changed execution machinery passed;
-- current documentation/public API/source maps match the implemented architecture;
-- unavailable production-scale/target-GPU qualification is explicitly separated from functional acceptance;
-- no unresolved material conformance or implementation defect remains.
+- applicable documentation link/lint/build/PDF checks passed or are truthfully classified under repository policy;
+- at least one assembled lifecycle entered through the real production CLI parser/dispatch and completed config/source -> prepare -> target-size selection -> selected freeze -> reopen -> CV -> fresh full-`T_selected` final -> publication -> second reopen/currentness reauthentication;
+- assembled acceptance kept all protected semantic owners real and used fakes only below allowed boundaries;
+- retained optimized current kernels passed applicable reference/oracle equivalence checks;
+- bounded resource/lifecycle/scheduling checks relevant to affected execution machinery passed;
+- current docs/public API/source maps match implemented V7 authority;
+- the three final qualification statuses are reported separately;
+- no unresolved material conformance, correctness, persistence, owner-boundary or implementation defect remains.
 
-Only after this gate may the complete P6/V7 candidate be presented for independent **Software Design** review and merge/freeze decision.
+Only after this gate may the complete V7/P6 candidate be presented for independent **Software Design** review and merge/freeze decision.
