@@ -247,6 +247,38 @@ def resolve_post_selection_replay_training_label_mode(
     )
 
 
+def _post_selection_replay_configuration_present(
+    replay: Mapping[str, Any],
+    *,
+    single_replay: Any | None,
+    has_replay_paths: bool,
+) -> bool:
+    """Report whether a campaign declares any P5 replay configuration.
+
+    A source path is an enabled replay declaration.  An explicit replay table
+    without a source is still configuration, however, and must not be silently
+    ignored when the selected training mode is scratch or naive fine-tuning.
+    ``mode = none`` by itself is the one explicit way to say that the replay
+    table is disabled.
+    """
+
+    if single_replay is not None or has_replay_paths:
+        return True
+    if not replay:
+        return False
+    mode = getattr(replay.get("mode"), "value", replay.get("mode"))
+    label_mode = getattr(
+        replay.get("label_mode"), "value", replay.get("label_mode")
+    )
+    mode_token = "" if mode in (None, "") else str(mode).strip().lower()
+    label_token = (
+        "" if label_mode in (None, "") else str(label_mode).strip().lower()
+    )
+    if mode_token not in {"", "none"} or label_token not in {"", "none"}:
+        return True
+    return any(key not in {"mode", "label_mode"} for key in replay)
+
+
 # ---------------------------------------------------------------------------
 # Shared scientific method
 # ---------------------------------------------------------------------------
@@ -766,30 +798,87 @@ def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
 
     if replay_resolution is None:
         return None
+
+    # Current P5 evidence is a current-generation cutover.  Do not infer an
+    # interface or scientific label meaning from a helper object's shape: an
+    # incomplete transport must be rejected and its derived CV/final evidence
+    # recomputed by the canonical replay resolver.
     interface = getattr(replay_resolution, "interface", None)
     if interface is None:
-        if hasattr(replay_resolution, "source_content_digest") or hasattr(replay_resolution, "split_manifest_digest"):
-            interface = "single_source"
-        else:
-            interface = "single_source" if getattr(replay_resolution, "source_sha256", None) else "legacy_split"
+        raise PostSelectionError(
+            "Replay lineage requires an explicit authenticated interface."
+        )
+    interface = str(getattr(interface, "value", interface)).strip()
+    if not interface:
+        raise PostSelectionError(
+            "Replay lineage requires an explicit authenticated interface."
+        )
+    if interface not in {"single_source", "legacy_split"}:
+        raise PostSelectionError(
+            f"Unsupported replay interface in resolution: {interface!r}"
+        )
 
     train_artifact = getattr(replay_resolution, "train_artifact", None)
     monitor_artifact = getattr(replay_resolution, "monitor_artifact", None)
     if train_artifact is None or monitor_artifact is None:
         raise PostSelectionError("Replay resolution is missing required train or monitor artifact.")
 
-    train_sha = getattr(train_artifact, "sha256", None)
-    train_digest = getattr(train_artifact, "content_digest", None) or getattr(train_artifact, "logical_digest", None)
-    monitor_sha = getattr(monitor_artifact, "sha256", None)
-    monitor_digest = getattr(monitor_artifact, "content_digest", None) or getattr(monitor_artifact, "logical_digest", None)
+    def required_digest(
+        owner: Any, names: tuple[str, ...], *, name: str
+    ) -> str:
+        value = None
+        for attribute in names:
+            candidate = getattr(owner, attribute, None)
+            if candidate not in (None, ""):
+                value = candidate
+                break
+        if value in (None, ""):
+            raise PostSelectionError(
+                f"Replay lineage requires authenticated {name} content identity."
+            )
+        try:
+            return validate_digest(str(value), name=name)
+        except TrainingDataInputError as exc:
+            raise PostSelectionError(
+                f"Replay lineage {name} is not a valid SHA256/content digest."
+            ) from exc
 
-    if not train_sha or not train_digest or not monitor_sha or not monitor_digest:
-        raise PostSelectionError("Replay train or monitor artifact is missing content digest or SHA256.")
+    def required_digest_value(value: Any, *, name: str) -> str:
+        if value in (None, ""):
+            raise PostSelectionError(
+                f"Replay lineage requires authenticated {name} content identity."
+            )
+        try:
+            return validate_digest(str(value), name=name)
+        except TrainingDataInputError as exc:
+            raise PostSelectionError(
+                f"Replay lineage {name} is not a valid SHA256/content digest."
+            ) from exc
+
+    train_sha = required_digest(train_artifact, ("sha256",), name="train_sha256")
+    train_digest = required_digest(
+        train_artifact,
+        ("content_digest", "logical_digest"),
+        name="train_content_digest",
+    )
+    monitor_sha = required_digest(
+        monitor_artifact, ("sha256",), name="monitor_sha256"
+    )
+    monitor_digest = required_digest(
+        monitor_artifact,
+        ("content_digest", "logical_digest"),
+        name="monitor_content_digest",
+    )
 
     from .replay import ReplayLabelMode
 
+    true_label_mode = getattr(replay_resolution, "true_label_mode", None)
+    if true_label_mode in (None, ""):
+        raise PostSelectionError(
+            "Replay lineage requires an explicit TRUE_DFT monitor label semantic."
+        )
     true_label_mode = _replay_label_mode(
-        getattr(replay_resolution, "true_label_mode", ReplayLabelMode.TRUE_DFT),
+        true_label_mode,
         name="replay TRUE_DFT monitor label_mode",
     )
     if true_label_mode is not ReplayLabelMode.TRUE_DFT:
@@ -798,12 +887,9 @@ def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
         )
     training_label_mode = getattr(replay_resolution, "training_label_mode", None)
     if training_label_mode is None:
-        training_label_mode = getattr(train_artifact, "label_mode", None)
-    if training_label_mode is None:
-        # Preserve the legacy transport shape used by already-persisted R8
-        # evidence while requiring the new production adapter to carry the
-        # explicit semantic.
-        training_label_mode = ReplayLabelMode.TRUE_DFT
+        raise PostSelectionError(
+            "Replay lineage requires an explicit replay training label semantic."
+        )
     training_label_mode = _replay_label_mode(
         training_label_mode, name="replay training label_mode"
     )
@@ -830,20 +916,33 @@ def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
 
     if interface == "single_source":
         source_sha = getattr(replay_resolution, "source_sha256", None)
-        source_digest = getattr(replay_resolution, "source_content_digest", None) or source_sha
+        source_digest = getattr(replay_resolution, "source_content_digest", None)
         split_digest = getattr(replay_resolution, "split_manifest_digest", None)
-        if not source_sha or not split_digest:
-            raise PostSelectionError("Single-source replay resolution is missing source SHA256 or split manifest digest.")
+        if source_digest in (None, "") or source_sha in (None, "") or split_digest in (
+            None,
+            "",
+        ):
+            raise PostSelectionError(
+                "Single-source replay lineage requires source content digest, "
+                "source SHA256, and split manifest digest."
+            )
+        source_digest = required_digest_value(
+            source_digest, name="source_content_digest"
+        )
+        source_sha = required_digest_value(source_sha, name="source_sha256")
+        split_digest = required_digest_value(
+            split_digest, name="split_manifest_digest"
+        )
         payload = {
             "schema": "mdstats.post-selection-replay-lineage.v3",
             "interface": "single_source",
-            "source_content_digest": str(source_digest),
-            "source_sha256": str(source_sha),
-            "split_manifest_digest": str(split_digest),
-            "train_view_digest": str(train_digest),
-            "train_sha256": str(train_sha),
-            "true_monitor_view_digest": str(monitor_digest),
-            "true_monitor_sha256": str(monitor_sha),
+            "source_content_digest": source_digest,
+            "source_sha256": source_sha,
+            "split_manifest_digest": split_digest,
+            "train_view_digest": train_digest,
+            "train_sha256": train_sha,
+            "true_monitor_view_digest": monitor_digest,
+            "true_monitor_sha256": monitor_sha,
             "training_label_mode": training_label_mode_value,
             "true_monitor_label_mode": true_label_mode_value,
         }
@@ -852,19 +951,22 @@ def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
             "schema": "mdstats.post-selection-replay-lineage.v3",
             "interface": "legacy_split",
             "training_label_mode": training_label_mode_value,
-            "train_view_digest": str(train_digest),
-            "train_sha256": str(train_sha),
-            "true_monitor_view_digest": str(monitor_digest),
-            "true_monitor_sha256": str(monitor_sha),
+            "train_view_digest": train_digest,
+            "train_sha256": train_sha,
+            "true_monitor_view_digest": monitor_digest,
+            "true_monitor_sha256": monitor_sha,
             "true_monitor_label_mode": true_label_mode_value,
         }
         source_sha = getattr(replay_resolution, "true_label_source_sha256", None)
         if source_sha is not None:
-            payload["true_label_source_sha256"] = validate_digest(
-                str(source_sha), name="true_label_source_sha256"
-            )
-    else:
-        raise PostSelectionError(f"Unsupported replay interface in resolution: {interface}")
+            try:
+                payload["true_label_source_sha256"] = validate_digest(
+                    str(source_sha), name="true_label_source_sha256"
+                )
+            except TrainingDataInputError as exc:
+                raise PostSelectionError(
+                    "Replay TRUE_DFT source identity is not a valid SHA256."
+                ) from exc
     return digest(payload)
 
 
@@ -916,7 +1018,7 @@ def resolve_post_selection_method_policies(
         AtomicReferenceFitMode,
         AtomicReferenceFitPolicy,
     )
-    from .replay import single_source_replay_config_from_campaign
+    from .replay import ReplayMode, single_source_replay_config_from_campaign
     from .target_size_execution import (
         REPLAY_EXPOSURE_NONE_DIGEST,
         TargetSizeCommonTrainingPolicy,
@@ -933,8 +1035,11 @@ def resolve_post_selection_method_policies(
     paths = _table(config, "paths")
     model = _table(config, "model")
     foundation = _table(config, "foundation")
+    replay = _table(config, "replay")
 
-    # 1. Canonical Replay Resolution
+    # 1. Canonical replay-source presence.  A replay table with no source is
+    # still a configuration error for scratch/naive methods; it must not be
+    # silently downgraded to an admissibility-only mode.
     single_replay = single_source_replay_config_from_campaign(config)
     legacy_replay_train = str(paths.get("replay_train", "")).strip()
     legacy_replay_monitor = str(paths.get("replay_monitor", "")).strip()
@@ -947,14 +1052,17 @@ def resolve_post_selection_method_policies(
         or legacy_replay_set
     )
     replay_enabled = single_replay is not None or has_legacy_replay
-    target_head_name, replay_head_name = resolve_post_selection_head_names(config)
-    replay_training_label_mode = resolve_post_selection_replay_training_label_mode(
-        config,
-        single_replay=single_replay,
-        has_legacy_replay=has_legacy_replay,
+    replay_training_source_enabled = single_replay is not None or bool(
+        legacy_replay_train
     )
+    replay_configured = _post_selection_replay_configuration_present(
+        replay,
+        single_replay=single_replay,
+        has_replay_paths=has_legacy_replay,
+    )
+    target_head_name, replay_head_name = resolve_post_selection_head_names(config)
 
-    # 2. Training Mode Resolution
+    # 2. Canonical training-mode resolution.
     modes = training.get("modes")
     if isinstance(modes, (tuple, list)) and modes:
         if len(modes) != 1:
@@ -983,13 +1091,77 @@ def resolve_post_selection_method_policies(
             f"Unsupported training mode: '{training_mode}'. Accepted values are 'scratch', 'naive_fine_tuning', or 'multihead_replay'."
         )
 
-    if training_mode == "multihead_replay" and not replay_enabled:
-        raise PostSelectionError(
-            "The configured training method 'multihead_replay' requires a canonical "
-            "replay source in [paths], but none was configured."
-        )
+    foundation_model_value = paths.get("foundation_model")
+    if foundation_model_value in (None, ""):
+        foundation_model_value = paths.get("model")
+    if foundation_model_value in (None, ""):
+        foundation_model_value = model.get("foundation_model")
+    f_model_raw = (
+        ""
+        if foundation_model_value in (None, "")
+        else str(foundation_model_value).strip()
+    )
 
-    # 3. Replay Exposure Digest
+    # 3. The three supported P5 methods have an exact foundation/replay
+    # topology.  Validate it before resolving any downstream policy identity.
+    if training_mode == "scratch":
+        if f_model_raw:
+            raise PostSelectionError(
+                "P5 scratch training cannot configure a foundation checkpoint."
+            )
+        if replay_configured:
+            raise PostSelectionError(
+                "P5 scratch training cannot configure replay sources or replay policy."
+            )
+    elif training_mode == "naive_fine_tuning":
+        if not f_model_raw:
+            raise PostSelectionError(
+                "P5 naive_fine_tuning requires a foundation checkpoint."
+            )
+        if replay_configured:
+            raise PostSelectionError(
+                "P5 naive_fine_tuning cannot configure replay sources or replay policy."
+            )
+    else:
+        if not f_model_raw:
+            raise PostSelectionError(
+                "P5 multihead_replay requires a foundation checkpoint."
+            )
+        if not replay_training_source_enabled:
+            raise PostSelectionError(
+                "P5 multihead_replay requires a canonical replay training source."
+            )
+        if single_replay is None and not legacy_replay_monitor:
+            raise PostSelectionError(
+                "P5 multihead_replay requires an independent TRUE_DFT monitor "
+                "path."
+            )
+        if single_replay is None:
+            replay_mode = str(
+                getattr(
+                    replay.get("mode", ReplayMode.EXTERNAL_PSEUDOLABEL.value),
+                    "value",
+                    replay.get("mode", ReplayMode.EXTERNAL_PSEUDOLABEL.value),
+                )
+            ).strip().lower()
+            if (
+                replay_mode == ReplayMode.EXTERNAL_PSEUDOLABEL.value
+                and not legacy_replay_true
+            ):
+                raise PostSelectionError(
+                    "P5 pseudolabel replay requires the independent TRUE_DFT "
+                    "monitor source root."
+                )
+
+    replay_training_label_mode = resolve_post_selection_replay_training_label_mode(
+        config,
+        single_replay=single_replay,
+        has_legacy_replay=has_legacy_replay,
+    )
+
+    # 4. Replay exposure digest.  The compatibility matrix above guarantees
+    # that an enabled replay digest can only describe executable multihead
+    # replay training, never a scratch or naive run.
     replay_exposure_policy_digest = resolve_post_selection_replay_policy_digest(
         single_replay=single_replay,
         has_legacy_replay=has_legacy_replay,
@@ -998,7 +1170,7 @@ def resolve_post_selection_method_policies(
         replay_head_name=replay_head_name,
     )
 
-    # 4. Objective, Configuration Weight, and Atomic Reference Policies
+    # 5. Objective, Configuration Weight, and Atomic Reference Policies
     objective = _table(config, "objective") or _table(config, "loss")
     objective_policy = TrainingObjectivePolicy(
         energy_weight=float(objective.get("energy_weight", 1.0)),
@@ -1064,12 +1236,6 @@ def resolve_post_selection_method_policies(
             f"Unsupported [training].default_dtype: '{default_dtype}'. Accepted values are 'float32' or 'float64'."
         )
 
-    f_model_raw = str(
-        paths.get(
-            "foundation_model",
-            paths.get("model", model.get("foundation_model", "")),
-        )
-    ).strip()
     f_head_configured = training.get(
         "foundation_head",
         model.get("foundation_head", foundation.get("head")),
@@ -1089,11 +1255,6 @@ def resolve_post_selection_method_policies(
                 foundation.get("family", model.get("family", "MACE-MPA-0"))
             ),
         )
-    elif training_mode in {"naive_fine_tuning", "multihead_replay"}:
-        raise PostSelectionError(
-            f"Configured training mode '{training_mode}' requires a foundation checkpoint in [paths], but none was found."
-        )
-
     foundation_checkpoint_digest = (
         foundation_identity.canonical_content_digest
         if foundation_identity is not None
@@ -1120,7 +1281,7 @@ def resolve_post_selection_method_policies(
         ),
     )
 
-    # 5. MACE Architecture Resolution
+    # 6. MACE Architecture Resolution
     raw_arch = model.get("mace_architecture")
     if raw_arch is None and any(
         k in model
@@ -1138,7 +1299,7 @@ def resolve_post_selection_method_policies(
     mace_architecture = canonicalize_mace_candidate_architecture(raw_arch)
     mace_architecture_digest = digest(mace_architecture)
 
-    # 6. Checkpoint Admissibility and LR Schedule
+    # 7. Checkpoint Admissibility and LR Schedule
     replay_budget_mev = float(
         acceptance.get(
             "allowed_replay_degradation_mev_per_a",

@@ -1,4 +1,4 @@
-"""Direct owner and assembled guards for the reopened P5 revision-9 workplan."""
+"""Direct owner and assembled guards for the reopened P5 revision-9/10 workplan."""
 
 from __future__ import annotations
 
@@ -36,7 +36,6 @@ from mdstats.training_data.replay import (
     ReplayLabelMode,
     canonical_replay_geometry_identity,
 )
-from mdstats.training_data.model_features import MaceCalculatorProvider
 from tests._mlff_post_selection_fixture import (
     build_selected_campaign,
     fixture_config_text,
@@ -139,6 +138,23 @@ def _foundation_inspection(path: Path) -> MaceFoundationInspection:
         use_last_readout_only=False,
         state_shape_digest="55" * 32,
     )
+
+
+def _write_tiny_mace_foundation(path: Path) -> None:
+    """Write a small real MACE model accepted by the MPA-0 foundation owner."""
+
+    import torch
+
+    from tests.test_mlff_g6_g7_g9_requalification import _tiny_mace
+
+    model = _tiny_mace(
+        interaction_cls_name="RealAgnosticDensityResidualInteractionBlock",
+        atomic_numbers=(3, 8),
+        heads=["default"],
+        seed=7,
+        dtype=torch.float64,
+    )
+    torch.save(model, path)
 
 
 def test_r9a_legacy_training_and_true_monitor_roles_are_real_owner_resolutions(
@@ -317,6 +333,8 @@ def test_r9b_head_namespace_is_one_owner_across_policy_and_mace_translation(
         "target_head_name": POST_SELECTION_TARGET_HEAD_NAME,
         "replay_head_name": POST_SELECTION_REPLAY_HEAD_NAME,
         "multiheads_finetuning": True,
+        "pt_train_file": "replay-train.extxyz",
+        "pt_valid_file": "replay-monitor.extxyz",
         "heads": {
             POST_SELECTION_TARGET_HEAD_NAME: {},
             POST_SELECTION_REPLAY_HEAD_NAME: {},
@@ -401,7 +419,7 @@ if train_like_mace(request) is None:
     path.chmod(0o755)
 
 
-def test_r9c_assembled_replay_enabled_non_scratch_real_owner_lifecycle(
+def test_r10b_assembled_replay_enabled_non_scratch_real_owner_lifecycle(
     tmp_path: Path, monkeypatch
 ):
     root = tmp_path / "assembled"
@@ -412,7 +430,7 @@ def test_r9c_assembled_replay_enabled_non_scratch_real_owner_lifecycle(
     true_train = true_root / "true_labels" / "replay_train.extxyz"
     true_monitor = true_root / "true_labels" / "replay_monitor.extxyz"
     foundation.parent.mkdir(parents=True, exist_ok=True)
-    foundation.write_bytes(b"assembled-foundation-checkpoint")
+    _write_tiny_mace_foundation(foundation)
     _write_replay_file(pseudo_train, [0, 1], energy_offset=0.25)
     _write_replay_file(pseudo_monitor, [2, 3], energy_offset=0.25)
     _write_replay_file(true_train, [0, 1], energy_offset=0.0)
@@ -451,10 +469,6 @@ head = "default"
 legacy_normalized = true
 """
 
-    monkeypatch.setattr(
-        "mdstats.training_data.foundation.inspect_mace_foundation",
-        lambda path: _foundation_inspection(Path(path)),
-    )
     config, workspace = build_selected_campaign(tmp_path / "campaign", config_text=config_text)
 
     wrapper = tmp_path / "mdstats-mace-train"
@@ -465,29 +479,6 @@ legacy_normalized = true
         "_ensure_local_wrappers",
         lambda _paths: {"mdstats-mace-train": wrapper},
     )
-    # The baseline provider still goes through the canonical construction
-    # function; only its expensive checkpoint-to-calculator numerical boundary
-    # is replaced by an authenticated parameter-shell provider.
-    import torch
-
-    def fake_foundation_provider(cls, model_path, **kwargs):
-        assert kwargs["head"] == "default"
-        assert kwargs["foundation_potential_identity"].foundation_head == "default"
-        return cls.from_authenticated_parameter_state(
-            [torch.zeros(1, dtype=torch.float64)],
-            checkpoint_locator=model_path,
-            checkpoint_sha256=sha256_file_cached(model_path),
-            device=kwargs["device"],
-            default_dtype=kwargs["default_dtype"],
-            allow_forward_override=True,
-        )
-
-    monkeypatch.setattr(
-        MaceCalculatorProvider,
-        "from_model_path",
-        classmethod(fake_foundation_provider),
-    )
-
     cfg, paths, store = load_context(config)
     try:
         context = build_post_selection_context(
@@ -520,6 +511,20 @@ legacy_normalized = true
         "cross-validate",
         _external_inference_evaluator=evaluator.evaluate,
     ) == 0
+
+    # A mode change cannot retain the accepted multihead CV authorization.  The
+    # exact matrix rejects it before a final-production wrapper can launch.
+    before_mode_switch_count = len(marker.read_text(encoding="utf-8").splitlines())
+    rewrite_config(config, 'mode = "multihead_replay"', 'mode = "naive_fine_tuning"')
+    with pytest.raises(Exception) as mode_switched:
+        p4d._run(
+            config,
+            "train-production",
+            _external_inference_evaluator=evaluator.evaluate,
+        )
+    assert "cannot configure replay" in str(mode_switched.value).lower() or "requires" in str(mode_switched.value).lower()
+    assert len(marker.read_text(encoding="utf-8").splitlines()) == before_mode_switch_count
+    rewrite_config(config, 'mode = "naive_fine_tuning"', 'mode = "multihead_replay"')
 
     # Changing only the legacy replay training semantic makes the accepted CV
     # lineage/method stale before a wrapper can launch.

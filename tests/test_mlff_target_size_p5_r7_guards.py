@@ -28,6 +28,7 @@ Covers all 23 required negative qualification guards:
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -80,6 +81,7 @@ from mdstats.training_data.post_selection_identity import (
     resolve_post_selection_method_policies,
     resolve_shared_optimizer_settings,
 )
+from mdstats.training_data.replay import ReplayLabelMode
 from mdstats.training_data.post_selection_production import (
     FinalProductionPlan,
     build_final_production_plan,
@@ -307,49 +309,55 @@ def test_guard_p5_r7_05_method_identity_does_not_contain_optimizer_family():
 # Guard 6: Replay lineage digest covers all replay artifacts
 # ---------------------------------------------------------------------------
 def test_guard_p5_r7_06_replay_lineage_digest_covers_all_replay_artifacts():
-    base_res = SimpleNamespace(
-        source_sha256="11" * 32,
-        split_manifest_digest="22" * 32,
-        train_artifact=SimpleNamespace(sha256="33" * 32, content_digest="44" * 32),
-        monitor_artifact=SimpleNamespace(sha256="55" * 32, content_digest="66" * 32),
-    )
+    common = {
+        "interface": "single_source",
+        "source_content_digest": "aa" * 32,
+        "source_sha256": "11" * 32,
+        "split_manifest_digest": "22" * 32,
+        "training_label_mode": ReplayLabelMode.TRUE_DFT,
+        "true_label_mode": ReplayLabelMode.TRUE_DFT,
+    }
+
+    def make_resolution(
+        *, train_sha: str = "33" * 32, monitor_sha: str = "55" * 32,
+        source_sha: str = "11" * 32, split_digest: str = "22" * 32,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            **{
+                **common,
+                "source_sha256": source_sha,
+                "split_manifest_digest": split_digest,
+                "train_artifact": SimpleNamespace(
+                    sha256=train_sha,
+                    content_digest="44" * 32,
+                    label_mode=ReplayLabelMode.TRUE_DFT,
+                ),
+                "monitor_artifact": SimpleNamespace(
+                    sha256=monitor_sha,
+                    content_digest="66" * 32,
+                    label_mode=ReplayLabelMode.TRUE_DFT,
+                ),
+            }
+        )
+
+    base_res = make_resolution()
     base_digest = compute_replay_lineage_digest(base_res)
     assert base_digest is not None
 
     # Alter train sha
-    res_train_sha = SimpleNamespace(
-        source_sha256="11" * 32,
-        split_manifest_digest="22" * 32,
-        train_artifact=SimpleNamespace(sha256="99" * 32, content_digest="44" * 32),
-        monitor_artifact=SimpleNamespace(sha256="55" * 32, content_digest="66" * 32),
-    )
+    res_train_sha = make_resolution(train_sha="99" * 32)
     assert compute_replay_lineage_digest(res_train_sha) != base_digest
 
     # Alter monitor sha
-    res_monitor_sha = SimpleNamespace(
-        source_sha256="11" * 32,
-        split_manifest_digest="22" * 32,
-        train_artifact=SimpleNamespace(sha256="33" * 32, content_digest="44" * 32),
-        monitor_artifact=SimpleNamespace(sha256="99" * 32, content_digest="66" * 32),
-    )
+    res_monitor_sha = make_resolution(monitor_sha="99" * 32)
     assert compute_replay_lineage_digest(res_monitor_sha) != base_digest
 
     # Alter source sha
-    res_source_sha = SimpleNamespace(
-        source_sha256="99" * 32,
-        split_manifest_digest="22" * 32,
-        train_artifact=SimpleNamespace(sha256="33" * 32, content_digest="44" * 32),
-        monitor_artifact=SimpleNamespace(sha256="55" * 32, content_digest="66" * 32),
-    )
+    res_source_sha = make_resolution(source_sha="99" * 32)
     assert compute_replay_lineage_digest(res_source_sha) != base_digest
 
     # Alter split manifest digest
-    res_manifest = SimpleNamespace(
-        source_sha256="11" * 32,
-        split_manifest_digest="99" * 32,
-        train_artifact=SimpleNamespace(sha256="33" * 32, content_digest="44" * 32),
-        monitor_artifact=SimpleNamespace(sha256="55" * 32, content_digest="66" * 32),
-    )
+    res_manifest = make_resolution(split_digest="99" * 32)
     assert compute_replay_lineage_digest(res_manifest) != base_digest
 
 
@@ -473,20 +481,27 @@ exit 0
     chk_dir.mkdir(parents=True)
     results_dir.mkdir(parents=True)
 
+    monitor_file = tmp_path / "true_replay_monitor.extxyz"
+    monitor_file.write_bytes(b"TRUE_DFT_MONITOR_TEST_DATA")
+    monitor_sha = hashlib.sha256(b"TRUE_DFT_MONITOR_TEST_DATA").hexdigest()
+    replay_train_file = tmp_path / "replay_train.extxyz"
+    replay_train_file.write_bytes(b"REPLAY_TRAIN_TEST_DATA")
+    replay_train_sha = hashlib.sha256(b"REPLAY_TRAIN_TEST_DATA").hexdigest()
+
     internal_config = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
         "name": "test_run",
         "seed": 42,
         "target_train_file": "train.extxyz",
         "target_valid_file": "valid.extxyz",
+        "multiheads_finetuning": True,
+        "pt_train_file": str(replay_train_file),
+        "pt_valid_file": str(monitor_file),
+        "heads": {"target_head": {}, "pt_head": {}},
     }
     cfg_bytes = json.dumps(internal_config).encode("utf-8")
     cfg_file = mat_dir / "post_selection_mace_config.yaml"
     cfg_file.write_bytes(cfg_bytes)
-
-    monitor_file = tmp_path / "true_replay_monitor.extxyz"
-    monitor_file.write_bytes(b"TRUE_DFT_MONITOR_TEST_DATA")
-    monitor_sha = hashlib.sha256(b"TRUE_DFT_MONITOR_TEST_DATA").hexdigest()
 
     method = _make_dummy_method_identity("multihead_replay")
 
@@ -516,6 +531,10 @@ exit 0
         materialization_directory=mat_dir,
         checkpoint_directory=chk_dir,
         optimizer_policy=SimpleNamespace(seed=42),
+        replay_train_artifact=SimpleNamespace(
+            sha256=replay_train_sha, content_digest="aa" * 32
+        ),
+        replay_train_path=replay_train_file,
         replay_monitor_artifact=SimpleNamespace(sha256=monitor_sha, content_digest="rm" * 32),
         replay_monitor_path=monitor_file,
     )
@@ -532,6 +551,13 @@ exit 0
     assert recorded["TRUE_REPLAY_PATH"] == str(monitor_file.resolve())
     # Guard 14: cwd is materialization directory
     assert recorded["CWD"] == str(mat_dir.resolve())
+
+    # Revision 10: the executable replay paths remain bound to the authenticated
+    # request artifacts after pre-launch validation.
+    relocated_train = tmp_path / "relocated_replay_train.extxyz"
+    relocated_train.write_bytes(replay_train_file.read_bytes())
+    with pytest.raises(PostSelectionExecutionError, match="pt_train_file"):
+        trainer(replace(request, replay_train_path=relocated_train))
 
 
 # ---------------------------------------------------------------------------
@@ -553,6 +579,10 @@ def test_guard_p5_r7_13_mace_post_selection_trainer_missing_or_mismatched_replay
         "seed": 42,
         "target_train_file": "train.extxyz",
         "target_valid_file": "valid.extxyz",
+        "multiheads_finetuning": True,
+        "pt_train_file": str(tmp_path / "replay_train.extxyz"),
+        "pt_valid_file": str(tmp_path / "replay_monitor.extxyz"),
+        "heads": {"target_head": {}, "pt_head": {}},
     }
     cfg_bytes = json.dumps(internal_config).encode("utf-8")
     cfg_file = mat_dir / "post_selection_mace_config.yaml"
@@ -561,6 +591,10 @@ def test_guard_p5_r7_13_mace_post_selection_trainer_missing_or_mismatched_replay
     materialization = _make_dummy_materialization(
         mat_dir, cfg_file, cfg_bytes, internal_config
     )
+
+    replay_train_file = tmp_path / "replay_train.extxyz"
+    replay_train_file.write_bytes(b"REPLAY_TRAIN_TEST_DATA")
+    replay_train_sha = sha256_file_cached(replay_train_file)
 
     method = _make_dummy_method_identity("multihead_replay")
 
@@ -583,6 +617,10 @@ def test_guard_p5_r7_13_mace_post_selection_trainer_missing_or_mismatched_replay
         materialization_directory=mat_dir,
         checkpoint_directory=chk_dir,
         optimizer_policy=SimpleNamespace(seed=42),
+        replay_train_artifact=SimpleNamespace(
+            sha256=replay_train_sha, content_digest="aa" * 32
+        ),
+        replay_train_path=replay_train_file,
         replay_monitor_artifact=SimpleNamespace(sha256="aa" * 32, content_digest="aa" * 32),
         replay_monitor_path=tmp_path / "nonexistent.extxyz",
     )
@@ -601,6 +639,10 @@ def test_guard_p5_r7_13_mace_post_selection_trainer_missing_or_mismatched_replay
         materialization_directory=mat_dir,
         checkpoint_directory=chk_dir,
         optimizer_policy=SimpleNamespace(seed=42),
+        replay_train_artifact=SimpleNamespace(
+            sha256=replay_train_sha, content_digest="aa" * 32
+        ),
+        replay_train_path=replay_train_file,
         replay_monitor_artifact=SimpleNamespace(sha256=wrong_sha, content_digest="bb" * 32),
         replay_monitor_path=wrong_file,
     )
@@ -849,7 +891,6 @@ def test_guard_p5_r7_19_20_replay_baseline_provider_guards(tmp_path: Path, monke
         foundation_path=model_path,
         foundation_identity=ident,
         foundation_head="zeolite_head",
-        allow_forward_override=True,
     )
     assert provider is not None
     assert captured_kwargs["head"] == "zeolite_head"
@@ -866,7 +907,6 @@ def test_guard_p5_r7_19_20_replay_baseline_provider_guards(tmp_path: Path, monke
             foundation_path=model_path,
             foundation_identity=tampered_ident,
             foundation_head="zeolite_head",
-            allow_forward_override=True,
         )
     assert "Foundation baseline model bytes changed on disk" in str(exc_info.value)
 
@@ -876,7 +916,6 @@ def test_guard_p5_r7_19_20_replay_baseline_provider_guards(tmp_path: Path, monke
             foundation_path=tmp_path / "nonexistent.model",
             foundation_identity=ident,
             foundation_head="zeolite_head",
-            allow_forward_override=True,
         )
     assert "does not exist" in str(exc_info.value)
 

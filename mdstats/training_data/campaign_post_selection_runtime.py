@@ -154,12 +154,12 @@ class PostSelectionReplayResolution:
     train_artifact: Any
     monitor_artifact: Any
     training_label_mode: Any
+    true_label_mode: Any
     source_path: str | None = None
     source_content_digest: str | None = None
     source_sha256: str | None = None
     split_manifest_digest: str | None = None
     true_label_source_sha256: str | None = None
-    true_label_mode: str = "true_dft"
 
     def __post_init__(self) -> None:
         from .replay import ReplayLabelMode
@@ -382,6 +382,7 @@ def _resolve_post_selection_replay_resolution(
             train_artifact=training_artifact,
             monitor_artifact=monitor_artifact,
             training_label_mode=getattr(training_artifact, "label_mode", None),
+            true_label_mode=getattr(monitor_artifact, "label_mode", None),
             source_path=(None if source_art is None else str(source_art.path)),
             source_content_digest=(
                 None if source_art is None else source_art.content_digest
@@ -484,6 +485,7 @@ def _resolve_post_selection_replay_resolution(
         train_artifact=training_artifact,
         monitor_artifact=monitor_artifact,
         training_label_mode=expected_training_mode,
+        true_label_mode=getattr(monitor_artifact, "label_mode", None),
         source_path=None if source_path is None else str(source_path),
         true_label_source_sha256=true_label_source_sha256,
     )
@@ -734,8 +736,6 @@ def execute_post_selection_run(
                         foundation_head=foundation_head,
                         device=context.method_policies.device,
                         default_dtype=context.method_policies.common_training.default_dtype,
-                        allow_forward_override=context.inference_evaluator
-                        is not None,
                     )
                 )
                 baseline_replay_metrics = evaluate_post_selection_dataset(

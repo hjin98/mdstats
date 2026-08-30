@@ -345,11 +345,20 @@ def test_claims_08_09_10_replay_policy_and_lineage_path_free():
     # Replay lineage helper contains no path fields in its hashing payload
     resolution = SimpleNamespace(
         interface="single_source",
-        source_content_digest="sc" * 32,
-        source_sha256="ss" * 32,
-        split_manifest_digest="sm" * 32,
-        train_artifact=SimpleNamespace(content_digest="tc" * 32, sha256="ts" * 32),
-        monitor_artifact=SimpleNamespace(content_digest="mc" * 32, sha256="ms" * 32),
+        source_content_digest="aa" * 32,
+        source_sha256="bb" * 32,
+        split_manifest_digest="cc" * 32,
+        train_artifact=SimpleNamespace(
+            content_digest="dd" * 32,
+            sha256="ee" * 32,
+            label_mode=ReplayLabelMode.TRUE_DFT,
+        ),
+        monitor_artifact=SimpleNamespace(
+            content_digest="ff" * 32,
+            sha256="11" * 32,
+            label_mode=ReplayLabelMode.TRUE_DFT,
+        ),
+        training_label_mode=ReplayLabelMode.TRUE_DFT,
         true_label_mode="true_dft",
     )
     lineage_digest = compute_replay_lineage_digest(resolution)
@@ -364,22 +373,31 @@ def test_claims_11_12_13_replay_source_and_monitor_byte_tamper(tmp_path: Path):
     """
     resolution1 = SimpleNamespace(
         interface="single_source",
-        source_content_digest="sc" * 32,
-        source_sha256="ss" * 32,
-        split_manifest_digest="sm" * 32,
-        train_artifact=SimpleNamespace(content_digest="tc" * 32, sha256="ts" * 32),
-        monitor_artifact=SimpleNamespace(content_digest="mc" * 32, sha256="ms" * 32),
+        source_content_digest="aa" * 32,
+        source_sha256="bb" * 32,
+        split_manifest_digest="cc" * 32,
+        train_artifact=SimpleNamespace(
+            content_digest="dd" * 32,
+            sha256="ee" * 32,
+            label_mode=ReplayLabelMode.TRUE_DFT,
+        ),
+        monitor_artifact=SimpleNamespace(
+            content_digest="ff" * 32,
+            sha256="11" * 32,
+            label_mode=ReplayLabelMode.TRUE_DFT,
+        ),
+        training_label_mode=ReplayLabelMode.TRUE_DFT,
         true_label_mode="true_dft",
     )
     lineage1 = compute_replay_lineage_digest(resolution1)
 
     # Claim 11: Source SHA mutation changes lineage
-    resolution_mutated_source = SimpleNamespace(**{**vars(resolution1), "source_sha256": "ss_mutated" * 16})
+    resolution_mutated_source = SimpleNamespace(**{**vars(resolution1), "source_sha256": "12" * 32})
     lineage2 = compute_replay_lineage_digest(resolution_mutated_source)
     assert lineage1 != lineage2
 
     # Claim 12: Split manifest mutation changes lineage
-    resolution_mutated_split = SimpleNamespace(**{**vars(resolution1), "split_manifest_digest": "sm_mutated" * 16})
+    resolution_mutated_split = SimpleNamespace(**{**vars(resolution1), "split_manifest_digest": "34" * 32})
     lineage3 = compute_replay_lineage_digest(resolution_mutated_split)
     assert lineage1 != lineage3
 
@@ -387,7 +405,11 @@ def test_claims_11_12_13_replay_source_and_monitor_byte_tamper(tmp_path: Path):
     resolution_mutated_monitor = SimpleNamespace(
         **{
             **vars(resolution1),
-            "monitor_artifact": SimpleNamespace(content_digest="mc" * 32, sha256="ms_mutated" * 16),
+            "monitor_artifact": SimpleNamespace(
+                content_digest="ff" * 32,
+                sha256="56" * 32,
+                label_mode=ReplayLabelMode.TRUE_DFT,
+            ),
         }
     )
     lineage4 = compute_replay_lineage_digest(resolution_mutated_monitor)
@@ -581,6 +603,12 @@ exit 0
         "target_train_file": "train.extxyz",
         "target_valid_file": "valid.extxyz",
         "eval_interval": 2,
+        "foundation_model": str(tmp_path / "foundation.model"),
+        "foundation_head": "default",
+        "multiheads_finetuning": True,
+        "pt_train_file": str(tmp_path / "replay_train.extxyz"),
+        "pt_valid_file": str(tmp_path / "replay_monitor.extxyz"),
+        "heads": {"target_head": {}, "pt_head": {}},
     }
     cfg_bytes = json.dumps(internal_config).encode("utf-8")
     cfg_file = mat_dir / "post_selection_mace_config.yaml"

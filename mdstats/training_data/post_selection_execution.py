@@ -431,6 +431,53 @@ def _post_selection_mace_config(
 
     from .model_features import canonicalize_mace_candidate_architecture
 
+    training_mode = str(method.training_mode).strip()
+    if training_mode not in {
+        "scratch",
+        "naive_fine_tuning",
+        "multihead_replay",
+    }:
+        raise PostSelectionExecutionError(
+            f"Unsupported post-selection training mode: {training_mode!r}."
+        )
+    expected_multihead = training_mode == "multihead_replay"
+    if bool(multiheads_finetuning) != expected_multihead:
+        raise PostSelectionExecutionError(
+            "Post-selection method identity and MACE multihead execution mode "
+            "disagree."
+        )
+    if expected_multihead:
+        if not foundation_model or not foundation_head:
+            raise PostSelectionExecutionError(
+                "multihead_replay materialization requires the canonical "
+                "foundation model and foundation head."
+            )
+        if replay_train is None or replay_monitor is None:
+            raise PostSelectionExecutionError(
+                "multihead_replay materialization requires both replay training "
+                "and independent TRUE_DFT monitor artifacts."
+            )
+    elif training_mode == "scratch":
+        if foundation_model or foundation_head:
+            raise PostSelectionExecutionError(
+                "scratch materialization cannot carry a foundation checkpoint."
+            )
+        if replay_train is not None or replay_monitor is not None:
+            raise PostSelectionExecutionError(
+                "scratch materialization cannot carry replay training fields."
+            )
+    else:
+        if not foundation_model or not foundation_head:
+            raise PostSelectionExecutionError(
+                "naive_fine_tuning materialization requires the canonical "
+                "foundation model and foundation head."
+            )
+        if replay_train is not None or replay_monitor is not None:
+            raise PostSelectionExecutionError(
+                "naive_fine_tuning materialization cannot carry replay training "
+                "fields."
+            )
+
     fitted_e0s = {
         int(z): float(value)
         for z, value in preparation.fitted_atomic_references.reference_energies_ev
@@ -733,6 +780,19 @@ class MacePostSelectionTrainer:
             raise PostSelectionExecutionError(
                 "Post-selection MACE configuration schema mismatch."
             )
+        configured_method_digest = internal_payload.get("method_identity_digest")
+        runtime_method_digest = getattr(
+            request.plan, "training_protocol_digest", None
+        )
+        if (
+            configured_method_digest is not None
+            and runtime_method_digest is not None
+            and str(configured_method_digest) != str(runtime_method_digest)
+        ):
+            raise PostSelectionExecutionError(
+                "Post-selection MACE configuration method identity does not "
+                "match the TRAIN2 runtime plan."
+            )
         try:
             configured_target_head, configured_replay_head = (
                 canonical_post_selection_head_names(
@@ -765,7 +825,16 @@ class MacePostSelectionTrainer:
                 "Post-selection runtime plan and internal configuration use "
                 "different fine-tuning head names."
             )
-        if internal_payload.get("multiheads_finetuning"):
+        internal_multihead = bool(internal_payload.get("multiheads_finetuning"))
+        runtime_multihead = bool(
+            getattr(request.plan, "replay_monitor_enabled", False)
+        )
+        if internal_multihead != runtime_multihead:
+            raise PostSelectionExecutionError(
+                "Post-selection MACE configuration and TRAIN2 runtime plan "
+                "disagree about replay execution."
+            )
+        if internal_multihead:
             heads = internal_payload.get("heads")
             if not isinstance(heads, Mapping) or set(heads) != {
                 POST_SELECTION_TARGET_HEAD_NAME,
@@ -775,6 +844,32 @@ class MacePostSelectionTrainer:
                     "Post-selection multihead configuration must expose exactly "
                     "the canonical target_head and pt_head heads."
                 )
+            if request.replay_train_artifact is None or request.replay_train_path is None:
+                raise PostSelectionExecutionError(
+                    "Multihead post-selection configuration requires the "
+                    "authenticated replay training request artifact and path."
+                )
+            if request.replay_monitor_artifact is None or request.replay_monitor_path is None:
+                raise PostSelectionExecutionError(
+                    "Multihead post-selection configuration requires the "
+                    "authenticated TRUE_DFT monitor request artifact and path."
+                )
+        elif any(
+            key in internal_payload
+            for key in ("pt_train_file", "pt_valid_file", "heads")
+        ) or any(
+            value is not None
+            for value in (
+                request.replay_train_artifact,
+                request.replay_train_path,
+                request.replay_monitor_artifact,
+                request.replay_monitor_path,
+            )
+        ):
+            raise PostSelectionExecutionError(
+                "Non-multihead post-selection configuration cannot carry replay "
+                "training fields."
+            )
 
         # 2. Target training ExtXYZ at materialization_directory / target_train_artifact.relative_path
         target_train_art = request.materialization.target_train_artifact
@@ -800,8 +895,30 @@ class MacePostSelectionTrainer:
                 "Target validation ExtXYZ SHA256 does not match materialization artifact."
             )
 
-        # 4. Foundation checkpoint for non-scratch methods
-        if internal_payload.get("foundation_model") or request.foundation_identity is not None or request.foundation_model_path is not None:
+        # 4. Foundation checkpoint for non-scratch methods.  The executable
+        # configuration and authenticated request must agree on whether this
+        # method is foundation-backed; otherwise a scratch request could carry
+        # an unclaimed foundation input that never entered its identity.
+        internal_foundation_model = internal_payload.get("foundation_model")
+        internal_foundation_head = internal_payload.get("foundation_head")
+        if bool(internal_foundation_model) != bool(internal_foundation_head):
+            raise PostSelectionExecutionError(
+                "Post-selection foundation configuration must carry both the "
+                "canonical model and foundation head."
+            )
+        internal_has_foundation = bool(
+            internal_foundation_model or internal_foundation_head
+        )
+        request_has_foundation = (
+            request.foundation_identity is not None
+            or request.foundation_model_path is not None
+        )
+        if internal_has_foundation != request_has_foundation:
+            raise PostSelectionExecutionError(
+                "Post-selection foundation configuration and authenticated "
+                "request disagree about foundation execution."
+            )
+        if internal_has_foundation:
             if request.foundation_identity is None or request.foundation_model_path is None:
                 raise PostSelectionExecutionError(
                     "Non-scratch training requires canonical foundation identity and path in request."
@@ -816,13 +933,13 @@ class MacePostSelectionTrainer:
                     "Foundation model file SHA256 does not match canonical foundation identity."
                 )
             # 5. if internal config contains foundation locator/head, verify agreement
-            if internal_payload.get("foundation_model"):
-                if Path(internal_payload["foundation_model"]).resolve() != f_path:
+            if internal_foundation_model:
+                if Path(internal_foundation_model).resolve() != f_path:
                     raise PostSelectionExecutionError(
                         "Internal config foundation_model does not match request foundation model path."
                     )
-            if internal_payload.get("foundation_head"):
-                if internal_payload["foundation_head"] != request.foundation_identity.foundation_head:
+            if internal_foundation_head:
+                if internal_foundation_head != request.foundation_identity.foundation_head:
                     raise PostSelectionExecutionError(
                         "Internal config foundation_head does not match request foundation head."
                     )
@@ -878,6 +995,33 @@ class MacePostSelectionTrainer:
             raise PostSelectionExecutionError(
                 "Runtime plan requires replay monitor, but none was provided in request."
             )
+
+        if internal_multihead:
+            def configured_path(name: str) -> Path:
+                raw = internal_payload.get(name)
+                if raw in (None, ""):
+                    raise PostSelectionExecutionError(
+                        f"Multihead post-selection configuration is missing {name}."
+                    )
+                path = Path(str(raw))
+                if not path.is_absolute():
+                    path = request.materialization_directory / path
+                return path.resolve()
+
+            if configured_path("pt_train_file") != Path(
+                request.replay_train_path
+            ).resolve():
+                raise PostSelectionExecutionError(
+                    "Executable pt_train_file does not match the authenticated "
+                    "replay training request path."
+                )
+            if configured_path("pt_valid_file") != Path(
+                request.replay_monitor_path
+            ).resolve():
+                raise PostSelectionExecutionError(
+                    "Executable pt_valid_file does not match the authenticated "
+                    "TRUE_DFT monitor request path."
+                )
 
         # 9. Write executable configuration and execute wrapper subprocess
         executable_payload = post_selection_mace_run_configuration(internal_payload)
@@ -952,9 +1096,14 @@ def build_post_selection_foundation_baseline_provider(
     foundation_head: str | None = None,
     device: str = "cpu",
     default_dtype: str = "float64",
-    allow_forward_override: bool = False,
 ) -> Any:
-    """Construct the canonical foundation baseline prediction provider."""
+    """Construct the canonical foundation baseline prediction provider.
+
+    Foundation replay baselines always use the deployable MACE provider.  Any
+    bounded numerical substitution belongs below ``from_model_path`` in tests;
+    this owner must retain its checkpoint, head, dtype, and inference-identity
+    validation path.
+    """
 
     from ._common import sha256_file_cached
     from .model_features import MaceCalculatorProvider
@@ -995,7 +1144,6 @@ def build_post_selection_foundation_baseline_provider(
         foundation_potential_identity=foundation_identity,
         foundation_inference_identity=foundation_inference_identity,
         head=head,
-        allow_forward_override=allow_forward_override,
     )
 
 
@@ -1057,12 +1205,24 @@ def post_selection_mace_run_configuration(
         result["foundation_model"] = str(config["foundation_model"])
     if config.get("foundation_head"):
         result["foundation_head"] = str(config["foundation_head"])
-    if config.get("multiheads_finetuning"):
+    multihead = bool(config.get("multiheads_finetuning"))
+    replay_fields_present = any(
+        key in config for key in ("pt_train_file", "pt_valid_file", "heads")
+    )
+    if not multihead and replay_fields_present:
+        raise PostSelectionExecutionError(
+            "Non-multihead post-selection MACE configuration cannot expose "
+            "replay training files or heads."
+        )
+    if multihead:
         result["multiheads_finetuning"] = True
-        if "pt_train_file" in config:
-            result["pt_train_file"] = config["pt_train_file"]
-        if "pt_valid_file" in config:
-            result["pt_valid_file"] = config["pt_valid_file"]
+        if not config.get("pt_train_file") or not config.get("pt_valid_file"):
+            raise PostSelectionExecutionError(
+                "Post-selection multihead configuration must expose both "
+                "pt_train_file and pt_valid_file."
+            )
+        result["pt_train_file"] = config["pt_train_file"]
+        result["pt_valid_file"] = config["pt_valid_file"]
         heads = config.get("heads")
         if not isinstance(heads, Mapping) or set(heads) != {
             target_head_name,
@@ -1111,6 +1271,22 @@ def post_selection_runtime_plan(
             "Post-selection TRAIN2 runtime plan carries a noncanonical "
             "fine-tuning head namespace."
         ) from exc
+
+    training_mode = str(getattr(method, "training_mode", "")).strip()
+    if training_mode not in {
+        "scratch",
+        "naive_fine_tuning",
+        "multihead_replay",
+    }:
+        raise PostSelectionExecutionError(
+            f"Unsupported post-selection training mode: {training_mode!r}."
+        )
+    replay_enabled = training_mode == "multihead_replay"
+    if bool(replay_monitor_enabled) != replay_enabled:
+        raise PostSelectionExecutionError(
+            "Post-selection method identity and TRAIN2 replay execution mode "
+            "disagree."
+        )
 
     return Train2RuntimePlan(
         training_protocol_digest=method.content_digest,
