@@ -34,7 +34,7 @@ from mdstats.training_data.model_features import (
     mace_model_execution_architecture_digest,
 )
 from mdstats.training_data.target_size_execution.evaluation import (
-    _authenticate_target_size_provider,
+    authenticate_train2_checkpoint_provider,
 )
 from mdstats.training_data.target_size_execution.execution import (
     EVALUATION_MODEL_STATE_EMA,
@@ -235,13 +235,13 @@ def _fixture(
 
 
 def _authenticate(fixture, *, allow_forward_override: bool = False, config=None):
-    return _authenticate_target_size_provider(
+    return authenticate_train2_checkpoint_provider(
         raw_checkpoint_path=fixture["raw_checkpoint_path"],
         raw_checkpoint_sha256=_sha256(fixture["raw_checkpoint_path"]),
         companion_path=fixture["companion_path"],
         companion_sha256=_sha256(fixture["companion_path"]),
         summary=fixture["summary"],
-        trajectory=fixture["trajectory"],
+        evaluation_model_state=fixture["trajectory"].evaluation_model_state,
         config_payload=fixture["config"] if config is None else config,
         allow_forward_override=allow_forward_override,
     )

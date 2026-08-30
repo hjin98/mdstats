@@ -16,10 +16,13 @@ def test_parser_exposes_small_unix_style_surface() -> None:
     parser = campaign_cli.build_parser()
     choices = parser._subparsers._group_actions[0].choices
     assert tuple(choices) == (
-        "init", "doctor", "prepare", "preflight", "select-target-size", "materialize",
+        "init", "doctor", "prepare", "preflight", "select-target-size",
+        "cross-validate", "train-production", "materialize",
         "train", "extend-seed", "evaluate", "verify", "storage", "status", "advance", "guide"
     )
     assert parser.parse_args(["select-target-size"]).func is campaign_cli.command_select_target_size
+    assert parser.parse_args(["cross-validate"]).func is campaign_cli.command_cross_validate
+    assert parser.parse_args(["train-production"]).func is campaign_cli.command_train_production
     assert parser.parse_args(["materialize"]).func is campaign_cli.command_materialize
     storage = choices["storage"]
     storage_choices = storage._subparsers._group_actions[0].choices
