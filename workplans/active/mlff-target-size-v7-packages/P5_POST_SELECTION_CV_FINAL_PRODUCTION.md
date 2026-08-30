@@ -5,343 +5,492 @@ parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 5
 status: active
-package_revision: 5
+package_revision: 6
 amended_date: 2026-08-29
 entry_p4_closure_commit: 145388e5ad11733be1c19539886e34b82cc7d7d2
+revision5_implementation_baseline_commit: ca1c402645fc210c38a15e55c81cdf30e6b459ab
 revision4_baseline_commit: e19962966116586da8a028c252a53deb80cd6795
 revision3_baseline_commit: 178a4e653693b810cb02e5ea8bd6bd376da93ab0
 revision2_baseline_commit: 2a3c3776aa03ac7e45dd0de2986a6bb390deb710
 revision1_baseline_commit: 5bf53c99ce31d1438c21bae81c0f30c79176bdc4
 compatibility_policy: current-generation-cutover-no-derived-migration
-reconciliation_reason: Final independent design review of revision 4 found one remaining P5-local identity-layer inconsistency without invalidating the frozen parent or any accepted P1-P4/P5 scientific decision: CvValidationPolicyIdentity was described as owning exact selected-relation projection and fold-local fitted-product lineage even though the same revision required policy/recipe identity to remain separate from realized plans and evidence; FinalProductionPolicyIdentity likewise listed inherited M3 scientific lineage as if it were a mutable production-policy choice. Revision 5 normalizes the hierarchy to an acyclic policy -> plan -> realized-evidence graph and preserves every unaffected revision-2/revision-3/revision-4 obligation.
+reconciliation_reason: Independent review of the assembled revision-5 implementation found one genuine P5-local blocker without invalidating the frozen parent or accepted P1-P4/P5 architecture: PostSelectionMethodIdentity is not yet guaranteed to describe the method actually executed by post-selection DATA7/DATA8/TRAIN2/MACE, and replay-enabled checkpoint admissibility has no real TRUE_DFT replay evaluation path. Revision 6 closes only the method-identity-to-execution equivalence and replay-admissibility execution surfaces while preserving every unaffected prior P5 obligation.
 ---
 
-# P5 revision 5 — final identity normalization and implementation handoff closure
+# P5 revision 6 — executable-method realization and replay-admissibility closure
 
-## 0. Authority, precedence, and preserved design
+## 0. Authority, scope, and preserved contract
 
-The frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the sole scientific and architectural verdict. P5 remains bound to Protocol 5.8.0.
+The frozen parent `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the sole scientific and architectural verdict. P5 remains bound to Protocol 5.8.0. This revision does not reopen P1-P4 or alter the target-size scientific model.
 
-Revision 4 at `e19962966116586da8a028c252a53deb80cd6795` is the complete immediate baseline and is incorporated here by reference. Revisions 2 and 3 remain incorporated through revision 4. Every prior P5 obligation remains mandatory except where this revision explicitly corrects identity ownership.
+The implementation at `ca1c402645fc210c38a15e55c81cdf30e6b459ab` is the immediate revision-5 implementation baseline under correction. Revisions 2-5 remain incorporated as historical provenance, but this revision is the current implementation handoff and is self-contained for still-binding P5 task semantics.
 
-Revision 5 does **not** reopen or weaken:
+The following remain frozen and must not regress:
 
-- exact `T_selected = pi_train[:N_selected]` semantics or P1-P4 authority;
-- P4 currentness reauthentication and commit-time stale-generation publication fencing;
-- complete selected-only post-selection CV with configured `K >= 2` and no current `cv_not_performed` production bypass;
-- complete canonical P1 split-exclusion/protected-relation authority projected onto selected data;
-- target-only outer-fold CV acceptance and target-only checkpoint/seed ordering after mandatory replay/physical admissibility;
-- all-required-fold and all-required-CV-seed/variant acceptance;
-- replay and cross-fold dispersion as non-ranking diagnostics/admissibility evidence unless a future governing scientific revision explicitly promotes them;
-- M3 as development/model-selection evidence only, never independent validation;
-- fresh final-production model/optimizer/RNG ancestry and collision-proof screen/CV/final execution namespaces;
-- `[training].max_num_epochs` as a final-production-only horizon independent of target-size `n3` and CV budget;
-- the parent invalidation DAG separating upstream target-size, CV-only policy, and production-only policy;
-- no CV -> target-size feedback;
-- deferred long GPU/full-production qualification.
+- P4 CampaignStore/current-terminal authority is the sole upstream current `N_selected/T_selected` owner;
+- `T_selected = pi_train[:N_selected]` exactly, with no CV/replay expansion or reselection;
+- P5 current reads/writes reauthenticate P4 currentness and current-facing publication is commit-time stale-generation fenced;
+- post-selection CV occurs only after selection, uses configured `K >= 2`, exact selected-only coverage, and the complete canonical P1 split-exclusion/protected-relation projection;
+- every required CV fold and every required CV seed/variant must pass; no mean-only, majority, best-seed, partial-fold, K=0/K=1, or `cv_not_performed` production authorization;
+- checkpoint/model ordering among admissible candidates is target-only; replay and physical evidence are constraints/diagnostics and receive zero ranking or acceptance-score credit;
+- held-out outer CV evidence cannot select that fold's checkpoint;
+- M3 is development/model-selection evidence only, never independent validation;
+- final production is fresh, uses full exact `T_selected`, fresh optimizer/RNG/run state, and never resumes a target-size or CV model/optimizer/checkpoint trajectory;
+- `[training].max_num_epochs` is final-production-only horizon authority, independent of target-size `n3` and CV budget;
+- screen/CV/final run/restart/checkpoint namespaces remain collision-proof;
+- policy -> plan -> realized evidence dependency direction remains acyclic;
+- no CV/final result may mutate or reinterpret P4 target-size authority;
+- long GPU/data-heavy production qualification remains deferred to final release; bounded functional regression/integration is mandatory now.
 
-Revision 5 has precedence only for identity ownership, dependency direction, restart binding, and acceptance evidence on those surfaces.
+Revision 6 has precedence only for shared-method resolution, executable realization, replay training/exposure, replay admissibility evaluation, and acceptance evidence needed to prove those surfaces.
 
 ---
 
-## 1. Defect corrected by revision 5
+## 1. Blocking defect being corrected
 
-Revision 4 correctly split the downstream design into shared-method, CV-specific, and final-production-specific policy identities. Two phrases nevertheless left a circular/over-invalidating interpretation available:
+The current revision-5 implementation can compute a `PostSelectionMethodIdentity` that claims one scientific method while the MACE job executes a materially different or incomplete realization.
 
-1. `CvValidationPolicyIdentity` was said to bind the exact selected split-exclusion projection and fold-local fitted-product lineage even though those are realized descendants of policy/configuration.
-2. `FinalProductionPolicyIdentity` was said to bind frozen M3 lineage even though M3 is inherited P2/P4 scientific evidence, not a mutable production-policy choice.
+Observed failure mechanisms include:
 
-A policy identity must be computable from canonical resolved configuration plus stable method/policy definitions **before** expensive numerical realization. Exact selected memberships, projected P1 components, fold assignments, fitted DATA7/DATA8 products, checkpoints, EVAL2 results, M3 lineage, and other realized scientific evidence bind downstream plans/evidence; they do not redefine the policy that authorized them.
+1. post-selection method resolution constructs a default `TargetSizeCommonTrainingPolicy()` instead of proving that the policy is the same accepted method/preparation recipe actually consumed by execution;
+2. method identity can contain training mode, optimizer, precision/backend, checkpoint admissibility, replay semantics, and other fields that are not all consumed or enforced by the generated MACE/TRAIN2 job;
+3. post-selection MACE materialization currently canonicalizes `mace_architecture` from `None`, which means pinned defaults rather than an authenticated exact accepted model/architecture realization;
+4. canonical foundation/model/head initialization is not positively bound through the post-selection execution configuration;
+5. replay enablement is inferred from one legacy path-presence heuristic instead of the canonical campaign replay authority;
+6. the post-selection TRAIN2 runtime is built with replay monitoring disabled, and checkpoint assessment supplies `None` replay candidate/baseline metrics and `None` label mode;
+7. therefore a replay-enabled admissibility policy either rejects every checkpoint for missing evidence or is effectively absent from a runtime that claims to implement replay retention;
+8. the current assembled P5 fixture does not configure replay, so it cannot detect this defect.
 
-The corrected graph is acyclic:
+This is implementation nonconformance against the already-frozen P5 method/replay contract. The correction is P5-local unless repository evidence proves that the accepted P3/P4 method authority itself cannot be reused without changing predecessor science.
+
+---
+
+## 2. Frozen corrected design
+
+### 2.1 One canonical resolved post-selection method realization
+
+There must be one canonical pre-execution resolution path for the shared method that both:
 
 ```text
-current authenticated predecessor authority
-        + resolved method/policy configuration
-                    |
-                    v
-             policy identities
-                    |
-                    v
-               plan identities
-                    |
-                    v
-         materialization/run/evidence
-                    |
-                    v
-            acceptance/publication
+(a) produces PostSelectionMethodIdentity
+and
+(b) supplies the exact executable inputs consumed by DATA7/DATA8/TRAIN2/MACE/EVAL2.
 ```
 
-No descendant digest or realized output may flow upward into a policy identity.
+Implementation may extend the current `PostSelectionMethodPolicies` or introduce one version-agnostic resolved-method object. Do not create parallel independent resolvers for identity and execution.
 
----
+The resolved method must carry, directly or through existing owned policy objects, every scientifically material field needed to reproduce the method, including as applicable:
 
-## 2. Frozen revision-5 identity hierarchy
+- training mode;
+- canonical foundation/model initialization identity and executable source;
+- selected head/head-family/multihead realization;
+- canonical MACE model architecture/configuration identity;
+- objective/property/configuration-weighting recipe;
+- fold/final target preparation recipe shared by the method;
+- replay source/exposure/training-role semantics;
+- TRUE_DFT replay-retention/admissibility policy;
+- optimizer family and scientifically material shared optimizer settings;
+- LR schedule policy;
+- checkpoint interval/admissibility/target-only selection policy;
+- precision/dtype;
+- acceleration/backend identity only to the extent it is scientifically material and actually enforced;
+- ExtXYZ/data-key policy;
+- other shared integrity constraints already accepted by P5.
 
-Exact durable product names are delegated and must remain version-agnostic. The ownership/dependency boundaries below are frozen.
+The object may also carry runtime handles/paths needed to execute those identities, but raw path spelling must not substitute for scientific identity. If moving the same immutable foundation/replay file to another path does not change scientific meaning, identity should bind its authenticated content/semantic digest rather than path location.
 
-### 2.1 `PostSelectionMethodIdentity` — shared scientific method definition
+### 2.2 Identity/execution equivalence invariant
 
-Preserve revision 4. This identity contains only the scientifically material method definition that CV validates and final production must share, such as the accepted foundation/model/head family and initialization policy, objective/weighting recipe, replay/exposure/admissibility semantics, optimizer family and shared non-role-specific settings, LR/stopping policy family where shared, precision/backend/runtime lock where scientifically material, checkpoint admissibility semantics, target-only ordering semantics, and genuinely common integrity constraints.
+For every field included in `PostSelectionMethodIdentity`, exactly one of the following must be true:
 
-It must be computable without:
+1. the executable DATA7/DATA8/TRAIN2/MACE/EVAL2 path consumes/enforces the corresponding resolved value; or
+2. the field is proven non-scientific/resource-only and is removed from the method identity; or
+3. the requested value is unsupported and resolution fails closed before expensive work.
 
-- exact CV fold membership;
-- exact P1 selected-relation projection;
-- fold-local fitted products;
-- CV evaluation outputs;
-- M3 membership/evidence lineage;
-- final-production fitted products/checkpoints;
-- production result/committee identity.
+It is forbidden for a config mutation to change the method digest while leaving the executable scientific job unchanged merely because execution silently falls back to a default.
 
-If an algorithm/schema/recipe version materially changes the method, that stable recipe identity belongs here or in the appropriate role-specific policy. The **realized output** of executing the recipe does not.
+Conversely, no material executable method choice may vary without participating in the appropriate shared-method/policy identity.
 
-### 2.2 `CvValidationPolicyIdentity` — CV policy/configuration only
+### 2.3 Reuse the accepted target-size/common MACE construction authority
 
-`CvValidationPolicyIdentity` owns the canonical resolved CV choices that are known before the CV plan is realized, including as applicable:
+Do not hand-build a second P5-specific interpretation of foundation/head/architecture/training-mode semantics.
 
-- configured `K >= 2`;
-- fold/partition seed and seed-mode policy;
-- fold-construction algorithm/policy version;
-- CV checkpoint-monitor/evaluation **policy**, not exact membership;
-- CV-only TRAIN2 budget/stopping policy;
-- target-only outer-validation metric/threshold predicate;
-- all-required-fold/all-required-variant aggregation rule;
-- diagnostic-only dispersion/replay-summary policy;
-- fold-local preparation **recipe/policy** where it is CV-specific rather than part of the shared method.
+Implementation must trace the current accepted target-size/P3 construction path and reuse or extract its canonical version-agnostic method/MACE configuration builder wherever the semantics are shared. If the reusable logic is currently embedded inside a target-size-specific caller, refactor the minimum common builder/resolver and make both target-size and P5 callers use it without changing accepted P3 behavior.
 
-It explicitly does **not** own:
+In particular:
 
-- `T_selected` membership or P4 current revision;
-- the current P1 relation-authority digest;
-- the selected-only P1 relation projection/component digest;
-- exact fold gradient/monitor/outer-evaluation/purge memberships;
-- fold-specific fitted E0/transforms/features/weights or other DATA7/DATA8 products;
-- TRAIN2 checkpoints, optimizer/RNG state, EVAL2 records, or CV acceptance outcomes.
+- `canonicalize_mace_candidate_architecture(None)` must not remain the P5 method realization unless `None -> pinned defaults` is positively the exact authenticated method architecture and that same descriptor is bound by the method identity;
+- foundation/head/multihead fine-tuning settings must come from the canonical resolved method and be emitted to the actual MACE job through the established MACE argument translation;
+- optimizer-family/settings that participate in identity must reach the runtime/MACE owner or be rejected if unsupported;
+- dtype/backend values in identity must match the runtime realization that actually executes;
+- target preparation must receive the resolved common training/weighting/reference-fit recipe instead of internally constructing unrelated defaults.
 
-The CV policy digest must therefore be computable before fold construction and before numerical execution.
+Fresh CV/final training means fresh execution from the canonical method initialization. For a foundation-fine-tuning method this means reloading the canonical foundation initialization for each new run, not random scratch and not a screening/CV checkpoint. If the canonical method is truly scratch initialization, use that exact accepted scratch policy instead.
 
-### 2.3 `CvPlanIdentity` — current selected scientific inputs plus CV policy realization
+### 2.4 Replay authority resolution
 
-Introduce or adapt one immutable current CV plan identity below the policy layer. It binds enough exact scientific lineage to make a CV campaign reproducible and restart-safe, including at minimum:
+Replay configuration must be resolved through the repository's canonical replay owner, not through `bool([paths].replay_true_labels)` or another single-key heuristic.
+
+Implementation must support the currently accepted replay configuration interface(s), including the canonical single-source replay path when enabled and any still-supported legacy split-file form through the existing normalization layer. Do not create another P5-only replay configuration schema.
+
+Resolve before expensive post-selection work:
 
 ```text
-current P4 selected binding / generation lineage
-exact N_selected / T_selected membership identity
-PostSelectionMethodIdentity digest
-CvValidationPolicyIdentity digest
-canonical current P1 split-exclusion/protected-relation authority identity
-selected-only projected/transitive component identity
-exact deterministic per-fold role memberships
-configured required CV seed/variant run matrix as applicable
+canonical replay config/source authority
+ -> authenticated replay source identity
+ -> deterministic train/monitor split authority
+ -> training replay role
+ -> TRUE_DFT monitor/evaluation view when replay retention is enabled
 ```
 
-This is derived plan state, not a new target-size or P1 authority.
+If the resolved shared method requires replay but the required source/TRUE_DFT retention authority cannot be constructed, fail before fold/final training when the absence is knowable at setup time. Never silently set replay disabled merely because one legacy path key is absent.
 
-Changing the P1 relation authority or exact selected projection may change/reject the CV plan while leaving the CV **policy** digest unchanged when configuration is unchanged. Changing fold assignment because policy/seed changes changes both the policy as appropriate and the derived plan. Exact memberships never flow upward to redefine the policy.
+### 2.5 Replay training exposure is part of the method
 
-### 2.4 `CvFoldRunPlan` and realized CV evidence
+When the resolved method uses replay/multihead replay, each CV/final training run must actually receive the authorized replay training exposure required by that method.
 
-Each fold/run descends from `CvPlanIdentity` and binds the exact fold/seed/run role needed by the shared DATA7/DATA8/TRAIN2/EVAL2 execution owners.
+The target role remains:
 
-Realized descendants include, as applicable:
+- CV: fold-local target gradient membership only;
+- final: full exact `T_selected` target gradient membership.
 
-- fold-local fitted preparation products;
-- materialized DATA8 bundle/job identities;
-- fresh optimizer/RNG/run state;
-- checkpoint and monitor evidence;
-- frozen representative identity;
-- exact held-out EVAL2 evidence;
-- fold/seed/campaign acceptance records.
+Replay training membership is a separate explicit role descended from the canonical replay authority. It must not enter `T_selected`, CV fold construction, target E0/target-only fitted preparation, or target-size authority by accidental union.
 
-These descendants bind their parent plan/policy/method digests. They cannot alter those parent digests to make themselves current.
+Reuse the shared DATA8/MACE multihead/replay materialization machinery already used by the accepted training path. Do not concatenate replay frames into the target dataset merely to make a single-file trainer work if doing so changes head/objective/exposure semantics.
 
-A deterministic fitted product that does not match the plan + recipe + authorized fold-training evidence is invalid evidence; it is not a reason to mutate the policy or plan after the fact.
+### 2.6 TRUE_DFT replay admissibility execution
 
-### 2.5 `FinalProductionPolicyIdentity` — production policy/configuration only
+When replay admissibility is enabled, every checkpoint considered for a CV representative or final-production representative must have authenticated replay evidence before target-only ordering.
 
-`FinalProductionPolicyIdentity` owns canonical resolved production-only choices known before final realization, including as applicable:
-
-- `[training].max_num_epochs`;
-- final-production seed/job policy and multiplicity;
-- production-only adaptive/stopping/runtime controls that are scientifically relevant;
-- final checkpoint/export/committee policy not already part of the shared method;
-- other production-only configured choices permitted by the frozen parent.
-
-It explicitly does **not** own:
-
-- current P4 generation/selected membership;
-- M3 membership/digest or other inherited P2 scientific evidence;
-- accepted CV evidence/result digest;
-- final fitted preparation/materialization products;
-- checkpoints, model exports, or committee members actually produced.
-
-M3 remains an inherited P2/P4 development/model-selection evidence lineage. It binds the final plan/evidence that consumes it; it is not a production-policy knob.
-
-### 2.6 `FinalProductionPlanIdentity` — authorization and exact inherited scientific lineage
-
-Introduce or adapt one immutable final-production plan below the production-policy layer. It binds, at minimum:
+For the exact replay monitor membership bound to the method/plan:
 
 ```text
-current P4 selected binding / exact full T_selected identity
-PostSelectionMethodIdentity digest
-accepted current CV authorization/evidence identity for that method
-FinalProductionPolicyIdentity digest
-frozen P2/P4 M3 development/model-selection lineage
-exact final seed/job/run-role matrix
-required replay/source lineage and other inherited scientific parents
+candidate checkpoint -> replay TRUE_DFT predictions -> candidate replay force RMSE
+canonical foundation/baseline -> same TRUE_DFT replay monitor -> baseline replay force RMSE
+candidate - baseline -> replay degradation
+label namespace -> true_dft
 ```
 
-The plan authorizes fresh full-`T_selected` production under the already accepted method and current production policy. It does not continue screening/CV model/optimizer/RNG state.
+Feed the real values to the existing `CheckpointAdmissibilityPolicy` / `assess_eval2_checkpoint` owner:
 
-If current predecessor lineage changes, stale final plans reject through currentness/restart validation; the implementation must not counterfeit currency by rehashing the old plan locally.
+- `replay_candidate_force_rmse_ev_per_angstrom = actual candidate RMSE`;
+- `replay_foundation_force_rmse_ev_per_angstrom = actual canonical baseline RMSE`;
+- `replay_label_mode = "true_dft"` (or the canonical enum value serialized equivalently).
 
-### 2.7 Final materialization/run/evidence layer
+Passing `None` is valid only when the resolved admissibility policy has replay disabled.
 
-Final DATA7/DATA8/TRAIN2/EVAL2 materialization and training evidence descend from `FinalProductionPlanIdentity`.
+The foundation/baseline model and head used here must be the canonical baseline bound by the resolved shared method; a convenient unrelated model is not acceptable.
 
-Realized fitted products, checkpoint sets, selected representatives, exports, committee membership, runtime summaries, attempt/recovery state, and publication records belong here or in narrower existing descendant records. They may be content-addressed and reused when their complete parent identity still matches, but they never become inputs to the production-policy digest that authorized them.
+Candidate and baseline must be evaluated on the exact same authenticated TRUE_DFT replay monitor membership and label convention.
 
----
+### 2.7 Reuse existing replay evaluation machinery
 
-## 3. Identity and invalidation invariants
+Prefer semantic reuse of existing owners such as the current replay source/split/true-label materialization/view machinery and the existing checkpoint model-comparison/evaluation path that already computes candidate-vs-foundation TRUE_DFT replay metrics.
 
-The following dependency rules are frozen.
+Do not revive legacy MLCV target+replay weighted ranking. If an existing helper mixes obsolete ranking authority with useful replay prediction/reduction, extract/reuse only the lower-level source/view/prediction/metric owner.
 
-### 3.1 Policy identities are pre-execution and acyclic
-
-Every shared/CV/final policy digest must be deterministically computable from canonical resolved configuration, stable policy/algorithm/schema identity, and predecessor **policy definitions** needed to define the method. No DATA7/DATA8/TRAIN2/EVAL2 result, fitted-product digest, exact fold membership, current M3 evidence digest, checkpoint, model export, or acceptance result may be required to compute a policy digest.
-
-### 3.2 Plans bind exact current scientific lineage
-
-Plan identities bind exact predecessor/current scientific state needed for their realization. This includes `T_selected`, P1 relation projection and exact folds for CV, and M3/current accepted-CV authorization for final production.
-
-Plans may depend on policy identities; policy identities may not depend on plans.
-
-### 3.3 Evidence binds plans
-
-Realized evidence binds the exact plan plus the materialized/run-specific identity required by its semantic owner. Evidence may not rewrite its parent plan/policy identity to preserve apparent validity.
-
-### 3.4 Parent invalidation DAG remains unchanged
-
-- production-only `[training].max_num_epochs` change -> `FinalProductionPolicyIdentity` and affected final plan/evidence change; P4 and accepted CV remain valid;
-- CV-only fold/partition/monitor/budget/acceptance-policy change -> `CvValidationPolicyIdentity` and CV plan/evidence/current authorization change; P4 remains valid; production-only policy digest is unchanged;
-- P1 relation-authority/current selected-data change -> follow accepted upstream currentness/invalidation; derived CV/final plans/evidence become stale as appropriate without turning that scientific change into a CV-policy edit;
-- exact fold-local fitted-product/evidence change or corruption -> descendant evidence changes/rejects; method/CV-policy/plan identity is not post-hoc rewritten;
-- M3 lineage/current predecessor change -> final plan/evidence changes/rejects through upstream lineage; `FinalProductionPolicyIdentity` remains unchanged if production configuration is unchanged;
-- shared method-definition change -> shared method digest changes and stale CV cannot authorize final production; if the changed field is also upstream target-size scientific identity, existing P1-P4 invalidation rules remain authoritative.
-
-### 3.5 No new mutable authority
-
-These identities are dependency records, not additional current-state registries. P4 CampaignStore/current terminal authority remains the only upstream current selected-state owner. Revision-3/4 commit-time fencing and currentness-by-resolution remain mandatory.
-
----
-
-## 4. Revision-5 implementation obligations
-
-### P5-B5 — normalize policy, plan, and evidence ownership
-
-Required end state: the downstream identity graph is acyclic, minimally scoped, restart-safe, and matches the parent invalidation DAG.
-
-Required consequences:
-
-1. Reconcile revision-4 shared-method/CV-policy/final-policy code design so policy records contain only canonical policy/configuration and stable recipe/algorithm identity.
-2. Add/reuse a distinct CV plan owner for current selected lineage, P1 selected-only split-exclusion projection, exact folds, and required CV run matrix.
-3. Add/reuse a distinct final-production plan owner for current selected lineage, accepted CV authorization, final policy, M3 lineage, and exact final run matrix.
-4. Keep fold/final fitted products and TRAIN2/EVAL2 outputs below their plan owners.
-5. Reuse existing repository protocol/run-plan/content-addressed objects when they already provide these semantics; do not add wrappers or duplicate digest records merely to match conceptual names.
-6. Make policy identities available before expensive numerical work and persist enough canonical resolved configuration to reproduce them.
-7. Restart/current exposure must authenticate the full parent chain rather than trust a stored child digest as authority.
-8. Preserve revision-4 identity separation for CV budget versus production horizon and preserve all revision-3 publication/currentness hardening.
-
-### Required focused and structural acceptance
-
-Through the real configuration/identity/plan owners, prove:
-
-- **pre-execution construction:** shared-method, CV-policy, and final-policy identities can be resolved before DATA7/DATA8/TRAIN2/EVAL2 execution and do not inspect descendant result files/records;
-- **CV projection separation:** same method + same resolved CV configuration, but a changed authenticated selected-only P1 relation projection/current selected lineage, keeps the CV-policy digest stable while the CV-plan digest changes or the stale plan rejects;
-- **fold realization separation:** tampering/changing a fold-local fitted-product/evidence record cannot change the method/CV-policy/CV-plan digests; it changes or invalidates only the descendant evidence;
-- **production horizon:** changing only `[training].max_num_epochs` changes final-policy/final-plan descendants while leaving P4 and accepted CV policy/evidence valid;
-- **M3 lineage separation:** changing authenticated M3/current predecessor lineage changes/rejects the final plan/evidence without changing `FinalProductionPolicyIdentity` when production configuration is unchanged;
-- **parent mismatch rejection:** CV/final restart rejects evidence whose method/policy/plan parent digests or current selected binding do not match;
-- **no circular fields:** structural inspection proves CV-policy serialization contains no exact fold memberships, selected relation-projection digest, or fitted-product/evidence digest, and final-policy serialization contains no M3/current-CV/result/fitted-product digest;
-- **no reverse authority:** structural/current-path inspection proves child evidence cannot be supplied as an input that determines its parent policy identity.
-
-If the implementation changes existing shared protocol/run-plan serializers, run their complete affected persistence/restart/API regression. If new records are introduced, add exact serialization/digest stability and malformed-parent rejection tests.
-
-### P5-F5/G5 — assembled current-path reclosure
-
-The final assembled P5 path must have this ownership order:
+A small content-addressed baseline replay metric may be reused across checkpoints/runs when its complete identity matches, at minimum:
 
 ```text
-current P4 SELECTED authority
+canonical baseline model/head identity
++ exact TRUE_DFT replay monitor identity
++ evaluation/metric policy identity
++ dtype/backend identity when scientifically relevant
+```
+
+Caching is optional; correctness and ownership are mandatory. A cache may accelerate evidence generation but cannot become replay authority.
+
+### 2.8 Ordering and acceptance remain unchanged
+
+The required order is:
+
+```text
+checkpoint candidate
+ -> target metrics
+ -> replay TRUE_DFT retention + required physical admissibility
+ -> discard inadmissible candidates
+ -> target-only ordering among admissible candidates
+ -> freeze representative
+ -> for CV only: held-out outer target evaluation
+ -> fold target-only acceptance
+```
+
+Replay may reject a checkpoint but may never improve its rank, break a target tie, rescue a target-failed outer fold, choose another target size, or change P4 state.
+
+For final production, M3 remains the target checkpoint/model-selection evidence. Replay is still an admissibility constraint only.
+
+---
+
+## 3. Identity and lineage placement
+
+### 3.1 Shared method identity
+
+`PostSelectionMethodIdentity` must bind stable shared method definitions, including the authenticated canonical model/foundation/head/architecture and replay exposure/admissibility definition as scientifically applicable.
+
+Do not bind realized fold membership, exact replay prediction outputs, checkpoint metrics, fitted E0 values, M3 membership, or accepted CV result into the shared method policy identity.
+
+### 3.2 CV plan/evidence
+
+The CV plan continues to bind:
+
+- current P4 selected binding;
+- exact `T_selected` identity;
+- shared method digest;
+- CV policy digest;
+- current canonical P1 relation authority;
+- selected-only projected components;
+- exact folds and required CV run matrix;
+- exact inherited replay/source lineage needed to execute the method when that lineage is not already fully represented by stable method identity.
+
+Fold evidence binds actual replay training/evaluation artifacts and replay metric records it consumes/produces.
+
+### 3.3 Final plan/evidence
+
+The final-production plan continues to bind:
+
+- current P4 selected binding/full exact `T_selected`;
+- shared method digest;
+- accepted current CV authorization for that method;
+- final-production policy digest;
+- M3 lineage;
+- final seed/run matrix;
+- required replay/source lineage and other inherited scientific parents.
+
+Final evidence binds realized replay training/evaluation/checkpoint evidence below that plan.
+
+### 3.4 Invalidation
+
+Preserve the existing DAG:
+
+- corruption/change of a realized replay metric invalidates only affected descendant evidence;
+- change of replay source/exposure/admissibility that changes the scientific method changes the shared method identity and invalidates stale CV/final authorization;
+- if that same method field is also part of the target-size/P1-P4 scientific identity, existing upstream invalidation remains authoritative and P5 must not preserve P4 currency locally;
+- production-only horizon change still leaves accepted CV method evidence valid;
+- CV-only fold/acceptance-policy change still leaves P4 and production-only policy identity unchanged.
+
+---
+
+## 4. Required implementation sequence
+
+### P5-R6A — canonical method resolver and execution parity
+
+**Required end state:** one resolved method object/path controls both method identity and actual post-selection execution.
+
+Implementation consequences:
+
+1. Reconcile `post_selection_identity.py` so method resolution does not create scientifically meaningful defaults that execution does not share.
+2. Resolve the canonical foundation/model/head/architecture/training-mode/common preparation/replay/optimizer/LR/dtype/backend/admissibility/selection policies through existing accepted owners.
+3. Pass the resolved common training/preparation recipe into fold/final preparation; remove hidden default construction from execution-level helpers where it can drift.
+4. Replace P5-local default MACE architecture construction with the canonical resolved architecture/configuration used by the accepted training path.
+5. Ensure the generated MACE/TRAIN2 configuration consumes every scientifically material method field or rejects unsupported values.
+6. Keep CV budget and production horizon role-specific as already accepted.
+7. Preserve P4/P5 identity hierarchy and currentness behavior.
+
+Expected primary affected surface:
+
+- `mdstats/training_data/post_selection_identity.py`;
+- `mdstats/training_data/post_selection_execution.py`;
+- `mdstats/training_data/campaign_post_selection_runtime.py`;
+- the canonical target-size/common MACE configuration builder/resolver if extraction is required;
+- associated exports/tests.
+
+Do not modify P1-P4 scientific policy merely to avoid reusing its method resolver.
+
+**Stage-local acceptance:**
+
+- real config -> resolved method -> identity and generated executable config share the same foundation/head/architecture/training mode/optimizer/LR/dtype policy;
+- mutate one supported material method field and prove both method digest and executable config/runtime plan change consistently;
+- for any configured method value not supported by execution, prove pre-training rejection rather than silent default;
+- path relocation of byte-identical immutable model input does not change scientific identity when path location is not semantic;
+- structural check proves the current post-selection execution path no longer depends on an unbound `canonicalize_mace_candidate_architecture(None)` default;
+- structural check proves execution-level fitted preparation no longer silently substitutes a fresh default common-training policy for the resolved method;
+- affected P3/common MACE builder regression passes if shared code is refactored.
+
+Dependent replay/final work does not proceed until this stage has semantic and functional closure.
+
+### P5-R6B — replay training and TRUE_DFT admissibility path
+
+**Required end state:** replay-enabled P5 runs train with the authorized replay exposure and evaluate real TRUE_DFT replay retention before candidate ordering.
+
+Implementation consequences:
+
+1. Resolve replay through the canonical replay configuration/source/split owner, including the current single-source interface and any still-supported normalized legacy form.
+2. Bind authenticated replay train/monitor identities into the appropriate method/plan/evidence layers.
+3. Materialize replay training input through the shared DATA8/MACE training path when the method requires replay.
+4. Materialize/resolve the TRUE_DFT replay monitor view through the existing replay true-label owner.
+5. Evaluate the canonical foundation/baseline once per matching evidence identity as appropriate and each candidate checkpoint on the same TRUE_DFT monitor.
+6. Convert those predictions with the existing metric/reduction owner; do not add a P5-local RMSE definition.
+7. Pass real candidate RMSE, baseline RMSE, and TRUE_DFT label mode into checkpoint admissibility.
+8. Persist enough replay metric/source/baseline lineage for restart and audit.
+9. Keep replay absent/disabled path valid only when the canonical resolved method actually disables replay.
+10. Do not enable TRAIN2 adaptive replay stopping; replay retention remains checkpoint admissibility, not a performance-driven training-termination authority.
+
+Expected primary affected surface:
+
+- `campaign_post_selection_runtime.py`;
+- `post_selection_execution.py`;
+- replay/source/view integration adapters if needed;
+- `post_selection_cv_acceptance.py` only if evidence binding requires extension, not to change target-only acceptance semantics;
+- `post_selection_production.py`/plan records only for exact replay/source parent binding if not already covered;
+- tests/fixtures.
+
+Prefer reuse of `replay.py` source/split/TRUE_DFT view owners and the existing checkpoint evaluation/model-comparison machinery. Modify those shared owners only when an actual reusable API gap exists, and then run their affected regression.
+
+**Stage-local acceptance:**
+
+- replay-enabled real config produces a canonical replay authority; no legacy path-presence heuristic decides scientific enablement;
+- captured CV/final training materialization proves authorized replay training exposure is present when required and target membership remains exact;
+- candidate within replay degradation budget is admissible;
+- candidate above replay degradation budget is inadmissible even if target score is best;
+- two admissible candidates where the target-better candidate has worse replay degradation still select the target-better candidate;
+- missing/unauthenticated TRUE_DFT replay evidence fails closed and cannot be converted to replay-disabled behavior;
+- replay-disabled method runs without replay metrics and remains target-only;
+- candidate and foundation replay metrics bind the same exact TRUE_DFT monitor membership;
+- final-production M3 checkpoint selection applies the same replay admissibility constraint before target-only ordering;
+- no replay metric contributes to outer-fold acceptance or seed/committee ranking credit.
+
+### P5-R6C — assembled authorization/restart reclosure
+
+**Required end state:** the complete P4 -> P5 lifecycle proves that the method CV accepts is exactly the method final production executes, including replay.
+
+Assembled bounded flow:
+
+```text
+real config + real CampaignStore
+ -> real current P4 SELECTED authority
  -> current selected-training context
- -> shared method identity
- -> CV policy identity
- -> CV plan from exact T_selected + complete P1 protected-relation projection
- -> fresh fold materialization/TRAIN2/EVAL2 evidence
- -> exact all-required-fold target-only CV acceptance
- -> final-production policy identity
- -> final-production plan from full T_selected + accepted CV + M3 lineage
- -> fresh final materialization/TRAIN2/EVAL2
+ -> canonical resolved shared method
+ -> CV policy + exact selected/P1 CV plan
+ -> real replay source/split/TRUE_DFT authority when enabled
+ -> real fold DATA7/DATA8/TRAIN2/EVAL2 orchestration
+ -> replay admissibility + target-only representative selection
+ -> held-out target-only fold acceptance
+ -> accepted CV authorization for exact shared method
+ -> final policy + final plan + M3 lineage
+ -> fresh full-T_selected DATA7/DATA8/TRAIN2/EVAL2 orchestration
+ -> replay admissibility + target-only M3 checkpoint choice
  -> currentness-fenced publication
+ -> fresh-process reload/restart authentication
 ```
 
-Fresh assembled acceptance must include all revision-2/revision-3/revision-4 real-owner, race, leakage, role, CV-acceptance, replay, fresh-production, M3, locked/calibration, namespace, restart, and invalidation negatives plus the revision-5 identity-layer tests above.
+Allowed test doubles: expensive MACE numerical training and inference may be bounded/faked below the real configuration, method-resolution, replay authority, materialization, TRAIN2/EVAL2 decision, CV acceptance, final authorization, persistence/restart, and publication owners.
 
-The material semantic owners under acceptance are the production current selected adapter/currentness path, current CV plan/authorization owner, current final-production plan/authorization owner, and real persistence/restart/publication boundaries. Expensive ML training/inference may be bounded/faked below those owners; helper-only identity tests cannot substitute for assembled authorization/restart acceptance.
+Forbidden proxy acceptance:
 
-Stage-local affected regression remains mandatory after material executable stages. Final P5 closure requires fresh affected-surface re-derivation, complete affected regression, repository-required checks, and bounded assembled P4 -> P5 integration on the final candidate.
+- directly fabricate `Eval2CheckpointRecord` replay fields and claim the runtime replay path is accepted;
+- patch the post-selection method resolver or materializer to return the desired executable configuration;
+- seed accepted CV records and skip real fold authorization/acceptance;
+- bypass canonical replay source/split/TRUE_DFT resolution;
+- inspect only method digests without proving the job handed to the trainer consumes the same method;
+- replace CampaignStore/currentness when current/restart/publication is under acceptance.
+
+Mandatory assembled assertions:
+
+- P4 selection/revision remains unchanged by CV/final work;
+- exact CV universe remains `T_selected` and complete under P1 split exclusion;
+- the trainer request/materialized MACE config proves canonical foundation/head/architecture/training-mode realization;
+- replay-enabled runs contain the authorized replay training role and authenticated TRUE_DFT replay monitor lineage;
+- every accepted representative passed replay/physical admissibility and target-only ordering;
+- every required fold/seed passed the configured outer target predicate;
+- final production uses full exact `T_selected`, fresh initialization/optimizer/RNG, independent configured production horizon, M3 target monitor, and the same shared method digest accepted by CV;
+- screen/CV/final namespaces remain disjoint;
+- restart reauthenticates P4 + method/policy/plan + replay/source parents before reuse;
+- stale CV under a changed shared method cannot authorize final production;
+- stale-generation publication race remains fenced.
 
 ---
 
-## 5. Implementation authority
+## 5. Mandatory negative and structural matrix
+
+The revision is not closed without the following direct protections:
+
+1. **identity-only mutation guard:** changing a method field cannot change only the digest while leaving the executable job byte/semantically unchanged.
+2. **execution-only mutation guard:** changing a material executable MACE method setting cannot leave the method identity unchanged.
+3. **default architecture guard:** no current P5 path silently replaces accepted architecture with unbound pinned defaults.
+4. **foundation guard:** no screening/CV checkpoint is used as P5 initialization; canonical foundation/scratch policy is used freshly.
+5. **training-mode guard:** identity claiming replay/multihead cannot execute a target-only single-head job.
+6. **replay-enable guard:** current replay enablement comes from canonical replay resolution, not one legacy path boolean.
+7. **replay-training guard:** replay-required method cannot train without authorized replay exposure.
+8. **TRUE_DFT guard:** replay-enabled admissibility cannot call EVAL2 with missing candidate/baseline replay metrics or missing label mode.
+9. **same-monitor guard:** candidate and baseline replay metrics cannot come from different replay memberships/label namespaces.
+10. **ranking guard:** replay can reject but cannot rank/tie-break/credit acceptance.
+11. **outer-fold guard:** outer CV data cannot enter fitting/checkpoint selection.
+12. **M3 guard:** M3 can select final checkpoint but is not independent validation.
+13. **horizon guard:** production `[training].max_num_epochs` remains independent from target-size `n3` and CV budget.
+14. **currentness guard:** g1 work cannot become current after g2 P4 publication.
+15. **no-backflow guard:** CV/replay failure cannot trigger target-size reducer/reselection.
+16. **legacy-authority guard:** no current P5 execution edge depends on DATA5 label-domain CV or replay-weighted MLCV ranking authority.
+
+---
+
+## 6. Affected regression and qualification disposition
+
+After P5-R6A, run focused method-resolution/materialization tests plus stage-local affected regression for every shared builder/resolver touched.
+
+After P5-R6B, run focused replay/source/split/TRUE_DFT/checkpoint-admissibility tests plus affected DATA8/TRAIN2/EVAL2/replay regression.
+
+After P5-R6C, re-derive the affected surface from the assembled diff and run fresh complete affected regression. At minimum include:
+
+- all P5-A/B/C/D/E/F/G and revision-5 identity tests still applicable;
+- P4 current terminal/currentness/publication race tests;
+- target-size/P3 common method/MACE builder tests if shared code changed;
+- replay source/split/single-source/legacy-normalization/TRUE_DFT view tests actually reused;
+- existing TRUE_DFT replay checkpoint-evaluation regression;
+- DATA7/DATA8 materialization and replay-role tests;
+- TRAIN2 policy/runtime/checkpoint/provider tests;
+- EVAL2 target/replay admissibility and target-only ordering tests;
+- final-production/M3/freshness/horizon tests;
+- persistence/restart/content-addressed evidence tests;
+- CLI/orchestrator assembled P4 -> P5 integration.
+
+If the final diff crosses a shared execution/replay surface whose consumers cannot be confidently bounded, run the broader repository regression rather than assuming unaffected behavior.
+
+Do not perform long GPU/data-heavy production qualification as part of this repair. Bounded CPU/available-device functional tests and existing lightweight numerical fakes are sufficient for control-flow/scientific-contract closure. Final real-GPU/production-scale qualification remains deferred under the frozen parent.
+
+---
+
+## 7. Implementation authority
 
 ### Frozen
 
-Implementation must preserve:
+Implementation must preserve all requirements in Sections 0-6. In particular:
 
-- the complete revision-2 + unaffected revision-3 + unaffected revision-4 contract;
-- Protocol 5.8.0 binding and the frozen parent verdict;
-- the acyclic `policy -> plan -> realized evidence` dependency direction;
-- shared method identity separate from CV/final role-specific policies;
-- CV policy separate from exact selected/P1 projection/fold realization;
-- final-production policy separate from M3/current-CV/current-selected realization;
-- exact current scientific lineage bound at plan/evidence level;
-- no upward/reverse digest dependency from evidence to plan/policy;
-- all prior currentness, CV completeness/leakage, target-only acceptance/ranking, replay, M3, fresh-production, namespace, invalidation, and qualification-disposition rules.
+- one canonical resolved shared method controls both identity and executable realization;
+- canonical foundation/head/architecture/training/replay semantics are reused from existing accepted owners;
+- replay-enabled training actually exposes replay data according to the method;
+- replay-enabled checkpoint admissibility consumes authenticated TRUE_DFT candidate-vs-foundation metrics;
+- replay remains zero-credit for ranking/acceptance;
+- all prior P5 currentness/CV/final-production/identity hierarchy rules remain intact.
 
 ### Delegated
 
 Implementation may choose:
 
-- exact version-agnostic class/module/schema names;
-- whether existing protocol-family/run-plan/materialization records can satisfy one or more conceptual layers without new wrapper types;
-- whether exact run matrices are embedded in a plan or represented by deterministic child run-plan records, provided ownership and parent binding remain unambiguous;
-- exact content-addressed storage layout for plan/evidence records;
-- exact error types/messages consistent with established package conventions;
-- local factoring and bounded fixtures below the semantic owner boundaries.
+- exact version-agnostic resolved-method class/module names;
+- whether common target-size/P5 MACE configuration logic is extracted into a new shared module or an existing module gains a reusable function;
+- exact immutable replay metric record schema when an existing record is not reusable;
+- whether baseline replay evaluation is cached or recomputed, provided identity/currentness is correct;
+- exact local factoring/error messages;
+- bounded numerical fake implementation below the frozen real-owner acceptance boundaries.
 
 ### Reopen only on evidence
 
-Reopen only the affected P5 identity surface if implementation demonstrates that:
+Reopen only the affected P5 surface if repository evidence demonstrates one of these genuine contradictions:
 
-1. an existing authoritative repository contract intentionally requires realized fitted/evaluation evidence to define a policy identity and cannot be separated without changing scientific semantics;
-2. M3 is intentionally a user-configurable production-policy choice rather than inherited P2/P4 scientific lineage, contrary to the frozen parent;
-3. exact CV fold realization must be part of the policy definition rather than a deterministic plan derived from that policy, and repository evidence shows this is a material governing contract rather than legacy topology;
-4. an acyclic policy -> plan -> evidence representation cannot satisfy restart/currentness without adding a second current-state authority;
-5. another frozen revision-4 assumption is disproved by implementation evidence.
+1. the accepted P3/P4 target-size method cannot expose/reconstruct the canonical foundation/head/architecture/training recipe needed for downstream method equality without changing predecessor science;
+2. the supported external MACE interface cannot realize the already-accepted shared method for CV/final production through the common execution engine;
+3. TRUE_DFT replay retention cannot be evaluated on the configured canonical replay source without changing the accepted replay scientific contract;
+4. making replay training exposure real would require changing the method whose target-size convergence was selected, in which case the existing upstream method identity/invalidation must be honored rather than locally overridden;
+5. another frozen P5 requirement is materially contradictory to the implemented predecessor authority.
 
-Do not reopen P1-P4 or the target-size scientific design merely because existing legacy MLCV types mix these layers; refactor/bypass obsolete topology under P5 unless a genuine governing contradiction is demonstrated.
+Legacy topology, inconvenient function boundaries, missing reusable helper APIs, or the need to refactor a shared builder are not redesign triggers by themselves.
 
 ---
 
-## 6. Exit gate
+## 8. Exit gate
 
-P5 revision 5 is implementation-ready only under the complete cumulative revision-2 + revision-3 + revision-4 + revision-5 contract.
+P5 revision 6 is accepted only when:
 
-P5 is accepted after implementation only when:
+> The exact current P4-selected dataset remains the sole upstream selection authority; one canonical resolved post-selection method produces both the shared method identity and the actual DATA7/DATA8/TRAIN2/MACE/EVAL2 realization; canonical foundation/head/architecture/objective/optimizer/LR/dtype/replay semantics cannot drift between identity and execution; replay-required CV/final runs actually receive the authorized replay exposure; every replay-enabled checkpoint is qualified against authenticated TRUE_DFT candidate-versus-canonical-baseline replay evidence before target-only ordering; all required selected-only CV folds/seeds pass their target-only held-out predicate; and fresh full-`T_selected` final production executes the exact CV-accepted method under independent production policy/M3 lineage without stale currentness, reverse authority, replay ranking credit, or cross-role restart collision.
 
-> Current P4-selected authority remains the sole upstream selection/currentness owner; downstream method and role-specific **policy identities are resolved before numerical realization and contain no descendant evidence**; exact selected/P1/CV/M3 scientific lineage is bound by immutable plans; fitted/materialized/TRAIN2/EVAL2/checkpoint/acceptance products remain descendants of those plans; every required selected-only CV fold/seed/variant passes the configured target-only predicate after mandatory admissibility; and fresh full-`T_selected` final production executes under the CV-accepted shared method plus independent production policy without any reverse evidence-to-policy authority, stale-generation publication, or cross-role restart collision.
-
-After stage-local closure, fresh assembled affected regression/integration, and independent review pass, mark P5 implemented/accepted and commit the formal P5 closure checkpoint. P6 remains blocked until that closure.
+After stage-local semantic + functional closure for R6A/R6B, fresh assembled R6C regression/integration, and independent review pass, mark P5 implemented/accepted and commit the formal P5 closure checkpoint. P6 remains blocked until that closure.
