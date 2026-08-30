@@ -491,6 +491,13 @@ def _resolve_post_selection_replay_resolution(
     )
 
 
+def _retire_post_selection_provider(provider: Any) -> None:
+    """Release one evaluation provider through its existing lifecycle owner."""
+
+    if provider is not None and hasattr(provider, "close"):
+        provider.close()
+
+
 def execute_post_selection_run(
     context: PostSelectionContext,
     *,
@@ -632,59 +639,63 @@ def execute_post_selection_run(
             evaluation_model_state=POST_SELECTION_EVALUATION_MODEL_STATE,
             allow_forward_override=context.inference_evaluator is not None,
         )
-        metrics = evaluate_post_selection_dataset(
-            run_plan=run_plan,
-            artifact=materialization.checkpoint_monitor_artifact,
-            dataset_role=DATASET_ROLE_CHECKPOINT_MONITOR,
-            root_directory=material_directory,
-            provider=provider,
-            block_ids=monitor_blocks,
-            extxyz_policy=extxyz_policy,
-            inference_evaluator=context.inference_evaluator,
-        )
         replay_candidate_rmse = None
         replay_foundation_rmse = None
         replay_label_mode = None
-        if admissibility.replay_enabled:
-            if (
-                replay_resolution is None
-                or replay_resolution.monitor_artifact is None
-            ):
-                raise PostSelectionError(
-                    "Missing required TRUE_DFT replay monitor artifact."
-                )
-            replay_monitor_artifact = replay_resolution.monitor_artifact
-            replay_monitor_path = Path(replay_resolution.monitor_path)
-            if not replay_monitor_path.is_file():
-                raise PostSelectionError(
-                    f"TRUE_DFT replay monitor file is missing: {replay_monitor_path}"
-                )
-            if (
-                sha256_file_cached(replay_monitor_path)
-                != replay_monitor_artifact.sha256
-            ):
-                raise PostSelectionError(
-                    "TRUE_DFT replay monitor file bytes changed on disk."
-                )
-
-            replay_blocks = tuple(
-                f"replay_block_{i}"
-                for i in range(replay_monitor_artifact.configuration_count)
-            )
-            candidate_replay_metrics = evaluate_post_selection_dataset(
+        try:
+            metrics = evaluate_post_selection_dataset(
                 run_plan=run_plan,
-                artifact=replay_monitor_artifact,
-                dataset_role="replay_monitor",
-                root_directory=replay_monitor_path.parent,
+                artifact=materialization.checkpoint_monitor_artifact,
+                dataset_role=DATASET_ROLE_CHECKPOINT_MONITOR,
+                root_directory=material_directory,
                 provider=provider,
-                block_ids=replay_blocks,
+                block_ids=monitor_blocks,
                 extxyz_policy=extxyz_policy,
                 inference_evaluator=context.inference_evaluator,
             )
-            replay_candidate_rmse = (
-                candidate_replay_metrics.force_component_rmse_ev_per_angstrom
-            )
+            if admissibility.replay_enabled:
+                if (
+                    replay_resolution is None
+                    or replay_resolution.monitor_artifact is None
+                ):
+                    raise PostSelectionError(
+                        "Missing required TRUE_DFT replay monitor artifact."
+                    )
+                replay_monitor_artifact = replay_resolution.monitor_artifact
+                replay_monitor_path = Path(replay_resolution.monitor_path)
+                if not replay_monitor_path.is_file():
+                    raise PostSelectionError(
+                        f"TRUE_DFT replay monitor file is missing: {replay_monitor_path}"
+                    )
+                if (
+                    sha256_file_cached(replay_monitor_path)
+                    != replay_monitor_artifact.sha256
+                ):
+                    raise PostSelectionError(
+                        "TRUE_DFT replay monitor file bytes changed on disk."
+                    )
 
+                replay_blocks = tuple(
+                    f"replay_block_{i}"
+                    for i in range(replay_monitor_artifact.configuration_count)
+                )
+                candidate_replay_metrics = evaluate_post_selection_dataset(
+                    run_plan=run_plan,
+                    artifact=replay_monitor_artifact,
+                    dataset_role="replay_monitor",
+                    root_directory=replay_monitor_path.parent,
+                    provider=provider,
+                    block_ids=replay_blocks,
+                    extxyz_policy=extxyz_policy,
+                    inference_evaluator=context.inference_evaluator,
+                )
+                replay_candidate_rmse = (
+                    candidate_replay_metrics.force_component_rmse_ev_per_angstrom
+                )
+        finally:
+            _retire_post_selection_provider(provider)
+
+        if admissibility.replay_enabled:
             foundation_identity = (
                 context.method_policies.foundation_potential_identity
             )
@@ -729,25 +740,26 @@ def execute_post_selection_run(
                     build_post_selection_foundation_baseline_provider,
                 )
 
-                baseline_provider = (
-                    build_post_selection_foundation_baseline_provider(
-                        foundation_path=foundation_model,
-                        foundation_identity=foundation_identity,
-                        foundation_head=foundation_head,
-                        device=context.method_policies.device,
-                        default_dtype=context.method_policies.common_training.default_dtype,
+                baseline_provider = build_post_selection_foundation_baseline_provider(
+                    foundation_path=foundation_model,
+                    foundation_identity=foundation_identity,
+                    foundation_head=foundation_head,
+                    device=context.method_policies.device,
+                    default_dtype=context.method_policies.common_training.default_dtype,
+                )
+                try:
+                    baseline_replay_metrics = evaluate_post_selection_dataset(
+                        run_plan=run_plan,
+                        artifact=replay_monitor_artifact,
+                        dataset_role="replay_monitor_baseline",
+                        root_directory=replay_monitor_path.parent,
+                        provider=baseline_provider,
+                        block_ids=replay_blocks,
+                        extxyz_policy=extxyz_policy,
+                        inference_evaluator=context.inference_evaluator,
                     )
-                )
-                baseline_replay_metrics = evaluate_post_selection_dataset(
-                    run_plan=run_plan,
-                    artifact=replay_monitor_artifact,
-                    dataset_role="replay_monitor_baseline",
-                    root_directory=replay_monitor_path.parent,
-                    provider=baseline_provider,
-                    block_ids=replay_blocks,
-                    extxyz_policy=extxyz_policy,
-                    inference_evaluator=context.inference_evaluator,
-                )
+                finally:
+                    _retire_post_selection_provider(baseline_provider)
                 replay_foundation_rmse = (
                     baseline_replay_metrics.force_component_rmse_ev_per_angstrom
                 )
@@ -792,16 +804,19 @@ def execute_post_selection_run(
             evaluation_model_state=POST_SELECTION_EVALUATION_MODEL_STATE,
             allow_forward_override=context.inference_evaluator is not None,
         )
-        outer_metrics = evaluate_post_selection_dataset(
-            run_plan=run_plan,
-            artifact=materialization.outer_evaluation_artifact,
-            dataset_role=DATASET_ROLE_OUTER_EVALUATION,
-            root_directory=material_directory,
-            provider=provider,
-            block_ids=_component_block_ids(selected, outer_evaluation_frame_uids),
-            extxyz_policy=extxyz_policy,
-            inference_evaluator=context.inference_evaluator,
-        )
+        try:
+            outer_metrics = evaluate_post_selection_dataset(
+                run_plan=run_plan,
+                artifact=materialization.outer_evaluation_artifact,
+                dataset_role=DATASET_ROLE_OUTER_EVALUATION,
+                root_directory=material_directory,
+                provider=provider,
+                block_ids=_component_block_ids(selected, outer_evaluation_frame_uids),
+                extxyz_policy=extxyz_policy,
+                inference_evaluator=context.inference_evaluator,
+            )
+        finally:
+            _retire_post_selection_provider(provider)
 
     evidence = PostSelectionRunEvidence(
         run_plan_digest=run_plan.content_digest,
