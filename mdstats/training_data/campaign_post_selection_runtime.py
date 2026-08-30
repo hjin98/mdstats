@@ -29,7 +29,7 @@ lineage, restart, and publication behavior while substituting only MACE.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -116,6 +116,9 @@ class PostSelectionContext:
     production_policy: FinalProductionPolicyIdentity
     trainer: Any
     inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None
+    _baseline_replay_cache: dict[str, float] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     @property
     def evidence_store(self) -> Any:
@@ -237,6 +240,18 @@ def execute_post_selection_run(
         context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
     )
     extxyz_policy = context.method_policies.extxyz
+    admissibility = context.method_policies.checkpoint_admissibility
+    replay_resolution = None
+    if admissibility.replay_enabled and hasattr(context, "paths") and context.paths is not None:
+        from ._campaign_cli_core import _resolve_true_label_replay_inputs
+
+        try:
+            replay_resolution = _resolve_true_label_replay_inputs(
+                context.cfg, context.paths, require_train=True
+            )
+        except Exception:
+            replay_resolution = None
+
     preparation, materialization = materialize_post_selection_run(
         selected,
         run_plan=run_plan,
@@ -247,6 +262,19 @@ def execute_post_selection_run(
         optimizer_policy=optimizer_policy,
         extxyz_policy=extxyz_policy,
         output_directory=material_directory,
+        common_training_policy=context.method_policies.common_training,
+        mace_architecture=context.method_policies.mace_architecture,
+        foundation_model=context.method_policies.foundation_model,
+        foundation_head=context.method_policies.foundation_head,
+        multiheads_finetuning=(
+            context.method_policies.training_mode == "multihead_replay"
+        ),
+        replay_train=(
+            None if replay_resolution is None else replay_resolution.train_path
+        ),
+        replay_monitor=(
+            None if replay_resolution is None else replay_resolution.monitor_path
+        ),
     )
     runtime_plan = post_selection_runtime_plan(
         method=context.method,
@@ -254,6 +282,7 @@ def execute_post_selection_run(
         budget_policy=budget_policy,
         structures_per_epoch=len(preparation.membership),
         learning_rate_policy=context.method_policies.learning_rate_schedule,
+        replay_monitor_enabled=admissibility.replay_enabled,
     )
     summary = context.trainer(
         PostSelectionRungRequest(
@@ -277,7 +306,6 @@ def execute_post_selection_run(
     )
     catalog = _checkpoint_catalog(run_plan, checkpoint_directory)
     monitor_blocks = _component_block_ids(selected, monitor_frame_uids)
-    admissibility = context.method_policies.checkpoint_admissibility
     selection_policy = context.method_policies.checkpoint_selection
     records = []
     monitor_metrics_by_identity: dict[str, Any] = {}
@@ -303,14 +331,67 @@ def execute_post_selection_run(
             extxyz_policy=extxyz_policy,
             inference_evaluator=context.inference_evaluator,
         )
+        replay_candidate_rmse = None
+        replay_foundation_rmse = None
+        replay_label_mode = None
+        if admissibility.replay_enabled and replay_resolution is not None:
+            replay_monitor_artifact = replay_resolution.monitor_artifact
+            replay_monitor_path = Path(replay_resolution.monitor_path)
+            replay_blocks = tuple(
+                f"replay_block_{i}"
+                for i in range(replay_monitor_artifact.configuration_count)
+            )
+            candidate_replay_metrics = evaluate_post_selection_dataset(
+                run_plan=run_plan,
+                artifact=replay_monitor_artifact,
+                dataset_role="replay_monitor",
+                root_directory=replay_monitor_path.parent,
+                provider=provider,
+                block_ids=replay_blocks,
+                extxyz_policy=extxyz_policy,
+                inference_evaluator=context.inference_evaluator,
+            )
+            replay_candidate_rmse = (
+                candidate_replay_metrics.force_component_rmse_ev_per_angstrom
+            )
+
+            cache_key = (
+                f"{context.method_policies.foundation_model}:"
+                f"{replay_monitor_artifact.content_digest}"
+            )
+            if cache_key in context._baseline_replay_cache:
+                replay_foundation_rmse = context._baseline_replay_cache[cache_key]
+            else:
+                from types import SimpleNamespace
+
+                baseline_provider = SimpleNamespace(
+                    is_baseline=True,
+                    foundation_model=context.method_policies.foundation_model,
+                )
+                baseline_replay_metrics = evaluate_post_selection_dataset(
+                    run_plan=run_plan,
+                    artifact=replay_monitor_artifact,
+                    dataset_role="replay_monitor_baseline",
+                    root_directory=replay_monitor_path.parent,
+                    provider=baseline_provider,
+                    block_ids=replay_blocks,
+                    extxyz_policy=extxyz_policy,
+                    inference_evaluator=context.inference_evaluator,
+                )
+                replay_foundation_rmse = (
+                    baseline_replay_metrics.force_component_rmse_ev_per_angstrom
+                )
+                context._baseline_replay_cache[cache_key] = replay_foundation_rmse
+            replay_label_mode = "true_dft"
+
         record = assess_eval2_checkpoint(
             point,
             evaluation_record_digest=metrics.content_digest,
             target_metrics=metrics,
             admissibility_policy=admissibility,
-            replay_candidate_force_rmse_ev_per_angstrom=None,
-            replay_foundation_force_rmse_ev_per_angstrom=None,
-            replay_label_mode=None,
+            replay_candidate_force_rmse_ev_per_angstrom=replay_candidate_rmse,
+            replay_foundation_force_rmse_ev_per_angstrom=replay_foundation_rmse,
+            replay_label_mode=replay_label_mode,
         )
         records.append(record)
         monitor_metrics_by_identity[record.stable_candidate_identity] = metrics

@@ -4,7 +4,7 @@ package_id: CODE-MLFF-TARGET-SIZE-V7-P5
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 sequence: 5
-status: active
+status: implemented
 package_revision: 6
 amended_date: 2026-08-29
 entry_p4_closure_commit: 145388e5ad11733be1c19539886e34b82cc7d7d2

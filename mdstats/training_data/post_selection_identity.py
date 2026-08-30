@@ -128,6 +128,7 @@ class PostSelectionMethodIdentity:
     shared_optimizer_settings_digest: str
     replay_exposure_policy_digest: str
     extxyz_policy_digest: str
+    mace_architecture_digest: str
     checkpoint_interval_epochs: int
     default_dtype: str
     device: str
@@ -142,6 +143,7 @@ class PostSelectionMethodIdentity:
             "shared_optimizer_settings_digest",
             "replay_exposure_policy_digest",
             "extxyz_policy_digest",
+            "mace_architecture_digest",
         ):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
@@ -183,6 +185,7 @@ class PostSelectionMethodIdentity:
             "shared_optimizer_settings_digest": self.shared_optimizer_settings_digest,
             "replay_exposure_policy_digest": self.replay_exposure_policy_digest,
             "extxyz_policy_digest": self.extxyz_policy_digest,
+            "mace_architecture_digest": self.mace_architecture_digest,
             "checkpoint_interval_epochs": self.checkpoint_interval_epochs,
             "default_dtype": self.default_dtype,
             "device": self.device,
@@ -198,10 +201,15 @@ class PostSelectionMethodIdentity:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionMethodIdentity":
+        from .model_features import canonicalize_mace_candidate_architecture
+
         if payload.get("schema") != POST_SELECTION_METHOD_IDENTITY_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported post-selection method-identity schema."
             )
+        raw_arch_digest = payload.get("mace_architecture_digest")
+        if raw_arch_digest is None:
+            raw_arch_digest = digest(canonicalize_mace_candidate_architecture(None))
         result = cls(
             method_recipe_version=str(payload["method_recipe_version"]),
             training_mode=str(payload["training_mode"]),
@@ -220,6 +228,7 @@ class PostSelectionMethodIdentity:
             ),
             replay_exposure_policy_digest=str(payload["replay_exposure_policy_digest"]),
             extxyz_policy_digest=str(payload["extxyz_policy_digest"]),
+            mace_architecture_digest=str(raw_arch_digest),
             checkpoint_interval_epochs=int(payload["checkpoint_interval_epochs"]),
             default_dtype=str(payload["default_dtype"]),
             device=str(payload["device"]),
@@ -489,11 +498,14 @@ def resolve_shared_optimizer_settings(config: Mapping[str, Any]) -> dict[str, An
     """
 
     training = _table(config, "training")
+    optimizer_family = str(training.get("optimizer", "adam")).strip().lower() or "adam"
+    if optimizer_family not in {"adam", "adamw", "sgd", "amsgrad"}:
+        raise TrainingDataInputError(f"Unsupported optimizer family: {optimizer_family}")
     return {
-        "optimizer_family": str(training.get("optimizer", "adam")).strip() or "adam",
+        "optimizer_family": optimizer_family,
         "learning_rate": float(training.get("learning_rate", 1.0e-4)),
-        "batch_size": int(training.get("batch_size", 2)),
-        "valid_batch_size": int(training.get("valid_batch_size", 2)),
+        "batch_size": int(training.get("batch_size", 4)),
+        "valid_batch_size": int(training.get("valid_batch_size", 4)),
         "eval_interval": int(training.get("eval_interval", 1)),
         "ema": bool(training.get("ema", True)),
         "ema_decay": float(training.get("ema_decay", 0.99)),
@@ -521,6 +533,11 @@ class PostSelectionMethodPolicies:
     acceleration_backend: str
     checkpoint_interval_epochs: int
     device: str
+    mace_architecture: dict[str, Any]
+    mace_architecture_digest: str
+    foundation_model: str | None = None
+    foundation_head: str | None = None
+    replay_context: Any = None
 
 
 def resolve_post_selection_method_policies(
@@ -536,7 +553,19 @@ def resolve_post_selection_method_policies(
     """
 
     from .mace_export import MaceExtxyzPolicy
-    from .target_size_execution import TargetSizeCommonTrainingPolicy
+    from .model_features import canonicalize_mace_candidate_architecture
+    from .objectives import ConfigurationWeightPolicy, TrainingObjectivePolicy
+    from .reference_fit import (
+        AtomicReferenceFitMode,
+        AtomicReferenceFitPolicy,
+    )
+    from .replay import (
+        single_source_replay_config_from_campaign,
+    )
+    from .target_size_execution import (
+        REPLAY_EXPOSURE_NONE_DIGEST,
+        TargetSizeCommonTrainingPolicy,
+    )
     from .train2_policy import (
         CheckpointAdmissibilityPolicy,
         CheckpointSelectionPolicy,
@@ -547,7 +576,20 @@ def resolve_post_selection_method_policies(
     acceptance = _table(config, "acceptance")
     acceleration = _table(config, "acceleration")
     paths = _table(config, "paths")
+    model = _table(config, "model")
 
+    # 1. Canonical Replay Resolution
+    single_replay = single_source_replay_config_from_campaign(config)
+    legacy_replay_train = str(paths.get("replay_train", "")).strip()
+    legacy_replay_monitor = str(paths.get("replay_monitor", "")).strip()
+    legacy_replay_true = str(paths.get("replay_true_labels", "")).strip()
+    legacy_replay_set = str(paths.get("replay_set", "")).strip()
+    has_legacy_replay = bool(
+        legacy_replay_train or legacy_replay_monitor or legacy_replay_true or legacy_replay_set
+    )
+    replay_enabled = single_replay is not None or has_legacy_replay
+
+    # 2. Training Mode Resolution
     modes = training.get("modes")
     if isinstance(modes, (tuple, list)) and modes:
         if len(modes) != 1:
@@ -555,16 +597,141 @@ def resolve_post_selection_method_policies(
                 "Post-selection work requires exactly one enabled training method."
             )
         training_mode = str(modes[0])
+    elif "mode" in training and str(training["mode"]).strip():
+        training_mode = str(training["mode"]).strip()
+    elif "training_mode" in training and str(training["training_mode"]).strip():
+        training_mode = str(training["training_mode"]).strip()
     else:
-        training_mode = str(training.get("mode", "multihead_replay"))
+        if replay_enabled:
+            training_mode = "multihead_replay"
+        elif paths.get("foundation_model") or paths.get("model") or model.get("foundation_model"):
+            training_mode = "naive_fine_tuning"
+        else:
+            training_mode = "scratch"
 
-    replay_enabled = bool(str(paths.get("replay_true_labels", "")).strip())
+    if training_mode == "multihead_replay" and not replay_enabled:
+        raise PostSelectionError(
+            "The configured training method 'multihead_replay' requires a canonical "
+            "replay source in [paths], but none was configured."
+        )
+
+    # 3. Replay Exposure Digest
+    if single_replay is not None:
+        replay_exposure_policy_digest = single_replay.content_digest
+    elif has_legacy_replay:
+        replay_exposure_policy_digest = digest(
+            {
+                "schema": "mdstats.post-selection.legacy-replay.v1",
+                "replay_train": legacy_replay_train or legacy_replay_set,
+                "replay_monitor": legacy_replay_monitor,
+                "replay_true_labels": legacy_replay_true,
+            }
+        )
+    else:
+        replay_exposure_policy_digest = REPLAY_EXPOSURE_NONE_DIGEST
+
+    # 4. Objective, Configuration Weight, and Atomic Reference Policies
+    objective = _table(config, "objective") or _table(config, "loss")
+    objective_policy = TrainingObjectivePolicy(
+        energy_weight=float(objective.get("energy_weight", 1.0)),
+        forces_weight=float(objective.get("forces_weight", 10.0)),
+        stress_weight=float(objective.get("stress_weight", 1.0)),
+        group_aware_force_objective=bool(
+            objective.get("group_aware_force_objective", False)
+        ),
+        focus_atom_group_ids=tuple(str(v) for v in objective.get("focus_atom_group_ids", ())),
+        focus_atomic_numbers=tuple(int(v) for v in objective.get("focus_atomic_numbers", ())),
+    )
+
+    weighting = _table(config, "weighting")
+    if weighting:
+        configuration_weight_policy = ConfigurationWeightPolicy(
+            equalize_condition_strata=bool(
+                weighting.get("equalize_condition_strata", True)
+            ),
+            event_anchor_multiplier=float(
+                weighting.get("event_anchor_multiplier", 2.0)
+            ),
+            protected_event_multiplier=float(
+                weighting.get("protected_event_multiplier", 1.25)
+            ),
+            degraded_frame_multiplier=float(
+                weighting.get("degraded_frame_multiplier", 0.5)
+            ),
+            minimum_configuration_weight=float(
+                weighting.get("minimum_configuration_weight", 0.05)
+            ),
+            maximum_configuration_weight=float(
+                weighting.get("maximum_configuration_weight", 10.0)
+            ),
+        )
+    else:
+        configuration_weight_policy = ConfigurationWeightPolicy()
+
+    atomic_ref = _table(config, "atomic_references")
+    if atomic_ref:
+        fit_mode_str = str(atomic_ref.get("fit_mode", "from_scratch_total_energy"))
+        atomic_reference_policy = AtomicReferenceFitPolicy(
+            fit_mode=AtomicReferenceFitMode(fit_mode_str),
+            ridge_lambda=float(atomic_ref.get("ridge_lambda", 0.0)),
+            allow_rank_deficient_fixed_domain=bool(
+                atomic_ref.get("allow_rank_deficient_fixed_domain", True)
+            ),
+        )
+    else:
+        atomic_reference_policy = AtomicReferenceFitPolicy()
+
+    default_dtype = str(
+        model.get("dtype", training.get("dtype", training.get("default_dtype", "float64")))
+    ).strip()
+    if default_dtype not in {"float32", "float64"}:
+        default_dtype = "float64"
+
+    f_model = str(paths.get("foundation_model", paths.get("model", ""))).strip()
+    foundation_checkpoint_digest = digest({"foundation_model": f_model}) if f_model else None
+    f_head = str(training.get("foundation_head", model.get("foundation_head", "default"))).strip() or None
+
+    batch_size = int(training.get("batch_size", 4))
+    common_training = TargetSizeCommonTrainingPolicy(
+        objective_policy=objective_policy,
+        configuration_weight_policy=configuration_weight_policy,
+        atomic_reference_policy=atomic_reference_policy,
+        replay_exposure_policy_digest=replay_exposure_policy_digest,
+        foundation_checkpoint_digest=foundation_checkpoint_digest,
+        selected_head_name=(
+            str(training.get("selected_head_name", "target_head"))
+            if training.get("selected_head_name")
+            else None
+        ),
+        batch_size=batch_size,
+        default_dtype=default_dtype,
+        harness_validation_frame_count=int(
+            training.get("harness_validation_frame_count", 4)
+        ),
+    )
+
+    # 5. MACE Architecture Resolution
+    raw_arch = model.get("mace_architecture")
+    if raw_arch is None and any(
+        k in model
+        for k in ("r_max", "num_interactions", "hidden_irreps", "num_channels", "max_L")
+    ):
+        raw_arch = model
+    if raw_arch is None:
+        raw_arch = training.get("mace_architecture")
+    mace_architecture = canonicalize_mace_candidate_architecture(raw_arch)
+    mace_architecture_digest = digest(mace_architecture)
+
+    # 6. Checkpoint Admissibility and LR Schedule
     replay_budget_mev = float(
-        acceptance.get("allowed_replay_degradation_mev_per_a", 30.0)
+        acceptance.get(
+            "allowed_replay_degradation_mev_per_a",
+            training.get("replay_degradation_budget_mev_per_a", 30.0),
+        )
     )
     source_backend = str(acceleration.get("backend", "e3nn")).strip().lower()
     return PostSelectionMethodPolicies(
-        common_training=TargetSizeCommonTrainingPolicy(),
+        common_training=common_training,
         learning_rate_schedule=LearningRateSchedulePolicy(
             base_learning_rate=float(training.get("learning_rate", 1.0e-4)),
             warmup_end_fraction=float(
@@ -605,6 +772,11 @@ def resolve_post_selection_method_policies(
         .lower(),
         checkpoint_interval_epochs=int(training.get("checkpoint_interval_epochs", 1)),
         device=str(training.get("device", "cuda")),
+        mace_architecture=mace_architecture,
+        mace_architecture_digest=mace_architecture_digest,
+        foundation_model=f_model or None,
+        foundation_head=f_head,
+        replay_context=single_replay,
     )
 
 
@@ -640,6 +812,7 @@ def resolve_post_selection_method_identity(
             resolved.common_training.replay_exposure_policy_digest
         ),
         extxyz_policy_digest=resolved.extxyz.policy_digest,
+        mace_architecture_digest=resolved.mace_architecture_digest,
         checkpoint_interval_epochs=resolved.checkpoint_interval_epochs,
         default_dtype=str(resolved.common_training.default_dtype),
         device=resolved.device,

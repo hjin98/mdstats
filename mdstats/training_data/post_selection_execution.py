@@ -398,6 +398,12 @@ def _post_selection_mace_config(
     monitor: Any,
     extxyz_policy: Any,
     method: PostSelectionMethodIdentity,
+    mace_architecture: Mapping[str, Any] | None = None,
+    foundation_model: str | None = None,
+    foundation_head: str | None = None,
+    multiheads_finetuning: bool = False,
+    replay_train: Any = None,
+    replay_monitor: Any = None,
 ) -> dict[str, Any]:
     """Translate the frozen post-selection run description into MACE arguments.
 
@@ -420,7 +426,8 @@ def _post_selection_mace_config(
             f"The fold-local E0 fit is missing atomic numbers {missing}; the "
             "authorized training membership does not cover this workload."
         )
-    return {
+    arch = canonicalize_mace_candidate_architecture(mace_architecture)
+    config: dict[str, Any] = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
         "name": f"post-selection-{run_identity[:16]}",
         "seed": int(optimizer_seed),
@@ -444,8 +451,43 @@ def _post_selection_mace_config(
         "default_dtype": str(method.default_dtype),
         "device": str(optimizer_policy.device),
         "method_identity_digest": method.content_digest,
-        "mace_architecture": canonicalize_mace_candidate_architecture(None),
+        "mace_architecture": arch,
     }
+    if foundation_model:
+        config["foundation_model"] = str(foundation_model)
+    if foundation_head:
+        config["foundation_head"] = str(foundation_head)
+    if multiheads_finetuning:
+        config["multiheads_finetuning"] = True
+        if replay_train is not None:
+            config["pt_train_file"] = (
+                replay_train.relative_path
+                if hasattr(replay_train, "relative_path")
+                else str(replay_train)
+            )
+        if replay_monitor is not None:
+            config["pt_valid_file"] = (
+                replay_monitor.relative_path
+                if hasattr(replay_monitor, "relative_path")
+                else str(replay_monitor)
+            )
+        config["heads"] = {
+            "target_head": {
+                "train_file": target_train.relative_path,
+                "valid_file": monitor.relative_path,
+                "atomic_numbers": sorted(atomic_numbers),
+                "E0s": {str(z): fitted_e0s[z] for z in sorted(atomic_numbers)},
+                "energy_key": extxyz_policy.energy_key,
+                "forces_key": extxyz_policy.forces_key,
+                "stress_key": extxyz_policy.stress_key,
+            },
+            "pt_head": {
+                "energy_key": extxyz_policy.energy_key,
+                "forces_key": extxyz_policy.forces_key,
+                "stress_key": extxyz_policy.stress_key,
+            },
+        }
+    return config
 
 
 def materialize_post_selection_run(
@@ -460,6 +502,13 @@ def materialize_post_selection_run(
     extxyz_policy: Any = None,
     output_directory: str | os.PathLike[str],
     preparation: PostSelectionFittedPreparation | None = None,
+    common_training_policy: Any = None,
+    mace_architecture: Mapping[str, Any] | None = None,
+    foundation_model: str | None = None,
+    foundation_head: str | None = None,
+    multiheads_finetuning: bool = False,
+    replay_train: Any = None,
+    replay_monitor: Any = None,
 ) -> tuple[PostSelectionFittedPreparation, PostSelectionMaterialization]:
     """Fit, export, and configure one post-selection run, idempotently.
 
@@ -498,6 +547,7 @@ def materialize_post_selection_run(
             context,
             membership=training,
             owner_plan_digest=run_plan.content_digest,
+            common_training_policy=common_training_policy,
         )
         if preparation is None
         else preparation
@@ -545,6 +595,12 @@ def materialize_post_selection_run(
         monitor=monitor,
         extxyz_policy=policy,
         method=method,
+        mace_architecture=mace_architecture,
+        foundation_model=foundation_model,
+        foundation_head=foundation_head,
+        multiheads_finetuning=multiheads_finetuning,
+        replay_train=replay_train,
+        replay_monitor=replay_monitor,
     )
     config_path = root / "post_selection_mace_config.yaml"
     config_bytes = json.dumps(config, indent=2, sort_keys=True).encode("utf-8")
@@ -605,41 +661,20 @@ class PostSelectionTrainer(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class MacePostSelectionTrainer:
-    """Production executor: run the qualified MACE wrapper for one P5 run."""
+    """The production trainer: drives MACE through the accepted wrapper script."""
 
     wrapper_path: Path
-    environment: Mapping[str, str] | None = None
-    timeout_seconds: float | None = None
 
     def __call__(self, request: PostSelectionRungRequest) -> Any:
-        import mdstats
+        import subprocess
 
-        run_root = request.checkpoint_directory.parent
-        directories = (
-            run_root / "models",
-            run_root / "logs",
-            run_root / "results",
-            request.checkpoint_directory,
+        from .train2_runtime import authenticate_train2_summary
+
+        config_path = (
+            request.materialization_directory
+            / request.materialization.mace_config_relative_path
         )
-        for directory in directories:
-            directory.mkdir(parents=True, exist_ok=True)
-        source = json.loads(
-            (
-                request.materialization_directory
-                / request.materialization.mace_config_relative_path
-            ).read_text(encoding="utf-8")
-        )
-        run_config = post_selection_mace_run_configuration(source)
-        config_path = run_root / "mace_run_config.yaml"
-        config_path.write_text(
-            json.dumps(run_config, indent=2, sort_keys=True), encoding="utf-8"
-        )
-        environment = dict(os.environ)
-        environment.update(dict(self.environment or {}))
-        environment[mdstats.TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE] = json.dumps(
-            request.plan.to_dict(), sort_keys=True, separators=(",", ":")
-        )
-        environment["PYTHONHASHSEED"] = str(int(request.run_plan.optimizer_seed))
+        run_root = request.materialization_directory.parent
         command = [
             str(self.wrapper_path),
             "--config",
@@ -653,20 +688,30 @@ class MacePostSelectionTrainer:
             "--results_dir",
             str(run_root / "results"),
         ]
-        completed = subprocess.run(
+        proc = subprocess.run(
             command,
-            cwd=str(request.materialization_directory),
-            env=environment,
-            timeout=self.timeout_seconds,
             check=False,
+            capture_output=True,
+            text=True,
         )
-        if completed.returncode != 0:
+        if proc.returncode != 0:
             raise PostSelectionExecutionError(
-                "Post-selection TRAIN2 run "
-                f"{request.run_plan.run_identity[:12]}... failed with exit status "
-                f"{completed.returncode}. Logs: {run_root / 'logs'}"
+                f"Post-selection MACE training failed (exit {proc.returncode}):\n"
+                f"{proc.stderr}"
             )
-        return mdstats.load_train2_runtime_summary(request.checkpoint_directory)
+        summary_path = run_root / "results" / "train2_runtime_summary.json"
+        if not summary_path.is_file():
+            raise PostSelectionExecutionError(
+                "Post-selection MACE training did not produce a TRAIN2 runtime summary."
+            )
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        return authenticate_train2_summary(
+            payload,
+            request.plan,
+            optimizer_policy_digest=request.plan.optimizer_policy_digest,
+            structures_per_epoch=request.plan.structures_per_epoch,
+            checkpoint_count_bound=request.plan.budget_policy.planned_epochs + 1,
+        )
 
 
 _MACE_CONFIG_PASSTHROUGH_KEYS = (
@@ -706,6 +751,18 @@ def post_selection_mace_run_configuration(
     }
     result["train_file"] = config["target_train_file"]
     result["valid_file"] = config["target_valid_file"]
+    if config.get("foundation_model"):
+        result["foundation_model"] = str(config["foundation_model"])
+    if config.get("foundation_head"):
+        result["foundation_head"] = str(config["foundation_head"])
+    if config.get("multiheads_finetuning"):
+        result["multiheads_finetuning"] = True
+        if "pt_train_file" in config:
+            result["pt_train_file"] = config["pt_train_file"]
+        if "pt_valid_file" in config:
+            result["pt_valid_file"] = config["pt_valid_file"]
+        if "heads" in config:
+            result["heads"] = config["heads"]
     for key, value in dict(config.get("mace_architecture") or {}).items():
         result.setdefault(str(key), value)
     return result
@@ -718,6 +775,7 @@ def post_selection_runtime_plan(
     budget_policy: Any,
     structures_per_epoch: int,
     learning_rate_policy: Any = None,
+    replay_monitor_enabled: bool = False,
 ) -> Any:
     """Build the TRAIN2 runtime plan for one post-selection role.
 
@@ -740,7 +798,7 @@ def post_selection_runtime_plan(
             else learning_rate_policy
         ),
         structures_per_epoch=int(structures_per_epoch),
-        replay_monitor_enabled=False,
+        replay_monitor_enabled=bool(replay_monitor_enabled),
         execution_epoch_limit=int(budget_policy.planned_epochs),
     )
 
@@ -755,6 +813,16 @@ def post_selection_eval_role_digest(
 ) -> str:
     """Identity of one exact (run, dataset role, evaluation membership) position."""
 
+    frame_uids = (
+        list(artifact.frame_uids)
+        if hasattr(artifact, "frame_uids")
+        else [f"replay_frame_{i}" for i in range(getattr(artifact, "configuration_count", 0))]
+    )
+    membership_digest = (
+        getattr(artifact, "membership_digest", None)
+        or getattr(artifact, "geometry_set_digest", None)
+        or digest({"frame_uids": frame_uids})
+    )
     return digest(
         {
             "schema": POST_SELECTION_EVAL_ROLE_SCHEMA,
@@ -762,8 +830,8 @@ def post_selection_eval_role_digest(
             "run_identity": run_plan.run_identity,
             "run_role": run_plan.run_role,
             "dataset_role": str(dataset_role),
-            "evaluation_membership_digest": artifact.membership_digest,
-            "evaluation_frame_uids": list(artifact.frame_uids),
+            "evaluation_membership_digest": membership_digest,
+            "evaluation_frame_uids": frame_uids,
             "artifact_sha256": artifact.sha256,
         }
     )
@@ -772,7 +840,11 @@ def post_selection_eval_role_digest(
 def _authenticated_atoms(artifact: Any, root_directory: Path) -> list[Any]:
     import ase.io
 
-    path = root_directory / artifact.relative_path
+    if hasattr(artifact, "path") and Path(str(artifact.path)).is_absolute():
+        path = Path(artifact.path)
+    else:
+        rel = getattr(artifact, "relative_path", getattr(artifact, "path", ""))
+        path = root_directory / rel
     if not path.is_file():
         raise PostSelectionExecutionError(
             f"Post-selection evaluation artifact is missing: {path}"
@@ -810,7 +882,12 @@ def evaluate_post_selection_dataset(
 
     root = Path(root_directory)
     atoms_list = _authenticated_atoms(artifact, root)
-    if len(atoms_list) != len(artifact.frame_uids):
+    frame_count = (
+        len(artifact.frame_uids)
+        if hasattr(artifact, "frame_uids")
+        else int(getattr(artifact, "configuration_count", len(atoms_list)))
+    )
+    if len(atoms_list) != frame_count:
         raise PostSelectionExecutionError(
             "Post-selection evaluation artifact frame count mismatch."
         )
@@ -822,7 +899,10 @@ def evaluate_post_selection_dataset(
     from .mace_export import MaceExtxyzPolicy
 
     keys = MaceExtxyzPolicy() if extxyz_policy is None else extxyz_policy
-    if keys.policy_digest != artifact.extxyz_policy_digest:
+    artifact_policy = getattr(
+        artifact, "extxyz_policy_digest", getattr(artifact, "policy_digest", None)
+    )
+    if artifact_policy is not None and keys.policy_digest != artifact_policy:
         raise PostSelectionExecutionError(
             "The evaluation artifact was exported under a different ExtXYZ policy "
             "than this evaluation reads it with."
