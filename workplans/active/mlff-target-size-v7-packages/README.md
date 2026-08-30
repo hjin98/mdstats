@@ -25,12 +25,11 @@ P3 revision 7 consists cumulatively of:
 
 P3A9 repaired the demonstrated execution-head publication crash case where an immutable valid successor is durable while `current_head.json` remains stale, preserving deterministic reducer replay, typed resolver recovery, process-level CAS locking serialization, and fail-closed fork/orphan semantics.
 
-**Cumulative P3 revision 7 is formally closed.** P4 entry authority remains bound to
-`9d195807cff0bb8042f447ac33ceb0586ed708ac`.
+**Cumulative P3 revision 7 is formally closed.** P4 entry authority remains bound to `9d195807cff0bb8042f447ac33ceb0586ed708ac`.
 
-**P4 revision 8 is REOPENED and active.** Revision-4 through revision-7 implementation candidates/evidence are preserved in adjacent baseline files. Revision 7 successfully closed the production-STOR first-publication race through the real cleanup owner and introduced CampaignStore-backed current terminal exposure entrypoints. Independent review found one remaining public API escape hatch: exported generic result-view helpers can still accept a self-consistent historical `TargetSizeCampaignRevision + ValidatedTargetSizeTerminalResult` pair and render/write terminal state after real `prepare` advances CampaignStore to a newer generation. Revision 8 therefore preserves P4-C3 and the revision-7 current exposure facade, and reopens only P4-E4 public terminal snapshot-API sealing plus final P4-G4 reclosure.
+**P4 revision 8 is formally closed and independently accepted at commit `145388e5ad11733be1c19539886e34b82cc7d7d2`.** Revision-4 through revision-7 implementation candidates/evidence remain preserved in adjacent baseline files. Revision 8 sealed the last public terminal snapshot-only result-view escape hatch while preserving the accepted production-STOR first-publication owner path, canonical execution-root owner, CampaignStore-first terminal loader, and full P1-P3 authority-validation chain. Fresh assembled P4/P3A9 regression closed with 170 passing tests.
 
-**P5 is blocked until P4 revision 8 recloses.** It may consume target-size terminal state only through the CampaignStore-backed current exposure owner after the exported snapshot-only terminal renderer/writer surface is sealed and fresh assembled regression closes.
+**The P4 dependency gate for P5 is cleared.** P5 is the next package and must be reconciled against the implemented P1-P4 authority surface before executable implementation begins. P5 may consume current target-size terminal state only through the CampaignStore-backed current exposure/loader path; derived result files or retained historical snapshots are never current authority.
 
 Long GPU/real-production qualification remains deferred to final release.
 
@@ -59,7 +58,7 @@ P1 neutral scientific substrate
        + revision-6 canonical-root/current-terminal loader repair
        + revision-7 production-STOR owner / exposure-time-currentness repair
        + revision-8 public terminal snapshot-API sealing / final reclosure
-       -> FORMAL P4 RECLOSURE
+       -> FORMAL P4 CLOSURE COMMIT 145388e5ad11733be1c19539886e34b82cc7d7d2
   -> P5 post-selection CV and final production
   -> P6 destructive cleanup and assembled closure
 ```
@@ -77,7 +76,6 @@ Do not start dependent executable work until the previous package has both **sem
 - P4 revision 8 preserves the canonical terminal loader: current terminal validation begins from the actual current CampaignStore revision and performs the full P1/P2/common/P3/head/reducer/projection validation chain.
 - A `ValidatedTargetSizeTerminalResult` is a validated snapshot, not perpetual current authority. Every public/current terminal view/write/report/P5 consumer must re-establish CampaignStore currentness at exposure time before exposing terminal authority.
 - No exported/public snapshot-only terminal renderer or arbitrary-path terminal writer may accept historical `revision + validated_result` objects and expose them as current authority. Terminal-capable pure formatting must be private/internal, or retained public generic helpers must be strictly nonterminal-only.
-- The mandatory E4 regression must exercise the exact old bypass surface using a legitimate `g1_revision + g1_validated` after real `prepare` makes g2 current; current-facade-only tests do not substitute.
 - P5 must not feed CV evidence or configuration back into target-size selection.
 - P6 deletes unreachable retired topology only after the current runtime is functionally closed.
 - Stage-local affected regression is required after every material behavior-changing pass before dependent work proceeds.
@@ -99,6 +97,6 @@ Do not start dependent executable work until the previous package has both **sem
    - `P3_P3A6_FINAL_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` — restore canonical `target_size_evaluation_model_state(optimizer_policy)` (`EMA -> ema`, otherwise `live`) and prove pinned MACE checkpoint-owner acceptance.
    - `P3_P3A7_RESTART_OWNER_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` — prove durable noncanonical EMA/LIVE state rejects through the real `resolve_target_size_candidate_for_resume(...)` owner.
    - `P3_P3A9_HEAD_POINTER_RECONCILIATION_REPAIR_INSTRUCTIONS.md` — final revision-7 predecessor closure: recover only a unique authenticated linear successor chain after stale-pointer crash, preserve deterministic reducer replay, reject forks/orphans/corruption, and formally close P3 before P4 begins.
-4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — active revision-8 overlay reopening only exported/public terminal snapshot-API sealing and final assembled P4 closure; revision-4 through revision-7 baselines are preserved adjacent.
-5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — exact-T_selected CV and fresh final-production path; **blocked until P4 revision 8 recloses**.
+4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — revision-8 implementation is formally closed and independently accepted at `145388e5ad11733be1c19539886e34b82cc7d7d2`; revision-4 through revision-7 baselines/evidence remain preserved adjacent.
+5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — next package: exact selected-data post-selection CV and fresh final-production path; P4 dependency cleared, pending P5 entry/design reconciliation against implemented P1-P4.
 6. `P6_DESTRUCTIVE_CLEANUP_FINAL_CLOSURE.md` — remove retired architecture and perform assembled final acceptance.
