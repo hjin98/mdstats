@@ -498,11 +498,13 @@ def resolve_shared_optimizer_settings(config: Mapping[str, Any]) -> dict[str, An
     """
 
     training = _table(config, "training")
-    optimizer_family = str(training.get("optimizer", "adam")).strip().lower() or "adam"
-    if optimizer_family not in {"adam", "adamw", "sgd", "amsgrad"}:
-        raise TrainingDataInputError(f"Unsupported optimizer family: {optimizer_family}")
+    if "optimizer" in training:
+        opt_raw = str(training.get("optimizer")).strip().lower()
+        if opt_raw not in {"adam", "adamw", "sgd", "amsgrad", ""}:
+            raise TrainingDataInputError(f"Unsupported [training].optimizer: {opt_raw}")
+        if opt_raw and opt_raw != "adam":
+            raise TrainingDataInputError(f"Unsupported [training].optimizer: {opt_raw}")
     return {
-        "optimizer_family": optimizer_family,
         "learning_rate": float(training.get("learning_rate", 1.0e-4)),
         "batch_size": int(training.get("batch_size", 4)),
         "valid_batch_size": int(training.get("valid_batch_size", 4)),
@@ -513,6 +515,76 @@ def resolve_shared_optimizer_settings(config: Mapping[str, Any]) -> dict[str, An
         "weight_decay": float(training.get("weight_decay", 5.0e-7)),
         "clip_grad": float(training.get("clip_grad", 10.0)),
     }
+
+
+def resolve_post_selection_foundation_identity(
+    path: str | Path | None,
+    *,
+    requested_head: str | None = None,
+    model_family: str = "MACE-MPA-0",
+) -> Any | None:
+    """Resolve the canonical scientific identity of a foundation checkpoint."""
+
+    if path is None or not str(path).strip():
+        return None
+    source = Path(path)
+    if not source.is_file():
+        raise TrainingDataInputError(f"Foundation checkpoint does not exist: {source!s}.")
+    head = requested_head or "default"
+    try:
+        from .foundation import MaceFoundationSpec, inspect_mace_foundation
+
+        inspection = inspect_mace_foundation(source)
+        spec = MaceFoundationSpec(
+            family=model_family,
+            requested_head=head,
+        )
+        return spec.resolve(inspection)
+    except Exception:
+        from .foundation import FoundationPotentialIdentity
+
+        return FoundationPotentialIdentity.from_file(
+            source,
+            foundation_head=head,
+            model_family=model_family,
+        )
+
+
+def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
+    """Deterministic scientific lineage digest of authenticated replay artifacts."""
+
+    if replay_resolution is None:
+        return None
+    monitor_artifact = getattr(replay_resolution, "monitor_artifact", None)
+    train_artifact = getattr(replay_resolution, "train_artifact", None)
+    source_sha = getattr(replay_resolution, "source_sha256", None)
+    if source_sha is None and getattr(replay_resolution, "source_path", None):
+        try:
+            from ._common import sha256_file_cached
+
+            source_p = Path(replay_resolution.source_path)
+            if source_p.is_file():
+                source_sha = sha256_file_cached(source_p)
+        except Exception:
+            pass
+    payload = {
+        "schema": "mdstats.post-selection.replay-lineage.v1",
+        "monitor_sha256": getattr(monitor_artifact, "sha256", None),
+        "monitor_digest": (
+            getattr(monitor_artifact, "content_digest", None)
+            or getattr(monitor_artifact, "logical_digest", None)
+        ),
+        "train_sha256": getattr(train_artifact, "sha256", None),
+        "train_digest": (
+            getattr(train_artifact, "content_digest", None)
+            or getattr(train_artifact, "logical_digest", None)
+        ),
+        "source_sha256": source_sha,
+        "split_manifest_digest": getattr(
+            replay_resolution, "split_manifest_digest", None
+        ),
+    }
+    return digest(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -535,6 +607,7 @@ class PostSelectionMethodPolicies:
     device: str
     mace_architecture: dict[str, Any]
     mace_architecture_digest: str
+    foundation_potential_identity: Any = None
     foundation_model: str | None = None
     foundation_head: str | None = None
     replay_context: Any = None
@@ -585,7 +658,10 @@ def resolve_post_selection_method_policies(
     legacy_replay_true = str(paths.get("replay_true_labels", "")).strip()
     legacy_replay_set = str(paths.get("replay_set", "")).strip()
     has_legacy_replay = bool(
-        legacy_replay_train or legacy_replay_monitor or legacy_replay_true or legacy_replay_set
+        legacy_replay_train
+        or legacy_replay_monitor
+        or legacy_replay_true
+        or legacy_replay_set
     )
     replay_enabled = single_replay is not None or has_legacy_replay
 
@@ -604,7 +680,11 @@ def resolve_post_selection_method_policies(
     else:
         if replay_enabled:
             training_mode = "multihead_replay"
-        elif paths.get("foundation_model") or paths.get("model") or model.get("foundation_model"):
+        elif (
+            paths.get("foundation_model")
+            or paths.get("model")
+            or model.get("foundation_model")
+        ):
             training_mode = "naive_fine_tuning"
         else:
             training_mode = "scratch"
@@ -639,8 +719,12 @@ def resolve_post_selection_method_policies(
         group_aware_force_objective=bool(
             objective.get("group_aware_force_objective", False)
         ),
-        focus_atom_group_ids=tuple(str(v) for v in objective.get("focus_atom_group_ids", ())),
-        focus_atomic_numbers=tuple(int(v) for v in objective.get("focus_atomic_numbers", ())),
+        focus_atom_group_ids=tuple(
+            str(v) for v in objective.get("focus_atom_group_ids", ())
+        ),
+        focus_atomic_numbers=tuple(
+            int(v) for v in objective.get("focus_atomic_numbers", ())
+        ),
     )
 
     weighting = _table(config, "weighting")
@@ -682,14 +766,47 @@ def resolve_post_selection_method_policies(
         atomic_reference_policy = AtomicReferenceFitPolicy()
 
     default_dtype = str(
-        model.get("dtype", training.get("dtype", training.get("default_dtype", "float64")))
+        model.get(
+            "dtype",
+            training.get("dtype", training.get("default_dtype", "float64")),
+        )
     ).strip()
     if default_dtype not in {"float32", "float64"}:
         default_dtype = "float64"
 
-    f_model = str(paths.get("foundation_model", paths.get("model", ""))).strip()
-    foundation_checkpoint_digest = digest({"foundation_model": f_model}) if f_model else None
-    f_head = str(training.get("foundation_head", model.get("foundation_head", "default"))).strip() or None
+    f_model_raw = str(
+        paths.get(
+            "foundation_model",
+            paths.get("model", model.get("foundation_model", "")),
+        )
+    ).strip()
+    f_head = (
+        str(
+            training.get(
+                "foundation_head",
+                model.get("foundation_head", "default"),
+            )
+        ).strip()
+        or "default"
+    )
+
+    foundation_identity = None
+    if f_model_raw:
+        foundation_identity = resolve_post_selection_foundation_identity(
+            f_model_raw,
+            requested_head=f_head,
+            model_family=str(model.get("family", "MACE-MPA-0")),
+        )
+    elif training_mode in {"naive_fine_tuning", "multihead_replay"}:
+        raise PostSelectionError(
+            f"Configured training mode '{training_mode}' requires a foundation checkpoint in [paths], but none was found."
+        )
+
+    foundation_checkpoint_digest = (
+        foundation_identity.canonical_content_digest
+        if foundation_identity is not None
+        else None
+    )
 
     batch_size = int(training.get("batch_size", 4))
     common_training = TargetSizeCommonTrainingPolicy(
@@ -714,7 +831,13 @@ def resolve_post_selection_method_policies(
     raw_arch = model.get("mace_architecture")
     if raw_arch is None and any(
         k in model
-        for k in ("r_max", "num_interactions", "hidden_irreps", "num_channels", "max_L")
+        for k in (
+            "r_max",
+            "num_interactions",
+            "hidden_irreps",
+            "num_channels",
+            "max_L",
+        )
     ):
         raw_arch = model
     if raw_arch is None:
@@ -774,8 +897,9 @@ def resolve_post_selection_method_policies(
         device=str(training.get("device", "cuda")),
         mace_architecture=mace_architecture,
         mace_architecture_digest=mace_architecture_digest,
-        foundation_model=f_model or None,
-        foundation_head=f_head,
+        foundation_potential_identity=foundation_identity,
+        foundation_model=str(Path(f_model_raw).resolve()) if f_model_raw else None,
+        foundation_head=f_head if f_model_raw else None,
         replay_context=single_replay,
     )
 
@@ -929,10 +1053,12 @@ __all__ = [
     "FinalProductionPolicyIdentity",
     "PostSelectionMethodIdentity",
     "PostSelectionMethodPolicies",
+    "compute_replay_lineage_digest",
     "cv_training_budget_policy",
     "final_production_training_budget_policy",
     "resolve_cv_validation_policy_identity",
     "resolve_final_production_policy_identity",
+    "resolve_post_selection_foundation_identity",
     "resolve_post_selection_method_identity",
     "resolve_post_selection_method_policies",
     "resolve_shared_optimizer_settings",

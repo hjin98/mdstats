@@ -644,6 +644,7 @@ class PostSelectionRungRequest:
     checkpoint_directory: Path
     optimizer_policy: Any
     start_epoch: int = 0
+    replay_monitor_path: Path | None = None
 
 
 class PostSelectionTrainer(Protocol):
@@ -666,19 +667,55 @@ class MacePostSelectionTrainer:
     wrapper_path: Path
 
     def __call__(self, request: PostSelectionRungRequest) -> Any:
+        import os
         import subprocess
+        import yaml
 
-        from .train2_runtime import authenticate_train2_summary
+        from .train2_runtime import (
+            TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE,
+            TRAIN2_TRUE_REPLAY_PATH_ENVIRONMENT_VARIABLE,
+            load_train2_runtime_summary,
+        )
 
-        config_path = (
+        internal_config_path = (
             request.materialization_directory
             / request.materialization.mace_config_relative_path
         )
+        if not internal_config_path.is_file():
+            raise PostSelectionExecutionError(
+                f"Post-selection MACE configuration is missing: {internal_config_path}"
+            )
+        config_bytes = internal_config_path.read_bytes()
+        if (
+            hashlib.sha256(config_bytes).hexdigest()
+            != request.materialization.mace_config_sha256
+        ):
+            raise PostSelectionExecutionError(
+                "Post-selection MACE configuration bytes changed before training."
+            )
+        internal_payload = json.loads(config_bytes.decode("utf-8"))
+        if digest(internal_payload) != request.materialization.mace_config_digest:
+            raise PostSelectionExecutionError(
+                "Post-selection MACE configuration content changed before training."
+            )
+        if internal_payload.get("schema") != POST_SELECTION_MACE_CONFIG_SCHEMA:
+            raise PostSelectionExecutionError(
+                "Post-selection MACE configuration schema mismatch."
+            )
+
+        executable_payload = post_selection_mace_run_configuration(internal_payload)
+        executable_config_path = (
+            request.materialization_directory / "mace_run_config.yaml"
+        )
+        executable_config_path.write_text(
+            yaml.safe_dump(executable_payload, sort_keys=False), encoding="utf-8"
+        )
+
         run_root = request.materialization_directory.parent
         command = [
             str(self.wrapper_path),
             "--config",
-            str(config_path),
+            str(executable_config_path.name),
             "--model_dir",
             str(run_root / "models"),
             "--checkpoints_dir",
@@ -688,8 +725,32 @@ class MacePostSelectionTrainer:
             "--results_dir",
             str(run_root / "results"),
         ]
+
+        env = dict(os.environ)
+        env[TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE] = json.dumps(request.plan.to_dict())
+        env["PYTHONHASHSEED"] = str(request.plan.optimizer_policy_digest[:8])
+        if hasattr(request.optimizer_policy, "seed"):
+            env["PYTHONHASHSEED"] = str(int(request.optimizer_policy.seed))
+        if request.plan.replay_monitor_enabled:
+            if (
+                request.replay_monitor_path is None
+                or not Path(request.replay_monitor_path).is_file()
+            ):
+                raise PostSelectionExecutionError(
+                    f"TRUE_DFT replay monitor path is missing: {request.replay_monitor_path}"
+                )
+            monitor_p = Path(request.replay_monitor_path).resolve()
+            monitor_sha = hashlib.sha256(monitor_p.read_bytes()).hexdigest()
+            if monitor_sha != request.plan.true_replay_monitor_sha256:
+                raise PostSelectionExecutionError(
+                    "TRUE_DFT replay monitor SHA256 does not match runtime plan."
+                )
+            env[TRAIN2_TRUE_REPLAY_PATH_ENVIRONMENT_VARIABLE] = str(monitor_p)
+
         proc = subprocess.run(
             command,
+            cwd=str(request.materialization_directory),
+            env=env,
             check=False,
             capture_output=True,
             text=True,
@@ -699,19 +760,71 @@ class MacePostSelectionTrainer:
                 f"Post-selection MACE training failed (exit {proc.returncode}):\n"
                 f"{proc.stderr}"
             )
-        summary_path = run_root / "results" / "train2_runtime_summary.json"
-        if not summary_path.is_file():
+
+        summary = load_train2_runtime_summary(request.checkpoint_directory)
+        if summary.plan_digest != request.plan.content_digest:
             raise PostSelectionExecutionError(
-                "Post-selection MACE training did not produce a TRAIN2 runtime summary."
+                "Loaded TRAIN2 runtime summary plan digest does not match request."
             )
-        payload = json.loads(summary_path.read_text(encoding="utf-8"))
-        return authenticate_train2_summary(
-            payload,
-            request.plan,
-            optimizer_policy_digest=request.plan.optimizer_policy_digest,
-            structures_per_epoch=request.plan.structures_per_epoch,
-            checkpoint_count_bound=request.plan.budget_policy.planned_epochs + 1,
+        if summary.optimizer_policy_digest != request.plan.optimizer_policy_digest:
+            raise PostSelectionExecutionError(
+                "Loaded TRAIN2 runtime summary optimizer policy digest does not match request."
+            )
+        return summary
+
+
+def build_post_selection_foundation_baseline_provider(
+    *,
+    foundation_path: str | Path,
+    foundation_identity: Any,
+    foundation_head: str | None = None,
+    device: str = "cpu",
+    default_dtype: str = "float64",
+    allow_forward_override: bool = False,
+) -> Any:
+    """Construct the canonical foundation baseline prediction provider."""
+
+    from ._common import sha256_file_cached
+    from .model_features import MaceCalculatorProvider
+
+    path = Path(foundation_path)
+    if not path.is_file():
+        raise PostSelectionExecutionError(
+            f"Foundation baseline checkpoint does not exist: {path}"
         )
+    current_sha = sha256_file_cached(path)
+    if foundation_identity is not None and hasattr(foundation_identity, "sha256"):
+        if current_sha != foundation_identity.sha256:
+            raise PostSelectionExecutionError(
+                "Foundation baseline model bytes changed on disk (SHA256 mismatch)."
+            )
+    head = foundation_head or (
+        foundation_identity.foundation_head
+        if foundation_identity is not None
+        and hasattr(foundation_identity, "foundation_head")
+        else "default"
+    )
+    foundation_inference_identity = None
+    if foundation_identity is not None and hasattr(foundation_identity, "canonical_content_digest"):
+        from .foundation import FoundationInferenceIdentity
+
+        foundation_inference_identity = FoundationInferenceIdentity(
+            foundation_potential_digest=foundation_identity.canonical_content_digest,
+            default_dtype="float64" if default_dtype == "float64" else "float32",
+            backend="e3nn",
+            resolved_kernel_mode="eager",
+            mace_version="unknown",
+            adapter_version="v1",
+        )
+    return MaceCalculatorProvider.from_model_path(
+        path,
+        device=device,
+        default_dtype=default_dtype,
+        foundation_potential_identity=foundation_identity,
+        foundation_inference_identity=foundation_inference_identity,
+        head=head,
+        allow_forward_override=allow_forward_override,
+    )
 
 
 _MACE_CONFIG_PASSTHROUGH_KEYS = (
@@ -776,6 +889,9 @@ def post_selection_runtime_plan(
     structures_per_epoch: int,
     learning_rate_policy: Any = None,
     replay_monitor_enabled: bool = False,
+    true_replay_monitor_sha256: str | None = None,
+    target_head_name: str = "target_head",
+    replay_head_name: str = "pt_head",
 ) -> Any:
     """Build the TRAIN2 runtime plan for one post-selection role.
 
@@ -799,6 +915,9 @@ def post_selection_runtime_plan(
         ),
         structures_per_epoch=int(structures_per_epoch),
         replay_monitor_enabled=bool(replay_monitor_enabled),
+        target_head_name=target_head_name,
+        replay_head_name=replay_head_name,
+        true_replay_monitor_sha256=true_replay_monitor_sha256,
         execution_epoch_limit=int(budget_policy.planned_epochs),
     )
 
@@ -1166,6 +1285,7 @@ __all__ = [
     "PostSelectionRungRequest",
     "PostSelectionTrainer",
     "authenticate_post_selection_provider",
+    "build_post_selection_foundation_baseline_provider",
     "evaluate_post_selection_dataset",
     "fit_post_selection_preparation",
     "materialize_post_selection_run",

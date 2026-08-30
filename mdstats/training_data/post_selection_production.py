@@ -63,6 +63,7 @@ class FinalProductionPlan:
     n_selected: int
     planned_epochs: int
     required_final_seeds: tuple[int, ...]
+    replay_lineage_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.binding, PostSelectionBinding):
@@ -79,6 +80,14 @@ class FinalProductionPlan:
         ):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
+            )
+        if self.replay_lineage_digest is not None:
+            object.__setattr__(
+                self,
+                "replay_lineage_digest",
+                validate_digest(
+                    self.replay_lineage_digest, name="replay_lineage_digest"
+                ),
             )
         if self.target_membership_digest != self.binding.selected_membership_digest:
             raise PostSelectionError(
@@ -107,7 +116,7 @@ class FinalProductionPlan:
         object.__setattr__(self, "required_final_seeds", seeds)
 
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "schema": FINAL_PRODUCTION_PLAN_SCHEMA,
             "binding": self.binding.to_dict(),
             "method_identity_digest": self.method_identity_digest,
@@ -121,6 +130,9 @@ class FinalProductionPlan:
             "planned_epochs": self.planned_epochs,
             "required_final_seeds": list(self.required_final_seeds),
         }
+        if self.replay_lineage_digest is not None:
+            payload["replay_lineage_digest"] = self.replay_lineage_digest
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -149,6 +161,11 @@ class FinalProductionPlan:
             n_selected=int(payload["n_selected"]),
             planned_epochs=int(payload["planned_epochs"]),
             required_final_seeds=tuple(int(v) for v in payload["required_final_seeds"]),
+            replay_lineage_digest=(
+                None
+                if payload.get("replay_lineage_digest") is None
+                else str(payload["replay_lineage_digest"])
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -285,6 +302,7 @@ def build_final_production_plan(
     *,
     cv_plan: PostSelectionCvPlan,
     cv_acceptance: CvCampaignAcceptance,
+    replay_lineage_digest: str | None = None,
 ) -> FinalProductionPlan:
     """Authorize fresh full-``T_selected`` production under the accepted method.
 
@@ -304,6 +322,11 @@ def build_final_production_plan(
         raise PostSelectionError(
             "The cross-validation plan validated a different shared method."
         )
+    if cv_plan.replay_lineage_digest != replay_lineage_digest:
+        raise PostSelectionError(
+            "The accepted cross-validation plan bound a different replay lineage "
+            "than current replay authority resolves."
+        )
     m3_size, _m3_membership, m3_digest = frozen_m3_development_evidence(context)
     return FinalProductionPlan(
         binding=context.binding,
@@ -317,6 +340,7 @@ def build_final_production_plan(
         n_selected=context.n_selected,
         planned_epochs=policy.production_max_num_epochs,
         required_final_seeds=policy.production_seeds,
+        replay_lineage_digest=replay_lineage_digest,
     )
 
 
@@ -326,6 +350,7 @@ def validate_final_production_plan(
     *,
     method: PostSelectionMethodIdentity,
     policy: FinalProductionPolicyIdentity | None = None,
+    replay_lineage_digest: str | None = None,
 ) -> None:
     """Re-authenticate a stored final plan against freshly resolved authority.
 
@@ -346,6 +371,13 @@ def validate_final_production_plan(
         raise PostSelectionError(
             "The stored final-production plan binds a different production policy; "
             "its descendants are stale and must be rebuilt."
+        )
+    if (
+        replay_lineage_digest is not None
+        and plan.replay_lineage_digest != replay_lineage_digest
+    ):
+        raise PostSelectionError(
+            "The stored final-production plan binds a different replay lineage."
         )
     m3_size, _membership, m3_digest = frozen_m3_development_evidence(context)
     if plan.m3_evaluation_size != m3_size or plan.m3_membership_digest != m3_digest:

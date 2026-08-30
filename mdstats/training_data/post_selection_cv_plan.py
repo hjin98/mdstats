@@ -346,6 +346,7 @@ class PostSelectionCvPlan:
     fold_count: int
     folds: tuple[PostSelectionCvFold, ...]
     required_cv_seeds: tuple[int, ...]
+    replay_lineage_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.binding, PostSelectionBinding):
@@ -360,6 +361,14 @@ class PostSelectionCvPlan:
         ):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
+            )
+        if self.replay_lineage_digest is not None:
+            object.__setattr__(
+                self,
+                "replay_lineage_digest",
+                validate_digest(
+                    self.replay_lineage_digest, name="replay_lineage_digest"
+                ),
             )
         folds = tuple(sorted(self.folds, key=lambda item: item.fold_index))
         count = int(self.fold_count)
@@ -411,7 +420,7 @@ class PostSelectionCvPlan:
         raise TrainingDataInputError(f"Unknown CV fold index {fold_index}.")
 
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "schema": POST_SELECTION_CV_PLAN_SCHEMA,
             "binding": self.binding.to_dict(),
             "method_identity_digest": self.method_identity_digest,
@@ -422,6 +431,9 @@ class PostSelectionCvPlan:
             "folds": [item.to_dict() for item in self.folds],
             "required_cv_seeds": list(self.required_cv_seeds),
         }
+        if self.replay_lineage_digest is not None:
+            payload["replay_lineage_digest"] = self.replay_lineage_digest
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -447,6 +459,11 @@ class PostSelectionCvPlan:
                 PostSelectionCvFold.from_dict(item) for item in payload["folds"]
             ),
             required_cv_seeds=tuple(int(v) for v in payload["required_cv_seeds"]),
+            replay_lineage_digest=(
+                None
+                if payload.get("replay_lineage_digest") is None
+                else str(payload["replay_lineage_digest"])
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -601,6 +618,7 @@ def build_post_selection_cv_plan(
     policy: CvValidationPolicyIdentity,
     *,
     projection: SelectedRelationProjection | None = None,
+    replay_lineage_digest: str | None = None,
 ) -> PostSelectionCvPlan:
     """Build the complete selected-only K-fold plan, or fail before training.
 
@@ -710,8 +728,14 @@ def build_post_selection_cv_plan(
         fold_count=fold_count,
         folds=tuple(folds),
         required_cv_seeds=policy.required_cv_seeds,
+        replay_lineage_digest=replay_lineage_digest,
     )
-    validate_post_selection_cv_plan(plan, context, projection=resolved_projection)
+    validate_post_selection_cv_plan(
+        plan,
+        context,
+        projection=resolved_projection,
+        replay_lineage_digest=replay_lineage_digest,
+    )
     return plan
 
 
@@ -720,6 +744,7 @@ def validate_post_selection_cv_plan(
     context: CurrentSelectedTrainingContext,
     *,
     projection: SelectedRelationProjection | None = None,
+    replay_lineage_digest: str | None = None,
 ) -> None:
     """Re-check a CV plan against the freshly resolved current authorities.
 
@@ -730,6 +755,13 @@ def validate_post_selection_cv_plan(
     """
 
     context.require_binding(plan.binding)
+    if (
+        replay_lineage_digest is not None
+        and plan.replay_lineage_digest != replay_lineage_digest
+    ):
+        raise PostSelectionError(
+            "The stored CV plan binds a different replay lineage than current authority resolves."
+        )
     resolved = (
         build_selected_relation_projection(context) if projection is None else projection
     )

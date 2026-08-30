@@ -73,6 +73,7 @@ from .post_selection_identity import (
     CvValidationPolicyIdentity,
     FinalProductionPolicyIdentity,
     PostSelectionMethodIdentity,
+    compute_replay_lineage_digest,
     cv_training_budget_policy,
     final_production_training_budget_policy,
     resolve_cv_validation_policy_identity,
@@ -242,15 +243,20 @@ def execute_post_selection_run(
     extxyz_policy = context.method_policies.extxyz
     admissibility = context.method_policies.checkpoint_admissibility
     replay_resolution = None
-    if admissibility.replay_enabled and hasattr(context, "paths") and context.paths is not None:
+    if admissibility.replay_enabled:
+        if not hasattr(context, "paths") or context.paths is None:
+            raise PostSelectionError(
+                "Replay-enabled post-selection run requires configured campaign paths."
+            )
         from ._campaign_cli_core import _resolve_true_label_replay_inputs
 
-        try:
-            replay_resolution = _resolve_true_label_replay_inputs(
-                context.cfg, context.paths, require_train=True
+        replay_resolution = _resolve_true_label_replay_inputs(
+            context.cfg, context.paths, require_train=True
+        )
+        if replay_resolution is None or replay_resolution.monitor_artifact is None:
+            raise PostSelectionError(
+                "Could not resolve TRUE_DFT replay monitor artifact for replay-enabled run."
             )
-        except Exception:
-            replay_resolution = None
 
     preparation, materialization = materialize_post_selection_run(
         selected,
@@ -283,6 +289,16 @@ def execute_post_selection_run(
         structures_per_epoch=len(preparation.membership),
         learning_rate_policy=context.method_policies.learning_rate_schedule,
         replay_monitor_enabled=admissibility.replay_enabled,
+        true_replay_monitor_sha256=(
+            replay_resolution.monitor_artifact.sha256
+            if replay_resolution is not None
+            else None
+        ),
+        target_head_name=(
+            context.method_policies.common_training.selected_head_name
+            or "target_head"
+        ),
+        replay_head_name="pt_head",
     )
     summary = context.trainer(
         PostSelectionRungRequest(
@@ -292,6 +308,12 @@ def execute_post_selection_run(
             materialization_directory=material_directory,
             checkpoint_directory=checkpoint_directory,
             optimizer_policy=optimizer_policy,
+            replay_monitor_path=(
+                Path(replay_resolution.monitor_path)
+                if replay_resolution is not None
+                and replay_resolution.monitor_path is not None
+                else None
+            ),
         )
     )
     if summary.plan_digest != runtime_plan.content_digest:
@@ -334,9 +356,28 @@ def execute_post_selection_run(
         replay_candidate_rmse = None
         replay_foundation_rmse = None
         replay_label_mode = None
-        if admissibility.replay_enabled and replay_resolution is not None:
+        if admissibility.replay_enabled:
+            if (
+                replay_resolution is None
+                or replay_resolution.monitor_artifact is None
+            ):
+                raise PostSelectionError(
+                    "Missing required TRUE_DFT replay monitor artifact."
+                )
             replay_monitor_artifact = replay_resolution.monitor_artifact
             replay_monitor_path = Path(replay_resolution.monitor_path)
+            if not replay_monitor_path.is_file():
+                raise PostSelectionError(
+                    f"TRUE_DFT replay monitor file is missing: {replay_monitor_path}"
+                )
+            if (
+                hashlib.sha256(replay_monitor_path.read_bytes()).hexdigest()
+                != replay_monitor_artifact.sha256
+            ):
+                raise PostSelectionError(
+                    "TRUE_DFT replay monitor file bytes changed on disk."
+                )
+
             replay_blocks = tuple(
                 f"replay_block_{i}"
                 for i in range(replay_monitor_artifact.configuration_count)
@@ -355,18 +396,60 @@ def execute_post_selection_run(
                 candidate_replay_metrics.force_component_rmse_ev_per_angstrom
             )
 
-            cache_key = (
-                f"{context.method_policies.foundation_model}:"
-                f"{replay_monitor_artifact.content_digest}"
+            foundation_identity = (
+                context.method_policies.foundation_potential_identity
+            )
+            foundation_model = context.method_policies.foundation_model
+            foundation_head = context.method_policies.foundation_head
+            if foundation_model is None:
+                raise PostSelectionExecutionError(
+                    "Replay admissibility evaluation requires a configured foundation model."
+                )
+
+            foundation_content_digest = (
+                foundation_identity.canonical_content_digest
+                if foundation_identity is not None
+                else digest({"foundation_model": foundation_model})
+            )
+            cache_key = digest(
+                {
+                    "foundation_content_digest": foundation_content_digest,
+                    "foundation_head": foundation_head,
+                    "monitor_sha256": replay_monitor_artifact.sha256,
+                    "monitor_digest": (
+                        getattr(replay_monitor_artifact, "content_digest", None)
+                        or getattr(
+                            replay_monitor_artifact, "logical_digest", None
+                        )
+                    ),
+                    "eval2_metric_policy_digest": (
+                        context.method_policies.common_training.eval2_metric_policy_digest
+                    ),
+                    "default_dtype": (
+                        context.method_policies.common_training.default_dtype
+                    ),
+                    "device": context.method_policies.device,
+                }
             )
             if cache_key in context._baseline_replay_cache:
-                replay_foundation_rmse = context._baseline_replay_cache[cache_key]
+                replay_foundation_rmse = context._baseline_replay_cache[
+                    cache_key
+                ]
             else:
-                from types import SimpleNamespace
+                from .post_selection_execution import (
+                    build_post_selection_foundation_baseline_provider,
+                )
 
-                baseline_provider = SimpleNamespace(
-                    is_baseline=True,
-                    foundation_model=context.method_policies.foundation_model,
+                baseline_provider = (
+                    build_post_selection_foundation_baseline_provider(
+                        foundation_path=foundation_model,
+                        foundation_identity=foundation_identity,
+                        foundation_head=foundation_head,
+                        device=context.method_policies.device,
+                        default_dtype=context.method_policies.common_training.default_dtype,
+                        allow_forward_override=context.inference_evaluator
+                        is not None,
+                    )
                 )
                 baseline_replay_metrics = evaluate_post_selection_dataset(
                     run_plan=run_plan,
@@ -381,7 +464,9 @@ def execute_post_selection_run(
                 replay_foundation_rmse = (
                     baseline_replay_metrics.force_component_rmse_ev_per_angstrom
                 )
-                context._baseline_replay_cache[cache_key] = replay_foundation_rmse
+                context._baseline_replay_cache[cache_key] = (
+                    replay_foundation_rmse
+                )
             replay_label_mode = "true_dft"
 
         record = assess_eval2_checkpoint(
@@ -567,8 +652,29 @@ def execute_post_selection_cross_validation(
 
     selected = context.selected
     projection = build_selected_relation_projection(selected)
+    admissibility = context.method_policies.checkpoint_admissibility
+    replay_resolution = None
+    if admissibility.replay_enabled:
+        if not hasattr(context, "paths") or context.paths is None:
+            raise PostSelectionError(
+                "Replay-enabled CV requires configured campaign paths."
+            )
+        from ._campaign_cli_core import _resolve_true_label_replay_inputs
+
+        replay_resolution = _resolve_true_label_replay_inputs(
+            context.cfg, context.paths, require_train=True
+        )
+    replay_lineage_digest = (
+        compute_replay_lineage_digest(replay_resolution)
+        if admissibility.replay_enabled
+        else None
+    )
     plan = build_post_selection_cv_plan(
-        selected, context.method, context.cv_policy, projection=projection
+        selected,
+        context.method,
+        context.cv_policy,
+        projection=projection,
+        replay_lineage_digest=replay_lineage_digest,
     )
     store = context.evidence_store
     # The policy identities are persisted as records, not just as digests, so a
@@ -642,7 +748,28 @@ def resolve_current_cv_plan(context: PostSelectionContext) -> PostSelectionCvPla
         deserializer=PostSelectionCvPlan.from_dict,
     )
     if plan is not None:
-        validate_post_selection_cv_plan(plan, context.selected)
+        admissibility = context.method_policies.checkpoint_admissibility
+        replay_resolution = None
+        if (
+            admissibility.replay_enabled
+            and hasattr(context, "paths")
+            and context.paths is not None
+        ):
+            from ._campaign_cli_core import _resolve_true_label_replay_inputs
+
+            replay_resolution = _resolve_true_label_replay_inputs(
+                context.cfg, context.paths, require_train=True
+            )
+        replay_lineage_digest = (
+            compute_replay_lineage_digest(replay_resolution)
+            if admissibility.replay_enabled
+            else None
+        )
+        validate_post_selection_cv_plan(
+            plan,
+            context.selected,
+            replay_lineage_digest=replay_lineage_digest,
+        )
     return plan
 
 
@@ -688,18 +815,37 @@ def execute_final_production(
         method_identity_digest=context.method.content_digest,
         selected_binding_digest=selected.binding.content_digest,
     )
+    admissibility = context.method_policies.checkpoint_admissibility
+    replay_resolution = None
+    if admissibility.replay_enabled:
+        if not hasattr(context, "paths") or context.paths is None:
+            raise PostSelectionError(
+                "Replay-enabled final production requires configured campaign paths."
+            )
+        from ._campaign_cli_core import _resolve_true_label_replay_inputs
+
+        replay_resolution = _resolve_true_label_replay_inputs(
+            context.cfg, context.paths, require_train=True
+        )
+    replay_lineage_digest = (
+        compute_replay_lineage_digest(replay_resolution)
+        if admissibility.replay_enabled
+        else None
+    )
     final_plan = build_final_production_plan(
         selected,
         context.method,
         context.production_policy,
         cv_plan=plan,
         cv_acceptance=acceptance,
+        replay_lineage_digest=replay_lineage_digest,
     )
     validate_final_production_plan(
         final_plan,
         selected,
         method=context.method,
         policy=context.production_policy,
+        replay_lineage_digest=replay_lineage_digest,
     )
     store = context.evidence_store
     store.put(context.method)
@@ -748,11 +894,29 @@ def resolve_current_final_production_plan(
         deserializer=FinalProductionPlan.from_dict,
     )
     if plan is not None:
+        admissibility = context.method_policies.checkpoint_admissibility
+        replay_resolution = None
+        if (
+            admissibility.replay_enabled
+            and hasattr(context, "paths")
+            and context.paths is not None
+        ):
+            from ._campaign_cli_core import _resolve_true_label_replay_inputs
+
+            replay_resolution = _resolve_true_label_replay_inputs(
+                context.cfg, context.paths, require_train=True
+            )
+        replay_lineage_digest = (
+            compute_replay_lineage_digest(replay_resolution)
+            if admissibility.replay_enabled
+            else None
+        )
         validate_final_production_plan(
             plan,
             context.selected,
             method=context.method,
             policy=context.production_policy,
+            replay_lineage_digest=replay_lineage_digest,
         )
     return plan
 
