@@ -127,10 +127,6 @@ from .execution import (
     validate_target_size_boundary_snapshot,
     validate_target_size_continuation_request,
 )
-from .persistence import (
-    publish_immutable_bytes_create_or_verify,
-    publish_immutable_json_create_or_verify,
-)
 from .export import (
     TARGET_SIZE_EVALUATION_ARTIFACT_SCHEMA,
     TARGET_SIZE_EVALUATION_VIEW_SCHEMA,
@@ -143,6 +139,10 @@ from .export import (
     write_target_size_evaluation_artifact,
     write_target_size_extxyz_artifact,
 )
+from .persistence import (
+    publish_immutable_bytes_create_or_verify,
+    publish_immutable_json_create_or_verify,
+)
 from .schedule import (
     FRESH_FINAL_PRODUCTION_HORIZON_EPOCHS,
     TARGET_SIZE_SCREEN_SCHEDULE_SCHEMA,
@@ -152,6 +152,7 @@ from .schedule import (
 )
 
 __all__ = [
+    "authenticate_train2_checkpoint_provider",
     "CommonAtomicReferenceFit",
     "EVALUATION_MODEL_STATE_EMA",
     "EVALUATION_MODEL_STATE_LIVE",
@@ -216,7 +217,6 @@ __all__ = [
     "build_target_size_candidate_trajectory",
     "build_target_size_cell_completion_record",
     "build_target_size_eval2_failure_cell_completion_record",
-    "authenticate_train2_checkpoint_provider",
     "build_target_size_eval2_role",
     "build_target_size_success_cell_completion_record",
     "build_target_size_train2_failure_cell_completion_record",
@@ -267,9 +267,9 @@ __all__ = [
     "validate_target_size_evaluation_artifact",
     "validate_target_size_extxyz_artifact",
     "validate_target_size_materialization",
-    "write_target_size_evaluation_artifact",
     "publish_immutable_bytes_create_or_verify",
     "publish_immutable_json_create_or_verify",
+    "write_target_size_evaluation_artifact",
     "write_target_size_extxyz_artifact",
     "seed_neutral_optimizer_policy_digest",
     "validate_candidate_optimizer_policy",

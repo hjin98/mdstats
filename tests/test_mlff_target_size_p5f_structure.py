@@ -12,8 +12,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
-
 from mdstats.training_data import _campaign_cli_core as cli
 
 _TRAINING_DATA = Path(__file__).resolve().parents[1] / "mdstats" / "training_data"

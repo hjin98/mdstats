@@ -16,8 +16,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from tests._mlff_post_selection_fixture import (
     PRODUCTION_MAX_NUM_EPOCHS,
     PostSelectionHarness,

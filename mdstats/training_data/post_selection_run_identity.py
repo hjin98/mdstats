@@ -15,7 +15,6 @@ data preparation can still be shared.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
 
 from ._common import TrainingDataInputError, digest, validate_digest
 

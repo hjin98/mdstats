@@ -28,11 +28,11 @@ lineage, restart, and publication behavior while substituting only MACE.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from ._common import digest
 from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
@@ -87,7 +87,6 @@ from .post_selection_production import (
     frozen_m3_development_evidence,
     validate_final_production_plan,
 )
-from .post_selection_run_identity import PostSelectionRunRole
 from .post_selection_store import (
     POINTER_CV_ACCEPTANCE,
     POINTER_CV_PLAN,
@@ -383,6 +382,93 @@ def _checkpoint_catalog(run_plan: Any, checkpoint_directory: Path) -> Any:
     )
 
 
+#: Filename of one fold's completed acceptance inside its own run directory.
+#: Fold evidence is content-addressed like everything else, but a restart needs
+#: to find it by *position* rather than by digest, so the position record lives
+#: beside the run it describes.
+FOLD_ACCEPTANCE_FILENAME = "fold-acceptance.json"
+
+#: The same idea for one completed final-production job.
+RUN_EVIDENCE_FILENAME = "run-evidence.json"
+
+
+def _completed_fold_acceptance(
+    context: PostSelectionContext, run_plan: Any
+) -> CvFoldAcceptance | None:
+    """Reuse a completed fold on restart, after re-checking what it binds.
+
+    An interrupted cross-validation must not retrain folds that already
+    finished - with real MACE that is the difference between resuming and
+    starting over. Reuse is still conditional: the stored acceptance must belong
+    to this exact run plan and must have been judged under the current
+    acceptance predicate, or it is not evidence about the campaign being run now.
+    """
+
+    path = context.run_root(run_plan.run_identity) / FOLD_ACCEPTANCE_FILENAME
+    if not path.is_file():
+        return None
+    acceptance = CvFoldAcceptance.from_dict(
+        json.loads(path.read_text(encoding="utf-8"))
+    )
+    policy = context.cv_policy
+    if (
+        acceptance.run_plan_digest != run_plan.content_digest
+        or acceptance.cv_plan_digest != run_plan.cv_plan_digest
+        or acceptance.acceptance_metric != policy.acceptance_metric
+        or acceptance.acceptance_maximum != policy.acceptance_maximum
+    ):
+        raise PostSelectionError(
+            f"Stored evidence for cross-validation run "
+            f"{run_plan.run_identity[:12]}... does not belong to the current plan or "
+            "acceptance predicate. Post-selection evidence is never reinterpreted "
+            "under a changed policy."
+        )
+    return acceptance
+
+
+def _record_completed_fold_acceptance(
+    context: PostSelectionContext, run_plan: Any, acceptance: CvFoldAcceptance
+) -> None:
+    from .target_size_execution import publish_immutable_json_create_or_verify
+
+    publish_immutable_json_create_or_verify(
+        context.run_root(run_plan.run_identity) / FOLD_ACCEPTANCE_FILENAME,
+        acceptance.to_dict(),
+        deserializer=CvFoldAcceptance.from_dict,
+    )
+
+
+def _completed_run_evidence(
+    context: PostSelectionContext, run_plan: Any
+) -> PostSelectionRunEvidence | None:
+    """Reuse a completed final-production job on restart."""
+
+    path = context.run_root(run_plan.run_identity) / RUN_EVIDENCE_FILENAME
+    if not path.is_file():
+        return None
+    evidence = PostSelectionRunEvidence.from_dict(
+        json.loads(path.read_text(encoding="utf-8"))
+    )
+    if evidence.run_plan_digest != run_plan.content_digest:
+        raise PostSelectionError(
+            f"Stored evidence for production run {run_plan.run_identity[:12]}... "
+            "belongs to a different run plan."
+        )
+    return evidence
+
+
+def _record_completed_run_evidence(
+    context: PostSelectionContext, run_plan: Any, evidence: PostSelectionRunEvidence
+) -> None:
+    from .target_size_execution import publish_immutable_json_create_or_verify
+
+    publish_immutable_json_create_or_verify(
+        context.run_root(run_plan.run_identity) / RUN_EVIDENCE_FILENAME,
+        evidence.to_dict(),
+        deserializer=PostSelectionRunEvidence.from_dict,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Cross-validation
 # ---------------------------------------------------------------------------
@@ -429,6 +515,10 @@ def execute_post_selection_cross_validation(
             planned_epochs=context.cv_policy.cv_max_num_epochs,
         )
         store.put(run_plan)
+        completed = _completed_fold_acceptance(context, run_plan)
+        if completed is not None:
+            acceptances.append(completed)
+            continue
         _evidence, representative, outer_metrics = execute_post_selection_run(
             context,
             run_plan=run_plan,
@@ -448,6 +538,7 @@ def execute_post_selection_cross_validation(
             policy=context.cv_policy,
         )
         store.put(acceptance)
+        _record_completed_fold_acceptance(context, run_plan, acceptance)
         acceptances.append(acceptance)
 
     campaign = accept_post_selection_cv_campaign(plan, context.cv_policy, acceptances)
@@ -548,6 +639,10 @@ def execute_final_production(
     for seed in final_plan.required_final_seeds:
         run_plan = build_final_production_run_plan(final_plan, optimizer_seed=seed)
         store.put(run_plan)
+        completed = _completed_run_evidence(context, run_plan)
+        if completed is not None:
+            evidence.append(completed)
+            continue
         run_evidence, _representative, _outer = execute_post_selection_run(
             context,
             run_plan=run_plan,
@@ -556,6 +651,7 @@ def execute_final_production(
             monitor_frame_uids=m3_membership,
             outer_evaluation_frame_uids=None,
         )
+        _record_completed_run_evidence(context, run_plan, run_evidence)
         evidence.append(run_evidence)
     return final_plan, tuple(evidence)
 
@@ -718,7 +814,9 @@ def execute_current_train_production(args: Any) -> int:
 
 
 __all__ = [
+    "FOLD_ACCEPTANCE_FILENAME",
     "POST_SELECTION_EVALUATION_MODEL_STATE",
+    "RUN_EVIDENCE_FILENAME",
     "PostSelectionContext",
     "build_post_selection_context",
     "execute_current_cross_validate",

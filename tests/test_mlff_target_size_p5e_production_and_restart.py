@@ -549,6 +549,72 @@ def test_p5e_restart_reuses_the_same_plan_and_acceptance(tmp_path: Path):
     assert acceptance_after.content_digest == acceptance_before.content_digest
 
 
+def test_p5e_restart_does_not_retrain_completed_folds_or_production_runs(
+    tmp_path: Path,
+):
+    """Resuming is resuming: finished work is reused, not repeated."""
+
+    config, _workspace = build_selected_campaign(tmp_path)
+    first = PostSelectionHarness()
+    assert run_cross_validate(config, first) == 0
+    assert len(first.runs) == 2
+
+    resumed = PostSelectionHarness()
+    assert run_cross_validate(config, resumed) == 0
+    assert resumed.runs == []
+
+    produced = PostSelectionHarness()
+    assert run_train_production(config, produced) == 0
+    assert len(produced.runs) == 1
+
+    reproduced = PostSelectionHarness()
+    assert run_train_production(config, reproduced) == 0
+    assert reproduced.runs == []
+
+
+def test_p5e_a_changed_acceptance_predicate_reruns_rather_than_reinterprets(
+    tmp_path: Path,
+):
+    """A CV policy edit is a different campaign, not a re-reading of the old one.
+
+    The acceptance predicate is part of the CV policy identity, so changing it
+    moves the plan digest and therefore every run identity. The previous folds
+    stay as their own historical evidence; the new question is answered by new
+    runs rather than by reinterpreting old verdicts.
+    """
+
+    config, _workspace = build_selected_campaign(tmp_path)
+    first = PostSelectionHarness()
+    assert run_cross_validate(config, first) == 0
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=object())
+        before = resolve_current_cv_plan(context)
+    finally:
+        store.close()
+
+    rewrite_config(config, "acceptance_maximum = 0.5", "acceptance_maximum = 0.25")
+    second = PostSelectionHarness()
+    assert run_cross_validate(config, second) == 0
+    assert len(second.runs) == len(first.runs)
+    assert not set(second.runs) & set(first.runs)
+
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=object())
+        after = resolve_current_cv_plan(context)
+    finally:
+        store.close()
+    assert after.content_digest != before.content_digest
+    assert after.cv_policy_identity_digest != before.cv_policy_identity_digest
+    # The scientific plan - universe, components, fold roles - is unchanged; only
+    # the policy the folds are judged under moved.
+    assert after.projection_digest == before.projection_digest
+    assert [fold.to_dict() for fold in after.folds] == [
+        fold.to_dict() for fold in before.folds
+    ]
+
+
 def test_p5e_stale_generation_descendants_are_unreachable_as_current(
     tmp_path: Path,
 ):
