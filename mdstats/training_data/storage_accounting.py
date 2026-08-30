@@ -481,6 +481,69 @@ def _target_size_family(
     )
 
 
+def _post_selection_family(
+    parts: tuple[str, ...],
+) -> tuple[str, ArtifactRetentionClass, str, str, tuple[str, ...]]:
+    """Classify post-selection cross-validation and final-production evidence.
+
+    This is the scientific authority for whether the frozen training method was
+    cross-validation accepted and what the fresh production runs actually did.
+    Its immutable object store carries the plans and acceptance records that a
+    later reader needs to prove production was authorized, and its run trees
+    carry the exact materialization and checkpoint ancestry that makes those
+    claims re-verifiable.  Reclaiming any of it is a scientific decision about a
+    campaign generation, never a storage tier's, so nothing here is
+    automatically or manually eligible.
+    """
+
+    # parts[0] == ".mdstats", parts[1] == "post-selection", parts[2] == generation
+    tail = parts[3:]
+    section = tail[0] if tail else ""
+    if section == "objects":
+        return (
+            "post_selection_evidence_graph",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            (
+                "cross_validation_authorization",
+                "final_production_authorization",
+                "deterministic_scientific_replay",
+            ),
+        )
+    if section == "runs":
+        if "checkpoints" in tail:
+            return (
+                "post_selection_training_runtime",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_completed_epoch_continuation", "exact_checkpoint_reevaluation"),
+            )
+        if "materialization" in tail:
+            return (
+                "post_selection_materializations",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_fold_membership", "exact_production_membership"),
+            )
+        return (
+            "post_selection_run_evidence",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            ("post_selection_run_restart", "deterministic_scientific_replay"),
+        )
+    return (
+        "post_selection_evidence_graph",
+        ArtifactRetentionClass.RESTART_CRITICAL,
+        "prohibited",
+        "prohibited",
+        ("cross_validation_authorization", "final_production_authorization"),
+    )
+
+
 def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, tuple[str, ...]]:
     parts = relative.parts
     posix = relative.as_posix()
@@ -509,6 +572,8 @@ def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, 
     if parts[0] == ".mdstats":
         if len(parts) >= 2 and parts[1] == "target-size":
             return _target_size_family(parts)
+        if len(parts) >= 2 and parts[1] == "post-selection":
+            return _post_selection_family(parts)
         if len(parts) >= 2 and parts[1] in {"campaign.sqlite3", "records", "hash-receipts.sqlite3"}:
             return ("campaign_state_and_provenance", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("campaign_state", "scientific_provenance"))
         if len(parts) >= 2 and parts[1] in {"frame-cache", "data7-cache", "data8-fixed-cache", "evaluation-graphs"}:

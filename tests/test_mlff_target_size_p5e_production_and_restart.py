@@ -586,6 +586,63 @@ def test_p5e_stale_generation_descendants_are_unreachable_as_current(
         store.close()
 
 
+def test_p5e_post_selection_evidence_is_owned_storage_and_never_auto_reclaimed(
+    tmp_path: Path,
+):
+    """Storage accounting knows this evidence, and no tier may delete it."""
+
+    config, workspace = build_selected_campaign(tmp_path)
+    assert run_cross_validate(config) == 0
+    assert run_train_production(config) == 0
+
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    assert cli.main(["--config", str(config), "storage", "report"]) == 0
+    cfg, paths, store = load_context(config)
+    try:
+        payload = json.loads(
+            (paths.results / "storage-report.json").read_text(encoding="utf-8")
+        )
+    finally:
+        store.close()
+    families = {item["family"]: item for item in payload["families"]}
+    post_selection = {
+        name: item
+        for name, item in families.items()
+        if name.startswith("post_selection_")
+    }
+    assert post_selection, sorted(families)
+    for name, item in post_selection.items():
+        assert item["automatic_reclamation_eligibility"] == "prohibited", name
+        assert item["manual_reclamation_eligibility"] == "prohibited", name
+    assert "internal_campaign_artifacts" not in post_selection
+
+
+def test_p5e_cv_only_policy_change_leaves_p4_byte_identical(tmp_path: Path):
+    config, _workspace = build_selected_campaign(tmp_path)
+    assert run_cross_validate(config) == 0
+    _cfg, _paths, store, before = _campaign_state(config)
+    try:
+        before_state = before.state
+        before_terminal = before_state.terminal
+    finally:
+        store.close()
+
+    # A CV-only edit: fold count and partition seed.
+    rewrite_config(config, "fold_count = 2", "fold_count = 3")
+    rewrite_config(config, "partition_seed = 7", "partition_seed = 11")
+    assert run_cross_validate(config) == 0
+
+    _cfg, _paths, store, after = _campaign_state(config)
+    try:
+        assert after.state_revision == before.state_revision
+        assert after.sequence == before.sequence
+        assert after.state.terminal == before_terminal
+        assert after.state.to_dict() == before_state.to_dict()
+    finally:
+        store.close()
+
+
 def test_p5e_p4_selection_survives_the_whole_post_selection_lifecycle(
     tmp_path: Path,
 ):
