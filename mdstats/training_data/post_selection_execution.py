@@ -36,7 +36,12 @@ from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
 )
-from .post_selection_identity import PostSelectionMethodIdentity
+from .post_selection_identity import (
+    POST_SELECTION_REPLAY_HEAD_NAME,
+    POST_SELECTION_TARGET_HEAD_NAME,
+    PostSelectionMethodIdentity,
+    canonical_post_selection_head_names,
+)
 
 POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v1"
 POST_SELECTION_MATERIALIZATION_SCHEMA = "mdstats.post-selection-materialization.v1"
@@ -218,14 +223,27 @@ def fit_post_selection_preparation(
             "training data."
         )
     authorities = context.authorities
+    # The foundation checkpoint is part of the non-scratch method identity, but
+    # it is not an input to the default from-scratch E0 fit.  Passing that
+    # lineage through unconditionally makes a valid naive/multihead
+    # post-selection preparation look like a foundation-residual fit and the
+    # shared DATA7 owner correctly rejects it.  Only the explicitly selected
+    # residual-fit authority may receive foundation fit inputs.
+    from .reference_fit import AtomicReferenceFitMode
+
+    foundation_fit_digest = (
+        policy.foundation_checkpoint_digest
+        if policy.atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL
+        else None
+    )
     atomic_references = fit_common_atomic_reference_energies(
         authorities.frame_catalog,
         authorities.frame_data_by_run,
         frames,
         policy=policy.atomic_reference_policy,
         frame_array_index=authorities.frame_array_index,
-        foundation_checkpoint_digest=policy.foundation_checkpoint_digest,
-        foundation_identity_digest=policy.foundation_checkpoint_digest,
+        foundation_checkpoint_digest=foundation_fit_digest,
+        foundation_identity_digest=foundation_fit_digest,
     )
     configuration_weights = fit_common_configuration_weights(
         authorities.aggregate.population,
@@ -452,6 +470,8 @@ def _post_selection_mace_config(
         "device": str(optimizer_policy.device),
         "method_identity_digest": method.content_digest,
         "mace_architecture": arch,
+        "target_head_name": POST_SELECTION_TARGET_HEAD_NAME,
+        "replay_head_name": POST_SELECTION_REPLAY_HEAD_NAME,
     }
     if hasattr(optimizer_policy, "eval_interval"):
         config["eval_interval"] = int(optimizer_policy.eval_interval)
@@ -476,7 +496,7 @@ def _post_selection_mace_config(
                 else str(replay_monitor)
             )
         config["heads"] = {
-            "target_head": {
+            POST_SELECTION_TARGET_HEAD_NAME: {
                 "train_file": target_train.relative_path,
                 "valid_file": monitor.relative_path,
                 "atomic_numbers": sorted(atomic_numbers),
@@ -485,7 +505,7 @@ def _post_selection_mace_config(
                 "forces_key": extxyz_policy.forces_key,
                 "stress_key": extxyz_policy.stress_key,
             },
-            "pt_head": {
+            POST_SELECTION_REPLAY_HEAD_NAME: {
                 "energy_key": extxyz_policy.energy_key,
                 "forces_key": extxyz_policy.forces_key,
                 "stress_key": extxyz_policy.stress_key,
@@ -713,6 +733,48 @@ class MacePostSelectionTrainer:
             raise PostSelectionExecutionError(
                 "Post-selection MACE configuration schema mismatch."
             )
+        try:
+            configured_target_head, configured_replay_head = (
+                canonical_post_selection_head_names(
+                    target_head_name=internal_payload.get(
+                        "target_head_name", POST_SELECTION_TARGET_HEAD_NAME
+                    ),
+                    replay_head_name=internal_payload.get(
+                        "replay_head_name", POST_SELECTION_REPLAY_HEAD_NAME
+                    ),
+                )
+            )
+            plan_target_head, plan_replay_head = canonical_post_selection_head_names(
+                target_head_name=getattr(
+                    request.plan, "target_head_name", POST_SELECTION_TARGET_HEAD_NAME
+                ),
+                replay_head_name=getattr(
+                    request.plan, "replay_head_name", POST_SELECTION_REPLAY_HEAD_NAME
+                ),
+            )
+        except TrainingDataInputError as exc:
+            raise PostSelectionExecutionError(
+                "Post-selection runtime and executable configuration disagree "
+                "with the canonical P5 fine-tuning head namespace."
+            ) from exc
+        if (configured_target_head, configured_replay_head) != (
+            plan_target_head,
+            plan_replay_head,
+        ):
+            raise PostSelectionExecutionError(
+                "Post-selection runtime plan and internal configuration use "
+                "different fine-tuning head names."
+            )
+        if internal_payload.get("multiheads_finetuning"):
+            heads = internal_payload.get("heads")
+            if not isinstance(heads, Mapping) or set(heads) != {
+                POST_SELECTION_TARGET_HEAD_NAME,
+                POST_SELECTION_REPLAY_HEAD_NAME,
+            }:
+                raise PostSelectionExecutionError(
+                    "Post-selection multihead configuration must expose exactly "
+                    "the canonical target_head and pt_head heads."
+                )
 
         # 2. Target training ExtXYZ at materialization_directory / target_train_artifact.relative_path
         target_train_art = request.materialization.target_train_artifact
@@ -776,6 +838,11 @@ class MacePostSelectionTrainer:
                 raise PostSelectionExecutionError(
                     f"Replay train file is missing: {rp_train_p}"
                 )
+            artifact_path = getattr(request.replay_train_artifact, "path", None)
+            if artifact_path is not None and Path(str(artifact_path)).resolve() != rp_train_p:
+                raise PostSelectionExecutionError(
+                    "Replay train path does not match its authenticated artifact."
+                )
             if sha256_file_cached(rp_train_p) != request.replay_train_artifact.sha256:
                 raise PostSelectionExecutionError(
                     "Replay train file SHA256 does not match replay train artifact."
@@ -791,6 +858,11 @@ class MacePostSelectionTrainer:
             if not rp_mon_p.is_file():
                 raise PostSelectionExecutionError(
                     f"Replay monitor file is missing: {rp_mon_p}"
+                )
+            artifact_path = getattr(request.replay_monitor_artifact, "path", None)
+            if artifact_path is not None and Path(str(artifact_path)).resolve() != rp_mon_p:
+                raise PostSelectionExecutionError(
+                    "Replay monitor path does not match its authenticated artifact."
                 )
             if sha256_file_cached(rp_mon_p) != request.replay_monitor_artifact.sha256:
                 raise PostSelectionExecutionError(
@@ -855,7 +927,13 @@ class MacePostSelectionTrainer:
                 f"{proc.stderr}"
             )
 
-        summary = load_train2_runtime_summary(request.checkpoint_directory)
+        try:
+            summary = load_train2_runtime_summary(request.checkpoint_directory)
+        except Exception as exc:
+            raise PostSelectionExecutionError(
+                "The MACE wrapper exited successfully without a valid canonical "
+                "TRAIN2 runtime summary."
+            ) from exc
         if summary.plan_digest != request.plan.content_digest:
             raise PostSelectionExecutionError(
                 "Loaded TRAIN2 runtime summary plan digest does not match request."
@@ -956,6 +1034,20 @@ def post_selection_mace_run_configuration(
         raise PostSelectionExecutionError(
             "Post-selection MACE configuration does not carry the accepted schema."
         )
+    try:
+        target_head_name, replay_head_name = canonical_post_selection_head_names(
+            target_head_name=config.get(
+                "target_head_name", POST_SELECTION_TARGET_HEAD_NAME
+            ),
+            replay_head_name=config.get(
+                "replay_head_name", POST_SELECTION_REPLAY_HEAD_NAME
+            ),
+        )
+    except TrainingDataInputError as exc:
+        raise PostSelectionExecutionError(
+            "Post-selection MACE configuration carries a noncanonical "
+            "fine-tuning head namespace."
+        ) from exc
     result: dict[str, Any] = {
         key: config[key] for key in _MACE_CONFIG_PASSTHROUGH_KEYS if key in config
     }
@@ -971,8 +1063,16 @@ def post_selection_mace_run_configuration(
             result["pt_train_file"] = config["pt_train_file"]
         if "pt_valid_file" in config:
             result["pt_valid_file"] = config["pt_valid_file"]
-        if "heads" in config:
-            result["heads"] = config["heads"]
+        heads = config.get("heads")
+        if not isinstance(heads, Mapping) or set(heads) != {
+            target_head_name,
+            replay_head_name,
+        }:
+            raise PostSelectionExecutionError(
+                "Post-selection multihead configuration must expose exactly "
+                f"{target_head_name!r} and {replay_head_name!r}."
+            )
+        result["heads"] = dict(heads)
     for key, value in dict(config.get("mace_architecture") or {}).items():
         result.setdefault(str(key), value)
     return result
@@ -987,8 +1087,8 @@ def post_selection_runtime_plan(
     learning_rate_policy: Any = None,
     replay_monitor_enabled: bool = False,
     true_replay_monitor_sha256: str | None = None,
-    target_head_name: str = "target_head",
-    replay_head_name: str = "pt_head",
+    target_head_name: str = POST_SELECTION_TARGET_HEAD_NAME,
+    replay_head_name: str = POST_SELECTION_REPLAY_HEAD_NAME,
 ) -> Any:
     """Build the TRAIN2 runtime plan for one post-selection role.
 
@@ -1000,6 +1100,17 @@ def post_selection_runtime_plan(
 
     from .train2_policy import LearningRateSchedulePolicy
     from .train2_runtime import Train2RuntimePlan
+
+    try:
+        target_head_name, replay_head_name = canonical_post_selection_head_names(
+            target_head_name=target_head_name,
+            replay_head_name=replay_head_name,
+        )
+    except TrainingDataInputError as exc:
+        raise PostSelectionExecutionError(
+            "Post-selection TRAIN2 runtime plan carries a noncanonical "
+            "fine-tuning head namespace."
+        ) from exc
 
     return Train2RuntimePlan(
         training_protocol_digest=method.content_digest,
@@ -1199,6 +1310,16 @@ def post_selection_checkpoint_candidates(
     catalog = post_selection_checkpoint_catalog(
         run_plan=run_plan, checkpoint_directory=checkpoint_directory
     )
+    try:
+        canonical_post_selection_head_names(
+            target_head_name=runtime_plan.target_head_name,
+            replay_head_name=runtime_plan.replay_head_name,
+        )
+    except TrainingDataInputError as exc:
+        raise PostSelectionExecutionError(
+            "Post-selection checkpoint trajectory uses a noncanonical "
+            "fine-tuning head namespace."
+        ) from exc
     return read_train2_trajectory_points(
         checkpoint_directory,
         checkpoint_catalog=catalog,
@@ -1374,6 +1495,8 @@ __all__ = [
     "POST_SELECTION_MATERIALIZATION_SCHEMA",
     "POST_SELECTION_PREPARATION_SCHEMA",
     "POST_SELECTION_RUN_EVIDENCE_SCHEMA",
+    "POST_SELECTION_REPLAY_HEAD_NAME",
+    "POST_SELECTION_TARGET_HEAD_NAME",
     "MacePostSelectionTrainer",
     "PostSelectionExecutionError",
     "PostSelectionFittedPreparation",

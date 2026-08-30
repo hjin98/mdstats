@@ -426,7 +426,7 @@ def test_guard_p5_r7_09_mace_post_selection_trainer_translates_internal_config()
         "multiheads_finetuning": True,
         "pt_train_file": "pt_train.extxyz",
         "pt_valid_file": "pt_valid.extxyz",
-        "heads": ["default", "pt_head"],
+        "heads": {"target_head": {}, "pt_head": {}},
         "lr": 0.001,
         "batch_size": 4,
         "max_num_epochs": 10,

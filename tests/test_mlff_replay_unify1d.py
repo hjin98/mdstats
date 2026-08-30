@@ -9,6 +9,7 @@ import pytest
 
 import mdstats
 from mdstats.training_data import campaign_cli
+from mdstats.training_data import _campaign_cli_core as campaign_core
 from mdstats.training_data._common import sha256_file_cached
 from mdstats.training_data.foundation import FoundationInferenceIdentity, FoundationPotentialIdentity
 
@@ -161,9 +162,9 @@ def test_pseudolabel_single_source_materializes_training_views_and_independent_t
         resolved_kernel_mode="e3nn",
         foundation_inference_identity_digest=inference.content_digest,
     )
-    monkeypatch.setattr(campaign_cli, "_resolved_foundation_potential_identity", lambda cfg, paths: potential)
-    monkeypatch.setattr(campaign_cli, "_stored_acceleration_realization", lambda cfg, paths, require_qualified=False: realization)
-    monkeypatch.setattr(campaign_cli, "_foundation_inference_identity", lambda cfg, potential_arg, **kwargs: inference)
+    monkeypatch.setattr(campaign_core, "_resolved_foundation_potential_identity", lambda cfg, paths: potential)
+    monkeypatch.setattr(campaign_core, "_stored_acceleration_realization", lambda cfg, paths, require_qualified=False: realization)
+    monkeypatch.setattr(campaign_core, "_foundation_inference_identity", lambda cfg, potential_arg, **kwargs: inference)
 
     original_builder = mdstats.build_replay_foundation_prediction_cache
     providers: list[_FakeProvider] = []

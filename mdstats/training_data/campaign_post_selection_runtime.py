@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from ._common import digest, sha256_file_cached
+from ._common import TrainingDataInputError, digest, sha256_file_cached, validate_digest
 from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
@@ -73,6 +73,8 @@ from .post_selection_execution import (
 from .post_selection_identity import (
     CvValidationPolicyIdentity,
     FinalProductionPolicyIdentity,
+    POST_SELECTION_REPLAY_HEAD_NAME,
+    POST_SELECTION_TARGET_HEAD_NAME,
     PostSelectionMethodIdentity,
     compute_replay_lineage_digest,
     cv_training_budget_policy,
@@ -134,6 +136,115 @@ class PostSelectionContext:
         )
         root.mkdir(parents=True, exist_ok=True)
         return root
+
+
+@dataclass(frozen=True, slots=True)
+class PostSelectionReplayResolution:
+    """Transport the two authenticated replay roles through P5 execution.
+
+    ``train_*`` is the artifact consumed by the replay head and may carry
+    foundation-pseudolabels.  ``monitor_*`` is always the independent TRUE_DFT
+    admissibility monitor.  This adapter intentionally owns no persistence or
+    scientific resolution; its values come from the canonical replay owners.
+    """
+
+    interface: str
+    train_path: str
+    monitor_path: str
+    train_artifact: Any
+    monitor_artifact: Any
+    training_label_mode: Any
+    source_path: str | None = None
+    source_content_digest: str | None = None
+    source_sha256: str | None = None
+    split_manifest_digest: str | None = None
+    true_label_source_sha256: str | None = None
+    true_label_mode: str = "true_dft"
+
+    def __post_init__(self) -> None:
+        from .replay import ReplayLabelMode
+
+        if self.interface not in {"single_source", "legacy_split"}:
+            raise PostSelectionError(
+                f"Unsupported P5 replay interface: {self.interface!r}."
+            )
+        if not str(self.train_path).strip() or not str(self.monitor_path).strip():
+            raise PostSelectionError(
+                "P5 replay resolution requires both training and monitor paths."
+            )
+        if self.train_artifact is None or self.monitor_artifact is None:
+            raise PostSelectionError(
+                "P5 replay resolution requires both training and monitor artifacts."
+            )
+        try:
+            training_mode = ReplayLabelMode(
+                getattr(self.training_label_mode, "value", self.training_label_mode)
+            )
+            monitor_mode = ReplayLabelMode(
+                getattr(self.true_label_mode, "value", self.true_label_mode)
+            )
+        except (TypeError, ValueError) as exc:
+            raise PostSelectionError(
+                "P5 replay resolution carries an unsupported label semantic."
+            ) from exc
+        if training_mode not in {
+            ReplayLabelMode.TRUE_DFT,
+            ReplayLabelMode.FOUNDATION_PSEUDOLABEL,
+        }:
+            raise PostSelectionError(
+                "P5 replay training requires true_dft or foundation_pseudolabel."
+            )
+        if monitor_mode is not ReplayLabelMode.TRUE_DFT:
+            raise PostSelectionError(
+                "P5 replay admissibility requires an independent TRUE_DFT monitor."
+            )
+        for artifact, expected, role in (
+            (self.train_artifact, training_mode, "training"),
+            (self.monitor_artifact, ReplayLabelMode.TRUE_DFT, "monitor"),
+        ):
+            observed = getattr(artifact, "label_mode", None)
+            if observed is None:
+                continue
+            try:
+                observed = ReplayLabelMode(
+                    getattr(observed, "value", observed)
+                )
+            except (TypeError, ValueError) as exc:
+                raise PostSelectionError(
+                    f"P5 replay {role} artifact has an unsupported label semantic."
+                ) from exc
+            if observed is not expected:
+                raise PostSelectionError(
+                    f"P5 replay {role} artifact label semantic does not match its "
+                    "resolved role."
+                )
+        for path, artifact, role in (
+            (self.train_path, self.train_artifact, "training"),
+            (self.monitor_path, self.monitor_artifact, "monitor"),
+        ):
+            artifact_path = getattr(artifact, "path", None)
+            if artifact_path is not None and Path(str(artifact_path)).resolve() != Path(path).resolve():
+                raise PostSelectionError(
+                    f"P5 replay {role} path does not match its authenticated artifact."
+                )
+        if self.true_label_source_sha256 is not None:
+            try:
+                object.__setattr__(
+                    self,
+                    "true_label_source_sha256",
+                    validate_digest(
+                        self.true_label_source_sha256,
+                        name="true_label_source_sha256",
+                    ),
+                )
+            except TrainingDataInputError as exc:
+                raise PostSelectionError(
+                    "P5 replay TRUE_DFT source identity is not a valid SHA256."
+                ) from exc
+        object.__setattr__(self, "train_path", str(self.train_path))
+        object.__setattr__(self, "monitor_path", str(self.monitor_path))
+        object.__setattr__(self, "training_label_mode", training_mode)
+        object.__setattr__(self, "true_label_mode", monitor_mode.value)
 
 
 def build_post_selection_context(
@@ -229,43 +340,153 @@ def _resolve_post_selection_replay_resolution(
         raise PostSelectionError(
             "Replay-enabled post-selection requires configured campaign paths."
         )
-    from ._campaign_cli_core import _resolve_true_label_replay_inputs, _single_source_replay_context
+    from ._campaign_cli_core import (
+        _build_replay_plan,
+        _resolve_true_label_replay_inputs,
+        _single_source_replay_context,
+    )
+    from .replay import ReplayLabelMode, ReplayMode
 
     single_ctx = _single_source_replay_context(context.cfg, context.paths)
-    resolution = _resolve_true_label_replay_inputs(
-        context.cfg, context.paths, require_train=require_train
-    )
-    if resolution is None:
-        return None
     if single_ctx is not None:
+        plan = single_ctx.get("plan")
+        true_resolution = single_ctx.get("true_resolution")
+        if plan is None or true_resolution is None:
+            raise PostSelectionError(
+                "Single-source replay did not produce both training and TRUE_DFT "
+                "monitor authorities."
+            )
+        training_artifact = getattr(plan, "train_artifact", None)
+        if training_artifact is None:
+            raise PostSelectionError(
+                "Single-source replay did not produce a canonical training artifact."
+            )
+        training_path = getattr(training_artifact, "path", None)
+        if training_path is None:
+            raise PostSelectionError(
+                "Single-source replay training artifact does not identify its source file."
+            )
+        monitor_artifact = getattr(true_resolution, "monitor_artifact", None)
+        monitor_path = getattr(true_resolution, "monitor_path", None)
+        if monitor_artifact is None or monitor_path is None:
+            raise PostSelectionError(
+                "Single-source replay did not produce an independent TRUE_DFT "
+                "monitor artifact."
+            )
         source_art = single_ctx.get("replay_source")
         split_manifest = single_ctx.get("replay_split_manifest")
+        return PostSelectionReplayResolution(
+            interface="single_source",
+            train_path=str(training_path),
+            monitor_path=str(monitor_path),
+            train_artifact=training_artifact,
+            monitor_artifact=monitor_artifact,
+            training_label_mode=getattr(training_artifact, "label_mode", None),
+            source_path=(None if source_art is None else str(source_art.path)),
+            source_content_digest=(
+                None if source_art is None else source_art.content_digest
+            ),
+            source_sha256=None if source_art is None else source_art.sha256,
+            split_manifest_digest=(
+                None if split_manifest is None else split_manifest.content_digest
+            ),
+        )
 
-        class _BoundSingleSourceReplayResolution:
-            interface = "single_source"
-            train_path = resolution.train_path
-            monitor_path = resolution.monitor_path
-            train_artifact = resolution.train_artifact
-            monitor_artifact = resolution.monitor_artifact
-            source_path = resolution.source_path
-            source_content_digest = source_art.content_digest if source_art else None
-            source_sha256 = source_art.sha256 if source_art else None
-            split_manifest_digest = split_manifest.content_digest if split_manifest else None
-            true_label_mode = "true_dft"
+    # Legacy split replay has one canonical training plan and a separate true
+    # label resolver.  In particular, asking the latter for a TRUE_DFT train
+    # file must never replace a configured pseudolabel training artifact.
+    plan = _build_replay_plan(context.cfg, context.paths)
+    if plan is None or plan.mode is ReplayMode.NONE:
+        return None
+    if plan.mode not in {
+        ReplayMode.EXTERNAL_PSEUDOLABEL,
+        ReplayMode.EXTERNAL_TRUE_LABEL,
+    }:
+        raise PostSelectionError(
+            "Legacy replay mode does not provide an unambiguous supported P5 "
+            "training artifact."
+        )
+    training_artifact = getattr(plan, "train_artifact", None)
+    if training_artifact is None:
+        raise PostSelectionError(
+            "Legacy replay did not produce a canonical training artifact."
+        )
+    training_path = getattr(training_artifact, "path", None)
+    if training_path is None:
+        raise PostSelectionError(
+            "Legacy replay training artifact does not identify its source file."
+        )
 
-        return _BoundSingleSourceReplayResolution()
+    expected_training_mode = (
+        ReplayLabelMode.FOUNDATION_PSEUDOLABEL
+        if plan.mode is ReplayMode.EXTERNAL_PSEUDOLABEL
+        else ReplayLabelMode.TRUE_DFT
+    )
+    observed_training_mode = getattr(
+        training_artifact, "label_mode", expected_training_mode
+    )
+    try:
+        observed_training_mode = ReplayLabelMode(
+            getattr(observed_training_mode, "value", observed_training_mode)
+        )
+    except (TypeError, ValueError) as exc:
+        raise PostSelectionError(
+            "Legacy replay training artifact carries an unsupported label semantic."
+        ) from exc
+    if observed_training_mode is not expected_training_mode:
+        raise PostSelectionError(
+            "Legacy replay training artifact label semantics do not match the "
+            "configured replay mode."
+        )
+
+    if plan.mode is ReplayMode.EXTERNAL_PSEUDOLABEL:
+        true_resolution = _resolve_true_label_replay_inputs(
+            context.cfg, context.paths, require_train=False
+        )
+        if true_resolution is None:
+            raise PostSelectionError(
+                "Legacy pseudolabel replay requires an independent TRUE_DFT "
+                "replay monitor/source."
+            )
     else:
+        true_resolution = _resolve_true_label_replay_inputs(
+            context.cfg, context.paths, require_train=require_train
+        )
 
-        class _BoundLegacyReplayResolution:
-            interface = "legacy_split"
-            train_path = resolution.train_path
-            monitor_path = resolution.monitor_path
-            train_artifact = resolution.train_artifact
-            monitor_artifact = resolution.monitor_artifact
-            source_path = resolution.source_path
-            true_label_mode = "true_dft"
-
-        return _BoundLegacyReplayResolution()
+    if true_resolution is not None:
+        monitor_artifact = true_resolution.monitor_artifact
+        monitor_path = true_resolution.monitor_path
+        source_path = true_resolution.source_path
+    else:
+        # A legacy external_true_label campaign may declare already-authenticated
+        # TRUE_DFT split files without a separate replay_true_labels root.  The
+        # plan's monitor is then both the configured training-plan monitor and
+        # the independently authenticated TRUE_DFT monitor role.
+        monitor_artifact = getattr(plan, "monitor_artifact", None)
+        monitor_path = None if monitor_artifact is None else monitor_artifact.path
+        source_path = getattr(plan, "source_replay_path", None)
+    if monitor_artifact is None or monitor_path is None:
+        raise PostSelectionError(
+            "Legacy replay did not produce an independent TRUE_DFT monitor artifact."
+        )
+    true_label_source_sha256 = None
+    if source_path is not None:
+        source_file = Path(source_path).expanduser().resolve()
+        if not source_file.is_file():
+            raise PostSelectionError(
+                "Legacy replay TRUE_DFT source identity is missing from disk."
+            )
+        true_label_source_sha256 = sha256_file_cached(source_file)
+    return PostSelectionReplayResolution(
+        interface="legacy_split",
+        train_path=str(training_path),
+        monitor_path=str(monitor_path),
+        train_artifact=training_artifact,
+        monitor_artifact=monitor_artifact,
+        training_label_mode=expected_training_mode,
+        source_path=None if source_path is None else str(source_path),
+        true_label_source_sha256=true_label_source_sha256,
+    )
 
 
 def execute_post_selection_run(
@@ -342,11 +563,8 @@ def execute_post_selection_run(
             if replay_resolution is not None
             else None
         ),
-        target_head_name=(
-            context.method_policies.common_training.selected_head_name
-            or "target_head"
-        ),
-        replay_head_name="pt_head",
+        target_head_name=context.method_policies.target_head_name,
+        replay_head_name=context.method_policies.replay_head_name,
     )
     summary = context.trainer(
         PostSelectionRungRequest(
@@ -1106,8 +1324,11 @@ def execute_current_train_production(args: Any) -> int:
 __all__ = [
     "FOLD_ACCEPTANCE_FILENAME",
     "POST_SELECTION_EVALUATION_MODEL_STATE",
+    "POST_SELECTION_REPLAY_HEAD_NAME",
+    "POST_SELECTION_TARGET_HEAD_NAME",
     "RUN_EVIDENCE_FILENAME",
     "PostSelectionContext",
+    "PostSelectionReplayResolution",
     "build_post_selection_context",
     "execute_current_cross_validate",
     "execute_current_train_production",

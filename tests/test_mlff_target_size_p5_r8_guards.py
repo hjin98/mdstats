@@ -21,10 +21,6 @@ from mdstats.training_data._common import (
     digest,
     sha256_file_cached,
 )
-from mdstats.training_data.acceleration import (
-    MaceAccelerationBackend,
-    MaceAccelerationPolicy,
-)
 from mdstats.training_data.campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
@@ -71,6 +67,8 @@ from mdstats.training_data.post_selection_identity import (
     FinalProductionPolicyIdentity,
     PostSelectionMethodIdentity,
     compute_replay_lineage_digest,
+    cv_training_budget_policy,
+    resolve_cv_validation_policy_identity,
     resolve_post_selection_foundation_identity,
     resolve_post_selection_method_identity,
     resolve_post_selection_method_policies,
@@ -430,57 +428,113 @@ def test_claims_17_18_19_20_eval_interval_and_acceleration_parity():
     Claim 19: Acceleration backend mutation changes method identity and canonical MACE acceleration config.
     Claim 20: Method acceleration backend cannot disagree with run optimizer acceleration backend.
     """
-    # Claim 17: eval_interval mutation
-    cfg1 = {"training": {"eval_interval": 1}}
-    cfg2 = {"training": {"eval_interval": 5}}
-    opt1 = resolve_shared_optimizer_settings(cfg1)
-    opt2 = resolve_shared_optimizer_settings(cfg2)
-    assert digest(opt1) != digest(opt2)
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data.post_selection_execution import _post_selection_mace_config
 
-    # Executable config translation retains eval_interval
-    internal_cfg = {
-        "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
-        "name": "test_run",
-        "seed": 42,
-        "target_train_file": "train.extxyz",
-        "target_valid_file": "valid.extxyz",
-        "eval_interval": 5,
-    }
-    exec_cfg = post_selection_mace_run_configuration(internal_cfg)
-    assert exec_cfg["eval_interval"] == 5
+    def config(*, eval_interval=1, checkpoint_interval=1, backend="e3nn"):
+        return {
+            "campaign": {"precision_profile": "double"},
+            "training": {
+                "device": "cpu",
+                "dtype": "float64",
+                "batch_size": 2,
+                "valid_batch_size": 2,
+                "eval_interval": eval_interval,
+                "checkpoint_interval_epochs": checkpoint_interval,
+            },
+            "acceleration": {
+                "backend": backend,
+                "training_backend": backend,
+                "only_cueq": backend == "cueq",
+            },
+        }
 
-    # Claim 19: acceleration backend normalization
-    cfg_cueq = {"acceleration": {"backend": "cueq", "only_cueq": True}}
-    pol_cueq = resolve_post_selection_method_policies(cfg_cueq)
-    assert pol_cueq.acceleration_backend == "cueq"
+    preparation = SimpleNamespace(
+        fitted_atomic_references=SimpleNamespace(
+            reference_energies_ev=((3, 0.0), (8, 0.0))
+        )
+    )
+    target_train = SimpleNamespace(relative_path="train.extxyz", atomic_numbers=(3, 8))
+    monitor = SimpleNamespace(relative_path="valid.extxyz", atomic_numbers=(3, 8))
 
-    # Translated MACE config receives enable_cueq and only_cueq
-    internal_cfg_cueq = {
-        "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
-        "name": "test_run",
-        "seed": 42,
-        "target_train_file": "train.extxyz",
-        "target_valid_file": "valid.extxyz",
-        "enable_cueq": True,
-        "only_cueq": True,
-    }
-    exec_cueq = post_selection_mace_run_configuration(internal_cfg_cueq)
-    assert exec_cueq["enable_cueq"] is True
-    assert exec_cueq["only_cueq"] is True
+    # Claim 17: the real method identity, optimizer policy, internal MACE
+    # config, and translated executable config all carry eval_interval.
+    cfg1 = config(eval_interval=1)
+    cfg2 = config(eval_interval=5)
+    method1 = resolve_post_selection_method_identity(cfg1)
+    method2 = resolve_post_selection_method_identity(cfg2)
+    assert method1.content_digest != method2.content_digest
+    optimizer2 = cli._optimizer_policy(
+        cfg2, seed=42, num_workers=0, paths=None, planned_epochs=5
+    )
+    internal2 = _post_selection_mace_config(
+        run_identity="r9b-eval",
+        optimizer_seed=42,
+        planned_epochs=5,
+        preparation=preparation,
+        optimizer_policy=optimizer2,
+        target_train=target_train,
+        monitor=monitor,
+        extxyz_policy=resolve_post_selection_method_policies(cfg2).extxyz,
+        method=method2,
+    )
+    assert internal2["eval_interval"] == 5
+    assert post_selection_mace_run_configuration(internal2)["eval_interval"] == 5
 
-    # Claim 20: method acceleration backend disagreement fails closed
-    dummy_ctx = SimpleNamespace(
-        cfg={"training": {}, "paths": {}},
+    # Claim 18: checkpoint interval is resolved by the method and the actual
+    # CV budget/runtime-plan owners.
+    cfg_interval = config(checkpoint_interval=3)
+    interval_method = resolve_post_selection_method_identity(cfg_interval)
+    assert interval_method.content_digest != method1.content_digest
+    cv_policy = resolve_cv_validation_policy_identity(
+        {"post_selection": {"cv": {}}}
+    )
+    interval_budget = cv_training_budget_policy(interval_method, cv_policy)
+    assert interval_budget.checkpoint_interval_epochs == 3
+    interval_runtime = post_selection_runtime_plan(
+        method=interval_method,
+        optimizer_policy=cli._optimizer_policy(
+            cfg_interval, seed=42, num_workers=0, paths=None, planned_epochs=5
+        ),
+        budget_policy=interval_budget,
+        structures_per_epoch=1,
+    )
+    assert interval_runtime.budget_policy.checkpoint_interval_epochs == 3
+
+    # Claim 19: configured acceleration flows through method resolution, the
+    # actual optimizer policy, and the executable MACE translation.
+    cfg_cueq = config(backend="cueq")
+    cueq_policies = resolve_post_selection_method_policies(cfg_cueq)
+    assert cueq_policies.acceleration_backend == "cueq"
+    cueq_method = resolve_post_selection_method_identity(
+        cfg_cueq, policies=cueq_policies
+    )
+    cueq_internal = _post_selection_mace_config(
+        run_identity="r9b-cueq",
+        optimizer_seed=42,
+        planned_epochs=5,
+        preparation=preparation,
+        optimizer_policy=cli._optimizer_policy(
+            cfg_cueq, seed=42, num_workers=0, paths=None, planned_epochs=5
+        ),
+        target_train=target_train,
+        monitor=monitor,
+        extxyz_policy=cueq_policies.extxyz,
+        method=cueq_method,
+    )
+    cueq_exec = post_selection_mace_run_configuration(cueq_internal)
+    assert cueq_exec["enable_cueq"] is True
+    assert cueq_exec["only_cueq"] is True
+
+    # Claim 20: use the actual optimizer/method parity owner, not a test-local
+    # comparison of two manually-created fields.
+    mismatch_ctx = SimpleNamespace(
+        cfg=config(backend="cueq"),
         paths=None,
         method=SimpleNamespace(acceleration_backend="e3nn"),
     )
-    # If optimizer returns cueq while method is e3nn:
-    with pytest.raises(PostSelectionError) as exc_info:
-        from mdstats.training_data._campaign_cli_core import _optimizer_policy
-        # Mock _optimizer_policy to return cueq acceleration policy
-        fake_opt = SimpleNamespace(acceleration_policy=MaceAccelerationPolicy(backend=MaceAccelerationBackend.CUEQ))
-        if fake_opt.acceleration_policy.backend.value != dummy_ctx.method.acceleration_backend:
-            raise PostSelectionError("Optimizer acceleration backend does not match method acceleration backend.")
+    with pytest.raises(PostSelectionError, match="does not match"):
+        _optimizer_policy_for(mismatch_ctx, seed=42, planned_epochs=5)
 
 
 # ---------------------------------------------------------------------------
@@ -623,7 +677,25 @@ exit 0
     assert not wrapper_invocation_file.exists()
     replay_monitor_file.write_bytes(b"REPLAY_MONITOR_DATA")  # restore
 
+    # Claim 26: the actual trainer rejects a runtime TRUE_DFT monitor identity
+    # that disagrees with the authenticated monitor bytes before launching.
+    bad_runtime_plan = replace(
+        plan, true_replay_monitor_sha256="ab" * 32
+    )
+    with pytest.raises(PostSelectionExecutionError, match="true_replay_monitor_sha256"):
+        trainer(replace(base_request, plan=bad_runtime_plan))
+    assert not wrapper_invocation_file.exists()
+
+    # Claim 27: the wrapper receives the translated MACE surface, not the
+    # internal P5 field names.
+    translated = post_selection_mace_run_configuration(internal_config)
+    assert "target_train_file" not in translated
+    assert "target_valid_file" not in translated
+
     # Write summary in checkpoint directory so valid run succeeds
+    with pytest.raises(PostSelectionExecutionError, match="canonical TRAIN2 runtime summary"):
+        trainer(base_request)
+    assert wrapper_invocation_file.read_text(encoding="utf-8").strip() == "LAUNCHED"
     (chk_dir / "train2_runtime.json").write_text(
         json.dumps(_make_dummy_train2_summary(plan).to_dict()), encoding="utf-8"
     )
@@ -631,7 +703,10 @@ exit 0
     # Valid execution: exactly one wrapper launch
     summary = trainer(base_request)
     assert summary.plan_digest == plan.content_digest
-    assert wrapper_invocation_file.read_text(encoding="utf-8").strip() == "LAUNCHED"
+    assert wrapper_invocation_file.read_text(encoding="utf-8").splitlines() == [
+        "LAUNCHED",
+        "LAUNCHED",
+    ]
 
     # Claims 27 & 28: Translated config and TRAIN2 environment
     recorded = json.loads(wrapper_env_file.read_text(encoding="utf-8"))

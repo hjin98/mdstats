@@ -61,6 +61,12 @@ CV_DISPERSION_DIAGNOSTIC_ONLY = "diagnostic_only"
 #: production-only horizon edit invalidate accepted CV evidence.
 DEFAULT_CV_MAX_NUM_EPOCHS = 30
 
+#: The current P5 fine-tuning head namespace.  Foundation-checkpoint heads are
+#: a separate identity owned by ``MaceFoundationSpec``; these names describe
+#: the target and replay heads created by the post-selection run itself.
+POST_SELECTION_TARGET_HEAD_NAME = "target_head"
+POST_SELECTION_REPLAY_HEAD_NAME = "pt_head"
+
 
 def _table(config: Mapping[str, Any], *path: str) -> Mapping[str, Any]:
     current: Any = config
@@ -103,6 +109,142 @@ def _seed_tuple(value: Any, *, name: str) -> tuple[int, ...]:
     if not seeds or len(set(seeds)) != len(seeds):
         raise TrainingDataInputError(f"{name} must be non-empty and unique.")
     return tuple(sorted(seeds))
+
+
+def canonical_post_selection_head_names(
+    *, target_head_name: Any = None, replay_head_name: Any = None
+) -> tuple[str, str]:
+    """Return the fixed P5 fine-tuning namespace or fail closed.
+
+    P5 does not expose arbitrary fine-tuning head names.  Keeping this check in
+    the identity owner lets runtime-plan and executable-configuration consumers
+    validate the same invariant without inventing their own fallback aliases.
+    """
+
+    target = (
+        POST_SELECTION_TARGET_HEAD_NAME
+        if target_head_name is None or not str(target_head_name).strip()
+        else str(target_head_name).strip()
+    )
+    replay = (
+        POST_SELECTION_REPLAY_HEAD_NAME
+        if replay_head_name is None or not str(replay_head_name).strip()
+        else str(replay_head_name).strip()
+    )
+    if target != POST_SELECTION_TARGET_HEAD_NAME:
+        raise TrainingDataInputError(
+            "Current P5 supports only the canonical target fine-tuning head "
+            f"{POST_SELECTION_TARGET_HEAD_NAME!r}; received {target!r}."
+        )
+    if replay != POST_SELECTION_REPLAY_HEAD_NAME:
+        raise TrainingDataInputError(
+            "Current P5 supports only the canonical replay fine-tuning head "
+            f"{POST_SELECTION_REPLAY_HEAD_NAME!r}; received {replay!r}."
+        )
+    return POST_SELECTION_TARGET_HEAD_NAME, POST_SELECTION_REPLAY_HEAD_NAME
+
+
+def resolve_post_selection_head_names(
+    config: Mapping[str, Any],
+) -> tuple[str, str]:
+    """Resolve the P5 fine-tuning head namespace from campaign configuration."""
+
+    training = _table(config, "training")
+    # ``replay_head_name`` is accepted only as a validation surface for older
+    # generated configurations.  It is not introduced as a new P5 option.
+    return canonical_post_selection_head_names(
+        target_head_name=training.get("selected_head_name"),
+        replay_head_name=(
+            training.get("replay_head_name")
+            if "replay_head_name" in training
+            else None
+        ),
+    )
+
+
+def _replay_label_mode(value: Any, *, name: str) -> Any:
+    from .replay import ReplayLabelMode
+
+    raw = getattr(value, "value", value)
+    try:
+        mode = ReplayLabelMode(str(raw))
+    except (TypeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            f"{name} must resolve to true_dft or foundation_pseudolabel."
+        ) from exc
+    if mode not in {
+        ReplayLabelMode.TRUE_DFT,
+        ReplayLabelMode.FOUNDATION_PSEUDOLABEL,
+    }:
+        raise TrainingDataInputError(
+            f"{name} must resolve to true_dft or foundation_pseudolabel."
+        )
+    return mode
+
+
+def resolve_post_selection_replay_training_label_mode(
+    config: Mapping[str, Any],
+    *,
+    single_replay: Any | None = None,
+    has_legacy_replay: bool | None = None,
+) -> Any | None:
+    """Normalize the replay label semantic consumed by P5 training.
+
+    The canonical single-source configuration is preferred when present.  For
+    the historical split-file interface, the existing ``ReplayMode`` is the
+    only interpretation authority: supported external pseudo/true modes map to
+    their corresponding ``ReplayLabelMode`` and ambiguous modes fail closed.
+    """
+
+    from .replay import (
+        ReplayLabelMode,
+        ReplayMode,
+        single_source_replay_config_from_campaign,
+    )
+
+    if single_replay is None:
+        single_replay = single_source_replay_config_from_campaign(config)
+    if single_replay is not None:
+        return _replay_label_mode(
+            single_replay.label_mode, name="single-source replay label_mode"
+        )
+
+    paths = _table(config, "paths")
+    if has_legacy_replay is None:
+        has_legacy_replay = any(
+            str(paths.get(key, "")).strip()
+            for key in ("replay_train", "replay_monitor", "replay_true_labels")
+        )
+    if not has_legacy_replay:
+        return None
+
+    replay = _table(config, "replay")
+    raw_mode_value = replay.get("mode", ReplayMode.EXTERNAL_PSEUDOLABEL.value)
+    raw_mode = str(getattr(raw_mode_value, "value", raw_mode_value)).strip().lower()
+    try:
+        mode = ReplayMode(raw_mode)
+    except ValueError as exc:
+        supported = ", ".join(
+            item.value
+            for item in (
+                ReplayMode.EXTERNAL_PSEUDOLABEL,
+                ReplayMode.EXTERNAL_TRUE_LABEL,
+            )
+        )
+        raise TrainingDataInputError(
+            "Unsupported legacy [replay].mode for P5; choose one of: "
+            f"{supported}. Other replay modes have no unambiguous P5 training "
+            "label semantic."
+        ) from exc
+    if mode is ReplayMode.EXTERNAL_PSEUDOLABEL:
+        return ReplayLabelMode.FOUNDATION_PSEUDOLABEL
+    if mode is ReplayMode.EXTERNAL_TRUE_LABEL:
+        return ReplayLabelMode.TRUE_DFT
+    raise PostSelectionError(
+        "Legacy replay mode "
+        f"{mode.value!r} has no unambiguous supported P5 training-label "
+        "semantic; refusing to begin CV or final production."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -551,18 +693,33 @@ def resolve_post_selection_replay_policy_digest(
     *,
     single_replay: Any | None,
     has_legacy_replay: bool,
-    target_head_name: str = "target_head",
-    replay_head_name: str = "pt_head",
+    training_label_mode: Any | None = None,
+    target_head_name: str = POST_SELECTION_TARGET_HEAD_NAME,
+    replay_head_name: str = POST_SELECTION_REPLAY_HEAD_NAME,
 ) -> str:
     """Path-free shared replay method policy identity."""
 
+    target_head_name, replay_head_name = canonical_post_selection_head_names(
+        target_head_name=target_head_name,
+        replay_head_name=replay_head_name,
+    )
     if single_replay is not None:
+        normalized_label_mode = _replay_label_mode(
+            single_replay.label_mode, name="single-source replay label_mode"
+        )
+        if training_label_mode is not None and _replay_label_mode(
+            training_label_mode, name="replay training label_mode"
+        ) is not normalized_label_mode:
+            raise TrainingDataInputError(
+                "Replay policy received a training label semantic different from "
+                "the canonical single-source configuration."
+            )
         payload = {
             "schema": "mdstats.post-selection-replay-policy.v2",
             "enabled": True,
             "interface": "single_source",
             "training_exposure": "separate_multihead_replay",
-            "training_label_mode": single_replay.label_mode.value,
+            "training_label_mode": normalized_label_mode.value,
             "split_ratio": list(single_replay.split_ratio),
             "split_seed": int(single_replay.split_seed),
             "true_dft_monitor_required": True,
@@ -570,14 +727,20 @@ def resolve_post_selection_replay_policy_digest(
             "replay_head_name": replay_head_name,
         }
     elif has_legacy_replay:
+        if training_label_mode is None:
+            raise TrainingDataInputError(
+                "Legacy replay policy identity requires a normalized training "
+                "label semantic."
+            )
+        normalized_label_mode = _replay_label_mode(
+            training_label_mode, name="legacy replay training label_mode"
+        )
         payload = {
-            "schema": "mdstats.post-selection-replay-policy.v2",
+            "schema": "mdstats.post-selection-replay-policy.v3",
             "enabled": True,
             "interface": "legacy_split",
             "training_exposure": "separate_multihead_replay",
-            "training_label_mode": "true_dft",
-            "split_ratio": [],
-            "split_seed": None,
+            "training_label_mode": normalized_label_mode.value,
             "true_dft_monitor_required": True,
             "target_head_name": target_head_name,
             "replay_head_name": replay_head_name,
@@ -623,7 +786,47 @@ def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
     if not train_sha or not train_digest or not monitor_sha or not monitor_digest:
         raise PostSelectionError("Replay train or monitor artifact is missing content digest or SHA256.")
 
-    true_label_mode = getattr(replay_resolution, "true_label_mode", "true_dft")
+    from .replay import ReplayLabelMode
+
+    true_label_mode = _replay_label_mode(
+        getattr(replay_resolution, "true_label_mode", ReplayLabelMode.TRUE_DFT),
+        name="replay TRUE_DFT monitor label_mode",
+    )
+    if true_label_mode is not ReplayLabelMode.TRUE_DFT:
+        raise PostSelectionError(
+            "Replay lineage requires an independent TRUE_DFT monitor artifact."
+        )
+    training_label_mode = getattr(replay_resolution, "training_label_mode", None)
+    if training_label_mode is None:
+        training_label_mode = getattr(train_artifact, "label_mode", None)
+    if training_label_mode is None:
+        # Preserve the legacy transport shape used by already-persisted R8
+        # evidence while requiring the new production adapter to carry the
+        # explicit semantic.
+        training_label_mode = ReplayLabelMode.TRUE_DFT
+    training_label_mode = _replay_label_mode(
+        training_label_mode, name="replay training label_mode"
+    )
+    artifact_label_mode = getattr(train_artifact, "label_mode", None)
+    if artifact_label_mode is not None:
+        artifact_label_mode = getattr(artifact_label_mode, "value", artifact_label_mode)
+        if _replay_label_mode(
+            artifact_label_mode, name="replay training artifact label_mode"
+        ) is not training_label_mode:
+            raise PostSelectionError(
+                "Replay training artifact label semantics disagree with the "
+                "normalized replay-training semantic."
+            )
+    monitor_artifact_label_mode = getattr(monitor_artifact, "label_mode", None)
+    if monitor_artifact_label_mode is not None:
+        if _replay_label_mode(
+            monitor_artifact_label_mode, name="replay monitor artifact label_mode"
+        ) is not ReplayLabelMode.TRUE_DFT:
+            raise PostSelectionError(
+                "Replay monitor artifact is not an independent TRUE_DFT artifact."
+            )
+    true_label_mode_value = true_label_mode.value
+    training_label_mode_value = training_label_mode.value
 
     if interface == "single_source":
         source_sha = getattr(replay_resolution, "source_sha256", None)
@@ -632,7 +835,7 @@ def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
         if not source_sha or not split_digest:
             raise PostSelectionError("Single-source replay resolution is missing source SHA256 or split manifest digest.")
         payload = {
-            "schema": "mdstats.post-selection-replay-lineage.v2",
+            "schema": "mdstats.post-selection-replay-lineage.v3",
             "interface": "single_source",
             "source_content_digest": str(source_digest),
             "source_sha256": str(source_sha),
@@ -641,18 +844,25 @@ def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
             "train_sha256": str(train_sha),
             "true_monitor_view_digest": str(monitor_digest),
             "true_monitor_sha256": str(monitor_sha),
-            "true_label_mode": str(true_label_mode),
+            "training_label_mode": training_label_mode_value,
+            "true_monitor_label_mode": true_label_mode_value,
         }
     elif interface == "legacy_split":
         payload = {
-            "schema": "mdstats.post-selection-replay-lineage.v2",
+            "schema": "mdstats.post-selection-replay-lineage.v3",
             "interface": "legacy_split",
+            "training_label_mode": training_label_mode_value,
             "train_view_digest": str(train_digest),
             "train_sha256": str(train_sha),
             "true_monitor_view_digest": str(monitor_digest),
             "true_monitor_sha256": str(monitor_sha),
-            "true_label_mode": str(true_label_mode),
+            "true_monitor_label_mode": true_label_mode_value,
         }
+        source_sha = getattr(replay_resolution, "true_label_source_sha256", None)
+        if source_sha is not None:
+            payload["true_label_source_sha256"] = validate_digest(
+                str(source_sha), name="true_label_source_sha256"
+            )
     else:
         raise PostSelectionError(f"Unsupported replay interface in resolution: {interface}")
     return digest(payload)
@@ -682,6 +892,9 @@ class PostSelectionMethodPolicies:
     foundation_model: str | None = None
     foundation_head: str | None = None
     replay_context: Any = None
+    target_head_name: str = POST_SELECTION_TARGET_HEAD_NAME
+    replay_head_name: str = POST_SELECTION_REPLAY_HEAD_NAME
+    replay_training_label_mode: Any = None
 
 
 def resolve_post_selection_method_policies(
@@ -703,9 +916,7 @@ def resolve_post_selection_method_policies(
         AtomicReferenceFitMode,
         AtomicReferenceFitPolicy,
     )
-    from .replay import (
-        single_source_replay_config_from_campaign,
-    )
+    from .replay import single_source_replay_config_from_campaign
     from .target_size_execution import (
         REPLAY_EXPOSURE_NONE_DIGEST,
         TargetSizeCommonTrainingPolicy,
@@ -721,6 +932,7 @@ def resolve_post_selection_method_policies(
     acceleration = _table(config, "acceleration")
     paths = _table(config, "paths")
     model = _table(config, "model")
+    foundation = _table(config, "foundation")
 
     # 1. Canonical Replay Resolution
     single_replay = single_source_replay_config_from_campaign(config)
@@ -735,6 +947,12 @@ def resolve_post_selection_method_policies(
         or legacy_replay_set
     )
     replay_enabled = single_replay is not None or has_legacy_replay
+    target_head_name, replay_head_name = resolve_post_selection_head_names(config)
+    replay_training_label_mode = resolve_post_selection_replay_training_label_mode(
+        config,
+        single_replay=single_replay,
+        has_legacy_replay=has_legacy_replay,
+    )
 
     # 2. Training Mode Resolution
     modes = training.get("modes")
@@ -772,16 +990,12 @@ def resolve_post_selection_method_policies(
         )
 
     # 3. Replay Exposure Digest
-    target_head_name = (
-        str(training.get("selected_head_name", "target_head"))
-        if training.get("selected_head_name")
-        else "target_head"
-    )
     replay_exposure_policy_digest = resolve_post_selection_replay_policy_digest(
         single_replay=single_replay,
         has_legacy_replay=has_legacy_replay,
+        training_label_mode=replay_training_label_mode,
         target_head_name=target_head_name,
-        replay_head_name="pt_head",
+        replay_head_name=replay_head_name,
     )
 
     # 4. Objective, Configuration Weight, and Atomic Reference Policies
@@ -856,7 +1070,10 @@ def resolve_post_selection_method_policies(
             paths.get("model", model.get("foundation_model", "")),
         )
     ).strip()
-    f_head_configured = training.get("foundation_head", model.get("foundation_head"))
+    f_head_configured = training.get(
+        "foundation_head",
+        model.get("foundation_head", foundation.get("head")),
+    )
     f_head_req = (
         str(f_head_configured).strip()
         if f_head_configured is not None and str(f_head_configured).strip()
@@ -868,7 +1085,9 @@ def resolve_post_selection_method_policies(
         foundation_identity = resolve_post_selection_foundation_identity(
             f_model_raw,
             requested_head=f_head_req,
-            model_family=str(model.get("family", "MACE-MPA-0")),
+            model_family=str(
+                foundation.get("family", model.get("family", "MACE-MPA-0"))
+            ),
         )
     elif training_mode in {"naive_fine_tuning", "multihead_replay"}:
         raise PostSelectionError(
@@ -893,11 +1112,7 @@ def resolve_post_selection_method_policies(
         atomic_reference_policy=atomic_reference_policy,
         replay_exposure_policy_digest=replay_exposure_policy_digest,
         foundation_checkpoint_digest=foundation_checkpoint_digest,
-        selected_head_name=(
-            str(training.get("selected_head_name", "target_head"))
-            if training.get("selected_head_name")
-            else None
-        ),
+        selected_head_name=target_head_name,
         batch_size=batch_size,
         default_dtype=default_dtype,
         harness_validation_frame_count=int(
@@ -982,6 +1197,9 @@ def resolve_post_selection_method_policies(
         foundation_model=str(Path(f_model_raw).resolve()) if f_model_raw else None,
         foundation_head=resolved_foundation_head if f_model_raw else None,
         replay_context=single_replay,
+        target_head_name=target_head_name,
+        replay_head_name=replay_head_name,
+        replay_training_label_mode=replay_training_label_mode,
     )
 
 
@@ -1130,17 +1348,22 @@ __all__ = [
     "DEFAULT_CV_MAX_NUM_EPOCHS",
     "FINAL_PRODUCTION_POLICY_IDENTITY_SCHEMA",
     "POST_SELECTION_METHOD_IDENTITY_SCHEMA",
+    "POST_SELECTION_REPLAY_HEAD_NAME",
+    "POST_SELECTION_TARGET_HEAD_NAME",
     "CvValidationPolicyIdentity",
     "FinalProductionPolicyIdentity",
     "PostSelectionMethodIdentity",
     "PostSelectionMethodPolicies",
+    "canonical_post_selection_head_names",
     "compute_replay_lineage_digest",
     "cv_training_budget_policy",
     "final_production_training_budget_policy",
     "resolve_cv_validation_policy_identity",
     "resolve_final_production_policy_identity",
     "resolve_post_selection_foundation_identity",
+    "resolve_post_selection_head_names",
     "resolve_post_selection_method_identity",
     "resolve_post_selection_method_policies",
+    "resolve_post_selection_replay_training_label_mode",
     "resolve_shared_optimizer_settings",
 ]
