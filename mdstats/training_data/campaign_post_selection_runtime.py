@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from ._common import digest, sha256_file_cached
 from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
@@ -205,13 +206,66 @@ def _optimizer_policy_for(
 ) -> Any:
     from ._campaign_cli_core import _cfg, _optimizer_policy
 
-    return _optimizer_policy(
+    policy = _optimizer_policy(
         context.cfg,
         seed=int(seed),
         num_workers=int(_cfg(context.cfg, "training", "num_workers", 0)),
         paths=context.paths,
         planned_epochs=int(planned_epochs),
     )
+    if hasattr(policy, "acceleration_policy") and policy.acceleration_policy is not None:
+        if policy.acceleration_policy.backend.value != context.method.acceleration_backend:
+            raise PostSelectionError(
+                f"Optimizer acceleration backend '{policy.acceleration_policy.backend.value}' "
+                f"does not match method acceleration backend '{context.method.acceleration_backend}'."
+            )
+    return policy
+
+
+def _resolve_post_selection_replay_resolution(
+    context: PostSelectionContext, *, require_train: bool = True
+) -> Any | None:
+    if not hasattr(context, "paths") or context.paths is None:
+        raise PostSelectionError(
+            "Replay-enabled post-selection requires configured campaign paths."
+        )
+    from ._campaign_cli_core import _resolve_true_label_replay_inputs, _single_source_replay_context
+
+    single_ctx = _single_source_replay_context(context.cfg, context.paths)
+    resolution = _resolve_true_label_replay_inputs(
+        context.cfg, context.paths, require_train=require_train
+    )
+    if resolution is None:
+        return None
+    if single_ctx is not None:
+        source_art = single_ctx.get("replay_source")
+        split_manifest = single_ctx.get("replay_split_manifest")
+
+        class _BoundSingleSourceReplayResolution:
+            interface = "single_source"
+            train_path = resolution.train_path
+            monitor_path = resolution.monitor_path
+            train_artifact = resolution.train_artifact
+            monitor_artifact = resolution.monitor_artifact
+            source_path = resolution.source_path
+            source_content_digest = source_art.content_digest if source_art else None
+            source_sha256 = source_art.sha256 if source_art else None
+            split_manifest_digest = split_manifest.content_digest if split_manifest else None
+            true_label_mode = "true_dft"
+
+        return _BoundSingleSourceReplayResolution()
+    else:
+
+        class _BoundLegacyReplayResolution:
+            interface = "legacy_split"
+            train_path = resolution.train_path
+            monitor_path = resolution.monitor_path
+            train_artifact = resolution.train_artifact
+            monitor_artifact = resolution.monitor_artifact
+            source_path = resolution.source_path
+            true_label_mode = "true_dft"
+
+        return _BoundLegacyReplayResolution()
 
 
 def execute_post_selection_run(
@@ -244,14 +298,8 @@ def execute_post_selection_run(
     admissibility = context.method_policies.checkpoint_admissibility
     replay_resolution = None
     if admissibility.replay_enabled:
-        if not hasattr(context, "paths") or context.paths is None:
-            raise PostSelectionError(
-                "Replay-enabled post-selection run requires configured campaign paths."
-            )
-        from ._campaign_cli_core import _resolve_true_label_replay_inputs
-
-        replay_resolution = _resolve_true_label_replay_inputs(
-            context.cfg, context.paths, require_train=True
+        replay_resolution = _resolve_post_selection_replay_resolution(
+            context, require_train=True
         )
         if replay_resolution is None or replay_resolution.monitor_artifact is None:
             raise PostSelectionError(
@@ -308,6 +356,27 @@ def execute_post_selection_run(
             materialization_directory=material_directory,
             checkpoint_directory=checkpoint_directory,
             optimizer_policy=optimizer_policy,
+            foundation_identity=context.method_policies.foundation_potential_identity,
+            foundation_model_path=(
+                Path(context.method_policies.foundation_model)
+                if context.method_policies.foundation_model
+                else None
+            ),
+            replay_train_artifact=(
+                replay_resolution.train_artifact
+                if replay_resolution is not None
+                else None
+            ),
+            replay_train_path=(
+                Path(replay_resolution.train_path)
+                if replay_resolution is not None and replay_resolution.train_path is not None
+                else None
+            ),
+            replay_monitor_artifact=(
+                replay_resolution.monitor_artifact
+                if replay_resolution is not None
+                else None
+            ),
             replay_monitor_path=(
                 Path(replay_resolution.monitor_path)
                 if replay_resolution is not None
@@ -371,7 +440,7 @@ def execute_post_selection_run(
                     f"TRUE_DFT replay monitor file is missing: {replay_monitor_path}"
                 )
             if (
-                hashlib.sha256(replay_monitor_path.read_bytes()).hexdigest()
+                sha256_file_cached(replay_monitor_path)
                 != replay_monitor_artifact.sha256
             ):
                 raise PostSelectionError(
@@ -655,14 +724,8 @@ def execute_post_selection_cross_validation(
     admissibility = context.method_policies.checkpoint_admissibility
     replay_resolution = None
     if admissibility.replay_enabled:
-        if not hasattr(context, "paths") or context.paths is None:
-            raise PostSelectionError(
-                "Replay-enabled CV requires configured campaign paths."
-            )
-        from ._campaign_cli_core import _resolve_true_label_replay_inputs
-
-        replay_resolution = _resolve_true_label_replay_inputs(
-            context.cfg, context.paths, require_train=True
+        replay_resolution = _resolve_post_selection_replay_resolution(
+            context, require_train=True
         )
     replay_lineage_digest = (
         compute_replay_lineage_digest(replay_resolution)
@@ -750,15 +813,9 @@ def resolve_current_cv_plan(context: PostSelectionContext) -> PostSelectionCvPla
     if plan is not None:
         admissibility = context.method_policies.checkpoint_admissibility
         replay_resolution = None
-        if (
-            admissibility.replay_enabled
-            and hasattr(context, "paths")
-            and context.paths is not None
-        ):
-            from ._campaign_cli_core import _resolve_true_label_replay_inputs
-
-            replay_resolution = _resolve_true_label_replay_inputs(
-                context.cfg, context.paths, require_train=True
+        if admissibility.replay_enabled:
+            replay_resolution = _resolve_post_selection_replay_resolution(
+                context, require_train=True
             )
         replay_lineage_digest = (
             compute_replay_lineage_digest(replay_resolution)
@@ -818,14 +875,8 @@ def execute_final_production(
     admissibility = context.method_policies.checkpoint_admissibility
     replay_resolution = None
     if admissibility.replay_enabled:
-        if not hasattr(context, "paths") or context.paths is None:
-            raise PostSelectionError(
-                "Replay-enabled final production requires configured campaign paths."
-            )
-        from ._campaign_cli_core import _resolve_true_label_replay_inputs
-
-        replay_resolution = _resolve_true_label_replay_inputs(
-            context.cfg, context.paths, require_train=True
+        replay_resolution = _resolve_post_selection_replay_resolution(
+            context, require_train=True
         )
     replay_lineage_digest = (
         compute_replay_lineage_digest(replay_resolution)
@@ -896,15 +947,9 @@ def resolve_current_final_production_plan(
     if plan is not None:
         admissibility = context.method_policies.checkpoint_admissibility
         replay_resolution = None
-        if (
-            admissibility.replay_enabled
-            and hasattr(context, "paths")
-            and context.paths is not None
-        ):
-            from ._campaign_cli_core import _resolve_true_label_replay_inputs
-
-            replay_resolution = _resolve_true_label_replay_inputs(
-                context.cfg, context.paths, require_train=True
+        if admissibility.replay_enabled:
+            replay_resolution = _resolve_post_selection_replay_resolution(
+                context, require_train=True
             )
         replay_lineage_digest = (
             compute_replay_lineage_digest(replay_resolution)

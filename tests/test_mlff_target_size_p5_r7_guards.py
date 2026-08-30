@@ -39,6 +39,7 @@ import pytest
 from mdstats.training_data._common import (
     TrainingDataInputError,
     digest,
+    sha256_file_cached,
 )
 from mdstats.training_data.campaign_post_selection import (
     CurrentSelectedTrainingContext,
@@ -146,13 +147,35 @@ def _make_dummy_materialization(
     internal_config: dict[str, Any],
     run_plan_digest: str = "99" * 32,
     run_identity: str = "77" * 32,
+    train_file: Path | None = None,
+    valid_file: Path | None = None,
 ) -> PostSelectionMaterialization:
+    t_train = train_file or (mat_dir / "train.extxyz")
+    if not t_train.is_file():
+        t_train.write_bytes(b"TARGET_TRAIN_DATA")
+    t_valid = valid_file or (mat_dir / "valid.extxyz")
+    if not t_valid.is_file():
+        t_valid.write_bytes(b"TARGET_VALID_DATA")
+    t_train_sha = sha256_file_cached(t_train)
+    t_valid_sha = sha256_file_cached(t_valid)
     return PostSelectionMaterialization(
         run_plan_digest=run_plan_digest,
         run_identity=run_identity,
         preparation_digest="aa" * 32,
-        target_train_artifact=SimpleNamespace(to_dict=lambda: {"schema": "artifact"}),
-        checkpoint_monitor_artifact=SimpleNamespace(to_dict=lambda: {"schema": "artifact"}),
+        target_train_artifact=SimpleNamespace(
+            relative_path=t_train.name,
+            sha256=t_train_sha,
+            configuration_count=10,
+            content_digest="tt" * 32,
+            to_dict=lambda: {"schema": "artifact"},
+        ),
+        checkpoint_monitor_artifact=SimpleNamespace(
+            relative_path=t_valid.name,
+            sha256=t_valid_sha,
+            configuration_count=5,
+            content_digest="tv" * 32,
+            to_dict=lambda: {"schema": "artifact"},
+        ),
         outer_evaluation_artifact=None,
         mace_config_relative_path=cfg_file.name,
         mace_config_sha256=hashlib.sha256(cfg_bytes).hexdigest(),
@@ -493,6 +516,7 @@ exit 0
         materialization_directory=mat_dir,
         checkpoint_directory=chk_dir,
         optimizer_policy=SimpleNamespace(seed=42),
+        replay_monitor_artifact=SimpleNamespace(sha256=monitor_sha, content_digest="rm" * 32),
         replay_monitor_path=monitor_file,
     )
 
@@ -559,15 +583,17 @@ def test_guard_p5_r7_13_mace_post_selection_trainer_missing_or_mismatched_replay
         materialization_directory=mat_dir,
         checkpoint_directory=chk_dir,
         optimizer_policy=SimpleNamespace(seed=42),
+        replay_monitor_artifact=SimpleNamespace(sha256="aa" * 32, content_digest="aa" * 32),
         replay_monitor_path=tmp_path / "nonexistent.extxyz",
     )
     with pytest.raises(PostSelectionExecutionError) as exc_info:
         trainer(request_missing)
-    assert "TRUE_DFT replay monitor path is missing" in str(exc_info.value)
+    assert "Replay monitor file is missing" in str(exc_info.value)
 
     # Mismatched SHA
     wrong_file = tmp_path / "wrong.extxyz"
     wrong_file.write_bytes(b"WRONG_DATA")
+    wrong_sha = sha256_file_cached(wrong_file)
     request_mismatch = PostSelectionRungRequest(
         plan=plan,
         run_plan=SimpleNamespace(run_identity="77" * 32),
@@ -575,11 +601,12 @@ def test_guard_p5_r7_13_mace_post_selection_trainer_missing_or_mismatched_replay
         materialization_directory=mat_dir,
         checkpoint_directory=chk_dir,
         optimizer_policy=SimpleNamespace(seed=42),
+        replay_monitor_artifact=SimpleNamespace(sha256=wrong_sha, content_digest="bb" * 32),
         replay_monitor_path=wrong_file,
     )
     with pytest.raises(PostSelectionExecutionError) as exc_info:
         trainer(request_mismatch)
-    assert "TRUE_DFT replay monitor SHA256 does not match" in str(exc_info.value)
+    assert "Replay monitor SHA256 does not match runtime plan" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

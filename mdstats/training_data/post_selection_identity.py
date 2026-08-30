@@ -27,6 +27,7 @@ directly:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 
 from ._common import (
@@ -527,27 +528,74 @@ def resolve_post_selection_foundation_identity(
 
     if path is None or not str(path).strip():
         return None
-    source = Path(path)
+    source = Path(path).expanduser().resolve()
     if not source.is_file():
         raise TrainingDataInputError(f"Foundation checkpoint does not exist: {source!s}.")
-    head = requested_head or "default"
-    try:
-        from .foundation import MaceFoundationSpec, inspect_mace_foundation
 
-        inspection = inspect_mace_foundation(source)
-        spec = MaceFoundationSpec(
-            family=model_family,
-            requested_head=head,
-        )
-        return spec.resolve(inspection)
-    except Exception:
-        from .foundation import FoundationPotentialIdentity
+    from .foundation import MaceFoundationSpec, inspect_mace_foundation
 
-        return FoundationPotentialIdentity.from_file(
-            source,
-            foundation_head=head,
-            model_family=model_family,
+    inspection = inspect_mace_foundation(source)
+    identity = MaceFoundationSpec(
+        family=model_family,
+        requested_head=requested_head,
+    ).resolve(inspection)
+
+    if identity.inspection_state != "inspected":
+        raise TrainingDataInputError(
+            "Current P5 requires an inspected canonical foundation identity."
         )
+    return identity
+
+
+def resolve_post_selection_replay_policy_digest(
+    *,
+    single_replay: Any | None,
+    has_legacy_replay: bool,
+    target_head_name: str = "target_head",
+    replay_head_name: str = "pt_head",
+) -> str:
+    """Path-free shared replay method policy identity."""
+
+    if single_replay is not None:
+        payload = {
+            "schema": "mdstats.post-selection-replay-policy.v2",
+            "enabled": True,
+            "interface": "single_source",
+            "training_exposure": "separate_multihead_replay",
+            "training_label_mode": single_replay.label_mode.value,
+            "split_ratio": list(single_replay.split_ratio),
+            "split_seed": int(single_replay.split_seed),
+            "true_dft_monitor_required": True,
+            "target_head_name": target_head_name,
+            "replay_head_name": replay_head_name,
+        }
+    elif has_legacy_replay:
+        payload = {
+            "schema": "mdstats.post-selection-replay-policy.v2",
+            "enabled": True,
+            "interface": "legacy_split",
+            "training_exposure": "separate_multihead_replay",
+            "training_label_mode": "true_dft",
+            "split_ratio": [],
+            "split_seed": None,
+            "true_dft_monitor_required": True,
+            "target_head_name": target_head_name,
+            "replay_head_name": replay_head_name,
+        }
+    else:
+        payload = {
+            "schema": "mdstats.post-selection-replay-policy.v2",
+            "enabled": False,
+            "interface": "none",
+            "training_exposure": "none",
+            "training_label_mode": "none",
+            "split_ratio": [],
+            "split_seed": None,
+            "true_dft_monitor_required": False,
+            "target_head_name": target_head_name,
+            "replay_head_name": replay_head_name,
+        }
+    return digest(payload)
 
 
 def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
@@ -555,35 +603,58 @@ def compute_replay_lineage_digest(replay_resolution: Any) -> str | None:
 
     if replay_resolution is None:
         return None
-    monitor_artifact = getattr(replay_resolution, "monitor_artifact", None)
-    train_artifact = getattr(replay_resolution, "train_artifact", None)
-    source_sha = getattr(replay_resolution, "source_sha256", None)
-    if source_sha is None and getattr(replay_resolution, "source_path", None):
-        try:
-            from ._common import sha256_file_cached
+    interface = getattr(replay_resolution, "interface", None)
+    if interface is None:
+        if hasattr(replay_resolution, "source_content_digest") or hasattr(replay_resolution, "split_manifest_digest"):
+            interface = "single_source"
+        else:
+            interface = "single_source" if getattr(replay_resolution, "source_sha256", None) else "legacy_split"
 
-            source_p = Path(replay_resolution.source_path)
-            if source_p.is_file():
-                source_sha = sha256_file_cached(source_p)
-        except Exception:
-            pass
-    payload = {
-        "schema": "mdstats.post-selection.replay-lineage.v1",
-        "monitor_sha256": getattr(monitor_artifact, "sha256", None),
-        "monitor_digest": (
-            getattr(monitor_artifact, "content_digest", None)
-            or getattr(monitor_artifact, "logical_digest", None)
-        ),
-        "train_sha256": getattr(train_artifact, "sha256", None),
-        "train_digest": (
-            getattr(train_artifact, "content_digest", None)
-            or getattr(train_artifact, "logical_digest", None)
-        ),
-        "source_sha256": source_sha,
-        "split_manifest_digest": getattr(
-            replay_resolution, "split_manifest_digest", None
-        ),
-    }
+    train_artifact = getattr(replay_resolution, "train_artifact", None)
+    monitor_artifact = getattr(replay_resolution, "monitor_artifact", None)
+    if train_artifact is None or monitor_artifact is None:
+        raise PostSelectionError("Replay resolution is missing required train or monitor artifact.")
+
+    train_sha = getattr(train_artifact, "sha256", None)
+    train_digest = getattr(train_artifact, "content_digest", None) or getattr(train_artifact, "logical_digest", None)
+    monitor_sha = getattr(monitor_artifact, "sha256", None)
+    monitor_digest = getattr(monitor_artifact, "content_digest", None) or getattr(monitor_artifact, "logical_digest", None)
+
+    if not train_sha or not train_digest or not monitor_sha or not monitor_digest:
+        raise PostSelectionError("Replay train or monitor artifact is missing content digest or SHA256.")
+
+    true_label_mode = getattr(replay_resolution, "true_label_mode", "true_dft")
+
+    if interface == "single_source":
+        source_sha = getattr(replay_resolution, "source_sha256", None)
+        source_digest = getattr(replay_resolution, "source_content_digest", None) or source_sha
+        split_digest = getattr(replay_resolution, "split_manifest_digest", None)
+        if not source_sha or not split_digest:
+            raise PostSelectionError("Single-source replay resolution is missing source SHA256 or split manifest digest.")
+        payload = {
+            "schema": "mdstats.post-selection-replay-lineage.v2",
+            "interface": "single_source",
+            "source_content_digest": str(source_digest),
+            "source_sha256": str(source_sha),
+            "split_manifest_digest": str(split_digest),
+            "train_view_digest": str(train_digest),
+            "train_sha256": str(train_sha),
+            "true_monitor_view_digest": str(monitor_digest),
+            "true_monitor_sha256": str(monitor_sha),
+            "true_label_mode": str(true_label_mode),
+        }
+    elif interface == "legacy_split":
+        payload = {
+            "schema": "mdstats.post-selection-replay-lineage.v2",
+            "interface": "legacy_split",
+            "train_view_digest": str(train_digest),
+            "train_sha256": str(train_sha),
+            "true_monitor_view_digest": str(monitor_digest),
+            "true_monitor_sha256": str(monitor_sha),
+            "true_label_mode": str(true_label_mode),
+        }
+    else:
+        raise PostSelectionError(f"Unsupported replay interface in resolution: {interface}")
     return digest(payload)
 
 
@@ -689,6 +760,11 @@ def resolve_post_selection_method_policies(
         else:
             training_mode = "scratch"
 
+    if training_mode not in {"scratch", "naive_fine_tuning", "multihead_replay"}:
+        raise TrainingDataInputError(
+            f"Unsupported training mode: '{training_mode}'. Accepted values are 'scratch', 'naive_fine_tuning', or 'multihead_replay'."
+        )
+
     if training_mode == "multihead_replay" and not replay_enabled:
         raise PostSelectionError(
             "The configured training method 'multihead_replay' requires a canonical "
@@ -696,19 +772,17 @@ def resolve_post_selection_method_policies(
         )
 
     # 3. Replay Exposure Digest
-    if single_replay is not None:
-        replay_exposure_policy_digest = single_replay.content_digest
-    elif has_legacy_replay:
-        replay_exposure_policy_digest = digest(
-            {
-                "schema": "mdstats.post-selection.legacy-replay.v1",
-                "replay_train": legacy_replay_train or legacy_replay_set,
-                "replay_monitor": legacy_replay_monitor,
-                "replay_true_labels": legacy_replay_true,
-            }
-        )
-    else:
-        replay_exposure_policy_digest = REPLAY_EXPOSURE_NONE_DIGEST
+    target_head_name = (
+        str(training.get("selected_head_name", "target_head"))
+        if training.get("selected_head_name")
+        else "target_head"
+    )
+    replay_exposure_policy_digest = resolve_post_selection_replay_policy_digest(
+        single_replay=single_replay,
+        has_legacy_replay=has_legacy_replay,
+        target_head_name=target_head_name,
+        replay_head_name="pt_head",
+    )
 
     # 4. Objective, Configuration Weight, and Atomic Reference Policies
     objective = _table(config, "objective") or _table(config, "loss")
@@ -772,7 +846,9 @@ def resolve_post_selection_method_policies(
         )
     ).strip()
     if default_dtype not in {"float32", "float64"}:
-        default_dtype = "float64"
+        raise TrainingDataInputError(
+            f"Unsupported [training].default_dtype: '{default_dtype}'. Accepted values are 'float32' or 'float64'."
+        )
 
     f_model_raw = str(
         paths.get(
@@ -780,21 +856,18 @@ def resolve_post_selection_method_policies(
             paths.get("model", model.get("foundation_model", "")),
         )
     ).strip()
-    f_head = (
-        str(
-            training.get(
-                "foundation_head",
-                model.get("foundation_head", "default"),
-            )
-        ).strip()
-        or "default"
+    f_head_configured = training.get("foundation_head", model.get("foundation_head"))
+    f_head_req = (
+        str(f_head_configured).strip()
+        if f_head_configured is not None and str(f_head_configured).strip()
+        else None
     )
 
     foundation_identity = None
     if f_model_raw:
         foundation_identity = resolve_post_selection_foundation_identity(
             f_model_raw,
-            requested_head=f_head,
+            requested_head=f_head_req,
             model_family=str(model.get("family", "MACE-MPA-0")),
         )
     elif training_mode in {"naive_fine_tuning", "multihead_replay"}:
@@ -804,6 +877,11 @@ def resolve_post_selection_method_policies(
 
     foundation_checkpoint_digest = (
         foundation_identity.canonical_content_digest
+        if foundation_identity is not None
+        else None
+    )
+    resolved_foundation_head = (
+        foundation_identity.foundation_head
         if foundation_identity is not None
         else None
     )
@@ -852,7 +930,14 @@ def resolve_post_selection_method_policies(
             training.get("replay_degradation_budget_mev_per_a", 30.0),
         )
     )
+    from .acceleration import MaceAccelerationBackend, MaceAccelerationPolicy
     source_backend = str(acceleration.get("backend", "e3nn")).strip().lower()
+    req_backend = str(acceleration.get("training_backend", source_backend)).strip().lower()
+    acc_policy = MaceAccelerationPolicy(
+        backend=MaceAccelerationBackend(req_backend),
+        only_cueq=bool(acceleration.get("only_cueq", False)),
+    )
+    acceleration_backend = acc_policy.backend.value
     return PostSelectionMethodPolicies(
         common_training=common_training,
         learning_rate_schedule=LearningRateSchedulePolicy(
@@ -888,18 +973,14 @@ def resolve_post_selection_method_policies(
         checkpoint_selection=CheckpointSelectionPolicy(),
         extxyz=MaceExtxyzPolicy(),
         training_mode=training_mode,
-        acceleration_backend=str(
-            acceleration.get("training_backend", source_backend)
-        )
-        .strip()
-        .lower(),
+        acceleration_backend=acceleration_backend,
         checkpoint_interval_epochs=int(training.get("checkpoint_interval_epochs", 1)),
         device=str(training.get("device", "cuda")),
         mace_architecture=mace_architecture,
         mace_architecture_digest=mace_architecture_digest,
         foundation_potential_identity=foundation_identity,
         foundation_model=str(Path(f_model_raw).resolve()) if f_model_raw else None,
-        foundation_head=f_head if f_model_raw else None,
+        foundation_head=resolved_foundation_head if f_model_raw else None,
         replay_context=single_replay,
     )
 

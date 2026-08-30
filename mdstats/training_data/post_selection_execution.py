@@ -453,6 +453,10 @@ def _post_selection_mace_config(
         "method_identity_digest": method.content_digest,
         "mace_architecture": arch,
     }
+    if hasattr(optimizer_policy, "eval_interval"):
+        config["eval_interval"] = int(optimizer_policy.eval_interval)
+    if hasattr(optimizer_policy, "acceleration_policy") and optimizer_policy.acceleration_policy is not None:
+        config.update(optimizer_policy.acceleration_policy.training_config())
     if foundation_model:
         config["foundation_model"] = str(foundation_model)
     if foundation_head:
@@ -644,6 +648,11 @@ class PostSelectionRungRequest:
     checkpoint_directory: Path
     optimizer_policy: Any
     start_epoch: int = 0
+    foundation_identity: Any | None = None
+    foundation_model_path: Path | None = None
+    replay_train_artifact: Any | None = None
+    replay_train_path: Path | None = None
+    replay_monitor_artifact: Any | None = None
     replay_monitor_path: Path | None = None
 
 
@@ -671,12 +680,14 @@ class MacePostSelectionTrainer:
         import subprocess
         import yaml
 
+        from ._common import sha256_file_cached
         from .train2_runtime import (
             TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE,
             TRAIN2_TRUE_REPLAY_PATH_ENVIRONMENT_VARIABLE,
             load_train2_runtime_summary,
         )
 
+        # 1. Internal P5 configuration bytes, SHA256, digest, and schema
         internal_config_path = (
             request.materialization_directory
             / request.materialization.mace_config_relative_path
@@ -703,6 +714,100 @@ class MacePostSelectionTrainer:
                 "Post-selection MACE configuration schema mismatch."
             )
 
+        # 2. Target training ExtXYZ at materialization_directory / target_train_artifact.relative_path
+        target_train_art = request.materialization.target_train_artifact
+        target_train_path = request.materialization_directory / target_train_art.relative_path
+        if not target_train_path.is_file():
+            raise PostSelectionExecutionError(
+                f"Target training ExtXYZ is missing: {target_train_path}"
+            )
+        if sha256_file_cached(target_train_path) != target_train_art.sha256:
+            raise PostSelectionExecutionError(
+                "Target training ExtXYZ SHA256 does not match materialization artifact."
+            )
+
+        # 3. Target validation/checkpoint-monitor ExtXYZ
+        target_valid_art = request.materialization.checkpoint_monitor_artifact
+        target_valid_path = request.materialization_directory / target_valid_art.relative_path
+        if not target_valid_path.is_file():
+            raise PostSelectionExecutionError(
+                f"Target validation ExtXYZ is missing: {target_valid_path}"
+            )
+        if sha256_file_cached(target_valid_path) != target_valid_art.sha256:
+            raise PostSelectionExecutionError(
+                "Target validation ExtXYZ SHA256 does not match materialization artifact."
+            )
+
+        # 4. Foundation checkpoint for non-scratch methods
+        if internal_payload.get("foundation_model") or request.foundation_identity is not None or request.foundation_model_path is not None:
+            if request.foundation_identity is None or request.foundation_model_path is None:
+                raise PostSelectionExecutionError(
+                    "Non-scratch training requires canonical foundation identity and path in request."
+                )
+            f_path = Path(request.foundation_model_path).resolve()
+            if not f_path.is_file():
+                raise PostSelectionExecutionError(
+                    f"Foundation model file is missing: {f_path}"
+                )
+            if sha256_file_cached(f_path) != request.foundation_identity.sha256:
+                raise PostSelectionExecutionError(
+                    "Foundation model file SHA256 does not match canonical foundation identity."
+                )
+            # 5. if internal config contains foundation locator/head, verify agreement
+            if internal_payload.get("foundation_model"):
+                if Path(internal_payload["foundation_model"]).resolve() != f_path:
+                    raise PostSelectionExecutionError(
+                        "Internal config foundation_model does not match request foundation model path."
+                    )
+            if internal_payload.get("foundation_head"):
+                if internal_payload["foundation_head"] != request.foundation_identity.foundation_head:
+                    raise PostSelectionExecutionError(
+                        "Internal config foundation_head does not match request foundation head."
+                    )
+
+        # 6. For multihead_replay: replay train path/artifact present and file SHA matches
+        if internal_payload.get("multiheads_finetuning") or request.replay_train_artifact is not None or request.replay_train_path is not None:
+            if request.replay_train_artifact is None or request.replay_train_path is None:
+                raise PostSelectionExecutionError(
+                    "multihead_replay training requires replay train artifact and path in request."
+                )
+            rp_train_p = Path(request.replay_train_path).resolve()
+            if not rp_train_p.is_file():
+                raise PostSelectionExecutionError(
+                    f"Replay train file is missing: {rp_train_p}"
+                )
+            if sha256_file_cached(rp_train_p) != request.replay_train_artifact.sha256:
+                raise PostSelectionExecutionError(
+                    "Replay train file SHA256 does not match replay train artifact."
+                )
+
+        # 7. When replay monitor is passed: replay monitor path/artifact present and file SHA matches
+        if request.replay_monitor_artifact is not None or request.replay_monitor_path is not None:
+            if request.replay_monitor_artifact is None or request.replay_monitor_path is None:
+                raise PostSelectionExecutionError(
+                    "Replay monitor requires both artifact and path in request."
+                )
+            rp_mon_p = Path(request.replay_monitor_path).resolve()
+            if not rp_mon_p.is_file():
+                raise PostSelectionExecutionError(
+                    f"Replay monitor file is missing: {rp_mon_p}"
+                )
+            if sha256_file_cached(rp_mon_p) != request.replay_monitor_artifact.sha256:
+                raise PostSelectionExecutionError(
+                    "Replay monitor file SHA256 does not match replay monitor artifact."
+                )
+            # 8. when request.plan.replay_monitor_enabled: monitor SHA must equal true_replay_monitor_sha256
+            if request.plan.replay_monitor_enabled:
+                if request.replay_monitor_artifact.sha256 != request.plan.true_replay_monitor_sha256:
+                    raise PostSelectionExecutionError(
+                        "Replay monitor SHA256 does not match runtime plan true_replay_monitor_sha256."
+                    )
+        elif request.plan.replay_monitor_enabled:
+            raise PostSelectionExecutionError(
+                "Runtime plan requires replay monitor, but none was provided in request."
+            )
+
+        # 9. Write executable configuration and execute wrapper subprocess
         executable_payload = post_selection_mace_run_configuration(internal_payload)
         executable_config_path = (
             request.materialization_directory / "mace_run_config.yaml"
@@ -731,21 +836,10 @@ class MacePostSelectionTrainer:
         env["PYTHONHASHSEED"] = str(request.plan.optimizer_policy_digest[:8])
         if hasattr(request.optimizer_policy, "seed"):
             env["PYTHONHASHSEED"] = str(int(request.optimizer_policy.seed))
-        if request.plan.replay_monitor_enabled:
-            if (
-                request.replay_monitor_path is None
-                or not Path(request.replay_monitor_path).is_file()
-            ):
-                raise PostSelectionExecutionError(
-                    f"TRUE_DFT replay monitor path is missing: {request.replay_monitor_path}"
-                )
-            monitor_p = Path(request.replay_monitor_path).resolve()
-            monitor_sha = hashlib.sha256(monitor_p.read_bytes()).hexdigest()
-            if monitor_sha != request.plan.true_replay_monitor_sha256:
-                raise PostSelectionExecutionError(
-                    "TRUE_DFT replay monitor SHA256 does not match runtime plan."
-                )
-            env[TRAIN2_TRUE_REPLAY_PATH_ENVIRONMENT_VARIABLE] = str(monitor_p)
+        if request.plan.replay_monitor_enabled and request.replay_monitor_path is not None:
+            env[TRAIN2_TRUE_REPLAY_PATH_ENVIRONMENT_VARIABLE] = str(
+                Path(request.replay_monitor_path).resolve()
+            )
 
         proc = subprocess.run(
             command,
@@ -847,6 +941,9 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "clip_grad",
     "default_dtype",
     "device",
+    "eval_interval",
+    "enable_cueq",
+    "only_cueq",
 )
 
 
