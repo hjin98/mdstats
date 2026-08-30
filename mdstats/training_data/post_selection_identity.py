@@ -261,8 +261,12 @@ class CvValidationPolicyIdentity:
     required_cv_seeds: tuple[int, ...]
 
     def __post_init__(self) -> None:
-        folds = _positive_int(self.fold_count, name="fold_count")
-        if folds < 2:
+        if isinstance(self.fold_count, bool) or not isinstance(
+            self.fold_count, (int, float)
+        ):
+            raise TrainingDataInputError("fold_count must be an integer.")
+        folds = int(self.fold_count)
+        if folds != self.fold_count or folds < 2:
             raise PostSelectionError(
                 "Post-selection cross-validation requires at least two folds "
                 f"(configured K={folds}). K=0 and K=1 are not a reduced CV: they are "
