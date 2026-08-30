@@ -29,7 +29,7 @@ P3A9 repaired the demonstrated execution-head publication crash case where an im
 
 **P4 revision 8 is formally closed and independently accepted at commit `145388e5ad11733be1c19539886e34b82cc7d7d2`.** Revision-4 through revision-7 implementation candidates/evidence remain preserved in adjacent baseline files. Revision 8 sealed the last public terminal snapshot-only result-view escape hatch while preserving the accepted production-STOR first-publication owner path, canonical execution-root owner, CampaignStore-first terminal loader, and full P1-P3 authority-validation chain. Fresh assembled P4/P3A9 regression closed with 170 passing tests.
 
-**P5 revision 3 is active and implementation-ready.** Revision 3 preserves the full revision-2 P4-to-P5 cutover contract and adds the final independent-review hardening needed before implementation: commit-time stale-generation fencing for current P5 publication; one exact downstream protocol identity shared by CV and final production; complete selected-only K-fold CV with `K >= 2` and no current `cv_not_performed` bypass; explicit downstream target/replay evidence roles with replay as admissibility-only and target-only checkpoint/seed ordering; and collision-proof screen/CV/final run namespaces even when N and numeric seed coincide.
+**P5 revision 4 is active and implementation-ready.** Revision 4 preserves the complete revision-2/revision-3 P4-to-P5 cutover and hardening contract while correcting the final parent-alignment gaps: CV and final production now share only one scientific method identity, with independent CV-validation and final-production policy identities so production-only `[training].max_num_epochs` changes do not invalidate CV; CV fold leakage consumes the complete canonical P1 split-exclusion/protected relation authority projected onto exact `T_selected`; and current CV acceptance is explicitly target-only with every required fold and required CV seed/variant required to pass, while replay/dispersion summaries remain non-ranking diagnostics or admissibility evidence only.
 
 P6 remains blocked until P5 implementation has semantic/conformance closure, functional closure, fresh assembled affected regression, and formal independent acceptance.
 
@@ -61,7 +61,7 @@ P1 neutral scientific substrate
        + revision-7 production-STOR owner / exposure-time-currentness repair
        + revision-8 public terminal snapshot-API sealing / final reclosure
        -> FORMAL P4 CLOSURE COMMIT 145388e5ad11733be1c19539886e34b82cc7d7d2
-  -> P5 revision 3 post-selection CV and fresh final production
+  -> P5 revision 4 post-selection CV and fresh final production
        -> FORMAL P5 CLOSURE COMMIT
   -> P6 destructive cleanup and assembled closure
 ```
@@ -80,14 +80,17 @@ Do not start dependent executable work until the previous package has both **sem
 - A `ValidatedTargetSizeTerminalResult` is a validated snapshot, not perpetual current authority. Every public/current terminal view/write/report/P5 consumer must re-establish CampaignStore currentness at exposure time before exposing terminal authority.
 - No exported/public snapshot-only terminal renderer or arbitrary-path terminal writer may accept historical `revision + validated_result` objects and expose them as current authority. Terminal-capable pure formatting must be private/internal, or retained public generic helpers must be strictly nonterminal-only.
 - P5 consumes `T_selected = pi_train[:N_selected]` as immutable selected target membership. `T_selected` is not a screening epoch or production horizon.
-- P5 current CV roles descend from exact selected-frame identity and neutral correlation groups; legacy DATA5 label-domain/CV lineage is not current authority.
 - P5 currentness must survive a concurrent new P4 generation: stale immutable descendants may remain historical, but no g1 publication may become current after g2 commits.
+- P5 CV consumes the complete canonical P1 split-exclusion/protected relation authority projected onto exact `T_selected`; correlation units and geometry duplicates are mandatory but not exhaustive, and unselected related siblings never enlarge the selected dataset.
 - P5 current CV is complete selected-only methodological validation with configured `K >= 2`; no zero-fold/`cv_not_performed` path may authorize current final production.
-- P5 CV and final production share one exact downstream training-protocol identity. Changing a P5 method-defining field invalidates affected P5 CV/final descendants without inventing new target-size authority.
-- P5 replay TRUE_DFT evidence is admissibility/safety evidence only. Among admissible checkpoints/seeds, ordering is target-only; legacy target+replay weighted combined scores are not current ranking authority.
+- P5 CV and final production share one scientific **method** identity, not one monolithic role-specific policy digest. CV fold/monitor/budget policy and final-production horizon/M3/final-run policy have separate downstream identities.
+- CV-only settings invalidate CV descendants/current authorization only and do not mutate P4 target-size state. Production-only `[training].max_num_epochs`/adaptive changes invalidate affected final-production descendants only and do not require CV rerun.
+- Every required CV fold and required CV seed/variant must satisfy the configured target-only outer-validation predicate. Aggregate means, majority folds/seeds, best-seed shortcuts, replay-weighted scores, and partial-fold evidence cannot authorize production.
+- P5 replay TRUE_DFT evidence is admissibility/safety evidence only. Among admissible checkpoints/seeds, ordering is target-only; legacy target+replay weighted combined scores are not current ranking or acceptance authority.
+- Cross-fold/cross-seed dispersion and replay summaries remain diagnostic unless a future governing scientific revision explicitly promotes them to a gate.
 - P5 final target gradients use full exact `T_selected`; frozen M3 may serve only as development/model-selection target evidence and must not be relabeled independent validation.
 - P5 must not feed CV evidence or configuration back into target-size selection.
-- P5 final production starts fresh; its production horizon is the resolved `[training].max_num_epochs` and is independent of target-size screening `n3`.
+- P5 final production starts fresh; its production horizon is the resolved `[training].max_num_epochs` and is independent of target-size screening `n3` and the CV budget.
 - Screen, post-selection CV, and final-production execution/restart namespaces must remain distinct even when N and numeric seed coincide.
 - P6 deletes unreachable retired topology only after the current runtime is functionally closed.
 - Stage-local affected regression is required after every material behavior-changing pass before dependent work proceeds.
@@ -110,5 +113,5 @@ Do not start dependent executable work until the previous package has both **sem
    - `P3_P3A7_RESTART_OWNER_ACCEPTANCE_REPAIR_INSTRUCTIONS.md` — prove durable noncanonical EMA/LIVE state rejects through the real `resolve_target_size_candidate_for_resume(...)` owner.
    - `P3_P3A9_HEAD_POINTER_RECONCILIATION_REPAIR_INSTRUCTIONS.md` — final revision-7 predecessor closure: recover only a unique authenticated linear successor chain after stale-pointer crash, preserve deterministic reducer replay, reject forks/orphans/corruption, and formally close P3 before P4 begins.
 4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` — revision-8 implementation is formally closed and independently accepted at `145388e5ad11733be1c19539886e34b82cc7d7d2`; revision-4 through revision-7 baselines/evidence remain preserved adjacent.
-5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — revision-3 active implementation contract: revision-2 CampaignStore-backed selected-data cutover plus commit-time currentness fencing, complete selected-only CV, exact CV-to-production protocol identity, target-only ranking after replay admissibility, explicit downstream target evidence roles, fresh production, and collision-proof cross-role run identity.
+5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` — revision-4 active implementation contract: revision-2/revision-3 CampaignStore/currentness/replay/fresh-production hardening plus parent-aligned shared-method/CV-policy/production-policy identity separation, complete inherited P1 split-exclusion authority, and explicit all-required-fold target-only CV acceptance.
 6. `P6_DESTRUCTIVE_CLEANUP_FINAL_CLOSURE.md` — blocked on formal P5 closure; remove retired architecture and perform assembled final acceptance.
