@@ -15,7 +15,7 @@ fontsize: 10pt
 **Authority class:** final accelerator/release qualification; no target-size-selection authority
 **Development rule:** GPU-dependent qualification is deferred to one final-release execution package.
 
-FINAL-GPU1 is deliberately downstream of the scientific target-size redesign. The production target-size authority is already the fixed-eight `REPAIR2 -> MVQUAL2 -> TargetSizeStudyPolicy` path. FINAL-GPU1 does not activate, migrate, rescue, or replace target-size state and cannot change `selected_target_size`.
+FINAL-GPU1 is deliberately downstream of the scientific target-size architecture. The production target-size authority is the current `pi_train -> configured candidate ladder -> paired optimizer-seed screen -> reducer` path. FINAL-GPU1 does not activate, migrate, rescue, or replace target-size state and cannot change the selected target size.
 
 The development host may establish CPU/reference correctness, exact identity, restart behavior, serialization, and control-plane performance. It may not translate missing accelerator execution into a positive GPU result.
 
@@ -86,7 +86,7 @@ $$
 \mathcal N_0=(128,256,512,1024,2048,4096,8192,16384).
 $$
 
-`REPAIR2` owns candidate membership through exact prefixes, `MVQUAL2` is the sole hard size-eligibility authority, and `TargetSizeStudyPolicy` owns the complete configurable screen `(n1,n2,n3)` decision. Generated campaigns default to screen `(1,3,10)` with fresh production horizon `30`; `selected_target_size` is frozen before held-out CV/EVAL/VERIFY.
+The one canonical training order `pi_train` owns candidate membership through exact prefixes, the configured target-size policy admits the candidate ladder, and the one reducer owns the complete configurable screen `(n1,n2,n3)` decision. Generated campaigns default to screen `(1,3,10)` with fresh production horizon `30`; the selected target size is frozen before post-selection cross-validation and fresh final production.
 
 FINAL-GPU1 may measure the performance of this workflow and may execute `SIZE_FIDELITY1` as an algorithm-calibration/release-qualification exercise, but it may not:
 

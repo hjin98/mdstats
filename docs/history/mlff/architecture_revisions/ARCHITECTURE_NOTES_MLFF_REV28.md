@@ -21,6 +21,6 @@ Implemented contract:
   checkpoints and fails closed on mismatch.
 
 The canonical contract is documented in
-`docs/specs/training_data/mlff_lightweight_ranking_spec.{md,pdf}` and the MLFF architecture manual.
+`docs/history/mlff/retired_specs/mlff_lightweight_ranking_spec.{md,pdf}` and the MLFF architecture manual.
 ADAPT-EVAL1 remains the next gate; EVAL-MF is still runtime-authoritative for campaign-wide
 checkpoint evaluation in 0.20.125a0.

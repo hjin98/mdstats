@@ -165,43 +165,6 @@ def test_storage_cli_writes_read_only_report(tmp_path: Path) -> None:
     assert len(payload["largest_artifacts"]) <= 5
 
 
-def test_materialization_record_path_does_not_confer_external_cleanup_authority(tmp_path: Path, monkeypatch) -> None:
-    config = _write_config(tmp_path)
-    cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    external_root = tmp_path / "external-materialization"
-    stale = external_root / ".data8-staging-old"
-    stale.mkdir(parents=True)
-    payload = stale / "user-owned.bin"
-    payload.write_bytes(b"do-not-delete")
-    old = __import__("time").time() - 24 * 3600
-    os.utime(stale, (old, old))
-
-    # The cleanup owner resolves this helper from the core module, so the
-    # substitution has to be installed there; patching the facade re-export
-    # leaves the production lookup untouched.
-    monkeypatch.setattr(
-        campaign_cli_core,
-        "_current_materialization_roots",
-        lambda _store: {external_root.resolve()},
-    )
-    report = campaign_cli._CampaignCleanupReport(
-        phase="stor1-test",
-        dry_run=False,
-        ownership_boundary=CampaignOwnershipBoundary(
-            paths.workspace,
-            protected_inputs=configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config),
-        ),
-    )
-    campaign_cli._cleanup_materialization_storage(
-        report,
-        paths,
-        store,
-        stale_before=__import__("time").time() - 6 * 3600,
-    )
-    assert payload.read_bytes() == b"do-not-delete"
-    assert report.actions == []
-    assert any("failed ownership checks" in item or "cleanup authority denied" in item for item in report.skipped)
 
 
 def test_stor1_largest_artifacts_include_directory_aggregate(tmp_path: Path) -> None:

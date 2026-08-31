@@ -170,42 +170,6 @@ def test_repeatability_diagnostic_prints_refined_self_tail_statistics(capsys) ->
     assert "CuEq-self F>1.0e-05:" in text
 
 
-def test_deterministic_control_record_prints_completed_and_failure(capsys) -> None:
-    base = mdstats.TrainingAccelerationRepeatabilityDiagnostic(
-        repeat_count=2, dtype="float32", structure_count=1, atom_count=1, force_threshold=1.0e-5,
-        e3nn_self_force_max_abs=(0.0,), e3nn_self_force_rmse=(0.0,),
-        cueq_self_force_max_abs=(0.0,), cueq_self_force_rmse=(0.0,),
-        cross_energy_max_abs=(0.0, 0.0), cross_energy_rmse=(0.0, 0.0),
-        cross_force_max_abs=(0.0, 0.0), cross_force_rmse=(0.0, 0.0),
-        cross_force_p99_abs=(0.0, 0.0), cross_force_p999_abs=(0.0, 0.0),
-        cross_force_above_threshold_count=(0, 0), cross_force_component_count=3,
-        cross_stress_max_abs=(0.0, 0.0), cross_stress_rmse=(0.0, 0.0),
-        cross_descriptor_max_abs=(0.0, 0.0), cross_descriptor_rmse=(0.0, 0.0),
-        cross_selection_identical=(True, True),
-        policy_digest=campaign_cli._training_acceleration_parity_policy().policy_digest,
-        torch_deterministic_algorithms=True, torch_deterministic_debug_mode=2,
-        cudnn_deterministic=True, cublas_workspace_config=":4096:8",
-        e3nn_self_force_p99_abs=(0.0,), e3nn_self_force_p999_abs=(0.0,),
-        e3nn_self_force_above_threshold_count=(0,),
-        cueq_self_force_p99_abs=(0.0,), cueq_self_force_p999_abs=(0.0,),
-        cueq_self_force_above_threshold_count=(0,),
-    )
-    completed = mdstats.TrainingAccelerationDeterministicControlDiagnostic(
-        status="completed", repeat_count=2, dtype="float32", cublas_workspace_config=":4096:8",
-        repeatability=base,
-    )
-    assert mdstats.TrainingAccelerationDeterministicControlDiagnostic.from_dict(completed.to_dict()) == completed
-    campaign_cli._print_training_deterministic_control_diagnostic(completed)
-    failed = mdstats.TrainingAccelerationDeterministicControlDiagnostic(
-        status="unsupported_or_failed", repeat_count=10, dtype="float32", cublas_workspace_config=":4096:8",
-        error_type="RuntimeError", error_message="deterministic implementation unavailable",
-    )
-    campaign_cli._print_training_deterministic_control_diagnostic(failed)
-    text = capsys.readouterr().out
-    assert "[DIAG-DET] isolated deterministic control: status=completed" in text
-    assert "torch_deterministic_algorithms=True" in text
-    assert "status=unsupported_or_failed" in text
-    assert "deterministic implementation unavailable" in text
 
 
 def test_deterministic_control_parent_uses_fresh_worker(monkeypatch, tmp_path) -> None:

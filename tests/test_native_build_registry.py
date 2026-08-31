@@ -22,9 +22,7 @@ def _load_build_tool():
 def test_native_registry_is_unique_and_sources_exist() -> None:
     specs = native_extensions.registered_native_extension_specs()
     modules = tuple(spec.module for spec in specs)
-    assert modules
     assert len(modules) == len(set(modules))
-    assert "mdstats._mvsel2_native" in modules
     for spec in specs:
         assert spec.module.startswith("mdstats.")
         assert spec.sources
@@ -32,15 +30,14 @@ def test_native_registry_is_unique_and_sources_exist() -> None:
             assert (ROOT / source).is_file(), source
 
 
-def test_mvsel2_native_registry_preserves_exact_openmp_profile() -> None:
-    spec = next(
-        item
-        for item in native_extensions.registered_native_extension_specs()
-        if item.module == "mdstats._mvsel2_native"
+def test_retired_mvsel2_native_kernel_is_unregistered_and_absent() -> None:
+    """The retired selection kernel left no registry entry or source behind."""
+
+    modules = tuple(
+        spec.module for spec in native_extensions.registered_native_extension_specs()
     )
-    assert spec.strict_fp is True
-    assert spec.openmp is True
-    assert spec.optional is True
+    assert "mdstats._mvsel2_native" not in modules
+    assert not (ROOT / "mdstats" / "_mvsel2_native.c").exists()
 
 
 def test_setup_py_delegates_all_native_targets_to_registry_without_bootstrap_import() -> None:
@@ -48,7 +45,6 @@ def test_setup_py_delegates_all_native_targets_to_registry_without_bootstrap_imp
     assert "build_native_extensions" in source
     assert "runpy.run_path" in source
     assert "from build_support" not in source
-    assert "_mvsel2_extension" not in source
     assert "Extension(" not in source
     assert "-fopenmp" not in source
 

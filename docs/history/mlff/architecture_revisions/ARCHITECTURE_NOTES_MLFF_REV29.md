@@ -24,5 +24,5 @@ Implemented contract:
 - final deployment verification/fallback/export remains ADAPT-VERIFY1.
 
 The canonical contract is documented in
-`docs/specs/training_data/mlff_adaptive_full_evaluation_spec.{md,pdf}` and the MLFF architecture
+`docs/history/mlff/retired_specs/mlff_adaptive_full_evaluation_spec.{md,pdf}` and the MLFF architecture
 manual.

@@ -142,7 +142,7 @@ For each fold \(k\):
 
 1. DATA5 provides `fold_training_domain_k`, a disjoint authorized checkpoint monitor, and `held_out_evaluation_fold_k`.
 2. DATA6/DATA7 fit descriptors, transforms, metrics, E0, objective/weights, and difficulty evidence only within `fold_training_domain_k`.
-3. MVSEL2/REPAIR2 construct the fold-local repaired master order from fold-authorized evidence.
+3. Post-selection cross-validation folds are drawn from exactly `T_selected` under the protected relations of Part III.
 4. The already-frozen protocol-global `N_selected` defines the fold target prefix.
 5. A fresh model/optimizer lineage is trained under the bound production stopping/checkpoint policy.
 6. Checkpoint choice freezes without inspecting `held_out_evaluation_fold_k`.
@@ -198,7 +198,7 @@ A reproducible campaign binds, as applicable:
 - source/parser and label-domain identities;
 - partition/independence roles;
 - feature/provider and fitted DATA6/DATA7 product identities;
-- MVIDX, MVSEL2, REPAIR2, MVSTATE2, and MVQUAL identities;
+- the target-size experiment definition, training/evaluation orders, and common preparation identities;
 - target-size decision and domain-local target-prefix identities;
 - foundation/model/runtime lock;
 - replay and monitor identities;

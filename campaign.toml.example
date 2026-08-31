@@ -226,18 +226,6 @@ gpu_memory_fraction = 0.90
 # still clipped by available CPU threads and the RAM budget.
 source_workers = 0
 feature_workers = 0
-# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads. For FEAS1 this
-# is the native tree-thread count *inside each query-block process*. 0 selects
-# the stage-specific automatic CPU-budgeted factorization. Execution only.
-target_coverage_workers = 0
-# 0 lets FEAS1 choose bounded concurrent witness-block threads sharing one
-# read-only cKDTree. Positive values explicitly cap block workers. Execution only.
-target_coverage_feasibility_block_workers = 0
-# Compatibility alias retained from 0.20.221a0. Leave at 0 for new campaigns;
-# if positive it is interpreted as the FEAS1 block-worker request.
-target_coverage_feasibility_family_workers = 0
-# Bounded cKDTree witness-query block. Scientific results are block invariant.
-target_coverage_feasibility_block_size = 512
 # LTA workers return compact NumPy columns; the automatic count is bounded by
 # CPU threads plus RAM reserved for the final immutable catalog.
 lta_workers = 0

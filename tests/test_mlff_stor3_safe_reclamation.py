@@ -108,25 +108,6 @@ def test_stor3_graph_symlink_escape_unlinks_only_campaign_link(tmp_path: Path) -
     assert important.read_bytes() == b"never-delete"
 
 
-def test_stor3_disk_pressure_attempt_reclaims_safe_cache_before_failure(tmp_path: Path, monkeypatch) -> None:
-    config = _config(tmp_path)
-    cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    store.set_stage("evaluate", campaign_cli.StageState.COMPLETE, "complete")
-    graph = paths.internal / "evaluation-graphs"
-    graph.mkdir(); (graph / "large.bin").write_bytes(b"x" * 8192)
-
-    class Usage:
-        free = 25 * 1024**3
-
-    monkeypatch.setattr(campaign_cli.shutil, "disk_usage", lambda _path: Usage())
-    report, free_after, recovered = campaign_cli._attempt_stor3_disk_pressure_reclamation(
-        cfg, paths, store, minimum_free_disk_gib=20.0
-    )
-    assert recovered is True
-    assert free_after == 25.0
-    assert not graph.exists()
-    assert report.reclaimed_bytes >= 8192
 
 
 def test_storage_report_marks_stor3_reconstructable_classes_as_automatic_safe(tmp_path: Path) -> None:

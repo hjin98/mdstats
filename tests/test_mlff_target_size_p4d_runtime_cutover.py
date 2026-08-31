@@ -469,24 +469,29 @@ def test_p4d_req2_select_target_size_requires_the_current_regime(tmp_path: Path)
     assert "`prepare`" in str(excinfo.value)
 
 
-def test_p4d_req3_materialize_fails_closed_without_retired_authority(tmp_path: Path):
-    config, workspace = _fixture_campaign(tmp_path)
-    assert _run(config, "prepare") == 0
-    with pytest.raises(cli.CampaignCliError) as excinfo:
-        _run(config, "materialize")
-    message = str(excinfo.value)
-    assert "never reinterpreted as current authority" in message
+def test_p4d_req3_retired_lifecycle_commands_are_structurally_absent(tmp_path: Path):
+    """The retired production lifecycle cannot be invoked at all.
 
+    P6 removed `materialize`, `preflight`, `train`, `extend-seed`, `evaluate`,
+    and `verify` together with the retired authorities they consumed, so the
+    guard is now structural rather than a runtime redirect.
+    """
 
-def test_p4d_req4_ordinary_train_and_evaluate_cannot_schedule_the_screen(
-    tmp_path: Path,
-):
     config, _workspace = _fixture_campaign(tmp_path)
     assert _run(config, "prepare") == 0
-    for command in ("train", "evaluate"):
-        with pytest.raises(cli.CampaignCliError) as excinfo:
-            _run(config, command)
-        assert "select-target-size" in str(excinfo.value)
+    for command in (
+        "materialize", "preflight", "train", "extend-seed", "evaluate", "verify"
+    ):
+        with pytest.raises(SystemExit) as excinfo:
+            _parse(config, command)
+        assert excinfo.value.code == 2
+
+
+def test_p4d_req4_only_select_target_size_can_schedule_the_screen(tmp_path: Path):
+    parser = cli.build_parser()
+    choices = parser._subparsers._group_actions[0].choices
+    assert "select-target-size" in choices
+    assert not ({"train", "evaluate", "materialize", "preflight"} & set(choices))
 
 
 def test_p4d_req5_mace_run_configuration_is_translation_only():

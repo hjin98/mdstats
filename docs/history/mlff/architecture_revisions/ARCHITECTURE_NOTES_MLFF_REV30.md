@@ -30,4 +30,4 @@ Implemented contract:
   historical-campaign qualification.
 
 The canonical contract is documented in
-`docs/specs/training_data/mlff_adaptive_verification_spec.{md,pdf}` and the MLFF architecture manual.
+`docs/history/mlff/retired_specs/mlff_adaptive_verification_spec.{md,pdf}` and the MLFF architecture manual.

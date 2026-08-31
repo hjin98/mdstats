@@ -258,7 +258,10 @@ def test_p4f_req3_parser_help_describes_the_current_commands():
         "only command that trains candidates and decides N"
         in by_name["select-target-size"]
     )
-    assert "fails closed" in by_name["materialize"]
+    assert "post-selection cross-validation" in by_name["cross-validate"]
+    assert "fresh final production" in by_name["train-production"]
+    # The retired lifecycle commands are absent from the current surface.
+    assert not ({"materialize", "preflight", "train", "extend-seed", "evaluate", "verify"} & set(by_name))
 
 
 def test_p4f_req3_config_example_documents_partition_identity_coupling():

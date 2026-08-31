@@ -1,7 +1,7 @@
 {
   "authority_model": "single_generation_current_dependency_architecture",
-  "schema_version": 2,
-  "description": "Conceptual current MLFF dependency and ownership graph for DOC-MLFF-ARCH-RESET1. It contains no legacy selector, repair, migration, generated-size-rescue, or alternate campaign-generation execution path.",
+  "schema_version": 3,
+  "description": "Conceptual current MLFF dependency and ownership graph after the destructive target-size generation cutover. It contains no retired multi-view selector, repair, per-domain prefix, migration, generated-size-rescue, or alternate campaign-generation execution path.",
   "node_classes": {
     "evidence": "Immutable physical or model-derived evidence with an explicit statistical role.",
     "policy": "Normative scientific/statistical policy owned by one current specification family.",
@@ -20,126 +20,493 @@
     "optional_enrichment": "The upstream product may enrich the downstream current path without creating a second semantic owner."
   },
   "nodes": [
-    {"id": "SOURCE_LABEL_EVIDENCE", "class": "evidence", "owner": "DATA2"},
-    {"id": "ELIGIBLE_CONDITIONED_FRAMES", "class": "evidence", "owner": "DATA3"},
-    {"id": "RAW_FEATURE_EVENT_EVIDENCE", "class": "evidence", "owner": "DATA4"},
-    {"id": "EVIDENCE_ROLE_ASSIGNMENT", "class": "policy", "owner": "DATA5"},
-    {"id": "FOLD_FINAL_TRAINING_DOMAINS", "class": "scientific_product", "owner": "DATA5"},
-    {"id": "OUTER_TARGET_MONITOR_DOMAIN", "class": "evidence", "owner": "DATA5"},
-    {"id": "HELD_OUT_CV_EVALUATION", "class": "validation_product", "owner": "DATA5/CV"},
-    {"id": "CALIBRATION_DOMAIN", "class": "evidence", "owner": "DATA5/calibration"},
-    {"id": "LOCKED_TEST_DOMAIN", "class": "evidence", "owner": "DATA5/locked-test activation"},
-    {"id": "SELECTION_DESCRIPTOR_EVIDENCE", "class": "fitted_product", "owner": "DATA6"},
-    {"id": "DATA7_FITTED_SELECTION_INPUTS", "class": "fitted_product", "owner": "DATA7"},
-    {"id": "FEASIBILITY_EVIDENCE", "class": "scientific_product", "owner": "FEAS1"},
-    {"id": "EXACT_NEIGHBORHOOD_AUTHORITY", "class": "scientific_product", "owner": "MVIDX1"},
-    {"id": "DOMAIN_SELECTION_ORDER", "class": "scientific_product", "owner": "MVSEL2"},
-    {"id": "DOMAIN_REPAIRED_MASTER_ORDER", "class": "scientific_product", "owner": "REPAIR2"},
-    {"id": "COMPACT_CONTINUATION_STATE", "class": "execution_product", "owner": "MVSTATE2"},
-    {"id": "PREFIX_QUALIFICATION_EVIDENCE", "class": "validation_product", "owner": "MVQUAL2"},
-    {"id": "TARGET_SIZE_STUDY_POLICY", "class": "policy", "owner": "TargetSizeStudyPolicy"},
-    {"id": "TARGET_SIZE_SCREEN_SCHEDULE", "class": "policy", "owner": "TargetSizeStudyPolicy final fidelity boundary n3"},
-    {"id": "ONLINE_TARGET_MONITOR_POLICY", "class": "policy", "owner": "OnlineTargetMonitorPolicy"},
-    {"id": "REPLAY_MONITOR_POLICY", "class": "policy", "owner": "ReplayMonitorPolicy"},
-    {"id": "COMMON_TARGET_MONITOR", "class": "evidence", "owner": "OnlineTargetMonitorPolicy"},
-    {"id": "COMMON_REPLAY_MONITOR", "class": "evidence", "owner": "ReplayMonitorPolicy"},
-    {"id": "QUALIFIED_TARGET_SIZE_POPULATION", "class": "scientific_product", "owner": "MVQUAL2 + TargetSizeStudyPolicy"},
-    {"id": "TARGET_SIZE_DECISION", "class": "scientific_product", "owner": "TargetSizeStudyPolicy"},
-    {"id": "DOMAIN_LOCAL_TARGET_PREFIXES", "class": "scientific_product", "owner": "REPAIR2 + frozen target size"},
-    {"id": "COARSE_SCREEN", "class": "execution_product", "owner": "TargetSizeStudyPolicy configured first screen"},
-    {"id": "SHORT_SCREEN", "class": "execution_product", "owner": "TargetSizeStudyPolicy configured second screen"},
-    {"id": "FINAL_SCREEN", "class": "execution_product", "owner": "TargetSizeStudyPolicy configured final screen"},
-    {"id": "FULL_TRAIN2_SCHEDULE", "class": "policy", "owner": "TrainingBudgetPolicy"},
-    {"id": "FROZEN_TRAINING_PROTOCOL", "class": "scientific_product", "owner": "training/campaign protocol specs"},
-    {"id": "CHECKPOINT_SELECTION", "class": "scientific_product", "owner": "checkpoint-control specs"},
-    {"id": "OUT_OF_FOLD_PROTOCOL_EVIDENCE", "class": "validation_product", "owner": "CV/evaluation specs"},
-    {"id": "FINAL_COMMITTEE", "class": "scientific_product", "owner": "campaign/deployment specs"},
-    {"id": "DEPLOYMENT_ARTIFACTS", "class": "execution_product", "owner": "deployment specs"},
-    {"id": "UNCERTAINTY_CALIBRATION", "class": "validation_product", "owner": "calibration specs"},
-    {"id": "LOCKED_TEST_EVIDENCE", "class": "validation_product", "owner": "locked-test evaluation specs"},
-    {"id": "OBSERVABLE_VALIDATION_EVIDENCE", "class": "validation_product", "owner": "MLFF bridge + mdstats.analysis observable owners"}
+    {
+      "id": "SOURCE_LABEL_EVIDENCE",
+      "class": "evidence",
+      "owner": "DATA2"
+    },
+    {
+      "id": "ELIGIBLE_CONDITIONED_FRAMES",
+      "class": "evidence",
+      "owner": "DATA3"
+    },
+    {
+      "id": "RAW_FEATURE_EVENT_EVIDENCE",
+      "class": "evidence",
+      "owner": "DATA4"
+    },
+    {
+      "id": "EVIDENCE_ROLE_ASSIGNMENT",
+      "class": "policy",
+      "owner": "DATA5"
+    },
+    {
+      "id": "FOLD_FINAL_TRAINING_DOMAINS",
+      "class": "scientific_product",
+      "owner": "DATA5"
+    },
+    {
+      "id": "OUTER_TARGET_MONITOR_DOMAIN",
+      "class": "evidence",
+      "owner": "DATA5"
+    },
+    {
+      "id": "HELD_OUT_CV_EVALUATION",
+      "class": "validation_product",
+      "owner": "DATA5/CV"
+    },
+    {
+      "id": "CALIBRATION_DOMAIN",
+      "class": "evidence",
+      "owner": "DATA5/calibration"
+    },
+    {
+      "id": "LOCKED_TEST_DOMAIN",
+      "class": "evidence",
+      "owner": "DATA5/locked-test activation"
+    },
+    {
+      "id": "SELECTION_DESCRIPTOR_EVIDENCE",
+      "class": "fitted_product",
+      "owner": "DATA6"
+    },
+    {
+      "id": "DATA7_FITTED_SELECTION_INPUTS",
+      "class": "fitted_product",
+      "owner": "DATA7"
+    },
+    {
+      "id": "TARGET_SIZE_DEVELOPMENT_SPLIT",
+      "class": "scientific_product",
+      "summary": "One P_train/M3 target-size development split derived from the canonical frame authority and the neutral statistical substrate."
+    },
+    {
+      "id": "CANONICAL_TRAINING_ORDER",
+      "class": "scientific_product",
+      "summary": "One deterministic training order pi_train whose exact prefixes T_N = pi_train[:N] are the candidate target subsets."
+    },
+    {
+      "id": "CANONICAL_EVALUATION_LADDER",
+      "class": "scientific_product",
+      "summary": "One deterministic evaluation order pi_eval and its nested direct populations M1 subset M2 subset M3."
+    },
+    {
+      "id": "COMMON_TARGET_SIZE_PREPARATION",
+      "class": "scientific_product",
+      "summary": "One deterministic preparation identity shared unchanged by every candidate size and every optimizer seed."
+    },
+    {
+      "id": "CURRENT_SELECTED_SET",
+      "class": "scientific_product",
+      "summary": "The CampaignStore terminal projection binding N_selected to the exact T_selected membership digest."
+    },
+    {
+      "id": "POST_SELECTION_CV_ACCEPTANCE",
+      "class": "validation_product",
+      "summary": "All-required-fold, all-required-seed target-only acceptance of the training method on exactly T_selected."
+    },
+    {
+      "id": "FRESH_FINAL_PRODUCTION",
+      "class": "execution_product",
+      "summary": "Fresh production training on the complete exact T_selected under the accepted method and an independent production horizon."
+    },
+    {
+      "id": "TARGET_SIZE_POLICY",
+      "class": "policy",
+      "owner": "TargetSizeStudyPolicy",
+      "summary": "The configured target-size policy: candidate ladder, configured ceiling, fidelity boundaries, ordered optimizer seeds, and the metric/practical-equivalence rule."
+    },
+    {
+      "id": "TARGET_SIZE_SCREEN_SCHEDULE",
+      "class": "policy",
+      "owner": "TargetSizeStudyPolicy final fidelity boundary n3"
+    },
+    {
+      "id": "ONLINE_TARGET_MONITOR_POLICY",
+      "class": "policy",
+      "owner": "OnlineTargetMonitorPolicy"
+    },
+    {
+      "id": "REPLAY_MONITOR_POLICY",
+      "class": "policy",
+      "owner": "ReplayMonitorPolicy"
+    },
+    {
+      "id": "COMMON_TARGET_MONITOR",
+      "class": "evidence",
+      "owner": "OnlineTargetMonitorPolicy"
+    },
+    {
+      "id": "COMMON_REPLAY_MONITOR",
+      "class": "evidence",
+      "owner": "ReplayMonitorPolicy"
+    },
+    {
+      "id": "TARGET_SIZE_DECISION",
+      "class": "scientific_product",
+      "owner": "TargetSizeStudyPolicy"
+    },
+    {
+      "id": "COARSE_SCREEN",
+      "class": "execution_product",
+      "owner": "TargetSizeStudyPolicy configured first screen"
+    },
+    {
+      "id": "SHORT_SCREEN",
+      "class": "execution_product",
+      "owner": "TargetSizeStudyPolicy configured second screen"
+    },
+    {
+      "id": "FINAL_SCREEN",
+      "class": "execution_product",
+      "owner": "TargetSizeStudyPolicy configured final screen"
+    },
+    {
+      "id": "FULL_TRAIN2_SCHEDULE",
+      "class": "policy",
+      "owner": "TrainingBudgetPolicy"
+    },
+    {
+      "id": "FROZEN_TRAINING_PROTOCOL",
+      "class": "scientific_product",
+      "owner": "training/campaign protocol specs"
+    },
+    {
+      "id": "CHECKPOINT_SELECTION",
+      "class": "scientific_product",
+      "owner": "checkpoint-control specs"
+    },
+    {
+      "id": "OUT_OF_FOLD_PROTOCOL_EVIDENCE",
+      "class": "validation_product",
+      "owner": "CV/evaluation specs"
+    },
+    {
+      "id": "FINAL_COMMITTEE",
+      "class": "scientific_product",
+      "owner": "campaign/deployment specs"
+    },
+    {
+      "id": "DEPLOYMENT_ARTIFACTS",
+      "class": "execution_product",
+      "owner": "deployment specs"
+    },
+    {
+      "id": "UNCERTAINTY_CALIBRATION",
+      "class": "validation_product",
+      "owner": "calibration specs"
+    },
+    {
+      "id": "LOCKED_TEST_EVIDENCE",
+      "class": "validation_product",
+      "owner": "locked-test evaluation specs"
+    },
+    {
+      "id": "OBSERVABLE_VALIDATION_EVIDENCE",
+      "class": "validation_product",
+      "owner": "MLFF bridge + mdstats.analysis observable owners"
+    }
   ],
   "edges": [
-    {"from": "SOURCE_LABEL_EVIDENCE", "to": "ELIGIBLE_CONDITIONED_FRAMES", "type": "produces"},
-    {"from": "ELIGIBLE_CONDITIONED_FRAMES", "to": "RAW_FEATURE_EVENT_EVIDENCE", "type": "consumes"},
-    {"from": "RAW_FEATURE_EVENT_EVIDENCE", "to": "EVIDENCE_ROLE_ASSIGNMENT", "type": "consumes"},
-    {"from": "EVIDENCE_ROLE_ASSIGNMENT", "to": "FOLD_FINAL_TRAINING_DOMAINS", "type": "produces"},
-    {"from": "EVIDENCE_ROLE_ASSIGNMENT", "to": "OUTER_TARGET_MONITOR_DOMAIN", "type": "produces"},
-    {"from": "EVIDENCE_ROLE_ASSIGNMENT", "to": "HELD_OUT_CV_EVALUATION", "type": "produces"},
-    {"from": "EVIDENCE_ROLE_ASSIGNMENT", "to": "CALIBRATION_DOMAIN", "type": "produces"},
-    {"from": "EVIDENCE_ROLE_ASSIGNMENT", "to": "LOCKED_TEST_DOMAIN", "type": "produces"},
-
-    {"from": "FOLD_FINAL_TRAINING_DOMAINS", "to": "SELECTION_DESCRIPTOR_EVIDENCE", "type": "fit_domain_requires"},
-    {"from": "RAW_FEATURE_EVENT_EVIDENCE", "to": "SELECTION_DESCRIPTOR_EVIDENCE", "type": "consumes"},
-    {"from": "FOLD_FINAL_TRAINING_DOMAINS", "to": "DATA7_FITTED_SELECTION_INPUTS", "type": "fit_domain_requires"},
-    {"from": "SELECTION_DESCRIPTOR_EVIDENCE", "to": "DATA7_FITTED_SELECTION_INPUTS", "type": "consumes"},
-    {"from": "RAW_FEATURE_EVENT_EVIDENCE", "to": "DATA7_FITTED_SELECTION_INPUTS", "type": "consumes"},
-
-    {"from": "DATA7_FITTED_SELECTION_INPUTS", "to": "FEASIBILITY_EVIDENCE", "type": "consumes"},
-    {"from": "DATA7_FITTED_SELECTION_INPUTS", "to": "EXACT_NEIGHBORHOOD_AUTHORITY", "type": "consumes"},
-    {"from": "FEASIBILITY_EVIDENCE", "to": "DOMAIN_SELECTION_ORDER", "type": "promotion_requires"},
-    {"from": "EXACT_NEIGHBORHOOD_AUTHORITY", "to": "DOMAIN_SELECTION_ORDER", "type": "identity_requires"},
-    {"from": "DATA7_FITTED_SELECTION_INPUTS", "to": "DOMAIN_SELECTION_ORDER", "type": "consumes"},
-    {"from": "DOMAIN_SELECTION_ORDER", "to": "DOMAIN_REPAIRED_MASTER_ORDER", "type": "produces"},
-    {"from": "EXACT_NEIGHBORHOOD_AUTHORITY", "to": "DOMAIN_REPAIRED_MASTER_ORDER", "type": "identity_requires"},
-    {"from": "DOMAIN_REPAIRED_MASTER_ORDER", "to": "COMPACT_CONTINUATION_STATE", "type": "produces"},
-    {"from": "EXACT_NEIGHBORHOOD_AUTHORITY", "to": "COMPACT_CONTINUATION_STATE", "type": "identity_requires"},
-    {"from": "DOMAIN_REPAIRED_MASTER_ORDER", "to": "PREFIX_QUALIFICATION_EVIDENCE", "type": "consumes"},
-    {"from": "EXACT_NEIGHBORHOOD_AUTHORITY", "to": "PREFIX_QUALIFICATION_EVIDENCE", "type": "identity_requires"},
-
-    {"from": "OUTER_TARGET_MONITOR_DOMAIN", "to": "COMMON_TARGET_MONITOR", "type": "consumes"},
-    {"from": "ONLINE_TARGET_MONITOR_POLICY", "to": "COMMON_TARGET_MONITOR", "type": "produces"},
-    {"from": "REPLAY_MONITOR_POLICY", "to": "COMMON_REPLAY_MONITOR", "type": "produces"},
-    {"from": "PREFIX_QUALIFICATION_EVIDENCE", "to": "QUALIFIED_TARGET_SIZE_POPULATION", "type": "produces"},
-    {"from": "TARGET_SIZE_STUDY_POLICY", "to": "QUALIFIED_TARGET_SIZE_POPULATION", "type": "consumes"},
-    {"from": "QUALIFIED_TARGET_SIZE_POPULATION", "to": "COARSE_SCREEN", "type": "promotion_requires"},
-    {"from": "TARGET_SIZE_STUDY_POLICY", "to": "COARSE_SCREEN", "type": "identity_requires"},
-    {"from": "TARGET_SIZE_SCREEN_SCHEDULE", "to": "COARSE_SCREEN", "type": "identity_requires"},
-    {"from": "COMMON_TARGET_MONITOR", "to": "COARSE_SCREEN", "type": "consumes"},
-    {"from": "COARSE_SCREEN", "to": "SHORT_SCREEN", "type": "identity_requires"},
-    {"from": "TARGET_SIZE_STUDY_POLICY", "to": "SHORT_SCREEN", "type": "identity_requires"},
-    {"from": "TARGET_SIZE_SCREEN_SCHEDULE", "to": "SHORT_SCREEN", "type": "identity_requires"},
-    {"from": "SHORT_SCREEN", "to": "FINAL_SCREEN", "type": "identity_requires"},
-    {"from": "TARGET_SIZE_STUDY_POLICY", "to": "FINAL_SCREEN", "type": "identity_requires"},
-    {"from": "TARGET_SIZE_SCREEN_SCHEDULE", "to": "FINAL_SCREEN", "type": "identity_requires"},
-    {"from": "FINAL_SCREEN", "to": "TARGET_SIZE_DECISION", "type": "produces"},
-    {"from": "TARGET_SIZE_STUDY_POLICY", "to": "TARGET_SIZE_DECISION", "type": "consumes"},
-    {"from": "DOMAIN_REPAIRED_MASTER_ORDER", "to": "DOMAIN_LOCAL_TARGET_PREFIXES", "type": "consumes"},
-    {"from": "TARGET_SIZE_DECISION", "to": "DOMAIN_LOCAL_TARGET_PREFIXES", "type": "promotion_requires"},
-
-    {"from": "DOMAIN_LOCAL_TARGET_PREFIXES", "to": "FROZEN_TRAINING_PROTOCOL", "type": "identity_requires"},
-    {"from": "FULL_TRAIN2_SCHEDULE", "to": "FROZEN_TRAINING_PROTOCOL", "type": "identity_requires"},
-    {"from": "COMMON_TARGET_MONITOR", "to": "FROZEN_TRAINING_PROTOCOL", "type": "identity_requires"},
-    {"from": "COMMON_REPLAY_MONITOR", "to": "FROZEN_TRAINING_PROTOCOL", "type": "identity_requires"},
-    {"from": "FROZEN_TRAINING_PROTOCOL", "to": "CHECKPOINT_SELECTION", "type": "produces"},
-    {"from": "CHECKPOINT_SELECTION", "to": "OUT_OF_FOLD_PROTOCOL_EVIDENCE", "type": "validates_after_freeze"},
-    {"from": "HELD_OUT_CV_EVALUATION", "to": "OUT_OF_FOLD_PROTOCOL_EVIDENCE", "type": "consumes"},
-    {"from": "OUT_OF_FOLD_PROTOCOL_EVIDENCE", "to": "FINAL_COMMITTEE", "type": "promotion_requires"},
-    {"from": "FROZEN_TRAINING_PROTOCOL", "to": "FINAL_COMMITTEE", "type": "identity_requires"},
-    {"from": "FINAL_COMMITTEE", "to": "DEPLOYMENT_ARTIFACTS", "type": "produces"},
-    {"from": "FINAL_COMMITTEE", "to": "UNCERTAINTY_CALIBRATION", "type": "identity_requires"},
-    {"from": "CALIBRATION_DOMAIN", "to": "UNCERTAINTY_CALIBRATION", "type": "consumes"},
-    {"from": "FINAL_COMMITTEE", "to": "LOCKED_TEST_EVIDENCE", "type": "validates_after_freeze"},
-    {"from": "LOCKED_TEST_DOMAIN", "to": "LOCKED_TEST_EVIDENCE", "type": "consumes"},
-    {"from": "FINAL_COMMITTEE", "to": "OBSERVABLE_VALIDATION_EVIDENCE", "type": "validates_after_freeze"}
+    {
+      "from": "SOURCE_LABEL_EVIDENCE",
+      "to": "ELIGIBLE_CONDITIONED_FRAMES",
+      "type": "produces"
+    },
+    {
+      "from": "ELIGIBLE_CONDITIONED_FRAMES",
+      "to": "RAW_FEATURE_EVENT_EVIDENCE",
+      "type": "consumes"
+    },
+    {
+      "from": "RAW_FEATURE_EVENT_EVIDENCE",
+      "to": "EVIDENCE_ROLE_ASSIGNMENT",
+      "type": "consumes"
+    },
+    {
+      "from": "EVIDENCE_ROLE_ASSIGNMENT",
+      "to": "FOLD_FINAL_TRAINING_DOMAINS",
+      "type": "produces"
+    },
+    {
+      "from": "EVIDENCE_ROLE_ASSIGNMENT",
+      "to": "OUTER_TARGET_MONITOR_DOMAIN",
+      "type": "produces"
+    },
+    {
+      "from": "EVIDENCE_ROLE_ASSIGNMENT",
+      "to": "HELD_OUT_CV_EVALUATION",
+      "type": "produces"
+    },
+    {
+      "from": "EVIDENCE_ROLE_ASSIGNMENT",
+      "to": "CALIBRATION_DOMAIN",
+      "type": "produces"
+    },
+    {
+      "from": "EVIDENCE_ROLE_ASSIGNMENT",
+      "to": "LOCKED_TEST_DOMAIN",
+      "type": "produces"
+    },
+    {
+      "from": "FOLD_FINAL_TRAINING_DOMAINS",
+      "to": "SELECTION_DESCRIPTOR_EVIDENCE",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "RAW_FEATURE_EVENT_EVIDENCE",
+      "to": "SELECTION_DESCRIPTOR_EVIDENCE",
+      "type": "consumes"
+    },
+    {
+      "from": "FOLD_FINAL_TRAINING_DOMAINS",
+      "to": "DATA7_FITTED_SELECTION_INPUTS",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "SELECTION_DESCRIPTOR_EVIDENCE",
+      "to": "DATA7_FITTED_SELECTION_INPUTS",
+      "type": "consumes"
+    },
+    {
+      "from": "RAW_FEATURE_EVENT_EVIDENCE",
+      "to": "DATA7_FITTED_SELECTION_INPUTS",
+      "type": "consumes"
+    },
+    {
+      "from": "OUTER_TARGET_MONITOR_DOMAIN",
+      "to": "COMMON_TARGET_MONITOR",
+      "type": "consumes"
+    },
+    {
+      "from": "ONLINE_TARGET_MONITOR_POLICY",
+      "to": "COMMON_TARGET_MONITOR",
+      "type": "produces"
+    },
+    {
+      "from": "REPLAY_MONITOR_POLICY",
+      "to": "COMMON_REPLAY_MONITOR",
+      "type": "produces"
+    },
+    {
+      "from": "TARGET_SIZE_POLICY",
+      "to": "COARSE_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "TARGET_SIZE_SCREEN_SCHEDULE",
+      "to": "COARSE_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "COMMON_TARGET_MONITOR",
+      "to": "COARSE_SCREEN",
+      "type": "consumes"
+    },
+    {
+      "from": "COARSE_SCREEN",
+      "to": "SHORT_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "TARGET_SIZE_POLICY",
+      "to": "SHORT_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "TARGET_SIZE_SCREEN_SCHEDULE",
+      "to": "SHORT_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "SHORT_SCREEN",
+      "to": "FINAL_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "TARGET_SIZE_POLICY",
+      "to": "FINAL_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "TARGET_SIZE_SCREEN_SCHEDULE",
+      "to": "FINAL_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "FINAL_SCREEN",
+      "to": "TARGET_SIZE_DECISION",
+      "type": "produces"
+    },
+    {
+      "from": "TARGET_SIZE_POLICY",
+      "to": "TARGET_SIZE_DECISION",
+      "type": "consumes"
+    },
+    {
+      "from": "FULL_TRAIN2_SCHEDULE",
+      "to": "FROZEN_TRAINING_PROTOCOL",
+      "type": "identity_requires"
+    },
+    {
+      "from": "COMMON_TARGET_MONITOR",
+      "to": "FROZEN_TRAINING_PROTOCOL",
+      "type": "identity_requires"
+    },
+    {
+      "from": "COMMON_REPLAY_MONITOR",
+      "to": "FROZEN_TRAINING_PROTOCOL",
+      "type": "identity_requires"
+    },
+    {
+      "from": "FROZEN_TRAINING_PROTOCOL",
+      "to": "CHECKPOINT_SELECTION",
+      "type": "produces"
+    },
+    {
+      "from": "CHECKPOINT_SELECTION",
+      "to": "OUT_OF_FOLD_PROTOCOL_EVIDENCE",
+      "type": "validates_after_freeze"
+    },
+    {
+      "from": "HELD_OUT_CV_EVALUATION",
+      "to": "OUT_OF_FOLD_PROTOCOL_EVIDENCE",
+      "type": "consumes"
+    },
+    {
+      "from": "OUT_OF_FOLD_PROTOCOL_EVIDENCE",
+      "to": "FINAL_COMMITTEE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "FROZEN_TRAINING_PROTOCOL",
+      "to": "FINAL_COMMITTEE",
+      "type": "identity_requires"
+    },
+    {
+      "from": "FINAL_COMMITTEE",
+      "to": "DEPLOYMENT_ARTIFACTS",
+      "type": "produces"
+    },
+    {
+      "from": "FINAL_COMMITTEE",
+      "to": "UNCERTAINTY_CALIBRATION",
+      "type": "identity_requires"
+    },
+    {
+      "from": "CALIBRATION_DOMAIN",
+      "to": "UNCERTAINTY_CALIBRATION",
+      "type": "consumes"
+    },
+    {
+      "from": "FINAL_COMMITTEE",
+      "to": "LOCKED_TEST_EVIDENCE",
+      "type": "validates_after_freeze"
+    },
+    {
+      "from": "LOCKED_TEST_DOMAIN",
+      "to": "LOCKED_TEST_EVIDENCE",
+      "type": "consumes"
+    },
+    {
+      "from": "FINAL_COMMITTEE",
+      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
+      "type": "validates_after_freeze"
+    },
+    {
+      "from": "EVIDENCE_ROLE_ASSIGNMENT",
+      "to": "TARGET_SIZE_DEVELOPMENT_SPLIT",
+      "type": "identity_requires"
+    },
+    {
+      "from": "TARGET_SIZE_DEVELOPMENT_SPLIT",
+      "to": "CANONICAL_TRAINING_ORDER",
+      "type": "produces"
+    },
+    {
+      "from": "TARGET_SIZE_DEVELOPMENT_SPLIT",
+      "to": "CANONICAL_EVALUATION_LADDER",
+      "type": "produces"
+    },
+    {
+      "from": "DATA7_FITTED_SELECTION_INPUTS",
+      "to": "CANONICAL_TRAINING_ORDER",
+      "type": "consumes"
+    },
+    {
+      "from": "CANONICAL_TRAINING_ORDER",
+      "to": "COMMON_TARGET_SIZE_PREPARATION",
+      "type": "identity_requires"
+    },
+    {
+      "from": "COMMON_TARGET_SIZE_PREPARATION",
+      "to": "COARSE_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "CANONICAL_EVALUATION_LADDER",
+      "to": "COARSE_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "CANONICAL_EVALUATION_LADDER",
+      "to": "SHORT_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "CANONICAL_EVALUATION_LADDER",
+      "to": "FINAL_SCREEN",
+      "type": "identity_requires"
+    },
+    {
+      "from": "TARGET_SIZE_DECISION",
+      "to": "CURRENT_SELECTED_SET",
+      "type": "produces"
+    },
+    {
+      "from": "CANONICAL_TRAINING_ORDER",
+      "to": "CURRENT_SELECTED_SET",
+      "type": "identity_requires"
+    },
+    {
+      "from": "CURRENT_SELECTED_SET",
+      "to": "POST_SELECTION_CV_ACCEPTANCE",
+      "type": "identity_requires"
+    },
+    {
+      "from": "POST_SELECTION_CV_ACCEPTANCE",
+      "to": "FRESH_FINAL_PRODUCTION",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "CURRENT_SELECTED_SET",
+      "to": "FRESH_FINAL_PRODUCTION",
+      "type": "identity_requires"
+    },
+    {
+      "from": "FRESH_FINAL_PRODUCTION",
+      "to": "FROZEN_TRAINING_PROTOCOL",
+      "type": "identity_requires"
+    }
   ],
   "forbidden_current_paths": [
     "DATA7 -> independent target-membership order",
-    "MVSTATE-REUSE1 -> current continuation state",
-    "MVMIGRATE/ADAPT-MIGRATE -> current campaign preparation or restart",
-    "held-out CV evaluation -> target-size decision",
+    "retired multi-view selector/repair/qualification state -> current target-size authority",
+    "retired target-size migration or reconstruction helper -> current campaign preparation or restart",
+    "post-selection cross-validation -> target-size decision",
     "locked-test evidence -> target-size decision or training/checkpoint policy",
     "pool cardinality or monitor cardinality -> implicit selected target size",
-    "independent per-rung repair/materialization -> current nested target subsets",
-    "replay-monitor metrics or diagnostics -> target-size ranking/qualification/tie-break"
+    "per-candidate independent preparation -> current nested target subsets",
+    "replay-monitor metrics or diagnostics -> target-size ranking/qualification/tie-break",
+    "retired training-policy generation -> current runtime"
   ],
   "resource_invariants": [
     "one fitted selection-input authority per required training domain",
-    "one exact neighborhood/MVIDX authority per semantic input identity",
-    "one MVSEL2/REPAIR2 master order per training domain",
+    "one canonical training order pi_train and one canonical evaluation ladder per experiment identity",
+    "one common target-size preparation shared by every candidate size and optimizer seed",
     "candidate rungs represented as prefix metadata/views",
-    "MVQUAL evidence materialized only for required prefixes",
     "training artifacts materialized only for candidates authorized by the successive-fidelity funnel",
+    "non-overlapping model-provider acquisition/retirement scopes",
     "execution caches reconstructible and bounded; execution realization cannot alter scientific identity or decisions"
   ]
 }

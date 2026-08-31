@@ -129,12 +129,13 @@ python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> evaluate
 python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> verify
 ```
 
-The campaign itself owns the fixed-eight target-size population and configurable fidelity path:
+The campaign itself owns the configured target-size ladder and fidelity path:
 
 ```text
-REPAIR2 -> MVQUAL2 -> Q -> screen(n1 -> n2 -> n3, scheduler horizon n3)
-        -> selected_target_size -> fresh production(0 -> n) -> selected REPAIR2 prefix
-        -> held-out CV/EVAL/VERIFY
+pi_train -> configured candidate ladder -> screen(n1/M1 -> n2/M2 -> n3/M3)
+        -> N_selected and T_selected = pi_train[:N_selected]
+        -> post-selection cross-validation on exactly T_selected
+        -> fresh final production on the complete T_selected
 ```
 
 FINAL-GPU1 must not create rescue sizes, migrate old target ladders, or alter a selected target size.
@@ -178,4 +179,4 @@ A pass may recommend an accelerator profile but does not directly change generat
 
 # 12. Retired target-size migration workflow
 
-Do **not** run SIZE-FIDELITY2, MVMIGRATE1 learning controls, or a target-data migration activation command. Those belonged to historical campaign generations and are not prerequisites for target-size v5. Current campaigns reject obsolete derived migration/rescue state and rebuild the target-size authority from authenticated REPAIR2/MVQUAL2 state.
+Do **not** run retired migration, rescue, or target-data activation commands. Those belonged to historical campaign generations and are not prerequisites for the current target-size architecture. Current campaigns reject retired derived target-size state before reuse and rebuild the target-size authority from the current P1/P2/P3 owners.

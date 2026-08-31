@@ -11,7 +11,7 @@ The architecture is present-tense and single-generation. Historical selector/rep
 | 02 | `20_data_contracts.md` | Part II - Data and evidence contracts |
 | 03 | `30_statistical_design.md` | Part III - Statistical design and fitted preparation |
 | 04 | `40_training_evaluation.md` | Part IV - Training, evaluation, and deployment |
-| 05 | `50_target_multiview.md` | Part V - Multi-view target subset and target-size architecture |
+| 05 | `50_target_size_selection.md` | Part V - Target-size selection and post-selection validation |
 | 06 | `60_execution_performance.md` | Part VI - Bounded execution, restart, and performance architecture |
 | 07 | `80_ownership_and_decisions.md` | Part VII - Ownership and extension boundaries |
 | 08 | `90_references.md` | References |

@@ -32,7 +32,7 @@ DATA6 is the last preparation stage that owns the MACE accelerator model. After 
 
 DATA7 exposes canonical final/fold domains as the outer parallel unit. Each domain retains independent fitted scaler, PCA, E0, weighting, selection, and coverage state. Immutable frame arrays and authenticated descriptor shards may be shared, but task-local mutable extraction state is not shared between concurrent domains. Outer DATA7 work is admitted through the deterministic resource queue using the live runtime CPU budget and a conservative peak incremental-memory estimate; inner BLAS/OpenMP/PyTorch widths are one while multiple domains are available. Workers publish authenticated immutable DATA7 cache generations and return compact receipts. Only the coordinator mutates production records/checkpoints, in canonical domain order.
 
-Target-size screening is treated as a distinct reuse topology. Campaign preparation owns one nonpersistent namespace resolver that maps each canonical DATA7 `training_domain_digest` to its authenticated coverage authority and materializes REPAIR2 prefixes lazily only for requested `(training domain, size)` pairs. Synthetic coverage IDs are confined to that lookup boundary; DATA7 plans remain keyed by canonical training-domain digest and final-development evaluation cohorts by source label-domain ID. The fixed pre-selection evaluation complement is always the authenticated final-coverage frame set minus the maximum-qualified prefix, so the comparison cohort cannot shrink across `n1/n2/n3` continuation. `ProductionMaterializationPlan` itself rebuilds the canonical DATA5/CV feature-domain topology; callers cannot inject a convenient alternate domain set.
+Target-size screening is treated as a distinct reuse topology. Candidate rungs are exact prefixes of the one canonical training order, so a rung is a *view* of one authority rather than an independently prepared dataset. The one common target-size preparation is shared unchanged by every candidate size and optimizer seed, and evaluation rungs are direct `M1/M2/M3` populations that cannot shrink across `n1/n2/n3` continuation.
 
 The expensive DATA7 fitted metric/E0/weight core is selection-size invariant, so target-size variants may reuse that core through a reconstructible execution-only index to a fully authenticated DATA7 carrier artifact. The fitted-core index authenticates both the execution recipe and the actual fitted-result digest; publication is create-once/validate-winner, and divergent results for one recipe fail closed. A stale carrier that fails the exact foundation-prediction/reference/lineage reuse contract is discarded and refit rather than promoted to a scientific failure. Reuse admission uses a separate conservative RAM estimate for carrier load, selection/coverage realization, and archive output instead of charging the hypothetical full fit. Size-specific selection and coverage are then realized normally, and the resulting full `Data7PreparationBundle` remains the sole scientific authority. Full shared DATA7 publication likewise requires any concurrently computed winner to match the local bundle digest and deterministic archive SHA. The shared full-artifact recipe is v2 and excludes DATA8-only evaluation membership/target-study outcome state while retaining the exact prescribed training prefix and selection policy. Legacy full-artifact v1 recipes remain read-compatible; reconstructible fitted-core v1 indices are cache misses.
 
@@ -55,73 +55,42 @@ Task submission may run ahead of execution to hide hand-off latency, but simulta
 
 ## One product-scale authority per semantic input
 
-The fixed target-size population does not permit one full descriptor/graph/selector copy per rung. Per required training domain, the product-scale execution model is:
+The candidate ladder does not permit one full descriptor/graph/preparation copy per rung. The product-scale execution model is:
 
 ```text
-one fitted DATA7 selection-input authority
-one exact neighborhood/MVIDX authority
-one MVSEL2/REPAIR2 master order
-one compact MVSTATE2 continuation state when persisted
-prefix metadata/views for candidate rungs
-MVQUAL evidence for required prefixes
-training artifacts only for candidates authorized by the size funnel
+one canonical frame/feature authority
+one neutral statistical substrate
+one P_train / M3 split and one pi_train / pi_eval ordering
+one common target-size preparation shared by every size and seed
+prefix views for candidate rungs
+training artifacts only for candidates still authorized by the reducer
 ```
 
-This is an architectural resource invariant, not merely an optimization preference. A realization whose memory/storage scales approximately with eight independent copies of the target-selection state is non-conforming even if it eventually produces the same scientific result.
+This is an architectural resource invariant, not merely an optimization preference. A realization whose memory or storage scales with one independent copy of the target-selection state per candidate size is non-conforming even if it eventually produces the same scientific result.
 
-## Exact neighborhood production and reuse
+## Candidate execution and continuation
 
-The exact neighborhood engine is the sole geometric producer for the multi-view relation. Query blocks may execute independently through the bounded queue, but completed blocks are committed in the canonical witness/family order required by the scientific representation.
+The screen executes one `(candidate size, optimizer seed)` cell at a time through the accepted TRAIN2 runtime, under the campaign resource scope that owns CPU, RAM, VRAM, disk, and native-thread admission. Cells that already completed are not re-executed on restart: the persisted execution head is reconciled before anything new is scheduled, and the reconciled head is adopted by compare-and-set.
 
-The resulting sparse store is authenticated by semantic inputs such as candidate/reference ordering, family identity, fitted metric/scaling, radius/tolerance semantics, and cache-format identity. Worker count, block size, queue depth, and cache location are excluded.
+Continuation across a fidelity boundary restores exact model, optimizer, and RNG state rather than restarting the run. Checkpoint publication is atomic and content-addressed, so an interrupted boundary either published a complete checkpoint or did not publish at all.
 
-MVIDX1 consumes this authenticated exact relation and does not repeat geometry when a compatible forward relation exists. Missing, stale, corrupt, or incompatible reconstructible state is rebuilt from the same authoritative inputs.
+Execution choices - worker count, batch assignment, queue depth, cache location, completion order - are reconstructible realization details and never enter scientific identity.
 
-## Deterministic out-of-core MVIDX
+## Provider lifetime and accelerator ownership
 
-Large candidate-to-witness inversions must be bounded in anonymous RAM. Exact row-chunk transpose/inversion and file-backed typed arrays are permitted when they produce the same authoritative sparse arrays as the in-memory realization.
+Model providers are acquired and retired in explicit non-overlapping scopes so a second provider is never constructed while the first still owns accelerator memory:
 
-The execution layer therefore preflights RAM and scratch/disk capacity, bounds concurrent inversions, and may use mmap/NPY-compatible arrays for large products. Candidate offsets and candidate-to-witness indices use the current specified canonical types and ordering.
+```text
+candidate provider acquire -> target EVAL2 -> candidate TRUE_DFT replay when applicable
+  -> candidate close in an exception-safe finally
+  -> only then foundation provider construction -> foundation TRUE_DFT replay
+  -> foundation close in an exception-safe finally
 
-Chunk size, file-backing threshold, and inversion concurrency are execution-only. In-memory and out-of-core paths must satisfy the same scientific content/equivalence contract.
+outer representative provider acquire -> held-out outer EVAL2
+  -> outer close in an exception-safe finally
+```
 
-## MVSEL2 exact forward/lazy execution
-
-MVSEL2 rank authority remains sequential because each accepted candidate changes the scientific state. Execution acceleration is concentrated in exact candidate-row evaluation, staged lexicographic filtering, vectorized sparse gathers, and a certified lazy representative frontier.
-
-A stale lazy score is only an upper bound. A candidate can be excluded without refresh only when the bound proves it cannot defeat the best exact contender under the frozen tolerance. Otherwise it is refreshed exactly. Authoritative contender comparison and state mutation remain canonical.
-
-MVSEL2 maintains compact witness multiplicity, covered mass, obligation/correlation counts, and representative state. It does not require complete product-scale candidate marginal arrays or normal-path witness-to-candidate inverse propagation.
-
-## REPAIR2 exact active-shell execution
-
-REPAIR2 keeps authoritative repair iteration, admissibility predicates, objective/tie hierarchy, accepted/rejected trace, and winner application deterministic.
-
-Independent proposal scoring inside one immutable pre-swap state may execute concurrently when measured work justifies it. Vectorized candidate-row gathers, stamp arrays, bounded-ID indexing, and fused sparse scans are valid preparation optimizations. The accepted winner and authoritative mutation are committed in the frozen deterministic order.
-
-Repair operates on the one master order and protected prefixes. It does not create independently repaired dataset copies for individual target-size rungs.
-
-## MVSTATE2 restart boundary
-
-MVSTATE2 is the only current selector/repair continuation-state family. Its persistent bundle is compact and reconstructible from the selected prefix plus authenticated primitive identities.
-
-Persisted state may include:
-
-- selected order/prefix identity;
-- per-family witness multiplicity and covered mass;
-- obligation and correlation counts;
-- representative utility/state required by the current exact continuation contract;
-- manifest identities binding dataset/domain, MVIDX, policy, ordering, and schema.
-
-Ephemeral lazy queues and product-scale candidate marginal arrays are reconstructed rather than treated as durable authority.
-
-Restoration authenticates payloads and recomputes continuation invariants from the selected prefix. State from unsupported historical generations is not deserialized or migrated into current authority; the current state is reconstructed from current inputs or the campaign is re-prepared.
-
-## MVQUAL independent execution
-
-Same-prefix MVQUAL jobs are independent and may execute concurrently. Their completion order is non-authoritative; persisted comparison order is canonical.
-
-MVQUAL may share authenticated primitive sparse inputs but recomputes the hard predicates independently of selector/repair counters. Parallelism, vectorization, or cache reuse cannot turn selector-internal state into qualification evidence.
+Provider retirement is owned by these scopes. Garbage-collection timing, a live provider cache, or ad hoc allocator cleanup are not substitutes, and an evaluation exception still closes the provider it opened.
 
 ## Target-size funnel materialization
 
@@ -239,6 +208,6 @@ A performance change is reviewed against representative target-scale work. Evide
 - output/content digests;
 - exact scientific-record equality or the explicitly declared tolerance contract.
 
-Sequential-authority algorithms are checked at sufficient state granularity to detect drift—for example MVSEL2 accepted ranks, REPAIR2 swap trace/state, and MVIDX canonical sparse arrays.
+Sequential-authority algorithms are checked at sufficient state granularity to detect drift—for example the canonical training/evaluation orders, the common-preparation identity, and the reducer state transitions.
 
 Detailed before/after measurements, failed optimization experiments, release qualification results, and chronology belong in benchmarks/audits/history rather than the current architecture.

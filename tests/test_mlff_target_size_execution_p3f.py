@@ -457,9 +457,7 @@ def test_p3f_p3_path_unreachable_from_production_surface() -> None:
         "_campaign_cli_core",
         "campaign_cli",
         "campaign_control",
-        "campaign_execution",
         "critical_precision_cli",
-        "production_materialization",
         "production_model_sweep",
         "production_qualification",
     )

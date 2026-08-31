@@ -10,6 +10,7 @@ version-prefixed production naming.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 from mdstats.training_data import _campaign_cli_core as cli
@@ -215,17 +216,25 @@ def test_p5f_public_commands_route_through_the_post_selection_owners():
 
 
 def test_p5f_generic_train_and_evaluate_point_at_the_post_selection_owners():
-    """The generic commands are still not a second post-selection scheduler."""
+    """No generic command can act as a second post-selection scheduler.
+
+    The destructive cutover removed the retired generic lifecycle entirely, so
+    the guard is structural: those commands no longer exist to be redirected.
+    """
 
     source = (_TRAINING_DATA / "_campaign_cli_core.py").read_text(encoding="utf-8")
-    guard = source[source.index("def _require_post_selection_production_path") :]
-    guard = guard[: guard.index("\ndef ")]
-    assert "cross-validate" in guard and "train-production" in guard
-    assert "not available in this release" not in guard
-
-    materialize = source[source.index("def command_materialize") :]
-    materialize = materialize[: materialize.index("\n_DATA8_VARIANT_RE")]
-    assert "cross-validate" in materialize and "train-production" in materialize
+    for name in (
+        "command_materialize",
+        "command_preflight",
+        "command_train",
+        "command_extend_seed",
+        "command_evaluate",
+        "command_verify",
+        "_require_post_selection_production_path",
+    ):
+        assert not re.search(rf"^def {name}\(", source, re.MULTILINE), name
+    assert "def command_cross_validate" in source
+    assert "def command_train_production" in source
 
 
 def test_p5f_post_selection_modules_import_no_retired_mlcv_topology():

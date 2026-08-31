@@ -10,4 +10,4 @@ This source-tree planning update records the next implementation sequence after 
 6. STOR4 - manual tiered reclamation with capability-loss reporting.
 7. STOR5 - immutable deduplication and optional cold archival.
 
-The canonical details are in `docs/arch_manuals/mlff_training_data_architecture.md`, `docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md`, and `docs/specs/training_data/mlff_storage_management_spec.md`.
+The canonical details are in `docs/arch_manuals/mlff_training_data_architecture.md`, `docs/history/mlff/retired_specs/mlff_eval_mf_successive_halving_spec.md`, and `docs/specs/training_data/mlff_storage_management_spec.md`.

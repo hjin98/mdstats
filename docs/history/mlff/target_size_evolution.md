@@ -1,7 +1,7 @@
 # Historical narrative: target-size policy evolution
 
 **Status:** non-normative history  
-**Current authority:** `docs/specs/training_data/mlff_target_subset_size_study_spec.md`
+**Current authority:** `docs/history/mlff/retired_specs/mlff_target_subset_size_study_spec.md`
 
 ## Motivation
 

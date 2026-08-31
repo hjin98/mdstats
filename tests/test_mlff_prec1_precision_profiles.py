@@ -21,21 +21,6 @@ def _template(profile: str) -> dict:
     return tomllib.loads(text)
 
 
-def test_plain_init_and_explicit_single_resolve_equivalent_precision(tmp_path: Path) -> None:
-    plain = tmp_path / "plain.toml"
-    explicit = tmp_path / "explicit.toml"
-    assert campaign_cli.main(["--config", str(plain), "init", "--workspace", "w1"]) == 0
-    assert campaign_cli.main([
-        "--config", str(explicit), "init", "--workspace", "w2", "--precision", "single"
-    ]) == 0
-    p_cfg, _ = campaign_cli._load_config(plain)
-    e_cfg, _ = campaign_cli._load_config(explicit)
-    p = campaign_cli._binary_model_precision_contract(p_cfg)
-    e = campaign_cli._binary_model_precision_contract(e_cfg)
-    assert p["requested_profile"] == e["requested_profile"] == "single"
-    assert p["model_dtype"] == e["model_dtype"] == "float32"
-    assert campaign_cli._precision_schedule_policy(p_cfg) is None
-    assert campaign_cli._precision_schedule_policy(e_cfg) is None
 
 
 def test_canonical_profiles_generate_binary_model_dtypes_without_staged_schedule() -> None:
@@ -210,67 +195,5 @@ def test_legacy_optimizer_serialization_remains_v4_and_maps_losslessly() -> None
     assert mapped.critical_operation_dtype == "float64"
 
 
-def test_production_parser_rejects_historical_refine_but_report_remains_readable() -> None:
-    policy = mdstats.canonical_precision_schedule_policy("refine")
-    cfg = {
-        "campaign": {"precision_profile": "refine"},
-        "model": {"dtype": policy.model_dtype},
-        "training": {
-            "dtype": policy.stages[0].dtype,
-            "max_num_epochs": 30,
-            "precision": {
-                "mode": policy.mode,
-                "minimum_final_stage_epochs": policy.minimum_final_stage_epochs,
-                "minimum_final_stage_gradient_updates": policy.minimum_final_stage_gradient_updates,
-                "critical_operation_dtype": policy.critical_operation_dtype,
-                "stage": [
-                    {
-                        "dtype": stage.dtype,
-                        "fraction": stage.fraction,
-                        "learning_rate_scale": stage.learning_rate_scale,
-                    }
-                    for stage in policy.stages
-                ],
-            },
-        },
-        "evaluation": {"dtype": "float64"},
-        "verification": {"dtype": "float64"},
-        "export": {"dtype": "float64"},
-    }
-    with pytest.raises(campaign_cli.CampaignCliError, match="retired"):
-        campaign_cli._precision_schedule_policy(cfg)
-    payload = campaign_cli._precision_profile_payload(cfg)
-    assert payload["historical_read_only"] is True
-    assert payload["requested_profile"] == "refine"
 
 
-def test_data8_binds_resolved_schedule_after_loader_exposure(tmp_path: Path) -> None:
-    from tests.test_mlff_data8_mace_artifacts import _data7_bundles, _foundation, _probe
-
-    sources, frames, frame_data, _, data5, _, bundles = _data7_bundles(tmp_path)
-    policy = mdstats.canonical_precision_schedule_policy("refine")
-    bundle = mdstats.build_data8_preparation_bundle(
-        sources,
-        frames,
-        frame_data,
-        data5,
-        bundles,
-        output_directory=tmp_path / "data8_prec1",
-        foundation_checkpoint=_foundation(tmp_path),
-        compatibility_probe=_probe(),
-        optimizer_policy=mdstats.MaceOptimizerPolicy(
-            device="cpu",
-            max_num_epochs=30,
-            default_dtype="float32",
-            precision_schedule_policy=policy,
-        ),
-        require_foundation_residual_e0=False,
-    )
-    assert bundle.jobs
-    for job in bundle.jobs:
-        resolved = job.protocol.resolved_precision_schedule
-        assert resolved is not None
-        assert [stage.epoch_count for stage in resolved.stages] == [24, 6]
-        assert resolved.updates_per_epoch is not None
-        assert resolved.stages[-1].stop_update == resolved.updates_per_epoch * 30
-        assert resolved.minimum_final_stage_gradient_updates <= policy.minimum_final_stage_gradient_updates

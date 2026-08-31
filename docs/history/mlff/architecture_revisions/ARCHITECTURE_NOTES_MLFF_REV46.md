@@ -104,7 +104,7 @@ not represented as a speedup.
 
 Normative/evidence surfaces are:
 
-- `docs/specs/training_data/mlff_perf_p1_shared_exact_selection_spec.{md,pdf}`;
+- `docs/history/mlff/retired_specs/mlff_perf_p1_shared_exact_selection_spec.{md,pdf}`;
 - `audits/analysis/mlff_perf_p1_lta_cloud_cpu_2026-08-15.{json,md,pdf}`;
 - `release/MLFF_PERF_P1_QUALIFICATION_0.20.180a0.json`; and
 - canonical architecture revision 46.

@@ -4427,7 +4427,7 @@ Per-checkpoint progress reports total wall time plus prepare/inference/finalizat
 time. These timings are diagnostic only and do not change prediction, graph, metric, or
 selection identities. Existing 0.20.99/0.20.100 campaign state therefore remains
 compatible. Detailed ownership, backpressure, restart, and acceptance requirements are
-recorded in `docs/specs/training_data/mlff_opt_eval4_staged_evaluation_pipeline_spec.md`.
+recorded in `docs/history/mlff/retired_specs/mlff_opt_eval4_staged_evaluation_pipeline_spec.md`.
 
 ## OPT-VERIFY1 - verification reuse and nearest-pair scaling
 
@@ -4456,7 +4456,7 @@ A release-host 1000-atom microbenchmark measured approximately 4.76 s for the ol
 dense matrix versus 0.17 s for the adaptive neighbor-list diagnostic (~28x faster
 for that sampled frame). This is diagnostic evidence, not a promised end-to-end NVE
 speedup. Detailed ownership and equivalence requirements are recorded in
-`docs/specs/training_data/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md`.
+`docs/history/mlff/retired_specs/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md`.
 
 ## OPT-CTRL1 - control-plane and telemetry cleanup - implemented in 0.20.103a0
 
@@ -10165,7 +10165,7 @@ At complete supplied-data scale, native v2 is **56.22x** faster to write, **79.7
 
 Authority and design detail are frozen in:
 
-- `docs/specs/training_data/mlff_perf_p0_native_target_coverage_spec.md`;
+- `docs/history/mlff/retired_specs/mlff_perf_p0_native_target_coverage_spec.md`;
 - `audits/analysis/mlff_perf_p0_lta_cloud_cpu_2026-08-15.json`;
 - `audits/analysis/mlff_perf_p0_lta_cloud_cpu_2026-08-15.md`; and
 - `release/MLFF_PERF_P0_QUALIFICATION_0.20.179a0.json`.
@@ -10288,7 +10288,7 @@ The progressive four-rung coverage path is exact but measured 0.709 s versus 0.6
 
 Authority and evidence are frozen in:
 
-- `docs/specs/training_data/mlff_perf_p1_shared_exact_selection_spec.md`;
+- `docs/history/mlff/retired_specs/mlff_perf_p1_shared_exact_selection_spec.md`;
 - `audits/analysis/mlff_perf_p1_lta_cloud_cpu_2026-08-15.{json,md}`; and
 - `release/MLFF_PERF_P1_QUALIFICATION_0.20.180a0.json`.
 

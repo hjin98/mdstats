@@ -101,7 +101,7 @@ TARGET-DATA2C and DATA7.
 # Evidence
 
 - Normative specification:
-  `docs/specs/training_data/mlff_perf_p0_native_target_coverage_spec.{md,pdf}`.
+  `docs/history/mlff/retired_specs/mlff_perf_p0_native_target_coverage_spec.{md,pdf}`.
 - Architecture manual:
   `docs/arch_manuals/mlff_training_data_architecture.{md,pdf}`.
 - Matched CPU evidence:

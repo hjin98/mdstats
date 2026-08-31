@@ -37,8 +37,9 @@ TrainingObjectivePolicy
 ConfigurationWeightPolicy
 PropertyWeightPolicy
 CheckpointMetricPolicy
-TargetSubsetInputBundle
-TargetSizeStudyPolicy
+TargetSizeExperimentDefinition
+ResolvedTargetSizePolicy
+TargetSizeCommonPreparation
 TrainingProtocolIdentity
 MaceCheckpointControlPolicy
 ExposureBackendPolicy
@@ -51,7 +52,7 @@ CalibrationTransferDecision
 
 A static policy defines an algorithm and fixed choices. A fitted record contains parameters learned from one explicitly authorized training domain. A realization record records behavior actually observed from an external/runtime system. Those roles are not interchangeable.
 
-Target membership is intentionally absent from the generic DATA2-DATA4 record list because its current authority is the MVSEL2/REPAIR2 chain after fitted preparation.
+Target membership is intentionally absent from the generic DATA2-DATA4 record list because its current authority is the canonical training order `pi_train` derived by the target-size owners in Part V.
 
 ### Digests and signatures
 

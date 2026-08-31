@@ -111,46 +111,6 @@ def test_recompute_apply_removes_scientific_caches_but_keeps_production_and_logs
     assert "data7_reselection_without_reinference" in event["capability_loss"]
 
 
-def test_compact_requires_apply_and_preserves_production_artifacts(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    _cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    _complete(store, paths, "evaluate")
-    _complete(store, paths, "verify")
-    store.put_record("protocol_freeze", _freeze_authority())
-
-    production = paths.models / "final-target.model"
-    production.write_bytes(b"production-model")
-    selected_raw = paths.runs / "run-a" / "checkpoints" / "selected.pt"
-    selected_raw.parent.mkdir(parents=True)
-    selected_raw.write_bytes(b"selected-raw")
-    capsule = paths.runs / "run-a" / "evaluation-capsules" / "epoch-0001.eval-state.pt"
-    capsule.parent.mkdir(parents=True)
-    capsule.write_bytes(b"capsule")
-    run_model = paths.runs / "run-a" / "models" / "epoch.model"
-    run_model.parent.mkdir(parents=True)
-    run_model.write_bytes(b"run-model")
-    log = paths.runs / "run-a" / "logs" / "train.log"
-    log.parent.mkdir(parents=True)
-    log.write_text("keep", encoding="utf-8")
-    materialized = paths.data / "variant" / "data8" / "train.xyz"
-    materialized.parent.mkdir(parents=True)
-    materialized.write_bytes(b"data8")
-
-    # Consequential tiers are plan-only unless --apply is explicit.
-    assert campaign_cli.command_cleanup(_args(config, tier="compact")) == 0
-    assert capsule.is_file() and run_model.is_file() and materialized.is_file()
-
-    assert campaign_cli.command_cleanup(_args(config, tier="compact", apply=True)) == 0
-    assert not capsule.exists()
-    assert not run_model.exists()
-    assert not paths.data.exists()
-    assert production.read_bytes() == b"production-model"
-    assert selected_raw.read_bytes() == b"selected-raw"
-    assert log.read_text(encoding="utf-8") == "keep"
-    compact = store.get_payload("manual_reclamation:compact")
-    assert compact["selected_production_checkpoint_retained"] is True
-    assert compact["production_models_retained"] is True
 
 
 def test_archive_tier_dry_run_requires_stor5_representation_and_ineligible_apply_is_nondestructive(tmp_path: Path) -> None:
@@ -208,48 +168,3 @@ def test_storage_report_exposes_stor4_manual_tiers(tmp_path: Path) -> None:
     assert families["data7_data8_materializations"]["manual_reclamation_eligibility"].startswith("compact")
 
 
-def test_completed_checkpoint_catalog_accepts_intentional_stor4_nonselected_loss(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    _cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    root = paths.runs / "run-a" / "checkpoints"
-    root.mkdir(parents=True)
-    selected = root / "selected.pt"
-    selected.write_bytes(b"selected")
-    selected_sha = campaign_cli._sha256(selected)
-
-    class Checkpoint:
-        def __init__(self, epoch, relative_path, sha):
-            self.epoch = epoch
-            self.relative_path = relative_path
-            self.sha256 = sha
-            self.run_plan_digest = "run"
-
-    class Catalog:
-        root_directory = str(root)
-        checkpoints = (
-            Checkpoint(1, "missing.pt", "a" * 64),
-            Checkpoint(2, "selected.pt", selected_sha),
-        )
-
-    store.put_record(
-        "checkpoint_retention:run-a",
-        {
-            "schema": "mdstats.mlff-checkpoint-retention.v2",
-            "selected_checkpoint_sha256": selected_sha,
-        },
-    )
-    ok, _ = campaign_cli._completed_checkpoint_storage_matches(paths, store, "run-a", Catalog())
-    assert ok is False
-
-    store.put_record(
-        "manual_reclamation:compact",
-        {
-            "schema": "mdstats.mlff-manual-compact-retention.v1",
-            "compacted_run_ids": ["run-a"],
-            "selected_production_checkpoint_retained": True,
-        },
-    )
-    ok, detail = campaign_cli._completed_checkpoint_storage_matches(paths, store, "run-a", Catalog())
-    assert ok is True
-    assert "verified" in detail

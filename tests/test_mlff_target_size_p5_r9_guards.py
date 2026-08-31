@@ -145,7 +145,7 @@ def _write_tiny_mace_foundation(path: Path) -> None:
 
     import torch
 
-    from tests.test_mlff_g6_g7_g9_requalification import _tiny_mace
+    from tests._mlff_tiny_mace import _tiny_mace
 
     model = _tiny_mace(
         interaction_cls_name="RealAgnosticDensityResidualInteractionBlock",

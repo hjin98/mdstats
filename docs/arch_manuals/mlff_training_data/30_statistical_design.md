@@ -6,7 +6,7 @@ This chapter defines the statistical evidence roles that make later model compar
 
 It owns the architectural separation among training, monitoring, cross-validation, calibration, and locked-test evidence. It also defines what fold/final-domain fitted preparation may consume and emit.
 
-It does **not** own target membership or target size. DATA7 prepares fitted inputs; MVSEL2/REPAIR2 determine target membership inside each authorized training domain; `TargetSizeStudyPolicy` chooses the protocol-global target size.
+It does **not** own target membership or target size. It supplies the protected relations - duplicate groups, correlation families, and split exclusions - that the target-size owners in Part V consume; the canonical training order `pi_train` determines target membership, and the one target-size reducer chooses `N_selected`.
 
 ## Independence and evidence roles
 
@@ -99,7 +99,7 @@ correlation/provenance identities
 policy inputs with deterministic identities
 ```
 
-The one current membership authority consumes these inputs in the multi-view chain described in Part V. There is no competing quota/FPS `TrainingSelectionPlan` whose prefixes can disagree with MVSEL2/REPAIR2.
+The one current membership authority consumes these inputs in the target-size chain described in Part V. There is no competing quota/FPS `TrainingSelectionPlan` whose prefixes can disagree with `pi_train`.
 
 ### Material/profile specialization
 
@@ -146,7 +146,7 @@ raw source / feature / event evidence
     -> role assignment
     -> training domain
     -> fitted preparation
-    -> MVSEL2 / REPAIR2 target membership
+    -> pi_train prefix target membership
     -> target-size study using authorized development/model-selection evidence
     -> frozen target size and training protocol
     -> checkpoint selection

@@ -1,0 +1,28 @@
+{
+  "campaign/.mdstats/campaign.sqlite3": {
+    "events": {
+      "content_digest": "b97ca622a249a10ebde939e8197ab865183e91364c2b32067e9b9d410e678538",
+      "row_count": 9
+    },
+    "meta": {
+      "content_digest": "fc421169e674a1912df0e8859aea11685014f2831b6b2ed487fa69fe46350b65",
+      "row_count": 10
+    },
+    "records": {
+      "content_digest": "d434f964f6fafd4b4592bb811db8dd438b6e1bbfc063fd0f98aae5347286c94a",
+      "row_count": 5
+    },
+    "sqlite_sequence": {
+      "content_digest": "17fb80939d01854e3beda40419082761e2b116d03e516a60a883ab39b2584486",
+      "row_count": 1
+    },
+    "stages": {
+      "content_digest": "e7dd3ebfa13ccdf501c59341e8d44aea256149e20f425f06ea668370ac3f30ec",
+      "row_count": 5
+    },
+    "target_size_campaign_state": {
+      "content_digest": "528238e2288d909629ad1b5508379575452457ad0a57cc9a5efde36bd312609a",
+      "row_count": 9
+    }
+  }
+}

@@ -19,7 +19,7 @@ Humanized ETA/elapsed variants (`39m44s`, `27.9 min`, `10s`, `estimating`) are n
 
 ## Scope
 
-The normalization covers generic campaign reporters, DATA2/DATA3/DATA4/DATA6/DATA7 preparation callbacks, structural selection, TARGET-DATA2B reference/coverage work, FEAS1, NEIGHBOR1, MVIDX1, MVSEL1, REPAIR1, MVQUAL1, production materialization/model sweep, adaptive inference/evaluation scheduler heartbeats, and live training heartbeats.
+The normalization covers generic campaign reporters, DATA2/DATA3/DATA4/DATA6 preparation callbacks, structural selection, target-size preparation and screen execution, production model sweep, inference scheduler heartbeats, and live training heartbeats.
 
 ## Authority
 

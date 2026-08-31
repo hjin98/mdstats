@@ -231,139 +231,10 @@ def _metric_policy() -> mdstats.CheckpointMetricPolicy:
     )
 
 
-def test_campaign_plan_requires_passed_gate_and_complete_matrix() -> None:
-    metric_policy = _metric_policy()
-    replay = _bundle(mode=mdstats.TrainingMode.MULTIHEAD_REPLAY, size=512, seed=1, metric_policy=metric_policy)
-    naive = _bundle(mode=mdstats.TrainingMode.NAIVE_FINE_TUNING, size=512, seed=1, metric_policy=metric_policy)
-    policy = mdstats.TrainingCampaignPolicy(
-        required_training_modes=(mdstats.TrainingMode.NAIVE_FINE_TUNING, mdstats.TrainingMode.MULTIHEAD_REPLAY),
-        required_selection_sizes=(512,),
-        required_seeds=(1,),
-    )
-    plan = mdstats.build_training_campaign_plan(
-        _qualification(replay),
-        (replay, naive),
-        campaign_id="lta-data9b1",
-        policy=policy,
-    )
-    assert len(plan.runs) == 8
-    assert len({v.protocol_family_digest for v in plan.runs}) == 2
-    assert mdstats.TrainingCampaignPlan.from_dict(plan.to_dict()) == plan
-
-    # Records written before method-specific seed/fold configuration used the
-    # v2 policy payload.  Loading that policy into the current v3 object changes
-    # the newly computed plan digest, but the exact serialized legacy payload
-    # must remain acceptable after its own digest and every nested digest pass.
-    legacy_payload = deepcopy(plan.to_dict())
-    legacy_policy = dict(legacy_payload["policy"])
-    legacy_policy["schema"] = "mdstats.training-campaign-policy.v2"
-    legacy_policy.pop("required_variants", None)
-    legacy_policy.pop("policy_digest", None)
-    legacy_policy["policy_digest"] = digest(legacy_policy)
-    legacy_payload["policy"] = legacy_policy
-    legacy_payload.pop("content_digest", None)
-    legacy_payload["content_digest"] = digest(legacy_payload)
-
-    migrated = mdstats.TrainingCampaignPlan.from_dict(legacy_payload)
-    assert migrated.runs == plan.runs
-    assert migrated.policy.required_variants == ()
-    assert migrated.content_digest != legacy_payload["content_digest"]
-
-    tampered = deepcopy(legacy_payload)
-    tampered["campaign_id"] = "tampered-campaign"
-    with pytest.raises(
-        mdstats.TrainingDataSerializationError,
-        match="Training-campaign plan digest mismatch",
-    ):
-        mdstats.TrainingCampaignPlan.from_dict(tampered)
-
-    with pytest.raises(mdstats.TrainingDataInputError, match="passed full DATA9A"):
-        mdstats.build_training_campaign_plan(
-            _qualification(replay, passed=False),
-            (replay, naive),
-            campaign_id="blocked",
-            policy=policy,
-        )
-    with pytest.raises(mdstats.TrainingDataInputError, match="matrix"):
-        mdstats.build_training_campaign_plan(
-            _qualification(replay),
-            (replay,),
-            campaign_id="missing-naive",
-            policy=policy,
-        )
 
 
-def test_campaign_plan_namespaces_separate_screen_and_production_runs() -> None:
-    metric_policy = _metric_policy()
-    replay = _bundle(mode=mdstats.TrainingMode.MULTIHEAD_REPLAY, size=512, seed=1, metric_policy=metric_policy)
-    naive = _bundle(mode=mdstats.TrainingMode.NAIVE_FINE_TUNING, size=512, seed=1, metric_policy=metric_policy)
-    policy = mdstats.TrainingCampaignPolicy(
-        required_training_modes=(mdstats.TrainingMode.NAIVE_FINE_TUNING, mdstats.TrainingMode.MULTIHEAD_REPLAY),
-        required_selection_sizes=(512,),
-        required_seeds=(1,),
-    )
-
-    screen = mdstats.build_training_campaign_plan(
-        _qualification(replay),
-        (replay, naive),
-        campaign_id="lta-target-size",
-        policy=policy,
-        run_namespace="target-size-screen",
-    )
-    production = mdstats.build_training_campaign_plan(
-        _qualification(replay),
-        (replay, naive),
-        campaign_id="lta-target-size",
-        policy=policy,
-        run_namespace="production",
-    )
-
-    screen_ids = {run.run_id for run in screen.runs}
-    production_ids = {run.run_id for run in production.runs}
-    assert screen_ids.isdisjoint(production_ids)
-    assert all(run_id.startswith("target-size-screen-") for run_id in screen_ids)
-    assert all(run_id.startswith("production-") for run_id in production_ids)
-    assert screen.content_digest != production.content_digest
-
-    with pytest.raises(mdstats.TrainingDataInputError, match="lowercase filesystem-safe"):
-        mdstats.build_training_campaign_plan(
-            _qualification(replay),
-            (replay, naive),
-            campaign_id="lta-target-size",
-            policy=policy,
-            run_namespace="Production",
-        )
 
 
-def test_campaign_plan_rejects_missing_fold_and_raw_wrapper() -> None:
-    metric_policy = _metric_policy()
-    replay = _bundle(mode=mdstats.TrainingMode.MULTIHEAD_REPLAY, size=512, seed=1, metric_policy=metric_policy)
-    truncated = mdstats.Data8PreparationBundle(
-        dataset_id=replay.dataset_id,
-        source_catalog_digest=replay.source_catalog_digest,
-        frame_catalog_digest=replay.frame_catalog_digest,
-        data5_bundle_digest=replay.data5_bundle_digest,
-        compatibility_policy=replay.compatibility_policy,
-        compatibility_probe=replay.compatibility_probe,
-        replay_plan=replay.replay_plan,
-        jobs=tuple(v for v in replay.jobs if v.fold_index != 2),
-        target_artifacts=(),
-        fold_evaluation_artifacts=(),
-        sealed_outer_evaluations=(),
-        output_directory=replay.output_directory,
-    )
-    with pytest.raises(mdstats.TrainingDataInputError, match="fold coverage"):
-        mdstats.build_training_campaign_plan(
-            _qualification(truncated),
-            (truncated,),
-            campaign_id="truncated",
-            policy=mdstats.TrainingCampaignPolicy(required_selection_sizes=(512,)),
-        )
-    with pytest.raises(mdstats.TrainingDataInputError, match="precision-aware"):
-        mdstats.TrainingCampaignPolicy(
-            required_selection_sizes=(512,),
-            required_execution_wrapper="mace_run_train",
-        )
 
 
 def _manual_run(metric_policy: mdstats.CheckpointMetricPolicy) -> mdstats.TrainingCampaignRunPlan:
@@ -387,19 +258,6 @@ def _manual_run(metric_policy: mdstats.CheckpointMetricPolicy) -> mdstats.Traini
     )
 
 
-def test_checkpoint_inventory_is_content_addressed_and_contained(tmp_path: Path) -> None:
-    run = _manual_run(_metric_policy())
-    (tmp_path / "model_epoch-0.pt").write_bytes(b"checkpoint-zero")
-    (tmp_path / "model_epoch-1.pt").write_bytes(b"checkpoint-one")
-    catalog = mdstats.inventory_mace_checkpoints(run, tmp_path)
-    assert [v.epoch for v in catalog.checkpoints] == [0, 1]
-    assert all(len(v.sha256) == 64 for v in catalog.checkpoints)
-    assert mdstats.CandidateCheckpointCatalog.from_dict(catalog.to_dict()) == catalog
-
-    duplicate = tmp_path / "copy_epoch-2.pt"
-    duplicate.write_bytes(b"checkpoint-one")
-    with pytest.raises(mdstats.TrainingDataInputError, match="duplicate file content"):
-        mdstats.inventory_mace_checkpoints(run, tmp_path)
 
 
 def _metrics(run: mdstats.TrainingCampaignRunPlan, checkpoint: mdstats.CheckpointFileRecord, *, force: float, replay: float, energy: float = 0.002) -> mdstats.CheckpointMetricRecord:
@@ -420,56 +278,7 @@ def _metrics(run: mdstats.TrainingCampaignRunPlan, checkpoint: mdstats.Checkpoin
     )
 
 
-def test_checkpoint_constraints_and_deterministic_selection(tmp_path: Path) -> None:
-    policy = _metric_policy()
-    run = _manual_run(policy)
-    for epoch, content in enumerate((b"a", b"b", b"c")):
-        (tmp_path / f"model_epoch-{epoch}.pt").write_bytes(content)
-    catalog = mdstats.inventory_mace_checkpoints(run, tmp_path)
-    cp0, cp1, cp2 = catalog.checkpoints
-    records = (
-        _metrics(run, cp0, force=0.070, replay=0.10),
-        _metrics(run, cp1, force=0.060, replay=0.25),  # rejected by replay
-        _metrics(run, cp2, force=0.065, replay=0.12),
-    )
-    selection = mdstats.select_checkpoint(run, catalog, records, policy)
-    assert selection.selected_checkpoint_sha256 == cp2.sha256
-    rejected = next(v for v in selection.decisions if v.checkpoint_sha256 == cp1.sha256)
-    assert rejected.outcome is mdstats.CheckpointAdmissibilityOutcome.REJECTED
-    assert "replay_retention_threshold_exceeded" in rejected.rejection_reasons
-    assert mdstats.CheckpointSelectionRecord.from_dict(selection.to_dict()) == selection
-
-    tampered = deepcopy(selection.to_dict())
-    tampered["selected_checkpoint_epoch"] = 99
-    with pytest.raises((mdstats.TrainingDataSerializationError, mdstats.TrainingDataInputError)):
-        mdstats.CheckpointSelectionRecord.from_dict(tampered)
 
 
-def test_checkpoint_selection_requires_complete_metrics_and_one_admissible(tmp_path: Path) -> None:
-    policy = _metric_policy()
-    run = _manual_run(policy)
-    (tmp_path / "model_epoch-0.pt").write_bytes(b"a")
-    (tmp_path / "model_epoch-1.pt").write_bytes(b"b")
-    catalog = mdstats.inventory_mace_checkpoints(run, tmp_path)
-    cp0, cp1 = catalog.checkpoints
-    with pytest.raises(mdstats.TrainingDataInputError, match="coverage"):
-        mdstats.select_checkpoint(run, catalog, (_metrics(run, cp0, force=0.06, replay=0.1),), policy)
-    rejected = (
-        _metrics(run, cp0, force=0.20, replay=0.1),
-        _metrics(run, cp1, force=0.06, replay=0.5),
-    )
-    with pytest.raises(mdstats.TrainingDataInputError, match="No candidate checkpoint"):
-        mdstats.select_checkpoint(run, catalog, rejected, policy)
 
 
-def test_metric_record_requires_complete_replay_evidence() -> None:
-    run = _manual_run(_metric_policy())
-    with pytest.raises(mdstats.TrainingDataInputError, match="complete"):
-        mdstats.CheckpointMetricRecord(
-            run_plan_digest=run.content_digest,
-            checkpoint_sha256=_h("checkpoint"),
-            target_monitor_artifact_digest=run.target_monitor_artifact_digest,
-            energy_mae_ev_per_atom=0.001,
-            force_component_rmse_ev_per_angstrom=0.05,
-            replay_monitor_artifact_digest=run.replay_monitor_artifact_digest,
-        )

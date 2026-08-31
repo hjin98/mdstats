@@ -1,8 +1,8 @@
 ---
 geometry: "margin=0.75in"
-architecture_revision: 106
+architecture_revision: 107
 status: "current normative architecture"
-last_updated: "2026-08-25"
+last_updated: "2026-08-30"
 ---
 
 # MLFF Training-Data and Fine-Tuning Architecture
@@ -34,25 +34,24 @@ source evidence and labels
   -> evidence-role partitioning
   -> fold/final training domains
   -> fitted descriptors, metrics, E0/objective/weight inputs
-  -> multi-view feasibility and exact sparse neighborhood authority
-  -> MVSEL2 target order
-  -> REPAIR2 repaired master order + MVSTATE2 continuation state
-  -> independent MVQUAL prefix qualification
-  -> configurable target-size study
-  -> one protocol-global selected target size
-  -> domain-local target prefixes
-  -> training / checkpoint selection
-  -> held-out protocol validation
-  -> final committee / deployment
-  -> calibration and activated locked-test / observable validation
+  -> one P_train / M3 target-size development split
+  -> one canonical training order pi_train and evaluation ladder M1 subset M2 subset M3
+  -> one common deterministic target-size preparation
+  -> paired optimizer-seed screen over candidate sizes
+  -> one target-size reducer
+  -> N_selected and T_selected = pi_train[:N_selected]
+  -> post-selection cross-validation on exactly T_selected
+  -> fresh final production on the complete T_selected
+  -> currentness-fenced publication
 ```
 
-The current graph has no alternate MVSEL1/REPAIR1 path. Superseded campaign
-generations are not generally compatible; the sole supported restart boundary
-is the immediately preceding fixed-fidelity campaign, which is re-authenticated
-against unchanged upstream preparation inputs before a fresh configurable
-target-size study is created. Ambiguous or older historical state fails closed
-at the narrowest required re-preparation boundary.
+The current graph has exactly one target-size architecture. The retired
+per-domain multi-view selection generation is not an alternate current path: it
+is neither migrated nor semantically read forward, and a workspace still holding
+its derived state is rejected with an actionable destructive reset/reprepare
+requirement before any candidate, checkpoint, or descendant is reused. Raw
+scientific inputs and independently valid low-level content caches remain
+reusable when their recipes do not depend on retired target-size semantics.
 
 ## Reading index
 
@@ -62,7 +61,7 @@ at the narrowest required re-preparation boundary.
 | Source identity, labels, strain/stress, eligibility, raw features/events | Part II - Data and evidence contracts |
 | Evidence roles, leakage-safe CV, fitted preparation, objective/weighting/exposure boundaries | Part III - Statistical design and fitted preparation |
 | Replay, MACE protocol, checkpointing, validation, deployment, calibration, active learning | Part IV - Training, evaluation, and deployment |
-| FEAS1/MVIDX1/MVSEL2/REPAIR2/MVSTATE2/MVQUAL and target-size study | Part V - Multi-view target subset and size architecture |
+| Target-size split/orders, paired-seed screen, reducer, post-selection CV, fresh final production | Part V - Target-size selection and post-selection validation |
 | Exact execution, bounded resource/materialization, cache/restart/storage/progress | Part VI - Performance and execution architecture |
 | Sole-owner matrix and accepted extension boundaries | Part VII - Ownership and extension boundaries |
 | External scientific/algorithmic sources | References |
@@ -76,7 +75,7 @@ For targeted human or AI loading, use the smallest current source containing the
 | source/label identity, eligibility, strain/stress, raw features/events | `20_data_contracts.md` |
 | evidence roles, leakage, CV, fitted metrics, E0, objective, weighting, exposure | `30_statistical_design.md` |
 | replay, MACE, checkpoint, evaluation, deployment, calibration, active learning | `40_training_evaluation.md` |
-| FEAS1, MVIDX1, MVSEL2, REPAIR2, MVSTATE2, MVQUAL, target size, `n1/n2/n3` | `50_target_multiview.md` |
+| target size, `pi_train`, `T_selected`, `M1/M2/M3`, `n1/n2/n3`, post-selection CV, final production | `50_target_size_selection.md` |
 | scheduler, sparse execution, out-of-core, memory, persistence, progress | `60_execution_performance.md` |
 | owner, dependency direction, unsupported generation, extension boundary | `80_ownership_and_decisions.md` |
 | scientific/algorithmic provenance | `90_references.md` |
@@ -86,12 +85,12 @@ For targeted human or AI loading, use the smallest current source containing the
 ## Stable terminology
 
 - **training domain** — the DATA5-authorized fold/final gradient-training evidence available to fitted preparation and subset construction.
-- **target membership** — frame membership in a target-training subset; owned by MVSEL2/REPAIR2 within a training domain.
-- **target size** — the protocol-level scientific target-training cardinality chosen by `TargetSizeStudyPolicy`.
+- **target membership** — frame membership in a target-training subset; an exact prefix of the one canonical training order `pi_train`.
+- **target size** — the protocol-level scientific target-training cardinality chosen by the one target-size reducer.
 - **monitor size** — the cardinality of a monitoring/evaluation evidence set; never target-size authority.
-- **master order** — the one repaired REPAIR2 ordering per training domain whose prefixes define candidate target subsets.
-- **qualified size** — a materializable nominal size whose prefix passes independent MVQUAL hard requirements in every required training domain.
-- **selected size** — the one protocol-global target size selected from the qualified population.
+- **training order** — the one canonical deterministic ordering `pi_train` of the target-training pool whose prefixes define candidate target subsets.
+- **qualified size** — a candidate size admitted by the configured target-size policy for the current experiment definition.
+- **selected size** — the one target size `N_selected` frozen by the reducer together with the exact membership `T_selected`.
 - **authoritative evidence** — persisted information that defines or independently proves a scientific decision.
 - **reconstructible execution cache** — discardable state derivable exactly from authoritative inputs.
 - **unsupported generation** — an old campaign/artifact generation that current architecture does not interpret or migrate; it requires re-preparation.
@@ -185,7 +184,7 @@ Its current responsibilities include:
 - autocorrelation-aware complete-frame blocks and role feasibility;
 - fixed outer roles and independent CV job families;
 - fold/final-domain fitted descriptors, transforms, metrics, E0, objective/weight, and difficulty evidence;
-- exact multi-view feasibility/indexing, MVSEL2 ordering, REPAIR2 master order, MVSTATE2 continuation, and MVQUAL qualification;
+- the target-size development split, the canonical training/evaluation orders, the common preparation, and the paired optimizer-seed screen;
 - one protocol-global target-size decision with domain-local membership;
 - MACE target/replay artifacts and explicit exposure realization;
 - replay-retention and checkpoint admissibility;
@@ -231,9 +230,9 @@ source bytes / controls / trajectory collections
   -> development / monitor / CV / calibration / locked roles
   -> required fold/final training domains
   -> domain-local DATA6/DATA7 fitted preparation
-  -> FEAS1 + MVIDX1
-  -> MVSEL2 -> REPAIR2 / MVSTATE2
-  -> independent MVQUAL prefix qualification
+  -> P_train / M3 split -> pi_train / pi_eval
+  -> common target-size preparation
+  -> paired optimizer-seed screen -> target-size reducer
   -> common qualified target-size population
   -> target-size study using authorized development/model-selection evidence
   -> one frozen protocol-global N_selected
@@ -302,8 +301,9 @@ TrainingObjectivePolicy
 ConfigurationWeightPolicy
 PropertyWeightPolicy
 CheckpointMetricPolicy
-TargetSubsetInputBundle
-TargetSizeStudyPolicy
+TargetSizeExperimentDefinition
+ResolvedTargetSizePolicy
+TargetSizeCommonPreparation
 TrainingProtocolIdentity
 MaceCheckpointControlPolicy
 ExposureBackendPolicy
@@ -316,7 +316,7 @@ CalibrationTransferDecision
 
 A static policy defines an algorithm and fixed choices. A fitted record contains parameters learned from one explicitly authorized training domain. A realization record records behavior actually observed from an external/runtime system. Those roles are not interchangeable.
 
-Target membership is intentionally absent from the generic DATA2-DATA4 record list because its current authority is the MVSEL2/REPAIR2 chain after fitted preparation.
+Target membership is intentionally absent from the generic DATA2-DATA4 record list because its current authority is the canonical training order `pi_train` derived by the target-size owners in Part V.
 
 ### Digests and signatures
 
@@ -502,7 +502,7 @@ This chapter defines the statistical evidence roles that make later model compar
 
 It owns the architectural separation among training, monitoring, cross-validation, calibration, and locked-test evidence. It also defines what fold/final-domain fitted preparation may consume and emit.
 
-It does **not** own target membership or target size. DATA7 prepares fitted inputs; MVSEL2/REPAIR2 determine target membership inside each authorized training domain; `TargetSizeStudyPolicy` chooses the protocol-global target size.
+It does **not** own target membership or target size. It supplies the protected relations - duplicate groups, correlation families, and split exclusions - that the target-size owners in Part V consume; the canonical training order `pi_train` determines target membership, and the one target-size reducer chooses `N_selected`.
 
 ## Independence and evidence roles
 
@@ -595,7 +595,7 @@ correlation/provenance identities
 policy inputs with deterministic identities
 ```
 
-The one current membership authority consumes these inputs in the multi-view chain described in Part V. There is no competing quota/FPS `TrainingSelectionPlan` whose prefixes can disagree with MVSEL2/REPAIR2.
+The one current membership authority consumes these inputs in the target-size chain described in Part V. There is no competing quota/FPS `TrainingSelectionPlan` whose prefixes can disagree with `pi_train`.
 
 ### Material/profile specialization
 
@@ -642,7 +642,7 @@ raw source / feature / event evidence
     -> role assignment
     -> training domain
     -> fitted preparation
-    -> MVSEL2 / REPAIR2 target membership
+    -> pi_train prefix target membership
     -> target-size study using authorized development/model-selection evidence
     -> frozen target size and training protocol
     -> checkpoint selection
@@ -803,7 +803,7 @@ For each fold \(k\):
 
 1. DATA5 provides `fold_training_domain_k`, a disjoint authorized checkpoint monitor, and `held_out_evaluation_fold_k`.
 2. DATA6/DATA7 fit descriptors, transforms, metrics, E0, objective/weights, and difficulty evidence only within `fold_training_domain_k`.
-3. MVSEL2/REPAIR2 construct the fold-local repaired master order from fold-authorized evidence.
+3. Post-selection cross-validation folds are drawn from exactly `T_selected` under the protected relations of Part III.
 4. The already-frozen protocol-global `N_selected` defines the fold target prefix.
 5. A fresh model/optimizer lineage is trained under the bound production stopping/checkpoint policy.
 6. Checkpoint choice freezes without inspecting `held_out_evaluation_fold_k`.
@@ -859,7 +859,7 @@ A reproducible campaign binds, as applicable:
 - source/parser and label-domain identities;
 - partition/independence roles;
 - feature/provider and fitted DATA6/DATA7 product identities;
-- MVIDX, MVSEL2, REPAIR2, MVSTATE2, and MVQUAL identities;
+- the target-size experiment definition, training/evaluation orders, and common preparation identities;
 - target-size decision and domain-local target-prefix identities;
 - foundation/model/runtime lock;
 - replay and monitor identities;
@@ -890,329 +890,142 @@ The workflow fails closed when, among other current-specification conditions:
 
 Absent rare events, replicas, condition combinations, calibration cohorts, or challenge sets are reported as limitations/coverage gaps rather than fabricated evidence.
 
-# Part V - Multi-view target subset and target-size architecture
+# Part V - Target-size selection and post-selection validation
 
 ## Purpose and ownership
 
-This chapter defines how an authorized fold/final training domain becomes one deterministic nested family of target-training subsets and how one protocol-global target size is selected without consuming held-out validation evidence.
+This chapter defines how the campaign decides **how much labelled data a training method needs**, and how that decision is validated afterwards without contaminating it.
 
 The current chain is:
 
 ```text
-DATA7 fitted selection inputs
-    -> FEAS1 full-pool feasibility
-    -> MVIDX1 exact sparse neighborhood authority
-    -> MVSEL2 progressive target order
-    -> REPAIR2 repaired master order / MVSTATE2 continuation state
-    -> MVQUAL independent prefix qualification
-    -> TargetSizeStudyPolicy
-    -> selected target size
+canonical frame authority (Part II)
+    -> neutral statistical substrate (Part III)
+    -> one P_train / M3 target-size development split
+    -> one canonical training order pi_train
+    -> one canonical evaluation order pi_eval with nested M1 subset M2 subset M3
+    -> one common deterministic target-size preparation
+    -> paired optimizer-seed screen over candidate sizes
+    -> one target-size reducer
+    -> N_selected and T_selected = pi_train[:N_selected]
+    -> post-selection cross-validation on exactly T_selected
+    -> fresh final production on the complete T_selected
+    -> currentness-fenced publication
 ```
 
-Each component has one role. MVSEL2 is the only current ordering authority; REPAIR2 is the only current repair authority; MVSTATE2 is the only current continuation-state family; MVQUAL independently verifies hard requirements. Superseded selector/repair/migration generations are historical and are not alternate current paths.
+Each element has exactly one owner. The reducer is the only authority that may declare a selected size; `CampaignStore` is the only authority that holds the current selected set; post-selection cross-validation is the only authority that accepts or rejects the training *method*; and final production is the only authority that publishes a production model.
 
-## Why multi-view subset construction is necessary
+There is no alternate selection path. The retired per-domain multi-view chain (compatibility-domain role freezes, full-pool feasibility, exact sparse neighborhood indices, progressive multi-view ordering, repaired master orders, continuation-state families, and independent prefix qualification) is not a current architecture, is not migrated, and is not reachable from any current runtime owner. Workspaces holding that derived state are rejected with an actionable destructive-reset requirement rather than translated; see Part VII.
 
-A target subset must cover several physically meaningful feature views simultaneously. Optimizing one descriptor distance or one average utility can conceal a severe deficit in another required view. The architecture therefore treats each required family as an explicit coverage relation, diagnoses full-pool feasibility before subset optimization, and maintains hard coverage separately from discretionary representative utility.
+## Why target size is decided by a screen, not by coverage
+
+The scientific question is empirical: *at what training-set cardinality does the accepted training method stop improving materially on a representative held-in evaluation population?* That is a property of the method, the data distribution, and the optimizer - not of a geometric covering argument over descriptor neighborhoods.
 
 Four principles control the design:
 
-1. feasibility precedes subset optimization;
-2. hard coverage and obligations cannot be traded away by aggregate score;
-3. subset ordering is deterministic and nested so size comparisons are not confounded by resampling;
-4. selector/repair state and independent qualification evidence are separate authorities.
+1. one deterministic training order, so candidate sizes are exact nested prefixes and size comparisons are never confounded by resampling;
+2. one common preparation shared by every candidate size and optimizer seed, so preparation cannot become a hidden per-size variable;
+3. only the ordered optimizer-seed set is the stochastic replicate dimension of the screen;
+4. the decision consumes target-side metric evidence alone, and downstream replay, cross-validation, physical, or deployment evidence can never rank or tie-break a size.
 
-## Exact multi-view neighborhood authority
+## The development split and the two canonical orders
 
-For feature family \(m\), let \(x_w^{(m)}\) be witness coordinates, \(x_c^{(m)}\) candidate coordinates, \(D_m\) the frozen scaling transform, and \(r_w^{(m)}\) the authoritative witness radius. Exact adjacency is
-
-$$
-A_{wc}^{(m)}=
-\mathbf 1\!\left[
-\left\|D_m\left(x_w^{(m)}-x_c^{(m)}\right)\right\|_2
-\le r_w^{(m)}
-\right].
-$$
-
-For selected subset \(S\), witness multiplicity is
-
-$$
-n_w^{(m)}(S)=\sum_{c\in S}A_{wc}^{(m)},
-$$
-
-and weighted family coverage is
-
-$$
-C_m(S)=
-\frac{\sum_w \omega_w^{(m)}\,\mathbf 1[n_w^{(m)}(S)>0]}
-     {\sum_w \omega_w^{(m)}}.
-$$
-
-For hard threshold \(\tau_m\) owned by the current coverage policy, family deficit is
-
-$$
-D_m(S)=\max(0,\tau_m-C_m(S)),
-$$
-
-and the worst-view deficit is
-
-$$
-D_{\max}(S)=\max_m D_m(S).
-$$
-
-A weighted average across families cannot substitute for a failed required family.
-
-Approximate-neighbor substitutions are not scientifically equivalent to the exact relation unless a future accepted design explicitly changes that contract.
-
-## Full-pool feasibility (FEAS1)
-
-FEAS1 inspects the complete eligible candidate/reference authority before subset ordering begins. It answers whether the frozen hard coverage and obligation predicates are satisfiable at all and how fragile that support is.
-
-For witness \(w\),
-
-$$
-d_w^{(m)}=\sum_{c\in\mathcal C}A_{wc}^{(m)}.
-$$
-
-Low-support witness mass and mandatory-obligation incidence identify regions where correlation-unit exclusion, provenance restrictions, or subset-size ceilings can destroy feasibility.
-
-FEAS1 may conclude that a requested rung cannot satisfy the frozen predicates. That conclusion is evidence about the data/policy combination, not permission to relax coverage, fabricate candidates, or invent an intermediate target size.
-
-## One exact sparse relation (MVIDX1)
-
-MVIDX1 owns the authenticated exact sparse neighborhood relation used by selection, repair, and qualification. Scientific identity binds at least:
-
-- candidate and witness identity/order;
-- feature-family identity;
-- scaling/distance/radius semantics;
-- exact sparse cardinalities/content;
-- policy-relevant schema identity.
-
-Execution-only details such as worker count, query block size, in-memory versus file-backed inversion, mmap placement, queue depth, or NUMA placement do not change scientific identity.
-
-The selector/repair path consumes a forward-oriented projection sufficient to score candidate rows and obligation/correlation incidence. Independent qualification may consume the authenticated primitive relation it needs, but no downstream component recomputes geometry under a competing numerical implementation when the same semantic MVIDX authority already exists.
-
-Large exact inversions may use deterministic out-of-core execution as described in Part VI.
-
-## Progressive target ordering (MVSEL2)
-
-MVSEL2 constructs one deterministic progressive order \(\pi_d\) for training domain \(d\). It consumes DATA7 fitted selection inputs, FEAS1 evidence, MVIDX1, hard obligations, correlation/provenance structure, and the frozen selector policy.
-
-### Scientific priority structure
-
-The exact lexicographic policy is specification-owned. Architecturally it has two classes of responsibility:
-
-1. satisfy hard/worst-view coverage and mandatory obligations first; and
-2. once hard requirements permit, improve representative utility/diversity and declared balance objectives without violating the hard state.
-
-Representative density, diversity/FPS, environment coverage, protected events, condition balance, difficulty, and provenance are inputs to this one selector rather than independent target-membership authorities.
-
-### Deterministic exact execution
-
-Rank authority is sequential because the scientific state changes after every accepted candidate. Parallel or vector execution may accelerate preparation and exact candidate scoring, but the authoritative accepted candidate and FP64 scientific decision semantics must remain unchanged.
-
-The current execution architecture uses compact witness/obligation/correlation state and exact on-demand forward-row scoring rather than a product-scale eager inverse marginal array for every candidate. During hard-coverage selection, exact staged filtering may eliminate candidates only when the frozen lexicographic ordering proves they cannot win.
-
-After hard coverage completes, an exact certified lazy representative frontier may avoid full rescoring. Stale upper bounds are conservative; candidates are refreshed until the winner is certified under the frozen tolerance and complete tie hierarchy. A full-forward exact oracle remains a bounded correctness fallback, not a separate scientific policy.
-
-## Exact repaired master order (REPAIR2)
-
-MVSEL2 produces the progressive order; REPAIR2 is the sole authority allowed to perform the declared exact active-shell repair while preserving protected lower prefixes and hard invariants.
-
-For selected candidate \(c\), unique covered mass is
-
-$$
-U(c\mid S)=
-\sum_m\sum_{w:A_{wc}^{(m)}=1}
-\omega_w^{(m)}\,\mathbf 1[n_w^{(m)}(S)=1].
-$$
-
-A removal is admissible only when it satisfies the frozen unique-support and hard-obligation safety predicates. Replacement proposals follow the frozen deficit/frontier objective and deterministic tie hierarchy. Accepted swaps cannot regress protected hard coverage.
-
-Proposal scoring within one immutable pre-swap state may execute concurrently; authoritative winner comparison and state mutation remain deterministic.
-
-REPAIR2 publishes **one repaired master order per domain**. Candidate target subsets are prefix views of that order. The architecture forbids independently repairing separate copies of the 128-, 256-, 512-, or other rungs because that would destroy nesting and make size comparisons conflate cardinality with unrelated membership changes.
-
-## Reconstructible continuation state (MVSTATE2)
-
-MVSTATE2 is compact authenticated continuation state for the current selector/repair generation. It binds the dataset/domain identity, UID/family order, MVIDX identity, weights, obligations, correlation units, selector/repair policy, selected prefix, and current schema identity.
-
-It persists only state required to reconstruct the current scientific position, such as witness multiplicity, covered mass, obligation/correlation counts, and representative utility. Product-scale complete candidate marginal arrays and ephemeral lazy-heap contents are not authoritative continuation state.
-
-Publication is atomic. Restoration revalidates the persisted state against the selected prefix and primitive identities. Incompatible historical state is not migrated into MVSTATE2; the current campaign must reconstruct from current authoritative inputs or be re-prepared.
-
-## Independent prefix qualification (MVQUAL)
-
-MVQUAL independently recomputes the hard coverage and obligation evidence required to qualify candidate prefixes. It records policy-defined evidence such as:
-
-- per-family hard deficits;
-- uncovered weighted mass and counts;
-- redundancy/unique-support diagnostics;
-- mandatory-obligation satisfaction;
-- provenance/correlation diversity diagnostics;
-- exact input and policy identities.
-
-Selector/repair internal counters are not accepted as independent qualification evidence. MVQUAL may share authenticated primitive sparse inputs, but it recomputes the relevant predicates through its independent verification path.
-
-Locked-test data cannot tune radii, weights, hard thresholds, repair budgets, tie rules, or qualification predicates.
-
-## Nested prefixes and hard-coverage monotonicity
-
-Let \(\pi_d\) denote the repaired master order for domain \(d\). The target subset at size \(N\) is
-
-$$
-D_{d,N}=\pi_d[:N].
-$$
-
-For \(N_2>N_1\),
-
-$$
-D_{d,N_1}\subset D_{d,N_2}.
-$$
-
-Under fixed exact hard-coverage and obligation predicates, adding candidates cannot remove already-covered witnesses or already-satisfied positive obligations. Therefore hard satisfaction cannot regress solely because \(N\) increases.
-
-A pass/fail/pass qualification pattern across increasing prefixes is an invariant violation. It indicates broken nesting, identity, qualification logic, obligation semantics, or numerical realization and must fail closed.
-
-## Target-size populations
-
-The scientific target-size study uses a fixed nominal population
-
-$$
-\mathcal N_0=\{128,256,512,1024,2048,4096,8192,16384\}.
-$$
-
-For required training domain \(d\),
-
-$$
-N_{\mathrm{available},d}=|\mathcal D_{\mathrm{eligible},d}|.
-$$
-
-The common materializable population is
-
-$$
-\mathcal N_M=
-\left\{N\in\mathcal N_0:
-N\le \min_d N_{\mathrm{available},d}
-\right\},
-$$
-
-where required domains include final development and every required cross-validation gradient-training domain.
-
-Independent MVQUAL evidence defines
-
-$$
-\mathcal Q=\left\{N\in\mathcal N_M:
-\text{all hard requirements pass in every required domain}
-\right\}.
-$$
-
-The selected size satisfies
-
-$$
-N_{\mathrm{selected}}\in\mathcal Q\subseteq\mathcal N_0.
-$$
-
-No dynamic rescue size is created. An arbitrary available-pool cardinality, monitor cardinality, replay cardinality, batch size, or implementation budget can never silently become a scientific target size.
-
-## Domain-local membership, protocol-global size
-
-Each required training domain has its own leakage-safe fitted inputs and repaired master order. Therefore the actual selected frames differ by domain even when the selected cardinality is common.
-
-`N_selected` is one protocol hyperparameter shared across required fold/final jobs. This permits protocol-matched cross-validation without leaking held-out fold evidence into size selection.
-
-Held-out cross-validation folds evaluate the complete already-frozen protocol. If held-out fold performance were used to choose `N_selected`, those folds would no longer be independent protocol-validation evidence unless the entire procedure were wrapped in a separate nested-validation design.
-
-## Target-size study policy
-
-`TargetSizeStudyPolicy` is the sole target-size decision authority. It consumes the qualified size population and target-only development/model-selection evidence. Replay semantics and monitor identity remain part of the common frozen training protocol, but replay metric values are diagnostic and are not consumed by target-size ranking, qualification, rejection, or tie-breaking.
-
-Monitor policies are type-distinct from target-size policy. A target monitor of 256 configurations and a replay monitor of 512 configurations, if those values are current, remain monitoring evidence sets; their integers do not create target-size rungs.
-
-### Exact continuation fidelity
-
-Each candidate follows one authenticated training continuation:
+The neutral statistical substrate supplies protected relations - duplicate groups, correlation families, and split exclusions - before any target-size object exists. From it the architecture derives exactly one split:
 
 ```text
-0 -> n1 coarse -> n2 short -> n3 final screen
+eligible labelled frames -> P_train (target-training pool) + M3 (evaluation pool)
 ```
 
-`0 < n1 < n2 < n3` are the exact screening boundaries; `n` is an independent positive production maximum and may equal, exceed, or be less than `n3`. The terminal boundary may be derived internally for the deterministic continuation schedule, but it is not a second screening authority. The short state authenticates the exact coarse model, optimizer, RNG, and protocol parent; the final screen continues the short state. All size candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered training-seed set. The seed authority is the ordered `seeds` field of the sole enabled training method; current generated campaigns default that field to `[1, 2]`. The target-size policy authenticates this ordered set rather than owning an unrelated seed convention.
+`P_train` is ordered once into `pi_train`. A candidate of nominal size `N` is the exact prefix
 
-Ordinary target-success early stopping is disabled during this experiment because size candidates must be compared at common fidelity boundaries. Each expected candidate/seed resolves to exactly one authenticated stage outcome: strict finite endpoint success or explicit candidate-specific TRAIN2/EVAL2 numerical failure. Generic execution/resource/input/lineage failures remain fail-closed campaign errors. Normal production/CV stopping resumes once the size experiment is complete.
+$$
+T_N = \pi_{\text{train}}[:N].
+$$
 
-### Successive-fidelity funnel
+`M3` is ordered once into `pi_eval`, and the evaluation ladder is the nested family
 
-Let \(q=|\mathcal Q|\). The production decision requires at least three qualified sizes:
+$$
+M_1 \subset M_2 \subset M_3,
+$$
+
+taken as direct prefixes of `pi_eval`. Rungs are direct populations, never complements of one another: a rung is evaluated on exactly the frames it names.
+
+Both orders are deterministic functions of the canonical frame authority, the neutral substrate, and the configured target-size policy. Neither depends on any compatibility grouping, label-domain identity, or cross-validation plan.
+
+## The common preparation
+
+One `TargetSizeCommonPreparation` identity is frozen before any candidate trajectory starts. It derives from `P_train` and the configured foundation/training protocol, and it is shared unchanged by every candidate size and every optimizer seed.
+
+It MUST NOT derive from `M1`, `M2`, `M3`, held-out evidence, calibration evidence, locked evidence, or any cross-validation plan. A change to the common preparation is a change to the target-size scientific identity and produces a new generation rather than an in-place edit.
+
+## The paired optimizer-seed screen
+
+For every candidate size `N`, the screen runs the same ordered optimizer-seed set - by current policy the two seeds `[1, 2]` - through the same fidelity ladder:
 
 ```text
-q < 3      -> insufficient_qualified_sizes
-q >= 3     -> coarse n1:       q -> min(q,4)
-              short n2:       <=4 -> 2
-              final screen n3: 2 -> 1
+n1 / M1  ->  n2 / M2  ->  n3 / M3
 ```
 
-Candidate comparison uses paired seed-aggregated evidence: every candidate uses the same authenticated ordered seed set, avoiding comparisons between unrelated stochastic realizations. Missing, duplicated, reordered, or candidate-specific seed populations fail closed.
+Fidelity boundaries are continuation points, not restarts: model, optimizer, and RNG state continue exactly across `n1 -> n2 -> n3`. Ordinary early stopping may not truncate a required screen boundary, and the seed set is identical at every `N` so a size comparison is never a seed comparison.
 
-At `n1` and `n2`, the coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric; the smaller size is preferred inside the configured band. At `n3` the final width independently defaults to 1 meV/Angstrom. Both widths are configurable positive finite policy fields and therefore participate in target-size policy identity; changing either width invalidates reuse of derived study evidence from the old policy. The early screens rank relative promise; they do not require the final absolute force-accuracy threshold.
+Candidate rungs execute through the accepted TRAIN2 runtime and are evaluated through the accepted EVAL2 owners. Expensive numerical training has exactly one substitution seam, strictly below the mdstats owner boundary; configuration resolution, authority construction, materialization, provider and checkpoint authentication, publication, reconciliation, and adoption are production code in every invocation.
 
-At `n3`, size selection remains a target-only ranking decision over candidates already admitted by MVQUAL. MVQUAL is the sole hard target-size eligibility authority; the size study does not re-apply target-threshold, replay-retention, energy/stress, physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates. Only candidates with complete paired successful endpoints are rankable; authenticated scientific failures remain explicit failure outcomes. Replay scores cannot rank, qualify, reject, or tie-break sizes. Model/protocol acceptance runs only after `N_selected` is frozen and cannot feed back into the size decision.
+## The reducer and the terminal decision
 
-### Typed terminal outcomes
+One reducer consumes the screen evidence and advances the experiment. Its outcome is one of:
 
-The size study returns a typed decision, not merely an integer:
+- **selected** - a size `N_selected` is frozen together with the exact membership `T_selected = pi_train[:N_selected]`;
+- **typed scientific terminal failure** - the configured candidate ceiling did not converge, too few candidates qualified, or the surviving candidates were not comparable.
+
+A configured-ceiling nonconvergence is a typed result, not an invitation to invent a rescue size outside the configured ladder.
+
+Ranking is owned by the target-side metric and practical-equivalence policy alone. Inside the practical-equivalence band the **smaller** `N` is preferred, because the scientific question is the smallest sufficient training-set size.
+
+## Currentness and the selected set
+
+`CampaignStore` holds one canonical target-size generation. Its durable regimes are `legacy`, `transitioning`, and `current`; only `current` executes target-size work. Every mutation is one compare-and-set transition against the exact predecessor revision, so an interrupted operation is owned by the persisted transition rather than by the process that began it.
+
+The terminal projection binds `N_selected` and the exact `T_selected` membership digest together; neither may be edited independently, and a reload re-derives the projection from the authenticated reducer state and training order rather than trusting the stored copy. Terminal currentness is always established from the current store revision, never from a caller-supplied snapshot, and a public terminal view is re-authenticated at exposure time so a stale object cannot be published after the store advances.
+
+## Invalidation scope
+
+A change to target-size scientific identity - source or frame membership, canonical numerical labels or their interpretation policy, the candidate ladder or configured ceiling, the evaluation-size ladder, fidelity boundaries, the ordered optimizer-seed set, the training-order policy, the `P_train`/`M3` split or `pi_eval` ordering policy, the common preparation, the metric/practical-equivalence policy, or the foundation/replay identity where it is part of the experiment - replaces the generation. The old selected set stays readable as history and can never re-enter current authority.
+
+Changes that are *not* target-size identity invalidate only their own descendants:
+
+- advisory provenance grouping or report presentation invalidates only the advisory evidence that depends on it, and never the frame UID, the canonical label identity, the neutral partition, or the target-size result;
+- cross-validation-only settings such as fold count and partition seed invalidate cross-validation and its descendants, and leave `N_selected`/`T_selected` byte-identical;
+- production-only budget or runtime policy invalidates only final-production descendants.
+
+## Post-selection cross-validation
+
+Cross-validation starts only after the terminal selection is frozen, and it consumes exactly `T_selected` - complete coverage, no unselected sibling frame, no held-out outer frame.
+
+It validates the **training method**, not the size:
+
+- the configured fold count `K >= 2` and every required fold of every required CV seed must pass the configured target-only acceptance predicate; there is no mean, majority, best-seed, partial, `K = 0` or `K = 1` authorization;
+- the full P1 split-exclusion and correlation-family constraints continue to hold inside fold assignment;
+- fold-local preparation, training, checkpoint selection, and replay admissibility may never see that fold's held-out outer target set, and the fold representative freezes before held-out outer evaluation;
+- replay training exposure and the TRUE_DFT replay admissibility monitor remain distinct concerns, and TRUE_DFT replay contributes no ranking, tie-break, fold, or seed credit;
+- a cross-validation failure is a methodological result: `N_selected` and its evidence are unchanged, and final production is simply not authorized. If cross-validation shows that a materially different training method is required, that changed method needs a **new** target-size experiment, because the method whose convergence was measured has changed.
+
+Supported training modes remain exactly `scratch`, `naive_fine_tuning`, and `multihead_replay`; the canonical post-selection heads remain `target_head` and `pt_head`; and the foundation checkpoint head remains a separate foundation-owned concept. Method, foundation, replay, and content identity all fail closed.
+
+## Fresh final production
+
+Final production starts fresh from the accepted foundation/initialization with fresh optimizer, RNG, and run state. It trains on the complete exact `T_selected`, under the cross-validation-accepted method, for the configured `[training].max_num_epochs` - an independent production horizon that is deliberately unrelated to the screen's `n3`.
+
+Frozen `M3` evidence may remain development/model-selection evidence. Final authorization and publication remain currentness-fenced and restart-authenticatable: a reopened campaign reauthenticates the selected binding, the cross-validation acceptance, and the final publication identity before exposing any of them as current.
+
+## Public command surface
+
+The current lifecycle is exactly:
 
 ```text
-selected(N)
-insufficient_qualified_sizes
-insufficient_comparable_candidates
-nonconverged_at_fixed_ceiling
+doctor -> prepare -> select-target-size -> cross-validate -> train-production
 ```
 
-`insufficient_comparable_candidates` records the failed fidelity stage and authenticated candidate/seed failure reasons when authenticated numerical/scientific trajectory failures leave too few complete paired candidates for the required comparison. Input, lineage, and programming errors remain fail-closed exceptions.
-
-If 16,384 reaches the final comparison and remains materially better than every smaller complete finalist by more than the configured final practical-equivalence width, the outcome is `nonconverged_at_fixed_ceiling`. The architecture reports that terminal state rather than synthesizing a larger or intermediate rescue size.
-
-The architecture never creates an intermediate size merely to avoid reporting non-convergence.
-
-## Production screening versus algorithm qualification
-
-Ordinary production executes the successive-fidelity funnel and stops training eliminated sizes.
-
-A release/algorithm qualification may retrospectively train the complete candidate population to the configured full horizon `n` to measure survivor recall or calibrate the screening policy. That exhaustive matrix is qualification evidence, not a permanent production requirement. If representative qualification shows that the early screens do not reliably retain eventual finalists, the screening policy must be revised explicitly rather than forcing every campaign to repay every eliminated candidate.
-
-## Bounded scientific materialization
-
-The fixed eight-size population is a scientific policy, not a storage mandate. Per training domain, the intended product-scale state is:
-
-```text
-one fitted selection-input authority
-one exact MVIDX authority
-one MVSEL2/REPAIR2 master order
-prefix metadata for candidate sizes
-MVQUAL evidence for required prefixes
-training artifacts only for candidates authorized to train
-```
-
-After `N_selected` is frozen, each final-development or CV gradient-training DATA7 materialization consumes exactly its local `R_d[:N_selected]` prescribed prefix. DATA7 may fit/materialize training inputs, but it does not rerun an independent membership selector for this protocol.
-
-The architecture specifically rejects eight independent descriptor, sparse-graph, selector-state, or target-dataset copies. Execution caches are reconstructible and bounded.
-
-## Scientific non-negotiables
-
-Execution optimization cannot authorize:
-
-- approximate neighborhood semantics in place of the exact frozen relation;
-- relaxed hard coverage or obligations;
-- changed leakage/correlation boundaries;
-- a second target-membership selector;
-- independently repaired rungs;
-- held-out or locked evidence controlling target size;
-- generated/intermediate rescue sizes;
-- non-deterministic authoritative rank/repair decisions;
-- migration of unsupported historical selector/repair state into current authority.
-
-Any change to these semantics requires an explicit architecture/specification revision rather than an execution optimization.
+`prepare` reconstructs the current substrate and cannot select a size. `select-target-size` is the only command that trains candidates and decides `N`. `cross-validate` is the only command that accepts the method. `train-production` is the only command that publishes a fresh production model. `status` and `advance` project this lifecycle from the owning authorities rather than from stage markers.
 
 # Part VI - Bounded execution, restart, and performance architecture
 
@@ -1248,7 +1061,7 @@ DATA6 is the last preparation stage that owns the MACE accelerator model. After 
 
 DATA7 exposes canonical final/fold domains as the outer parallel unit. Each domain retains independent fitted scaler, PCA, E0, weighting, selection, and coverage state. Immutable frame arrays and authenticated descriptor shards may be shared, but task-local mutable extraction state is not shared between concurrent domains. Outer DATA7 work is admitted through the deterministic resource queue using the live runtime CPU budget and a conservative peak incremental-memory estimate; inner BLAS/OpenMP/PyTorch widths are one while multiple domains are available. Workers publish authenticated immutable DATA7 cache generations and return compact receipts. Only the coordinator mutates production records/checkpoints, in canonical domain order.
 
-Target-size screening is treated as a distinct reuse topology. Campaign preparation owns one nonpersistent namespace resolver that maps each canonical DATA7 `training_domain_digest` to its authenticated coverage authority and materializes REPAIR2 prefixes lazily only for requested `(training domain, size)` pairs. Synthetic coverage IDs are confined to that lookup boundary; DATA7 plans remain keyed by canonical training-domain digest and final-development evaluation cohorts by source label-domain ID. The fixed pre-selection evaluation complement is always the authenticated final-coverage frame set minus the maximum-qualified prefix, so the comparison cohort cannot shrink across `n1/n2/n3` continuation. `ProductionMaterializationPlan` itself rebuilds the canonical DATA5/CV feature-domain topology; callers cannot inject a convenient alternate domain set.
+Target-size screening is treated as a distinct reuse topology. Candidate rungs are exact prefixes of the one canonical training order, so a rung is a *view* of one authority rather than an independently prepared dataset. The one common target-size preparation is shared unchanged by every candidate size and optimizer seed, and evaluation rungs are direct `M1/M2/M3` populations that cannot shrink across `n1/n2/n3` continuation.
 
 The expensive DATA7 fitted metric/E0/weight core is selection-size invariant, so target-size variants may reuse that core through a reconstructible execution-only index to a fully authenticated DATA7 carrier artifact. The fitted-core index authenticates both the execution recipe and the actual fitted-result digest; publication is create-once/validate-winner, and divergent results for one recipe fail closed. A stale carrier that fails the exact foundation-prediction/reference/lineage reuse contract is discarded and refit rather than promoted to a scientific failure. Reuse admission uses a separate conservative RAM estimate for carrier load, selection/coverage realization, and archive output instead of charging the hypothetical full fit. Size-specific selection and coverage are then realized normally, and the resulting full `Data7PreparationBundle` remains the sole scientific authority. Full shared DATA7 publication likewise requires any concurrently computed winner to match the local bundle digest and deterministic archive SHA. The shared full-artifact recipe is v2 and excludes DATA8-only evaluation membership/target-study outcome state while retaining the exact prescribed training prefix and selection policy. Legacy full-artifact v1 recipes remain read-compatible; reconstructible fitted-core v1 indices are cache misses.
 
@@ -1271,73 +1084,42 @@ Task submission may run ahead of execution to hide hand-off latency, but simulta
 
 ## One product-scale authority per semantic input
 
-The fixed target-size population does not permit one full descriptor/graph/selector copy per rung. Per required training domain, the product-scale execution model is:
+The candidate ladder does not permit one full descriptor/graph/preparation copy per rung. The product-scale execution model is:
 
 ```text
-one fitted DATA7 selection-input authority
-one exact neighborhood/MVIDX authority
-one MVSEL2/REPAIR2 master order
-one compact MVSTATE2 continuation state when persisted
-prefix metadata/views for candidate rungs
-MVQUAL evidence for required prefixes
-training artifacts only for candidates authorized by the size funnel
+one canonical frame/feature authority
+one neutral statistical substrate
+one P_train / M3 split and one pi_train / pi_eval ordering
+one common target-size preparation shared by every size and seed
+prefix views for candidate rungs
+training artifacts only for candidates still authorized by the reducer
 ```
 
-This is an architectural resource invariant, not merely an optimization preference. A realization whose memory/storage scales approximately with eight independent copies of the target-selection state is non-conforming even if it eventually produces the same scientific result.
+This is an architectural resource invariant, not merely an optimization preference. A realization whose memory or storage scales with one independent copy of the target-selection state per candidate size is non-conforming even if it eventually produces the same scientific result.
 
-## Exact neighborhood production and reuse
+## Candidate execution and continuation
 
-The exact neighborhood engine is the sole geometric producer for the multi-view relation. Query blocks may execute independently through the bounded queue, but completed blocks are committed in the canonical witness/family order required by the scientific representation.
+The screen executes one `(candidate size, optimizer seed)` cell at a time through the accepted TRAIN2 runtime, under the campaign resource scope that owns CPU, RAM, VRAM, disk, and native-thread admission. Cells that already completed are not re-executed on restart: the persisted execution head is reconciled before anything new is scheduled, and the reconciled head is adopted by compare-and-set.
 
-The resulting sparse store is authenticated by semantic inputs such as candidate/reference ordering, family identity, fitted metric/scaling, radius/tolerance semantics, and cache-format identity. Worker count, block size, queue depth, and cache location are excluded.
+Continuation across a fidelity boundary restores exact model, optimizer, and RNG state rather than restarting the run. Checkpoint publication is atomic and content-addressed, so an interrupted boundary either published a complete checkpoint or did not publish at all.
 
-MVIDX1 consumes this authenticated exact relation and does not repeat geometry when a compatible forward relation exists. Missing, stale, corrupt, or incompatible reconstructible state is rebuilt from the same authoritative inputs.
+Execution choices - worker count, batch assignment, queue depth, cache location, completion order - are reconstructible realization details and never enter scientific identity.
 
-## Deterministic out-of-core MVIDX
+## Provider lifetime and accelerator ownership
 
-Large candidate-to-witness inversions must be bounded in anonymous RAM. Exact row-chunk transpose/inversion and file-backed typed arrays are permitted when they produce the same authoritative sparse arrays as the in-memory realization.
+Model providers are acquired and retired in explicit non-overlapping scopes so a second provider is never constructed while the first still owns accelerator memory:
 
-The execution layer therefore preflights RAM and scratch/disk capacity, bounds concurrent inversions, and may use mmap/NPY-compatible arrays for large products. Candidate offsets and candidate-to-witness indices use the current specified canonical types and ordering.
+```text
+candidate provider acquire -> target EVAL2 -> candidate TRUE_DFT replay when applicable
+  -> candidate close in an exception-safe finally
+  -> only then foundation provider construction -> foundation TRUE_DFT replay
+  -> foundation close in an exception-safe finally
 
-Chunk size, file-backing threshold, and inversion concurrency are execution-only. In-memory and out-of-core paths must satisfy the same scientific content/equivalence contract.
+outer representative provider acquire -> held-out outer EVAL2
+  -> outer close in an exception-safe finally
+```
 
-## MVSEL2 exact forward/lazy execution
-
-MVSEL2 rank authority remains sequential because each accepted candidate changes the scientific state. Execution acceleration is concentrated in exact candidate-row evaluation, staged lexicographic filtering, vectorized sparse gathers, and a certified lazy representative frontier.
-
-A stale lazy score is only an upper bound. A candidate can be excluded without refresh only when the bound proves it cannot defeat the best exact contender under the frozen tolerance. Otherwise it is refreshed exactly. Authoritative contender comparison and state mutation remain canonical.
-
-MVSEL2 maintains compact witness multiplicity, covered mass, obligation/correlation counts, and representative state. It does not require complete product-scale candidate marginal arrays or normal-path witness-to-candidate inverse propagation.
-
-## REPAIR2 exact active-shell execution
-
-REPAIR2 keeps authoritative repair iteration, admissibility predicates, objective/tie hierarchy, accepted/rejected trace, and winner application deterministic.
-
-Independent proposal scoring inside one immutable pre-swap state may execute concurrently when measured work justifies it. Vectorized candidate-row gathers, stamp arrays, bounded-ID indexing, and fused sparse scans are valid preparation optimizations. The accepted winner and authoritative mutation are committed in the frozen deterministic order.
-
-Repair operates on the one master order and protected prefixes. It does not create independently repaired dataset copies for individual target-size rungs.
-
-## MVSTATE2 restart boundary
-
-MVSTATE2 is the only current selector/repair continuation-state family. Its persistent bundle is compact and reconstructible from the selected prefix plus authenticated primitive identities.
-
-Persisted state may include:
-
-- selected order/prefix identity;
-- per-family witness multiplicity and covered mass;
-- obligation and correlation counts;
-- representative utility/state required by the current exact continuation contract;
-- manifest identities binding dataset/domain, MVIDX, policy, ordering, and schema.
-
-Ephemeral lazy queues and product-scale candidate marginal arrays are reconstructed rather than treated as durable authority.
-
-Restoration authenticates payloads and recomputes continuation invariants from the selected prefix. State from unsupported historical generations is not deserialized or migrated into current authority; the current state is reconstructed from current inputs or the campaign is re-prepared.
-
-## MVQUAL independent execution
-
-Same-prefix MVQUAL jobs are independent and may execute concurrently. Their completion order is non-authoritative; persisted comparison order is canonical.
-
-MVQUAL may share authenticated primitive sparse inputs but recomputes the hard predicates independently of selector/repair counters. Parallelism, vectorization, or cache reuse cannot turn selector-internal state into qualification evidence.
+Provider retirement is owned by these scopes. Garbage-collection timing, a live provider cache, or ad hoc allocator cleanup are not substitutes, and an evaluation exception still closes the provider it opened.
 
 ## Target-size funnel materialization
 
@@ -1455,7 +1237,7 @@ A performance change is reviewed against representative target-scale work. Evide
 - output/content digests;
 - exact scientific-record equality or the explicitly declared tolerance contract.
 
-Sequential-authority algorithms are checked at sufficient state granularity to detect drift—for example MVSEL2 accepted ranks, REPAIR2 swap trace/state, and MVIDX canonical sparse arrays.
+Sequential-authority algorithms are checked at sufficient state granularity to detect drift—for example the canonical training/evaluation orders, the common-preparation identity, and the reducer state transitions.
 
 Detailed before/after measurements, failed optimization experiments, release qualification results, and chronology belong in benchmarks/audits/history rather than the current architecture.
 
@@ -1474,21 +1256,21 @@ source evidence and labels
     -> eligibility / conditions / evidence roles
     -> fold- or final-training domain
     -> DATA7 fitted selection inputs
-    -> FEAS1
-    -> MVIDX1
-    -> MVSEL2
-    -> REPAIR2 / MVSTATE2
-    -> MVQUAL
-    -> TargetSizeStudyPolicy
-    -> selected protocol-global target size
-    -> domain-local selected target prefixes
-    -> training / checkpoint selection
-    -> held-out protocol validation
-    -> final committee / deployment
-    -> calibration / activated locked tests / observable validation
+    -> P_train / M3 target-size development split
+    -> canonical training order pi_train and evaluation ladder M1 subset M2 subset M3
+    -> one common target-size preparation
+    -> paired optimizer-seed screen
+    -> target-size reducer
+    -> N_selected and T_selected
+    -> post-selection cross-validation on exactly T_selected
+    -> fresh final production on the complete T_selected
+    -> currentness-fenced publication
 ```
 
-There is no branch from this graph to MVSEL1, REPAIR1, MVSTATE-REUSE1, MVMIGRATE, ADAPT-MIGRATE, generated-size rescue, or a second DATA7 membership selector.
+There is no branch from this graph to a retired per-domain multi-view selection
+chain, a generated-size rescue, or a second membership selector. Retired derived
+target-size state is rejected with an actionable destructive reset requirement
+rather than migrated.
 
 ## Scientific decision ownership
 
@@ -1500,13 +1282,14 @@ There is no branch from this graph to MVSEL1, REPAIR1, MVSTATE-REUSE1, MVMIGRATE
 | evidence roles and fold domains | DATA5 partition contracts | cohorts, independence evidence, purge rules | development/monitor/CV/calibration/test roles and authorized training domains | target ranking |
 | descriptors/difficulty inputs | DATA6 contracts | authorized domain evidence, frozen foundation model where applicable | raw/blinded descriptor and prediction products | target membership |
 | fitted selection inputs | DATA7 contracts | one authorized fold/final training domain | fitted transforms/metrics, E0 fits, objective/weights, difficulty and condition/provenance inputs | target-membership order or target size |
-| full-pool feasibility | FEAS1 | eligible candidates, hard obligations, exact coverage primitives | feasibility/fragility evidence | subset ranking |
-| exact sparse neighborhood relation | MVIDX1 | authenticated feature families, scaling, radii, candidate/reference identities | exact sparse relation and forward runtime projection | selector policy |
-| target ordering | MVSEL2 | DATA7 inputs, FEAS1/MVIDX1, selector policy | one deterministic progressive order per domain | independent qualification, target size |
-| repaired target ordering | REPAIR2 | MVSEL2 order/state, hard obligations, repair policy | one authoritative repaired master order per domain | target-size choice |
-| continuation state | MVSTATE2 | authoritative selected prefix and primitive identities | reconstructible compact continuation state | complete candidate marginal arrays, migration |
-| independent hard qualification | MVQUAL | authenticated primitive sparse inputs and requested prefixes | independently recomputed hard coverage/obligation evidence | scientific ranking or size choice by itself |
-| scientific target size | `TargetSizeStudyPolicy` | common qualified size population and authorized development/model-selection evidence | typed target-size decision | monitor cardinalities, held-out CV evaluation, locked tests |
+| target-size development split | target-size experiment definition | canonical frame authority, neutral substrate, target-size policy | one `P_train`/`M3` split | training order, size choice |
+| canonical training order | `pi_train` owner | the split plus the configured training-order policy | one deterministic order whose prefixes are candidate subsets | evaluation populations, size choice |
+| canonical evaluation ladder | `pi_eval` owner | the split plus the configured evaluation-order policy | nested direct populations `M1 subset M2 subset M3` | training membership, size choice |
+| common target-size preparation | `TargetSizeCommonPreparation` | `P_train` and the frozen foundation/training protocol | one preparation identity shared by every size and seed | any per-size or per-seed variation |
+| scientific target size | the one target-size reducer | paired optimizer-seed screen evidence at matched fidelity | typed terminal outcome: `N_selected` or typed scientific failure | monitor cardinalities, held-out CV evaluation, locked tests |
+| current selected set | `CampaignStore` terminal projection | authenticated reducer state and training order | `N_selected` bound to the exact `T_selected` membership digest | re-deciding the size, post-selection acceptance |
+| post-selection method acceptance | post-selection cross-validation owner | exactly `T_selected`, protected relations, configured `K >= 2` and CV seeds | all-required-fold target-only acceptance verdict | choosing or changing `N_selected` |
+| fresh final production | final-production owner | the accepted method and the complete exact `T_selected` | published production run under `[training].max_num_epochs` | target-size or CV authority |
 | target online monitor | `OnlineTargetMonitorPolicy` | DATA5-authorized monitor domain | deterministic common target monitor | target-size population |
 | replay monitor | `ReplayMonitorPolicy` | authorized replay evidence | deterministic replay monitor | target-size population |
 | training/checkpoint selection | current training/checkpoint specifications | frozen protocol, selected domain-local target prefix, replay, monitors | selected checkpoints and complete evidence | held-out fold as checkpoint controller |
@@ -1528,115 +1311,73 @@ DATA7 is the last fitted-preparation authority before multi-view subset construc
 - condition, provenance, event, environment, and diversity inputs needed by subset construction;
 - immutable identities linking those products to the domain and protocol.
 
-DATA7 does **not** publish an independent quota/FPS membership decision, a second target-membership ladder, or a target-size decision. Representative coverage, diversity/FPS, environment coverage, protected events, difficulty, and condition balance are expressed as inputs, hard obligations, or objective terms of the one MVSEL2 policy.
+DATA7 does **not** publish an independent quota/FPS membership decision, a second target-membership ladder, or a target-size decision. Representative coverage, diversity/FPS, environment coverage, protected events, difficulty, and condition balance are expressed as inputs to the one canonical training order.
 
-After target size is frozen, target-size-controlled DATA7 materialization in every final-development and CV gradient-training domain consumes the authenticated prescribed membership `R_d[:N_selected]`. A `TrainingSelectionPlan` used to record that prescribed materialization is a consumer record, not an independent selector: the quota/FPS selector is not invoked and cannot replace the REPAIR2 prefix.
+After the target size is frozen, post-selection materialization consumes exactly `T_selected = pi_train[:N_selected]`. A `TrainingSelectionPlan` used to record that materialization is a consumer record, not an independent selector.
 
 This boundary prevents two selectors from producing incompatible notions of the target set while preserving the useful fitted/statistical information accumulated in DATA7.
-
-## One current multi-view chain
-
-### FEAS1 and MVIDX1
-
-FEAS1 diagnoses whether the complete authorized candidate pool can satisfy the frozen hard support and obligation predicates. It does not weaken those predicates to make a requested size feasible.
-
-MVIDX1 owns the exact sparse neighborhood relation used by the selector/repair/qualification family. Scientific identity binds candidate/reference order, feature-family/scaling/radius semantics, and exact sparse content. Execution choices such as worker count, chunking, inversion strategy, mmap layout, or queue depth are reconstructible realization details and cannot change scientific identity.
-
-### MVSEL2
-
-MVSEL2 is the sole current target-ordering authority. It produces one deterministic progressive order per training domain under the frozen lexicographic scientific policy. The implementation may use exact forward/lazy acceleration, but any acceleration must preserve the same authoritative candidate choices and FP64 scientific decision semantics.
-
-### REPAIR2 and MVSTATE2
-
-REPAIR2 is the sole current repair authority. It produces one authoritative repaired order per domain. Candidate rungs are prefix views of that one order; separate rungs are not independently repaired datasets.
-
-MVSTATE2 is authenticated, compact, reconstructible continuation state. It binds the dataset/domain, candidate and family order, MVIDX identity, weights, obligations, correlation units, selector/repair policy, selected prefix, and schema/version identity. It is not a migration envelope for superseded selector state.
-
-### MVQUAL
-
-MVQUAL independently verifies hard coverage and obligation predicates for required prefixes. Selector/repair internal counters are not accepted as independent qualification evidence. MVQUAL may reuse authenticated primitive sparse inputs while recomputing the relevant predicates through its own verification path.
 
 ## Target-size authority
 
 ### Distinct size concepts
 
-For required training domain \(d\),
+Let \(N_{\mathrm{available}}=|P_{\mathrm{train}}|\) be the size of the target-training pool. The candidate ladder is configured, not frozen in schema: a contiguous power range with an explicit configured ceiling,
 
 $$
-N_{\mathrm{available},d}=|\mathcal D_{\mathrm{eligible},d}|.
+\mathcal N_0=\{2^{p}: p_{\min}\le p\le p_{\max}\}.
 $$
 
-The nominal scientific target-size population is
+The materializable population is
 
 $$
-\mathcal N_0=\{128,256,512,1024,2048,4096,8192,16384\}.
+\mathcal N_M=\{N\in\mathcal N_0: N\le N_{\mathrm{available}}\},
 $$
 
-The common materializable population across all required final-development and cross-validation gradient-training domains is
+and the qualified population \(\mathcal Q\subseteq\mathcal N_M\) is the subset admitted by the configured target-size policy for the current experiment definition. The selected size must satisfy \(N_{\mathrm{selected}}\in\mathcal Q\).
+
+`N_available`, a monitor cardinality, a replay cardinality, or an implementation batch/budget count can never become `N_selected` through numeric coincidence. There is no hidden scientific ceiling: the ladder and its ceiling are configuration.
+
+### One membership, one protocol-global size
+
+Every candidate is an exact prefix of the one canonical training order,
 
 $$
-\mathcal N_M=\left\{N\in\mathcal N_0: N\le \min_d N_{\mathrm{available},d}\right\}.
+T_N=\pi_{\mathrm{train}}[:N],
 $$
 
-Independent MVQUAL evidence defines
+so frame membership is a global property of the experiment rather than a per-domain construction. `N_selected` is one protocol hyperparameter, and the exact membership `T_selected` is frozen with it. Post-selection cross-validation validates the training method on that already-frozen set; held-out fold performance does not choose it.
 
-$$
-\mathcal Q=\{N\in\mathcal N_M:\text{all frozen hard requirements pass in every required domain}\}.
-$$
+Because all candidates are prefixes of one order, increasing `N` only adds frames. A qualification predicate evaluated on those prefixes therefore cannot regress solely because `N` grows, and a pass/fail/pass sequence is an invariant violation that must fail closed.
 
-The selected target-training size must satisfy
+## Target-size screen
 
-$$
-N_{\mathrm{selected}}\in\mathcal Q\subseteq\mathcal N_0.
-$$
-
-`N_available`, a monitor cardinality, a replay cardinality, or an implementation batch/budget count can never become `N_selected` through numeric coincidence.
-
-### Domain-local membership and protocol-global size
-
-Each fold/final training domain constructs its own leakage-safe repaired order \(\pi_d\) from only evidence authorized for that domain. For a materializable rung,
-
-$$
-D_{d,N}=\pi_d[:N].
-$$
-
-The actual frame membership is therefore domain-local. The final `N_selected` is one protocol hyperparameter shared across every required training domain. Cross-validation validates the complete protocol containing that already-frozen size; held-out fold performance does not choose it.
-
-### Hard-coverage monotonicity
-
-Because all rungs are prefixes of one repaired order, increasing \(N\) only adds candidates. Under a fixed exact hard-coverage predicate, satisfaction cannot regress solely because \(N\) grows. Qualified sizes therefore form a contiguous suffix of the materializable ladder.
-
-A pass/fail/pass sequence is an invariant violation in nesting, identity, qualification, or numerical realization. The size funnel must fail closed rather than work around such a pattern.
-
-## Target-size study
-
-`TargetSizeStudyPolicy` is the sole scientific target-size owner. It consumes only authorized target-side development/model-selection evidence. Replay semantics/monitor identity may remain bound through the frozen training protocol, but replay metric values are diagnostics and cannot rank, qualify, reject, or tie-break target sizes. Held-out CV evaluation folds and locked tests remain unavailable to the size decision.
+The reducer is the sole scientific target-size owner. It consumes only authorized target-side development/model-selection evidence. Replay semantics and monitor identity may remain bound through the frozen training protocol, but replay metric values are diagnostics and cannot rank, qualify, reject, or tie-break target sizes. Post-selection cross-validation folds and locked tests remain unavailable to the size decision.
 
 ### Exact fidelity continuation
 
 Each candidate follows one authenticated continuation trajectory:
 
 ```text
-foundation -> coarse n1 -> short n2 -> final screen n3
+foundation -> n1 / M1 -> n2 / M2 -> n3 / M3
 ```
 
-The short screen authenticates the exact coarse model/optimizer/RNG parent; the final screen authenticates the short parent. `0 < n1 < n2 < n3` are the screening boundaries, while fresh production uses an independent positive maximum `n` with no required ordering against `n3`. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
+Each boundary authenticates the exact model/optimizer/RNG parent of its predecessor. `0 < n1 < n2 < n3` are the screening boundaries, while fresh production uses an independent positive `[training].max_num_epochs` with no required ordering against `n3`. Candidates share the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, common preparation, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default it to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
 
-At every target-size boundary the endpoint itself is authoritative: `S(N,n1)`, `S(N,n2)`, and `S(N,n3)` are evaluated at matched fidelity. A better earlier checkpoint cannot replace the prescribed endpoint. This is distinct from post-selection production checkpoint selection, where `N_selected` is fixed and the checkpoint epoch may be optimized over the admissible trajectory.
+At every boundary the endpoint itself is authoritative: `S(N,n1)`, `S(N,n2)`, and `S(N,n3)` are evaluated at matched fidelity on the direct rung population `M1`, `M2`, `M3`. A better earlier checkpoint cannot replace the prescribed endpoint. This is distinct from post-selection production checkpoint selection, where `N_selected` is fixed and the checkpoint epoch may be optimized over the admissible trajectory.
 
-Ordinary target-success early stopping is disabled during the size experiment because candidates must reach comparable fidelity boundaries. Every expected candidate/seed produces exactly one stage outcome: strict successful endpoint evidence or explicit authenticated candidate-specific numerical/scientific failure evidence. Generic execution/resource/input/schema/lineage failures remain campaign errors. Normal production/CV stopping resumes after target size is frozen.
+Ordinary target-success early stopping is disabled during the size experiment because candidates must reach comparable fidelity boundaries. Every expected candidate/seed produces exactly one stage outcome: strict successful endpoint evidence, or explicit authenticated candidate-specific numerical/scientific failure evidence. Generic execution/resource/input/schema/lineage failures remain campaign errors. Normal production stopping resumes after the target size is frozen.
 
 ### Public orchestration boundary
 
-The TRAIN2 CLI is a projection of existing scientific/execution authorities, not an additional persistent lifecycle authority. Its stable lifecycle is:
+The campaign CLI is a projection of existing scientific/execution authorities, not an additional persistent lifecycle authority. Its stable lifecycle is:
 
 ```text
-prepare -> preflight -> select-target-size -> cross-validate -> train-production -> verify
+doctor -> prepare -> select-target-size -> cross-validate -> train-production
 ```
 
-`select-target-size` is the sole public owner of the restartable `n1/n2/n3` controlled-fidelity loop. It reuses one screening DATA8 matrix and one matrix-bound preflight across all configured boundaries.
+`prepare` reconstructs the current substrate and cannot select a size, train a candidate, run the reducer, or rank anything. `select-target-size` is the sole public owner of the restartable `n1/n2/n3` controlled-fidelity loop.
 
-Once `selected_target_size` is frozen, `cross-validate` and `train-production` are the two public post-selection owners. Both re-establish the current selection through the canonical terminal loader in the same invocation, so neither a caller-held object nor a persisted descendant is ever current authority. `cross-validate` owns the complete selected-only K-fold plan and the target-only acceptance verdict; `train-production` owns fresh full-`T_selected` training under the method that verdict accepted. Each materializes exactly the workload its own plan authorizes, so there is no separate selected-size `materialize` step and no second preflight boundary. Public `materialize`, `train`, and `evaluate` fail closed and direct the operator at these owners rather than reinterpreting retired production records. `status` and `advance` continue to derive semantic steps from existing authorities and receipts; they do not write a second scientific state machine.
+Once `N_selected` is frozen, `cross-validate` and `train-production` are the two public post-selection owners. Both re-establish the current selection through the canonical terminal loader in the same invocation, so neither a caller-held object nor a persisted descendant is ever current authority. `cross-validate` owns the complete selected-only K-fold plan and the target-only acceptance verdict; `train-production` owns fresh full-`T_selected` training under the method that verdict accepted. Each materializes exactly the workload its own plan authorizes, so there is no separate `materialize` step and no second preflight boundary. `status` and `advance` derive the lifecycle from those same owners and never write a second scientific state machine.
 
 ### Successive-fidelity funnel
 
@@ -1644,16 +1385,16 @@ Let \(q=|\mathcal Q|\). Fewer than three qualified sizes is a typed failure. Oth
 
 ```text
 q >= 3
-  coarse n1:       q -> min(q,4)
-  short n2:       <=4 -> 2
-  final screen n3: 2 -> 1
+  n1 / M1: q -> min(q,4)
+  n2 / M2: <=4 -> 2
+  n3 / M3: 2 -> 1
 ```
 
 All candidates use the same authenticated ordered training-seed set, and comparisons aggregate paired seed evidence rather than unrelated stochastic realizations. Missing, duplicated, reordered, or candidate-specific seed populations invalidate the state.
 
-At `n1` and `n2`, the configurable coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric, and candidates inside that band prefer the smaller size. The independently configurable final width also defaults to 1 meV/Angstrom for `n3` ranking and fixed-ceiling material superiority. Both positive finite values are policy-identity fields, not frozen schema constants. Early screens need not satisfy the final absolute force-accuracy threshold.
+At `n1` and `n2`, the configurable coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric, and candidates inside that band prefer the smaller size. The independently configurable final width also defaults to 1 meV/Angstrom for `n3` ranking and configured-ceiling material superiority. Both positive finite values are policy-identity fields, not frozen schema constants. Early screens need not satisfy the final absolute force-accuracy threshold.
 
-At `n3`, the two finalists are ranked only by the target-size study metric under the frozen practical-equivalence rule. MVQUAL remains the sole hard target-size eligibility gate; target-threshold, replay, physical-integrity, relaxation, deployment, and other model/protocol acceptance evidence is downstream of the immutable size choice. Only complete paired successful candidates are rankable; authenticated trajectory failures remain explicit evidence and replay scores cannot affect ranking or tie-breaking.
+At `n3`, the two finalists are ranked only by the target-side metric under the frozen practical-equivalence rule. Target-threshold, replay, physical-integrity, relaxation, deployment, and other model/protocol acceptance evidence is downstream of the immutable size choice. Only complete paired successful candidates are rankable; authenticated trajectory failures remain explicit evidence and replay scores cannot affect ranking or tie-breaking.
 
 ### Typed terminal outcomes
 
@@ -1663,36 +1404,34 @@ The target-size decision is a typed result, at minimum:
 selected(N)
 insufficient_qualified_sizes
 insufficient_comparable_candidates
-nonconverged_at_fixed_ceiling
+nonconverged_at_configured_ceiling
 ```
 
 `insufficient_comparable_candidates` records the failed fidelity stage and authenticated candidate/seed failure reasons when authenticated numerical/scientific trajectory failure leaves too few complete paired candidates for a required comparison. Input/lineage/programming defects remain fail-closed exceptions.
 
-If 16,384 reaches the final comparison and remains materially better than every smaller complete finalist by more than the configured final practical-equivalence width, the result is `nonconverged_at_fixed_ceiling`. No generated/intermediate rescue size is synthesized.
+If the configured ceiling reaches the final comparison and remains materially better than every smaller complete finalist by more than the configured final practical-equivalence width, the result is `nonconverged_at_configured_ceiling`. No generated or intermediate rescue size is synthesized.
 
 Exhaustively training all sizes to the final fidelity to measure survivor recall is release/algorithm qualification, not the ordinary scientific production path.
 
 ## Bounded materialization and execution ownership
 
-The fixed scientific ladder does not imply eight independent product-scale copies. Per training domain, the intended materialization model is:
+The configured candidate ladder does not imply one independent product-scale copy per rung. Per training domain, the intended materialization model is:
 
 ```text
 one fitted selection-input authority
-one exact neighborhood authority
-one MVIDX authority
-one MVSEL2/REPAIR2 master order
+one canonical training order pi_train
+one common target-size preparation
 prefix metadata for candidate rungs
-MVQUAL evidence for required prefixes
 training artifacts only for candidates authorized to train
 ```
 
-Descriptor, sparse-graph, selector, and repair caches are reconstructible and resource-bounded. Out-of-core inversion, memory mapping, chunking, work queues, NUMA placement, and concurrency are execution strategies. They may change work/span, RSS, VRAM, scratch, or wall time; they may not change scientific membership, hard coverage, rank order, paired-seed comparison, or decision authority.
+Descriptor, feature, and preparation caches are reconstructible and resource-bounded. Out-of-core inversion, memory mapping, chunking, work queues, NUMA placement, and concurrency are execution strategies. They may change work/span, RSS, VRAM, scratch, or wall time; they may not change scientific membership, hard coverage, rank order, paired-seed comparison, or decision authority.
 
 This bounded representation is an architectural requirement because duplicating product-scale state per rung makes the fixed ladder scale roughly with rung count and is not an acceptable realization of the scientific policy.
 
 ## Superseded campaign generations
 
-Current architecture does not provide MVMIGRATE/ADAPT-MIGRATE state machines, legacy construction modes, or alternate v1 selector/repair execution. Artifacts from unsupported generations fail clearly and require campaign re-preparation under the current architecture.
+Current architecture does not provide migration state machines, legacy construction modes, or alternate retired selection execution. A workspace holding retired derived target-size state is detected before any semantic deserialization, candidate or checkpoint reuse, or descendant publication, and is refused with an explicit destructive reset/reprepare requirement. Retired records are quarantined under a namespace no current loader reads rather than translated.
 
 Historical schemas may remain under `docs/history/mlff/` when needed to interpret durable evidence. Their presence never creates current product compatibility requirements.
 
@@ -1720,8 +1459,8 @@ Physical-observable evidence has one explicit role such as `training_diagnostic`
 A future extension is compatible with this architecture only when it preserves the ownership graph above or explicitly revises it. In particular:
 
 - a new feature/provider may enrich DATA4/DATA6/DATA7 inputs but cannot create a second membership selector;
-- a new subset objective may extend MVSEL2 policy only through an explicit scientific design revision that preserves deterministic single-owner ranking;
-- a new size-screen metric may enter `TargetSizeStudyPolicy` only with an explicit evidence role and leakage analysis;
+- a new training-order feature may extend the `pi_train` policy only through an explicit scientific design revision that preserves one deterministic order;
+- a new size-screen metric may enter the target-size policy only with an explicit evidence role and leakage analysis;
 - a new acceleration may change execution representation only after exactness/resource qualification against the same scientific semantics;
 - a new campaign generation is not entitled to automatic migration support;
 - a custom atomwise/auxiliary loss defines a different `TrainingProtocolIdentity` and requires its own qualification rather than silently modifying the current protocol.
@@ -1733,14 +1472,14 @@ The current MLFF subsystem follows these durable rules:
 1. independent evidence remains independent;
 2. the complete training protocol is the comparison unit;
 3. fitted preparation and target membership are separate authorities;
-4. MVSEL2/REPAIR2/MVSTATE2/MVQUAL are the only current multi-view chain;
+4. one canonical training order and one common preparation define every candidate;
 5. target size and monitor cardinalities are typed, distinct policy families;
-6. frame membership is domain-local while selected target size is protocol-global;
-7. one repaired master order defines every candidate prefix and hard coverage is monotone with increasing prefix size;
+6. frame membership and the selected target size are both protocol-global and frozen together;
+7. every candidate is an exact prefix of the one training order, so candidate sets are nested by construction;
 8. the target-size experiment uses development/model-selection evidence, configured `n1/n2/n3` continuation on a screen-local horizon `n3`, paired seeds, and typed non-convergence/failure outcomes; fresh selected-size production owns the independent horizon `n`;
-9. MVQUAL is the sole hard target-size eligibility authority; downstream model/protocol acceptance cannot alter the immutable size choice;
+9. the reducer is the sole target-size authority; post-selection cross-validation accepts the method and can never re-choose the size;
 10. locked tests remain sealed until the frozen protocol/committee activation boundary;
-11. unsupported old campaigns are re-prepared rather than migrated;
+11. retired derived target-size state is rejected before reuse and re-prepared rather than migrated;
 12. execution is resource-bounded and may not alter scientific semantics.
 
 # References

@@ -122,7 +122,7 @@ class FinalGpu1Policy:
                 "FINAL-GPU1 cannot directly authorize a generated-default change; a later policy revision is required."
             )
         if self.authority_version != FINAL_GPU1_VERSION:
-            raise TrainingDataInputError("Unsupported stale FINAL-GPU1 authority version; rebuild for target-size v5.")
+            raise TrainingDataInputError("Unsupported stale FINAL-GPU1 authority version; rebuild for the current target-size generation.")
         if groups[0] != FINAL_GPU1_REQUIRED_PASS_GATES:
             raise TrainingDataInputError("FINAL-GPU1 v4 required-pass matrix changed.")
         object.__setattr__(self, "required_pass_gates", groups[0])
@@ -178,7 +178,7 @@ class FinalGpu1Policy:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "FinalGpu1Policy":
         if payload.get("schema") != FINAL_GPU1_POLICY_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported stale FINAL-GPU1 policy schema; rebuild for target-size v5.")
+            raise TrainingDataSerializationError("Unsupported stale FINAL-GPU1 policy schema; rebuild for the current target-size generation.")
         if str(payload.get("authority_version")) != FINAL_GPU1_VERSION:
             raise TrainingDataSerializationError("FINAL-GPU1 policy schema/version mismatch.")
         result = cls(
@@ -455,7 +455,7 @@ class FinalGpu1QualificationRecord:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "FinalGpu1QualificationRecord":
         if payload.get("schema") != FINAL_GPU1_QUALIFICATION_SCHEMA:
-            raise TrainingDataSerializationError("Unsupported stale FINAL-GPU1 qualification schema; rebuild for target-size v5.")
+            raise TrainingDataSerializationError("Unsupported stale FINAL-GPU1 qualification schema; rebuild for the current target-size generation.")
         if payload.get("authority_version") != FINAL_GPU1_VERSION:
             raise TrainingDataSerializationError("Unsupported FINAL-GPU1 qualification authority version.")
         foundations = payload.get("foundation_model_sha256", {})

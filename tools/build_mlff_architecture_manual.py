@@ -11,7 +11,7 @@ ORDER = [
     "20_data_contracts.md",
     "30_statistical_design.md",
     "40_training_evaluation.md",
-    "50_target_multiview.md",
+    "50_target_size_selection.md",
     "60_execution_performance.md",
     "80_ownership_and_decisions.md",
     "90_references.md",

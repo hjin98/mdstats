@@ -12,7 +12,7 @@ The current policy families are type-distinct:
 ```text
 OnlineTargetMonitorPolicy
 ReplayMonitorPolicy
-TargetSizeStudyPolicy
+ResolvedTargetSizePolicy
 ```
 
 Their records SHALL remain distinct even when two cardinalities happen to share an integer value.
@@ -127,7 +127,7 @@ Binds at least:
 
 ## 6. Relationship to target-size study
 
-`TargetSizeStudyPolicy` may consume the common target and replay monitors as authorized development/model-selection evidence.
+The target-size reducer may consume the common target and replay monitors as authorized development/model-selection evidence.
 
 The target-size study does not own their construction and cannot change their membership between size candidates. Every size candidate/seed sees the same monitor identities so comparison is paired with respect to evaluation evidence.
 

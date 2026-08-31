@@ -80,7 +80,7 @@ campaign performance claim.
 
 # Evidence
 
-- Specification: `docs/specs/training_data/mlff_perf_p1_shared_exact_selection_spec.{md,pdf}`.
+- Specification: `docs/history/mlff/retired_specs/mlff_perf_p1_shared_exact_selection_spec.{md,pdf}`.
 - Architecture: `docs/arch_manuals/mlff_training_data_architecture.{md,pdf}`.
 - Revision note: `ARCHITECTURE_NOTES_MLFF_REV46.{md,pdf}`.
 - CPU evidence: `audits/analysis/mlff_perf_p1_lta_cloud_cpu_2026-08-15.{json,md,pdf}`.

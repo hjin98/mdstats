@@ -75,7 +75,7 @@ Its current responsibilities include:
 - autocorrelation-aware complete-frame blocks and role feasibility;
 - fixed outer roles and independent CV job families;
 - fold/final-domain fitted descriptors, transforms, metrics, E0, objective/weight, and difficulty evidence;
-- exact multi-view feasibility/indexing, MVSEL2 ordering, REPAIR2 master order, MVSTATE2 continuation, and MVQUAL qualification;
+- the target-size development split, the canonical training/evaluation orders, the common preparation, and the paired optimizer-seed screen;
 - one protocol-global target-size decision with domain-local membership;
 - MACE target/replay artifacts and explicit exposure realization;
 - replay-retention and checkpoint admissibility;
@@ -121,9 +121,9 @@ source bytes / controls / trajectory collections
   -> development / monitor / CV / calibration / locked roles
   -> required fold/final training domains
   -> domain-local DATA6/DATA7 fitted preparation
-  -> FEAS1 + MVIDX1
-  -> MVSEL2 -> REPAIR2 / MVSTATE2
-  -> independent MVQUAL prefix qualification
+  -> P_train / M3 split -> pi_train / pi_eval
+  -> common target-size preparation
+  -> paired optimizer-seed screen -> target-size reducer
   -> common qualified target-size population
   -> target-size study using authorized development/model-selection evidence
   -> one frozen protocol-global N_selected

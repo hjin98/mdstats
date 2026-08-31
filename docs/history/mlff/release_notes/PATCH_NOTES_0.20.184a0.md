@@ -53,5 +53,5 @@ PERF-P2R is implemented without consuming deferred GPU evidence. Campaign traini
 
 On the bounded deterministic DATA8 fixture, 15 cache-hit builds exactly reproduce the fresh scientific authority. Median preparation wall time falls from 79.696 ms to 17.333 ms (4.598x, 78.25% lower). This is CPU/control-plane evidence only. Whole-funnel MACE/GPU timing, VRAM/utilization, resumed endpoint parity, and SIZE-FIDELITY1 calibration remain FINAL-GPU1 work.
 
-The normative execution specification is `docs/specs/training_data/mlff_perf_p2r_successive_fidelity_execution_spec.md`. PERF-P3 is now the next implementation gate.
+The normative execution specification is `docs/history/mlff/retired_specs/mlff_perf_p2r_successive_fidelity_execution_spec.md`. PERF-P3 is now the next implementation gate.
 
