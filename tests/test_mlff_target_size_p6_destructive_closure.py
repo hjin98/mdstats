@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import tomllib
 from pathlib import Path
 
@@ -612,9 +613,7 @@ def test_p6_r8_transitional_storage_fails_closed_on_consequential_tiers(tmp_path
     """Consequential storage tiers fail closed to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1."""
     from mdstats.training_data._campaign_cli_core import (
         CampaignCliError,
-        command_archive,
         command_cleanup,
-        command_deduplicate,
     )
 
     config, _workspace = build_selected_campaign(tmp_path)
@@ -629,15 +628,9 @@ def test_p6_r8_transitional_storage_fails_closed_on_consequential_tiers(tmp_path
         with pytest.raises(SystemExit):
             cli.main(["--config", str(config), "storage", "cleanup", "--tier", tier])
 
-    args_dedup = argparse.Namespace(config=str(config), apply=True)
-    with pytest.raises(CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
-        command_deduplicate(args_dedup)
     with pytest.raises(SystemExit):
         cli.main(["--config", str(config), "storage", "deduplicate", "--apply"])
 
-    args_archive = argparse.Namespace(config=str(config), archive_action="create")
-    with pytest.raises(CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
-        command_archive(args_archive)
     with pytest.raises(SystemExit):
         cli.main(["--config", str(config), "storage", "archive", "create"])
 
@@ -683,48 +676,84 @@ def test_p6_r8_final_production_completion_distinct_digest_and_verification(tmp_
         store.close()
 
 
-def test_p6_r9_storage_structural_cleanup_authorization():
-    """Structural invariant: cleanup has only safe/cache, no retired stage/path hooks."""
-    import inspect
+def test_p6_r10_configuration_and_help_truthfulness():
+    """R10-A: Generated config, example, and GUIDE_TEXT describe only safe|cache."""
     from mdstats.training_data import _campaign_cli_core as cli_core
 
-    assert cli_core._MANUAL_RECLAMATION_TIERS == ("safe", "cache")
-
-    parser = cli_core.build_parser()
-    storage_sub = next(
-        action for action in parser._actions
-        if getattr(action, "dest", None) == "command"
-    ).choices["storage"]
-
-    cleanup_parser = next(
-        action for action in storage_sub._actions
-        if getattr(action, "dest", None) == "storage_command"
-    ).choices["cleanup"]
-
-    tier_action = next(
-        action for action in cleanup_parser._actions
-        if "--tier" in getattr(action, "option_strings", [])
+    raw_config = cli_core._config_template(
+        workspace="work",
+        training_root="training",
+        foundation_model="foundation.model",
+        replay_train="replay-train.xyz",
+        replay_monitor="replay-monitor.xyz",
+        replay_true_labels="true-labels",
     )
+    assert "storage cleanup --tier safe|cache." in raw_config
+    assert "safe|cache|recompute" not in raw_config
+    assert "recompute|compact|archive" not in raw_config
+
+    example_text = Path("campaign.toml.example").read_text(encoding="utf-8")
+    assert "storage cleanup --tier safe|cache." in example_text
+    assert "safe|cache|recompute" not in example_text
+    assert "recompute|compact|archive" not in example_text
+
+    guide = cli_core.GUIDE_TEXT
+    assert "storage report                         read-only inventory" in guide
+    assert "storage cleanup --tier safe --dry-run  inspect zero-loss cleanup" in guide
+    assert "storage cleanup --tier cache --dry-run inspect owner-proven cache cleanup" in guide
+    assert "storage cleanup --tier safe|cache      apply the selected transitional tier" in guide
+    assert "CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1" in guide
+    assert "storage cleanup --tier recompute" not in guide
+    assert "storage cleanup --tier compact" not in guide
+    assert "storage cleanup --tier archive" not in guide
+    assert "storage archive create" not in guide
+    assert "storage deduplicate --apply" not in guide
+
+
+def test_p6_r10_cli_namespace_and_legacy_cleanup_removal(tmp_path: Path):
+    """R10-B: Top-level cleanup is rejected and _normalize_legacy_storage_argv is absent."""
+    from mdstats.training_data import _campaign_cli_core as cli_core
+
+    assert not hasattr(cli_core, "_normalize_legacy_storage_argv")
+    parser = cli_core.build_parser()
+    sub_action = next(a for a in parser._actions if getattr(a, "dest", None) == "command")
+    assert "cleanup" not in sub_action.choices
+    assert "archive" not in sub_action.choices
+    assert "deduplicate" not in sub_action.choices
+
+    storage_sub = sub_action.choices["storage"]
+    storage_action = next(a for a in storage_sub._actions if getattr(a, "dest", None) == "storage_command")
+    assert set(storage_action.choices) == {"report", "cleanup"}
+
+    cleanup_parser = storage_action.choices["cleanup"]
+    tier_action = next(a for a in cleanup_parser._actions if "--tier" in getattr(a, "option_strings", []))
     assert set(tier_action.choices) == {"safe", "cache"}
-    assert "recompute" not in tier_action.choices
-    assert "compact" not in tier_action.choices
-    assert "archive" not in tier_action.choices
 
-    # Inspect cleanup implementation source
-    cleanup_src = inspect.getsource(cli_core._campaign_cleanup)
-    assert 'evaluate' not in cleanup_src or '_effective_stage' not in cleanup_src
-    assert 'verify' not in cleanup_src or '_effective_stage' not in cleanup_src
-    assert 'data7' not in cleanup_src
-    assert 'data8' not in cleanup_src
-    assert 'preflight' not in cleanup_src
+    config, _workspace = build_selected_campaign(tmp_path)
+    with pytest.raises(SystemExit):
+        cli_core.main(["cleanup", "--tier", "safe"])
+
+    assert cli_core.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
 
 
-def test_p6_r9_storage_functional_retention_and_historical_path_trap(tmp_path: Path):
-    """Historical path trap: unowned retired paths are retained, not deleted by pathname."""
+def test_p6_r10_safe_vs_cache_behavioral_split_and_frame_cache_retention(tmp_path: Path):
+    """R10-C: Safe cleanup has zero cache eviction; cache tier removes inactive model cache, retains frame-cache."""
     config, _workspace = build_selected_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
 
-    # Place unowned directories with retired historical names inside workspace
+    # 1. Inactive-run checkpoint-model-cache
+    run_dir = paths.runs / "run-inactive"
+    run_dir.mkdir(parents=True)
+    model_cache = run_dir / "checkpoint-model-cache"
+    model_cache.mkdir()
+    (model_cache / "model.pt").write_bytes(b"model-cache-payload")
+
+    # 2. Frame-cache
+    frame_cache = paths.internal / "frame-cache"
+    frame_cache.mkdir(parents=True, exist_ok=True)
+    (frame_cache / "cache.mmap").write_bytes(b"frame-cache-payload")
+
+    # 3. Historical-path traps
     hist_dirs = [
         paths.internal / "data7-cache",
         paths.internal / "data8-fixed-cache",
@@ -732,22 +761,109 @@ def test_p6_r9_storage_functional_retention_and_historical_path_trap(tmp_path: P
     ]
     for d in hist_dirs:
         d.mkdir(parents=True, exist_ok=True)
-        (d / "payload.bin").write_bytes(b"historical-content")
+        (d / "payload.bin").write_bytes(b"historical")
 
-    # Place a genuinely current reconstructible cache
-    frame_cache = paths.internal / "frame-cache"
-    frame_cache.mkdir(parents=True, exist_ok=True)
-    (frame_cache / "cache.mmap").write_bytes(b"reconstructible")
-
-    # Safe cleanup: preserves historical paths and frame cache
+    # Safe cleanup: all caches and historical paths are retained
     assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
+    assert model_cache.is_dir(), "safe cleanup must not evict checkpoint-model-cache"
+    assert frame_cache.is_dir(), "safe cleanup must retain frame-cache"
     for d in hist_dirs:
-        assert (d / "payload.bin").is_file(), f"{d} must be retained"
-    assert (frame_cache / "cache.mmap").is_file()
+        assert (d / "payload.bin").is_file(), f"safe cleanup must retain historical path {d}"
 
-    # Cache cleanup: preserves uncertified historical paths, removes genuinely current frame-cache
+    # Cache cleanup: removes inactive checkpoint-model-cache; retains frame-cache and historical paths
     assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+    assert not model_cache.exists(), "cache cleanup must remove inactive checkpoint-model-cache"
+    assert frame_cache.is_dir(), "cache cleanup must retain frame-cache in P6"
     for d in hist_dirs:
-        assert (d / "payload.bin").is_file(), f"{d} must not be deleted by pathname alone"
-    assert not frame_cache.exists(), "current frame-cache must be removed by cache tier"
+        assert (d / "payload.bin").is_file(), f"cache cleanup must retain historical path {d}"
+
+
+def test_p6_r10_active_run_cache_retention_real_owner(tmp_path: Path):
+    """R10-C / Section 9.4: Active-run checkpoint-model-cache is retained during live execution."""
+    config, _workspace = build_selected_campaign(tmp_path)
+    cfg, paths = cli._load_config(config)
+
+    # 1. Create a live active run with real PID
+    active_run = paths.runs / "active-screening-run"
+    active_run.mkdir(parents=True, exist_ok=True)
+    (active_run / "active_process.json").write_text(
+        json.dumps({"pid": os.getpid(), "timestamp": "2026-08-31T00:00:00Z"}),
+        encoding="utf-8",
+    )
+    active_cache = active_run / "checkpoint-model-cache"
+    active_cache.mkdir(parents=True, exist_ok=True)
+    (active_cache / "model.pt").write_bytes(b"live-active-model")
+
+    # 2. Create an inactive completed run
+    inactive_run = paths.runs / "inactive-screening-run"
+    inactive_run.mkdir(parents=True, exist_ok=True)
+    inactive_cache = inactive_run / "checkpoint-model-cache"
+    inactive_cache.mkdir(parents=True, exist_ok=True)
+    (inactive_cache / "model.pt").write_bytes(b"inactive-model")
+
+    # While active run is live, invoke storage cleanup --tier cache
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+
+    # Active run's cache is retained; inactive run's cache is deleted!
+    assert active_cache.is_dir(), "active training run cache must NOT be deleted by cleanup"
+    assert not inactive_cache.exists(), "inactive run cache must be removed by cache cleanup"
+
+    # Finish the active run by removing active_process.json
+    (active_run / "active_process.json").unlink()
+
+    # Now that the run is inactive, another cache cleanup removes its cache
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+    assert not active_cache.exists(), "now-inactive run cache must be removed by cache cleanup"
+
+
+def test_p6_r10_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Path):
+    """R10-D: storage report contains no retired STOR policy strings and is read-only."""
+    from mdstats.training_data.storage_accounting import (
+        build_campaign_storage_report,
+        configured_protected_inputs,
+    )
+
+    config, _workspace = build_selected_campaign(tmp_path)
+    cfg, paths = cli._load_config(config)
+
+    # Populate representative directories
+    (paths.internal / "evaluation-graphs").mkdir(parents=True, exist_ok=True)
+    (paths.internal / "evaluation-graphs" / "g.bin").write_bytes(b"graph")
+
+    (paths.internal / "frame-cache").mkdir(parents=True, exist_ok=True)
+    (paths.internal / "frame-cache" / "f.bin").write_bytes(b"frames")
+
+    (paths.runs / "run-x" / "checkpoint-model-cache").mkdir(parents=True, exist_ok=True)
+    (paths.runs / "run-x" / "checkpoint-model-cache" / "m.pt").write_bytes(b"model")
+
+    (paths.internal / "content-store" / "sha256" / "ab").mkdir(parents=True, exist_ok=True)
+    (paths.internal / "content-store" / "sha256" / "ab" / "obj").write_bytes(b"content")
+
+    (paths.internal / "cold-archive").mkdir(parents=True, exist_ok=True)
+    (paths.internal / "cold-archive" / "arc.tar.gz").write_bytes(b"archive")
+
+    report = build_campaign_storage_report(
+        paths.workspace,
+        protected_inputs=configured_protected_inputs(
+            cfg, config_dir=paths.config_dir, config_path=paths.config
+        ),
+    )
+    payload = report.to_dict()
+    payload_str = json.dumps(payload)
+
+    retired_strings = [
+        "STOR1",
+        "stor2_",
+        "stor3_",
+        "stor5_",
+        "compact_after_protocol_freeze",
+        "compact_nonselected_after_protocol_freeze",
+        "compact_after_production_export",
+        "protocol_freeze",
+    ]
+    for retired in retired_strings:
+        assert retired not in payload_str, f"retired string {retired!r} found in storage report: {payload_str}"
+
+    assert payload["destructive_actions_performed"] is False
+    assert (paths.internal / "evaluation-graphs" / "g.bin").is_file()
 

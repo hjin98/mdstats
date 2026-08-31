@@ -34,12 +34,13 @@ Current-generation campaigns support two non-destructive / low-consequence clean
 
 ### Default / Safe Tier (`--tier safe`)
 - Targets only temporary scratch, aborted stage staging trees, obsolete runtime scratch after compact diagnostics, and orphaned external database records.
-- Guarantees zero loss of scientific capability, evaluation state, or training restartability.
+- Guarantees zero loss of scientific capability, evaluation state, training restartability, or acceleration caching (zero acceleration-cache eviction).
 - Every safe cleanup event appends an authenticated record to `results/cleanup-manifest.jsonl` with an empty capability-loss set.
 
 ### Cache Tier (`--tier cache`)
-- Targets independently reconstructible acceleration caches (e.g. normalized `frame-cache` and non-authoritative `checkpoint-model-cache`).
-- Removal of cache files incurs no scientific loss, but future stage execution may re-derive normalized frames from protected inputs.
+- Includes the safe tier and additionally targets independently reconstructible, non-live caches whose current owner proves they are inactive (specifically, inactive-run `checkpoint-model-cache`).
+- In P6, reusable performance caches such as normalized `frame-cache` are conservatively retained by both safe and cache tiers.
+- Removal of inactive-run model caches incurs no scientific or restart loss, but subsequent offline evaluation may re-derive model instances from retained checkpoints.
 
 ---
 

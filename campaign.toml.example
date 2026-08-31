@@ -335,7 +335,7 @@ stop_scheduling_after_failure = true
 
 [cleanup]
 # Conservative lifecycle cleanup runs automatically at current stage boundaries.
-# Manual retention is CLI-selected: storage cleanup --tier safe|cache|recompute|compact|archive.
+# Manual retention is CLI-selected: storage cleanup --tier safe|cache.
 enabled = true
 # Young temporary trees are retained to avoid racing a recently interrupted process.
 stale_age_hours = 6.0

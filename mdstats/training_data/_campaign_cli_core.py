@@ -55,14 +55,6 @@ from .campaign_target_size_state import (
     TargetSizeCampaignStateError,
     TargetSizeLifecycle,
 )
-from .storage_archive import (
-    StorageArchiveError,
-    create_cold_archive,
-    deduplicate_immutable_files,
-    prune_orphan_content_store,
-    restore_cold_archive,
-    verify_cold_archive,
-)
 
 from ._common import (
     TrainingDataSerializationError,
@@ -2227,9 +2219,6 @@ def _campaign_cleanup(
 
     _cleanup_orphan_record_storage(report, store, stale_before=stale_before)
     _cleanup_obsolete_training_runtimes(
-        report, paths, active_run_ids=active_run_ids, run_roots=run_roots
-    )
-    _cleanup_checkpoint_model_caches(
         report, paths, active_run_ids=active_run_ids, run_roots=run_roots
     )
 
@@ -5564,11 +5553,6 @@ def _manual_reclamation_capability_report(
         name: {"status": "preserved", "detail": "retained by the requested tier"}
         for name in _MANUAL_CAPABILITIES
     }
-    if "faster_frame_access" in losses or "faster_recomputation" in losses:
-        status["frame_cache_acceleration"] = {
-            "status": "lost",
-            "detail": "normalized-frame cache is removed; on-demand re-normalization occurs on next read",
-        }
     status["current_production_models"] = {
         "status": "preserved",
         "detail": "workspace production models are never deletion candidates",
@@ -5605,28 +5589,31 @@ def _manual_reclamation_add_candidate(
 def _manual_reclamation_add_cache_tier(
     report: _CampaignCleanupReport,
     paths: CampaignPaths,
+    store: CampaignStore | None = None,
 ) -> None:
-    _manual_reclamation_add_candidate(
-        report,
-        paths.internal / "frame-cache",
-        reason="manual cache tier: reconstructable normalized-frame acceleration cache",
-        cleanup_class="manual_cache",
-        preserved_capabilities=_MANUAL_CAPABILITIES,
-        capability_loss=("faster_frame_access",),
-    )
+    # Frame cache is retained by both safe and cache in P6.
     if not paths.runs.is_dir() or report.ownership_boundary is None:
         return
     authorized, detail = report.ownership_boundary.traversal_authorization(paths.runs)
     if not authorized:
         report.skipped.append(f"manual cache tier skipped run caches: {detail}: {paths.runs}")
         return
-    for run_root in sorted(paths.runs.iterdir()):
-        if not run_root.is_dir() or run_root.is_symlink():
+    run_roots = tuple(
+        child for child in paths.runs.iterdir()
+        if child.is_dir() and not child.is_symlink()
+    )
+    active_run_ids = _active_training_run_ids(
+        paths,
+        run_roots=run_roots,
+        ownership_boundary=report.ownership_boundary,
+    )
+    for run_root in sorted(run_roots):
+        if run_root.name in active_run_ids:
             continue
         _manual_reclamation_add_candidate(
             report,
             run_root / "checkpoint-model-cache",
-            reason="manual cache tier: reconstructable checkpoint-to-model cache",
+            reason="manual cache tier: reconstructable checkpoint-to-model cache for inactive run",
             cleanup_class="manual_cache",
             preserved_capabilities=_MANUAL_CAPABILITIES,
             capability_loss=("faster_checkpoint_reevaluation",),
@@ -5707,63 +5694,8 @@ def _build_manual_tier_report(
         ownership_boundary=_campaign_ownership_boundary(cfg, paths, store),
     )
     if tier == "cache":
-        _manual_reclamation_add_cache_tier(report, paths)
+        _manual_reclamation_add_cache_tier(report, paths, store)
     return report
-
-
-def _stor5_archive_directory(paths: CampaignPaths) -> Path:
-    return paths.internal / "cold-archive"
-
-
-def _stor5_latest_manifest_path(paths: CampaignPaths, store: CampaignStore) -> Path:
-    if not store.has_record("cold_archive:latest"):
-        raise CampaignCliError("No authenticated STOR5 cold archive is registered for this campaign.")
-    receipt = store.get_payload("cold_archive:latest")
-    relative = Path(str(receipt.get("manifest_relative_path", "")))
-    if relative.is_absolute() or ".." in relative.parts:
-        raise CampaignCliError("Stored cold-archive manifest locator is invalid.")
-    path = paths.workspace / relative
-    if not path.is_file():
-        raise CampaignCliError(f"Registered cold-archive manifest is missing: {path}")
-    if _sha256(path) != receipt.get("manifest_sha256"):
-        raise CampaignCliError("Registered cold-archive manifest SHA-256 mismatch.")
-    return path
-
-
-def command_deduplicate(args: argparse.Namespace) -> int:
-    """STOR5 exact-byte immutable deduplication after protocol freeze."""
-
-    raise CampaignCliError(
-        "Consequential storage deduplication is deferred to the post-P7 storage reset "
-        "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
-    )
-
-
-def command_archive(args: argparse.Namespace) -> int:
-    """STOR5 authenticated cold archive inspection."""
-
-    action = str(getattr(args, "archive_action", "verify"))
-    if action in ("create", "restore"):
-        raise CampaignCliError(
-            f"Consequential storage archive action {action!r} is deferred to the post-P7 storage reset "
-            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
-        )
-    cfg, paths = _load_config(args.config)
-    store = CampaignStore(paths.state_db)
-    manifest_path = _stor5_latest_manifest_path(paths, store)
-    if action == "verify":
-        try:
-            manifest = verify_cold_archive(manifest_path)
-        except StorageArchiveError as exc:
-            raise CampaignCliError(f"STOR5 cold archive verification failed closed: {exc}") from exc
-        print(
-            f"cold archive verified: id={manifest['archive_id']}; "
-            f"hot={_format_storage_bytes(manifest['hot_logical_bytes'])}; "
-            f"archive={_format_storage_bytes(manifest['archive_size_bytes'])}",
-            flush=True,
-        )
-        return 0
-    raise CampaignCliError(f"Unknown archive action {action!r}.")
 
 
 def command_cleanup(args: argparse.Namespace) -> int:
@@ -6586,7 +6518,7 @@ stop_scheduling_after_failure = true
 
 [cleanup]
 # Conservative lifecycle cleanup runs automatically at current stage boundaries.
-# Manual retention is CLI-selected: storage cleanup --tier safe|cache|recompute|compact|archive.
+# Manual retention is CLI-selected: storage cleanup --tier safe|cache.
 enabled = true
 # Young temporary trees are retained to avoid racing a recently interrupted process.
 stale_age_hours = 6.0
@@ -6723,9 +6655,15 @@ are rebuilt by their owning stage.
 Storage operations
 ------------------
 Use storage report for a read-only inventory. Use storage cleanup with a
-dry-run before applying cache or recompute reclamation. storage archive
-create/verify/restore provides reversible cold-archive handling, and storage
-deduplicate --apply operates only on exact immutable campaign-owned files.
+dry-run before applying safe or cache cleanup:
+
+storage report                         read-only inventory
+storage cleanup --tier safe --dry-run  inspect zero-loss cleanup
+storage cleanup --tier cache --dry-run inspect owner-proven cache cleanup
+storage cleanup --tier safe|cache      apply the selected transitional tier
+
+Consequential storage transformations (recompute, compaction, archival,
+and deduplication) are deferred to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1.
 External inputs, current scientific records, restart checkpoints, and logs
 needed for diagnosis remain protected.
 
@@ -6908,28 +6846,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _normalize_legacy_storage_argv(argv: Sequence[str] | None) -> list[str]:
-    """Map legacy top-level cleanup command into the unified hierarchy."""
-
-    tokens = list(sys.argv[1:] if argv is None else argv)
-    index = 0
-    while index < len(tokens):
-        token = tokens[index]
-        if token == "--config":
-            index += 2
-            continue
-        if token.startswith("--config="):
-            index += 1
-            continue
-        break
-    if index < len(tokens) and tokens[index] in {"cleanup"}:
-        tokens.insert(index, "storage")
-    return tokens
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(_normalize_legacy_storage_argv(argv))
+    args = parser.parse_args(argv)
     command = str(getattr(args, "command", None) or getattr(getattr(args, "func", None), "__name__", "command"))
     campaign_warning_capture = None
     try:

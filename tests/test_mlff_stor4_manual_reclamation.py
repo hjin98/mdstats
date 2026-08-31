@@ -72,17 +72,28 @@ def test_safe_and_cache_tiers_execute_and_generate_plans(tmp_path: Path) -> None
     frame_cache.mkdir(parents=True)
     (frame_cache / "cache.mmap").write_bytes(b"frames" * 1024)
 
+    run_dir = paths.runs / "run-inactive"
+    run_dir.mkdir(parents=True)
+    model_cache = run_dir / "checkpoint-model-cache"
+    model_cache.mkdir()
+    (model_cache / "cache.pt").write_bytes(b"cached-model")
+
+    # Safe tier (dry run): retains frame-cache and checkpoint-model-cache
     assert campaign_cli.command_cleanup(_args(config, tier="safe", dry_run=True)) == 0
     assert frame_cache.is_dir()
+    assert model_cache.is_dir()
     plan = json.loads((paths.results / "manual-reclamation-plan-safe.json").read_text(encoding="utf-8"))
     assert plan["requested_tier"] == "safe"
     assert plan["schema"] == "mdstats.mlff-manual-reclamation-plan.v1"
+    assert plan["capability_report"]["declared_capability_losses"] == []
 
+    # Cache tier (apply): retains frame-cache, removes inactive-run checkpoint-model-cache
     assert campaign_cli.command_cleanup(_args(config, tier="cache", dry_run=False)) == 0
-    assert not frame_cache.exists()
+    assert frame_cache.is_dir(), "frame-cache must be retained in P6"
+    assert not model_cache.exists(), "inactive checkpoint-model-cache must be removed by cache tier"
     plan_cache = json.loads((paths.results / "manual-reclamation-plan-cache.json").read_text(encoding="utf-8"))
     assert plan_cache["requested_tier"] == "cache"
-    assert "faster_frame_access" in plan_cache["capability_report"]["declared_capability_losses"]
+    assert "faster_checkpoint_reevaluation" in plan_cache["capability_report"]["declared_capability_losses"]
 
 
 def test_consequential_tiers_fail_closed_to_reset(tmp_path: Path) -> None:

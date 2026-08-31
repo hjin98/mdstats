@@ -29,12 +29,14 @@ def test_parser_exposes_the_current_lifecycle_surface() -> None:
     assert parser.parse_args(["train-production"]).func is campaign_cli.command_train_production
     storage = choices["storage"]
     storage_choices = storage._subparsers._group_actions[0].choices
-    assert tuple(storage_choices) == ("report", "cleanup", "deduplicate", "archive")
+    assert tuple(storage_choices) == ("report", "cleanup")
     assert parser.parse_args(["storage"]).func is campaign_cli.command_storage
     assert parser.parse_args(["storage", "report", "--top", "7"]).top == 7
     assert parser.parse_args(["storage", "cleanup", "--tier", "cache"]).func is campaign_cli.command_cleanup
-    assert parser.parse_args(["storage", "deduplicate", "--apply"]).func is campaign_cli.command_deduplicate
-    assert parser.parse_args(["storage", "archive", "verify"]).archive_action == "verify"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["storage", "deduplicate", "--apply"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["storage", "archive", "verify"])
 
 
 def test_retired_lifecycle_commands_are_absent_from_the_parser() -> None:
@@ -46,16 +48,10 @@ def test_retired_lifecycle_commands_are_absent_from_the_parser() -> None:
         assert not hasattr(campaign_cli, f"command_{name.replace('-', '_')}")
 
 
-def test_legacy_storage_commands_normalize_without_polluting_top_level_help() -> None:
-    assert campaign_cli._normalize_legacy_storage_argv(["cleanup", "--tier", "safe"]) == [
-        "storage", "cleanup", "--tier", "safe"
-    ]
-    assert campaign_cli._normalize_legacy_storage_argv([
-        "--config", "campaign.toml", "deduplicate", "--apply"
-    ]) == ["--config", "campaign.toml", "storage", "deduplicate", "--apply"]
-    assert campaign_cli._normalize_legacy_storage_argv([
-        "--config=campaign.toml", "archive", "verify"
-    ]) == ["--config=campaign.toml", "storage", "archive", "verify"]
+def test_top_level_cleanup_is_rejected_and_normalizer_is_absent() -> None:
+    assert not hasattr(campaign_cli, "_normalize_legacy_storage_argv")
+    with pytest.raises(SystemExit):
+        campaign_cli.main(["cleanup", "--tier", "safe"])
 
 
 def test_init_creates_one_config_and_one_state_database(tmp_path: Path) -> None:
@@ -78,9 +74,9 @@ def test_init_creates_one_config_and_one_state_database(tmp_path: Path) -> None:
     assert "online_target_monitor_configurations = 256" in text
     assert "online_replay_monitor_configurations = 512" in text
     assert 'inference_batch_policy = "auto"' in text
-    assert "maximum_parallel_dynamics_jobs = 1" in text
-    assert "estimated_dynamics_output_mib_per_case = 512.0" in text
     assert "maximum_inference_batch_size = 32" in text
+    assert "[cleanup]" in text
+    assert "storage cleanup --tier safe|cache." in text
     evaluation = text[text.index("[evaluation]"):text.index("[export]")]
     assert "\nbatch_size = 8\n" not in evaluation
     assert "[preflight]" not in text
@@ -171,7 +167,7 @@ def test_shipped_campaign_example_matches_two_seed_default() -> None:
     multi = text[text.index("[training.multihead_replay]") : text.index("[runtime]")]
     assert "enabled = true" in multi
     assert "seeds = [1, 2]" in multi
-    assert "2 * (3 + 1) = 8" in multi
+    assert "[post_selection.cv]" in multi
     naive = text[text.index("[training.naive_fine_tuning]") : text.index("[training.multihead_replay]")]
     assert "enabled = false" in naive
     assert "seeds = [1, 2]" in naive

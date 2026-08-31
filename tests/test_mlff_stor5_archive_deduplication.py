@@ -65,11 +65,10 @@ def _cleanup_args(config: Path, *, tier: str, apply: bool = False, dry_run: bool
 
 def test_stor5_consequential_operations_fail_closed(tmp_path: Path) -> None:
     config = _config(tmp_path)
-    for action in ("create", "restore"):
-        with pytest.raises(campaign_cli.CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
-            campaign_cli.command_archive(SimpleNamespace(config=str(config), archive_action=action))
-    with pytest.raises(campaign_cli.CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
-        campaign_cli.command_deduplicate(SimpleNamespace(config=str(config), apply=True))
+    # Parser rejects retired consequential storage commands
+    for cmd in (["storage", "archive", "create"], ["storage", "archive", "restore"], ["storage", "deduplicate", "--apply"]):
+        with pytest.raises(SystemExit):
+            campaign_cli.main(["--config", str(config), *cmd])
 
 
 def test_stor5_storage_report_classifies_archive_and_content_store(tmp_path: Path) -> None:
@@ -84,7 +83,7 @@ def test_stor5_storage_report_classifies_archive_and_content_store(tmp_path: Pat
         protected_inputs=configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config),
     ).to_dict()
     families = {item["family"]: item for item in report["families"]}
-    assert families["immutable_content_store"]["manual_reclamation_eligibility"] == "stor5_managed"
-    assert families["cold_archive"]["manual_reclamation_eligibility"] == "stor5_managed"
+    assert families["immutable_content_store"]["manual_reclamation_eligibility"] == "deferred_to_storage_reset"
+    assert families["cold_archive"]["manual_reclamation_eligibility"] == "deferred_to_storage_reset"
 
 

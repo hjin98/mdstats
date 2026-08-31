@@ -246,11 +246,13 @@ python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --t
 ```
 
 Use a dry run before cleanup. Transitional P6/P7 storage provides `storage report`,
-`storage cleanup --tier safe`, and `storage cleanup --tier cache`. Consequential
-operations (recompute, compaction, archival, deduplication) are deferred to the
+`storage cleanup --tier safe`, and `storage cleanup --tier cache`. Safe cleanup performs
+zero acceleration-cache eviction; cache cleanup evicts only owner-proven inactive-run
+`checkpoint-model-cache` instances while retaining performance caches like `frame-cache`.
+Consequential operations (recompute, compaction, archival, deduplication) are deferred to the
 post-P7 storage reset (`CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1`). Cleanup protects
 external inputs, current scientific records, selected checkpoints, restart evidence,
-and diagnostics; only campaign-owned reconstructible artifacts are eligible for reclamation.
+and diagnostics.
 
 ## Interpreting outcomes and limitations
 

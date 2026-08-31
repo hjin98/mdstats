@@ -50,14 +50,14 @@ def test_stor3_cleanup_manifest_is_append_only_and_records_predelete_identity(tm
 
     run_dir1 = paths.runs / "run-1"
     run_dir1.mkdir(parents=True)
-    cache1 = run_dir1 / "checkpoint-model-cache"
+    cache1 = run_dir1 / "obsolete-runtime-1"
     cache1.mkdir()
     (cache1 / "first.bin").write_bytes(b"one")
     campaign_cli._campaign_cleanup(cfg, paths, store, phase="first")
 
     run_dir2 = paths.runs / "run-2"
     run_dir2.mkdir(parents=True)
-    cache2 = run_dir2 / "checkpoint-model-cache"
+    cache2 = run_dir2 / "obsolete-runtime-2"
     cache2.mkdir()
     (cache2 / "second.bin").write_bytes(b"two")
     campaign_cli._campaign_cleanup(cfg, paths, store, phase="second")
@@ -98,7 +98,7 @@ def test_stor3_graph_symlink_escape_unlinks_only_campaign_link(tmp_path: Path) -
     important.write_bytes(b"never-delete")
     run_dir = paths.runs / "run-1"
     run_dir.mkdir(parents=True)
-    link = run_dir / "checkpoint-model-cache"
+    link = run_dir / "obsolete-runtime-symlink"
     link.symlink_to(external, target_is_directory=True)
 
     campaign_cli._campaign_cleanup(cfg, paths, store, phase="symlink-safe")
@@ -106,9 +106,7 @@ def test_stor3_graph_symlink_escape_unlinks_only_campaign_link(tmp_path: Path) -
     assert important.read_bytes() == b"never-delete"
 
 
-
-
-def test_storage_report_marks_stor3_reconstructable_classes_as_automatic_safe(tmp_path: Path) -> None:
+def test_storage_report_marks_stor3_reconstructable_classes_as_prohibited_or_deferred(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _cfg, paths = campaign_cli._load_config(config)
     graph = paths.internal / "evaluation-graphs"
@@ -116,4 +114,5 @@ def test_storage_report_marks_stor3_reconstructable_classes_as_automatic_safe(tm
     campaign_cli.command_storage(SimpleNamespace(config=str(config), top=50))
     payload = json.loads((paths.results / "storage-report.json").read_text(encoding="utf-8"))
     family = next(item for item in payload["families"] if item["family"] == "evaluation-graphs")
-    assert family["automatic_reclamation_eligibility"] == "stor3_automatic_safe"
+    assert family["automatic_reclamation_eligibility"] == "prohibited"
+    assert family["manual_reclamation_eligibility"] == "deferred_to_storage_reset"

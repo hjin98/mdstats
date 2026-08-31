@@ -160,7 +160,7 @@ def test_storage_cli_writes_read_only_report(tmp_path: Path) -> None:
     assert rc == 0
     destination = paths.results / "storage-report.json"
     payload = json.loads(destination.read_text(encoding="utf-8"))
-    assert payload["read_only_gate"] == "STOR1"
+    assert payload["read_only_gate"] == "advisory_read_only"
     assert payload["destructive_actions_performed"] is False
     assert len(payload["largest_artifacts"]) <= 5
 
