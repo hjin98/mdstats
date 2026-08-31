@@ -22,11 +22,29 @@ def test_parser_exposes_the_current_lifecycle_surface() -> None:
     choices = parser._subparsers._group_actions[0].choices
     assert tuple(choices) == (
         "init", "doctor", "prepare", "select-target-size",
-        "cross-validate", "train-production", "storage", "status", "advance", "guide",
+        "cross-validate", "train-production", "storage", "qualification",
+        "status", "advance", "guide",
     )
     assert parser.parse_args(["select-target-size"]).func is campaign_cli.command_select_target_size
     assert parser.parse_args(["cross-validate"]).func is campaign_cli.command_cross_validate
     assert parser.parse_args(["train-production"]).func is campaign_cli.command_train_production
+    # Post-production qualification is a separate downstream family with a
+    # frozen semantic split; bare `qualification` is observational.
+    qualification = choices["qualification"]
+    qualification_choices = qualification._subparsers._group_actions[0].choices
+    assert tuple(qualification_choices) == ("status", "run", "activate-locked")
+    assert parser.parse_args(["qualification"]).func is campaign_cli.command_qualification_status
+    assert (
+        parser.parse_args(["qualification", "run"]).func is campaign_cli.command_qualification_run
+    )
+    assert (
+        parser.parse_args(["qualification", "activate-locked"]).func
+        is campaign_cli.command_qualification_activate_locked
+    )
+    assert parser.parse_args(["qualification", "run", "--case-workers", "4"]).case_workers == 4
+    assert parser.parse_args(["qualification", "activate-locked", "--confirm"]).confirm is True
+    with pytest.raises(SystemExit):
+        parser.parse_args(["qualification", "activate"])
     storage = choices["storage"]
     storage_choices = storage._subparsers._group_actions[0].choices
     assert tuple(storage_choices) == ("report", "cleanup")

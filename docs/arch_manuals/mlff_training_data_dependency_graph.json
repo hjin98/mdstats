@@ -496,7 +496,8 @@
     "per-candidate independent preparation -> current nested target subsets",
     "replay-monitor metrics or diagnostics -> target-size ranking/qualification/tie-break",
     "retired training-policy generation -> current runtime",
-    "current campaign execution -> consequential storage compaction/deduplication/archival (deferred to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1)"
+    "current campaign execution -> consequential storage compaction/deduplication/archival (deferred to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1)",
+    "post-production qualification evidence -> final publication membership, production member/seed/checkpoint selection, or cross-validation acceptance"
   ],
   "resource_invariants": [
     "one fitted selection-input authority per required training domain",

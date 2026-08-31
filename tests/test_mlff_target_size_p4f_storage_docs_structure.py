@@ -243,7 +243,15 @@ def test_p4f_req3_user_guide_does_not_claim_a_retired_lifecycle():
     assert "writes the complete qualified-size x screening-seed DATA8 candidate matrix" not in text
     assert "`materialize` is valid only after `N*` is frozen." not in text
     assert "storage` is an orthogonal artifact-management command" in text
-    assert "Deployment, physical PES/relaxation/dynamics comparison" in text
+    # Post-production qualification is now implemented, so the guide describes
+    # it as a downstream *consumer* of the frozen product rather than as an
+    # unimplemented obligation - and still never as a selector.
+    assert "Post-production qualification of the finished product is a separate" in text
+    assert "It never creates, reorders, or shrinks that publication" in text
+    assert (
+        "never selects a different seed, checkpoint, or committee member" in text
+    )
+    assert "advance` never runs qualification or opens locked evidence" in text
 
 
 def test_p4f_req3_parser_help_describes_the_current_commands():
@@ -259,6 +267,7 @@ def test_p4f_req3_parser_help_describes_the_current_commands():
     )
     assert "post-selection cross-validation" in by_name["cross-validate"]
     assert "fresh final production" in by_name["train-production"]
+    assert "post-production qualification" in by_name["qualification"]
     # The retired lifecycle commands are absent from the current surface.
     assert not ({"materialize", "preflight", "train", "extend-seed", "evaluate", "verify"} & set(by_name))
 

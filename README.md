@@ -32,14 +32,25 @@ canonical frames -> neutral statistical substrate
 The candidate ladder and its ceiling are configuration (`[target_data.size_convergence]`), not a frozen constant. The generated default screen is `(n1, n2, n3) = (1, 3, 10)` with an independent production horizon `[training].max_num_epochs = 30`; screen `n3` must be strictly less than the production horizon. Fewer than three qualified sizes terminates without a rescue size, and a configured-ceiling nonconvergence is a typed outcome rather than a synthesized larger size. The selected size is immutable before post-selection validation, and post-selection cross-validation accepts or rejects the *training method* without ever re-choosing the size.
 
 The public campaign lifecycle is `init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production`.
+Post-production qualification of the finished product is a separate downstream
+family: `qualification status | qualification run | qualification activate-locked`.
 
 The public campaign lifecycle is current-generation only. Obsolete derived
 target-size state is rejected before candidate/checkpoint reuse and is
 quarantined rather than translated; lower-level source/content caches remain
-reusable only after current-owner validation. The P6 campaign ends at current
-functional/restart closure and fresh final production. GPU, physical,
-deployment, calibration, locked-test, and long real-production qualification
-remain separate downstream product obligations and are not claimed here.
+reusable only after current-owner validation. The training lifecycle ends at
+current functional/restart closure and fresh final production.
+
+Qualification consumes that already frozen publication. It validates deployment
+parity through the supported ML-IAP/LAMMPS runtime, local PES response against
+matched external references, relaxation topology and geometry fidelity,
+finite-temperature dynamics stability, uncertainty calibration, and - only after
+an explicit one-shot activation - the reserved locked interpolation test. It has
+pass, reject, and waiting authority for that exact product and no selection
+authority whatsoever: a failure never changes the selected target size, the
+accepted method, a production member, or publication membership. Long
+target-machine GPU/real-production qualification remains a separate release
+activity and is not claimed by CPU or proxy evidence.
 
 ## Historical MLFF release notes
 

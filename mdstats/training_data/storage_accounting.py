@@ -25,6 +25,26 @@ class RetentionFence(Protocol):
         ...
 
 
+class CompositeRetentionFence:
+    """Several independent lifecycle fences, consulted as one reduction.
+
+    Different lifecycles protect artifacts for different reasons - a resumable
+    target-size screen and an in-flight release qualification have nothing in
+    common - so they stay separate owners.  Deletion authority is the
+    intersection: a path is retained if *any* fence still needs it.
+    """
+
+    def __init__(self, fences: "Sequence[RetentionFence]") -> None:
+        self.fences = tuple(fences)
+
+    def protects(self, path: Path) -> tuple[bool, str]:
+        for fence in self.fences:
+            protected, reason = fence.protects(path)
+            if protected:
+                return True, reason
+        return False, ""
+
+
 class ArtifactOwnershipClass(str, Enum):
     CAMPAIGN_OWNED = "campaign_owned"
     EXTERNAL_USER_INPUT = "external_user_input"

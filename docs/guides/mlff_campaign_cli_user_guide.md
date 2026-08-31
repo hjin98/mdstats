@@ -19,9 +19,17 @@ The public scientific lifecycle is exactly:
 init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
 ```
 
+Post-production qualification of the finished product is a separate downstream
+family:
+
+```text
+qualification status | qualification run | qualification activate-locked
+```
+
 `storage` is an orthogonal artifact-management command. `status` reports the
-same lifecycle, and `advance` chooses the next safe owner from that lifecycle;
-neither introduces another scientific state machine.
+training lifecycle, and `advance` chooses the next safe owner from that
+lifecycle; neither introduces another scientific state machine, and `advance`
+never runs qualification or opens locked evidence.
 
 ## 1. Create a configuration
 
@@ -204,11 +212,86 @@ selected binding and accepted CV evidence current. Both post-selection owners
 re-authenticate currentness before work and publish only under a commit-time
 currentness fence.
 
-The current P6 lifecycle ends at fresh final-production closure. Deployment,
-physical PES/relaxation/dynamics comparison, uncertainty calibration, and
-locked-test qualification are downstream product obligations assigned to a
-separate successor. They are not a current fallback selector and are not
-claimed by this command or guide.
+The training lifecycle ends at fresh final-production closure. Everything after
+it validates that finished product without being able to change it.
+
+## 7. Qualify the frozen product
+
+Qualification consumes the final-production publication that `train-production`
+already froze. It never creates, reorders, or shrinks that publication, and it
+owns no target-size, cross-validation, production, checkpoint, seed, or member
+decision. Every threshold under `[qualification]` is fixed in the configuration
+before any product outcome is observed.
+
+```bash
+python tools/mdstats-mlff-campaign.py --config campaign.toml qualification status
+python tools/mdstats-mlff-campaign.py --config campaign.toml qualification run
+```
+
+`qualification run` executes or resumes the nonlocked components for the exact
+frozen publication:
+
+- **deployment parity** - the published model is exported, converted to the
+  deployed ML-IAP artifact, executed through the real supported LAMMPS runtime,
+  and compared against the authenticated in-framework model under
+  dtype-justified tolerances;
+- **local PES** - deterministic symmetric displacement modes on a
+  candidate-independent `OUTER_MONITOR` base cohort, checked for pointwise force
+  agreement, restoring sign, and stiffness/curvature against matched external
+  references;
+- **relaxation** - fixed-cell minimization compared against matched reference
+  relaxations, with protected-topology safety judged separately from geometric
+  fidelity;
+- **dynamics** - bounded NVT warm-up and NVE propagation through the deployed
+  artifact, checked for temperature behaviour, energy drift, minimum pair
+  distance, force bounds, and persistent topology damage;
+- **calibration** - uncertainty calibration of the exact frozen committee on the
+  reserved `UNCERTAINTY_CALIBRATION` role, or an explicit `not_applicable` for a
+  single-model product with no accepted uncertainty estimator.
+
+Three outcomes are not failures and must not be read as one:
+
+- `waiting_for_reference` means the external first-principles evidence the
+  frozen physical plan asked for has not been supplied. The exact request is
+  written to the reference root as `reference-request.json`; supply a matching
+  `reference-bundle.json` and rerun. Nothing is ever passed on absent evidence.
+- `not_applicable` means the frozen policy declares a component inapplicable to
+  this product.
+- an *unavailable* supported deployment runtime blocks the deployment claim
+  rather than passing or rejecting it.
+
+A component rejection rejects that exact published product. It never selects a
+different seed, checkpoint, or committee member, never shrinks a committee, and
+never reaches back into target-size selection, cross-validation acceptance, or
+production training.
+
+### The one-shot locked test
+
+```bash
+python tools/mdstats-mlff-campaign.py --config campaign.toml qualification activate-locked --confirm
+```
+
+This is the only path that opens the reserved `LOCKED_INTERPOLATION_TEST`
+cohort. It requires `--confirm`, requires every mandatory nonlocked component to
+have already passed, and is refused a second time for the same publication and
+cohort. Activation is irreversible: once the cohort is revealed it is never a
+fresh locked test again, whatever the policy is later changed to, and a retrained
+product needs genuinely new independent evidence.
+
+A locked pass produces the terminal `release_qualified` verdict; a locked failure
+rejects the exact published product.
+
+### Where the evidence lives
+
+```text
+campaign/.mdstats/qualification/g<N>/objects/    immutable release evidence
+campaign/.mdstats/qualification/g<N>/attempts/   attempt state and scratch
+campaign/qualification-references/<plan>/        reference request and bundle
+```
+
+Durable qualification evidence is release evidence, not reconstructible scratch:
+storage cleanup never reclaims it, and it also cannot reclaim an artifact an
+in-flight qualification attempt still references.
 
 ## Inspect and resume
 

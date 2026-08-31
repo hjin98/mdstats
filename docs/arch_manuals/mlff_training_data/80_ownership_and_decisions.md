@@ -154,20 +154,101 @@ fresh final publication. `status` and `advance` project these same owners;
 they do not create another state machine. `storage` is orthogonal and manages
 reconstructible artifacts without advancing scientific lifecycle.
 
-## Downstream qualification boundary
+Post-production qualification is a separate downstream family and is
+deliberately not part of that lifecycle:
+
+```text
+qualification status | qualification run | qualification activate-locked
+```
+
+`advance` never runs qualification and never opens locked evidence.
+
+## Downstream qualification ownership
 
 Deployment parity, physical PES/relaxation/dynamics validation, uncertainty
-calibration, and locked testing remain product obligations, but they are not
-current P6 campaign owners. A future successor may consume a current final
-publication through an explicit downstream contract. It may reject that
-publication, but it may not select another seed/checkpoint/member from
-downstream evidence and may not feed back into target-size or method authority.
+calibration, and locked testing are owned by `mdstats.training_data.qualification`.
+That package is a *consumer* of the accepted final-production publication, never
+a second product authority. Its owner graph is:
+
+```text
+accepted current selected binding (P4)
+    -> accepted post-selection CV (P5)
+    -> accepted fresh final production and its currentness-fenced completion (P5)
+         |  immutable and read-only to qualification
+         v
+    QualificationInputBinding
+      exact publication + ordered members
+      + executable candidate identity
+      + target-machine environment fingerprint
+      + frozen qualification specification
+      + frozen neutral evidence-role membership
+         |
+         v
+    ProductionQualificationPlan  (+ candidate-independent PhysicalValidationPlan)
+         |
+         +-> deployment parity through the supported ML-IAP/LAMMPS runtime
+         +-> local PES response against matched external references
+         +-> fixed-cell relaxation topology and geometry fidelity
+         +-> finite-temperature dynamics stability
+         +-> uncertainty calibration, or an explicit not_applicable
+         +-> explicit one-shot locked interpolation test
+         |
+         v
+    ProductionQualificationRecord -> ReleaseEvidenceIndex
+```
+
+The publication resolver is the accepted P5 completion owner; qualification adds
+no publication, membership registry, or member-selection rule. When the
+configured committee policy cannot be frozen from pre-qualification predecessor
+evidence, qualification fails closed rather than inventing a ranking.
+
+Downstream evidence has pass, reject, and waiting authority for the exact
+frozen product and nothing else. A failure never changes `N_selected`,
+`T_selected`, CV acceptance, a production checkpoint or seed, publication
+membership, or an upstream threshold. A missing external reference is
+`waiting_for_reference` with an actionable request on disk, never a fabricated
+pass. An absent supported deployment runtime is reported as unavailable and
+blocking, never as either a pass or a scientific rejection.
+
+The locked interpolation test is opened only by `qualification activate-locked
+--confirm`, only after every mandatory nonlocked component has passed, and only
+once for a given publication and locked cohort. After activation the revealed
+cohort is never a fresh locked test again, whatever the policy is changed to.
 
 Physical numerical algorithms remain owned by their analysis modules. A
 downstream recipe must bind matched collection/frame identity, runtime and
 capability identity, analysis-owned results, and a declared statistical role.
-P6 does not claim downstream implementation or qualification merely because
-its current final-production record is available.
+
+### Qualification persistence and the successor-storage handoff
+
+Qualification evidence lives under one canonical generation-scoped root,
+`<workspace>/.mdstats/qualification/g<N>/`, with `objects/` holding immutable
+create-once release evidence and `attempts/<attempt-identity>/` holding
+attempt-local state and bulk scratch. Currentness is never persisted as a second
+truth: it is re-established through the P4/P5/P7 owners and published as a
+generation-fenced pointer in the campaign store, exactly as P5 descendants are.
+
+A successor storage subsystem consumes these owner entry points and needs no
+pathname inference:
+
+```text
+CampaignStore                          current campaign state owner
+P3 target-size generation/root owner   execution evidence and reconciliation
+P4 selected binding owner              current selection authority
+P5 post-selection root/store           CV, final plan, run completion
+P7 publication resolver                resolve_authenticated_final_publication
+P7 qualification root/store            qualification_root, QualificationEvidenceStore
+P7 terminal result owner               ProductionQualificationRecord, ReleaseEvidenceIndex
+P7 attempt/retention owner             QualificationAttemptState, QualificationRetentionFence
+current cache / safe-cleanup owners    unchanged P6 transitional authorities
+```
+
+Qualification adds no cache authority, no second cleanup policy engine, no
+global retention registry, and no part of the successor storage inventory,
+archive, deduplication, or admission plane. Its retention reference is
+coordination metadata only: it says that one already authoritative artifact is
+actively referenced by an in-flight attempt, it is released on terminal
+completion or explicit abort, and it can never make a stale publication current.
 
 ## Unsupported generations and compatibility
 
@@ -203,4 +284,6 @@ The durable rules are:
 6. final production is fresh full-selected-set training;
 7. execution/cache/provider choices cannot change scientific semantics;
 8. unsupported derived state is rejected before reuse rather than migrated;
-9. downstream qualification cannot become a P6 selection fallback.
+9. downstream qualification cannot become a selection fallback: it validates
+   one already frozen product and has no path back into selection, CV,
+   production, or publication membership.

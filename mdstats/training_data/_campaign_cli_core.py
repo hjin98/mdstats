@@ -46,6 +46,7 @@ from .progress_timing import (
 )
 from .storage_accounting import (
     CampaignOwnershipBoundary,
+    CompositeRetentionFence,
     build_campaign_storage_report,
     configured_protected_inputs,
 )
@@ -220,12 +221,28 @@ def _campaign_ownership_boundary(
     protected_inputs = configured_protected_inputs(
         cfg, config_dir=paths.config_dir, config_path=paths.config
     )
-    fence = None
+    from .qualification.store import build_qualification_retention_fence
+
+    fences: list[Any] = []
     if store is not None:
         stale_hours = max(0.25, float(_cfg(cfg, "cleanup", "stale_age_hours", 6.0)))
-        fence = build_target_size_retention_fence(
-            store, paths.workspace, publication_window_seconds=stale_hours * 3600.0
+        fences.append(
+            build_target_size_retention_fence(
+                store, paths.workspace, publication_window_seconds=stale_hours * 3600.0
+            )
         )
+    # Durable P7 release evidence and the artifacts an in-flight qualification
+    # attempt still references are protected for a different reason than P3
+    # execution evidence, so they contribute a second reduction rather than
+    # being folded into the target-size fence's reachability model.
+    qualification_fence = build_qualification_retention_fence(paths)
+    if qualification_fence.is_active:
+        fences.append(qualification_fence)
+    fence = None
+    if len(fences) == 1:
+        fence = fences[0]
+    elif fences:
+        fence = CompositeRetentionFence(tuple(fences))
     return CampaignOwnershipBoundary(
         paths.workspace, protected_inputs=protected_inputs, retention_fence=fence
     )
@@ -5049,6 +5066,44 @@ def command_train_production(args: argparse.Namespace) -> int:
     return execute_current_train_production(args)
 
 
+def _require_train2_qualification(cfg: Mapping[str, Any]) -> None:
+    if _training_policy_generation(cfg) != "train2":
+        raise CampaignCliError(
+            "`qualification` is available only for TRAIN2 campaigns. Historical "
+            "campaigns retain their existing train/evaluate lifecycle."
+        )
+
+
+def command_qualification_run(args: argparse.Namespace) -> int:
+    """Run or resume nonlocked post-production qualification."""
+
+    cfg, _paths = _load_config(args.config)
+    _require_train2_qualification(cfg)
+    from .qualification import execute_qualification_run
+
+    return execute_qualification_run(args)
+
+
+def command_qualification_status(args: argparse.Namespace) -> int:
+    """Report post-production qualification state without mutating anything."""
+
+    cfg, _paths = _load_config(args.config)
+    _require_train2_qualification(cfg)
+    from .qualification import execute_qualification_status
+
+    return execute_qualification_status(args)
+
+
+def command_qualification_activate_locked(args: argparse.Namespace) -> int:
+    """Explicitly open the one-shot locked interpolation test."""
+
+    cfg, _paths = _load_config(args.config)
+    _require_train2_qualification(cfg)
+    from .qualification import execute_qualification_activate_locked
+
+    return execute_qualification_activate_locked(args)
+
+
 
 
 
@@ -6176,6 +6231,86 @@ acceptance_maximum = 0.030
 seeds = [1]
 committee_policy = "all_qualified_final_seeds"
 
+[qualification]
+# V7-native post-production qualification of the exact frozen final-production
+# publication. Every threshold below is frozen before any product outcome is
+# observed; downstream evidence rejects or blocks the exact published product
+# and never selects a different target size, seed, checkpoint, or member.
+required_components = ["deployment_parity", "physical_pes", "relaxation", "dynamics", "calibration"]
+optional_components = []
+
+[qualification.reference]
+# External first-principles reference evidence for the frozen physical plan.
+# `qualification run` publishes an exact request bundle here; a missing bundle
+# is reported as waiting_for_reference, never as a pass.
+protocol = "external-reference-protocol-unset"
+
+[qualification.deployment_parity]
+probe_configurations = 4
+energy_atol_ev_per_atom = 1.0e-4
+force_atol_ev_per_angstrom = 1.0e-3
+force_rtol = 1.0e-3
+# The supported LAMMPS/ML-IAP runtime is required for a real deployment claim.
+# When it is absent, qualification reports unavailable/blocking rather than pass.
+require_deployed_runtime = true
+
+[qualification.physical]
+base_count = 4
+displaced_atoms_per_base = 2
+# Symmetric amplitudes are mandatory: every mode needs a matched +/- reference pair.
+displacement_amplitudes_angstrom = [-0.05, -0.02, 0.02, 0.05]
+strain_magnitudes = []
+require_all_modes = true
+require_restoring_sign = true
+force_component_rmse_maximum_ev_per_angstrom = 0.20
+energy_curvature_minimum_ev_per_angstrom2 = 0.0
+stiffness_relative_tolerance = 0.50
+resolution_floor_ev = 1.0e-6
+
+[qualification.relaxation]
+maximum_steps = 50
+force_convergence_ev_per_angstrom = 0.05
+rms_displacement_maximum_angstrom = 0.30
+maximum_displacement_maximum_angstrom = 0.60
+bond_rmse_maximum_angstrom = 0.10
+bond_maximum_error_angstrom = 0.25
+angle_rmse_maximum_degrees = 8.0
+angle_maximum_error_degrees = 20.0
+bond_cutoff_scale = 1.20
+require_all_bases = true
+
+[qualification.dynamics]
+temperatures_kelvin = [300.0]
+velocity_seeds = [20260831]
+timestep_femtoseconds = 0.5
+warmup_steps = 200
+propagation_steps = 200
+sample_interval_steps = 50
+thermostat_damping_femtoseconds = 50.0
+nvt_temperature_tolerance_kelvin = 150.0
+nve_energy_drift_maximum_ev_per_atom_per_picosecond = 0.01
+minimum_pair_distance_angstrom = 0.80
+maximum_force_ev_per_angstrom = 100.0
+base_count = 1
+require_all_cases = true
+
+[qualification.calibration]
+# auto resolves to not_applicable for a single-model publication with no
+# accepted uncertainty estimator; uncertainty is never invented from a point
+# prediction.
+method = "auto"
+coverage_target = 0.68
+coverage_tolerance = 0.15
+minimum_frames = 2
+
+[qualification.locked]
+# The one-shot locked interpolation test. It is opened only by an explicit
+# `qualification activate-locked --confirm` and never by `advance`.
+enabled = true
+force_component_rmse_maximum_ev_per_angstrom = 0.10
+energy_rmse_maximum_ev_per_atom = 0.02
+minimum_frames = 1
+
 [runtime]
 # DATA8 is source-locked to this MACE interface. Change only after requalification.
 mace_version = "0.3.16"
@@ -6376,10 +6511,14 @@ init -> doctor -> prepare -> select-target-size -> cross-validate -> train-produ
 5. cross-validate      Validate the frozen training method on exactly T_selected.
 6. train-production    Train fresh final model(s) on the complete T_selected.
 
+Post-production qualification is a separate, downstream family:
+
+qualification status | qualification run | qualification activate-locked
+
 The orthogonal storage command reports and manages reconstructible campaign
-artifacts. status and advance project the same lifecycle and never create a
-second scientific state machine. A target-size scientific failure is terminal
-evidence; it does not authorize a production command.
+artifacts. status and advance project the training lifecycle only; advance never
+runs qualification and never opens locked evidence. A target-size scientific
+failure is terminal evidence; it does not authorize a production command.
 
 Preparation and target-size selection
 --------------------------------------
@@ -6413,6 +6552,33 @@ method accepted by cross-validation, and trains the complete T_selected under
 training.max_num_epochs. Screening and CV checkpoints are not production
 parents. Changing the production horizon invalidates only production
 descendants; the selected target and accepted CV evidence remain current.
+
+Post-production qualification
+-----------------------------
+Qualification consumes the frozen final-production publication; it never
+creates, reorders, or shrinks it, and it owns no target-size, cross-validation,
+production, checkpoint, seed, or member decision. Every threshold under
+[qualification] is frozen before any product outcome is observed.
+
+qualification run executes or resumes the nonlocked components for the exact
+frozen publication: deployment parity through the real supported ML-IAP/LAMMPS
+runtime, local PES response against matched external references, fixed-cell
+relaxation topology and geometry fidelity, finite-temperature dynamics
+stability, and uncertainty calibration on the reserved calibration role. A
+required external reference that has not been supplied yields
+waiting_for_reference together with an exact request bundle on disk; it is never
+converted into a pass. A component failure rejects that exact publication.
+
+qualification activate-locked is the only path that opens the reserved
+LOCKED_INTERPOLATION_TEST cohort. It requires --confirm, requires every
+mandatory nonlocked component to have already passed, and is refused a second
+time for the same publication and cohort. A locked failure rejects the exact
+published product; it cannot select another member, loosen a threshold, or make
+the revealed cohort a fresh locked test again.
+
+qualification status reports publication, executable, environment,
+specification, component, activation, and verdict state without mutating
+anything.
 
 Configuration and reproducibility
 ---------------------------------
@@ -6464,8 +6630,9 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Run an auditable MACE fine-tuning campaign from VASP data to a current "
             "selected target and fresh production model.\n\n"
-            "Current lifecycle: init -> doctor -> prepare -> select-target-size -> "
-            "cross-validate -> train-production"
+"Current lifecycle: init -> doctor -> prepare -> select-target-size -> "
+            "cross-validate -> train-production, then the separate post-production "
+            "`qualification` family"
         ),
         epilog="Run `... guide` for the short scientific workflow and `... status` for the next safe action.",
     )
@@ -6614,6 +6781,63 @@ def build_parser() -> argparse.ArgumentParser:
         help="retain all checkpoint bytes eligible for cleanup",
     )
     sp.set_defaults(func=command_cleanup, storage_command="cleanup")
+
+    p = sub.add_parser(
+        "qualification",
+        help="post-production qualification of the frozen final publication",
+        description=(
+            "V7-native post-production qualification. `run` executes or resumes the "
+            "nonlocked components against the exact frozen final-production "
+            "publication and may stop in waiting_for_reference. `status` is "
+            "observational. `activate-locked` is the only path that opens the "
+            "reserved one-shot locked interpolation test; it is never automatic."
+        ),
+        formatter_class=_Formatter,
+    )
+    qualification_sub = p.add_subparsers(
+        dest="qualification_command", metavar="{status,run,activate-locked}"
+    )
+    p.set_defaults(func=command_qualification_status, qualification_command="status")
+
+    sp = qualification_sub.add_parser(
+        "status", help="observational qualification/currentness report; mutates nothing"
+    )
+    sp.set_defaults(func=command_qualification_status, qualification_command="status")
+
+    sp = qualification_sub.add_parser(
+        "run",
+        help=(
+            "execute/resume nonlocked deployment, physical, relaxation, dynamics, and "
+            "calibration qualification for the exact frozen publication"
+        ),
+    )
+    sp.add_argument(
+        "--case-workers",
+        dest="case_workers",
+        type=int,
+        default=1,
+        help=(
+            "bounded concurrency for independent qualification cases; scheduling only, "
+            "with no effect on evidence identity or the terminal verdict (default: 1)"
+        ),
+    )
+    sp.set_defaults(func=command_qualification_run, qualification_command="run")
+
+    sp = qualification_sub.add_parser(
+        "activate-locked",
+        help=(
+            "irreversibly open the reserved one-shot locked interpolation test for the "
+            "exact frozen publication"
+        ),
+    )
+    sp.add_argument(
+        "--confirm",
+        action="store_true",
+        help="acknowledge that activation permanently reveals the reserved locked cohort",
+    )
+    sp.set_defaults(
+        func=command_qualification_activate_locked, qualification_command="activate-locked"
+    )
 
     p = sub.add_parser("status", help="show stage state, paths, and the next safe command")
     p.set_defaults(func=command_status)

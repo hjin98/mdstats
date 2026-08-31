@@ -208,6 +208,14 @@ def test_p6_no_source_file_references_a_retired_target_size_authority():
 
 
 def test_p6_public_command_surface_is_the_current_lifecycle_only():
+    """The P6 training lifecycle, plus the accepted P7 downstream family.
+
+    P6's invariant is that the retired pre-V7 topology never returns and that
+    the training lifecycle stays exactly as closed. Post-production
+    qualification is a separate accepted downstream owner, not a training
+    command: `advance` does not run it, and it appears in no lifecycle stage.
+    """
+
     parser = cli.build_parser()
     sub = next(
         action
@@ -221,11 +229,13 @@ def test_p6_public_command_surface_is_the_current_lifecycle_only():
         "guide",
         "init",
         "prepare",
+        "qualification",
         "select-target-size",
         "status",
         "storage",
         "train-production",
     ]
+    assert "qualification" not in {name for name, _description in cli.PIPELINE}
 
 
 def test_p6_public_campaign_exports_are_current_and_facade_is_exact():
