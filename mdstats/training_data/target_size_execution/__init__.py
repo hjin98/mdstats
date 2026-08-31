@@ -2,9 +2,9 @@
 
 This subpackage connects the accepted P1/P2 scientific authorities to the
 shared DATA8/MACE/TRAIN2/EVAL2 execution machinery.  It remains internal to
-the package and unreachable from ordinary production ``prepare``,
-``select-target-size``, ``train``, and ``evaluate`` orchestration until the
-atomic runtime cutover owned by the successor package.
+the package; the current public campaign lifecycle routes through the
+campaign facade and its ``select-target-size``, ``cross-validate``, and
+``train-production`` owners.
 
 All durable classes, functions, schemas, record names, and symbols are
 version-agnostic: no symbol encodes a historical generation label.

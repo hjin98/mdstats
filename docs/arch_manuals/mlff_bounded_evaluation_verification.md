@@ -1,8 +1,13 @@
-# Bounded checkpoint evaluation and tiered deployment verification
+# Bounded selected-checkpoint evaluation
 
 ## Scope
 
-This note explains the current cost-control boundary for checkpoint evaluation and deployment verification. It preserves authoritative model selection and mandatory deployment checks while avoiding repeated training-scale inference when a bounded exact-equivalent evaluation plan is available.
+This note explains the current cost-control boundary for selected-checkpoint
+evaluation. It preserves target-side checkpoint authority while avoiding
+repeated training-scale inference when a bounded exact-equivalent evaluation
+plan is available. Deployment, physical-observable, calibration, and locked
+testing are downstream consumers of a frozen final-production publication and
+are not current P6 campaign owners.
 
 Exact shortlist, metric, resource, and verification policies are owned by the current specifications indexed in `docs/specs/training_data/README.md`.
 
@@ -12,7 +17,14 @@ Training may emit inexpensive per-epoch validation summaries. Those summaries ma
 
 Every shortlisted checkpoint is reconstructed and evaluated on the current authenticated target/replay monitor evidence. The resulting authoritative metrics and mandatory constraints decide checkpoint admissibility.
 
-Checkpoint evaluation uses the canonical OPT-EVAL4 staged executor: bounded CPU preparation, one admitted accelerator owner, bounded CPU finalization, then parent-thread authority validation and durable commit. TARGET-SIZE-V5 exact-boundary evaluation is a consumer of that same path. Compatible endpoints may share authenticated immutable target parse/view state and serially reuse a qualified worker-private MACE provider shell or static-inference calibration profile under the strict compatibility rules in the OPT-EVAL4 specification; these are execution optimizations and never merge scientific checkpoint or target-role authority.
+Checkpoint evaluation uses the current staged executor: bounded CPU
+preparation, one admitted accelerator owner where applicable, bounded CPU
+finalization, then parent-thread authority validation and durable commit.
+Compatible endpoints may share authenticated immutable target parse/view state
+and serially reuse a qualified worker-private MACE provider shell or
+static-inference calibration profile under the current resource rules; these
+are execution optimizations and never merge scientific checkpoint or target
+role authority.
 
 A bounded shortlist is an evaluation budget, not an exhaustive scientific claim. A completed run with no admissible checkpoint records that result explicitly; it does not silently promote an unevaluated or constraint-violating checkpoint. When the current policy permits exhaustive evaluation, its explicit configuration changes the evaluation workload without changing metric semantics.
 
@@ -26,7 +38,10 @@ Changing replay-label evidence refreshes evaluation identity; it does not rewrit
 
 ## Verification tiers
 
-Production/deployment candidates receive the complete mandatory verification suite defined by the current deployment policy. Cross-validation fold models are protocol-validation evidence and are not deployment candidates.
+Cross-validation fold models are protocol-validation evidence and are not
+final-production publications. A downstream qualification consumer may apply
+its own deployment or physical-observable checks only after final production
+has published a current frozen artifact.
 
 A verification case binds model bytes, structure/evidence bytes, physical condition, integration/analysis settings, numerical mode, and runtime identity. Authenticated completed cases may be reused after interruption.
 
@@ -40,7 +55,11 @@ Long-time metrics such as energy-drift fits are reported only when the required 
 
 ## Cleanup contract
 
-Reconstructible excluded-checkpoint caches may be pruned after authoritative selection evidence is committed and restart requirements are satisfied. Selected checkpoints, exported models, current metric/admissibility records, hashes, and mandatory verification evidence remain protected under the storage policy.
+Reconstructible excluded-checkpoint caches may be pruned after authoritative
+selection evidence is committed and restart requirements are satisfied.
+Selected checkpoints, exported models, current metric/admissibility records,
+and hashes remain protected under the storage policy. Downstream evidence is
+owned and retained by its downstream qualification consumer.
 
 Cleanup cannot alter scientific selection or erase evidence needed to reproduce why a candidate passed or failed.
 

@@ -21,15 +21,15 @@ Plain `init` resolves to `single`. `refine` and user-facing `mixed` are not prod
 model modes. No hardware heuristic may change the selected model dtype.
 
 The selected dtype must agree across `[model].dtype`, `[training].dtype`,
-`[evaluation].dtype`, `[verification].dtype`, and `[export].dtype`. Production commands
-fail closed on a mismatch.
+`[evaluation].dtype`, and `[export].dtype`. Current campaign commands fail
+closed on a mismatch.
 
 ## Inference and export invariant
 
-A checkpoint is evaluated, verified, used by committee/member inference, and exported in
-its learned-model dtype. An FP32 checkpoint must not be cast to FP64 merely to satisfy a
-separate evaluation or deployment dtype. Checkpoint/template reconstruction therefore
-forbids model-dtype promotion in production evaluation.
+A checkpoint is evaluated and exported in its learned-model dtype. An FP32
+checkpoint must not be cast to FP64 merely to satisfy a separate evaluation or
+deployment dtype. Checkpoint/template reconstruction therefore forbids
+model-dtype promotion in current campaign evaluation.
 
 ## FP64 scientific-arithmetic invariant
 
@@ -54,13 +54,13 @@ the MACE differentiation graph remain in the selected learned-model dtype.
 New campaign TOML contains no `[training.precision]` staged schedule. New optimizer and
 DATA8 protocol identities therefore carry no resolved precision schedule and cannot
 reach the historical PREC2 optimizer/EMA promotion runtime. Binary model dtype is bound
-through the ordinary model/training/evaluation/verification/export identities.
+through the ordinary model/training/evaluation/export identities.
 
 ## Historical compatibility
 
 Historical staged `refine` schedules remain deserializable for reporting, storage,
-audit, and archive operations. They are read-only historical evidence. Production
-`prepare`, `preflight`, `train`, `evaluate`, and `verify` fail closed when such a profile
+audit, and archive operations. They are read-only historical evidence. Current
+`prepare`, `select-target-size`, `cross-validate`, and `train-production` fail closed when such a profile
 is supplied and require the user to choose a new `single` or `double` scientific
 identity. Historical schedules are never silently flattened or reinterpreted.
 
@@ -70,7 +70,7 @@ The gate is qualified only when tests prove:
 
 1. CLI initialization exposes only `single|double` and defaults to `single`;
 2. generated configs contain no staged precision schedule;
-3. model dtype is identical across training, evaluation, verification, and export;
+3. model dtype is identical across training, evaluation, and export;
 4. evaluation forbids checkpoint/template dtype promotion;
 5. FP64 critical/scientific arithmetic remains active for both learned-model dtypes;
 6. new DATA8/optimizer policies are schedule-free; and

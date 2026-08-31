@@ -19,6 +19,11 @@ for _name in dir(_core):
     if not _name.startswith("__"):
         globals()[_name] = getattr(_core, _name)
 
+# Star imports expose only the intentionally small current command surface.
+# Focused owner tests may still access private helpers directly, but historical
+# compatibility names are never promoted through the facade's public API.
+__all__ = list(_core.__all__)
+
 
 def main(*args, **kwargs):
     return _core.main(*args, **kwargs)

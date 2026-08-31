@@ -7,9 +7,9 @@ persistence/recovery contract for long-running MACE training.
 
 ## Safety invariants
 
-1. A current materialization root, current DATA8 generation, live training run,
-   selected checkpoint, or checkpoint needed by incomplete evaluation shall not
-   be deleted.
+1. A current preparation/materialization root, current DATA8 generation, live
+   training run, selected checkpoint, or checkpoint needed by incomplete
+   evaluation shall not be deleted.
 2. Every deletion shall be justified by current SQLite reachability, immutable
    materialization identity, stage completion, or superseded runtime policy.
 3. Destructive cleanup shall retain compact diagnostic evidence when the source
@@ -29,8 +29,9 @@ persistence/recovery contract for long-running MACE training.
 
 Current DATA3-DATA8 records, current materialization roots, DATA8 live
 symlinks/generations, target/replay artifacts, completed run records, selected
-checkpoint bytes, evaluation metrics, selections, protocol freeze evidence,
-and verification evidence are retained.
+checkpoint bytes, evaluation metrics, selections, post-selection acceptance,
+and final-production evidence are retained. Downstream qualification evidence
+is retained by its downstream owner.
 
 ### Restart-critical
 
@@ -40,10 +41,9 @@ children terminate gracefully and the parent commits an `interrupted` record.
 
 ### Reconstructable cache
 
-Normalized frame cache, shared DATA7 cache, and heavy bounded preflight outputs
-may be deleted only after preflight succeeds.  They can be regenerated from
-source and immutable campaign records but are not needed for train/evaluate or
-verify continuation.
+Normalized frame cache, shared DATA7 cache, and historical smoke outputs may be
+deleted only after current preparation succeeds. They can be regenerated from
+source and immutable campaign records and are not current scientific authority.
 
 ### Superseded
 
@@ -71,15 +71,10 @@ into success by assumption.  SQLite vacuuming is skipped while live children
 exist.  Low-disk training returns the stage to `WAITING` after durable child
 interruption rather than classifying the scientific run as failed.
 
-## Planned successor roadmap after 0.20.105a0
+## Boundary with downstream qualification
 
-The lifecycle classes above describe the currently implemented conservative cleanup
-behavior. They remain binding until the planned EVAL-MF/STOR gates are implemented.
-
-The successor roadmap is defined in
-`mlff_eval_mf_successive_halving_spec.md` and
-`mlff_storage_management_spec.md`. In particular, future partial-round evaluation
-records are screening evidence rather than complete checkpoint evaluations, and
-checkpoint deletion authority will be revised only after STOR2/STOR3 qualify compact
-evaluation-state capsules and lifecycle-safe reclamation. No current implementation
-may infer those future deletion permissions merely from this planning note.
+The current campaign lifecycle ends at selected-only method acceptance and
+fresh final production. Deployment, physical-observable, calibration, and
+locked-test artifacts are not cleanup inputs that can change target-size or
+method authority. A downstream consumer owns its own retention and may reject
+a frozen publication without selecting a replacement.

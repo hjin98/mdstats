@@ -6,9 +6,14 @@ geometry: margin=0.8in
 fontsize: 10pt
 ---
 
-# CURRENT TARGET-SIZE-v5 HANDOFF
+# DOWNSTREAM FINAL-GPU1 HANDOFF
 
-This runbook describes the current one-shot FINAL-GPU1 handoff for the target-size-v5 software generation. It is intentionally independent of the retired SIZE-FIDELITY2/MVMIGRATE1 activation workflow. Target-size v5 is already the production architecture; FINAL-GPU1 qualifies accelerator execution and release performance only.
+This runbook describes the release-pinned, downstream FINAL-GPU1 handoff. It
+consumes a current P6 fresh-final-production publication and qualifies
+accelerator execution and release performance; it is not part of the current
+campaign lifecycle and does not provide target-size or model-selection
+authority. Replacement downstream qualification is a successor product
+obligation, not a P6 implementation shortcut.
 
 # 1. Inputs
 
@@ -41,7 +46,7 @@ unzip -q <release-archive.zip> -d work/source
 cd work/source/<release-directory>
 ```
 
-# 4. Preflight
+# 4. Downstream handoff preflight
 
 ```bash
 python tools/run_mlff_final_gpu_qualification.py preflight \
@@ -51,7 +56,9 @@ python tools/run_mlff_final_gpu_qualification.py preflight \
   --output ../../../final-gpu1/preflight.json
 ```
 
-The current preflight is the target-size-v5 **v11** contract. A `ready_for_final_gpu_execution` result requires the locked models, a readable release archive, CUDA availability, and a positive CUEQ-DEP1 runtime freeze.
+This release-pinned preflight is the **v11** handoff contract. A
+`ready_for_final_gpu_execution` result requires the locked models, a readable
+release archive, CUDA availability, and a positive CUEQ-DEP1 runtime freeze.
 
 # 5. Initialize one immutable handoff root
 
@@ -116,17 +123,17 @@ These measurements must be complete even if a particular optimization remains di
 - `CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL`
 - `MH1_DEPLOY1_MLIAP_EXPORT_AND_LAMMPS_RUN0`
 
-# 8. Run the scientific campaign normally
+# 8. Consume the current campaign publication
 
-Use the normal staged CLI. Do not bypass target-size selection or held-out boundaries:
+If a new campaign must be produced for this handoff, use the current staged
+CLI. Do not bypass target-size selection or held-out boundaries:
 
 ```bash
 python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> doctor
 python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> prepare
-python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> preflight
-python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> train
-python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> evaluate
-python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> verify
+python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> select-target-size
+python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> cross-validate
+python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> train-production
 ```
 
 The campaign itself owns the configured target-size ladder and fidelity path:
@@ -179,4 +186,4 @@ A pass may recommend an accelerator profile but does not directly change generat
 
 # 12. Retired target-size migration workflow
 
-Do **not** run retired migration, rescue, or target-data activation commands. Those belonged to historical campaign generations and are not prerequisites for the current target-size architecture. Current campaigns reject retired derived target-size state before reuse and rebuild the target-size authority from the current P1/P2/P3 owners.
+Do **not** run retired migration, rescue, or target-data activation commands. Those belonged to historical campaign generations and are not prerequisites for the current campaign. Current campaigns reject retired derived target-size state before reuse and rebuild the target-size authority from the current P1/P2/P3 owners. The downstream handoff may reject a frozen final publication, but it may not select a different seed, checkpoint, member, or target size.

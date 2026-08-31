@@ -21,7 +21,13 @@ def test_final_gpu1_current_spec_runbook_and_policy_are_synchronized() -> None:
     assert mdstats.FINAL_GPU1_POLICY_SCHEMA == "mdstats.final-gpu1-policy.target-size-v5.v4"
     assert mdstats.FINAL_GPU1_QUALIFICATION_SCHEMA == "mdstats.final-gpu1-qualification.target-size-v5.v4"
     assert "mdstats.mlff-final-gpu1.preflight.target-size-v5.2026-08.v11" in tool
-    assert "current preflight is the target-size-v5 **v11** contract" in runbook.lower()
+    assert "release-pinned preflight is the **v11** handoff contract" in runbook.lower()
+    assert "current p6" in runbook.lower()
+    assert "target-size-v5" not in spec.lower()
+    assert "target-size-v5" not in runbook.lower()
+    assert "select-target-size" in runbook
+    assert "cross-validate" in runbook
+    assert "train-production" in runbook
 
     policy = mdstats.FinalGpu1Policy()
     assert policy.required_pass_gates == mdstats.FINAL_GPU1_REQUIRED_PASS_GATES

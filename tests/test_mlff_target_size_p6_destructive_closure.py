@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -52,6 +53,7 @@ from tests._mlff_post_selection_fixture import (
 import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
 
 _PACKAGE = Path(mdstats.__file__).resolve().parent
+_REPO = _PACKAGE.parent
 
 #: Modules deleted by the P6 destructive cutover.  Structural absence, not a
 #: runtime guard, is the evidence that no wrapper keeps them reachable.
@@ -222,6 +224,167 @@ def test_p6_public_command_surface_is_the_current_lifecycle_only():
         "storage",
         "train-production",
     ]
+
+
+def test_p6_public_campaign_exports_are_current_and_facade_is_exact():
+    expected = {
+        "MLFF_DATA9B3_VERSION",
+        "CAMPAIGN_CLI_SCHEMA",
+        "CURRENT_PREPARE_RESTART_RECEIPT_SCHEMA",
+        "CURRENT_PREPARE_CONTRACT_VERSION",
+        "CampaignCliError",
+        "CampaignPaths",
+        "CampaignStore",
+        "StageState",
+        "build_parser",
+        "main",
+    }
+    assert set(cli.__all__) == expected
+
+    import mdstats.training_data as training_data
+    import mdstats.training_data.campaign_cli as campaign_cli
+
+    assert set(campaign_cli.__all__) == expected
+    assert "PREPARE_RESTART_RECEIPT_SCHEMA" not in dir(cli)
+    assert "PREPARE_CONTRACT_VERSION" not in dir(cli)
+    assert "PREPARE_RESTART_RECEIPT_SCHEMA" not in dir(campaign_cli)
+    assert "PREPARE_CONTRACT_VERSION" not in dir(campaign_cli)
+    assert all(not name.startswith("PREPARE_") for name in training_data.__all__)
+
+
+def test_p6_generated_config_and_example_expose_only_current_authority():
+    generated = tomllib.loads(
+        cli._config_template(
+            workspace="/tmp/p6-test",
+            training_root="/tmp/p6-training",
+            foundation_model="/tmp/p6-foundation",
+            replay_set="/tmp/p6-replay",
+        )
+    )
+    example = tomllib.loads(
+        (_REPO / "campaign.toml.example").read_text(encoding="utf-8")
+    )
+    for cfg in (generated, example):
+        size = cfg["target_data"]["size_convergence"]
+        assert {
+            "target_size_power_min",
+            "target_size_power_max",
+            "evaluation_size_powers",
+            "fidelity_epochs",
+        } <= set(size)
+        assert "preflight" not in cfg
+        assert "verification" not in cfg
+        for method_name in ("naive_fine_tuning", "multihead_replay"):
+            method = cfg["training"][method_name]
+            assert "cross_validation_folds" not in method
+            assert "fold_partition_seed" not in method
+        cv = cfg["post_selection"]["cv"]
+        assert {"fold_count", "partition_seed", "seeds"} <= set(cv)
+
+
+def test_p6_target_size_ladder_has_no_fixed_16384_ceiling():
+    config = {
+        "target_data": {
+            "size_convergence": {
+                "target_size_power_min": 7,
+                "target_size_power_max": 15,
+                "evaluation_size_powers": [8, 9, 10],
+                "fidelity_epochs": [1, 3, 10],
+            }
+        },
+        "training": {
+            "multihead_replay": {"enabled": True, "seeds": [1, 2]},
+            "naive_fine_tuning": {"enabled": False},
+        },
+    }
+    resolved = mdstats.resolve_target_size_policy_from_config(config)
+    assert resolved.nmax == 2**15
+
+
+def test_p6_current_guide_and_help_have_one_public_lifecycle():
+    guide = " ".join(cli.GUIDE_TEXT.split())
+    lifecycle = (
+        "init -> doctor -> prepare -> select-target-size -> "
+        "cross-validate -> train-production"
+    )
+    assert lifecycle in guide
+    assert "the orthogonal storage command" in guide.lower()
+    assert "pre-target fold controls are not generated" in guide.lower()
+    assert "downstream accelerator and long-production qualification" in guide.lower()
+
+    parser = cli.build_parser()
+    help_text = parser.format_help()
+    assert lifecycle in help_text
+    assert "preflight" not in help_text.lower()
+    assert "target-size-v5" not in help_text.lower()
+
+
+def test_p6_current_contract_and_source_map_do_not_advertise_retired_authority():
+    """Current source/docs expose no V5/V6 authority as a live contract."""
+
+    current_sources = (
+        _PACKAGE / "training_data" / "_campaign_cli_core.py",
+        _PACKAGE / "training_data" / "campaign_cli.py",
+        _PACKAGE / "training_data" / "campaign_target_size_runtime.py",
+        _PACKAGE / "training_data" / "campaign_post_selection.py",
+        _PACKAGE / "training_data" / "campaign_post_selection_runtime.py",
+    )
+    current_documents = (
+        _REPO / "campaign.toml.example",
+        _REPO / "docs" / "guides" / "mlff_campaign_cli_user_guide.md",
+        _REPO / "docs" / "specs" / "training_data" / "mlff_data9b3_campaign_cli_spec.md",
+        _REPO / "docs" / "specs" / "training_data" / "mlff_data_stage_plan_spec.md",
+        _REPO / "docs" / "arch_manuals" / "mlff_training_data_architecture.md",
+        _REPO / "docs" / "arch_manuals" / "mlff_training_data_dependency_graph.json",
+        *sorted((_REPO / "docs" / "arch_manuals" / "mlff_training_data").glob("*.md")),
+    )
+    forbidden = (
+        "target-size-v5",
+        "TARGET-SIZE-V5",
+        "target_size_study_digest",
+        "target_data_role_freeze_digest",
+    )
+    offenders = [
+        f"{path.relative_to(_REPO)}: {needle}"
+        for path in (*current_sources, *current_documents)
+        for needle in forbidden
+        if needle in path.read_text(encoding="utf-8")
+    ]
+    assert not offenders, offenders
+
+
+def test_p6_authenticated_compatibility_driver_is_mandatory_and_pinned():
+    """The P5A6 proof must authenticate its producer instead of skipping."""
+
+    driver = (
+        _REPO / "qualification" / "p6-p5a6-compat" / "qualify_p5a6_to_p6.py"
+    ).read_text(encoding="utf-8")
+    assert 'BASELINE_COMMIT = "1670275487d29bbcde4c59efafdef9d1f8b0ced7"' in driver
+    assert 'BASELINE_TREE = "17e2c5609974712bda1efd3375f09f42da830f68"' in driver
+    assert '"git", "worktree", "add", "--detach"' in driver
+    assert '"rev-parse", "HEAD^{tree}"' in driver
+    assert "_assert_import_roots" in driver
+    assert "pytest.mark.skip" not in driver
+    assert "pytest.skip" not in driver
+    assert "pytest.mark.skipif" not in driver
+
+
+def test_p6_prepare_help_keeps_preparation_outside_selection():
+    parser = cli.build_parser()
+    sub = next(
+        action
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    prepare_help = next(
+        action.help.lower()
+        for action in sub._choices_actions
+        if action.dest == "prepare"
+    )
+    assert "does not select a target size" in prepare_help
+    assert "per-domain" not in prepare_help
+    assert "data7" not in prepare_help
+    assert "preflight" not in prepare_help
 
 
 # --- retired configuration generation: reject before any record is read ----

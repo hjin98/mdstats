@@ -16,7 +16,7 @@ TOOL = ROOT / "tools/mdstats-mlff-campaign.py"
 
 
 def test_data9b3_version_and_user_surface() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
+    assert mdstats.__version__ == "0.20.242a0"
     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
     assert TOOL.is_file()
     assert TOOL.stat().st_mode & 0o111
@@ -29,16 +29,21 @@ def test_data9b3_version_and_user_surface() -> None:
         "init",
         "doctor",
         "prepare",
-        "preflight",
-        "train",
-        "evaluate",
-        "verify",
+        "select-target-size",
+        "cross-validate",
+        "train-production",
         "status",
-        "26 meV/atom/ps",
-        "external_pseudolabel",
-        "bounded_predeployment",
+        "advance",
+        "target_size_power_max",
+        "post_selection.cv",
+        "N_selected",
+        "T_selected",
     ):
         assert token in spec or token in guide
+    assert "--config <frozen-campaign.toml> verify" not in spec
+    assert "--config campaign.toml verify" not in guide
+    assert "preflight" not in spec
+    assert "preflight" not in guide
     assert "mace_runtime_record" not in spec
     assert "mace_runtime_record" not in guide
 
@@ -46,32 +51,36 @@ def test_data9b3_version_and_user_surface() -> None:
 def test_data9b3_architecture_and_stage_plan_integration() -> None:
     manual = MANUAL.read_text(encoding="utf-8")
     stage = STAGE.read_text(encoding="utf-8")
-    assert "MLFF-DATA9B3 unified campaign CLI and bounded deployment verification - implemented in 0.20.58a0" in manual
-    assert "MLFF-DATA9B3 - unified campaign CLI and bounded verification - implemented in 0.20.58a0" in stage
-    assert "RDF, coordination, site occupancy, VDOS" in manual
-    assert "checkpoint byte" in manual
+    assert "one target-size architecture" in manual
+    assert "post-selection cross-validation on exactly T_selected" in manual
+    assert "init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production" in stage
+    assert "downstream qualification" in stage
+    assert "does not redefine RDF, MSD, VACF, VDOS" in manual
+    assert "checkpoint" in manual
 
 
 def test_data9b3_dependency_graph_contract() -> None:
     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
-    assert graph["schema_version"] == 26
-    assert graph["architecture_revision"] == 34
+    assert graph["schema_version"] == 3
+    assert graph["authority_model"] == "single_generation_current_dependency_architecture"
     nodes = {node["id"] for node in graph["nodes"]}
     required = {
-        "CAMPAIGN_CLI_CONFIGURATION",
-        "CAMPAIGN_MANIFEST_APPROVAL",
-        "CAMPAIGN_STATE_DATABASE",
-        "CAMPAIGN_PREPARATION_GATE",
-        "CAMPAIGN_PREFLIGHT_RECORD",
-        "CAMPAIGN_STATUS_VIEW",
-        "CAMPAIGN_RESULT_SUMMARY",
-        "BOUNDED_DEPLOYMENT_VERIFICATION",
-        "MLFF_CAMPAIGN_CLI_TOOL",
-        "MLFF_CAMPAIGN_USER_GUIDE",
+        "TARGET_SIZE_DEVELOPMENT_SPLIT",
+        "CANONICAL_TRAINING_ORDER",
+        "CANONICAL_EVALUATION_LADDER",
+        "COMMON_TARGET_SIZE_PREPARATION",
+        "TARGET_SIZE_POLICY",
+        "TARGET_SIZE_DECISION",
+        "CURRENT_SELECTED_SET",
+        "POST_SELECTION_CV_ACCEPTANCE",
+        "FRESH_FINAL_PRODUCTION",
+        "OUT_OF_FOLD_PROTOCOL_EVIDENCE",
+        "DEPLOYMENT_ARTIFACTS",
     }
     assert required <= nodes
     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
-    assert ("DATA9A_GATE", "CAMPAIGN_PREPARATION_GATE", "promotion_requires") in edges
-    assert ("CAMPAIGN_PREPARATION_GATE", "TRAINING_CAMPAIGN_PLAN", "promotion_requires") in edges
-    assert ("CAMPAIGN_PREFLIGHT_RECORD", "TRAINING_RUN_EXECUTION_RECORD", "promotion_requires") in edges
-    assert ("PROTOCOL_FREEZE_RECORD", "BOUNDED_DEPLOYMENT_VERIFICATION", "promotion_requires") in edges
+    assert ("TARGET_SIZE_DECISION", "CURRENT_SELECTED_SET", "produces") in edges
+    assert ("CURRENT_SELECTED_SET", "POST_SELECTION_CV_ACCEPTANCE", "identity_requires") in edges
+    assert ("POST_SELECTION_CV_ACCEPTANCE", "FRESH_FINAL_PRODUCTION", "promotion_requires") in edges
+    assert ("FRESH_FINAL_PRODUCTION", "FROZEN_TRAINING_PROTOCOL", "identity_requires") in edges
+    assert "retired target-size migration" in "\n".join(graph["forbidden_current_paths"])

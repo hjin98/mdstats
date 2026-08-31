@@ -1,4 +1,4 @@
-# MLFF Parallel Evaluation and Verification Specification
+# MLFF Parallel Staged Evaluation and Downstream Verification Specification
 
 Introduced: **0.20.86a0**  
 First-forward correction: **0.20.87a0**  
@@ -16,6 +16,12 @@ workloads:
 The scheduling policy is runtime-only. It does not modify training data,
 checkpoint bytes, evaluation-policy digests, selection criteria, or NVE case
 scientific identity.
+
+For the current P6 campaign, the staged-evaluation owner is used for
+authenticated selected-checkpoint/final-publication evidence. Deployment,
+physical-observable, calibration, and locked-test verification are downstream
+consumers of the frozen final publication; this specification does not make
+those consumers part of the campaign lifecycle or a target-size fallback.
 
 ## 2. Resource ceilings
 

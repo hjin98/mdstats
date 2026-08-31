@@ -229,22 +229,21 @@ def test_p4f_req2_external_and_symlink_paths_stay_denied(tmp_path: Path):
 
 
 def test_p4f_req3_user_guide_states_prepare_does_not_select():
-    text = _GUIDE.read_text(encoding="utf-8")
-    assert "**`prepare` does not select a target size.**" in text
+    text = " ".join(_GUIDE.read_text(encoding="utf-8").split())
+    assert "`prepare` does not select a target size" in text
     assert "only current screening entrypoint" in text
-    assert "quarantined rather than migrated" in text
-    assert "never editable fields" in text
+    assert "quarantines them rather than migrating them" in text
+    assert "not editable fields" in text
 
 
 def test_p4f_req3_user_guide_does_not_claim_a_retired_lifecycle():
-    text = _GUIDE.read_text(encoding="utf-8")
+    text = " ".join(_GUIDE.read_text(encoding="utf-8").split())
     # The guide must not still promise that prepare builds the screening
     # candidate matrix or that materialize realizes a selected-size topology.
     assert "writes the complete qualified-size x screening-seed DATA8 candidate matrix" not in text
     assert "`materialize` is valid only after `N*` is frozen." not in text
-    # Post-selection materialization is owned by the two post-selection commands,
-    # so the standalone step stays unavailable.
-    assert "`materialize` remains **unavailable**" in text
+    assert "storage` is an orthogonal artifact-management command" in text
+    assert "Deployment, physical PES/relaxation/dynamics comparison" in text
 
 
 def test_p4f_req3_parser_help_describes_the_current_commands():
@@ -265,7 +264,9 @@ def test_p4f_req3_parser_help_describes_the_current_commands():
 
 
 def test_p4f_req3_config_example_documents_partition_identity_coupling():
-    text = (_REPO / "campaign.toml.example").read_text(encoding="utf-8")
+    text = " ".join(
+        (_REPO / "campaign.toml.example").read_text(encoding="utf-8").split()
+    )
     assert "changes the target-size" in text
     assert "scientific identity" in text
     assert "never invalidate a target-size result" in text

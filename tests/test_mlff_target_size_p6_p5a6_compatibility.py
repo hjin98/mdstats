@@ -63,12 +63,12 @@ _DERIVED_PREFIXES = (
 _DERIVED_DATABASES = ("hash-receipts.sqlite3",)
 
 _MISSING = (
-    "The preserved P5A6 compatibility workspace is absent. Recreate it from the "
-    "accepted baseline with:\n"
-    "  git worktree add <dir> 1670275487d29bbcde4c59efafdef9d1f8b0ced7\n"
-    "  python <dir>/qualification/p6-p5a6-compat/build_p5a6_compat_fixture.py "
-    f"{_WORKSPACE}\n"
-    "It must be produced by P5A6 code, never by P6."
+    "The preserved P5A6 compatibility workspace is absent. Run the mandatory "
+    "authenticated driver from a clean P6 checkout:\n"
+    "  conda run -n mace python3 "
+    "qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py\n"
+    "It creates an ephemeral exact-baseline worktree and must be produced by "
+    "P5A6 code, never by P6."
 )
 
 

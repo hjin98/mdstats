@@ -1,11 +1,11 @@
 {
   "authority_model": "single_generation_current_dependency_architecture",
   "schema_version": 3,
-  "description": "Conceptual current MLFF dependency and ownership graph after the destructive target-size generation cutover. It contains no retired multi-view selector, repair, per-domain prefix, migration, generated-size-rescue, or alternate campaign-generation execution path.",
+  "description": "Conceptual current MLFF dependency and ownership graph for the P1-P5 campaign lifecycle. It contains one global target-size authority, one selected binding, selected-only method validation, and fresh final production; downstream qualification is reserved for a separate activated consumer.",
   "node_classes": {
     "evidence": "Immutable physical or model-derived evidence with an explicit statistical role.",
     "policy": "Normative scientific/statistical policy owned by one current specification family.",
-    "fitted_product": "A product fitted only inside an authorized fold/final training domain.",
+    "fitted_product": "A product fitted only inside an authorized training partition and bound to its inputs.",
     "scientific_product": "A current scientific workflow product whose identity is independent of execution realization.",
     "execution_product": "A current runtime/publication product constrained by the scientific architecture.",
     "validation_product": "Evidence that may evaluate a frozen protocol but cannot retroactively control forbidden upstream decisions."
@@ -41,7 +41,7 @@
       "owner": "DATA5"
     },
     {
-      "id": "FOLD_FINAL_TRAINING_DOMAINS",
+      "id": "AUTHORIZED_TRAINING_EVIDENCE",
       "class": "scientific_product",
       "owner": "DATA5"
     },
@@ -58,12 +58,14 @@
     {
       "id": "CALIBRATION_DOMAIN",
       "class": "evidence",
-      "owner": "DATA5/calibration"
+      "owner": "downstream calibration contract (reserved; not a P6 campaign owner)",
+      "summary": "Reserved calibration evidence role; it cannot alter the current selected binding or method."
     },
     {
       "id": "LOCKED_TEST_DOMAIN",
       "class": "evidence",
-      "owner": "DATA5/locked-test activation"
+      "owner": "downstream locked-test contract (reserved; not a P6 campaign owner)",
+      "summary": "Reserved sealed-evaluation role; it is unavailable to current target-size and method decisions."
     },
     {
       "id": "SELECTION_DESCRIPTOR_EVIDENCE",
@@ -113,13 +115,13 @@
     {
       "id": "TARGET_SIZE_POLICY",
       "class": "policy",
-      "owner": "TargetSizeStudyPolicy",
+      "owner": "current target-size policy owner",
       "summary": "The configured target-size policy: candidate ladder, configured ceiling, fidelity boundaries, ordered optimizer seeds, and the metric/practical-equivalence rule."
     },
     {
       "id": "TARGET_SIZE_SCREEN_SCHEDULE",
       "class": "policy",
-      "owner": "TargetSizeStudyPolicy final fidelity boundary n3"
+      "owner": "current target-size policy owner at final boundary n3"
     },
     {
       "id": "ONLINE_TARGET_MONITOR_POLICY",
@@ -144,22 +146,22 @@
     {
       "id": "TARGET_SIZE_DECISION",
       "class": "scientific_product",
-      "owner": "TargetSizeStudyPolicy"
+      "owner": "current target-size reducer"
     },
     {
       "id": "COARSE_SCREEN",
       "class": "execution_product",
-      "owner": "TargetSizeStudyPolicy configured first screen"
+      "owner": "current target-size policy, configured first screen"
     },
     {
       "id": "SHORT_SCREEN",
       "class": "execution_product",
-      "owner": "TargetSizeStudyPolicy configured second screen"
+      "owner": "current target-size policy, configured second screen"
     },
     {
       "id": "FINAL_SCREEN",
       "class": "execution_product",
-      "owner": "TargetSizeStudyPolicy configured final screen"
+      "owner": "current target-size policy, configured final screen"
     },
     {
       "id": "FULL_TRAIN2_SCHEDULE",
@@ -184,22 +186,26 @@
     {
       "id": "FINAL_COMMITTEE",
       "class": "scientific_product",
-      "owner": "campaign/deployment specs"
+      "owner": "downstream qualification contract (reserved; not a P6 campaign owner)",
+      "summary": "A future downstream consumer may construct a committee only from current final-production evidence."
     },
     {
       "id": "DEPLOYMENT_ARTIFACTS",
       "class": "execution_product",
-      "owner": "deployment specs"
+      "owner": "downstream deployment contract (reserved; not a P6 campaign owner)",
+      "summary": "Deployment artifacts are not produced by the current P6 campaign lifecycle."
     },
     {
       "id": "UNCERTAINTY_CALIBRATION",
       "class": "validation_product",
-      "owner": "calibration specs"
+      "owner": "downstream calibration contract (reserved; not a P6 campaign owner)",
+      "summary": "Calibration is not implemented or qualified by P6."
     },
     {
       "id": "LOCKED_TEST_EVIDENCE",
       "class": "validation_product",
-      "owner": "locked-test evaluation specs"
+      "owner": "downstream locked-test contract (reserved; not a P6 campaign owner)",
+      "summary": "Locked tests are not implemented or qualified by P6."
     },
     {
       "id": "OBSERVABLE_VALIDATION_EVIDENCE",
@@ -225,7 +231,7 @@
     },
     {
       "from": "EVIDENCE_ROLE_ASSIGNMENT",
-      "to": "FOLD_FINAL_TRAINING_DOMAINS",
+      "to": "AUTHORIZED_TRAINING_EVIDENCE",
       "type": "produces"
     },
     {
@@ -249,7 +255,7 @@
       "type": "produces"
     },
     {
-      "from": "FOLD_FINAL_TRAINING_DOMAINS",
+      "from": "AUTHORIZED_TRAINING_EVIDENCE",
       "to": "SELECTION_DESCRIPTOR_EVIDENCE",
       "type": "fit_domain_requires"
     },
@@ -259,7 +265,7 @@
       "type": "consumes"
     },
     {
-      "from": "FOLD_FINAL_TRAINING_DOMAINS",
+      "from": "AUTHORIZED_TRAINING_EVIDENCE",
       "to": "DATA7_FITTED_SELECTION_INPUTS",
       "type": "fit_domain_requires"
     },

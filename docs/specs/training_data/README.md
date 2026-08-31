@@ -19,10 +19,18 @@ The cross-cutting architecture is defined by the canonical chapters under `docs/
 - `mlff_data5_partition_roles_spec.md` — statistical roles, independence, purge, fold/final training-domain construction.
 - `mlff_data6_selection_descriptors_spec.md` — current selection-descriptor and foundation-prediction evidence.
 
-## Multi-view target subset and target size
+## Target-size and selected-data authority
 
+The current target-size authority is the single `pi_train`/prefix and reducer
+chain described by Architecture Part V and the cross-cutting contract. It
+derives one global `N_selected`/`T_selected` binding from the configured
+ladder. Retired multi-view, migration, generated-rescue, and pre-target
+per-domain authorities are historical/reject-only and do not create a current
+specification.
 
-The following are **not** current target-subset authorities: MVSEL1, REPAIR1, MVSTATE-REUSE1, MVMIGRATE, generated/rescue ladders, or older size-halving/fidelity gate documents. A4 consolidates their useful rationale into history.
+- `mlff_data_stage_plan_spec.md` — cross-cutting evidence-role, fitted-partition, target-size, protocol, currentness, and downstream-boundary invariants.
+- `mlff_data5_partition_roles_spec.md` — source/evidence roles and protected relations used by the neutral substrate.
+- `mlff_data6_selection_descriptors_spec.md` — authorized descriptor/foundation evidence that feeds common preparation without owning membership.
 
 ## Monitoring, replay, training, checkpointing, and evaluation
 
@@ -33,12 +41,19 @@ The following are **not** current target-subset authorities: MVSEL1, REPAIR1, MV
 - `mlff_true_label_restart_lineage_spec.md` — true-label restart/source lineage.
 - `mlff_mace_torchscript_warning_compatibility_spec.md` — current warning handling where the locked runtime still emits the relevant warnings.
 
-## Cross-validation, final selection, deployment, and campaign realization
+## Post-selection validation and campaign realization
 
-- `mlff_data9a5_deployment_artifact_spec.md` — deployment artifact contract.
 - `mlff_data9b3_campaign_cli_spec.md` — current campaign CLI contract.
 - `mlff_data9b4_storage_restart_spec.md` — campaign storage/restart behavior.
 - `mlff_storage_management_spec.md` — bounded storage/scratch retention policy.
+
+The CLI's current implementation ends at selected-only method validation and
+fresh final production. Deployment parity, physical validation, uncertainty
+calibration, and locked testing remain separate downstream product contracts;
+they may consume a frozen final publication but do not feed back into target
+size or method authority.
+
+- `mlff_data9a5_deployment_artifact_spec.md` — downstream model-artifact boundary; it does not add a current campaign lifecycle stage.
 
 Migration-only specifications are non-current and intentionally omitted.
 
@@ -58,7 +73,7 @@ Profile-migration documents are historical rather than current extension contrac
 
 - `mlff_cpu_resource_budget_spec.md` — sole campaign-wide CPU-capacity authority: affinity/cgroup-aware runtime availability, production `cpu_fraction = 0.90`, stage/native/OpenMP ownership, and nested/concurrent admission inside one budget.
 - `mlff_replay_perf1_index_cache_spec.md` — authenticated replay-source index/cache.
-- `mlff_parallel_evaluation_verification_spec.md` — bounded parallel checkpoint evaluation/deployment verification.
+- `mlff_parallel_evaluation_verification_spec.md` — bounded staged checkpoint evaluation and resource/provider admission; downstream verification is a separate consumer.
 - `mlff_vram1_perf_p4_memory_pipeline_spec.md` — GPU/VRAM bounded execution where current runtime qualification supports it.
 - `mlff_progress_reporting_format_spec.md` — shared MLFF progress grammar, including fixed-width `HH:MM:SS` elapsed/ETA.
 

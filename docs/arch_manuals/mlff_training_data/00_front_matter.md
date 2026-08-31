@@ -9,7 +9,7 @@ last_updated: "2026-08-30"
 
 ## Purpose and authority
 
-This manual defines the accepted current scientific, statistical, execution, and evidence architecture for the mdstats MLFF workflow: source-certified atomistic data preparation, leakage-safe evidence roles, fitted preparation, multi-view target-subset construction, target-size selection, MACE fine-tuning, protocol validation, deployment, calibration, and bounded campaign execution.
+This manual defines the accepted current scientific, statistical, execution, and evidence architecture for the mdstats MLFF workflow: source-certified atomistic data preparation, leakage-safe evidence roles, neutral statistical preparation, one target-size screen, MACE fine-tuning, selected-only method validation, fresh final production, and bounded campaign execution. Downstream deployment, physical, calibration, and locked-test capabilities remain separately owned product obligations.
 
 It is intentionally present-tense and single-generation. A reader does not need release chronology, migration history, or obsolete stage semantics to determine current behavior.
 
@@ -32,7 +32,7 @@ source evidence and labels
   -> eligibility / physical conditions
   -> raw feature and event evidence
   -> evidence-role partitioning
-  -> fold/final training domains
+  -> neutral statistical substrate and protected relations
   -> fitted descriptors, metrics, E0/objective/weight inputs
   -> one P_train / M3 target-size development split
   -> one canonical training order pi_train and evaluation ladder M1 subset M2 subset M3
@@ -42,7 +42,7 @@ source evidence and labels
   -> N_selected and T_selected = pi_train[:N_selected]
   -> post-selection cross-validation on exactly T_selected
   -> fresh final production on the complete T_selected
-  -> currentness-fenced publication
+  -> currentness-fenced final-production publication
 ```
 
 The current graph has exactly one target-size architecture. The retired
@@ -84,7 +84,7 @@ For targeted human or AI loading, use the smallest current source containing the
 
 ## Stable terminology
 
-- **training domain** — the DATA5-authorized fold/final gradient-training evidence available to fitted preparation and subset construction.
+- **training domain** — an authorized gradient-training evidence partition. The current target-size choice is global; post-selection CV may derive fold-local partitions only inside `T_selected`.
 - **target membership** — frame membership in a target-training subset; an exact prefix of the one canonical training order `pi_train`.
 - **target size** — the protocol-level scientific target-training cardinality chosen by the one target-size reducer.
 - **monitor size** — the cardinality of a monitoring/evaluation evidence set; never target-size authority.

@@ -18,7 +18,7 @@ $$
 
 under the declared stress sign and strain convention of the label source. MACE constructs symmetry-aware local atomic representations and sums atomic-energy contributions [1]. A useful training/evaluation corpus must therefore constrain both the energy surface and its derivatives throughout the intended simulation domain.
 
-A low global force error is not sufficient. Common framework vibrations can dominate aggregate statistics while rare mobile-ion environments, strain states, migration geometries, interfaces, defects, or other declared focus physics remain poorly represented. The architecture separates broad numerical metrics, condition/group-resolved evidence, physical-observable validation, and explicit extrapolation/challenge evidence.
+A low global force error is not sufficient. Common framework vibrations can dominate aggregate statistics while rare mobile-ion environments, strain states, migration geometries, interfaces, defects, or other declared focus physics remain poorly represented. The architecture separates broad numerical metrics, condition/group-resolved evidence, physical-observable validation, and explicit extrapolation/challenge evidence. The current P6 campaign ends at selected-only method validation and fresh final production; downstream qualification is separately activated.
 
 ## Why trajectory frames need statistical roles
 
@@ -62,7 +62,7 @@ Calibration is not test data; held-out CV is not a checkpoint monitor; and a mon
 
 ## Scope and ownership
 
-The MLFF subsystem owns dataset certification, evidence-role construction, fitted preparation, multi-view target-subset construction, target-size study, training-artifact construction, campaign orchestration, checkpoint/evaluation lineage, deployment verification coordination, and active-learning lineage.
+The MLFF subsystem owns dataset certification, evidence-role construction, fitted preparation, one global target-size study, training-artifact construction, current campaign orchestration, checkpoint/evaluation lineage, and active-learning lineage. Downstream deployment, physical, calibration, and locked-test consumers retain their product obligations without becoming P6 selection owners.
 
 Its current responsibilities include:
 
@@ -74,12 +74,12 @@ Its current responsibilities include:
 - generic raw structural features/events plus explicit optional material/profile extensions;
 - autocorrelation-aware complete-frame blocks and role feasibility;
 - fixed outer roles and independent CV job families;
-- fold/final-domain fitted descriptors, transforms, metrics, E0, objective/weight, and difficulty evidence;
+- neutral and authorized fold-local fitted descriptors, transforms, metrics, E0, objective/weight, and difficulty evidence;
 - the target-size development split, the canonical training/evaluation orders, the common preparation, and the paired optimizer-seed screen;
-- one protocol-global target-size decision with domain-local membership;
+- one protocol-global target-size decision with one exact global selected membership;
 - MACE target/replay artifacts and explicit exposure realization;
 - replay-retention and checkpoint admissibility;
-- protocol-matched CV, final training, committee export, calibration, sealed evaluation, and deployment verification;
+- post-selection protocol-matched CV and fresh final training; downstream committee, calibration, sealed evaluation, and deployment verification are separate consumer boundaries;
 - active-learning candidate/DFT lineage where supported by current specifications.
 
 The subsystem does not silently merge incompatible electronic-structure levels, infer ambiguous scientific references, use held-out/locked evidence for forbidden model-control decisions, redefine analysis-owned physical-observable algorithms, create a second target selector, generate rescue target sizes, or migrate unsupported old campaign generations.
@@ -118,22 +118,18 @@ source bytes / controls / trajectory collections
   -> immutable frame facts and eligibility
   -> raw features/events before ordinary thinning
   -> correlation-aware blocks and evidence-role feasibility
-  -> development / monitor / CV / calibration / locked roles
-  -> required fold/final training domains
-  -> domain-local DATA6/DATA7 fitted preparation
+  -> development / monitor / post-selection CV roles
+  -> neutral DATA6/DATA7 fitted preparation
   -> P_train / M3 split -> pi_train / pi_eval
   -> common target-size preparation
   -> paired optimizer-seed screen -> target-size reducer
-  -> common qualified target-size population
   -> target-size study using authorized development/model-selection evidence
-  -> one frozen protocol-global N_selected
-  -> domain-local selected prefixes
-  -> protocol-matched CV with held-out folds inaccessible to size/checkpoint choice
+  -> one frozen N_selected and exact global T_selected
+  -> protocol-matched CV partitions inside T_selected, with held-out folds inaccessible to size/checkpoint choice
   -> accepted frozen protocol
   -> independent final seeds and checkpoint admission
-  -> final committee + deployment artifacts
-  -> final-committee calibration where supported
-  -> explicit locked-test / observable-validation activation
+  -> current final-production publication
+  -> separately activated downstream committee/physical/calibration/locked consumers where implemented
   -> active-learning lineage where configured
 ```
 
@@ -151,4 +147,4 @@ The implementation may reorganize Python modules while preserving the architectu
 - validation/calibration/locked evidence;
 - external analysis-owned results.
 
-Current specifications control public/serialized current-generation contracts. Internal refactoring may reuse common sampling/execution primitives when externally owned scientific behavior and persisted current-generation identities remain conforming. Backward compatibility with superseded campaign generations is not an architectural requirement, except for the narrow immediately preceding fixed-fidelity restart boundary: it may reuse authenticated unchanged preparation inputs, but it must create a fresh configurable target-size authority and fails closed when compatibility is ambiguous.
+Current specifications control public/serialized current-generation contracts. Internal refactoring may reuse common sampling/execution primitives when externally owned scientific behavior and persisted current-generation identities remain conforming. Backward compatibility with superseded campaign generations is not an architectural requirement. The accepted current-generation P5A6 workspace remains a required unchanged reopen boundary; obsolete derived target-size generations are rejected before reuse and current preparation creates a fresh configurable authority.

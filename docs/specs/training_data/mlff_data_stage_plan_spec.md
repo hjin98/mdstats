@@ -20,10 +20,10 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 1. Source facts, eligibility, evidence roles, fitted preparation, target membership, target size, weighting, exposure, checkpoint selection, validation, calibration, and acquisition are distinct record/decision families.
 2. A frame that supplied a gradient is not independent validation evidence for that model.
 3. Held-out cross-validation evaluates a frozen protocol and cannot control target size, stopping, or checkpoint choice for that protocol.
-4. Every fold has a gradient-training domain, an authorized checkpoint monitor, and a held-out evaluation fold with explicit independence/purge evidence.
+4. After target selection, every post-selection fold has a gradient-training partition, an authorized checkpoint monitor, and a held-out evaluation fold with explicit independence/purge evidence.
 5. Cross-validation trains a fresh model/optimizer lineage for each held-out fold and validates the complete `TrainingProtocolIdentity` actually used by final training.
-6. Feature fitting, E0 fitting, label-derived difficulty evidence, and target-subset inputs inspect only the applicable fold/final gradient-training domain.
-7. DATA7 prepares fitted target-subset inputs and SHALL NOT publish target membership or target size.
+6. Feature fitting, E0 fitting, label-derived difficulty evidence, and target-subset inputs inspect only the applicable authorized training partition; post-selection fold-local fits never inspect that fold's held-out partition.
+7. Current DATA6/DATA7 preparation publishes fitted inputs and evidence for the common target-size owner and SHALL NOT publish target membership or target size.
 8. One canonical training order `pi_train` is the sole current target-membership authority; every candidate is the exact prefix `T_N = pi_train[:N]`.
 9. The one target-size reducer is the sole scientific target-size authority. Monitor/replay/batch/pool cardinalities are different semantic types.
 10. Target membership and the selected target size are both protocol-global and are frozen together as `N_selected` and `T_selected`.
@@ -48,7 +48,7 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 | `PartitionAssignment` | one statistical role under DATA5 policy | fitted quantities or target order |
 | `PartitionFeasibilityReport` | whether requested evidence roles are supportable | fabricated independent evidence |
 | `PartitionIndependenceReport` | actual independence/purge/duplicate limitations | stronger independence than observed |
-| DATA6/7 fitted records | training-domain descriptors/transforms/E0/difficulty/objective/weights/subset inputs | held-out labels, target membership, target size |
+| DATA6/7 fitted records | authorized training-partition descriptors/transforms/E0/difficulty/objective/weights/subset inputs | held-out labels, target membership, target size |
 | target-size development split | one `P_train`/`M3` split derived from the neutral substrate | training order or size choice |
 | canonical training order `pi_train` | one deterministic order whose prefixes are the candidate subsets | evaluation populations or size choice |
 | canonical evaluation ladder `pi_eval` | nested direct populations `M1 subset M2 subset M3` | training membership or size choice |
@@ -84,14 +84,20 @@ One target MACE bundle contains one compatible target label domain plus a separa
 
 Raw physical/structural/event facts may be constructed before partitioning when the owning provider is partition-independent. Any learned/fitted transform—including scaling, PCA/whitening, fitted metrics, E0 corrections, or label-derived residual difficulty—is bound to a specific authorized gradient-training domain.
 
-For fold `k`, the allowed direction is:
+Before selection, the common preparation is global. After selection, a
+post-selection fold `k` may have a fold-local fitted view. The allowed
+directions are:
 
 ```text
-DATA5 fold_training_domain_k
-  -> DATA6/7 fitted products
-  -> exact T_selected membership after the target-size freeze
-  -> training/checkpoint choice using authorized monitor
+P_train / common target-size preparation
+  -> one pi_train and exact T_selected membership after the target-size freeze
+  -> post-selection fold_training_partition_k
+  -> fold-local fitted products and checkpoint choice using its authorized monitor
   -> held_out_evaluation_fold_k only after checkpoint freeze
+
+final T_selected
+  -> final-training fitted products
+  -> fresh final production
 ```
 
 A reverse dependency from held-out evaluation into fitted products, target size, or checkpoint selection is prohibited.
@@ -126,13 +132,28 @@ Because every candidate is a prefix of one order, increasing `N` only adds
 frames; a non-monotone qualification result over nested increasing prefixes is an
 invariant failure.
 
+# Current campaign lifecycle
+
+The public campaign lifecycle, including configuration initialization, is:
+
+```text
+init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
+```
+
+`storage` is an orthogonal artifact-management command. `status` and `advance`
+project the same current owners. The P6 campaign ends at fresh final-production
+closure; deployment, physical-observable, calibration, and locked-test
+qualification remain downstream contracts; downstream qualification cannot feed
+back into target-size or method selection.
+
 # Training-protocol and checkpoint contract
 
 `TrainingProtocolIdentity` SHALL bind, as applicable:
 
 ```text
 foundation/model/head identity
-selected target size and domain-local membership identity
+selected target size and exact global membership identity
+post-selection fold partition identity where the protocol is a CV fold
 replay source/training/monitor identities
 common target-monitor identity
 objective and configuration/property weights
@@ -176,7 +197,7 @@ Worker count, queue ordering, chunking, file-backed versus in-memory layout, and
 
 # Current-generation publication and failure rules
 
-Current products SHALL fail closed when required source/label identity, evidence roles, fitted-domain lineage, selector/repair/qualification identity, target-size decision, replay/monitor lineage, training protocol, runtime behavior, or publication payload validation is missing/incompatible.
+Current products SHALL fail closed when required source/label identity, evidence roles, fitted-partition lineage, target-size decision, replay/monitor lineage, post-selection acceptance, training protocol, runtime behavior, or publication payload validation is missing/incompatible.
 
 Unsupported historical campaign schemas are not current compatibility obligations. Current code may retain low-level readers for forensic purposes, but those readers cannot create a second product-semantic path and are not normative documentation authority. The immediate fixed-fidelity predecessor is handled only by the explicit fail-closed re-authentication boundary above; it is not blanket historical compatibility.
 

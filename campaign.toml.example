@@ -16,8 +16,10 @@ label = "MACE-MH-1"
 [paths]
 training_root = "/path/to/LTA_training"
 foundation_model = "/path/to/mace-mh-1.model"
-# REPLAY-UNIFY1D: one selected replay corpus is the only external replay authority.
-# mdstats derives the deterministic train/monitor split and true/pseudo label views.
+# Single selected replay corpus, e.g. replay_fps_12000.extxyz produced by the
+# replay_select_*.sh random+FPS workflow. mdstats owns qualification, the
+# deterministic train/monitor split, pseudo-label generation, true-label views,
+# and all reconstructable internal transport files.
 replay_set = "/path/to/replay_fps_12000.extxyz"
 
 [data]
@@ -46,21 +48,13 @@ mobile_atomic_numbers = [3, 11, 19]
 all_atomic_numbers = [3, 8, 11, 13, 14, 19]
 
 [partition]
-# These settings now define the neutral statistical partition that the current
-# target-size substrate is built on. Changing one changes the target-size
-# scientific identity, which requires a fresh canonical generation rather than an
-# in-place repair. Cross-validation and production-only settings are deliberately
+# These settings define the neutral statistical partition used by the current
+# target-size substrate. Changing one changes the target-size scientific identity,
+# which requires a fresh canonical generation rather than an in-place
+# repair. Cross-validation and production-only settings are deliberately
 # excluded from that identity and never invalidate a target-size result.
 minimum_block_frames = 32
 purge_units_between_roles = 1
-# Optional; each unset key keeps the accepted neutral-substrate default.
-# explicit_block_length_frames = 0
-# development_minimum_independent_units = 8
-# outer_monitor_minimum_independent_units = 2
-# calibration_minimum_independent_units = 2
-# locked_interpolation_test_minimum_independent_units = 2
-# allow_calibration_deferral = false
-# minimum_units_per_condition_for_full_outer_roles = 7
 
 [random]
 # Randomized PCA/range-finder seed used only when a DATA7 feature block is too
@@ -89,23 +83,23 @@ max_new_frames = 0
 inference_batch_size = 0
 maximum_inference_batch_size = 16
 estimated_inference_memory_mib_per_frame = 512.0
-# VRAM1 probes deterministic stress-oriented structures under the actual combined
-# DATA6 workload. A calibrated cap is re-clamped against live memory before use.
+# VRAM1 execution policy. Calibration uses the actual combined DATA6 workload,
+# stress-oriented frames, a fractional occupancy ceiling, and an absolute reserve.
 batch_calibration_stress_structures = 8
 vram_max_device_fraction = 0.80
 vram_reserve_gib = 4.0
 batch_throughput_tolerance_fraction = 0.05
-# PERF-P4 bounded overlap. Synchronous execution remains scientifically exact;
-# final GPU qualification may disable this default if throughput does not improve.
+# PERF-P4 overlaps bounded artifact persistence with the next inference batch.
+# Queue depth is intentionally small so host-memory pressure remains explicit.
 pipeline_enabled = true
 persistence_queue_depth = 1
 
 [acceleration]
-# Revision 60 phase-separated default. Source inference, DATA6, pseudolabel
-# generation, checkpoint evaluation, and verification remain on authoritative
-# e3nn. TRAIN2 uses the portable pure-CuEq path by default and converts saved
-# checkpoints back to ordinary e3nn form.
+# Source inference and DATA6 use the selected source backend. Production
+# training may use its explicitly configured backend while preserving portable
+# checkpoint identity.
 backend = "e3nn"
+# TRAIN2 backend: cueq is the generated default; set e3nn for a reference run.
 training_backend = "cueq"
 # Keep false so trained checkpoints remain portable e3nn artifacts.
 only_cueq = false
@@ -113,29 +107,24 @@ only_cueq = false
 require_available = true
 
 [selection]
-# One value is simplest. Multiple values build a learning curve.
+# Optional non-target learning-curve labels. Target-size candidates are
+# configured below by the explicit power range.
 sizes = [512]
 # 0 auto-selects an economical outer thread count (up to 90% of available
 # CPUs, capped where these vectorized per-frame kernels stop scaling).
 structural_workers = 0
 
 [target_data.size_convergence]
-# This table owns target-coverage controls and target-size equivalence thresholds.
-# Target-size candidate sizes are fixed by TargetSizeStudyPolicy.  The three
-# screening boundaries are configurable; [training].max_num_epochs is the
-# separate fresh production horizon and must remain greater than screen n3.
-# Screening
-# optimizer seeds come from the sole enabled training method.
+# Candidate target sizes are powers from target_size_power_min through
+# target_size_power_max. The configured range is the scientific ladder; it is
+# not a hidden fixed-size universe.
+target_size_power_min = 7
+target_size_power_max = 14
+evaluation_size_powers = [8, 9, 10]
 fidelity_epochs = [1, 3, 10]
-coverage_metric = "reference_mass_local_knn"
-coverage_threshold = 0.95
-coverage_resolution_mass = 0.0078125
-coverage_leave_one_out = true
-extent_quantile_alpha = 0.01
-extent_default_tolerance = "none"
-# Omit to inherit practical_equivalence_mev_per_a.
 coarse_practical_equivalence_mev_per_a = 1.0
 practical_equivalence_mev_per_a = 1.0
+# The ordered screen seed list comes only from the sole enabled training method.
 
 [objective]
 energy_weight = 1.0
@@ -192,25 +181,46 @@ enabled = false
 # seed_mode = "optimizer_and_cv_partition"
 seed_mode = "optimizer_only"
 seeds = [1, 2]
-# Set to 0 to train only the final-development model for each seed; 1 is invalid.
-cross_validation_folds = 3
-# Keep this equal to the multi-head fold seed for paired comparisons when enabled.
-fold_partition_seed = 104729
 
 [training.multihead_replay]
 # Production default: two optimizer seeds, each with three cross-validation
 # folds plus one final-development fit: 2 * (3 + 1) = 8 multi-head jobs.
-# Shorten the seed array or set cross_validation_folds=0 only when intentionally
-# trading away seed/fold robustness for lower cost.
+# The post-selection fold plan is configured under [post_selection.cv].
 enabled = true
 # optimizer_only is the scientific default. optimizer_and_cv_partition derives a
 # different deterministic fold partition for each optimizer seed; this broadens
 # CV robustness sampling but does NOT change final A+B+C training membership.
 seed_mode = "optimizer_only"
 seeds = [1, 2]
-# Set to 0 for final-only training; otherwise use K >= 2.
-cross_validation_folds = 3
-fold_partition_seed = 104729
+
+[post_selection.cv]
+# Post-selection cross-validation of the frozen training method, run by
+# the cross-validate command after the select-target-size command has frozen N
+# and T_selected. Its universe is exactly T_selected.
+# K >= 2 is required: there is no current zero-fold production bypass.
+fold_count = 5
+partition_seed = 104729
+# Required CV seeds/variants. Every fold of every seed must pass.
+seeds = [0]
+# The cross-validation training budget. It is deliberately its own value:
+# [training].max_num_epochs is the production horizon, and editing that must not
+# invalidate accepted cross-validation evidence.
+max_num_epochs = 30
+# One split-exclusion component per fold is reserved as that fold's own
+# checkpoint monitor; the held-out outer fold never controls checkpoint choice.
+checkpoint_monitor_components_per_fold = 1
+purge_components_between_roles = 0
+# The target-only outer-fold acceptance predicate. Replay evidence gates
+# admissibility but contributes no acceptance or ranking credit.
+acceptance_metric = "target_force_rmse_ev_per_angstrom"
+acceptance_maximum = 0.030
+
+[post_selection.production]
+# Fresh final training on the full exact T_selected, run by `train-production`
+# after cross-validation accepts the method. Its epoch horizon is
+# [training].max_num_epochs and is independent of target-size screening n3.
+seeds = [1]
+committee_policy = "all_qualified_final_seeds"
 
 [runtime]
 # DATA8 is source-locked to this MACE interface. Change only after requalification.
@@ -223,9 +233,12 @@ cpu_fraction = 0.90
 ram_fraction = 0.80
 gpu_memory_fraction = 0.90
 # 0 selects the automatic resource-bounded count. Explicit positive values are
-# still clipped by available CPU threads and the RAM budget.
+# remain caps inside the runtime CPU-fraction and RAM budgets.
 source_workers = 0
 feature_workers = 0
+# Maximum in-memory force-tail temporary allocation for FOUNDATION-AUDIT1.
+# Larger exact buffers spill to a temporary mmap. Execution-only.
+foundation_audit_temporary_ram_mib = 512
 # LTA workers return compact NumPy columns; the automatic count is bounded by
 # CPU threads plus RAM reserved for the final immutable catalog.
 lta_workers = 0
@@ -240,7 +253,7 @@ minimum_free_disk_gib = 20.0
 # 0 or omitted means no wall-clock timeout for a production run.
 timeout_seconds = 0
 terminate_grace_seconds = 30.0
-# Heartbeat interval for preflight and other external subprocesses.
+# Heartbeat interval for external subprocesses.
 progress_interval_seconds = 60.0
 # Visible production-training updates. Cancellation is still polled silently
 # every second so Ctrl-C and disk-reserve stops remain responsive.
@@ -269,13 +282,13 @@ parallel_training_utilization_stability_absolute_tolerance = 8.0
 parallel_training_memory_growth_margin = 1.05
 parallel_training_utilization_growth_margin = 1.05
 parallel_training_monitor_interval_seconds = 10.0
-# Evaluation and verification use a one-time single-job CUDA calibration. CUDA
+# Staged evaluation uses a one-time single-job CUDA calibration. CUDA
 # starts with exactly one job and samples GPU utilization plus incremental VRAM.
 # OPT-EVAL4 evaluation calibrates only the accelerator stage (checkpoint/model
 # materialization, serialized CuEq/OEq/FX conversion, and inference) because
-# monitor/cache preparation now runs in separate CPU workers. Verification still
-# calibrates its complete admitted case. Samples below the 1% activity floor are
-# discarded independently for GPU utilization and VRAM. The highest 5% of retained samples
+# monitor/cache preparation now runs in separate CPU workers. Samples below the
+# 1% activity floor are discarded independently for GPU utilization and VRAM.
+# The highest 5% of retained samples
 # are discarded as transient peaks, then the next-highest 10% are averaged
 # independently for GPU utilization and incremental VRAM (approximately the
 # 85th--95th percentile band). The resulting estimate is fixed for the remaining
@@ -315,8 +328,7 @@ parallel_inference_monitor_interval_seconds = 2.0
 # forces an immediate sample regardless of this interval.
 parallel_inference_post_calibration_monitor_interval_seconds = 30.0
 # Optional phase-specific overrides use the same suffixes, for example:
-# parallel_evaluation_jobs, maximum_parallel_verification_jobs,
-# evaluation_estimated_vram_mib_per_job, verification_gpu_utilization_fraction.
+# parallel_evaluation_jobs or evaluation_estimated_vram_mib_per_job.
 # OPT-EVAL4 evaluation additionally has bounded CPU preparation/finalization
 # stages around accelerator inference. Zero means auto (currently up to two CPU
 # stage workers); the prepared buffer is also bounded so parsed monitors and
@@ -325,14 +337,15 @@ parallel_evaluation_prepare_jobs = 0
 parallel_evaluation_finalize_jobs = 0
 evaluation_pipeline_buffer_jobs = 0
 evaluation_pipeline_buffer_mib = 0
-# Zero working-memory values use the phase estimate. Finalize/reduction defaults
-# to one quarter of that estimate. Shared residency is explicit and charged once.
+# Zero uses the phase RAM estimate; shared model/cache residency is charged once.
 evaluation_prepare_working_memory_mib = 0
 evaluation_inference_working_memory_mib = 0
 evaluation_finalize_working_memory_mib = 0
 evaluation_shared_runtime_residency_mib = 0
-# External DYN cases remain single-process by default until target-GPU evidence
-# proves that multiple LAMMPS/Kokkos processes improve end-to-end throughput.
+# External DYN cases are admitted independently from static model inference.
+# One process is the conservative production default until a target-GPU
+# benchmark demonstrates that concurrent LAMMPS/Kokkos processes improve
+# end-to-end throughput. Positive overrides remain subject to live resources.
 parallel_dynamics_jobs = 0
 maximum_parallel_dynamics_jobs = 1
 dynamics_estimated_vram_mib_per_job = 4096.0
@@ -348,7 +361,7 @@ estimated_dynamics_output_mib_per_case = 512.0
 stop_scheduling_after_failure = true
 
 [cleanup]
-# Conservative lifecycle cleanup runs automatically at train/evaluate/verify boundaries.
+# Conservative lifecycle cleanup runs automatically at current stage boundaries.
 # Manual retention is CLI-selected: storage cleanup --tier safe|cache|recompute|compact|archive.
 # Every tier emits a capability plan first; recompute/compact require --apply; archive
 # additionally creates and verifies a reversible STOR5 cold archive before consequential hot deletion.
@@ -356,12 +369,13 @@ enabled = true
 # Young temporary trees are retained to avoid racing a recently interrupted process.
 stale_age_hours = 6.0
 # These caches can be reconstructed from immutable source/data records and are not
-# used by train/evaluate/verify once preflight has passed.
-remove_frame_cache_after_preflight = true
+# required after current preparation has committed its durable records.
+remove_frame_cache_after_prepare = true
 remove_shared_data7_cache_after_prepare = true
-# Keep compact logs/configuration evidence, but delete the bounded smoke model,
-# checkpoints, copied ExtXYZ subsets, and predictions after preflight succeeds.
-remove_preflight_heavy_artifacts_after_success = true
+remove_shared_data8_fixed_file_cache_after_prepare = true
+# Retain compact diagnostics for any historical smoke record encountered during
+# storage cleanup; current lifecycle stages never create that record.
+retain_historical_smoke_diagnostics = true
 # STOR3: graph/view preparation is fully reconstructable from authenticated monitor
 # inputs and is reclaimed after authoritative evaluation. Prediction arrays are kept.
 remove_evaluation_graph_cache_after_evaluate = true
@@ -376,12 +390,13 @@ prune_screened_out_checkpoints_after_evaluate = true
 maximum_event_records = 10000
 
 [replay]
-# One source, one frozen geometry split. Source truth and foundation pseudo labels
-# remain independent internal namespaces. Use "true_dft" when replay training itself
-# should consume source truth.
+# REPLAY-UNIFY1: one external replay source. Foundation pseudo labels and source
+# true labels are separate internal namespaces over the same frozen split.
 label_mode = "foundation_pseudolabel"
 split_ratio = "5:1"
 split_seed = 42
+# Foundation-pseudolabel qualification defaults inherited from the standalone
+# replay preparation workflow. Threshold-only edits reuse cached predictions.
 maximum_force_ev_per_angstrom = 20.0
 force_component_rms_ev_per_angstrom = 5.0
 maximum_abs_stress_ev_per_angstrom3 = 0.5
@@ -437,148 +452,6 @@ maximum_inference_batch_size = 32
 # Immutable monitor and foundation-baseline results are reused across checkpoints.
 cache_monitor_datasets = true
 cache_replay_baseline = true
-# Source-foundation replay baseline head is canonical [foundation].head.
-
-[preflight]
-timeout_seconds = 1800
-num_threads = 1
-# The real one-epoch smoke uses deterministic bounded subsets. DATA8 byte and
-# numerical verification already covers the complete production corpora.
-target_train_configurations = 32
-target_valid_configurations = 8
-replay_train_configurations = 64
-replay_valid_configurations = 8
-
 [export]
 # Exported learned-model dtype must match [campaign].precision_profile.
 dtype = "float32"
-
-[verification]
-# TRAIN2 DEPLOY-VERIFY1: frozen target-head/export/ML-IAP LAMMPS run-0 parity.
-deployment_probe_configurations = 16
-deployment_require_stress_when_available = true
-deployment_float32_rtol = 1.0e-5
-deployment_float32_atol = 1.0e-6
-deployment_float64_rtol = 1.0e-9
-deployment_float64_atol = 1.0e-10
-deployment_mliap_export_timeout_seconds = 1800.0
-deployment_lammps_timeout_seconds = 600.0
-deployment_lammps_executable = "lmp"
-# Override when your ML-IAP LAMMPS launch uses different Kokkos/GPU flags.
-deployment_lammps_arguments = ["-k", "on", "g", "1", "-sf", "kk", "-pk", "kokkos", "newton", "on", "neigh", "half"]
-
-# TRAIN2 PES-VERIFY1: candidate-independent finite-displacement local-PES probes.
-# `verify` writes results/pes-verify1/probe-request.extxyz plus one POSCAR directory
-# per requested DFT single point, then waits until the matched fixed-geometry labels exist.
-pes_base_configurations = 4
-pes_modes_per_base = 4
-pes_displacement_amplitude_angstrom = 0.04
-pes_strain_amplitude = 0.01
-pes_neighbor_cutoff_scale = 1.20
-pes_include_strain_modes = true
-pes_projected_force_atol_ev_per_angstrom = 0.05
-pes_projected_force_rtol = 0.25
-pes_force_stiffness_atol_ev_per_angstrom2 = 0.50
-pes_force_stiffness_rtol = 0.30
-pes_energy_curvature_atol_ev_per_angstrom2 = 0.50
-pes_energy_curvature_rtol = 0.30
-pes_restoring_force_resolution_floor_ev_per_angstrom = 0.02
-pes_stiffness_sign_resolution_floor_ev_per_angstrom2 = 0.25
-pes_strain_stress_atol_ev_per_angstrom3 = 0.01
-pes_strain_stress_rtol = 0.30
-pes_strain_energy_curvature_atol_ev_per_atom = 1.0
-pes_strain_energy_curvature_rtol = 0.30
-pes_strain_stress_resolution_floor_ev_per_angstrom3 = 0.002
-pes_geometry_match_tolerance_angstrom = 1.0e-6
-# Optional: consume an externally produced labeled ExtXYZ instead of the generated
-# VASP request tree. Its fixed-geometry electronic-structure protocol must be bound
-# by a caller-supplied SHA-256-like digest.
-pes_reference_extxyz = ""
-pes_reference_protocol_digest = ""
-# Source-foundation PES head is canonical [foundation].head.
-
-# TRAIN2 RELAX-VERIFY1: matched fixed-cell zero-K DFT/MACE relaxation qualification.
-# The default LTA campaign preserves the explicit `framework` atom group. The
-# core verifier is material-generic and accepts any profile-declared static group IDs.
-relax_base_configurations = 4
-relax_optimizer = "FIRE"
-relax_force_convergence_ev_per_angstrom = 0.03
-relax_maximum_steps = 500
-relax_fixed_cell = true
-relax_topology_group_ids = ["framework"]
-relax_topology_cutoff_scale = 1.20
-relax_rms_displacement_tolerance_angstrom = 0.15
-relax_max_displacement_tolerance_angstrom = 0.40
-relax_bond_rmse_tolerance_angstrom = 0.08
-relax_bond_max_error_tolerance_angstrom = 0.20
-relax_angle_rmse_tolerance_degrees = 8.0
-relax_angle_max_error_tolerance_degrees = 20.0
-relax_cell_strain_tolerance = 1.0e-4
-relax_reference_geometry_tolerance_angstrom = 1.0e-6
-# Optional external DFT-relaxed ExtXYZ. Supplying it requires a protocol digest.
-relax_reference_extxyz = ""
-relax_reference_protocol_digest = ""
-
-# TRAIN2 DYN-VERIFY2: short deployed finite-temperature structural qualification.
-# Common DFT-relaxed bases are heated for 0.2 ps Langevin-NVT and then propagated
-# for 1.0 ps NVE through the exact DEPLOY-VERIFY1 ML-IAP/LAMMPS runtime.
-dyn_base_configurations = 2
-dyn_temperatures_kelvin = [300.0, 800.0]
-dyn_timestep_fs = 0.5
-dyn_nvt_steps = 400
-dyn_nvt_damping_fs = 100.0
-dyn_nve_steps = 2000
-dyn_sample_interval_steps = 10
-dyn_velocity_seed = 314159
-dyn_maximum_energy_drift_ev_per_atom_per_ps = 0.026
-dyn_minimum_pair_distance_angstrom = 0.8
-dyn_maximum_force_ev_per_angstrom = 100.0
-dyn_nvt_mean_temperature_relative_tolerance = 0.20
-dyn_nve_mean_temperature_relative_tolerance = 0.30
-dyn_topology_cutoff_scale = 1.20
-dyn_reference_bond_break_ratio = 1.35
-dyn_new_bond_cutoff_scale = 1.10
-# At the 10-step sampling cadence this is 50 fs of consecutive structural damage.
-dyn_persistent_damage_samples = 10
-dyn_protected_rms_displacement_tolerance_angstrom = 0.60
-dyn_protected_max_displacement_tolerance_angstrom = 1.50
-dyn_protected_bond_rmse_tolerance_angstrom = 0.15
-dyn_protected_angle_rmse_tolerance_degrees = 15.0
-dyn_lammps_timeout_seconds = 3600.0
-
-# TRAIN2 LOCKED-TEST2: one-shot post-SELECT2 target test and final publication.
-# The force-RMSE ceiling inherits TRAIN2's full target ceiling unless explicitly set.
-# locked_maximum_target_force_rmse_ev_per_angstrom = 0.030
-# locked_maximum_energy_mae_ev_per_atom = 0.005
-# locked_maximum_worst_stratum_force_rmse_ev_per_angstrom = 0.050
-# locked_maximum_force_error_p99_ev_per_angstrom = 0.150
-# locked_maximum_stress_rmse_ev_per_angstrom3 = 0.010
-
-# ADAPT-VERIFY1 verifies fully admissible EVAL1 candidates in full-score order.
-# If the current winner fails a hard bounded-NVE gate, try the next already fully
-# evaluated admissible candidate. Set false to fail immediately on the best candidate.
-fallback_to_next_full_evaluation_candidate = true
-fallback_to_next_qualified_final_seed = true
-# Permit bounded checks on the latest completed-model set when the full campaign
-# is unfinished. Evidence is explicitly graded and never treated as a freeze.
-allow_interim_completed_models = true
-# Equilibrated POSCAR/CONTCAR/extxyz structures used for bounded NVE checks.
-structures = []
-temperatures_kelvin = [300.0, 700.0, 800.0]
-device = "cuda"
-dtype = "float32"
-timestep_fs = 0.5
-# Reused across committee members so model comparisons start from identical velocities.
-velocity_seed = 314159
-# Full NVE length for deployment/final models.
-steps = 2000
-# Fold-only comparison models receive one short high-temperature divergence smoke.
-screening_steps = 200
-# Integrate every MD step, but compute drift/min-distance/max-force diagnostics
-# only at this cadence to avoid an O(N^2) distance matrix at every step.
-sample_interval_steps = 10
-# Omit to use the maximum configured verification temperature.
-# screening_temperature_kelvin = 800.0
-maximum_energy_drift_ev_per_atom_per_ps = 0.026
-minimum_pair_distance_angstrom = 0.8
-maximum_force_ev_per_angstrom = 100.0

@@ -533,7 +533,7 @@ def execute_current_prepare(args: Any) -> int:
         StageState.COMPLETE,
         f"current target-size substrate bound at generation {revision.state.generation}",
     )
-    print("Next: `preflight`, then `select-target-size`.", flush=True)
+    print("Next: `select-target-size`.", flush=True)
     return 0
 
 

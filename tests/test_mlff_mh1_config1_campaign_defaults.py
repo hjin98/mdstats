@@ -36,7 +36,7 @@ def test_config1_new_template_defaults_to_mh1_omat_pbe_e3nn() -> None:
     assert cfg["acceleration"]["only_cueq"] is False
     assert cfg["acceleration"]["require_available"] is True
     assert "replay_baseline_head" not in cfg["evaluation"]
-    assert "pes_foundation_head" not in cfg["verification"]
+    assert "verification" not in cfg
 
 
 def test_config1_explicit_mpa0_e3nn_retains_historical_template_semantics() -> None:
@@ -129,8 +129,8 @@ def test_config1_conflicting_legacy_source_head_alias_is_rejected(tmp_path: Path
     path = tmp_path / "campaign.toml"
     text = _template()
     text = text.replace(
-        "# Source-foundation replay baseline head is canonical [foundation].head.\n",
-        "replay_baseline_head = \"omol\"\n",
+        "[evaluation]\n",
+        "[evaluation]\nreplay_baseline_head = \"omol\"\n",
         1,
     )
     path.write_text(text, encoding="utf-8")

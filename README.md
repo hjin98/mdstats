@@ -10,7 +10,11 @@ The single-source replay migration is complete. The executable invalidation plan
 
 ## MLFF replay-evaluation semantics
 
-Checkpoint accuracy is judged against independent DFT labels. Foundation-generated replay pseudolabels remain the default replay training targets and an absolute behavioral-drift diagnostic. Set `[paths].replay_true_labels` to the original true-label replay directory so mdstats can evaluate both the foundation and fine-tuned checkpoint on the same target and replay geometries without changing training inputs.
+Checkpoint accuracy is judged against the current target-side development
+policy. Foundation-generated replay pseudolabels remain an optional replay
+training realization and a separate retention diagnostic. Set
+`[paths].replay_true_labels` when the replay contract requires an independent
+true-label monitor; replay evidence never becomes target-size authority.
 
 Current development release: **0.20.242a0**. MLFF campaigns use exactly one target-size architecture:
 
@@ -27,9 +31,15 @@ canonical frames -> neutral statistical substrate
 
 The candidate ladder and its ceiling are configuration (`[target_data.size_convergence]`), not a frozen constant. The generated default screen is `(n1, n2, n3) = (1, 3, 10)` with an independent production horizon `[training].max_num_epochs = 30`; screen `n3` must be strictly less than the production horizon. Fewer than three qualified sizes terminates without a rescue size, and a configured-ceiling nonconvergence is a typed outcome rather than a synthesized larger size. The selected size is immutable before post-selection validation, and post-selection cross-validation accepts or rejects the *training method* without ever re-choosing the size.
 
-The public campaign lifecycle is `doctor -> prepare -> select-target-size -> cross-validate -> train-production`.
+The public campaign lifecycle is `init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production`.
 
-The retired pre-V7 target-size generation - compatibility-domain role freezes, full-pool feasibility, the exact sparse neighborhood index, the multi-view selector/repair/continuation/qualification chain, the fixed target-size study, per-domain production materialization, and the `materialize`/`preflight`/`train`/`extend-seed`/`evaluate`/`verify` lifecycle with its MLCV and adaptive-stop families - was removed by a destructive generation cutover. It is not migrated and not read forward: a workspace holding that derived state is rejected with an actionable reset/reprepare requirement before any candidate, checkpoint, or descendant is reused. Raw scientific inputs and independently valid low-level content caches remain reusable. GPU qualification remains deferred to the final release package and does not gate this architecture.
+The public campaign lifecycle is current-generation only. Obsolete derived
+target-size state is rejected before candidate/checkpoint reuse and is
+quarantined rather than translated; lower-level source/content caches remain
+reusable only after current-owner validation. The P6 campaign ends at current
+functional/restart closure and fresh final production. GPU, physical,
+deployment, calibration, locked-test, and long real-production qualification
+remain separate downstream product obligations and are not claimed here.
 
 ## Historical MLFF release notes
 
@@ -2386,14 +2396,17 @@ overrides are available for controlled studies.
 ## MLFF training-data branch
 
 The canonical MLFF architecture and implementation history are documented in
-`docs/arch_manuals/mlff_training_data_architecture.{md,pdf}`. The production
-branch now covers source/label identity, leakage-safe partitioning, checkpoint-
-bound DATA6 features, exact target/replay selection, restartable MACE training,
-target-first evaluation, deployment/PES/relaxation/dynamics verification, final
-selection, locked-test activation, generalized multi-head MACE foundations, and
-reference-backend certification through MH1-CERT1. MACE-MH-1 / `omat_pbe` /
-e3nn remains the current generated/reference authority; accelerated CuEq work
-remains explicit and phase separated after failed six-head parity qualification.
+`docs/arch_manuals/mlff_training_data_architecture.{md,pdf}`. The current P6
+campaign covers source/label identity, leakage-safe partitioning, neutral
+statistical preparation, one configurable target-size screen, restartable MACE
+training, selected-only method validation, and fresh final production.
+MACE-MH-1 / `omat_pbe` / e3nn remains the current generated/reference
+authority; accelerated backend work is explicit and phase separated. Downstream
+deployment, physical-observable, calibration, and locked-test consumers are
+documented as later product boundaries rather than current campaign stages.
+
+The remaining MLFF paragraphs in this section are historical release notes and
+do not override the current lifecycle above.
 
 `mdstats 0.20.178a0` freezes bounded **PERF-BASE0** as the exact
 post-MH1 numerical/performance oracle. `mdstats 0.20.179a0` completes bounded

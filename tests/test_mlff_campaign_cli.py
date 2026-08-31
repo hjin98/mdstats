@@ -81,7 +81,13 @@ def test_init_creates_one_config_and_one_state_database(tmp_path: Path) -> None:
     assert "maximum_parallel_dynamics_jobs = 1" in text
     assert "estimated_dynamics_output_mib_per_case = 512.0" in text
     assert "maximum_inference_batch_size = 32" in text
-    assert "\nbatch_size = 8\n" not in text[text.index("[evaluation]"):text.index("[preflight]")]
+    evaluation = text[text.index("[evaluation]"):text.index("[export]")]
+    assert "\nbatch_size = 8\n" not in evaluation
+    assert "[preflight]" not in text
+    assert "[verification]" not in text
+    assert "target_size_power_min = 7" in text
+    assert "target_size_power_max = 14" in text
+    assert "evaluation_size_powers = [8, 9, 10]" in text
     state = tmp_path / "work" / ".mdstats" / "campaign.sqlite3"
     assert state.is_file()
     assert not state.with_name(state.name + "-wal").exists()
@@ -169,4 +175,3 @@ def test_shipped_campaign_example_matches_two_seed_default() -> None:
     naive = text[text.index("[training.naive_fine_tuning]") : text.index("[training.multihead_replay]")]
     assert "enabled = false" in naive
     assert "seeds = [1, 2]" in naive
-

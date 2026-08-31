@@ -28,10 +28,10 @@ def test_canonical_profiles_generate_binary_model_dtypes_without_staged_schedule
     double = _template("double")
 
     assert (single["model"]["dtype"], single["training"]["dtype"], single["evaluation"]["dtype"],
-            single["verification"]["dtype"], single["export"]["dtype"]) == ("float32",) * 5
+            single["export"]["dtype"]) == ("float32",) * 4
     assert "precision" not in single["training"]
     assert (double["model"]["dtype"], double["training"]["dtype"], double["evaluation"]["dtype"],
-            double["verification"]["dtype"], double["export"]["dtype"]) == ("float64",) * 5
+            double["export"]["dtype"]) == ("float64",) * 4
     assert "precision" not in double["training"]
 
     with pytest.raises(campaign_cli.CampaignCliError, match="retired"):
@@ -193,7 +193,6 @@ def test_legacy_optimizer_serialization_remains_v4_and_maps_losslessly() -> None
     assert mapped.requested_profile == "legacy_custom"
     assert mapped.stages == (mdstats.PrecisionStage("float32", 1.0, 1.0),)
     assert mapped.critical_operation_dtype == "float64"
-
 
 
 

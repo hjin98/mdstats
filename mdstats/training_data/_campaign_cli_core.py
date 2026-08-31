@@ -105,8 +105,7 @@ from .inference_parallel import (
 )
 
 # 0.20.100a0 changes plotting policy, 0.20.101a0 changes evaluation execution
-# topology, 0.20.102a0 changes bounded-verification execution/scaling, and
-# 0.20.103a0 changes only orchestration/telemetry/control-plane execution,
+# topology, 0.20.103a0 changes orchestration/telemetry/control-plane execution,
 # 0.20.104a0 repairs source packaging, 0.20.105a0 repairs progress timing,
 # 0.20.106a0 implements EVAL-MF1 nested multi-fidelity checkpoint evaluation,
 # 0.20.107a0 implements EVAL-MF2 conservative survivor/reporting/default migration,
@@ -123,26 +122,20 @@ from .inference_parallel import (
 # None changes the frozen MLFF scientific/materialization identity, so existing
 # 0.20.99a0 campaign state and prediction caches remain reusable.
 MLFF_DATA9B3_VERSION = "0.20.99a0"
-# Parallel scheduling does not change the scientific NVE case identity. Keep
-# the 0.20.85a0 runtime token so completed verification caches remain reusable.
+# Parallel scheduling does not change scientific case identity. Keep the
+# historical runtime token so already-authenticated execution caches remain
+# readable by storage tooling.
 VERIFICATION_RUNTIME_COMPATIBILITY_VERSION = "0.20.85a0"
 CAMPAIGN_CLI_SCHEMA = "mdstats.mlff-campaign-cli.v2"
 _LEGACY_CAMPAIGN_CLI_SCHEMA = "mdstats.mlff-campaign-cli.v1"
 FOUNDATION_CONFIG_CONTRACT_SCHEMA = "mdstats.mlff-foundation-config-contract.v2"
 CAMPAIGN_STATE_SCHEMA = "mdstats.mlff-campaign-state.v2"
 EXTERNAL_RECORD_POINTER_SCHEMA = "mdstats.mlff-campaign-external-record.v1"
-PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v4"
-# v3 is dependency-scoped upstream evidence from the pre-exact-boundary
-# screening generation.  v2/schema-less receipts additionally authenticated
-# the full TOML file as a preparation input.  All remain admissible only
-# through the explicit migration check below; new writes use v4 so downstream
-# TRAIN2 execution from the older screen generation cannot survive unnoticed.
-_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v3"
-_OLDER_HISTORICAL_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v2"
-# Scientific/materialization contract. Target-size v5 is a hard derived-state
-# cut: independently valid upstream authorities may be reused, but legacy
-# ladder/migration/rescue/convergence receipts cannot authenticate this contract.
-PREPARE_CONTRACT_VERSION = "target-size-v5.2026-08.v1"
+# Current writes use generation-neutral identities.  Obsolete derived
+# target-size receipts are handled only by the reject-only cutover detector;
+# they are never represented by a current public constant or deserialized here.
+CURRENT_PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.current.v1"
+CURRENT_PREPARE_CONTRACT_VERSION = "mdstats.mlff-campaign-prepare.current.v1"
 EXTERNAL_RECORD_THRESHOLD_BYTES = 4 * 1024 * 1024
 DEFAULT_CONFIG_NAME = "campaign.toml"
 DEFAULT_MANIFEST_NAME = "campaign-manifest.json"
@@ -1536,23 +1529,19 @@ def _stage_config_key(name: str) -> str:
 def _stage_config_digest(paths: CampaignPaths, name: str) -> str:
     """Return the scoped completion identity for one lifecycle stage.
 
-    Prepare and preflight use semantic projections.  Other stages retain the
-    historical full-TOML binding because their authorities include downstream
-    runtime/evaluation configuration.  If a legacy test/migration has no
-    parseable TOML, the full hash is the conservative fallback.
+    Preparation uses its explicit semantic projection.  Downstream current
+    owners bind their own persisted protocol identities, so the CLI uses the
+    conservative full-TOML hash for those stage records.  If a legacy input has
+    no parseable TOML, the full hash is the fallback.
     """
 
-    if name not in {"prepare", "preflight"}:
+    if name != "prepare":
         return _sha256(paths.config)
     try:
         cfg, _ = _load_config(paths.config)
     except Exception:
         return _sha256(paths.config)
-    return (
-        _preparation_config_digest(cfg)
-        if name == "prepare"
-        else _preflight_config_digest(cfg)
-    )
+    return _preparation_config_digest(cfg)
 
 
 def _mark_stage(
@@ -2466,14 +2455,14 @@ def _campaign_cleanup(
             _cfg(
                 cfg,
                 "cleanup",
-                "remove_frame_cache_after_preflight",
-                True,
+                "remove_frame_cache_after_prepare",
+                _cfg(cfg, "cleanup", "remove_frame_cache_after_preflight", True),
             )
         ):
             _cleanup_remove(
                 report,
                 paths.internal / "frame-cache",
-                reason="normalized source cache is not used by train/evaluate/verify",
+                reason="normalized source cache is not required after current preparation",
                 cleanup_class="reconstructable_cache",
                 preserved_capabilities=("source_reparse", "data_preparation", "training_restart"),
             )
@@ -2511,10 +2500,10 @@ def _campaign_cleanup(
             _cfg(
                 cfg,
                 "cleanup",
-                "remove_preflight_heavy_artifacts_after_success",
-                True,
+                "retain_historical_smoke_diagnostics",
+                not bool(_cfg(cfg, "cleanup", "remove_preflight_heavy_artifacts_after_success", False)),
             )
-        ):
+        ) is False:
             _cleanup_preflight_heavy_artifacts(report, paths, store)
 
     if not dry_run:
@@ -5257,16 +5246,6 @@ _PREPARATION_TRAINING_METHOD_FIELDS = (
     "fold_partition_seed",
 )
 
-_PREFLIGHT_CONFIG_FIELDS = (
-    "timeout_seconds",
-    "num_threads",
-    "target_train_configurations",
-    "target_valid_configurations",
-    "replay_train_configurations",
-    "replay_valid_configurations",
-)
-
-
 def _json_copy(value: Any) -> Any:
     """Copy one TOML value into the deterministic digest representation."""
 
@@ -5345,44 +5324,6 @@ def _preparation_config_digest(cfg: Mapping[str, Any]) -> str:
         "schema": "mdstats.mlff-prepare-semantic-config.v2",
         "config": _preparation_config_projection(cfg),
     })
-
-
-def _preflight_config_digest(cfg: Mapping[str, Any]) -> str:
-    """Bind the screening smoke to preparation plus its explicit smoke policy."""
-
-    preflight = cfg.get("preflight")
-    smoke_projection = {
-        key: _json_copy(preflight[key])
-        for key in _PREFLIGHT_CONFIG_FIELDS
-        if isinstance(preflight, Mapping) and key in preflight
-    }
-    return digest({
-        "schema": "mdstats.mlff-preflight-semantic-config.v1",
-        "preparation": _preparation_config_digest(cfg),
-        "preflight": smoke_projection,
-    })
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def command_prepare(args: argparse.Namespace) -> int:
@@ -6946,7 +6887,7 @@ def command_advance(args: argparse.Namespace) -> int:
     if name == "doctor":
         return command_doctor(args)
     if name == "prepare":
-        return command_prepare(argparse.Namespace(config=args.config, approve_manifest=False, continue_after_approval=False, refresh_inferences=False, rebuild_catalog=False, max_new_frames=None, max_new_domains=None))
+        return command_prepare(argparse.Namespace(config=args.config, approve_manifest=False, continue_after_approval=False, refresh_inferences=False, rebuild_catalog=False, max_new_frames=None))
     if name == "select-target-size":
         select_args = argparse.Namespace(config=args.config)
         # This private, in-process attribute is deliberately propagated only
@@ -7028,16 +6969,6 @@ def _config_template(
         if family == "mace_mpa_0" and resolved_head == "default"
         else f"lta-{family.removeprefix('mace_').replace('_', '')}-{resolved_head.replace('_', '-')}-finetune"
     )
-    legacy_evaluation_head = (
-        '# Historical MPA-0 compatibility selector; generalized campaigns omit this alias.\nreplay_baseline_head = ""\n'
-        if family == "mace_mpa_0"
-        else '# Source-foundation replay baseline head is canonical [foundation].head.\n'
-    )
-    legacy_pes_head = (
-        '# Historical MPA-0 compatibility selector; generalized campaigns omit this alias.\npes_foundation_head = ""\n'
-        if family == "mace_mpa_0"
-        else '# Source-foundation PES head is canonical [foundation].head.\n'
-    )
     if replay_set not in (None, ""):
         if any(value not in (None, "") for value in (replay_train, replay_monitor, replay_true_labels)):
             raise CampaignCliError("_config_template cannot mix replay_set with legacy split replay paths.")
@@ -7072,11 +7003,11 @@ def _config_template(
         replay_paths_block = (
             f'replay_train = "{replay_train}"\n'
             f'replay_monitor = "{replay_monitor}"\n'
-            '# Independent true labels for legacy replay retention/evaluation.\n'
+            '# Independent true labels for replay retention and downstream analysis.\n'
             f'replay_true_labels = "{replay_true_labels}"'
         )
         replay_contract_block = (
-            '# Legacy split-file replay interface retained for historical campaign compatibility.\n'
+            '# Split-file replay interface retained for existing campaign inputs.\n'
             'mode = "external_pseudolabel"\n'
             'seed = 42'
         )
@@ -7168,11 +7099,9 @@ pipeline_enabled = true
 persistence_queue_depth = 1
 
 [acceleration]
-# Revision 60 phase-separated default. Source inference, DATA6, pseudolabel
-# generation, checkpoint evaluation, and verification remain on authoritative
-# e3nn. TRAIN2 uses the portable pure-CuEq path by default and converts saved
-# checkpoints back to ordinary e3nn form.
-# Source/evaluation backend: e3nn remains the production default.
+# Source inference and DATA6 use the selected source backend. Production
+# training may use its explicitly configured backend while preserving portable
+# checkpoint identity.
 backend = "{acceleration_backend}"
 # TRAIN2 backend: cueq is the generated default; set e3nn for a reference run.
 training_backend = "{training_acceleration_backend}"
@@ -7182,24 +7111,24 @@ only_cueq = false
 require_available = true
 
 [selection]
-# One value is simplest. Multiple values build a learning curve.
+# Optional non-target learning-curve labels. Target-size candidates are
+# configured below by the explicit power range.
 sizes = [512]
 # 0 auto-selects an economical outer thread count (up to 90% of available
 # CPUs, capped where these vectorized per-frame kernels stop scaling).
 structural_workers = 0
 
 [target_data.size_convergence]
-# Target-size has one fixed candidate universe:
-# 128, 256, 512, 1024, 2048, 4096, 8192, 16384.
-# These are the three exact screening boundaries. Their terminal boundary may
-# be derived internally for the continuous screen trajectory. [training].max_num_epochs
-# is the independent future production maximum and has no required ordering against n3.
-# No generated/rescue sizes and no ceiling above 16384 are permitted.
+# Candidate target sizes are powers from target_size_power_min through
+# target_size_power_max. The configured range is the scientific ladder; it is
+# not a hidden fixed-size universe.
+target_size_power_min = 7
+target_size_power_max = 14
+evaluation_size_powers = [8, 9, 10]
 fidelity_epochs = [1, 3, 10]
 coarse_practical_equivalence_mev_per_a = 1.0
 practical_equivalence_mev_per_a = 1.0
-# Screening seeds are not configured here. Target-size v5 authenticates the
-# ordered `seeds` list of the sole enabled training method below.
+# The ordered screen seed list comes only from the sole enabled training method.
 
 [objective]
 energy_weight = 1.0
@@ -7256,32 +7185,22 @@ enabled = false
 # seed_mode = "optimizer_and_cv_partition"
 seed_mode = "optimizer_only"
 seeds = [1, 2]
-# Set to 0 to train only the final-development model for each seed; 1 is invalid.
-cross_validation_folds = 3
-# Keep this equal to the multi-head fold seed for paired comparisons when enabled.
-fold_partition_seed = 104729
 
 [training.multihead_replay]
 # Production default: two optimizer seeds, each with three cross-validation
 # folds plus one final-development fit: 2 * (3 + 1) = 8 multi-head jobs.
-# Shorten the seed array or set cross_validation_folds=0 only when intentionally
-# trading away seed/fold robustness for lower cost.
+# The post-selection fold plan is configured under [post_selection.cv].
 enabled = true
 # optimizer_only is the scientific default. optimizer_and_cv_partition derives a
 # different deterministic fold partition for each optimizer seed; this broadens
 # CV robustness sampling but does NOT change final A+B+C training membership.
 seed_mode = "optimizer_only"
 seeds = [1, 2]
-# Set to 0 for final-only training; otherwise use K >= 2.
-cross_validation_folds = 3
-fold_partition_seed = 104729
 
 [post_selection.cv]
 # Post-selection cross-validation of the frozen training method, run by
-# `cross-validate` after `select-target-size` has frozen N and T_selected.
-# Its universe is exactly T_selected; the historical
-# [training.*].cross_validation_folds keys above belong to the retired
-# pre-target CV lifecycle and are not this authority.
+# the cross-validate command after the select-target-size command has frozen N
+# and T_selected. Its universe is exactly T_selected.
 # K >= 2 is required: there is no current zero-fold production bypass.
 fold_count = 5
 partition_seed = 104729
@@ -7338,7 +7257,7 @@ minimum_free_disk_gib = 20.0
 # 0 or omitted means no wall-clock timeout for a production run.
 timeout_seconds = 0
 terminate_grace_seconds = 30.0
-# Heartbeat interval for preflight and other external subprocesses.
+# Heartbeat interval for external subprocesses.
 progress_interval_seconds = 60.0
 # Visible production-training updates. Cancellation is still polled silently
 # every second so Ctrl-C and disk-reserve stops remain responsive.
@@ -7367,13 +7286,13 @@ parallel_training_utilization_stability_absolute_tolerance = 8.0
 parallel_training_memory_growth_margin = 1.05
 parallel_training_utilization_growth_margin = 1.05
 parallel_training_monitor_interval_seconds = 10.0
-# Evaluation and verification use a one-time single-job CUDA calibration. CUDA
+# Staged evaluation uses a one-time single-job CUDA calibration. CUDA
 # starts with exactly one job and samples GPU utilization plus incremental VRAM.
 # OPT-EVAL4 evaluation calibrates only the accelerator stage (checkpoint/model
 # materialization, serialized CuEq/OEq/FX conversion, and inference) because
-# monitor/cache preparation now runs in separate CPU workers. Verification still
-# calibrates its complete admitted case. Samples below the 1% activity floor are
-# discarded independently for GPU utilization and VRAM. The highest 5% of retained samples
+# monitor/cache preparation now runs in separate CPU workers. Samples below the
+# 1% activity floor are discarded independently for GPU utilization and VRAM.
+# The highest 5% of retained samples
 # are discarded as transient peaks, then the next-highest 10% are averaged
 # independently for GPU utilization and incremental VRAM (approximately the
 # 85th--95th percentile band). The resulting estimate is fixed for the remaining
@@ -7413,8 +7332,7 @@ parallel_inference_monitor_interval_seconds = 2.0
 # forces an immediate sample regardless of this interval.
 parallel_inference_post_calibration_monitor_interval_seconds = 30.0
 # Optional phase-specific overrides use the same suffixes, for example:
-# parallel_evaluation_jobs, maximum_parallel_verification_jobs,
-# evaluation_estimated_vram_mib_per_job, verification_gpu_utilization_fraction.
+# parallel_evaluation_jobs or evaluation_estimated_vram_mib_per_job.
 # OPT-EVAL4 evaluation additionally has bounded CPU preparation/finalization
 # stages around accelerator inference. Zero means auto (currently up to two CPU
 # stage workers); the prepared buffer is also bounded so parsed monitors and
@@ -7447,7 +7365,7 @@ estimated_dynamics_output_mib_per_case = 512.0
 stop_scheduling_after_failure = true
 
 [cleanup]
-# Conservative lifecycle cleanup runs automatically at train/evaluate/verify boundaries.
+# Conservative lifecycle cleanup runs automatically at current stage boundaries.
 # Manual retention is CLI-selected: storage cleanup --tier safe|cache|recompute|compact|archive.
 # Every tier emits a capability plan first; recompute/compact require --apply; archive
 # additionally creates and verifies a reversible STOR5 cold archive before consequential hot deletion.
@@ -7455,13 +7373,13 @@ enabled = true
 # Young temporary trees are retained to avoid racing a recently interrupted process.
 stale_age_hours = 6.0
 # These caches can be reconstructed from immutable source/data records and are not
-# used by train/evaluate/verify once preflight has passed.
-remove_frame_cache_after_preflight = true
+# required after current preparation has committed its durable records.
+remove_frame_cache_after_prepare = true
 remove_shared_data7_cache_after_prepare = true
 remove_shared_data8_fixed_file_cache_after_prepare = true
-# Keep compact logs/configuration evidence, but delete the bounded smoke model,
-# checkpoints, copied ExtXYZ subsets, and predictions after preflight succeeds.
-remove_preflight_heavy_artifacts_after_success = true
+# Retain compact diagnostics for any historical smoke record encountered during
+# storage cleanup; current lifecycle stages never create that record.
+retain_historical_smoke_diagnostics = true
 # STOR3: graph/view preparation is fully reconstructable from authenticated monitor
 # inputs and is reclaimed after authoritative evaluation. Prediction arrays are kept.
 remove_evaluation_graph_cache_after_evaluate = true
@@ -7526,149 +7444,9 @@ maximum_inference_batch_size = 32
 # Immutable monitor and foundation-baseline results are reused across checkpoints.
 cache_monitor_datasets = true
 cache_replay_baseline = true
-{legacy_evaluation_head}
-[preflight]
-timeout_seconds = 1800
-num_threads = 1
-# The real one-epoch smoke uses deterministic bounded subsets. DATA8 byte and
-# numerical verification already covers the complete production corpora.
-target_train_configurations = 32
-target_valid_configurations = 8
-replay_train_configurations = 64
-replay_valid_configurations = 8
-
 [export]
 # Exported learned-model dtype must match [campaign].precision_profile.
 dtype = "{precision['export_dtype']}"
-
-[verification]
-# TRAIN2 DEPLOY-VERIFY1: frozen target-head/export/ML-IAP LAMMPS run-0 parity.
-deployment_probe_configurations = 16
-deployment_require_stress_when_available = true
-deployment_float32_rtol = 1.0e-5
-deployment_float32_atol = 1.0e-6
-deployment_float64_rtol = 1.0e-9
-deployment_float64_atol = 1.0e-10
-deployment_mliap_export_timeout_seconds = 1800.0
-deployment_lammps_timeout_seconds = 600.0
-deployment_lammps_executable = "lmp"
-# Override when your ML-IAP LAMMPS launch uses different Kokkos/GPU flags.
-deployment_lammps_arguments = ["-k", "on", "g", "1", "-sf", "kk", "-pk", "kokkos", "newton", "on", "neigh", "half"]
-
-# TRAIN2 PES-VERIFY1: candidate-independent finite-displacement local-PES probes.
-# `verify` writes results/pes-verify1/probe-request.extxyz plus one POSCAR directory
-# per requested DFT single point, then waits until the matched fixed-geometry labels exist.
-pes_base_configurations = 4
-pes_modes_per_base = 4
-pes_displacement_amplitude_angstrom = 0.04
-pes_strain_amplitude = 0.01
-pes_neighbor_cutoff_scale = 1.20
-pes_include_strain_modes = true
-pes_projected_force_atol_ev_per_angstrom = 0.05
-pes_projected_force_rtol = 0.25
-pes_force_stiffness_atol_ev_per_angstrom2 = 0.50
-pes_force_stiffness_rtol = 0.30
-pes_energy_curvature_atol_ev_per_angstrom2 = 0.50
-pes_energy_curvature_rtol = 0.30
-pes_restoring_force_resolution_floor_ev_per_angstrom = 0.02
-pes_stiffness_sign_resolution_floor_ev_per_angstrom2 = 0.25
-pes_strain_stress_atol_ev_per_angstrom3 = 0.01
-pes_strain_stress_rtol = 0.30
-pes_strain_energy_curvature_atol_ev_per_atom = 1.0
-pes_strain_energy_curvature_rtol = 0.30
-pes_strain_stress_resolution_floor_ev_per_angstrom3 = 0.002
-pes_geometry_match_tolerance_angstrom = 1.0e-6
-# Optional: consume an externally produced labeled ExtXYZ instead of the generated
-# VASP request tree. Its fixed-geometry electronic-structure protocol must be bound
-# by a caller-supplied SHA-256-like digest.
-pes_reference_extxyz = ""
-pes_reference_protocol_digest = ""
-{legacy_pes_head}
-# TRAIN2 RELAX-VERIFY1: matched fixed-cell zero-K DFT/MACE relaxation qualification.
-# The default LTA campaign preserves the explicit `framework` atom group. The
-# core verifier is material-generic and accepts any profile-declared static group IDs.
-relax_base_configurations = 4
-relax_optimizer = "FIRE"
-relax_force_convergence_ev_per_angstrom = 0.03
-relax_maximum_steps = 500
-relax_fixed_cell = true
-relax_topology_group_ids = ["framework"]
-relax_topology_cutoff_scale = 1.20
-relax_rms_displacement_tolerance_angstrom = 0.15
-relax_max_displacement_tolerance_angstrom = 0.40
-relax_bond_rmse_tolerance_angstrom = 0.08
-relax_bond_max_error_tolerance_angstrom = 0.20
-relax_angle_rmse_tolerance_degrees = 8.0
-relax_angle_max_error_tolerance_degrees = 20.0
-relax_cell_strain_tolerance = 1.0e-4
-relax_reference_geometry_tolerance_angstrom = 1.0e-6
-# Optional external DFT-relaxed ExtXYZ. Supplying it requires a protocol digest.
-relax_reference_extxyz = ""
-relax_reference_protocol_digest = ""
-
-# TRAIN2 DYN-VERIFY2: short deployed finite-temperature structural qualification.
-# Common DFT-relaxed bases are heated for 0.2 ps Langevin-NVT and then propagated
-# for 1.0 ps NVE through the exact DEPLOY-VERIFY1 ML-IAP/LAMMPS runtime.
-dyn_base_configurations = 2
-dyn_temperatures_kelvin = [300.0, 800.0]
-dyn_timestep_fs = 0.5
-dyn_nvt_steps = 400
-dyn_nvt_damping_fs = 100.0
-dyn_nve_steps = 2000
-dyn_sample_interval_steps = 10
-dyn_velocity_seed = 314159
-dyn_maximum_energy_drift_ev_per_atom_per_ps = 0.026
-dyn_minimum_pair_distance_angstrom = 0.8
-dyn_maximum_force_ev_per_angstrom = 100.0
-dyn_nvt_mean_temperature_relative_tolerance = 0.20
-dyn_nve_mean_temperature_relative_tolerance = 0.30
-dyn_topology_cutoff_scale = 1.20
-dyn_reference_bond_break_ratio = 1.35
-dyn_new_bond_cutoff_scale = 1.10
-# At the 10-step sampling cadence this is 50 fs of consecutive structural damage.
-dyn_persistent_damage_samples = 10
-dyn_protected_rms_displacement_tolerance_angstrom = 0.60
-dyn_protected_max_displacement_tolerance_angstrom = 1.50
-dyn_protected_bond_rmse_tolerance_angstrom = 0.15
-dyn_protected_angle_rmse_tolerance_degrees = 15.0
-dyn_lammps_timeout_seconds = 3600.0
-
-# TRAIN2 LOCKED-TEST2: one-shot post-SELECT2 target test and final publication.
-# The force-RMSE ceiling inherits TRAIN2's full target ceiling unless explicitly set.
-# locked_maximum_target_force_rmse_ev_per_angstrom = 0.030
-# locked_maximum_energy_mae_ev_per_atom = 0.005
-# locked_maximum_worst_stratum_force_rmse_ev_per_angstrom = 0.050
-# locked_maximum_force_error_p99_ev_per_angstrom = 0.150
-# locked_maximum_stress_rmse_ev_per_angstrom3 = 0.010
-
-# ADAPT-VERIFY1 verifies fully admissible EVAL1 candidates in full-score order.
-# If the current winner fails a hard bounded-NVE gate, try the next already fully
-# evaluated admissible candidate. Set false to fail immediately on the best candidate.
-fallback_to_next_full_evaluation_candidate = true
-fallback_to_next_qualified_final_seed = true
-# Permit bounded checks on the latest completed-model set when the full campaign
-# is unfinished. Evidence is explicitly graded and never treated as a freeze.
-allow_interim_completed_models = true
-# Equilibrated POSCAR/CONTCAR/extxyz structures used for bounded NVE checks.
-structures = []
-temperatures_kelvin = [300.0, 700.0, 800.0]
-device = "{default_device}"
-dtype = "{precision['verification_dtype']}"
-timestep_fs = 0.5
-# Reused across committee members so model comparisons start from identical velocities.
-velocity_seed = 314159
-# Full NVE length for deployment/final models.
-steps = 2000
-# Fold-only comparison models receive one short high-temperature divergence smoke.
-screening_steps = 200
-# Integrate every MD step, but compute drift/min-distance/max-force diagnostics
-# only at this cadence to avoid an O(N^2) distance matrix at every step.
-sample_interval_steps = 10
-# Omit to use the maximum configured verification temperature.
-# screening_temperature_kelvin = 800.0
-maximum_energy_drift_ev_per_atom_per_ps = 0.026
-minimum_pair_distance_angstrom = 0.8
-maximum_force_ev_per_angstrom = 100.0
 '''
 
 
@@ -7676,212 +7454,85 @@ GUIDE_TEXT = """\
 MLFF campaign commands
 ======================
 
-TRAIN2 has one stable public lifecycle:
+The current campaign lifecycle has one scientific path:
 
-1. init                Create one annotated campaign.toml.
-2. doctor              Verify paths, MACE wrappers, checkpoint-bound replay, CUDA, and the frozen e3nn/CuEq backend.
-3. prepare             Build the initial leakage-safe target-size screening DATA7/DATA8 matrix.
-4. preflight           Verify that exact screening matrix and run the required real one-epoch smoke.
-5. select-target-size  Run/resume the complete configurable-fidelity target-size experiment and freeze N*.
-6. cross-validate      Cross-validate the frozen training method on exactly T_selected.
-7. train-production    Train the fresh final production run(s) on the full T_selected.
-8. verify              Run the existing physical/deployment/locked verification sequence.
+init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
 
-During `select-target-size`, epoch is a controlled variable: only exact configured
-coarse, short, and final-screen checkpoints may affect target-size ranking.
+1. init                Write an annotated campaign.toml.
+2. doctor              Check paths, source inputs, MACE, replay, and the requested backend.
+3. prepare             Build the neutral source/statistical substrate and common target-size preparation.
+4. select-target-size  Run the paired-seed target-size screen and freeze N_selected.
+5. cross-validate      Validate the frozen training method on exactly T_selected.
+6. train-production    Train fresh final model(s) on the complete T_selected.
 
-Post-selection work
--------------------
-`cross-validate` and `train-production` are the two current post-selection owners.
-Both re-establish the current P4 selection before they do anything, so a stale
-generation can never be resumed or republished as current.
+The orthogonal storage command reports and manages reconstructible campaign
+artifacts. status and advance project the same lifecycle and never create a
+second scientific state machine. A target-size scientific failure is terminal
+evidence; it does not authorize a production command.
 
-`cross-validate` builds a complete K-fold plan (K >= 2) whose universe is exactly
-T_selected, allocating roles over the inherited P1 split-exclusion components so a
-correlated pair is never split across training and evaluation. Each fold trains
-fresh, chooses its representative checkpoint on its own monitor using target
-metrics only, and is then judged on its held-out fold. Every required fold of
-every required CV seed must pass the configured predicate: a good average cannot
-carry a failing fold, and there is no zero-fold bypass. Replay evidence gates
-checkpoint admissibility but earns no ranking or acceptance credit.
+Preparation and target-size selection
+--------------------------------------
+prepare is restartable and source-neutral. It authenticates the manifest,
+DATA2-DATA5 authorities, the canonical P_train/M3 split, pi_train/pi_eval, and
+one common preparation shared by every configured candidate size. It does not
+choose a size, train a candidate, rank a checkpoint, or materialize a
+per-size production dataset. The cutover rejects obsolete derived target-size
+records and quarantines them rather than migrating them; they are never
+translated.
 
-`train-production` then trains fresh model(s) on the full T_selected under exactly
-the cross-validated method. Its epoch horizon is `[training].max_num_epochs`,
-which is independent of the screening ladder's n3 and of the CV budget: changing
-it does not invalidate accepted cross-validation evidence. Final model selection
-uses the frozen M3 development reserve; locked and calibration evidence stay
-strictly downstream.
+select-target-size is the sole target-size owner. Candidate sizes are powers
+from target_size_power_min through target_size_power_max, bounded by the
+available population. evaluation_size_powers defines the direct nested M1,
+M2, M3 populations and fidelity_epochs defines the controlled screen horizon.
+Candidates are exact prefixes of pi_train, use the ordered seeds from the sole
+enabled training method, and continue only through the accepted n1/n2/n3
+funnel. The reducer freezes one N_selected and its exact T_selected membership,
+or records a typed scientific failure. Replay and held-out CV evidence cannot
+choose the size.
 
-`materialize`, `train`, and `evaluate` are not post-selection owners; they direct
-you at the two commands above.
+Post-selection owners
+----------------------
+cross-validate runs only after a selected target is current. It constructs the
+configured K-fold plan under post_selection.cv, with K at least two, uses
+target-only checkpoint and acceptance metrics, and requires every configured
+fold/seed to pass. Its universe is exactly T_selected; it cannot change N.
 
-Historical adaptive/MLCV campaigns retain their original prepare -> preflight ->
-train -> evaluate -> verify lifecycle.
+train-production starts fresh from the canonical initialization, uses the
+method accepted by cross-validation, and trains the complete T_selected under
+training.max_num_epochs. Screening and CV checkpoints are not production
+parents. Changing the production horizon invalidates only production
+descendants; the selected target and accepted CV evidence remain current.
 
-Use `status` at any time. It reports the next command and never advances a failed gate.
-Use the unified `storage` command for all STOR1-STOR5 storage operations.
-`storage report` is the read-only ownership/storage inventory (bare `storage` is a
-shorthand). Use `storage cleanup --tier safe|cache|recompute|compact|archive` for
-manual retention. Every tier prints a capability plan first; `recompute`/`compact`
-require `--apply`; the archive tier creates and verifies a reversible cold archive
-before consequential deletion. Use `storage archive verify|restore` for integrity
-checking/restoration and `storage deduplicate [--apply]` for exact immutable
-content-addressed hardlink deduplication after protocol freeze.
+Configuration and reproducibility
+---------------------------------
+The generated configuration exposes the target-size power range, direct
+evaluation powers, screen fidelity epochs, and the post-selection CV policy.
+Optimizer seeds are authored only by the sole enabled training method. The
+current CV authority is post_selection.cv; pre-target fold controls are not
+generated. The learned model uses the binary single (FP32) or double (FP64)
+precision selected at init, while mdstats scientific reductions and persistent
+MD bookkeeping remain FP64.
 
-Seeds and folds
----------------
-A training seed fixes the stochastic MACE realization (shuffle/order and other seeded
-optimizer choices) for one otherwise identical architecture and protocol. A K-fold
-plan creates K different leakage-safe train/evaluation partitions; the additional
-`final` job trains on the complete development set. The generated default is
-multi-head replay only: (3 folds + 1 final) x 2 seeds = 8 jobs. Naive/native
-target-only fine-tuning remains an opt-in comparison under
-`[training.naive_fine_tuning]`. Configure either method independently.
+Every durable scientific record binds its source, protocol, parent authorities,
+and content digests. Reopening a workspace re-derives current selection and
+currentness before reuse. Scientific input changes invalidate the affected
+descendants; provenance-only changes do not change arithmetic; CV-only edits do
+not invalidate selection; production-only edits do not invalidate selection or
+CV. Missing, corrupt, stale, or incompatible derived artifacts fail closed and
+are rebuilt by their owning stage.
 
-The `cross_validation_folds` and `fold_partition_seed` keys under `[training.*]`
-belong to the retired pre-target CV lifecycle and are not the current
-post-selection CV authority. Current cross-validation is configured under
-`[post_selection.cv]` and its production counterpart under
-`[post_selection.production]`.
+Storage operations
+------------------
+Use storage report for a read-only inventory. Use storage cleanup with a
+dry-run before applying cache or recompute reclamation. storage archive
+create/verify/restore provides reversible cold-archive handling, and storage
+deduplicate --apply operates only on exact immutable campaign-owned files.
+External inputs, current scientific records, restart checkpoints, and logs
+needed for diagnosis remain protected.
 
-After a conventional MLCV campaign has completed SELECT1/AGG1/FINAL1 but before
-VERIFY1 freezes production authority, append one optimizer realization with
-`extend-seed --seed N`. The command is resumable: it extends only the selected
-method's seed array, authenticates that the new seed uses the exact existing fold
-role catalog, prepares/trains only its K folds plus final job, reuses run-local
-SELECT1/outer-fold evidence for prior seeds, and rebuilds only campaign-level
-AGG1/FINAL1 authority. A new seed joins the committee only if it independently
-passes the same CV, target, and replay-retention gates. Use `--dry-run` to inspect
-the extension plan without changing campaign.toml or state. Seed extension is
-forbidden after VERIFY1/locked-E/production freeze; use a new campaign identity then.
-
-The fold, replay, randomized projection, Python-hash, and verification-velocity
-seeds are all explicit in the initial TOML. Fixed seeds make pseudo-random choices
-reproducible; bitwise CUDA equality still requires the same software, driver, backend,
-and hardware because parallel floating-point scheduling is not a pseudo-random choice.
-
-`init` writes the generalized foundation contract explicitly. New campaigns default
-to MACE-MH-1 / `omat_pbe` with source/DATA6/evaluation `backend = "e3nn"` and
-TRAIN2 `training_backend = "cueq"`. Initialization never rewrites either intent merely
-because it runs on a host without CuEq. `doctor` qualifies the source and training
-realizations independently and fails closed if the requested CuEq training path is
-unavailable or unqualified. Historical configurations without `training_backend` retain
-their original unified-backend semantics exactly; no stage silently falls back.
-
-A successful result has: one authenticated `[paths].replay_set` source; qualified,
-disjoint internally derived replay train/monitor views with explicit true/pseudo label
-provenance and independent source-truth replay accuracy; a passed leakage
-audit and production gate; improving target validation errors without a large
-train-monitor gap; acceptable Li/Na/K force errors; small true-label replay
-degradation; agreement across folds and seeds; no non-finite values or atomic
-collapse; and NVE drift comfortably below the hard 26 meV/atom/ps limit.
-
-TRAIN2A/TRAIN2B/EVAL2/DEPLOY-VERIFY1/PES-VERIFY1/RELAX-VERIFY1/DYN-VERIFY2/SELECT2/LOCKED-TEST2 are active in 0.20.177a0 for newly generated campaigns. `init` writes
-`policy_generation = "train2"` and `checkpoint_strategy = "train2_target_first"` and freezes separate
-TrainingBudgetPolicy, LearningRateSchedulePolicy, CheckpointAdmissibilityPolicy, and
-CheckpointSelectionPolicy identities. Replay is an authenticated TRUE_DFT hard-retention constraint;
-once admissible, extra replay margin has zero checkpoint/seed ranking or tie-break authority.
-`select-target-size` owns TRAIN2B exact continuation at the configured screen boundaries and EVAL2 endpoint
-reduction; it never substitutes a better earlier checkpoint. After N* is frozen,
-public `train` uses the same TRAIN2B fixed-budget runtime for the selected production/CV
-matrix and public `evaluate` uses EVAL2 production checkpoint selection, where an
-earlier admissible epoch may legitimately win. LR advances once per optimizer update
-on the role-local configured horizon and screen continuation preserves authenticated live/EMA/
-optimizer/RNG state without renormalizing the schedule. `verify` executes DEPLOY-VERIFY1, then PES-VERIFY1 with a common fixed-geometry DFT probe request, then RELAX-VERIFY1 with matched fixed-cell DFT zero-K relaxations, and finally DYN-VERIFY2 with common deployed finite-temperature NVT->NVE structural rollouts; SELECT2 freezes the first physically qualified seed in the pre-ranked target-only order; LOCKED-TEST2 then evaluates that exact frozen candidate once on sealed locked E and either publishes the exact frozen MACE/ML-IAP bytes or fails the campaign without fallback. Historical configs without `policy_generation` retain their
-original authority.
-
-The interrupted-campaign bounded-evidence workflow described below applies to historical adaptive/MLCV
-campaigns. Run `evaluate` with optional `--training-mode`, `--seed`, and `--selection-size` filters. A
-complete method/size/seed variant is tested independently; two completed folds receive a reduced
-cross-fold warning; one completed model receives per-model monitor and NVE checks with a
-no-cross-validation warning. Interim evidence never freezes a production protocol, never prunes restart
-checkpoints, and becomes stale when more runs complete, at which point rerun `evaluate`. Use
-`evaluate --require-complete` or `verify --require-frozen` for strict all-or-nothing behavior.
-
-ADAPT-EVAL1 became the generated adaptive evaluator in 0.20.126a0. It remains authoritative for
-historical pre-MLCV adaptive campaigns: one-per-run champions are pooled campaign-wide, initially
-five are fully evaluated on the old common full target domain plus TRUE_DFT replay, and next-five
-rescue batches are purchased only while no survivor exists. Campaigns generated under the conventional
-CV generation are bound to the distinct `mlcv_nested_cv` lifecycle authority. In 0.20.140a0 replay
-retention is foundation-relative degradation throughout STOP1/RANK1/SELECT1/AGG1/FINAL1. Historical
-absolute-replay evidence remains readable but is never silently reinterpreted; transitional
-replay-dependent authority must be regenerated under the current schema. Historical `bounded`,
-`exhaustive`, and `multi_fidelity` strategies remain available for compatible old campaigns.
-
-MLCV-MON1 is active in 0.20.132a0. Fold jobs use <=256-frame `V_i_light` subsets of nested
-training-side `V_i_full`; final jobs use <=256-frame `D_light` subsets of held-out `D_full`; replay
-uses <=512-frame TRUE_DFT `R_light` from complete `R_full`; and each run gets a <=256-frame
-selection-inert target-training diagnostic. Outer CV folds are not exposed during checkpoint
-selection. MLCV-STOP1 is active in 0.20.133a0: the target stop is `f_T*T_full_max` and replay
-exhaustion is `f_R*DeltaR_max`, where `DeltaR_max=(target_weight/replay_weight)*T_full_max`. `DeltaR=R-R0` uses the matched foundation baseline for the same replay domain; the diagnostic absolute ceiling is `R0+DeltaR_max`.
-Generated defaults are `f_T=0.80` and `f_R=1.20`, but both are TOML-configurable through
-`target_stop_fraction` and `replay_stop_multiplier` and are frozen into protocol identity. Thus
-24/36 meV/A are only the default 30 meV/A, 1:1 consequences. These lightweight control signals
-activate after three completed epochs by default and never apply the full-validation acceptance
-gates. Foundation replay feasibility is frozen once from full TRUE_DFT `R_full`. MLCV-RANK1 is
-active in 0.20.134a0: every finite lightweight target/replay checkpoint is ranked independently
-within its run and at most five are retained deterministically. MLCV-SELECT1 is active in
-0.20.135a0: every retained candidate is fully screened per run on `V_i_full + R_full` for folds or
-`D_full + R_full` for final-development runs; hard full target/replay and configured safety gates
-are applied before weighted full-score ranking freezes one representative or explicit failure.
-MLCV-AGG1 is active in 0.20.136a0: each frozen fold representative is evaluated once on its
-untouched outer CV target fold. All configured folds must survive the target ceiling; target,
-representative `R_full` replay, and combined statistics report mean/sample-SD/min/max/range/worst
-fold separately, with dispersion diagnostic-only. Outer-fold evidence cannot reselect an epoch and
-fold models are production-ineligible. MLCV-FINAL1 is active in 0.20.137a0: configured-CV failure
-blocks production at the recipe level; otherwise only qualified final-development representatives
-are compared on identical `D_full + R_full`. Exactly one best seed becomes the production verification
-candidate and all qualified final seeds are exported separately as the target-head committee. MLCV-VERIFY1 is active in 0.20.138a0: only qualified final-seed representatives may enter physical fallback; the first bounded-NVE passer is frozen, sealed locked `E` is then evaluated once on those exact target-head bytes with no fallback authority, and `production_best.model` is published only after locked `E` passes. Generated method tables use
-`seed_mode = "optimizer_only"`; optional `optimizer_and_cv_partition` varies CV partitions per seed
-without changing final full-development training membership. Naive training remains target-only for
-gradients but receives replay validation-only evidence.
-
-Precision is explicit at initialization. Plain `init` generates `single` (FP32 learned-model
-training/inference); use `init --precision double` for FP64 learned-model training/inference.
-Staged `refine`/`mixed` model precision is retired for new campaigns. mdstats-owned scientific
-reductions, statistics, and persistent MD bookkeeping remain FP64 in either model mode, and no
-hardware heuristic may substitute another learned-model dtype.
-
-ADAPT-VERIFY1 is active in 0.20.127a0. For completed `adaptive_topk` campaigns, the final
-`verify` command tests the lowest-full-score admissible candidate on the complete configured
-structure x temperature NVE matrix. A hard verification failure advances to the next already fully
-evaluated admissible candidate when fallback is enabled. The first passing target-head artifact is
-atomically published; failed candidate artifacts never enter `models/`. The model keeps its
-`single|double` learned-model dtype while MD state, drift analysis, and other mdstats-owned
-scientific arithmetic remain FP64. Historical evaluator paths retain their committee/fold
-verification behavior. This bounded gate does not replace matched RDF, coordination, site-population,
-VDOS, or diffusion validation.
-
-ADAPT-MIGRATE1 is active in 0.20.128a0 and closes the adaptive revision. Immutable run protocol
-identity now prevents an adaptive campaign from being switched back to historical
-`bounded|exhaustive|multi_fidelity` evaluation by editing TOML, and prevents a historical campaign
-from being reinterpreted as `adaptive_topk` without a new scientific campaign identity. A
-schema-neutral protocol-freeze authority record lets storage/restart code validate either historical
-committee freezes or adaptive deployment freezes without changing the original scientific evidence.
-Completed 0.20.127 adaptive campaigns are reconciled by rerunning `verify` once: model inference,
-full evaluation, and NVE are reused; only the generic freeze-authority alias and immutable migration
-receipt are added. Once an adaptive deployment is frozen, later `evaluate` invocations only reuse
-the frozen EVAL1 authority and do not create a second selection history. `storage report` exposes
-freeze authority and preserved historical evaluator evidence read-only, while STOR cleanup/deletion
-boundaries are unchanged.
-
-
-MLCV-MIGRATE1 replay-degradation authority is active in 0.20.140a0 and preserves historical 0.20.139a0 authority read-only. New campaigns
-freeze `mlcv_nested_cv` as a lifecycle authority tied to DATA8 ROLE1/MON1 catalog digests and top-five
-selection semantics. Editing TOML cannot redirect that campaign to ADAPT-EVAL1, fold-winner deployment,
-or a historical evaluator. Completed 0.20.131-0.20.138 MLCV campaigns are migrated in place on the
-first train/evaluate/verify touch: existing rankings, SELECT1 representatives, outer-fold evidence,
-FINAL1 seed selection, physical verification, locked E, and published bytes are authenticated and reused,
-not recomputed or reranked. After production publication, an immutable MLCV protocol freeze protects the
-top-five checkpoint identities, run representatives, qualified committee/production model bytes, locked-E
-evidence, and diagnostics from storage reclamation. Historical adaptive and committee campaigns remain
-under their original authorities.
-
-When the result is weak: first check E0/reference-energy consistency if energies are bad
-but forces are reasonable; increase structurally independent data rather than adjacent
-AIMD frames; add mobile-ion transition and strained/high-force environments; lower the
-learning rate when replay or validation deteriorates abruptly; strengthen replay when
-retention fails; and reduce the MD timestep or test FP64 when only NVE drift is poor.
+The P6 implementation ends at current functional/restart closure. Downstream
+accelerator and long-production qualification is separate evidence and is not
+claimed by this guide.
 """
 
 
@@ -7893,7 +7544,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mdstats-mlff-campaign",
         formatter_class=_Formatter,
-        description="Run an auditable MACE fine-tuning campaign from VASP data to a frozen, verified deployment model.",
+        description=(
+            "Run an auditable MACE fine-tuning campaign from VASP data to a current "
+            "selected target and fresh production model.\n\n"
+            "Current lifecycle: init -> doctor -> prepare -> select-target-size -> "
+            "cross-validate -> train-production"
+        ),
         epilog="Run `... guide` for the short scientific workflow and `... status` for the next safe action.",
     )
     parser.add_argument("--config", default=DEFAULT_CONFIG_NAME, help="campaign TOML file (default: campaign.toml)")
@@ -7959,7 +7615,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--continue-after-approval",
         action="store_true",
-        help="approve and immediately continue the expensive preparation pipeline (legacy behavior)",
+        help="approve and continue the current preparation pipeline in this invocation",
     )
     p.add_argument(
         "--refresh-inferences",
@@ -7968,7 +7624,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--rebuild-catalog", action="store_true", help="rebuild DATA2-DATA5 after an intentional manifest change")
     p.add_argument("--max-new-frames", type=int, help="bound new foundation-inference frames for this invocation")
-    p.add_argument("--max-new-domains", type=int, help="bound new DATA7 domains for this invocation")
     p.set_defaults(func=command_prepare)
 
     p = sub.add_parser(
@@ -8037,11 +7692,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "--keep-preparation-caches", action="store_true",
-        help="retain normalized frame, shared DATA7, and preflight-heavy caches",
+        help="retain normalized frame and shared preparation caches",
     )
     sp.add_argument(
         "--keep-unselected-checkpoints", action="store_true",
-        help="after evaluate, retain all evaluated checkpoint bytes",
+        help="retain all checkpoint bytes eligible for cleanup",
     )
     sp.set_defaults(func=command_cleanup, storage_command="cleanup")
 
@@ -8124,8 +7779,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = [
     "MLFF_DATA9B3_VERSION",
     "CAMPAIGN_CLI_SCHEMA",
-    "PREPARE_RESTART_RECEIPT_SCHEMA",
-    "PREPARE_CONTRACT_VERSION",
+    "CURRENT_PREPARE_RESTART_RECEIPT_SCHEMA",
+    "CURRENT_PREPARE_CONTRACT_VERSION",
     "CampaignCliError",
     "CampaignPaths",
     "CampaignStore",

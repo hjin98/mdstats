@@ -5525,8 +5525,8 @@ __all__ = sorted(set([name for name in globals() if not name.startswith("_")]))
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")]))
 
-# Target-size v5 current authority. Retired ladder/migration/convergence APIs are
-# intentionally not re-exported across the hard restart boundary.
+# Current-generation target-size authority. Retired ladder/migration/convergence
+# APIs are intentionally not re-exported across the hard restart boundary.
 from .training_data.target_size_experiment import (
     HARD_SUPPORT_CONDITION_ATTRIBUTES,
     HARD_SUPPORT_USER_LABEL_PREFIX,

@@ -127,10 +127,10 @@ Frozen `M3` evidence may remain development/model-selection evidence. Final auth
 
 ## Public command surface
 
-The current lifecycle is exactly:
+The current lifecycle, including configuration initialization, is exactly:
 
 ```text
-doctor -> prepare -> select-target-size -> cross-validate -> train-production
+init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
 ```
 
 `prepare` reconstructs the current substrate and cannot select a size. `select-target-size` is the only command that trains candidates and decides `N`. `cross-validate` is the only command that accepts the method. `train-production` is the only command that publishes a fresh production model. `status` and `advance` project this lifecycle from the owning authorities rather than from stage markers.
