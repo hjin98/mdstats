@@ -4839,7 +4839,6 @@ def _prepare_catalog(
     gc.collect()
 
     role_budget = mdstats.PartitionRoleBudgetPolicy(
-        cross_validation_folds=3,
         purge_units_between_roles=int(_cfg(cfg, "partition", "purge_units_between_roles", 1)),
     )
     partition_policy = mdstats.PartitionPolicy(
@@ -4847,7 +4846,6 @@ def _prepare_catalog(
         block_policy=mdstats.CompleteFrameBlockPolicy(
             minimum_block_frames=int(_cfg(cfg, "partition", "minimum_block_frames", 32))
         ),
-        cross_validation_seed=104729,
     )
 
     stage_start = time.monotonic()
@@ -6159,9 +6157,11 @@ def _build_manual_tier_report(
     *,
     dry_run: bool,
 ) -> _CampaignCleanupReport:
-    protected_inputs = configured_protected_inputs(
-        cfg, config_dir=paths.config_dir, config_path=paths.config
-    )
+    if tier in ("recompute", "compact", "archive"):
+        raise CampaignCliError(
+            f"Consequential storage tier {tier!r} is deferred to the post-P7 storage reset "
+            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
+        )
     report = _CampaignCleanupReport(
         phase=f"manual-{tier}",
         dry_run=dry_run,
@@ -6169,10 +6169,6 @@ def _build_manual_tier_report(
     )
     if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
         _manual_reclamation_add_cache_tier(report, paths)
-    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["recompute"]:
-        _manual_reclamation_add_recompute_tier(report, paths, store)
-    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["compact"]:
-        _manual_reclamation_add_compact_tier(report, cfg, paths, store)
     return report
 
 
@@ -6345,6 +6341,11 @@ def _stor5_dedup_roots(paths: CampaignPaths) -> tuple[Path, ...]:
 def command_deduplicate(args: argparse.Namespace) -> int:
     """STOR5 exact-byte immutable deduplication after protocol freeze."""
 
+    if bool(getattr(args, "apply", False)):
+        raise CampaignCliError(
+            "Consequential storage deduplication (--apply) is deferred to the post-P7 storage reset "
+            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
+        )
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     running = [name for name, _ in PIPELINE if store.stage(name)[0] is StageState.RUNNING]
@@ -6386,6 +6387,12 @@ def command_deduplicate(args: argparse.Namespace) -> int:
 def command_archive(args: argparse.Namespace) -> int:
     """STOR5 create/verify/restore an authenticated reversible cold archive."""
 
+    action = str(args.archive_action)
+    if action in ("create", "restore"):
+        raise CampaignCliError(
+            f"Consequential storage archive action {action!r} is deferred to the post-P7 storage reset "
+            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
+        )
     cfg, paths = _load_config(args.config)
     boundary = _campaign_ownership_boundary(cfg, paths)
     state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
@@ -6395,58 +6402,31 @@ def command_archive(args: argparse.Namespace) -> int:
     # The retention fence is derivable only once campaign state is open; every
     # destructive archive action below uses the fenced boundary.
     boundary = _campaign_ownership_boundary(cfg, paths, store)
-    action = str(args.archive_action)
-    if action == "create":
-        running = [name for name, _ in PIPELINE if store.stage(name)[0] is StageState.RUNNING]
-        if running:
-            raise CampaignCliError("Refusing cold archival while campaign stages are running: " + ", ".join(running))
-        report = _build_manual_tier_report("archive", cfg, paths, store, dry_run=True)
-        manifest, receipt = _stor5_create_from_actions(paths, store, boundary, report.actions)
-        if manifest is None:
-            _warn("No consequential recompute/compact hot artifacts are currently eligible for cold archival.")
-            return 0
-        _ok(
-            f"cold archive created and verified: id={manifest['archive_id']}; "
-            f"hot={_format_storage_bytes(manifest['hot_logical_bytes'])}; "
-            f"archive={_format_storage_bytes(manifest['archive_size_bytes'])}"
-        )
-        _atomic_json(paths.results / "cold-archive-latest.json", receipt)
-        return 0
     manifest_path = _stor5_latest_manifest_path(paths, store)
     if action == "verify":
         try:
             manifest = verify_cold_archive(manifest_path)
         except StorageArchiveError as exc:
-            raise CampaignCliError(f"Cold archive verification failed: {exc}") from exc
-        _ok(f"cold archive verified: {manifest['archive_id']} ({len(manifest['entries'])} entries)")
-        return 0
-    if action == "restore":
-        try:
-            receipt = restore_cold_archive(paths.workspace, manifest_path, boundary=boundary)
-        except StorageArchiveError as exc:
-            raise CampaignCliError(f"Cold archive restore failed closed: {exc}") from exc
-        receipt["created_utc"] = _utc_now()
-        store.put_record(f"cold_archive_restore:{receipt['archive_id']}", receipt)
-        _atomic_json(paths.results / f"cold-archive-restore-{receipt['archive_id']}.json", receipt)
-        _ok(
-            f"cold archive restored and reverified: {receipt['archive_id']}; "
-            f"restored_files={receipt['restored_files']}; already_present={receipt['already_present_files']}"
+            raise CampaignCliError(f"STOR5 cold archive verification failed closed: {exc}") from exc
+        print(
+            f"cold archive verified: id={manifest['archive_id']}; "
+            f"hot={_format_storage_bytes(manifest['hot_logical_bytes'])}; "
+            f"archive={_format_storage_bytes(manifest['archive_size_bytes'])}",
+            flush=True,
         )
         return 0
-    raise CampaignCliError(f"Unknown archive action: {action!r}")
+    raise CampaignCliError(f"Unknown archive action {action!r}.")
 
 
 def command_cleanup(args: argparse.Namespace) -> int:
-    """STOR4 manual tiered reclamation with a mandatory capability plan."""
-
-    import mdstats
+    """Explicitly clean up campaign scratch, caches, and storage tiers."""
 
     cfg, paths = _load_config(args.config)
     boundary = _campaign_ownership_boundary(cfg, paths)
     state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
     if not state_authorized:
         raise CampaignCliError(
-            "Refusing cleanup because the campaign state database is outside the "
+            "Refusing cleanup operation because campaign state database is outside "
             f"campaign ownership boundary: {state_detail}: {paths.state_db}"
         )
     store = CampaignStore(paths.state_db)
@@ -6462,6 +6442,11 @@ def command_cleanup(args: argparse.Namespace) -> int:
         tier = str(explicit_tier)
     if tier not in _MANUAL_RECLAMATION_RANK:
         raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
+    if tier in ("recompute", "compact", "archive"):
+        raise CampaignCliError(
+            f"Consequential storage tier {tier!r} is deferred to the post-P7 storage reset "
+            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
+        )
     if bool(getattr(args, "apply", False)) and bool(args.dry_run):
         raise CampaignCliError("Choose either --dry-run or --apply, not both.")
     # A manual reclamation invocation may never race an executing stage.  Safe

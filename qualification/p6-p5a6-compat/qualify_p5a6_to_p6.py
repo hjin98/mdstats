@@ -289,6 +289,7 @@ def _phase_reopen(args: argparse.Namespace) -> int:
     from mdstats.training_data.campaign_post_selection_runtime import (
         build_post_selection_context,
         resolve_current_cv_acceptance,
+        resolve_current_final_production_completion,
         resolve_current_final_production_plan,
     )
     from mdstats.training_data.campaign_target_size_cutover import (
@@ -333,6 +334,7 @@ def _phase_reopen(args: argparse.Namespace) -> int:
         context = build_post_selection_context(cfg, paths, store, trainer=None)
         acceptance = resolve_current_cv_acceptance(context)
         final_plan = resolve_current_final_production_plan(context)
+        final_completion = resolve_current_final_production_completion(context)
         if context.method.content_digest != identity["method_identity_digest"]:
             raise QualificationError("P5A6 method identity changed")
         if acceptance is None or not acceptance.accepted:
@@ -343,6 +345,8 @@ def _phase_reopen(args: argparse.Namespace) -> int:
             raise QualificationError("P5A6 final-production identity changed")
         if final_plan.binding.content_digest != selected.binding.content_digest:
             raise QualificationError("P5A6 final-production binding changed")
+        if final_completion is None:
+            raise QualificationError("P5A6 final-production completion failed to resolve")
         revision_digest = revision.state.content_digest
     finally:
         store.close()
@@ -359,10 +363,13 @@ def _phase_reopen(args: argparse.Namespace) -> int:
         selected2 = load_current_selected_training_context(cfg2, paths2, store2)
         context2 = build_post_selection_context(cfg2, paths2, store2, trainer=None)
         final2 = resolve_current_final_production_plan(context2)
+        completion2 = resolve_current_final_production_completion(context2)
         if selected2.binding.content_digest != identity["selected_binding_digest"]:
             raise QualificationError("P5A6 binding changed on second reopen")
         if final2 is None or final2.content_digest != identity["final_plan_digest"]:
             raise QualificationError("P5A6 final plan changed on second reopen")
+        if completion2 is None:
+            raise QualificationError("P5A6 final completion changed on second reopen")
     finally:
         store2.close()
 
@@ -374,6 +381,237 @@ def _phase_reopen(args: argparse.Namespace) -> int:
                 "revision_digest": revision_digest,
                 "preload_rewrite": False,
                 "database_unchanged": True,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return 0
+
+
+def _phase_produce_p6(args: argparse.Namespace) -> int:
+    output_root = Path(args.output_root).resolve()
+    evidence_root = Path(args.evidence_root).resolve()
+    if output_root.exists() and any(output_root.iterdir()):
+        raise QualificationError(f"P6 producer output must be empty: {output_root}")
+    output_root.mkdir(parents=True, exist_ok=True)
+    evidence_root.mkdir(parents=True, exist_ok=True)
+
+    from tests._mlff_post_selection_fixture import (
+        PostSelectionHarness,
+        build_selected_campaign,
+        run_cross_validate,
+        run_train_production,
+    )
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data._campaign_cli_core import CampaignStore
+    from mdstats.training_data.campaign_post_selection import (
+        load_current_selected_training_context,
+    )
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        build_post_selection_context,
+        resolve_current_cv_acceptance,
+        resolve_current_cv_plan,
+        resolve_current_final_production_completion,
+        resolve_current_final_production_plan,
+    )
+    from mdstats.training_data.campaign_target_size_state import (
+        load_target_size_campaign_revision,
+    )
+
+    config, workspace = build_selected_campaign(output_root)
+    harness = PostSelectionHarness()
+    if run_cross_validate(config, harness) != 0:
+        raise QualificationError("fresh P6 cross-validation execution failed")
+    if run_train_production(config, harness) != 0:
+        raise QualificationError("fresh P6 final-production execution failed")
+
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        revision = load_target_size_campaign_revision(store)
+        terminal = revision.state.terminal
+        if terminal is None:
+            raise QualificationError("fresh P6 producer did not publish terminal selection")
+        selected = load_current_selected_training_context(cfg, paths, store)
+        context = build_post_selection_context(cfg, paths, store, trainer=object())
+        plan = resolve_current_cv_plan(context)
+        acceptance = resolve_current_cv_acceptance(context)
+        final_plan = resolve_current_final_production_plan(context)
+        final_completion = resolve_current_final_production_completion(context)
+        if (
+            plan is None
+            or acceptance is None
+            or not acceptance.accepted
+            or final_plan is None
+            or final_completion is None
+        ):
+            raise QualificationError("fresh P6 producer did not achieve full final production completion")
+        identity: dict[str, Any] = {
+            "workspace_relative_path": str(workspace.relative_to(output_root)),
+            "generation": revision.state.generation,
+            "regime": revision.state.regime.value,
+            "lifecycle": revision.state.lifecycle.value,
+            "frame_authority_digest": revision.state.frame_authority_digest,
+            "neutral_statistical_base_digest": revision.state.neutral_statistical_base_digest,
+            "split_exclusion_digest": revision.state.split_exclusion_digest,
+            "experiment_definition_digest": revision.state.experiment_definition_digest,
+            "common_preparation_digest": revision.state.common_preparation_digest,
+            "adopted_execution_head_digest": revision.state.adopted_execution_head_digest,
+            "n_selected": terminal.selected_target_size,
+            "selected_membership_digest": terminal.selected_membership_digest,
+            "selected_membership": list(selected.selected_membership),
+            "selected_binding_digest": selected.binding.content_digest,
+            "method_identity_digest": context.method.content_digest,
+            "cv_plan_digest": plan.content_digest,
+            "cv_acceptance_digest": acceptance.content_digest,
+            "final_plan_digest": final_plan.content_digest,
+            "final_completion_digest": final_completion.content_digest,
+        }
+    finally:
+        store.close()
+
+    manifest_digest, entries = _content_manifest(output_root)
+    database = _database_snapshot(output_root)
+    identity["content_manifest_digest"] = manifest_digest
+    identity["file_count"] = len(entries)
+    (evidence_root / "producer_p6_identity.json").write_text(
+        json.dumps(identity, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (evidence_root / "producer_p6_content_manifest.json").write_text(
+        json.dumps(
+            {"content_manifest_digest": manifest_digest, "file_count": len(entries), "files": entries},
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (evidence_root / "producer_p6_database_snapshot.json").write_text(
+        json.dumps(database, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return 0
+
+
+def _phase_reopen_p6(args: argparse.Namespace) -> int:
+    root = Path(args.workspace_root).resolve()
+    evidence_root = Path(args.evidence_root).resolve()
+    identity = json.loads(Path(args.identity).read_text(encoding="utf-8"))
+    recorded_manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    recorded_database = json.loads(Path(args.database).read_text(encoding="utf-8"))
+    if not root.is_dir():
+        raise QualificationError(f"authenticated fresh P6 workspace is absent: {root}")
+    _assert_preserved_content(root, recorded_manifest["files"], recorded_database)
+
+    from tests._mlff_post_selection_fixture import (
+        PostSelectionHarness,
+        run_cross_validate,
+        run_train_production,
+    )
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data._campaign_cli_core import CampaignStore
+    from mdstats.training_data.campaign_post_selection import (
+        load_current_selected_training_context,
+    )
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        build_post_selection_context,
+        resolve_current_cv_acceptance,
+        resolve_current_final_production_completion,
+        resolve_current_final_production_plan,
+    )
+    from mdstats.training_data.campaign_target_size_cutover import (
+        require_current_target_size_runtime,
+    )
+    from mdstats.training_data.campaign_target_size_state import (
+        TargetSizeLifecycle,
+        TargetSizeRegime,
+    )
+
+    config = root / "campaign.toml"
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        revision = require_current_target_size_runtime(store)
+        if revision.state.regime is not TargetSizeRegime.CURRENT:
+            raise QualificationError("P6 workspace did not reopen as current")
+        if revision.state.lifecycle is not TargetSizeLifecycle.TERMINAL_SELECTED:
+            raise QualificationError("P6 workspace lost terminal selection on reopen")
+        if revision.state.generation != identity["generation"]:
+            raise QualificationError("P6 generation changed on reopen")
+        for field in (
+            "frame_authority_digest",
+            "neutral_statistical_base_digest",
+            "split_exclusion_digest",
+            "experiment_definition_digest",
+            "common_preparation_digest",
+            "adopted_execution_head_digest",
+        ):
+            if getattr(revision.state, field) != identity[field]:
+                raise QualificationError(f"P6 {field} failed currentness authentication")
+        terminal = revision.state.terminal
+        if terminal is None or terminal.selected_target_size != identity["n_selected"]:
+            raise QualificationError("P6 selected target failed authentication")
+        if terminal.selected_membership_digest != identity["selected_membership_digest"]:
+            raise QualificationError("P6 selected membership digest changed")
+        selected = load_current_selected_training_context(cfg, paths, store)
+        if list(selected.selected_membership) != identity["selected_membership"]:
+            raise QualificationError("P6 selected membership sequence changed")
+        if selected.binding.content_digest != identity["selected_binding_digest"]:
+            raise QualificationError("P6 selected binding changed")
+        context = build_post_selection_context(cfg, paths, store, trainer=None)
+        acceptance = resolve_current_cv_acceptance(context)
+        final_plan = resolve_current_final_production_plan(context)
+        final_completion = resolve_current_final_production_completion(context)
+        if context.method.content_digest != identity["method_identity_digest"]:
+            raise QualificationError("P6 method identity changed")
+        if acceptance is None or not acceptance.accepted:
+            raise QualificationError("P6 CV acceptance is not current")
+        if acceptance.content_digest != identity["cv_acceptance_digest"]:
+            raise QualificationError("P6 CV acceptance digest changed")
+        if final_plan is None or final_plan.content_digest != identity["final_plan_digest"]:
+            raise QualificationError("P6 final-production identity changed")
+        if final_completion is None or final_completion.content_digest != identity["final_completion_digest"]:
+            raise QualificationError("P6 final-production completion digest changed on reopen")
+        revision_digest = revision.state.content_digest
+    finally:
+        store.close()
+
+    # Rerun cross-validate and train-production with an instrumented harness.
+    # Already complete authenticated runs must be reused rather than retrained.
+    instrumented_harness = PostSelectionHarness()
+    rc_cv = run_cross_validate(config, instrumented_harness)
+    if rc_cv != 0:
+        raise QualificationError("P6 cross-validate rerun failed")
+    rc_prod = run_train_production(config, instrumented_harness)
+    if rc_prod != 0:
+        raise QualificationError("P6 train-production rerun failed")
+    if len(instrumented_harness.runs) != 0:
+        raise QualificationError(
+            f"P6 rerun re-executed training for {len(instrumented_harness.runs)} run(s) "
+            "instead of reusing authenticated complete evidence."
+        )
+
+    # Verify completion still authenticates after rerun
+    cfg2, paths2 = cli._load_config(config)
+    store2 = CampaignStore(paths2.state_db)
+    try:
+        context2 = build_post_selection_context(cfg2, paths2, store2, trainer=None)
+        completion2 = resolve_current_final_production_completion(context2)
+        if completion2 is None or completion2.content_digest != identity["final_completion_digest"]:
+            raise QualificationError("P6 completion digest changed after idempotent rerun")
+    finally:
+        store2.close()
+
+    (evidence_root / "p6_reopen_result.json").write_text(
+        json.dumps(
+            {
+                "workspace": str(root),
+                "revision_digest": revision_digest,
+                "completion_digest": identity["final_completion_digest"],
+                "training_reruns_executed": len(instrumented_harness.runs),
+                "reused_successfully": True,
             },
             indent=2,
             sort_keys=True,
@@ -422,6 +660,10 @@ def _phase_environment(phase: str, args: argparse.Namespace) -> int:
         return _phase_produce(args)
     if phase == "reopen":
         return _phase_reopen(args)
+    if phase == "produce_p6":
+        return _phase_produce_p6(args)
+    if phase == "reopen_p6":
+        return _phase_reopen_p6(args)
     if phase == "reject":
         return _phase_reject(args)
     raise QualificationError(f"unknown qualification phase: {phase}")
@@ -461,6 +703,7 @@ def _orchestrate(args: argparse.Namespace) -> int:
         output_root = output_arg
     evidence_root = output_root / "evidence"
     producer_root = output_root / "producer"
+    producer_p6_root = output_root / "producer-p6"
     reject_root = output_root / "reject"
     baseline_root = output_root / "baseline-worktree"
     worktree_added = False
@@ -514,8 +757,6 @@ def _orchestrate(args: argparse.Namespace) -> int:
         )
         if not produce_ok:
             details.append("P5A6 producer failed:\n" + produce_detail)
-        else:
-            statuses["P5A6 -> P6 authenticated current-generation compatibility"] = False
 
         final_env = os.environ.copy()
         final_env["PYTHONPATH"] = str(FINAL_REPOSITORY)
@@ -544,9 +785,50 @@ def _orchestrate(args: argparse.Namespace) -> int:
                 details.append("P6 reopen failed:\n" + reopen_detail)
             else:
                 statuses["P5A6 -> P6 authenticated current-generation compatibility"] = True
-                statuses["P6 -> P6 current-generation restart"] = True
         else:
             details.append("P6 reopen not attempted because baseline production failed")
+
+        produce_p6_ok, produce_p6_detail = _run_phase(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--phase",
+                "produce_p6",
+                "--output-root",
+                str(producer_p6_root),
+                "--evidence-root",
+                str(evidence_root),
+            ],
+            cwd=FINAL_REPOSITORY,
+            env=final_env,
+        )
+        if not produce_p6_ok:
+            details.append("Fresh P6 producer failed:\n" + produce_p6_detail)
+        else:
+            reopen_p6_ok, reopen_p6_detail = _run_phase(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--phase",
+                    "reopen_p6",
+                    "--workspace-root",
+                    str(producer_p6_root),
+                    "--identity",
+                    str(evidence_root / "producer_p6_identity.json"),
+                    "--manifest",
+                    str(evidence_root / "producer_p6_content_manifest.json"),
+                    "--database",
+                    str(evidence_root / "producer_p6_database_snapshot.json"),
+                    "--evidence-root",
+                    str(evidence_root),
+                ],
+                cwd=FINAL_REPOSITORY,
+                env=final_env,
+            )
+            if not reopen_p6_ok:
+                details.append("Fresh P6 reopen/restart failed:\n" + reopen_p6_detail)
+            else:
+                statuses["P6 -> P6 current-generation restart"] = True
 
         reject_ok, reject_detail = _run_phase(
             [
@@ -591,7 +873,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--phase",
-        choices=("produce", "reopen", "reject"),
+        choices=("produce", "reopen", "produce_p6", "reopen_p6", "reject"),
         help="internal phase; omit it to run the mandatory three-case qualification",
     )
     parser.add_argument("--output-dir", help="optional empty directory in which to retain evidence")
@@ -613,6 +895,14 @@ def main(argv: Iterable[str] | None = None) -> int:
         required = {
             "produce": (args.baseline_root, args.output_root, args.evidence_root),
             "reopen": (
+                args.workspace_root,
+                args.identity,
+                args.manifest,
+                args.database,
+                args.evidence_root,
+            ),
+            "produce_p6": (args.output_root, args.evidence_root),
+            "reopen_p6": (
                 args.workspace_root,
                 args.identity,
                 args.manifest,

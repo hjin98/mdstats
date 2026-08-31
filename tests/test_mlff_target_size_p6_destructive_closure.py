@@ -578,3 +578,105 @@ def test_p6_current_workspace_closes_reopens_and_restarts_deterministically(
 
     # `status` projects the complete current lifecycle from those same owners.
     assert cli.main(["--config", str(config), "status"]) == 0
+
+
+def test_p6_r8_data5_fresh_construction_and_serialization_neutrality():
+    """Fresh DATA5 serialization omits CV fold plans; legacy v1 loads compatibly."""
+    from mdstats.training_data.data5_bundle import (
+        DATA5_PARTITION_BUNDLE_SCHEMA,
+        LEGACY_DATA5_PARTITION_BUNDLE_SCHEMA,
+        Data5PartitionBundle,
+    )
+    from mdstats.training_data.role_budget import (
+        PARTITION_ROLE_BUDGET_POLICY_SCHEMA,
+        PartitionRoleBudgetPolicy,
+    )
+    from mdstats.training_data.partition import (
+        PARTITION_POLICY_SCHEMA,
+        PartitionPolicy,
+    )
+
+    budget = PartitionRoleBudgetPolicy()
+    assert budget.schema == PARTITION_ROLE_BUDGET_POLICY_SCHEMA
+    budget_dict = budget.to_dict()
+    assert "cross_validation_folds" not in budget_dict
+    assert "checkpoint_monitor_minimum_units_per_fold" not in budget_dict
+
+    policy = PartitionPolicy(role_budget=budget)
+    assert policy.schema == PARTITION_POLICY_SCHEMA
+    policy_dict = policy.to_dict()
+    assert "cross_validation_seed" not in policy_dict
+
+
+def test_p6_r8_transitional_storage_fails_closed_on_consequential_tiers(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    """Consequential storage tiers fail closed to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1."""
+    from mdstats.training_data._campaign_cli_core import (
+        CampaignCliError,
+        command_archive,
+        command_cleanup,
+        command_deduplicate,
+    )
+
+    config, _workspace = build_selected_campaign(tmp_path)
+    assert run_cross_validate(config, PostSelectionHarness()) == 0
+    assert run_train_production(config, PostSelectionHarness()) == 0
+
+    for tier in ("recompute", "compact", "archive"):
+        args = argparse.Namespace(config=str(config), tier=tier, dry_run=False, apply=False, keep_preparation_caches=False)
+        with pytest.raises(CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
+            command_cleanup(args)
+        assert cli.main(["--config", str(config), "cleanup", "--tier", tier]) != 0
+        captured = capsys.readouterr()
+        assert "CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1" in captured.err
+
+    args_dedup = argparse.Namespace(config=str(config), apply=True)
+    with pytest.raises(CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
+        command_deduplicate(args_dedup)
+    assert cli.main(["--config", str(config), "storage", "deduplicate", "--apply"]) != 0
+
+    args_archive = argparse.Namespace(config=str(config), archive_action="create")
+    with pytest.raises(CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
+        command_archive(args_archive)
+    assert cli.main(["--config", str(config), "storage", "archive", "create"]) != 0
+
+    # Safe and cache tiers remain operational
+    assert cli.main(["--config", str(config), "cleanup", "--tier", "safe"]) == 0
+    assert cli.main(["--config", str(config), "cleanup", "--tier", "cache"]) == 0
+    assert cli.main(["--config", str(config), "storage", "report"]) == 0
+
+
+def test_p6_r8_final_production_completion_distinct_digest_and_verification(tmp_path: Path):
+    """FinalProductionCompletion binds evidence digests and differs from plan digest."""
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        build_post_selection_context,
+        resolve_current_final_production_completion,
+        resolve_current_final_production_plan,
+    )
+
+    config, _workspace = build_selected_campaign(tmp_path)
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=None)
+        # Before training production, completion is None
+        assert resolve_current_final_production_completion(context) is None
+    finally:
+        store.close()
+
+    assert run_cross_validate(config, PostSelectionHarness()) == 0
+    assert run_train_production(config, PostSelectionHarness()) == 0
+
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=None)
+        plan = resolve_current_final_production_plan(context)
+        completion = resolve_current_final_production_completion(context)
+        assert plan is not None
+        assert completion is not None
+        # Must NOT alias plan digest
+        assert completion.content_digest != plan.content_digest
+        assert len(completion.runs) == len(plan.required_final_seeds)
+    finally:
+        store.close()
+

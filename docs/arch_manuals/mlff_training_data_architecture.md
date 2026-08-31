@@ -1328,7 +1328,7 @@ quarantined/reprepared rather than translated.
 | source/label identity | DATA2-family contracts | immutable source material | normalized labelled-record identity | partition, selection, training |
 | conditions/eligibility | DATA3-family contracts | source records | eligible frames and conditions | evidence-role assignment |
 | raw features/events | DATA4-family contracts | eligible evidence and provider declarations | partition-independent raw evidence | fitted metrics or membership |
-| evidence roles and protected relations | DATA5 partition contracts | cohorts, independence evidence, purge rules | development/monitor/CV roles and exclusions | target ranking |
+| evidence roles and protected relations | DATA5 partition contracts | cohorts, independence evidence, purge rules | neutral roles (development/monitor/calibration/locked) and split exclusions | post-selection CV folds or target ranking |
 | descriptor/difficulty inputs | DATA6 contracts | authorized evidence and frozen foundation model | raw/blinded descriptors and predictions | target membership |
 | common fitted preparation | current P3 preparation owner | neutral substrate and frozen method inputs | transforms, metrics, E0, objective/weights, difficulty inputs | membership or target size |
 | target-size split and orders | current target-size experiment owner | frame authority, neutral substrate, configured policy | `P_train`/`M3`, `pi_train`, `pi_eval`, `M1/M2/M3` | method acceptance |
@@ -1336,11 +1336,11 @@ quarantined/reprepared rather than translated.
 | scientific target size | one target-size reducer | paired target-side screen evidence | `N_selected` or typed scientific failure | monitor cardinality and CV evidence |
 | current selected set | `CampaignStore` terminal projection | authenticated reducer state and `pi_train` | exact `N_selected`/`T_selected` binding | re-deciding size |
 | post-selection method acceptance | post-selection CV owner | exactly `T_selected`, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict | changing `N_selected` |
-| fresh final production | final-production owner | accepted method and complete `T_selected` | current production publication | target-size or CV authority |
+| fresh final production | final-production owner | accepted method, complete `T_selected`, required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
 | target monitor | current monitor policy | authorized development role | deterministic monitor | target membership |
 | replay monitor | replay policy | authorized replay evidence | deterministic replay monitor | target ranking or method acceptance credit |
 | execution/provider lifetime | current stage owners | authenticated plans and resource budgets | bounded task/cache/provider state | scientific decisions |
-| storage management | orthogonal storage owners | campaign-owned artifact inventory | retention/cleanup/archive actions | lifecycle progression |
+| transitional storage management | transitional storage owners | campaign-owned artifact inventory | safe/cache cleanup, read-only accounting | lifecycle progression (consequential storage reset deferred to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) |
 
 A narrow specification may refine a row's realization, but it cannot create a
 second semantic owner for the same decision.
@@ -1485,7 +1485,8 @@ The durable rules are:
 2. fitted preparation and target membership are separate authorities;
 3. one canonical order and one common preparation define every candidate;
 4. `N_selected` and exact global `T_selected` are frozen together;
-5. the reducer is the sole target-size authority; post-selection cross-validation accepts the method and can never re-choose the size;
+5. the reducer is the sole target-size authority; post-selection
+   cross-validation accepts the method and can never re-choose the size;
 6. final production is fresh full-selected-set training;
 7. execution/cache/provider choices cannot change scientific semantics;
 8. unsupported derived state is rejected before reuse rather than migrated;

@@ -182,7 +182,7 @@ def test_supplied_ase_and_real_vasp_to_data5(tmp_path: Path) -> None:
     assert bundle.leakage_audit.passed
     assert bundle.feasibility_reports[0].is_usable
     assert len(bundle.outer_partitions[0].units_for(mdstats.OuterRole.LOCKED_INTERPOLATION_TEST)) >= 1
-    assert len(bundle.cross_validation_plans[0].folds) == 3
+    assert bundle.cross_validation_plans == ()
 
 
 def test_event_window_is_one_partition_unit(tmp_path: Path) -> None:
@@ -205,8 +205,15 @@ def test_outer_roles_folds_and_blinding_are_disjoint(tmp_path: Path) -> None:
     all_outer = [unit_id for role in mdstats.OuterRole for unit_id in outer.units_for(role)]
     assert len(all_outer) == len(set(all_outer)) == len(bundle.unit_catalog.units)
     development = set(outer.units_for(mdstats.OuterRole.DEVELOPMENT))
+    cv_plans = mdstats.build_cross_validation_plans(
+        bundle.unit_catalog,
+        bundle.outer_partitions,
+        bundle.feasibility_reports,
+        policy=bundle.partition_policy,
+        fold_count_override=3,
+    )
     held_out = set()
-    for fold in bundle.cross_validation_plans[0].folds:
+    for fold in cv_plans[0].folds:
         groups = [
             set(fold.training_unit_ids),
             set(fold.checkpoint_monitor_unit_ids),

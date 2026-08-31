@@ -1199,6 +1199,9 @@ def resolve_current_final_production_plan(
     return plan
 
 
+FINAL_PRODUCTION_COMPLETION_SCHEMA = "mdstats.mlff-final-production-completion.v1"
+
+
 @dataclass(frozen=True, slots=True)
 class FinalProductionCompletion:
     """Truthful completed run evidence for the exact current final plan."""
@@ -1210,7 +1213,14 @@ class FinalProductionCompletion:
     def __post_init__(self) -> None:
         if not self.runs:
             raise PostSelectionError("Final-production completion requires at least one run.")
-        object.__setattr__(self, "content_digest", self.plan.content_digest)
+        payload = {
+            "schema": FINAL_PRODUCTION_COMPLETION_SCHEMA,
+            "final_plan_digest": self.plan.content_digest,
+            "required_final_seeds": list(self.plan.required_final_seeds),
+            "run_evidence_digests": [run.content_digest for run in self.runs],
+            "run_identities": [run.run_identity for run in self.runs],
+        }
+        object.__setattr__(self, "content_digest", digest(payload))
 
 
 def resolve_current_final_production_completion(
@@ -1227,6 +1237,11 @@ def resolve_current_final_production_completion(
         completed = _completed_run_evidence(context, run_plan)
         if completed is None:
             return None
+        if completed.run_plan_digest != run_plan.content_digest:
+            raise PostSelectionError(
+                f"Stored evidence for production run {run_plan.run_identity[:12]}... "
+                "belongs to a different run plan."
+            )
         evidence.append(completed)
     return FinalProductionCompletion(plan=plan, runs=tuple(evidence))
 

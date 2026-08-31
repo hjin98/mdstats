@@ -51,11 +51,6 @@
       "owner": "DATA5"
     },
     {
-      "id": "HELD_OUT_CV_EVALUATION",
-      "class": "validation_product",
-      "owner": "DATA5/CV"
-    },
-    {
       "id": "CALIBRATION_DOMAIN",
       "class": "evidence",
       "owner": "downstream calibration contract (reserved; not a P6 campaign owner)",
@@ -241,11 +236,6 @@
     },
     {
       "from": "EVIDENCE_ROLE_ASSIGNMENT",
-      "to": "HELD_OUT_CV_EVALUATION",
-      "type": "produces"
-    },
-    {
-      "from": "EVIDENCE_ROLE_ASSIGNMENT",
       "to": "CALIBRATION_DOMAIN",
       "type": "produces"
     },
@@ -375,7 +365,7 @@
       "type": "validates_after_freeze"
     },
     {
-      "from": "HELD_OUT_CV_EVALUATION",
+      "from": "POST_SELECTION_CV_ACCEPTANCE",
       "to": "OUT_OF_FOLD_PROTOCOL_EVIDENCE",
       "type": "consumes"
     },
@@ -497,6 +487,7 @@
   ],
   "forbidden_current_paths": [
     "DATA7 -> independent target-membership order",
+    "pre-selection DATA5 -> cross-validation fold generation/authority",
     "retired multi-view selector/repair/qualification state -> current target-size authority",
     "retired target-size migration or reconstruction helper -> current campaign preparation or restart",
     "post-selection cross-validation -> target-size decision",
@@ -504,7 +495,8 @@
     "pool cardinality or monitor cardinality -> implicit selected target size",
     "per-candidate independent preparation -> current nested target subsets",
     "replay-monitor metrics or diagnostics -> target-size ranking/qualification/tie-break",
-    "retired training-policy generation -> current runtime"
+    "retired training-policy generation -> current runtime",
+    "current campaign execution -> consequential storage compaction/deduplication/archival (deferred to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1)"
   ],
   "resource_invariants": [
     "one fitted selection-input authority per required training domain",
