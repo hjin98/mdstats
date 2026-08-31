@@ -63,35 +63,13 @@ def _cleanup_args(config: Path, *, tier: str, apply: bool = False, dry_run: bool
 
 
 
-def test_stor5_archive_corruption_fails_closed(tmp_path: Path) -> None:
+def test_stor5_consequential_operations_fail_closed(tmp_path: Path) -> None:
     config = _config(tmp_path)
-    _cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    _complete(store, paths, "evaluate")
-    victim = paths.internal / "evaluation-predictions" / "pred.bin"
-    victim.parent.mkdir(parents=True); victim.write_bytes(b"important" * 1000)
-    assert campaign_cli.command_archive(SimpleNamespace(config=str(config), archive_action="create")) == 0
-    receipt = store.get_payload("cold_archive:latest")
-    archive_path = paths.workspace / receipt["archive_relative_path"]
-    with archive_path.open("ab") as handle:
-        handle.write(b"corruption")
-    with pytest.raises(campaign_cli.CampaignCliError, match="verification failed"):
-        campaign_cli.command_archive(SimpleNamespace(config=str(config), archive_action="verify"))
-    assert victim.is_file()
-
-
-def test_stor5_archive_never_traverses_external_symlink(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    _cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    _complete(store, paths, "evaluate")
-    external = tmp_path / "external"
-    external.mkdir(); important = external / "user.bin"; important.write_bytes(b"never-touch")
-    link = paths.internal / "evaluation-predictions"
-    link.symlink_to(external, target_is_directory=True)
-    assert campaign_cli.command_cleanup(_cleanup_args(config, tier="archive", apply=True)) == 0
-    assert important.read_bytes() == b"never-touch"
-    assert not link.exists() and not link.is_symlink()
+    for action in ("create", "restore"):
+        with pytest.raises(campaign_cli.CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
+            campaign_cli.command_archive(SimpleNamespace(config=str(config), archive_action=action))
+    with pytest.raises(campaign_cli.CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
+        campaign_cli.command_deduplicate(SimpleNamespace(config=str(config), apply=True))
 
 
 def test_stor5_storage_report_classifies_archive_and_content_store(tmp_path: Path) -> None:

@@ -64,107 +64,66 @@ def _complete(store: campaign_cli.CampaignStore, paths: campaign_cli.CampaignPat
     campaign_cli._mark_stage(store, paths, stage, campaign_cli.StageState.COMPLETE, "complete")
 
 
-def test_recompute_tier_defaults_to_plan_only_and_reports_capability_loss(tmp_path: Path) -> None:
+def test_safe_and_cache_tiers_execute_and_generate_plans(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _cfg, paths = campaign_cli._load_config(config)
     store = campaign_cli.CampaignStore(paths.state_db)
-    _complete(store, paths, "evaluate")
-    predictions = paths.internal / "evaluation-predictions"
-    sweep = paths.internal / "model-sweep"
-    predictions.mkdir(); sweep.mkdir()
-    (predictions / "p.bin").write_bytes(b"p" * 1024)
-    (sweep / "s.bin").write_bytes(b"s" * 2048)
+    frame_cache = paths.internal / "frame-cache"
+    frame_cache.mkdir(parents=True)
+    (frame_cache / "cache.mmap").write_bytes(b"frames" * 1024)
 
-    assert campaign_cli.command_cleanup(_args(config, tier="recompute")) == 0
-    assert predictions.is_dir()
-    assert sweep.is_dir()
-    payload = json.loads((paths.results / "manual-reclamation-plan-recompute.json").read_text())
-    assert payload["requested_tier"] == "recompute"
-    assert payload["capability_report"]["capabilities"]["metric_only_recomputation"]["status"] == "lost"
-    assert payload["capability_report"]["capabilities"]["data7_reselection"]["status"] == "preserved_with_recomputation"
-    assert payload["planned_reclaimed_bytes"] >= 3072
+    assert campaign_cli.command_cleanup(_args(config, tier="safe", dry_run=True)) == 0
+    assert frame_cache.is_dir()
+    plan = json.loads((paths.results / "manual-reclamation-plan-safe.json").read_text(encoding="utf-8"))
+    assert plan["requested_tier"] == "safe"
+    assert plan["schema"] == "mdstats.mlff-manual-reclamation-plan.v1"
+
+    assert campaign_cli.command_cleanup(_args(config, tier="cache", dry_run=False)) == 0
+    assert not frame_cache.exists()
+    plan_cache = json.loads((paths.results / "manual-reclamation-plan-cache.json").read_text(encoding="utf-8"))
+    assert plan_cache["requested_tier"] == "cache"
+    assert "faster_frame_access" in plan_cache["capability_report"]["declared_capability_losses"]
 
 
-def test_recompute_apply_removes_scientific_caches_but_keeps_production_and_logs(tmp_path: Path) -> None:
+def test_consequential_tiers_fail_closed_to_reset(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    for tier in ("recompute", "compact", "archive"):
+        with pytest.raises(campaign_cli.CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
+            campaign_cli.command_cleanup(_args(config, tier=tier))
+
+
+def test_cache_symlink_escape_unlinks_only_campaign_link(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _cfg, paths = campaign_cli._load_config(config)
     store = campaign_cli.CampaignStore(paths.state_db)
-    _complete(store, paths, "evaluate")
-    _complete(store, paths, "verify")
-    for name in ("evaluation-predictions", "model-sweep", "true-label-replay"):
-        root = paths.internal / name
-        root.mkdir()
-        (root / "cache.bin").write_bytes(name.encode() * 64)
-    production = paths.models / "production.model"
-    production.write_bytes(b"production")
-    log = paths.results / "keep.log"
-    log.write_text("diagnostic", encoding="utf-8")
-
-    assert campaign_cli.command_cleanup(_args(config, tier="recompute", apply=True)) == 0
-    for name in ("evaluation-predictions", "model-sweep", "true-label-replay"):
-        assert not (paths.internal / name).exists()
-    assert production.read_bytes() == b"production"
-    assert log.read_text(encoding="utf-8") == "diagnostic"
-    events = [json.loads(line) for line in (paths.results / "cleanup-manifest.jsonl").read_text().splitlines()]
-    event = next(item for item in reversed(events) if item.get("trigger") == "manual_tier:recompute")
-    assert "metric_only_recomputation" in event["capability_loss"]
-    assert "data7_reselection_without_reinference" in event["capability_loss"]
-
-
-
-
-def test_archive_tier_dry_run_requires_stor5_representation_and_ineligible_apply_is_nondestructive(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    _cfg, paths = campaign_cli._load_config(config)
-    victim = paths.internal / "evaluation-predictions"
-    victim.mkdir(); (victim / "p.bin").write_bytes(b"keep")
-
-    assert campaign_cli.command_cleanup(_args(config, tier="archive", dry_run=True)) == 0
-    payload = json.loads((paths.results / "manual-reclamation-plan-archive.json").read_text())
-    assert payload["archive_representation_required"] is True
-    assert (victim / "p.bin").read_bytes() == b"keep"
-
-    # STOR5 is implemented now, but this campaign has not completed evaluation,
-    # so the scientific cache is not an eligible consequential archive action.
-    assert campaign_cli.command_cleanup(_args(config, tier="archive", apply=True)) == 0
-    assert (victim / "p.bin").read_bytes() == b"keep"
-
-
-def test_recompute_symlink_escape_unlinks_only_campaign_link(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    _cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    _complete(store, paths, "evaluate")
-    external = tmp_path / "external-predictions"
+    external = tmp_path / "external-cache"
     external.mkdir()
     important = external / "user.bin"
     important.write_bytes(b"never-delete")
-    link = paths.internal / "evaluation-predictions"
+    run_dir = paths.runs / "run-a"
+    run_dir.mkdir(parents=True)
+    link = run_dir / "checkpoint-model-cache"
     link.symlink_to(external, target_is_directory=True)
 
-    assert campaign_cli.command_cleanup(_args(config, tier="recompute", apply=True)) == 0
+    assert campaign_cli.command_cleanup(_args(config, tier="cache", dry_run=False)) == 0
     assert not link.is_symlink()
     assert important.read_bytes() == b"never-delete"
 
 
-def test_storage_report_exposes_stor4_manual_tiers(tmp_path: Path) -> None:
+def test_storage_report_exposes_transitional_storage_structure(tmp_path: Path) -> None:
     config = _config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
-    (paths.internal / "evaluation-predictions").mkdir()
-    (paths.internal / "evaluation-predictions" / "p.bin").write_bytes(b"p")
-    (paths.runs / "run-a" / "evaluation-capsules").mkdir(parents=True)
-    (paths.runs / "run-a" / "evaluation-capsules" / "c.eval-state.pt").write_bytes(b"c")
-    (paths.data / "variant").mkdir(parents=True)
-    (paths.data / "variant" / "data.bin").write_bytes(b"d")
+    (paths.internal / "frame-cache").mkdir(parents=True)
+    (paths.internal / "frame-cache" / "cache.mmap").write_bytes(b"f" * 1024)
+    (paths.runs / "run-a" / "checkpoint-model-cache").mkdir(parents=True)
+    (paths.runs / "run-a" / "checkpoint-model-cache" / "m.pt").write_bytes(b"m" * 1024)
     report = build_campaign_storage_report(
         paths.workspace,
         protected_inputs=configured_protected_inputs(
             cfg, config_dir=paths.config_dir, config_path=paths.config
         ),
     ).to_dict()
-    families = {item["family"]: item for item in report["families"]}
-    assert families["evaluation-predictions"]["manual_reclamation_eligibility"] == "recompute"
-    assert families["evaluation_state_capsules"]["manual_reclamation_eligibility"].startswith("compact")
-    assert families["data7_data8_materializations"]["manual_reclamation_eligibility"].startswith("compact")
+    assert report["schema"] == "mdstats.mlff-campaign-storage-report.v1"
+    assert report["totals"]["logical_bytes"] >= 2048
 
 

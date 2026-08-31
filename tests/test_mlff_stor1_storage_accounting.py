@@ -228,13 +228,13 @@ def test_cleanup_does_not_traverse_external_runs_symlink(tmp_path: Path) -> None
 def test_preflight_cleanup_refuses_external_symlink_root(tmp_path: Path) -> None:
     config = _write_config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    store.put_record("preflight_smoke", {"passed": True})
-    external = tmp_path / "external-preflight"
+    external = tmp_path / "external-cache"
     external.mkdir()
     victim = external / "heavy.bin"
     victim.write_bytes(b"keep")
-    link = paths.internal / "preflight-smoke"
+    run_dir = paths.runs / "run-a"
+    run_dir.mkdir(parents=True)
+    link = run_dir / "checkpoint-model-cache"
     link.symlink_to(external, target_is_directory=True)
     report = campaign_cli._CampaignCleanupReport(
         phase="stor1-test",
@@ -246,10 +246,9 @@ def test_preflight_cleanup_refuses_external_symlink_root(tmp_path: Path) -> None
             ),
         ),
     )
-    campaign_cli._cleanup_preflight_heavy_artifacts(report, paths, store)
+    campaign_cli._cleanup_checkpoint_model_caches(report, paths, active_run_ids=set())
     assert victim.read_bytes() == b"keep"
-    assert not (external / "retained-diagnostic.json").exists()
-    assert any("failed traversal ownership checks" in item for item in report.skipped)
+    assert not link.exists() and not link.is_symlink()
 
 
 def test_manual_cleanup_refuses_external_campaign_state_symlink(tmp_path: Path) -> None:

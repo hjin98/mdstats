@@ -225,7 +225,7 @@ campaign/
 |-- .mdstats/campaign.sqlite3
 |-- .mdstats/                    # current-generation records and caches
 |-- runs/                         # authorized checkpoints and logs
-|-- models/                       # current production publication
+|-- models/                       # current production model evidence
 `-- results/                      # bounded summaries and cleanup reports
 ```
 
@@ -242,18 +242,15 @@ Storage is orthogonal to scientific lifecycle. Start with a read-only report:
 python tools/mdstats-mlff-campaign.py --config campaign.toml storage report
 python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier safe --dry-run
 python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier cache --dry-run
-python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier recompute --apply
-python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier compact --apply
-python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive create
-python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive verify
-python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive restore
-python tools/mdstats-mlff-campaign.py --config campaign.toml storage deduplicate --apply
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier safe
 ```
 
-Use a dry run before consequential cleanup. Archive operations are reversible
-and independently content-checked. Cleanup protects external inputs, current
-scientific records, selected checkpoints, restart evidence, and diagnostics;
-only campaign-owned reconstructible artifacts are eligible for reclamation.
+Use a dry run before cleanup. Transitional P6/P7 storage provides `storage report`,
+`storage cleanup --tier safe`, and `storage cleanup --tier cache`. Consequential
+operations (recompute, compaction, archival, deduplication) are deferred to the
+post-P7 storage reset (`CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1`). Cleanup protects
+external inputs, current scientific records, selected checkpoints, restart evidence,
+and diagnostics; only campaign-owned reconstructible artifacts are eligible for reclamation.
 
 ## Interpreting outcomes and limitations
 

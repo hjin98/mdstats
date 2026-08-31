@@ -764,3 +764,225 @@ def test_p5e_a_cv_failure_leaves_p4_untouched_and_blocks_production(
 
     with pytest.raises(Exception):
         run_train_production(config)
+
+
+# --- multi-seed final-production interruption, restart, and integrity (R9-B) --
+
+
+def _build_two_seed_campaign(tmp_path: Path) -> tuple[Path, Path]:
+    from tests._mlff_post_selection_fixture import fixture_config_text
+
+    text = fixture_config_text().replace("seeds = [5]", "seeds = [5, 6]")
+    return build_selected_campaign(tmp_path, config_text=text)
+
+
+def test_p5e_r9_mandatory_case1_plan_published_zero_runs_complete(tmp_path: Path):
+    """Case 1: Plan published, zero runs complete -> incomplete/resumable."""
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        _completed_run_evidence,
+        resolve_current_final_production_completion,
+    )
+
+    config, _workspace = _build_two_seed_campaign(tmp_path)
+    assert run_cross_validate(config) == 0
+
+    class FailOnFirstTrain(PostSelectionHarness):
+        def train(self, request):
+            # Fail on first production run after plan publication
+            raise RuntimeError("Simulated crash before executing first production run")
+
+    with pytest.raises(RuntimeError, match="Simulated crash before executing first production run"):
+        run_train_production(config, FailOnFirstTrain())
+
+    # Close and reopen through real persistence
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=None)
+        plan = resolve_current_final_production_plan(context)
+        assert plan is not None
+        assert plan.required_final_seeds == (5, 6)
+
+        # Completion returns None
+        assert resolve_current_final_production_completion(context) is None
+
+        # Status reports final production incomplete/resumable
+        lifecycle = cli._current_public_lifecycle(cfg, paths, store)
+        prod_step = next(s for s in lifecycle if s.semantic_id == "final_production")
+        assert prod_step.state == cli.StageState.WAITING
+
+        # Advance routes to train-production
+        assert cli._next_public_operation(cfg, paths, store) == "train-production"
+
+        # No required seed has authenticated run evidence
+        for seed in (5, 6):
+            run_plan = build_final_production_run_plan(plan, optimizer_seed=seed)
+            assert _completed_run_evidence(context, run_plan) is None
+    finally:
+        store.close()
+
+
+def test_p5e_r9_mandatory_case2_one_of_two_runs_complete_resumes_only_missing_run(
+    tmp_path: Path,
+):
+    """Case 2: Exactly 1 of 2 runs complete -> resume executes only missing run."""
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        _completed_run_evidence,
+        resolve_current_final_production_completion,
+    )
+
+    config, _workspace = _build_two_seed_campaign(tmp_path)
+    assert run_cross_validate(config) == 0
+
+    class FailOnSeed6(PostSelectionHarness):
+        def train(self, request):
+            if request.run_plan.optimizer_seed == 6:
+                raise RuntimeError("Simulated crash on seed 6")
+            return super().train(request)
+
+    with pytest.raises(RuntimeError, match="Simulated crash on seed 6"):
+        run_train_production(config, FailOnSeed6())
+
+    # Close and reopen
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=None)
+        plan = resolve_current_final_production_plan(context)
+        assert plan is not None
+        assert plan.required_final_seeds == (5, 6)
+
+        run5_plan = build_final_production_run_plan(plan, optimizer_seed=5)
+        run6_plan = build_final_production_run_plan(plan, optimizer_seed=6)
+
+        ev5 = _completed_run_evidence(context, run5_plan)
+        assert ev5 is not None
+        assert ev5.run_plan_digest == run5_plan.content_digest
+
+        assert _completed_run_evidence(context, run6_plan) is None
+        assert resolve_current_final_production_completion(context) is None
+
+        lifecycle = cli._current_public_lifecycle(cfg, paths, store)
+        prod_step = next(s for s in lifecycle if s.semantic_id == "final_production")
+        assert prod_step.state == cli.StageState.WAITING
+        assert cli._next_public_operation(cfg, paths, store) == "train-production"
+
+        # Storage cleanup safe and cache preserve seed 5 evidence
+        assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
+        assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+        assert _completed_run_evidence(context, run5_plan) is not None
+    finally:
+        store.close()
+
+    # Resume through real train-production command with a fresh recording harness
+    resume_harness = PostSelectionHarness()
+    assert run_train_production(config, resume_harness) == 0
+
+    # Assert only seed 6 was invoked during resume!
+    assert [req.run_plan.optimizer_seed for req in resume_harness.requests] == [6]
+
+    # Verify completion resolves and includes both runs in deterministic plan order
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=None)
+        completion = resolve_current_final_production_completion(context)
+        assert completion is not None
+        assert [r.run_identity for r in completion.runs] == [
+            run5_plan.run_identity,
+            run6_plan.run_identity,
+        ]
+    finally:
+        store.close()
+
+
+def test_p5e_r9_mandatory_case3_corrupt_or_mismatched_evidence_fails_closed(
+    tmp_path: Path,
+):
+    """Case 3: Corrupt or mismatched required evidence fails closed."""
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        resolve_current_final_production_completion,
+    )
+
+    config, _workspace = _build_two_seed_campaign(tmp_path)
+    assert run_cross_validate(config) == 0
+    assert run_train_production(config) == 0
+
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=None)
+        completion = resolve_current_final_production_completion(context)
+        assert completion is not None
+
+        # 3A: Truncate / invalid JSON in run evidence
+        ev_file = context.run_root(completion.runs[0].run_identity) / "run-evidence.json"
+        original_bytes = ev_file.read_bytes()
+        ev_file.write_text("{corrupt json", encoding="utf-8")
+        with pytest.raises(Exception):
+            resolve_current_final_production_completion(context)
+
+        # 3B: Altered run_plan_digest (with digest check failure)
+        ev_dict = json.loads(original_bytes.decode("utf-8"))
+        ev_dict["run_plan_digest"] = "f" * 64
+        ev_file.write_text(json.dumps(ev_dict), encoding="utf-8")
+        with pytest.raises(Exception):
+            resolve_current_final_production_completion(context)
+
+        # 3C: Self-consistent run evidence from a different run plan
+        from mdstats.training_data.post_selection_execution import PostSelectionRunEvidence
+        ev_obj = PostSelectionRunEvidence.from_dict(
+            dict(ev_dict, content_digest=None)
+        )
+        ev_file.write_text(json.dumps(ev_obj.to_dict()), encoding="utf-8")
+        with pytest.raises(PostSelectionError, match="belongs to a different run plan"):
+            resolve_current_final_production_completion(context)
+    finally:
+        store.close()
+
+
+def test_p5e_r9_mandatory_case4_all_runs_complete_and_stable_across_process_boundary(
+    tmp_path: Path,
+):
+    """Case 4: All runs complete, stable across reopen and process boundary."""
+    import subprocess
+    import sys
+
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        resolve_current_final_production_completion,
+    )
+
+    config, _workspace = _build_two_seed_campaign(tmp_path)
+    assert run_cross_validate(config) == 0
+    assert run_train_production(config) == 0
+
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=None)
+        plan = resolve_current_final_production_plan(context)
+        completion = resolve_current_final_production_completion(context)
+        assert plan is not None
+        assert completion is not None
+        expected_run_identities = [
+            build_final_production_run_plan(plan, optimizer_seed=seed).run_identity
+            for seed in plan.required_final_seeds
+        ]
+        assert [r.run_identity for r in completion.runs] == expected_run_identities
+        assert completion.content_digest != plan.content_digest
+
+        lifecycle = cli._current_public_lifecycle(cfg, paths, store)
+        prod_step = next(s for s in lifecycle if s.semantic_id == "final_production")
+        assert prod_step.state == cli.StageState.COMPLETE
+        assert cli._next_public_operation(cfg, paths, store) is None
+    finally:
+        store.close()
+
+    # Process boundary test via subprocess
+    proc = subprocess.run(
+        [sys.executable, "tools/mdstats-mlff-campaign.py", "--config", str(config), "status"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "[PASS] train-production" in proc.stdout
+    assert "fresh production is published on the full exact T_selected" in proc.stdout
+    assert "Next command:" not in proc.stdout

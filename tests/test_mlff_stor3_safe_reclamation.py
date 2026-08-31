@@ -24,7 +24,7 @@ def _config(tmp_path: Path) -> Path:
     return path
 
 
-def test_stor3_reclaims_graph_cache_only_after_authoritative_evaluation(tmp_path: Path) -> None:
+def test_stor3_retains_historical_paths_under_automatic_cleanup(tmp_path: Path) -> None:
     config = _config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
     store = campaign_cli.CampaignStore(paths.state_db)
@@ -36,32 +36,30 @@ def test_stor3_reclaims_graph_cache_only_after_authoritative_evaluation(tmp_path
     (predictions / "prediction.bin").write_bytes(b"p" * 4096)
     (model_sweep / "prediction.bin").write_bytes(b"m" * 4096)
 
-    before = campaign_cli._campaign_cleanup(cfg, paths, store, phase="before-eval")
+    report = campaign_cli._campaign_cleanup(cfg, paths, store, phase="test-safe")
+    # All historical paths are retained by current safe cleanup
     assert graph.is_dir()
-    assert not any("evaluation graph/view" in item["reason"] for item in before.actions)
-
-    store.set_stage("evaluate", campaign_cli.StageState.COMPLETE, "authoritative evaluation complete")
-    after = campaign_cli._campaign_cleanup(cfg, paths, store, phase="evaluate-end")
-    assert not graph.exists()
     assert predictions.is_dir()
     assert model_sweep.is_dir()
-    action = next(item for item in after.actions if "evaluation graph/view" in item["reason"])
-    assert action["cleanup_class"] == "reconstructable_cache"
-    assert action["capability_loss"] == []
-    assert "authoritative_checkpoint_metrics" in action["preserved_capabilities"]
 
 
 def test_stor3_cleanup_manifest_is_append_only_and_records_predelete_identity(tmp_path: Path) -> None:
     config = _config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
     store = campaign_cli.CampaignStore(paths.state_db)
-    store.set_stage("evaluate", campaign_cli.StageState.COMPLETE, "complete")
 
-    graph = paths.internal / "evaluation-graphs"
-    graph.mkdir(); (graph / "first.bin").write_bytes(b"one")
+    run_dir1 = paths.runs / "run-1"
+    run_dir1.mkdir(parents=True)
+    cache1 = run_dir1 / "checkpoint-model-cache"
+    cache1.mkdir()
+    (cache1 / "first.bin").write_bytes(b"one")
     campaign_cli._campaign_cleanup(cfg, paths, store, phase="first")
 
-    graph.mkdir(); (graph / "second.bin").write_bytes(b"two")
+    run_dir2 = paths.runs / "run-2"
+    run_dir2.mkdir(parents=True)
+    cache2 = run_dir2 / "checkpoint-model-cache"
+    cache2.mkdir()
+    (cache2 / "second.bin").write_bytes(b"two")
     campaign_cli._campaign_cleanup(cfg, paths, store, phase="second")
 
     manifest = paths.results / "cleanup-manifest.jsonl"
@@ -81,7 +79,6 @@ def test_stor3_never_reclaims_scientific_prediction_caches(tmp_path: Path) -> No
     config = _config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
     store = campaign_cli.CampaignStore(paths.state_db)
-    store.set_stage("evaluate", campaign_cli.StageState.COMPLETE, "complete")
     for name in ("evaluation-predictions", "model-sweep", "true-label-replay"):
         root = paths.internal / name
         root.mkdir()
@@ -95,12 +92,13 @@ def test_stor3_graph_symlink_escape_unlinks_only_campaign_link(tmp_path: Path) -
     config = _config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
     store = campaign_cli.CampaignStore(paths.state_db)
-    store.set_stage("evaluate", campaign_cli.StageState.COMPLETE, "complete")
-    external = tmp_path / "external-graphs"
+    external = tmp_path / "external-cache"
     external.mkdir()
     important = external / "user.bin"
     important.write_bytes(b"never-delete")
-    link = paths.internal / "evaluation-graphs"
+    run_dir = paths.runs / "run-1"
+    run_dir.mkdir(parents=True)
+    link = run_dir / "checkpoint-model-cache"
     link.symlink_to(external, target_is_directory=True)
 
     campaign_cli._campaign_cleanup(cfg, paths, store, phase="symlink-safe")

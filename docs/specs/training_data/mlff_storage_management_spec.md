@@ -33,13 +33,13 @@ No files are modified or removed during accounting operations.
 Current-generation campaigns support two non-destructive / low-consequence cleanup tiers:
 
 ### Default / Safe Tier (`--tier safe`)
-- Targets only temporary scratch, aborted stage staging trees, obsolete runtime scratch after compact diagnostics, and qualified preflight temporary files.
+- Targets only temporary scratch, aborted stage staging trees, obsolete runtime scratch after compact diagnostics, and orphaned external database records.
 - Guarantees zero loss of scientific capability, evaluation state, or training restartability.
 - Every safe cleanup event appends an authenticated record to `results/cleanup-manifest.jsonl` with an empty capability-loss set.
 
 ### Cache Tier (`--tier cache`)
-- Targets independently reconstructible acceleration caches (e.g. `frame-cache`, `data7-cache`, `data8-fixed-cache`, `evaluation-graphs`, and non-authoritative `checkpoint-model-cache`).
-- Removal of cache files incurs no scientific loss, but future stage execution may re-derive normalized frames or evaluation graphs.
+- Targets independently reconstructible acceleration caches (e.g. normalized `frame-cache` and non-authoritative `checkpoint-model-cache`).
+- Removal of cache files incurs no scientific loss, but future stage execution may re-derive normalized frames from protected inputs.
 
 ---
 

@@ -608,7 +608,7 @@ def test_p6_r8_data5_fresh_construction_and_serialization_neutrality():
     assert "cross_validation_seed" not in policy_dict
 
 
-def test_p6_r8_transitional_storage_fails_closed_on_consequential_tiers(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+def test_p6_r8_transitional_storage_fails_closed_on_consequential_tiers(tmp_path: Path):
     """Consequential storage tiers fail closed to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1."""
     from mdstats.training_data._campaign_cli_core import (
         CampaignCliError,
@@ -625,23 +625,25 @@ def test_p6_r8_transitional_storage_fails_closed_on_consequential_tiers(tmp_path
         args = argparse.Namespace(config=str(config), tier=tier, dry_run=False, apply=False, keep_preparation_caches=False)
         with pytest.raises(CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
             command_cleanup(args)
-        assert cli.main(["--config", str(config), "cleanup", "--tier", tier]) != 0
-        captured = capsys.readouterr()
-        assert "CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1" in captured.err
+        # Parser rejects consequential tiers
+        with pytest.raises(SystemExit):
+            cli.main(["--config", str(config), "storage", "cleanup", "--tier", tier])
 
     args_dedup = argparse.Namespace(config=str(config), apply=True)
     with pytest.raises(CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
         command_deduplicate(args_dedup)
-    assert cli.main(["--config", str(config), "storage", "deduplicate", "--apply"]) != 0
+    with pytest.raises(SystemExit):
+        cli.main(["--config", str(config), "storage", "deduplicate", "--apply"])
 
     args_archive = argparse.Namespace(config=str(config), archive_action="create")
     with pytest.raises(CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
         command_archive(args_archive)
-    assert cli.main(["--config", str(config), "storage", "archive", "create"]) != 0
+    with pytest.raises(SystemExit):
+        cli.main(["--config", str(config), "storage", "archive", "create"])
 
     # Safe and cache tiers remain operational
-    assert cli.main(["--config", str(config), "cleanup", "--tier", "safe"]) == 0
-    assert cli.main(["--config", str(config), "cleanup", "--tier", "cache"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
     assert cli.main(["--config", str(config), "storage", "report"]) == 0
 
 
@@ -679,4 +681,73 @@ def test_p6_r8_final_production_completion_distinct_digest_and_verification(tmp_
         assert len(completion.runs) == len(plan.required_final_seeds)
     finally:
         store.close()
+
+
+def test_p6_r9_storage_structural_cleanup_authorization():
+    """Structural invariant: cleanup has only safe/cache, no retired stage/path hooks."""
+    import inspect
+    from mdstats.training_data import _campaign_cli_core as cli_core
+
+    assert cli_core._MANUAL_RECLAMATION_TIERS == ("safe", "cache")
+
+    parser = cli_core.build_parser()
+    storage_sub = next(
+        action for action in parser._actions
+        if getattr(action, "dest", None) == "command"
+    ).choices["storage"]
+
+    cleanup_parser = next(
+        action for action in storage_sub._actions
+        if getattr(action, "dest", None) == "storage_command"
+    ).choices["cleanup"]
+
+    tier_action = next(
+        action for action in cleanup_parser._actions
+        if "--tier" in getattr(action, "option_strings", [])
+    )
+    assert set(tier_action.choices) == {"safe", "cache"}
+    assert "recompute" not in tier_action.choices
+    assert "compact" not in tier_action.choices
+    assert "archive" not in tier_action.choices
+
+    # Inspect cleanup implementation source
+    cleanup_src = inspect.getsource(cli_core._campaign_cleanup)
+    assert 'evaluate' not in cleanup_src or '_effective_stage' not in cleanup_src
+    assert 'verify' not in cleanup_src or '_effective_stage' not in cleanup_src
+    assert 'data7' not in cleanup_src
+    assert 'data8' not in cleanup_src
+    assert 'preflight' not in cleanup_src
+
+
+def test_p6_r9_storage_functional_retention_and_historical_path_trap(tmp_path: Path):
+    """Historical path trap: unowned retired paths are retained, not deleted by pathname."""
+    config, _workspace = build_selected_campaign(tmp_path)
+    cfg, paths = cli._load_config(config)
+
+    # Place unowned directories with retired historical names inside workspace
+    hist_dirs = [
+        paths.internal / "data7-cache",
+        paths.internal / "data8-fixed-cache",
+        paths.internal / "evaluation-graphs",
+    ]
+    for d in hist_dirs:
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "payload.bin").write_bytes(b"historical-content")
+
+    # Place a genuinely current reconstructible cache
+    frame_cache = paths.internal / "frame-cache"
+    frame_cache.mkdir(parents=True, exist_ok=True)
+    (frame_cache / "cache.mmap").write_bytes(b"reconstructible")
+
+    # Safe cleanup: preserves historical paths and frame cache
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
+    for d in hist_dirs:
+        assert (d / "payload.bin").is_file(), f"{d} must be retained"
+    assert (frame_cache / "cache.mmap").is_file()
+
+    # Cache cleanup: preserves uncertified historical paths, removes genuinely current frame-cache
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+    for d in hist_dirs:
+        assert (d / "payload.bin").is_file(), f"{d} must not be deleted by pathname alone"
+    assert not frame_cache.exists(), "current frame-cache must be removed by cache tier"
 

@@ -2078,189 +2078,6 @@ def _cleanup_orphan_record_storage(
         _cleanup_remove(report, child, reason="orphaned external campaign record", cleanup_class="garbage", preserved_capabilities=("all_referenced_campaign_records", "campaign_state"))
 
 
-def _cleanup_materialization_storage(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    store: CampaignStore,
-    *,
-    stale_before: float,
-) -> None:
-    # The current target-size architecture owns its execution artifacts under the
-    # canonical target-size execution root, not under the campaign data root, and
-    # retired materialization records are quarantined rather than read forward.
-    # Any surviving marked variant directory here is therefore retired residue.
-    current_roots: set[Path] = set()
-    data_root_authorized = True
-    if report.ownership_boundary is not None:
-        data_root_authorized, detail = report.ownership_boundary.traversal_authorization(paths.data)
-        if not data_root_authorized:
-            report.skipped.append(
-                f"DATA7/DATA8 cleanup skipped because the data root failed ownership checks: {detail}: {paths.data}"
-            )
-    if data_root_authorized and paths.data.is_dir():
-        for variant_root in paths.data.iterdir():
-            if not variant_root.is_dir():
-                continue
-            for candidate in variant_root.iterdir():
-                if not candidate.is_dir() or candidate.is_symlink():
-                    continue
-                resolved = candidate.resolve()
-                if resolved in current_roots:
-                    continue
-                marker = candidate / "production_materialization_checkpoint.json"
-                if not marker.is_file():
-                    continue
-                try:
-                    if candidate.stat().st_mtime > stale_before:
-                        report.skipped.append(f"young obsolete DATA8 root retained: {candidate}")
-                        continue
-                except OSError:
-                    continue
-                _cleanup_remove(
-                    report,
-                    candidate,
-                    reason="obsolete unreferenced DATA7/DATA8 materialization root",
-                    cleanup_class="stale_staging",
-                    preserved_capabilities=("current_data8_materialization", "training_restart", "data8_rematerialization"),
-                )
-            if not report.dry_run:
-                authorized = True
-                if report.ownership_boundary is not None:
-                    authorized, detail = report.ownership_boundary.destructive_authorization(variant_root)
-                    if not authorized:
-                        report.skipped.append(
-                            f"cleanup authority denied for {variant_root}: {detail}"
-                        )
-                if authorized:
-                    try:
-                        variant_root.rmdir()
-                    except OSError:
-                        pass
-
-    for root in current_roots:
-        if report.ownership_boundary is not None:
-            authorized, detail = report.ownership_boundary.traversal_authorization(root)
-            if not authorized:
-                report.skipped.append(
-                    f"DATA8 generation cleanup skipped because the recorded root failed ownership checks: {detail}: {root}"
-                )
-                continue
-        # Staging/link/legacy/corrupt trees are never valid restart inputs after
-        # an atomic promotion has completed.
-        for pattern in (
-            ".data8-staging-*",
-            ".data8-link-*",
-            ".data8-legacy-*",
-            ".*.corrupt-*",
-        ):
-            for candidate in root.glob(pattern):
-                try:
-                    if candidate.lstat().st_mtime > stale_before:
-                        continue
-                except OSError:
-                    continue
-                _cleanup_remove(report, candidate, reason="stale DATA8 promotion artifact", cleanup_class="stale_staging", preserved_capabilities=("current_data8_materialization", "training_restart"))
-
-        generations = root / ".data8-generations"
-        pointer = root / "data8"
-        live_generation: Path | None = None
-        if pointer.is_symlink():
-            try:
-                live_generation = pointer.resolve(strict=True)
-            except OSError:
-                live_generation = None
-        if generations.is_dir():
-            for generation in generations.iterdir():
-                if live_generation is not None and generation.resolve() == live_generation:
-                    continue
-                try:
-                    if generation.stat().st_mtime > stale_before:
-                        continue
-                except OSError:
-                    continue
-                _cleanup_remove(
-                    report,
-                    generation,
-                    reason="unreferenced prior DATA8 generation",
-                    cleanup_class="stale_staging",
-                    preserved_capabilities=("current_data8_materialization", "training_restart", "data8_rematerialization"),
-                )
-
-
-def _cleanup_preflight_heavy_artifacts(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    store: CampaignStore,
-) -> None:
-    try:
-        preflight_payload = store.get_payload_optional("preflight_smoke")
-    except Exception:
-        return
-    if preflight_payload is None or not bool(preflight_payload.get("passed")):
-        return
-    root = paths.internal / "preflight-smoke"
-    if report.ownership_boundary is not None:
-        traversal_authorized, traversal_detail = (
-            report.ownership_boundary.traversal_authorization(root)
-        )
-        if not traversal_authorized:
-            report.skipped.append(
-                "preflight cleanup skipped because the root failed traversal ownership "
-                f"checks: {traversal_detail}: {root}"
-            )
-            return
-    if not root.is_dir():
-        return
-    diagnostic = root / "retained-diagnostic.json"
-    if not report.dry_run and not diagnostic.is_file():
-        if report.ownership_boundary is not None:
-            diagnostic_authorized, diagnostic_detail = (
-                report.ownership_boundary.destructive_authorization(diagnostic)
-            )
-            if not diagnostic_authorized:
-                report.skipped.append(
-                    f"preflight diagnostic write denied by ownership boundary: {diagnostic_detail}: {diagnostic}"
-                )
-                return
-        payload = preflight_payload
-        tails = {
-            name: _diagnostic_log_tail(root / name)
-            for name in (
-                "training.stdout.log",
-                "training.stderr.log",
-                "evaluation.stdout.log",
-                "evaluation.stderr.log",
-            )
-        }
-        _atomic_json(
-            diagnostic,
-            {
-                "schema": "mdstats.mlff-preflight-retained-diagnostic.v1",
-                "created_utc": _utc_now(),
-                "preflight_record": payload,
-                "log_tails": {key: value for key, value in tails.items() if value},
-            },
-        )
-    keep_names = {
-        "retained-diagnostic.json",
-        "training.stdout.log",
-        "training.stderr.log",
-        "evaluation.stdout.log",
-        "evaluation.stderr.log",
-        "mace_config.preflight.yaml",
-    }
-    for child in tuple(root.iterdir()):
-        if child.name in keep_names:
-            continue
-        _cleanup_remove(
-            report,
-            child,
-            reason="completed preflight heavy artifact superseded by checksummed diagnostic record",
-            cleanup_class="successful_preflight_temporary",
-            preserved_capabilities=("preflight_pass_evidence", "preflight_reexecution", "training_diagnostics"),
-        )
-
-
 def _cleanup_obsolete_training_runtimes(
     report: _CampaignCleanupReport,
     paths: CampaignPaths,
@@ -2313,36 +2130,11 @@ def _cleanup_checkpoint_model_caches(
             run_root / "checkpoint-model-cache",
             reason=(
                 "reconstructable checkpoint-to-model evaluation cache; raw restart "
-                "checkpoint and immutable DATA8 config are retained"
+                "checkpoint and model records are retained"
             ),
             cleanup_class="reconstructable_cache",
             preserved_capabilities=("exact_checkpoint_reevaluation", "training_restart", "target_head_reexport"),
         )
-
-
-def _cleanup_evaluation_graph_cache(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    store: CampaignStore,
-) -> None:
-    """Remove reconstructable evaluation graph/view cache if present."""
-
-    if not (paths.internal / "evaluation-graphs").is_dir():
-        return
-    _cleanup_remove(
-        report,
-        paths.internal / "evaluation-graphs",
-        reason=(
-            "reconstructable evaluation graph/view cache; "
-            "authenticated monitor inputs and metric/prediction records are retained"
-        ),
-        cleanup_class="reconstructable_cache",
-        preserved_capabilities=(
-            "authoritative_checkpoint_metrics",
-            "metric_only_recomputation_from_predictions",
-            "checkpoint_reevaluation_from_monitors",
-        ),
-    )
 
 
 def _append_cleanup_audit_manifest(
@@ -2434,73 +2226,12 @@ def _campaign_cleanup(
     )
 
     _cleanup_orphan_record_storage(report, store, stale_before=stale_before)
-    _cleanup_materialization_storage(
-        report, paths, store, stale_before=stale_before
-    )
     _cleanup_obsolete_training_runtimes(
         report, paths, active_run_ids=active_run_ids, run_roots=run_roots
     )
     _cleanup_checkpoint_model_caches(
         report, paths, active_run_ids=active_run_ids, run_roots=run_roots
     )
-    if bool(_cfg(cfg, "cleanup", "remove_evaluation_graph_cache_after_evaluate", False)):
-        _cleanup_evaluation_graph_cache(report, paths, store)
-
-    if include_preparation_caches:
-        if bool(
-            _cfg(
-                cfg,
-                "cleanup",
-                "remove_frame_cache_after_prepare",
-                _cfg(cfg, "cleanup", "remove_frame_cache_after_preflight", False),
-            )
-        ):
-            _cleanup_remove(
-                report,
-                paths.internal / "frame-cache",
-                reason="normalized source cache is not required after current preparation",
-                cleanup_class="reconstructable_cache",
-                preserved_capabilities=("source_reparse", "data_preparation", "training_restart"),
-            )
-        if bool(
-            _cfg(
-                cfg,
-                "cleanup",
-                "remove_shared_data7_cache_after_prepare",
-                False,
-            )
-        ):
-            _cleanup_remove(
-                report,
-                paths.internal / "data7-cache",
-                reason="shared DATA7 cache duplicated by promoted current materializations",
-                cleanup_class="reconstructable_cache",
-                preserved_capabilities=("data7_reselection", "current_data8_materialization", "training_restart"),
-            )
-        if bool(
-            _cfg(
-                cfg,
-                "cleanup",
-                "remove_shared_data8_fixed_file_cache_after_prepare",
-                False,
-            )
-        ):
-            _cleanup_remove(
-                report,
-                paths.internal / "data8-fixed-cache",
-                reason="shared DATA8 fixed-file cache duplicated by promoted current materializations",
-                cleanup_class="reconstructable_cache",
-                preserved_capabilities=("data8_rematerialization", "training_restart"),
-            )
-        if bool(
-            _cfg(
-                cfg,
-                "cleanup",
-                "retain_historical_smoke_diagnostics",
-                not bool(_cfg(cfg, "cleanup", "remove_preflight_heavy_artifacts_after_success", False)),
-            )
-        ) is False:
-            _cleanup_preflight_heavy_artifacts(report, paths, store)
 
     if not dry_run:
         assert report.ownership_boundary is not None
@@ -5810,17 +5541,13 @@ def command_storage(args: argparse.Namespace) -> int:
 
 
 
-_MANUAL_RECLAMATION_TIERS = ("safe", "cache", "recompute", "compact", "archive")
+_MANUAL_RECLAMATION_TIERS = ("safe", "cache")
 _MANUAL_RECLAMATION_RANK = {name: index for index, name in enumerate(_MANUAL_RECLAMATION_TIERS)}
 _MANUAL_CAPABILITIES = (
     "training_restart",
-    "exact_checkpoint_reevaluation",
-    "metric_only_recomputation",
-    "data7_reselection",
-    "data8_rematerialization",
-    "current_production_inference",
-    "verification_replay",
-    "selected_head_training_foundation",
+    "frame_cache_acceleration",
+    "active_campaign_continuation",
+    "current_production_models",
 )
 
 
@@ -5837,63 +5564,20 @@ def _manual_reclamation_capability_report(
         name: {"status": "preserved", "detail": "retained by the requested tier"}
         for name in _MANUAL_CAPABILITIES
     }
-    if "metric_only_recomputation" in losses:
-        status["metric_only_recomputation"] = {
+    if "faster_frame_access" in losses or "faster_recomputation" in losses:
+        status["frame_cache_acceleration"] = {
             "status": "lost",
-            "detail": "candidate prediction arrays are removed; later metric changes require model inference",
+            "detail": "normalized-frame cache is removed; on-demand re-normalization occurs on next read",
         }
-    if "data7_reselection_without_reinference" in losses:
-        status["data7_reselection"] = {
-            "status": "preserved_with_recomputation",
-            "detail": "DATA7 can be rebuilt from protected inputs, but DATA6/foundation inference must be repeated",
-        }
-    if "data8_hot_materialization" in losses:
-        status["data8_rematerialization"] = {
-            "status": "preserved_with_recomputation",
-            "detail": "current DATA8 bytes are removed; rerun prepare from protected inputs/protocol records",
-        }
-        status["training_restart"] = {
-            "status": "preserved_with_rematerialization",
-            "detail": "selected raw checkpoint is retained, but DATA8 training inputs must be rematerialized before continuation",
-        }
-    if "nonselected_checkpoint_reevaluation" in losses:
-        status["exact_checkpoint_reevaluation"] = {
-            "status": "selected_checkpoint_only",
-            "detail": "selected production checkpoint remains exact; nonselected evaluation capsules are removed",
-        }
-    if "verification_replay_without_reconstruction" in losses:
-        status["verification_replay"] = {
-            "status": "preserved_with_recomputation",
-            "detail": "true-label replay materialization is removed; protected true-label inputs must be rematerialized",
-        }
-    if tier == "archive":
-        affected = {
-            "metric_only_recomputation": "metric_only_recomputation",
-            "data7_reselection_without_reinference": "data7_reselection",
-            "data8_hot_materialization": "data8_rematerialization",
-            "nonselected_checkpoint_reevaluation": "exact_checkpoint_reevaluation",
-            "verification_replay_without_reconstruction": "verification_replay",
-        }
-        for loss, capability in affected.items():
-            if loss in losses:
-                status[capability] = {
-                    "status": "preserved_via_archive",
-                    "detail": "hot representation may be removed only after STOR5 archive verification; authenticated restore reconstructs the exact bytes",
-                }
-        if "data8_hot_materialization" in losses:
-            status["training_restart"] = {
-                "status": "preserved_via_archive",
-                "detail": "selected restart checkpoint is retained and archived DATA8 bytes can be restored exactly before continuation",
-            }
-    status["current_production_inference"] = {
+    status["current_production_models"] = {
         "status": "preserved",
-        "detail": "workspace production models are never STOR4 deletion candidates",
+        "detail": "workspace production models are never deletion candidates",
     }
     return {
         "requested_tier": tier,
         "capabilities": status,
-        "declared_capability_losses": [] if tier == "archive" else sorted(losses),
-        "archived_capabilities": sorted(losses) if tier == "archive" else [],
+        "declared_capability_losses": sorted(losses),
+        "archived_capabilities": [],
     }
 
 
@@ -5922,20 +5606,14 @@ def _manual_reclamation_add_cache_tier(
     report: _CampaignCleanupReport,
     paths: CampaignPaths,
 ) -> None:
-    for candidate, reason in (
-        (paths.internal / "frame-cache", "manual cache tier: reconstructable normalized-frame acceleration cache"),
-        (paths.internal / "data7-cache", "manual cache tier: reconstructable DATA7 acceleration cache"),
-        (paths.internal / "data8-fixed-cache", "manual cache tier: reconstructable DATA8 fixed-file cache"),
-        (paths.internal / "evaluation-graphs", "manual cache tier: reconstructable evaluation graph/view cache"),
-    ):
-        _manual_reclamation_add_candidate(
-            report,
-            candidate,
-            reason=reason,
-            cleanup_class="manual_cache",
-            preserved_capabilities=_MANUAL_CAPABILITIES,
-            capability_loss=("faster_recomputation",),
-        )
+    _manual_reclamation_add_candidate(
+        report,
+        paths.internal / "frame-cache",
+        reason="manual cache tier: reconstructable normalized-frame acceleration cache",
+        cleanup_class="manual_cache",
+        preserved_capabilities=_MANUAL_CAPABILITIES,
+        capability_loss=("faster_frame_access",),
+    )
     if not paths.runs.is_dir() or report.ownership_boundary is None:
         return
     authorized, detail = report.ownership_boundary.traversal_authorization(paths.runs)
@@ -5952,145 +5630,6 @@ def _manual_reclamation_add_cache_tier(
             cleanup_class="manual_cache",
             preserved_capabilities=_MANUAL_CAPABILITIES,
             capability_loss=("faster_checkpoint_reevaluation",),
-        )
-
-
-def _manual_reclamation_missing_configured_inputs(
-    report: _CampaignCleanupReport,
-    *,
-    keys: Sequence[str],
-) -> tuple[str, ...]:
-    boundary = report.ownership_boundary
-    if boundary is None:
-        return tuple(keys)
-    wanted = set(keys)
-    by_key = {item.key: item for item in boundary.protected_inputs}
-    missing: list[str] = []
-    for key in keys:
-        item = by_key.get(key)
-        # Optional inputs not configured are not reconstruction requirements.
-        if item is not None and not item.exists:
-            missing.append(key)
-    return tuple(missing)
-
-
-def _manual_reclamation_add_recompute_tier(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    store: CampaignStore,
-) -> None:
-    try:
-        evaluate_state, _ = _effective_stage(store, paths, "evaluate")
-    except Exception:
-        evaluate_state = StageState.NOT_STARTED
-    if evaluate_state is not StageState.COMPLETE:
-        report.skipped.append("recompute tier retained prediction/DATA6 caches until authoritative evaluation is complete")
-        return
-    missing = _manual_reclamation_missing_configured_inputs(
-        report,
-        keys=("training_root", "foundation_model", "replay_set", "replay_train", "replay_monitor", "replay_true_labels"),
-    )
-    if missing:
-        report.skipped.append(
-            "recompute tier retained scientific caches because configured reconstruction input(s) are missing: "
-            + ", ".join(missing)
-        )
-        return
-    _manual_reclamation_add_candidate(
-        report,
-        paths.internal / "evaluation-predictions",
-        reason="manual recompute tier: remove candidate prediction arrays; later metric changes require inference",
-        cleanup_class="manual_recompute",
-        preserved_capabilities=("current_production_inference", "training_restart", "scientific_provenance"),
-        capability_loss=("metric_only_recomputation",),
-    )
-    _manual_reclamation_add_candidate(
-        report,
-        paths.internal / "model-sweep",
-        reason="manual recompute tier: remove DATA6 descriptors/predictions; later DATA7 reselection repeats foundation inference",
-        cleanup_class="manual_recompute",
-        preserved_capabilities=("current_production_inference", "training_restart", "scientific_provenance"),
-        capability_loss=("data7_reselection_without_reinference",),
-    )
-    try:
-        verify_state, _ = _effective_stage(store, paths, "verify")
-    except Exception:
-        verify_state = StageState.NOT_STARTED
-    if verify_state is StageState.COMPLETE:
-        _manual_reclamation_add_candidate(
-            report,
-            paths.internal / "true-label-replay",
-            reason="manual recompute tier: remove true-label replay materialization after verification",
-            cleanup_class="manual_recompute",
-            preserved_capabilities=("protected_true_label_inputs", "current_production_inference", "scientific_provenance"),
-            capability_loss=("verification_replay_without_reconstruction",),
-        )
-    else:
-        report.skipped.append("recompute tier retained true-label replay materialization until verification is complete")
-
-
-def _production_models_present(paths: CampaignPaths) -> bool:
-    if not paths.models.is_dir():
-        return False
-    return any(path.is_file() and path.suffix == ".model" for path in paths.models.rglob("*.model"))
-
-
-def _manual_reclamation_add_compact_tier(
-    report: _CampaignCleanupReport,
-    cfg: Mapping[str, Any],
-    paths: CampaignPaths,
-    store: CampaignStore,
-) -> None:
-    if not _current_lifecycle_is_complete(cfg, paths, store):
-        report.skipped.append(
-            "compact tier requires a complete current lifecycle through published "
-            "fresh final production"
-        )
-        return
-    if not _production_models_present(paths):
-        report.skipped.append("compact tier refused because no protected production .model artifact is present")
-        return
-    if paths.runs.is_dir() and report.ownership_boundary is not None:
-        authorized, detail = report.ownership_boundary.traversal_authorization(paths.runs)
-        if authorized:
-            for run_root in sorted(paths.runs.iterdir()):
-                if not run_root.is_dir() or run_root.is_symlink():
-                    continue
-                _manual_reclamation_add_candidate(
-                    report,
-                    run_root / "evaluation-capsules",
-                    reason="manual compact tier: discard nonselected checkpoint evaluation capsules after protocol freeze",
-                    cleanup_class="manual_compact",
-                    preserved_capabilities=("selected_production_checkpoint", "current_production_inference", "scientific_provenance"),
-                    capability_loss=("nonselected_checkpoint_reevaluation",),
-                )
-                _manual_reclamation_add_candidate(
-                    report,
-                    run_root / "models",
-                    reason="manual compact tier: discard nonproduction per-run model copies after protected production export",
-                    cleanup_class="manual_compact",
-                    preserved_capabilities=("selected_production_checkpoint", "current_production_inference", "scientific_provenance"),
-                    capability_loss=("cheap_alternative_model_recovery",),
-                )
-        else:
-            report.skipped.append(f"compact tier skipped run artifacts: {detail}: {paths.runs}")
-    missing = _manual_reclamation_missing_configured_inputs(
-        report,
-        keys=("training_root", "foundation_model", "replay_set", "replay_train", "replay_monitor", "replay_true_labels"),
-    )
-    if missing:
-        report.skipped.append(
-            "compact tier retained DATA7/DATA8 materializations because configured rematerialization input(s) are missing: "
-            + ", ".join(missing)
-        )
-    else:
-        _manual_reclamation_add_candidate(
-            report,
-            paths.data,
-            reason="manual compact tier: discard hot DATA7/DATA8 materializations after protocol freeze and verification",
-            cleanup_class="manual_compact",
-            preserved_capabilities=("protected_source_inputs", "immutable_protocol_records", "current_production_inference"),
-            capability_loss=("data8_hot_materialization",),
         )
 
 
@@ -6135,7 +5674,7 @@ def _manual_reclamation_plan_payload(
 
 
 def _print_manual_reclamation_plan(payload: Mapping[str, Any]) -> None:
-    print(f"STOR4 manual reclamation plan: tier={payload['requested_tier']}", flush=True)
+    print(f"Transitional storage cleanup plan: tier={payload['requested_tier']}", flush=True)
     print(
         f"  candidates={int(payload['action_count'])}; potential reclaim="
         f"{_format_storage_bytes(int(payload['planned_reclaimed_bytes']))}",
@@ -6145,8 +5684,6 @@ def _print_manual_reclamation_plan(payload: Mapping[str, Any]) -> None:
     for name in _MANUAL_CAPABILITIES:
         item = capabilities[name]
         print(f"  {name}: {item['status']} - {item['detail']}", flush=True)
-    if payload.get("archive_representation_required"):
-        _warn("archive tier requires an authenticated STOR5 archive before consequential hot representations are removed")
 
 
 def _build_manual_tier_report(
@@ -6162,86 +5699,20 @@ def _build_manual_tier_report(
             f"Consequential storage tier {tier!r} is deferred to the post-P7 storage reset "
             "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
         )
+    if tier not in _MANUAL_RECLAMATION_RANK:
+        raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
     report = _CampaignCleanupReport(
         phase=f"manual-{tier}",
         dry_run=dry_run,
         ownership_boundary=_campaign_ownership_boundary(cfg, paths, store),
     )
-    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
+    if tier == "cache":
         _manual_reclamation_add_cache_tier(report, paths)
     return report
 
 
-def _record_manual_compact_state(store: CampaignStore, report: _CampaignCleanupReport) -> None:
-    removed_capsules = [
-        str(action["path"])
-        for action in report.actions
-        if "nonselected_checkpoint_reevaluation" in action.get("capability_loss", ())
-    ]
-    removed_data = [
-        str(action["path"])
-        for action in report.actions
-        if "data8_hot_materialization" in action.get("capability_loss", ())
-    ]
-    if not removed_capsules and not removed_data:
-        return
-    compacted_run_ids = sorted({
-        Path(value).parent.name
-        for value in removed_capsules
-        if Path(value).name == "evaluation-capsules"
-    })
-    store.put_record(
-        "manual_reclamation:compact",
-        {
-            "schema": "mdstats.mlff-manual-compact-retention.v1",
-            "created_utc": _utc_now(),
-            "compacted_run_ids": compacted_run_ids,
-            "removed_evaluation_capsule_roots": removed_capsules,
-            "removed_data8_materialization_roots": removed_data,
-            "selected_production_checkpoint_retained": True,
-            "production_models_retained": True,
-        },
-    )
-
-
 def _stor5_archive_directory(paths: CampaignPaths) -> Path:
     return paths.internal / "cold-archive"
-
-
-def _stor5_archive_actions(actions: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], ...]:
-    """Return consequential STOR4 actions whose hot bytes must be preserved by STOR5."""
-
-    result = []
-    for action in actions:
-        if str(action.get("cleanup_class", "")) not in {"manual_recompute", "manual_compact"}:
-            continue
-        if not action.get("capability_loss"):
-            continue
-        path = Path(str(action.get("path", "")))
-        if not path.exists() or path.is_symlink():
-            # A symlink target is never campaign-owned archival content.  The
-            # link object itself may be safely unlinked by lower tiers, but STOR5
-            # will never traverse or preserve an external target by accident.
-            continue
-        result.append(dict(action))
-    return tuple(result)
-
-
-def _stor5_archive_receipt(paths: CampaignPaths, manifest: Mapping[str, Any]) -> dict[str, Any]:
-    archive_dir = _stor5_archive_directory(paths)
-    manifest_path = archive_dir / f"cold-{manifest['archive_id']}.manifest.json"
-    return {
-        "schema": "mdstats.mlff-cold-archive-receipt.v1",
-        "created_utc": _utc_now(),
-        "archive_id": manifest["archive_id"],
-        "manifest_relative_path": str(manifest_path.relative_to(paths.workspace)),
-        "manifest_sha256": _sha256(manifest_path),
-        "archive_relative_path": str((archive_dir / manifest["archive_file"]).relative_to(paths.workspace)),
-        "archive_sha256": manifest["archive_sha256"],
-        "archive_size_bytes": int(manifest["archive_size_bytes"]),
-        "hot_logical_bytes": int(manifest["hot_logical_bytes"]),
-        "verified": True,
-    }
 
 
 def _stor5_latest_manifest_path(paths: CampaignPaths, store: CampaignStore) -> Path:
@@ -6259,149 +5730,26 @@ def _stor5_latest_manifest_path(paths: CampaignPaths, store: CampaignStore) -> P
     return path
 
 
-def _stor5_register_archive(paths: CampaignPaths, store: CampaignStore, manifest: Mapping[str, Any]) -> dict[str, Any]:
-    receipt = _stor5_archive_receipt(paths, manifest)
-    store.put_record(f"cold_archive:{manifest['archive_id']}", receipt)
-    store.put_record("cold_archive:latest", receipt)
-    return receipt
-
-
-def _stor5_create_from_actions(
-    paths: CampaignPaths,
-    store: CampaignStore,
-    boundary: CampaignOwnershipBoundary,
-    actions: Sequence[Mapping[str, Any]],
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    archive_actions = _stor5_archive_actions(actions)
-    if not archive_actions:
-        return None, None
-    try:
-        manifest = create_cold_archive(
-            paths.workspace,
-            [Path(str(action["path"])) for action in archive_actions],
-            boundary=boundary,
-            archive_directory=_stor5_archive_directory(paths),
-            source_actions=archive_actions,
-        )
-        # Independent read-back verification is mandatory before the receipt is
-        # committed and before any hot representation is eligible for deletion.
-        manifest_path = _stor5_archive_directory(paths) / f"cold-{manifest['archive_id']}.manifest.json"
-        verified = verify_cold_archive(manifest_path)
-        receipt = _stor5_register_archive(paths, store, verified)
-        return verified, receipt
-    except StorageArchiveError as exc:
-        raise CampaignCliError(f"STOR5 cold archive creation/verification failed closed: {exc}") from exc
-
-
-def _stor5_mark_archived_actions(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    manifest: Mapping[str, Any] | None,
-) -> None:
-    if manifest is None:
-        return
-    archived_roots = {
-        str((paths.workspace / str(relative)).resolve())
-        for relative in manifest.get("roots", ())
-    }
-    for action in report.actions:
-        action_path = str(Path(str(action.get("path", ""))).resolve())
-        if action_path not in archived_roots:
-            continue
-        prior_loss = list(action.get("capability_loss", ()))
-        action["archived_capability_loss"] = prior_loss
-        action["capability_loss"] = []
-        action["archive_id"] = str(manifest["archive_id"])
-        action["archive_restore_available"] = True
-
-
-def _stor5_dedup_roots(paths: CampaignPaths) -> tuple[Path, ...]:
-    roots: list[Path] = [
-        paths.data,
-        paths.internal / "frame-cache",
-        paths.internal / "data7-cache",
-        paths.internal / "data8-fixed-cache",
-        paths.internal / "evaluation-graphs",
-        paths.internal / "evaluation-predictions",
-        paths.internal / "model-sweep",
-        paths.internal / "true-label-replay",
-    ]
-    if paths.runs.is_dir() and not paths.runs.is_symlink():
-        for run_root in sorted(paths.runs.iterdir()):
-            if not run_root.is_dir() or run_root.is_symlink():
-                continue
-            roots.extend((
-                run_root / "evaluation-capsules",
-                run_root / "models",
-                run_root / "checkpoint-model-cache",
-            ))
-    return tuple(path for path in roots if path.exists() and not path.is_symlink())
-
-
 def command_deduplicate(args: argparse.Namespace) -> int:
     """STOR5 exact-byte immutable deduplication after protocol freeze."""
 
-    if bool(getattr(args, "apply", False)):
-        raise CampaignCliError(
-            "Consequential storage deduplication (--apply) is deferred to the post-P7 storage reset "
-            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
-        )
-    cfg, paths = _load_config(args.config)
-    store = CampaignStore(paths.state_db)
-    running = [name for name, _ in PIPELINE if store.stage(name)[0] is StageState.RUNNING]
-    if running:
-        raise CampaignCliError("Refusing immutable deduplication while campaign stages are running: " + ", ".join(running))
-    if not _current_lifecycle_is_complete(cfg, paths, store):
-        raise CampaignCliError(
-            "STOR5 deduplication requires a complete current lifecycle through "
-            "published fresh final production."
-        )
-    boundary = _campaign_ownership_boundary(cfg, paths, store)
-    try:
-        report = deduplicate_immutable_files(
-            paths.workspace,
-            _stor5_dedup_roots(paths),
-            boundary=boundary,
-            content_store=paths.internal / "content-store",
-            apply=bool(getattr(args, "apply", False)),
-        )
-    except StorageArchiveError as exc:
-        raise CampaignCliError(f"STOR5 deduplication failed closed: {exc}") from exc
-    destination = paths.results / "deduplication-report.json"
-    authorized, detail = boundary.destructive_authorization(destination)
-    if authorized:
-        _atomic_json(destination, report)
-    else:
-        _warn(f"deduplication report write denied by ownership boundary: {detail}")
-    print(
-        "STOR5 immutable deduplication: "
-        f"groups={report['group_count']}; potential={_format_storage_bytes(report['potential_reclaimed_bytes'])}; "
-        f"applied={bool(report['applied'])}; reclaimed~={_format_storage_bytes(report['reclaimed_bytes_estimate'])}",
-        flush=True,
+    raise CampaignCliError(
+        "Consequential storage deduplication is deferred to the post-P7 storage reset "
+        "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
     )
-    if not bool(getattr(args, "apply", False)):
-        _warn("Deduplication plan only; rerun with `storage deduplicate --apply` to replace exact duplicates with content-addressed hardlinks.")
-    return 0
 
 
 def command_archive(args: argparse.Namespace) -> int:
-    """STOR5 create/verify/restore an authenticated reversible cold archive."""
+    """STOR5 authenticated cold archive inspection."""
 
-    action = str(args.archive_action)
+    action = str(getattr(args, "archive_action", "verify"))
     if action in ("create", "restore"):
         raise CampaignCliError(
             f"Consequential storage archive action {action!r} is deferred to the post-P7 storage reset "
             "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
         )
     cfg, paths = _load_config(args.config)
-    boundary = _campaign_ownership_boundary(cfg, paths)
-    state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
-    if not state_authorized:
-        raise CampaignCliError(f"Refusing archive operation because campaign state is outside ownership boundary: {state_detail}")
     store = CampaignStore(paths.state_db)
-    # The retention fence is derivable only once campaign state is open; every
-    # destructive archive action below uses the fenced boundary.
-    boundary = _campaign_ownership_boundary(cfg, paths, store)
     manifest_path = _stor5_latest_manifest_path(paths, store)
     if action == "verify":
         try:
@@ -6434,35 +5782,20 @@ def command_cleanup(args: argparse.Namespace) -> int:
 
     explicit_tier = getattr(args, "tier", None)
     if explicit_tier is None:
-        # Backward compatibility with the pre-STOR4 manual cleanup surface: the
-        # old command removed preparation caches unless --keep-preparation-caches
-        # was supplied.  Explicit --tier uses the new exact tier semantics.
-        tier = "safe" if bool(args.keep_preparation_caches) else "cache"
+        tier = "safe" if bool(args.keep_preparation_caches) else "safe"
     else:
         tier = str(explicit_tier)
-    if tier not in _MANUAL_RECLAMATION_RANK:
-        raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
     if tier in ("recompute", "compact", "archive"):
         raise CampaignCliError(
             f"Consequential storage tier {tier!r} is deferred to the post-P7 storage reset "
             "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
         )
+    if tier not in _MANUAL_RECLAMATION_RANK:
+        raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
     if bool(getattr(args, "apply", False)) and bool(args.dry_run):
         raise CampaignCliError("Choose either --dry-run or --apply, not both.")
-    # A manual reclamation invocation may never race an executing stage.  Safe
-    # automatic cleanup already has its own active-run exclusions, but higher
-    # manual tiers operate on whole cache/materialization families.
-    running_stages = [
-        name for name, _ in PIPELINE if store.stage(name)[0] is StageState.RUNNING
-    ]
-    if running_stages and _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["recompute"]:
-        raise CampaignCliError(
-            "Refusing consequential manual reclamation while campaign stages are running: "
-            + ", ".join(running_stages)
-        )
 
-    # Mandatory plan phase.  This is always dry-run, including an invocation that
-    # will subsequently apply the requested tier.
+    # Mandatory plan phase. This is always dry-run.
     plan_reports: list[_CampaignCleanupReport] = []
     safe_plan = _campaign_cleanup(
         cfg,
@@ -6474,7 +5807,6 @@ def command_cleanup(args: argparse.Namespace) -> int:
     )
     plan_reports.append(safe_plan)
 
-
     if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
         manual_plan = _build_manual_tier_report(
             tier, cfg, paths, store, dry_run=True
@@ -6482,12 +5814,11 @@ def command_cleanup(args: argparse.Namespace) -> int:
         plan_reports.append(manual_plan)
 
     apply_requested = bool(getattr(args, "apply", False))
-    archive_pending = tier == "archive"
     plan_payload = _manual_reclamation_plan_payload(
         tier=tier,
         reports=plan_reports,
         apply_requested=apply_requested,
-        archive_pending=archive_pending,
+        archive_pending=False,
     )
     _print_manual_reclamation_plan(plan_payload)
     plan_path = paths.results / f"manual-reclamation-plan-{tier}.json"
@@ -6501,23 +5832,10 @@ def command_cleanup(args: argparse.Namespace) -> int:
     else:
         _warn(f"manual reclamation plan write denied by ownership boundary: {plan_detail}")
 
-    if bool(args.dry_run) or (tier == "archive" and not apply_requested):
-        if tier == "archive":
-            _warn("Archive tier plan only; rerun with `storage cleanup --tier archive --apply` to create, verify, and then remove archived hot representations.")
+    if bool(args.dry_run):
         return 0
 
-    consequential = _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["recompute"]
-    if consequential and not apply_requested:
-        _warn(
-            f"Tier `{tier}` changes future reanalysis/recompute capability. "
-            f"Plan only; rerun with `storage cleanup --tier {tier} --apply` to authorize it."
-        )
-        return 0
-
-    archive_manifest = None
-    archive_receipt = None
-
-    # Apply phase.  The plan has already been printed/written above.
+    # Apply phase.
     safe_report = _campaign_cleanup(
         cfg,
         paths,
@@ -6528,38 +5846,10 @@ def command_cleanup(args: argparse.Namespace) -> int:
     )
     _print_cleanup_report(safe_report)
 
-
-    if tier == "archive":
-        # STOR2 may have created authenticated evaluation capsules while replacing
-        # raw nonselected checkpoints above. Archive the *post-STOR2* hot layout so
-        # a later restore reproduces exactly what the archive-tier deletion removes.
-        archive_source_plan = _build_manual_tier_report(
-            "archive", cfg, paths, store, dry_run=True
-        )
-        archive_manifest, archive_receipt = _stor5_create_from_actions(
-            paths, store, boundary, archive_source_plan.actions
-        )
-        if archive_manifest is not None:
-            plan_payload["archive_representation_required"] = False
-            plan_payload["archive_representation"] = archive_receipt
-            if plan_authorized:
-                _atomic_json(plan_path, plan_payload)
-            _ok(
-                f"STOR5 archive verified before consequential hot deletion: id={archive_manifest['archive_id']}; "
-                f"hot={_format_storage_bytes(archive_manifest['hot_logical_bytes'])}; "
-                f"archive={_format_storage_bytes(archive_manifest['archive_size_bytes'])}"
-            )
-
     if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
         manual_report = _build_manual_tier_report(
             tier, cfg, paths, store, dry_run=False
         )
-        if tier in {"compact", "archive"}:
-            _record_manual_compact_state(store, manual_report)
-        if tier == "archive":
-            _stor5_mark_archived_actions(manual_report, paths, archive_manifest)
-        # Recompute/compact carry intentional losses. Archive actions that were
-        # authenticated above instead record reversible archived capability.
         _append_cleanup_audit_manifest(
             manual_report,
             paths,
@@ -6577,18 +5867,6 @@ def command_cleanup(args: argparse.Namespace) -> int:
                 f"manual tier report write denied by ownership boundary: {output_detail}"
             )
         _print_cleanup_report(manual_report)
-
-    try:
-        cas_prune = prune_orphan_content_store(
-            paths.internal / "content-store", boundary=boundary
-        )
-        if cas_prune["objects_removed"]:
-            _ok(
-                f"STOR5 content store pruned {cas_prune['objects_removed']} orphan object(s); "
-                f"released~={_format_storage_bytes(cas_prune['bytes_released_estimate'])}"
-            )
-    except StorageArchiveError as exc:
-        _warn(f"content-store orphan pruning skipped: {exc}")
 
     disk = shutil.disk_usage(paths.workspace)
     print(
@@ -7578,38 +6856,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "storage",
-        help="inspect and manage MLFF campaign storage",
+        help="inspect and manage transitional MLFF campaign storage",
         description=(
-            "Unified STOR1-STOR5 storage management. Use `report`, `cleanup`, "
-            "`deduplicate`, or `archive`. Bare `storage` is a shorthand for `storage report`."
+            "Transitional P6/P7 storage management. Use `report` or `cleanup`. "
+            "Bare `storage` is a shorthand for `storage report`."
         ),
     )
     p.add_argument(
         "--top", type=int, default=20,
         help="with bare `storage`, number of largest artifacts retained in the report",
     )
-    storage_sub = p.add_subparsers(dest="storage_command", metavar="{report,cleanup,deduplicate,archive}")
+    storage_sub = p.add_subparsers(dest="storage_command", metavar="{report,cleanup}")
     p.set_defaults(func=command_storage, storage_command="report")
 
-    sp = storage_sub.add_parser("report", help="STOR1 read-only storage accounting and ownership report")
+    sp = storage_sub.add_parser("report", help="Read-only storage accounting and ownership report")
     sp.add_argument(
         "--top", type=int, default=20,
         help="number of largest individual artifacts to retain in the JSON report",
     )
     sp.set_defaults(func=command_storage, storage_command="report")
 
-    sp = storage_sub.add_parser("cleanup", help="STOR4 manual tiered reclamation with capability-loss reporting")
+    sp = storage_sub.add_parser("cleanup", help="Conservative transitional cleanup with capability reporting")
     sp.add_argument(
         "--tier", choices=_MANUAL_RECLAMATION_TIERS,
-        help=(
-            "manual retention tier: safe, cache, recompute, compact, or archive; "
-            "omitting it runs the conservative cleanup/cache policy"
-        ),
+        default="safe",
+        help="manual retention tier: safe or cache; omitting it defaults to safe",
     )
     sp.add_argument("--dry-run", action="store_true", help="print/write the mandatory capability plan without deleting anything")
     sp.add_argument(
         "--apply", action="store_true",
-        help="authorize consequential reclamation after the plan is shown; archive additionally creates and verifies a reversible STOR5 cold archive first",
+        help="authorize reclamation after the plan is shown",
     )
     sp.add_argument(
         "--keep-preparation-caches", action="store_true",
@@ -7620,14 +6896,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="retain all checkpoint bytes eligible for cleanup",
     )
     sp.set_defaults(func=command_cleanup, storage_command="cleanup")
-
-    sp = storage_sub.add_parser("deduplicate", help="STOR5 exact-byte immutable content-addressed deduplication")
-    sp.add_argument("--apply", action="store_true", help="replace exact immutable duplicates with same-filesystem content-addressed hardlinks")
-    sp.set_defaults(func=command_deduplicate, storage_command="deduplicate")
-
-    sp = storage_sub.add_parser("archive", help="STOR5 authenticated cold archive create/verify/restore")
-    sp.add_argument("archive_action", choices=("create", "verify", "restore"), help="create a verified archive, verify the registered archive, or restore its exact hot layout")
-    sp.set_defaults(func=command_archive, storage_command="archive")
 
     p = sub.add_parser("status", help="show stage state, paths, and the next safe command")
     p.set_defaults(func=command_status)
@@ -7641,7 +6909,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _normalize_legacy_storage_argv(argv: Sequence[str] | None) -> list[str]:
-    """Map pre-0.20.117 top-level storage commands into the unified hierarchy."""
+    """Map legacy top-level cleanup command into the unified hierarchy."""
 
     tokens = list(sys.argv[1:] if argv is None else argv)
     index = 0
@@ -7654,7 +6922,7 @@ def _normalize_legacy_storage_argv(argv: Sequence[str] | None) -> list[str]:
             index += 1
             continue
         break
-    if index < len(tokens) and tokens[index] in {"cleanup", "deduplicate", "archive"}:
+    if index < len(tokens) and tokens[index] in {"cleanup"}:
         tokens.insert(index, "storage")
     return tokens
 
