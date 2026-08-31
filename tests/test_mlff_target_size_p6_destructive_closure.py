@@ -273,13 +273,50 @@ def test_p6_generated_config_and_example_expose_only_current_authority():
             "fidelity_epochs",
         } <= set(size)
         assert "preflight" not in cfg
-        assert "verification" not in cfg
         for method_name in ("naive_fine_tuning", "multihead_replay"):
             method = cfg["training"][method_name]
             assert "cross_validation_folds" not in method
             assert "fold_partition_seed" not in method
+            assert "seed_mode" not in method
         cv = cfg["post_selection"]["cv"]
         assert {"fold_count", "partition_seed", "seeds"} <= set(cv)
+        assert "foundation_audit_temporary_ram_mib" not in cfg.get("performance", {})
+        assert "parallel_dynamics_jobs" not in cfg.get("execution", {})
+        assert "remove_frame_cache_after_prepare" not in cfg.get("cleanup", {})
+        assert "remove_evaluation_graph_cache_after_evaluate" not in cfg.get("cleanup", {})
+
+
+def test_p6_preparation_projection_excludes_cv_authoring():
+    cfg = {
+        "partition": {
+            "minimum_block_frames": 32,
+            "purge_units_between_roles": 1,
+            "cross_validation_folds": 5,
+            "cross_validation_seed": 42,
+        },
+        "random": {
+            "feature_projection_seed": 101,
+            "online_monitor_seed": 202,
+            "fold_partition_seed": 303,
+        },
+        "training": {
+            "policy_generation": "train2",
+            "multihead_replay": {
+                "enabled": True,
+                "seeds": [1, 2],
+                "cross_validation_folds": 5,
+                "fold_partition_seed": 303,
+                "seed_mode": "optimizer_only",
+            },
+        },
+    }
+    proj = cli._preparation_config_projection(cfg)
+    assert "cross_validation_folds" not in proj["partition"]
+    assert "cross_validation_seed" not in proj["partition"]
+    assert "fold_partition_seed" not in proj["random"]
+    assert "cross_validation_folds" not in proj["training"]["multihead_replay"]
+    assert "fold_partition_seed" not in proj["training"]["multihead_replay"]
+    assert "seed_mode" not in proj["training"]["multihead_replay"]
 
 
 def test_p6_target_size_ladder_has_no_fixed_16384_ceiling():

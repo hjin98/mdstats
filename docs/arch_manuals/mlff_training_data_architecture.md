@@ -1398,8 +1398,8 @@ not a reason to choose a different order.
 
 The reducer consumes only authorized target-side development/model-selection
 evidence. Replay metrics, post-selection CV, calibration, physical-observable,
-and locked-test evidence cannot rank, reject, or tie-break a target size. Fewer
-than three qualified sizes is a typed failure. A configured ceiling that
+and locked-test evidence cannot rank, reject, or tie-break a target size.
+Fewer than three qualified sizes is a typed failure. A configured ceiling that
 remains materially superior at the final comparison produces
 `nonconverged_at_configured_ceiling`; no unconfigured rescue size is invented.
 
@@ -1485,7 +1485,7 @@ The durable rules are:
 2. fitted preparation and target membership are separate authorities;
 3. one canonical order and one common preparation define every candidate;
 4. `N_selected` and exact global `T_selected` are frozen together;
-5. the reducer alone decides size and post-selection CV alone accepts the method;
+5. the reducer is the sole target-size authority; post-selection cross-validation accepts the method and can never re-choose the size;
 6. final production is fresh full-selected-set training;
 7. execution/cache/provider choices cannot change scientific semantics;
 8. unsupported derived state is rejected before reuse rather than migrated;

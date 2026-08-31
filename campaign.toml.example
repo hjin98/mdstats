@@ -176,21 +176,12 @@ replay_head_weight = 1.0
 # ablation option, but is disabled in newly initialized campaigns. Enable it
 # deliberately if a target-only baseline is scientifically useful.
 enabled = false
-# Default keeps the same CV partition across optimizer seeds so seed variance and
-# partition variance remain separately interpretable. Advanced robustness mode:
-# seed_mode = "optimizer_and_cv_partition"
-seed_mode = "optimizer_only"
 seeds = [1, 2]
 
 [training.multihead_replay]
-# Production default: two optimizer seeds, each with three cross-validation
-# folds plus one final-development fit: 2 * (3 + 1) = 8 multi-head jobs.
+# Production default: two optimizer seeds for target-size screening.
 # The post-selection fold plan is configured under [post_selection.cv].
 enabled = true
-# optimizer_only is the scientific default. optimizer_and_cv_partition derives a
-# different deterministic fold partition for each optimizer seed; this broadens
-# CV robustness sampling but does NOT change final A+B+C training membership.
-seed_mode = "optimizer_only"
 seeds = [1, 2]
 
 [post_selection.cv]
@@ -236,9 +227,6 @@ gpu_memory_fraction = 0.90
 # remain caps inside the runtime CPU-fraction and RAM budgets.
 source_workers = 0
 feature_workers = 0
-# Maximum in-memory force-tail temporary allocation for FOUNDATION-AUDIT1.
-# Larger exact buffers spill to a temporary mmap. Execution-only.
-foundation_audit_temporary_ram_mib = 512
 # LTA workers return compact NumPy columns; the automatic count is bounded by
 # CPU threads plus RAM reserved for the final immutable catalog.
 lta_workers = 0
@@ -342,51 +330,15 @@ evaluation_prepare_working_memory_mib = 0
 evaluation_inference_working_memory_mib = 0
 evaluation_finalize_working_memory_mib = 0
 evaluation_shared_runtime_residency_mib = 0
-# External DYN cases are admitted independently from static model inference.
-# One process is the conservative production default until a target-GPU
-# benchmark demonstrates that concurrent LAMMPS/Kokkos processes improve
-# end-to-end throughput. Positive overrides remain subject to live resources.
-parallel_dynamics_jobs = 0
-maximum_parallel_dynamics_jobs = 1
-dynamics_estimated_vram_mib_per_job = 4096.0
-dynamics_estimated_ram_mib_per_job = 4096.0
-dynamics_pipeline_buffer_jobs = 0
-dynamics_pipeline_buffer_mib = 0
-dynamics_prepare_working_memory_mib = 0
-dynamics_inference_working_memory_mib = 0
-dynamics_finalize_working_memory_mib = 0
-dynamics_shared_runtime_residency_mib = 0
-estimated_dynamics_output_mib_per_case = 512.0
 # Stop admitting new jobs after the first failed run; already-active jobs finish.
 stop_scheduling_after_failure = true
 
 [cleanup]
 # Conservative lifecycle cleanup runs automatically at current stage boundaries.
 # Manual retention is CLI-selected: storage cleanup --tier safe|cache|recompute|compact|archive.
-# Every tier emits a capability plan first; recompute/compact require --apply; archive
-# additionally creates and verifies a reversible STOR5 cold archive before consequential hot deletion.
 enabled = true
 # Young temporary trees are retained to avoid racing a recently interrupted process.
 stale_age_hours = 6.0
-# These caches can be reconstructed from immutable source/data records and are not
-# required after current preparation has committed its durable records.
-remove_frame_cache_after_prepare = true
-remove_shared_data7_cache_after_prepare = true
-remove_shared_data8_fixed_file_cache_after_prepare = true
-# Retain compact diagnostics for any historical smoke record encountered during
-# storage cleanup; current lifecycle stages never create that record.
-retain_historical_smoke_diagnostics = true
-# STOR3: graph/view preparation is fully reconstructable from authenticated monitor
-# inputs and is reclaimed after authoritative evaluation. Prediction arrays are kept.
-remove_evaluation_graph_cache_after_evaluate = true
-# After all checkpoints have been evaluated and a protocol is frozen, retain the
-# selected checkpoint for every run plus all metric/selection records; remove the
-# bulky unselected optimizer snapshots.
-prune_unselected_checkpoints_after_evaluate = true
-# When evaluation shortlists epochs from authenticated MACE validation history,
-# delete the screened-out optimizer checkpoints after the selected checkpoint and
-# shortlist evidence have been committed. Set false to retain every epoch snapshot.
-prune_screened_out_checkpoints_after_evaluate = true
 maximum_event_records = 10000
 
 [replay]

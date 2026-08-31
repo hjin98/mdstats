@@ -1199,9 +1199,42 @@ def resolve_current_final_production_plan(
     return plan
 
 
+@dataclass(frozen=True, slots=True)
+class FinalProductionCompletion:
+    """Truthful completed run evidence for the exact current final plan."""
+
+    plan: FinalProductionPlan
+    runs: tuple[PostSelectionRunEvidence, ...]
+    content_digest: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.runs:
+            raise PostSelectionError("Final-production completion requires at least one run.")
+        object.__setattr__(self, "content_digest", self.plan.content_digest)
+
+
+def resolve_current_final_production_completion(
+    context: PostSelectionContext,
+) -> FinalProductionCompletion | None:
+    """Verify that every required final run has authenticated completed evidence."""
+
+    plan = resolve_current_final_production_plan(context)
+    if plan is None:
+        return None
+    evidence: list[PostSelectionRunEvidence] = []
+    for seed in plan.required_final_seeds:
+        run_plan = build_final_production_run_plan(plan, optimizer_seed=seed)
+        completed = _completed_run_evidence(context, run_plan)
+        if completed is None:
+            return None
+        evidence.append(completed)
+    return FinalProductionCompletion(plan=plan, runs=tuple(evidence))
+
+
 # ---------------------------------------------------------------------------
 # Public commands
 # ---------------------------------------------------------------------------
+
 
 
 def execute_current_cross_validate(args: Any) -> int:
@@ -1338,6 +1371,7 @@ def execute_current_train_production(args: Any) -> int:
 
 __all__ = [
     "FOLD_ACCEPTANCE_FILENAME",
+    "FinalProductionCompletion",
     "POST_SELECTION_EVALUATION_MODEL_STATE",
     "POST_SELECTION_REPLAY_HEAD_NAME",
     "POST_SELECTION_TARGET_HEAD_NAME",
@@ -1352,5 +1386,6 @@ __all__ = [
     "execute_post_selection_run",
     "resolve_current_cv_acceptance",
     "resolve_current_cv_plan",
+    "resolve_current_final_production_completion",
     "resolve_current_final_production_plan",
 ]

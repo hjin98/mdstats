@@ -246,8 +246,8 @@ def _campaign_ownership_boundary(
 class _TrainingMethodSpec:
     mode: str
     seeds: tuple[int, ...]
-    cross_validation_folds: int
-    fold_partition_seed: int
+    cross_validation_folds: int = 0
+    fold_partition_seed: int = 104729
     seed_mode: str = "optimizer_only"
 
     def __post_init__(self) -> None:
@@ -2325,19 +2325,15 @@ def _cleanup_evaluation_graph_cache(
     paths: CampaignPaths,
     store: CampaignStore,
 ) -> None:
-    """Remove only the OPT-EVAL3 graph/view cache after authoritative evaluation."""
+    """Remove reconstructable evaluation graph/view cache if present."""
 
-    try:
-        evaluate_state, _ = store.stage("evaluate")
-    except Exception:
-        return
-    if evaluate_state is not StageState.COMPLETE:
+    if not (paths.internal / "evaluation-graphs").is_dir():
         return
     _cleanup_remove(
         report,
         paths.internal / "evaluation-graphs",
         reason=(
-            "reconstructable evaluation graph/view cache after authoritative evaluation; "
+            "reconstructable evaluation graph/view cache; "
             "authenticated monitor inputs and metric/prediction records are retained"
         ),
         cleanup_class="reconstructable_cache",
@@ -2447,7 +2443,7 @@ def _campaign_cleanup(
     _cleanup_checkpoint_model_caches(
         report, paths, active_run_ids=active_run_ids, run_roots=run_roots
     )
-    if bool(_cfg(cfg, "cleanup", "remove_evaluation_graph_cache_after_evaluate", True)):
+    if bool(_cfg(cfg, "cleanup", "remove_evaluation_graph_cache_after_evaluate", False)):
         _cleanup_evaluation_graph_cache(report, paths, store)
 
     if include_preparation_caches:
@@ -2456,7 +2452,7 @@ def _campaign_cleanup(
                 cfg,
                 "cleanup",
                 "remove_frame_cache_after_prepare",
-                _cfg(cfg, "cleanup", "remove_frame_cache_after_preflight", True),
+                _cfg(cfg, "cleanup", "remove_frame_cache_after_preflight", False),
             )
         ):
             _cleanup_remove(
@@ -2471,7 +2467,7 @@ def _campaign_cleanup(
                 cfg,
                 "cleanup",
                 "remove_shared_data7_cache_after_prepare",
-                True,
+                False,
             )
         ):
             _cleanup_remove(
@@ -2486,7 +2482,7 @@ def _campaign_cleanup(
                 cfg,
                 "cleanup",
                 "remove_shared_data8_fixed_file_cache_after_prepare",
-                True,
+                False,
             )
         ):
             _cleanup_remove(
@@ -4842,20 +4838,8 @@ def _prepare_catalog(
     del worker_results, worker_payloads, source_by_run, cache_records
     gc.collect()
 
-    method_specs = _training_method_specs(cfg)
-    canonical_fold_count = max(
-        2, *(item.cross_validation_folds for item in method_specs)
-    )
-    canonical_fold_seed = int(
-        _cfg(
-            cfg,
-            "partition",
-            "cross_validation_seed",
-            method_specs[0].fold_partition_seed,
-        )
-    )
     role_budget = mdstats.PartitionRoleBudgetPolicy(
-        cross_validation_folds=canonical_fold_count,
+        cross_validation_folds=3,
         purge_units_between_roles=int(_cfg(cfg, "partition", "purge_units_between_roles", 1)),
     )
     partition_policy = mdstats.PartitionPolicy(
@@ -4863,7 +4847,7 @@ def _prepare_catalog(
         block_policy=mdstats.CompleteFrameBlockPolicy(
             minimum_block_frames=int(_cfg(cfg, "partition", "minimum_block_frames", 32))
         ),
-        cross_validation_seed=canonical_fold_seed,
+        cross_validation_seed=104729,
     )
 
     stage_start = time.monotonic()
@@ -5069,7 +5053,7 @@ def _training_method_specs(cfg: Mapping[str, Any]) -> tuple[_TrainingMethodSpec,
                     mode=mode,
                     seeds=tuple(int(value) for value in payload.get("seeds", (1, 2))),
                     cross_validation_folds=int(
-                        payload.get("cross_validation_folds", 3)
+                        payload.get("cross_validation_folds", 0)
                     ),
                     fold_partition_seed=int(
                         payload.get("fold_partition_seed", 104729)
@@ -5083,21 +5067,12 @@ def _training_method_specs(cfg: Mapping[str, Any]) -> tuple[_TrainingMethodSpec,
             for value in training.get("modes", ("multihead_replay",))
         )
         seeds = tuple(int(value) for value in training.get("seeds", (1, 2)))
-        folds = int(_cfg(cfg, "partition", "cross_validation_folds", 3))
-        fold_seed = int(
-            _cfg(
-                cfg,
-                "partition",
-                "cross_validation_seed",
-                _cfg(cfg, "random", "fold_partition_seed", 104729),
-            )
-        )
         result.extend(
             _TrainingMethodSpec(
                 mode=mode,
                 seeds=seeds,
-                cross_validation_folds=folds,
-                fold_partition_seed=fold_seed,
+                cross_validation_folds=0,
+                fold_partition_seed=104729,
                 seed_mode="optimizer_only",
             )
             for mode in modes
@@ -5179,13 +5154,10 @@ _PREPARATION_CONFIG_PROJECTION_FIELDS: dict[str, tuple[str, ...]] = {
     "partition": (
         "minimum_block_frames",
         "purge_units_between_roles",
-        "cross_validation_folds",
-        "cross_validation_seed",
     ),
     "random": (
         "feature_projection_seed",
         "online_monitor_seed",
-        "fold_partition_seed",
     ),
     # DATA6 values depend on the resolved foundation device/dtype.  Sweep
     # batching, capacity calibration, journals, and shard layout are execution
@@ -5240,10 +5212,7 @@ _PREPARATION_TRAINING_FIELDS = (
 
 _PREPARATION_TRAINING_METHOD_FIELDS = (
     "enabled",
-    "seed_mode",
     "seeds",
-    "cross_validation_folds",
-    "fold_partition_seed",
 )
 
 def _json_copy(value: Any) -> Any:
@@ -6012,7 +5981,10 @@ def _manual_reclamation_add_recompute_tier(
     paths: CampaignPaths,
     store: CampaignStore,
 ) -> None:
-    evaluate_state, _ = _effective_stage(store, paths, "evaluate")
+    try:
+        evaluate_state, _ = _effective_stage(store, paths, "evaluate")
+    except Exception:
+        evaluate_state = StageState.NOT_STARTED
     if evaluate_state is not StageState.COMPLETE:
         report.skipped.append("recompute tier retained prediction/DATA6 caches until authoritative evaluation is complete")
         return
@@ -6042,7 +6014,10 @@ def _manual_reclamation_add_recompute_tier(
         preserved_capabilities=("current_production_inference", "training_restart", "scientific_provenance"),
         capability_loss=("data7_reselection_without_reinference",),
     )
-    verify_state, _ = _effective_stage(store, paths, "verify")
+    try:
+        verify_state, _ = _effective_stage(store, paths, "verify")
+    except Exception:
+        verify_state = StageState.NOT_STARTED
     if verify_state is StageState.COMPLETE:
         _manual_reclamation_add_candidate(
             report,
@@ -6668,6 +6643,7 @@ def _current_public_lifecycle(
         build_post_selection_context,
         resolve_current_cv_acceptance,
         resolve_current_cv_plan,
+        resolve_current_final_production_completion,
         resolve_current_final_production_plan,
     )
     from .campaign_target_size_state import (
@@ -6800,12 +6776,20 @@ def _current_public_lifecycle(
     else:
         try:
             final_plan = resolve_current_final_production_plan(context)
+            final_completion = resolve_current_final_production_completion(context)
         except Exception as exc:  # noqa: BLE001
             production_state, production_message = StageState.WAITING, str(exc)
         else:
             if final_plan is None:
                 production_state = StageState.NOT_STARTED
                 production_message = "no fresh final production run has been published"
+            elif final_completion is None:
+                production_state = StageState.WAITING
+                production_message = (
+                    "fresh final production plan is published on the full exact "
+                    f"T_selected ({_short_digest(final_plan.content_digest)}); "
+                    "required final production run(s) are incomplete"
+                )
             else:
                 production_state = StageState.COMPLETE
                 production_message = (
@@ -7180,21 +7164,12 @@ replay_head_weight = 1.0
 # ablation option, but is disabled in newly initialized campaigns. Enable it
 # deliberately if a target-only baseline is scientifically useful.
 enabled = false
-# Default keeps the same CV partition across optimizer seeds so seed variance and
-# partition variance remain separately interpretable. Advanced robustness mode:
-# seed_mode = "optimizer_and_cv_partition"
-seed_mode = "optimizer_only"
 seeds = [1, 2]
 
 [training.multihead_replay]
-# Production default: two optimizer seeds, each with three cross-validation
-# folds plus one final-development fit: 2 * (3 + 1) = 8 multi-head jobs.
+# Production default: two optimizer seeds for target-size screening.
 # The post-selection fold plan is configured under [post_selection.cv].
 enabled = true
-# optimizer_only is the scientific default. optimizer_and_cv_partition derives a
-# different deterministic fold partition for each optimizer seed; this broadens
-# CV robustness sampling but does NOT change final A+B+C training membership.
-seed_mode = "optimizer_only"
 seeds = [1, 2]
 
 [post_selection.cv]
@@ -7240,9 +7215,6 @@ gpu_memory_fraction = 0.90
 # remain caps inside the runtime CPU-fraction and RAM budgets.
 source_workers = 0
 feature_workers = 0
-# Maximum in-memory force-tail temporary allocation for FOUNDATION-AUDIT1.
-# Larger exact buffers spill to a temporary mmap. Execution-only.
-foundation_audit_temporary_ram_mib = 512
 # LTA workers return compact NumPy columns; the automatic count is bounded by
 # CPU threads plus RAM reserved for the final immutable catalog.
 lta_workers = 0
@@ -7346,51 +7318,15 @@ evaluation_prepare_working_memory_mib = 0
 evaluation_inference_working_memory_mib = 0
 evaluation_finalize_working_memory_mib = 0
 evaluation_shared_runtime_residency_mib = 0
-# External DYN cases are admitted independently from static model inference.
-# One process is the conservative production default until a target-GPU
-# benchmark demonstrates that concurrent LAMMPS/Kokkos processes improve
-# end-to-end throughput. Positive overrides remain subject to live resources.
-parallel_dynamics_jobs = 0
-maximum_parallel_dynamics_jobs = 1
-dynamics_estimated_vram_mib_per_job = 4096.0
-dynamics_estimated_ram_mib_per_job = 4096.0
-dynamics_pipeline_buffer_jobs = 0
-dynamics_pipeline_buffer_mib = 0
-dynamics_prepare_working_memory_mib = 0
-dynamics_inference_working_memory_mib = 0
-dynamics_finalize_working_memory_mib = 0
-dynamics_shared_runtime_residency_mib = 0
-estimated_dynamics_output_mib_per_case = 512.0
 # Stop admitting new jobs after the first failed run; already-active jobs finish.
 stop_scheduling_after_failure = true
 
 [cleanup]
 # Conservative lifecycle cleanup runs automatically at current stage boundaries.
 # Manual retention is CLI-selected: storage cleanup --tier safe|cache|recompute|compact|archive.
-# Every tier emits a capability plan first; recompute/compact require --apply; archive
-# additionally creates and verifies a reversible STOR5 cold archive before consequential hot deletion.
 enabled = true
 # Young temporary trees are retained to avoid racing a recently interrupted process.
 stale_age_hours = 6.0
-# These caches can be reconstructed from immutable source/data records and are not
-# required after current preparation has committed its durable records.
-remove_frame_cache_after_prepare = true
-remove_shared_data7_cache_after_prepare = true
-remove_shared_data8_fixed_file_cache_after_prepare = true
-# Retain compact diagnostics for any historical smoke record encountered during
-# storage cleanup; current lifecycle stages never create that record.
-retain_historical_smoke_diagnostics = true
-# STOR3: graph/view preparation is fully reconstructable from authenticated monitor
-# inputs and is reclaimed after authoritative evaluation. Prediction arrays are kept.
-remove_evaluation_graph_cache_after_evaluate = true
-# After all checkpoints have been evaluated and a protocol is frozen, retain the
-# selected checkpoint for every run plus all metric/selection records; remove the
-# bulky unselected optimizer snapshots.
-prune_unselected_checkpoints_after_evaluate = true
-# When evaluation shortlists epochs from authenticated MACE validation history,
-# delete the screened-out optimizer checkpoints after the selected checkpoint and
-# shortlist evidence have been committed. Set false to retain every epoch snapshot.
-prune_screened_out_checkpoints_after_evaluate = true
 maximum_event_records = 10000
 
 [replay]
