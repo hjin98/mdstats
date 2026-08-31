@@ -17,6 +17,7 @@ import argparse
 import ast
 import json
 import os
+import time
 import tomllib
 from pathlib import Path
 
@@ -700,7 +701,7 @@ def test_p6_r10_configuration_and_help_truthfulness():
     guide = cli_core.GUIDE_TEXT
     assert "storage report                         read-only inventory" in guide
     assert "storage cleanup --tier safe --dry-run  inspect zero-loss cleanup" in guide
-    assert "storage cleanup --tier cache --dry-run inspect owner-proven cache cleanup" in guide
+    assert "storage cleanup --tier cache --dry-run inspect cache tier cleanup" in guide
     assert "storage cleanup --tier safe|cache      apply the selected transitional tier" in guide
     assert "CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1" in guide
     assert "storage cleanup --tier recompute" not in guide
@@ -736,76 +737,188 @@ def test_p6_r10_cli_namespace_and_legacy_cleanup_removal(tmp_path: Path):
     assert cli_core.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
 
 
-def test_p6_r11_safe_and_cache_tiers_retain_all_caches_and_historical_paths(tmp_path: Path):
-    """R11-A / R11-E: Safe and cache cleanup both retain checkpoint-model-cache, frame-cache, and historical paths."""
+def test_p6_r12_historical_run_tree_trap_across_marker_cases(tmp_path: Path):
+    """R12 Section 4.1: Historical workspace/runs trap is retained across all active_process/PID states."""
     config, _workspace = build_selected_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
 
-    # 1. Inactive-run checkpoint-model-cache (no active_process.json)
-    run_dir = paths.runs / "run-inactive"
-    run_dir.mkdir(parents=True)
-    model_cache = run_dir / "checkpoint-model-cache"
-    model_cache.mkdir()
-    (model_cache / "model.pt").write_bytes(b"model-cache-payload")
-
-    # 2. Frame-cache
-    frame_cache = paths.internal / "frame-cache"
-    frame_cache.mkdir(parents=True, exist_ok=True)
-    (frame_cache / "cache.mmap").write_bytes(b"frame-cache-payload")
-
-    # 3. Historical-path traps
-    hist_dirs = [
-        paths.internal / "data7-cache",
-        paths.internal / "data8-fixed-cache",
-        paths.internal / "evaluation-graphs",
+    marker_cases = [
+        ("no_marker", None),
+        ("malformed_marker", "invalid-json-content{{{"),
+        ("dead_pid", json.dumps({"pid": 999999999, "timestamp": "2026-08-31T00:00:00Z"})),
+        ("live_pid", json.dumps({"pid": os.getpid(), "timestamp": "2026-08-31T00:00:00Z"})),
     ]
-    for d in hist_dirs:
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "payload.bin").write_bytes(b"historical")
 
-    # Safe cleanup: all caches and historical paths are retained
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
-    assert model_cache.is_dir(), "safe cleanup must retain checkpoint-model-cache"
-    assert frame_cache.is_dir(), "safe cleanup must retain frame-cache"
-    for d in hist_dirs:
-        assert (d / "payload.bin").is_file(), f"safe cleanup must retain historical path {d}"
+    for case_name, marker_content in marker_cases:
+        run_dir = paths.runs / f"legacy-run-{case_name}"
+        obsolete_dir = run_dir / "obsolete-runtime-old"
+        (obsolete_dir / "logs").mkdir(parents=True, exist_ok=True)
+        (obsolete_dir / "tmp").mkdir(parents=True, exist_ok=True)
+        (obsolete_dir / "staging").mkdir(parents=True, exist_ok=True)
+        (obsolete_dir / "scratch").mkdir(parents=True, exist_ok=True)
+        (obsolete_dir / "checkpoint-model-cache").mkdir(parents=True, exist_ok=True)
+        (obsolete_dir / "evaluation-graph-cache").mkdir(parents=True, exist_ok=True)
+        (obsolete_dir / "prediction-cache").mkdir(parents=True, exist_ok=True)
 
-    # Cache cleanup: also retains checkpoint-model-cache, frame-cache, and historical paths in P6/P7
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
-    assert model_cache.is_dir(), "cache cleanup must retain checkpoint-model-cache in P6/P7"
-    assert frame_cache.is_dir(), "cache cleanup must retain frame-cache in P6/P7"
-    for d in hist_dirs:
-        assert (d / "payload.bin").is_file(), f"cache cleanup must retain historical path {d}"
+        stdout_log = obsolete_dir / "logs" / "stdout.log"
+        stdout_log.write_text("historical log output\n", encoding="utf-8")
+        tmp_payload = obsolete_dir / "tmp" / "payload"
+        tmp_payload.write_bytes(b"tmp-bytes")
+        staging_payload = obsolete_dir / "staging" / "payload"
+        staging_payload.write_bytes(b"staging-bytes")
+        scratch_payload = obsolete_dir / "scratch" / "payload"
+        scratch_payload.write_bytes(b"scratch-bytes")
+        model_payload = obsolete_dir / "checkpoint-model-cache" / "model.pt"
+        model_payload.write_bytes(b"model-pt-bytes")
+        graph_payload = obsolete_dir / "evaluation-graph-cache" / "payload"
+        graph_payload.write_bytes(b"graph-bytes")
+        pred_payload = obsolete_dir / "prediction-cache" / "payload"
+        pred_payload.write_bytes(b"pred-bytes")
+
+        marker_file = run_dir / "active_process.json"
+        if marker_content is not None:
+            marker_file.write_text(marker_content, encoding="utf-8")
+
+        # Set mtime older than stale_age_hours (e.g. 48 hours old)
+        old_time = time.time() - 48.0 * 3600.0
+        for p in [run_dir, obsolete_dir, stdout_log, tmp_payload, staging_payload, scratch_payload, model_payload, graph_payload, pred_payload]:
+            os.utime(p, (old_time, old_time))
+        if marker_content is not None:
+            os.utime(marker_file, (old_time, old_time))
+
+        # Invoke public safe and cache cleanup
+        assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
+        assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+
+        # Every byte under the trap must remain intact
+        assert stdout_log.read_text(encoding="utf-8") == "historical log output\n"
+        assert tmp_payload.read_bytes() == b"tmp-bytes"
+        assert staging_payload.read_bytes() == b"staging-bytes"
+        assert scratch_payload.read_bytes() == b"scratch-bytes"
+        assert model_payload.read_bytes() == b"model-pt-bytes"
+        assert graph_payload.read_bytes() == b"graph-bytes"
+        assert pred_payload.read_bytes() == b"pred-bytes"
+
+        # The marker itself must remain and NOT be unlinked
+        if marker_content is not None:
+            assert marker_file.is_file(), f"marker {marker_file} must not be unlinked by storage cleanup"
+            assert marker_file.read_text(encoding="utf-8") == marker_content
 
 
-def test_p6_r11_cache_deletion_non_reachability_and_structural_absence(tmp_path: Path):
-    """R11-A / R11-B: Checkpoint model cache deletion is structurally absent and unreachable."""
+def test_p6_r12_structural_absence_and_non_reachability():
+    """R12 Section 4.2: Retired runs/PID cleanup functions are structurally absent and absent from AST."""
     import inspect
     from mdstats.training_data import _campaign_cli_core as cli_core
 
-    # 1. Structural absence: _cleanup_checkpoint_model_caches is deleted
+    # 1. Structural absence of deleted functions
+    assert not hasattr(cli_core, "_cleanup_obsolete_training_runtimes")
+    assert not hasattr(cli_core, "_active_training_run_ids")
+    assert not hasattr(cli_core, "_pid_alive")
+    assert not hasattr(cli_core, "_diagnostic_log_tail")
+    assert not hasattr(cli_core, "_write_cleanup_diagnostic")
     assert not hasattr(cli_core, "_cleanup_checkpoint_model_caches")
 
-    # 2. Source inspection: cache tier planning does not enumerate checkpoint-model-cache
-    cache_tier_src = inspect.getsource(cli_core._manual_reclamation_add_cache_tier)
-    assert "checkpoint-model-cache" not in cache_tier_src
-    assert "_cleanup_remove" not in cache_tier_src
+    # 2. Source inspection: _campaign_cleanup does not inspect paths.runs or active_process.json
+    cleanup_src = inspect.getsource(cli_core._campaign_cleanup)
+    assert "paths.runs" not in cleanup_src
+    assert "active_process" not in cleanup_src
+    assert "_active_training_run_ids" not in cleanup_src
+    assert "_cleanup_obsolete_training_runtimes" not in cleanup_src
 
-    # 3. Public CLI execution without active_process.json retains cache
+    # 3. campaign_execution remains absent
+    with pytest.raises(ImportError):
+        import mdstats.training_data.campaign_execution  # noqa: F401
+
+
+def test_p6_r12_sha256_receipt_retention_through_storage_cleanup(tmp_path: Path):
+    """R12 Section 4.3: Storage cleanup performs zero acceleration-cache eviction and retains SHA-256 receipts."""
+    from mdstats.training_data._common import (
+        _sha256_receipt_connection,
+        read_validation_receipt,
+        sha256_file_cached,
+        write_validation_receipt,
+    )
+
     config, _workspace = build_selected_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
 
-    arbitrary_cache = paths.runs / "arbitrary-run" / "checkpoint-model-cache"
-    arbitrary_cache.mkdir(parents=True, exist_ok=True)
-    (arbitrary_cache / "payload.pt").write_bytes(b"arbitrary-payload")
+    # Populate multiple files and record their receipts
+    sample_dir = tmp_path / "samples"
+    sample_dir.mkdir()
+    digests = {}
+    for i in range(20):
+        sample = sample_dir / f"file_{i}.dat"
+        sample.write_bytes(f"payload-{i}".encode("utf-8"))
+        digests[str(sample)] = sha256_file_cached(sample)
 
-    assert cli_core.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
-    assert arbitrary_cache.is_dir(), "arbitrary cache must be retained without active_process.json"
-    assert (arbitrary_cache / "payload.pt").is_file()
+    # Write validation receipts
+    write_validation_receipt("test_ns", "a" * 64, "b" * 64)
+    write_validation_receipt("test_ns", "c" * 64, "d" * 64)
+
+    conn = _sha256_receipt_connection()
+    assert conn is not None
+    receipt_count_before = int(conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0])
+    val_count_before = int(conn.execute("SELECT COUNT(*) FROM validation_receipts").fetchone()[0])
+    assert receipt_count_before >= 20
+    assert val_count_before >= 2
+
+    # Execute safe and cache cleanup
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+
+    # Receipt rows must NOT be pruned by storage cleanup
+    receipt_count_after = int(conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0])
+    val_count_after = int(conn.execute("SELECT COUNT(*) FROM validation_receipts").fetchone()[0])
+    assert receipt_count_after == receipt_count_before, "storage cleanup must not prune SHA-256 receipts"
+    assert val_count_after == val_count_before, "storage cleanup must not prune validation receipts"
+
+    # Subsequent sha256_file_cached and validation reads remain exact
+    for path_str, expected_digest in digests.items():
+        assert sha256_file_cached(path_str) == expected_digest
+    assert read_validation_receipt("test_ns", "a" * 64) == "b" * 64
+    assert read_validation_receipt("test_ns", "c" * 64) == "d" * 64
 
 
-def test_p6_r11_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
-    """R11-C / R11-D: storage report contains no retired STOR policy strings, neutral stdout, and is read-only."""
+def test_p6_r12_orphan_record_positive_reclamation_and_referenced_record_retention(tmp_path: Path):
+    """R12 Section 4.4 / R12-C: Orphan external records are safely reclaimed; referenced and young records are retained."""
+    config, _workspace = build_selected_campaign(tmp_path)
+    cfg, paths = cli._load_config(config)
+    store = cli.CampaignStore(paths.state_db)
+
+    records_dir = paths.internal / "records"
+    records_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Referenced record (registered in store)
+    ref_obj = records_dir / "referenced_record"
+    ref_obj.mkdir(parents=True, exist_ok=True)
+    (ref_obj / "data.bin").write_bytes(b"referenced-payload")
+    store.put_record("custom_referenced", {"file": str(ref_obj)})
+
+    # 2. Young unreferenced record (younger than stale_age_hours)
+    young_obj = records_dir / "young_unreferenced"
+    young_obj.mkdir(parents=True, exist_ok=True)
+    (young_obj / "data.bin").write_bytes(b"young-payload")
+
+    # 3. Old unreferenced record (older than stale_age_hours -> should be reclaimed)
+    old_orphan = records_dir / "old_orphan"
+    old_orphan.mkdir(parents=True, exist_ok=True)
+    (old_orphan / "data.bin").write_bytes(b"orphan-payload")
+    old_time = time.time() - 48.0 * 3600.0
+    os.utime(old_orphan, (old_time, old_time))
+    os.utime(old_orphan / "data.bin", (old_time, old_time))
+
+    # Invoke safe cleanup
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
+
+    assert ref_obj.is_dir(), "referenced record must be retained"
+    assert (ref_obj / "data.bin").is_file()
+    assert young_obj.is_dir(), "young unreferenced candidate must be retained"
+    assert (young_obj / "data.bin").is_file()
+    assert not old_orphan.exists(), "old unreferenced orphan record must be reclaimed"
+
+
+def test_p6_r12_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    """R12 Section 4 / R11-C / R11-D: storage report contains no retired STOR policy strings, neutral stdout, and is read-only."""
     from mdstats.training_data.storage_accounting import (
         build_campaign_storage_report,
         configured_protected_inputs,

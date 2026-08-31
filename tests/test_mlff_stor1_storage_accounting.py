@@ -202,16 +202,16 @@ def test_storage_cli_refuses_report_write_through_results_symlink(tmp_path: Path
     assert not (external / "storage-report.json").exists()
 
 
-def test_cleanup_does_not_traverse_external_runs_symlink(tmp_path: Path) -> None:
+def test_cleanup_does_not_traverse_external_records_symlink(tmp_path: Path) -> None:
     config = _write_config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
-    external = tmp_path / "external-runs"
-    victim = external / "run-a" / "checkpoint-model-cache" / "important.bin"
-    victim.parent.mkdir(parents=True)
+    external = tmp_path / "external-records"
+    external.mkdir()
+    victim = external / "orphan-payload.bin"
     victim.write_bytes(b"keep")
-    paths.runs.rmdir()
-    paths.runs.symlink_to(external, target_is_directory=True)
     store = campaign_cli.CampaignStore(paths.state_db)
+    paths.internal.mkdir(parents=True, exist_ok=True)
+    (paths.internal / "records").symlink_to(external, target_is_directory=True)
 
     report = campaign_cli._campaign_cleanup(
         cfg,
@@ -222,19 +222,18 @@ def test_cleanup_does_not_traverse_external_runs_symlink(tmp_path: Path) -> None
         include_preparation_caches=False,
     )
     assert victim.read_bytes() == b"keep"
-    assert any("run-tree cleanup skipped" in item for item in report.skipped)
+    assert any("external-record cleanup skipped" in item for item in report.skipped)
 
 
-def test_preflight_cleanup_refuses_external_symlink_root(tmp_path: Path) -> None:
+def test_cleanup_remove_unlinks_campaign_symlink_without_touching_external_target(tmp_path: Path) -> None:
     config = _write_config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
     external = tmp_path / "external-cache"
     external.mkdir()
     victim = external / "heavy.bin"
     victim.write_bytes(b"keep")
-    run_dir = paths.runs / "run-a"
-    run_dir.mkdir(parents=True)
-    link = run_dir / "obsolete-runtime-symlink"
+    link = paths.internal / "temporary-symlink"
+    link.parent.mkdir(parents=True, exist_ok=True)
     link.symlink_to(external, target_is_directory=True)
     report = campaign_cli._CampaignCleanupReport(
         phase="stor1-test",
@@ -246,7 +245,7 @@ def test_preflight_cleanup_refuses_external_symlink_root(tmp_path: Path) -> None
             ),
         ),
     )
-    campaign_cli._cleanup_obsolete_training_runtimes(report, paths, active_run_ids=set())
+    campaign_cli._cleanup_remove(report, link, reason="test remove symlink")
     assert victim.read_bytes() == b"keep"
     assert not link.exists() and not link.is_symlink()
 

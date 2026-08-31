@@ -60,7 +60,6 @@ from ._common import (
     TrainingDataSerializationError,
     configure_sha256_receipt_store,
     digest,
-    prune_sha256_receipts,
     sha256_file_cached,
     validate_digest,
 )
@@ -730,7 +729,6 @@ class CampaignStore:
         # campaign parent is the sole database writer.
         with self._connect() as db:
             db.execute("VACUUM")
-        prune_sha256_receipts()
 
     def set_stage(self, name: str, state: StageState, message: str) -> None:
         timestamp = _utc_now()
@@ -1837,103 +1835,6 @@ def _format_reclaimed_bytes(value: int) -> str:
     return f"{float(value) / (1024.0 ** 2):.1f} MiB"
 
 
-def _pid_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
-def _active_training_run_ids(
-    paths: CampaignPaths,
-    *,
-    run_roots: Sequence[Path] | None = None,
-    ownership_boundary: CampaignOwnershipBoundary | None = None,
-) -> set[str]:
-    active: set[str] = set()
-    if run_roots is None:
-        if not paths.runs.is_dir():
-            return active
-        run_roots = tuple(
-            child for child in paths.runs.iterdir() if child.is_dir()
-        )
-    for run_root in run_roots:
-        marker = run_root / "active_process.json"
-        if not marker.is_file():
-            continue
-        try:
-            payload = json.loads(marker.read_text(encoding="utf-8"))
-            pid = int(payload.get("pid", -1))
-        except Exception:
-            pid = -1
-        if _pid_alive(pid):
-            active.add(run_root.name)
-        else:
-            if ownership_boundary is None:
-                marker.unlink(missing_ok=True)
-            else:
-                authorized, _ = ownership_boundary.destructive_authorization(marker)
-                if authorized:
-                    marker.unlink(missing_ok=True)
-    return active
-
-
-def _diagnostic_log_tail(path: Path, *, maximum_bytes: int = 64 * 1024) -> str:
-    if not path.is_file():
-        return ""
-    try:
-        with path.open("rb") as handle:
-            size = path.stat().st_size
-            if size > maximum_bytes:
-                handle.seek(-maximum_bytes, os.SEEK_END)
-            return handle.read().decode("utf-8", errors="replace")
-    except OSError:
-        return ""
-
-
-def _write_cleanup_diagnostic(
-    destination: Path,
-    source: Path,
-    *,
-    reason: str,
-) -> None:
-    """Preserve compact forensic evidence before deleting a stale runtime tree."""
-
-    files: list[dict[str, Any]] = []
-    tails: dict[str, str] = {}
-    if source.exists() and not source.is_symlink():
-        for item in sorted(source.rglob("*")):
-            if not item.is_file():
-                continue
-            try:
-                relative = item.relative_to(source).as_posix()
-                size = int(item.stat().st_size)
-            except OSError:
-                continue
-            files.append({"relative_path": relative, "size_bytes": size})
-            if item.suffix == ".log" or item.name.endswith(("stdout", "stderr")):
-                tail = _diagnostic_log_tail(item)
-                if tail:
-                    tails[relative] = tail
-    _atomic_json(
-        destination,
-        {
-            "schema": "mdstats.mlff-campaign-cleanup-diagnostic.v1",
-            "created_utc": _utc_now(),
-            "source": str(source),
-            "reason": reason,
-            "logical_size_bytes": _path_size_bytes(source),
-            "files": files,
-            "log_tails": tails,
-        },
-    )
-
-
 @dataclass
 class _CampaignCleanupReport:
     phase: str
@@ -1986,7 +1887,6 @@ def _cleanup_remove(
     path: Path,
     *,
     reason: str,
-    diagnostic_path: Path | None = None,
     cleanup_class: str = "lifecycle_safe",
     preserved_capabilities: Sequence[str] = (),
     capability_loss: Sequence[str] = (),
@@ -2005,17 +1905,6 @@ def _cleanup_remove(
         prior_identity = filesystem_identity(path)
     except OSError:
         prior_identity = {"schema": "mdstats.mlff-filesystem-identity.v1", "kind": "unavailable"}
-    if diagnostic_path is not None and not report.dry_run:
-        if report.ownership_boundary is not None:
-            diagnostic_authorized, diagnostic_detail = (
-                report.ownership_boundary.destructive_authorization(diagnostic_path)
-            )
-            if not diagnostic_authorized:
-                report.skipped.append(
-                    f"cleanup diagnostic write denied for {diagnostic_path}: {diagnostic_detail}"
-                )
-                return
-        _write_cleanup_diagnostic(diagnostic_path, path, reason=reason)
     if not report.dry_run:
         if path.is_symlink() or path.is_file():
             path.unlink(missing_ok=True)
@@ -2062,41 +1951,12 @@ def _cleanup_orphan_record_storage(
         if resolved in keep_top:
             continue
         try:
-            if child.stat().st_mtime > stale_before:
+            if child.lstat().st_mtime > stale_before:
                 report.skipped.append(f"young external record candidate retained: {child}")
                 continue
         except OSError:
             continue
         _cleanup_remove(report, child, reason="orphaned external campaign record", cleanup_class="garbage", preserved_capabilities=("all_referenced_campaign_records", "campaign_state"))
-
-
-def _cleanup_obsolete_training_runtimes(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    *,
-    active_run_ids: set[str],
-    run_roots: Sequence[Path] | None = None,
-) -> None:
-    if run_roots is None:
-        if not paths.runs.is_dir():
-            return
-        run_roots = tuple(
-            child for child in paths.runs.iterdir() if child.is_dir()
-        )
-    for run_root in run_roots:
-        if not run_root.is_dir() or run_root.name in active_run_ids:
-            continue
-        diagnostic_root = run_root / "obsolete-runtime-diagnostics"
-        for obsolete in run_root.glob("obsolete-runtime-*"):
-            diagnostic = diagnostic_root / f"{obsolete.name}.json"
-            _cleanup_remove(
-                report,
-                obsolete,
-                reason="obsolete training runtime from superseded execution policy",
-                diagnostic_path=diagnostic,
-                cleanup_class="obsolete_runtime",
-                preserved_capabilities=("current_training_restart", "compact_obsolete_runtime_diagnostics"),
-            )
 
 
 def _append_cleanup_audit_manifest(
@@ -2154,7 +2014,7 @@ def _campaign_cleanup(
     dry_run: bool = False,
     include_preparation_caches: bool = False,
 ) -> _CampaignCleanupReport:
-    """Conservatively remove only artifacts not needed by current continuation."""
+    """Conservatively remove only artifacts with surviving current semantic owners."""
 
     report = _CampaignCleanupReport(
         phase=phase,
@@ -2166,40 +2026,13 @@ def _campaign_cleanup(
         return report
     stale_hours = max(0.25, float(_cfg(cfg, "cleanup", "stale_age_hours", 6.0)))
     stale_before = time.time() - stale_hours * 3600.0
-    runs_authorized = True
-    if report.ownership_boundary is not None:
-        runs_authorized, detail = report.ownership_boundary.traversal_authorization(paths.runs)
-        if not runs_authorized:
-            report.skipped.append(
-                f"run-tree cleanup skipped because the runs root failed ownership checks: {detail}: {paths.runs}"
-            )
-    run_roots = (
-        tuple(
-            child for child in paths.runs.iterdir()
-            if child.is_dir() and not child.is_symlink()
-        )
-        if runs_authorized and paths.runs.is_dir()
-        else ()
-    )
-    active_run_ids = _active_training_run_ids(
-        paths,
-        run_roots=run_roots,
-        ownership_boundary=report.ownership_boundary,
-    )
 
     _cleanup_orphan_record_storage(report, store, stale_before=stale_before)
-    _cleanup_obsolete_training_runtimes(
-        report, paths, active_run_ids=active_run_ids, run_roots=run_roots
-    )
 
     if not dry_run:
         assert report.ownership_boundary is not None
         store_authorized, store_detail = report.ownership_boundary.destructive_authorization(store.path)
-        if active_run_ids:
-            report.skipped.append(
-                "SQLite compaction skipped while live training children exist"
-            )
-        elif not store_authorized:
+        if not store_authorized:
             report.skipped.append(
                 f"SQLite compaction skipped because campaign state failed ownership checks: {store_detail}"
             )
@@ -2228,7 +2061,7 @@ def _campaign_cleanup(
         _append_cleanup_audit_manifest(
             report,
             paths,
-            trigger=("manual" if phase == "manual" else "automatic_lifecycle"),
+            trigger=("manual" if phase.startswith("manual") else "automatic_lifecycle"),
         )
     return report
 
@@ -6606,7 +6439,7 @@ dry-run before applying safe or cache cleanup:
 
 storage report                         read-only inventory
 storage cleanup --tier safe --dry-run  inspect zero-loss cleanup
-storage cleanup --tier cache --dry-run inspect owner-proven cache cleanup
+storage cleanup --tier cache --dry-run inspect cache tier cleanup
 storage cleanup --tier safe|cache      apply the selected transitional tier
 
 Consequential storage transformations (recompute, compaction, archival,

@@ -33,8 +33,8 @@ No files are modified or removed during accounting operations.
 Current-generation campaigns support two non-destructive / low-consequence cleanup tiers:
 
 ### Default / Safe Tier (`--tier safe`)
-- Targets only temporary scratch, aborted stage staging trees, obsolete runtime scratch after compact diagnostics, and orphaned external database records.
-- Guarantees zero loss of scientific capability, evaluation state, training restartability, or acceleration caching (zero acceleration-cache eviction).
+- Targets only unreferenced orphaned external database records and performs bounded diagnostic database housekeeping.
+- Guarantees zero loss of scientific capability, evaluation state, training restartability, or acceleration caching (zero acceleration-cache eviction, including no SHA-256 receipt pruning).
 - Every safe cleanup event appends an authenticated record to `results/cleanup-manifest.jsonl` with an empty capability-loss set.
 
 ### Cache Tier (`--tier cache`)

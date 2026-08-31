@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -111,10 +113,13 @@ def test_cache_symlink_escape_unlinks_only_campaign_link(tmp_path: Path) -> None
     external.mkdir()
     important = external / "user.bin"
     important.write_bytes(b"never-delete")
-    run_dir = paths.runs / "run-a"
-    run_dir.mkdir(parents=True)
-    link = run_dir / "obsolete-runtime-symlink"
+    records_dir = paths.internal / "records"
+    records_dir.mkdir(parents=True)
+    link = records_dir / "orphan-symlink"
     link.symlink_to(external, target_is_directory=True)
+    # Set old mtime to exceed stale age
+    old_time = time.time() - 3600.0 * 24.0
+    os.utime(link, (old_time, old_time), follow_symlinks=False)
 
     assert campaign_cli.command_cleanup(_args(config, tier="cache", dry_run=False)) == 0
     assert not link.is_symlink()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -47,19 +48,23 @@ def test_stor3_cleanup_manifest_is_append_only_and_records_predelete_identity(tm
     config = _config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
     store = campaign_cli.CampaignStore(paths.state_db)
+    old_time = time.time() - 3600.0 * 24.0
 
-    run_dir1 = paths.runs / "run-1"
-    run_dir1.mkdir(parents=True)
-    cache1 = run_dir1 / "obsolete-runtime-1"
+    records_dir = paths.internal / "records"
+    records_dir.mkdir(parents=True, exist_ok=True)
+
+    cache1 = records_dir / "orphan-1"
     cache1.mkdir()
     (cache1 / "first.bin").write_bytes(b"one")
+    os.utime(cache1, (old_time, old_time))
+    os.utime(cache1 / "first.bin", (old_time, old_time))
     campaign_cli._campaign_cleanup(cfg, paths, store, phase="first")
 
-    run_dir2 = paths.runs / "run-2"
-    run_dir2.mkdir(parents=True)
-    cache2 = run_dir2 / "obsolete-runtime-2"
+    cache2 = records_dir / "orphan-2"
     cache2.mkdir()
     (cache2 / "second.bin").write_bytes(b"two")
+    os.utime(cache2, (old_time, old_time))
+    os.utime(cache2 / "second.bin", (old_time, old_time))
     campaign_cli._campaign_cleanup(cfg, paths, store, phase="second")
 
     manifest = paths.results / "cleanup-manifest.jsonl"
@@ -96,10 +101,12 @@ def test_stor3_graph_symlink_escape_unlinks_only_campaign_link(tmp_path: Path) -
     external.mkdir()
     important = external / "user.bin"
     important.write_bytes(b"never-delete")
-    run_dir = paths.runs / "run-1"
-    run_dir.mkdir(parents=True)
-    link = run_dir / "obsolete-runtime-symlink"
+    records_dir = paths.internal / "records"
+    records_dir.mkdir(parents=True, exist_ok=True)
+    link = records_dir / "orphan-symlink"
     link.symlink_to(external, target_is_directory=True)
+    old_time = time.time() - 3600.0 * 24.0
+    os.utime(link, (old_time, old_time), follow_symlinks=False)
 
     campaign_cli._campaign_cleanup(cfg, paths, store, phase="symlink-safe")
     assert not link.is_symlink()
