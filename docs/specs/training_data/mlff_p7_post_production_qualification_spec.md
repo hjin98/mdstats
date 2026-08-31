@@ -178,6 +178,17 @@ Bounded deterministic analytic references are legitimate below this boundary for
 functional testing. A production scientific qualification supplies real external
 references generated under the exact frozen request and protocol identity.
 
+# 4b. Exact periodic boundary conditions
+
+The three-axis periodicity vector is carried exactly through every deployed
+static and dynamics request, the LAMMPS boundary command, the raw observations,
+and the dynamics case identity. Collapsing it to a single boolean would execute a
+mixed-boundary system such as `[True, True, False]` as a fully nonperiodic one -
+a different physical system - and would let minimum-image safety reductions wrap
+an axis that has no images. Two geometries that differ only in periodicity are
+therefore different cases with different identities, and a request that does not
+state its periodicity fails closed rather than assuming one.
+
 # 5a. Dynamics inputs and diagnostics
 
 Each dynamics case starts from the authenticated `relaxed_positions_angstrom` of
@@ -202,17 +213,26 @@ immutable evidence is JSON-exact and records the measurement as absent.
 
 # 5b. Stress and deformation conventions
 
-When the frozen product, reference protocol, and runtime expose stress, the
-deployment and physical policies bind whether it is applicable/required, the
-comparison tolerances, tensor sign, Voigt order, units, and the volume source.
-Qualification stores a symmetric Cartesian tensor in eV/Angstrom$^3$. LAMMPS
-thermodynamic pressure is an intensive bar value and is converted through the
-canonical stress owner; an extensive virial must be divided by the
-instantaneous periodic-cell volume before it can enter evidence. Shear order
-and sign are never inferred from a calculator default. Missing stress is an
-explicit unavailable capability when optional, and is blocking when required.
-Isotropic strain response is evaluated against the authenticated reference
-under the same frozen convention, including the corresponding periodic cell.
+Stress applicability is a capability decision, not a configuration switch. It is
+resolved before any component executes, from the accepted training objective's
+stress weight, the reference frames' stress labels, whether the authenticated
+model actually returns a stress tensor, whether the configuration is periodic at
+all, and whether the deployed runtime can report stress. Policy composes with
+those facts in one direction only: it may *require* stress, and it may record a
+scientifically justified inapplicability reason for audit, but it cannot relabel
+an available trained stress channel as `not_applicable` to avoid qualifying it.
+The decision is immutable, carries its reason codes, and participates in
+component identity, so a capability change stales stress-bearing descendants
+rather than silently reinterpreting existing evidence.
+
+Every source converts to one canonical form once: a symmetric 3x3 Cauchy stress
+in eV/Angstrom^3, positive in tension, matching the repository's ASE/MACE label
+contract. Unit and sign conventions belong to each source adapter rather than to
+the caller, because they are facts about that source. In particular, LAMMPS
+`units metal` thermo pressure is in **bar** and is positive in **compression**;
+`canonical_stress_from_lammps_metal_pressure` is the only place that knows this,
+and it is not parameterized by units or sign. An extensive virial must be divided
+by the instantaneous periodic-cell volume. Missing stress is an
 
 # 6. The one-shot locked test
 
@@ -281,6 +301,28 @@ before it is recorded, so serial and concurrent execution produce byte-identical
 evidence and the same terminal verdict. Resource pressure may change scheduling
 only; it can never change evidence membership, a threshold, a timestep, a
 temperature, or a precision.
+
+# 8a. Measured resource evidence and disk safety
+
+The resource-scope digest is identity: it says which machine budget a run was
+entitled to, and it is the same whether a component took two seconds or two
+days. Target-machine qualification also records what the attempt actually cost,
+in one immutable observation bound to the exact binding and attempt: total and
+per-component elapsed time, workspace filesystem total/free bytes and the
+attempt's own footprint at start and end, the configured free-disk reserve and
+whether it held, peak process RSS, and accelerator model/total VRAM/peak
+allocation where an existing owner reports them. The terminal record and the
+release index both point at it.
+
+Those observations are evidence, never policy. Free disk and RAM fluctuate for
+reasons unrelated to the product, so an observation never stales numerical
+evidence. The single place they act is safety: the campaign's existing
+`[execution].minimum_free_disk_gib` reserve is checked before each component
+materializes artifacts or scratch, and an attempt that cannot proceed safely
+aborts rather than changing any timestep, duration, precision, membership,
+threshold, or model choice. Reading that reserve is an owner-local safety check;
+deduplication, archival, inventory, and cross-owner admission remain the
+successor storage workplan's.
 
 # 9. Verdicts
 

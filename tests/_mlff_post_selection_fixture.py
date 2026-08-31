@@ -100,23 +100,48 @@ def load_context(config: Path):
     return cfg, paths, CampaignStore(paths.state_db)
 
 
-def _seeded_raw_checkpoint(directory, epoch: int, optimizer_seed: int):
+def _seeded_raw_checkpoint(
+    directory, epoch: int, optimizer_seed: int, *, real_mace_checkpoint: bool = False
+):
     """A toy checkpoint whose bytes actually depend on the optimizer seed.
 
     Two production seeds are two different trainings and must not produce
     byte-identical checkpoints: a cross-seed decision keyed by checkpoint
     identity would otherwise be ill-defined for reasons that exist only in the
     fixture.
+
+    ``real_mace_checkpoint`` writes a genuine small multihead MACE model
+    instead. That is materially slower, so it is opt-in and used only where a
+    test needs the *published member bytes themselves* to be a real MACE model -
+    for example when driving the real deployment/ML-IAP export owners.
     """
 
     import torch
 
     path = directory / f"model_run-7_epoch-{epoch}.pt"
+    if real_mace_checkpoint:
+        from tests._mlff_tiny_mace import _tiny_mace
+        from mdstats.training_data.post_selection_identity import (
+            POST_SELECTION_REPLAY_HEAD_NAME,
+            POST_SELECTION_TARGET_HEAD_NAME,
+        )
+
+        torch.manual_seed(int(optimizer_seed) * 1000 + int(epoch))
+        model = _tiny_mace(
+            heads=[POST_SELECTION_REPLAY_HEAD_NAME, POST_SELECTION_TARGET_HEAD_NAME],
+            atomic_numbers=(3, 8),
+            r_max=4.0,
+            dtype=torch.float64,
+            atomic_energies=((0.0, 0.0), (0.0, 0.0)),
+            seed=int(optimizer_seed) * 1000 + int(epoch),
+        )
+        torch.save(model, path)
+        return path
     torch.save({"epoch": epoch, "optimizer_seed": int(optimizer_seed)}, path)
     return path
 
 
-def train_like_mace(request):
+def train_like_mace(request, *, real_mace_checkpoint: bool = False):
     """Play MACE for one post-selection run through the real TRAIN2 runtime.
 
     The TRAIN2 runtime, its epoch history, its continuation companion, and its
@@ -161,7 +186,9 @@ def train_like_mace(request):
     for epoch in range(request.start_epoch, request.plan.execution_epoch_limit):
         for _ in train_loader:
             p3c._step(model, optimizer, ema)
-        _seeded_raw_checkpoint(checkpoint_dir, epoch, seed)
+        _seeded_raw_checkpoint(
+            checkpoint_dir, epoch, seed, real_mace_checkpoint=real_mace_checkpoint
+        )
         with metrics.open("a", encoding="utf-8") as handle:
             handle.write(
                 json.dumps(
@@ -185,7 +212,11 @@ class PostSelectionHarness:
         self,
         force_offset: float = 1.0e-4,
         run_force_offsets: dict[str, float] | None = None,
+        real_mace_checkpoint: bool = False,
     ) -> None:
+        #: Publish genuine MACE model bytes, for tests that must drive the real
+        #: deployment/ML-IAP export owners from a published member.
+        self.real_mace_checkpoint = bool(real_mace_checkpoint)
         self.runs: list[str] = []
         self.requests: list[object] = []
         self.force_offset = force_offset
@@ -210,7 +241,9 @@ class PostSelectionHarness:
         assert post_selection_mace_run_configuration(
             json.loads(config_path.read_text(encoding="utf-8"))
         )["train_file"]
-        return train_like_mace(request)
+        return train_like_mace(
+            request, real_mace_checkpoint=self.real_mace_checkpoint
+        )
 
     def _offset_for(self, provider) -> float:
         identity = getattr(provider, "checkpoint_identity", None)

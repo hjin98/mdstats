@@ -1570,6 +1570,34 @@ recorded without making a deterministic numerical claim machine-specific while a
 materially different resource scope still cannot silently reuse a
 performance claim.
 
+That scope digest is identity, not measurement. Each attempt also publishes one
+immutable resource observation - total and per-component elapsed time, workspace
+filesystem total/free bytes and the attempt's own footprint at start and end, the
+configured `[execution].minimum_free_disk_gib` reserve and whether it held, peak
+process RSS, and accelerator model/VRAM where an existing owner reports them -
+which the terminal record and release index both point at. Those observations are
+evidence and never stale numerical results; their one operational role is that an
+attempt which cannot satisfy the existing disk reserve aborts before materializing
+work rather than changing any scientific input. Reading that reserve is an
+owner-local safety check, not the successor storage plane.
+
+Stress applicability is likewise a capability decision rather than a
+configuration switch: it is resolved before execution from the accepted training
+objective's stress weight, reference stress labels, whether the authenticated
+model returns a stress tensor, periodicity, and runtime support. Policy may
+require stress or record a justified inapplicability reason, but it cannot
+relabel an available trained channel as `not_applicable`. Each source converts to
+canonical ASE/MACE Cauchy stress in eV/Angstrom^3, positive in tension, exactly
+once; units and sign belong to the source adapter, so LAMMPS `units metal` thermo
+pressure - bar, positive in compression - is converted only by its own named
+adapter and is never parameterized by a caller.
+
+The exact three-axis periodicity vector is carried through every deployed
+request, the LAMMPS boundary command, the raw observations, and the dynamics case
+identity. A mixed boundary is executed as itself or fails closed; it is never
+coerced to fully periodic or fully open, and minimum-image reductions wrap only
+the axes that genuinely have images.
+
 Downstream evidence has pass, reject, and waiting authority for the exact
 frozen product and nothing else. A failure never changes `N_selected`,
 `T_selected`, CV acceptance, a production checkpoint or seed, publication

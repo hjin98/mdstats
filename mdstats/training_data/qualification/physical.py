@@ -55,8 +55,13 @@ def qualify_physical_pes(
     plan = session.plan.physical_plan
     require_all = bool(policy["require_all_modes"])
     floor = float(policy["resolution_floor_ev"])
-    stress_applicable = bool(policy.get("stress_applicable", False))
-    stress_required = bool(policy.get("stress_required", False))
+    # The same capability decision the deployment component used: stress is a
+    # product/runtime fact resolved before execution, not a policy switch.
+    capability = session.stress_capability(
+        [atoms_for_frame(session.context, base.frame_uid) for base in plan.bases]
+    )
+    stress_applicable = capability.reference_comparable
+    stress_required = capability.required
 
     member_results: list[dict[str, Any]] = []
     failures: list[str] = []
@@ -311,6 +316,7 @@ def qualify_physical_pes(
                 "stress": stress_rows,
                 "stress_applicable": stress_applicable,
                 "stress_required": stress_required,
+                "stress_capability_digest": capability.content_digest,
                 "stress_compared_configurations": stress_compared,
                 "stress_unavailable_configurations": stress_unavailable,
                 "stress_capability": (

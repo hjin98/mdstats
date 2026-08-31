@@ -45,12 +45,18 @@ def dynamics_case_identity(
     seed: int,
     reference_bundle_digest: str | None = None,
     relaxed_geometry_identity: str | None = None,
+    pbc: Sequence[bool] = (True, True, True),
 ) -> str:
-    """Identity of one exact deployed dynamics case and its initial geometry."""
+    """Identity of one exact deployed dynamics case and its initial geometry.
+
+    Periodicity is part of the identity because two otherwise identical
+    geometries executed under different boundary conditions are different
+    physical systems, and their evidence must not be interchangeable.
+    """
 
     return digest(
         {
-            "schema": "mdstats.qualification-dynamics-case.v2",
+            "schema": "mdstats.qualification-dynamics-case.v3",
             "binding_digest": binding_digest,
             "member_id": member_id,
             "frame_uid": frame_uid,
@@ -58,6 +64,7 @@ def dynamics_case_identity(
             "velocity_seed": int(seed),
             "reference_bundle_digest": reference_bundle_digest,
             "relaxed_geometry_identity": relaxed_geometry_identity,
+            "pbc": [bool(value) for value in pbc],
         }
     )
 
@@ -325,6 +332,9 @@ def qualify_dynamics(
                                 seed=seed,
                                 reference_bundle_digest=bundle.content_digest,
                                 relaxed_geometry_identity=relaxed_identity,
+                                pbc=tuple(
+                                    bool(value) for value in relaxed.get_pbc()
+                                ),
                             ),
                         }
                     )

@@ -12,30 +12,68 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from .stress import canonical_stress_tensor
+from .stress import (
+    CANONICAL_VOIGT_ORDER,
+    canonical_stress_from_lammps_metal_pressure,
+)
 
 
-def _minimum_pair_distance(positions: np.ndarray, cell: np.ndarray, pbc: bool) -> float:
+def _minimum_pair_distance(
+    positions: np.ndarray, cell: np.ndarray, pbc: Sequence[bool]
+) -> float:
+    """Closest pair distance, wrapping only the genuinely periodic axes.
+
+    Wrapping a nonperiodic axis would invent an image that does not exist and
+    report a distance the simulated system never had, so periodicity is honoured
+    per axis rather than through one scalar flag.
+    """
+
     count = positions.shape[0]
     if count < 2:
         return float("inf")
+    axes = np.asarray(pbc, dtype=bool)
+    if axes.shape != (3,):
+        raise ValueError("Periodicity must be an exact three-axis boolean vector.")
     best = float("inf")
-    inverse = np.linalg.inv(cell) if pbc else None
+    inverse = np.linalg.inv(cell) if np.any(axes) else None
     for index in range(count - 1):
         delta = positions[index + 1 :] - positions[index]
-        if pbc:
+        if inverse is not None:
             fractional = delta @ inverse
-            fractional -= np.round(fractional)
-            delta = fractional @ cell
+            shift = np.round(fractional)
+            shift[:, ~axes] = 0.0
+            delta = (fractional - shift) @ cell
         distances = np.sqrt(np.sum(delta * delta, axis=1))
         local = float(np.min(distances))
         if local < best:
             best = local
     return best
+
+
+def _boundary_command(pbc: Sequence[bool]) -> str:
+    """The exact LAMMPS boundary command for this periodicity vector."""
+
+    axes = np.asarray(pbc, dtype=bool)
+    if axes.shape != (3,):
+        raise ValueError("Periodicity must be an exact three-axis boolean vector.")
+    return "boundary " + " ".join("p" if bool(value) else "f" for value in axes)
+
+
+def _request_pbc(request: Mapping[str, Any]) -> tuple[bool, bool, bool]:
+    value = request.get("pbc")
+    if value is None:
+        raise ValueError(
+            "A deployed runtime request must carry its exact three-axis periodicity; "
+            "there is no safe default."
+        )
+    axes = tuple(bool(item) for item in value)
+    if len(axes) != 3:
+        raise ValueError("Periodicity must be an exact three-axis boolean vector.")
+    return axes
 
 
 def _local_arrays(instance) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -73,9 +111,10 @@ def _stress_from_instance(instance, request: dict[str, Any]) -> list[list[float]
     if not bool(request.get("include_stress", False)):
         return None
     try:
-        # LAMMPS metal pressure is an intensive bar quantity.  Fetch by named
-        # component, then present values in the caller's declared Voigt order
-        # so the canonical converter owns permutation and sign semantics.
+        # Fetch by named component so the mapping to canonical tensor positions
+        # is explicit here rather than implied by a positional convention.
+        # Units and pressure/stress sign belong to the LAMMPS source adapter and
+        # are deliberately not request parameters.
         source = {
             "xx": float(instance.get_thermo("pxx")),
             "yy": float(instance.get_thermo("pyy")),
@@ -84,20 +123,12 @@ def _stress_from_instance(instance, request: dict[str, Any]) -> list[list[float]
             "xz": float(instance.get_thermo("pxz")),
             "yz": float(instance.get_thermo("pyz")),
         }
-        order = tuple(
-            str(value).lower()
-            for value in request.get(
-                "stress_voigt_order", ("xx", "yy", "zz", "xy", "yz", "xz")
-            )
-        )
-        values = [source[name] for name in order]
     except Exception:
         return None
-    return canonical_stress_tensor(
-        np.asarray(values, dtype=np.float64),
-        units="gpa",
+    order = CANONICAL_VOIGT_ORDER
+    return canonical_stress_from_lammps_metal_pressure(
+        np.asarray([source[name] for name in order], dtype=np.float64),
         voigt_order=order,
-        sign=float(request.get("stress_sign", 1.0)),
     ).tolist()
 
 
@@ -130,11 +161,12 @@ def _build(request: dict[str, Any]):
     model = _load_deployed_model(request["artifact_path"])
     mliap.load_unified(model)
 
+    pbc = _request_pbc(request)
     commands = [
         "units metal",
         "atom_style atomic",
         "atom_modify map array sort 0 0.0",
-        "boundary p p p" if request.get("periodic", True) else "boundary f f f",
+        _boundary_command(pbc),
         f"read_data {request['data_path']}",
         "pair_style mliap unified EXISTS 0",
         "pair_coeff * * " + " ".join(str(v) for v in request["element_types"]),
@@ -147,6 +179,7 @@ def _build(request: dict[str, Any]):
 
 
 def _run(request: dict[str, Any]) -> dict[str, Any]:
+    pbc = _request_pbc(request)
     instance = _build(request)
     try:
         mode = str(request["mode"])
@@ -190,7 +223,7 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
                         "positions_angstrom": positions.tolist(),
                         "forces_ev_per_angstrom": forces.tolist(),
                         "cell_angstrom": _cell_from_instance(instance).tolist(),
-                        "pbc": [bool(request.get("periodic", True))] * 3,
+                        "pbc": list(pbc),
                         "stress_ev_per_angstrom3": _stress_from_instance(instance, request),
                     }
                 )
@@ -206,7 +239,7 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
                 cell = _cell_from_instance(instance)
                 minimum_distance = min(
                     minimum_distance,
-                    _minimum_pair_distance(positions, cell, bool(request.get("periodic", True))),
+                    _minimum_pair_distance(positions, cell, pbc),
                 )
                 maximum_force = max(
                     maximum_force,
@@ -225,7 +258,7 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
                         "positions_angstrom": positions.tolist(),
                         "forces_ev_per_angstrom": forces.tolist(),
                         "cell_angstrom": cell.tolist(),
-                        "pbc": [bool(request.get("periodic", True))] * 3,
+                        "pbc": list(pbc),
                         "stress_ev_per_angstrom3": _stress_from_instance(instance, request),
                     }
                 )

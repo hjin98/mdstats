@@ -25,6 +25,20 @@ CANONICAL_STRESS_UNITS = "ev_per_angstrom3"
 CANONICAL_VOIGT_ORDER = ("xx", "yy", "zz", "xy", "yz", "xz")
 INSTANTANEOUS_CELL_VOLUME_SOURCE = "instantaneous_periodic_cell"
 
+#: LAMMPS thermo pressure under ``units metal`` is reported in bar.  This is a
+#: property of the source, not of any output preference, so it is fixed here
+#: rather than passed in by a caller who could get it wrong.
+LAMMPS_METAL_PRESSURE_UNITS = "bar"
+
+#: LAMMPS thermo pressure is positive in compression; the canonical ASE/MACE
+#: Cauchy stress this evidence contract uses is positive in tension.  The
+#: conversion between them is a fact about those two conventions, so it is
+#: fixed here and is deliberately not an operator-tunable default.
+LAMMPS_PRESSURE_TO_CANONICAL_STRESS_SIGN = -1.0
+
+#: The named component order LAMMPS thermo exposes for the pressure tensor.
+LAMMPS_PRESSURE_COMPONENTS = ("pxx", "pyy", "pzz", "pxy", "pyz", "pxz")
+
 
 def normalize_stress_units(units: str) -> str:
     """Normalize the finite set of supported stress-unit spellings."""
@@ -100,6 +114,30 @@ def canonical_stress_tensor(
     return np.asarray(tensor * factor * sign_value, dtype=np.float64)
 
 
+def canonical_stress_from_lammps_metal_pressure(
+    components: Any,
+    *,
+    voigt_order: Sequence[str] = CANONICAL_VOIGT_ORDER,
+) -> np.ndarray:
+    """Convert LAMMPS ``units metal`` thermo pressure to canonical stress.
+
+    This is the one place the LAMMPS source convention is stated, because both
+    halves of it are facts about LAMMPS rather than choices: the thermo values
+    are pressure in **bar**, and pressure is positive in compression while the
+    canonical ASE/MACE Cauchy stress used throughout this evidence contract is
+    positive in tension.  Passing those numbers through the generic converter
+    with caller-supplied units and sign is exactly how a factor-10,000 unit
+    error and an inverted sign get in, so no caller is offered that choice.
+    """
+
+    return canonical_stress_tensor(
+        np.asarray(components, dtype=np.float64),
+        units=LAMMPS_METAL_PRESSURE_UNITS,
+        voigt_order=voigt_order,
+        sign=LAMMPS_PRESSURE_TO_CANONICAL_STRESS_SIGN,
+    )
+
+
 def canonical_stress_from_virial(
     virial: Any,
     *,
@@ -143,10 +181,14 @@ def stress_of(prediction: Any) -> np.ndarray | None:
 
 __all__ = [
     "BAR_TO_GPA",
+    "LAMMPS_METAL_PRESSURE_UNITS",
+    "LAMMPS_PRESSURE_COMPONENTS",
+    "LAMMPS_PRESSURE_TO_CANONICAL_STRESS_SIGN",
     "CANONICAL_STRESS_UNITS",
     "CANONICAL_VOIGT_ORDER",
     "EV_PER_ANGSTROM3_TO_GPA",
     "INSTANTANEOUS_CELL_VOLUME_SOURCE",
+    "canonical_stress_from_lammps_metal_pressure",
     "canonical_stress_from_virial",
     "canonical_stress_tensor",
     "normalize_stress_units",

@@ -191,18 +191,19 @@ def resolve_qualification_spec_identity(cfg: Mapping[str, Any]) -> Qualification
                 deployment.get("force_rtol", 1.0e-3), name="deployment_parity.force_rtol"
             ),
             "require_deployed_runtime": bool(deployment.get("require_deployed_runtime", True)),
-            "stress_applicable": bool(deployment.get("stress_applicable", False)),
+            # Applicability is a product/runtime capability decision, not a
+            # switch: an operator may require stress or record a scientifically
+            # justified inapplicability reason, but cannot relabel an available
+            # trained stress channel as not_applicable to avoid qualifying it.
             "stress_required": bool(deployment.get("stress_required", False)),
-            "stress_units": str(deployment.get("stress_units", "ev_per_angstrom3")),
-            "stress_voigt_order": list(
-                deployment.get("stress_voigt_order", CANONICAL_VOIGT_ORDER)
+            "stress_declared_inapplicable_reason": (
+                None
+                if not deployment.get("stress_declared_inapplicable_reason")
+                else str(deployment["stress_declared_inapplicable_reason"])
             ),
+            "stress_units": str(deployment.get("stress_units", "ev_per_angstrom3")),
             "stress_volume_source": str(
                 deployment.get("stress_volume_source", INSTANTANEOUS_CELL_VOLUME_SOURCE)
-            ),
-            "stress_sign": _nonzero_float(
-                deployment.get("stress_sign", 1.0),
-                name="deployment_parity.stress_sign",
             ),
             "stress_atol_ev_per_angstrom3": _positive_float(
                 deployment.get("stress_atol_ev_per_angstrom3", 1.0e-4),
@@ -239,17 +240,15 @@ def resolve_qualification_spec_identity(cfg: Mapping[str, Any]) -> Qualification
                 physical.get("resolution_floor_ev", 1.0e-6), name="physical.resolution_floor_ev"
             ),
             "require_restoring_sign": bool(physical.get("require_restoring_sign", True)),
-            "stress_applicable": bool(physical.get("stress_applicable", False)),
             "stress_required": bool(physical.get("stress_required", False)),
-            "stress_units": str(physical.get("stress_units", "ev_per_angstrom3")),
-            "stress_voigt_order": list(
-                physical.get("stress_voigt_order", CANONICAL_VOIGT_ORDER)
+            "stress_declared_inapplicable_reason": (
+                None
+                if not physical.get("stress_declared_inapplicable_reason")
+                else str(physical["stress_declared_inapplicable_reason"])
             ),
+            "stress_units": str(physical.get("stress_units", "ev_per_angstrom3")),
             "stress_volume_source": str(
                 physical.get("stress_volume_source", INSTANTANEOUS_CELL_VOLUME_SOURCE)
-            ),
-            "stress_sign": _nonzero_float(
-                physical.get("stress_sign", 1.0), name="physical.stress_sign"
             ),
             "stress_atol_ev_per_angstrom3": _positive_float(
                 physical.get("stress_atol_ev_per_angstrom3", 1.0e-4),
@@ -424,16 +423,10 @@ def resolve_qualification_spec_identity(cfg: Mapping[str, Any]) -> Qualification
         )
     for component in (COMPONENT_DEPLOYMENT_PARITY, COMPONENT_PHYSICAL_PES):
         policy = payload[component]
-        if policy["stress_required"] and not policy["stress_applicable"]:
-            raise TrainingDataInputError(
-                f"[qualification] {component}.stress_required requires stress_applicable = true."
-            )
-        order = tuple(str(value).lower() for value in policy["stress_voigt_order"])
-        if len(order) != 6 or set(order) != set(CANONICAL_VOIGT_ORDER):
-            raise TrainingDataInputError(
-                f"[qualification] {component}.stress_voigt_order is not a complete Voigt ordering."
-            )
-        policy["stress_voigt_order"] = list(order)
+        # Tensor ordering and the pressure/stress sign are properties of each
+        # source, owned by that source's conversion adapter. Making them
+        # operator configuration is how an ordering or sign error becomes a
+        # silently accepted "policy".
         try:
             units = normalize_stress_units(policy["stress_units"])
         except Exception as exc:

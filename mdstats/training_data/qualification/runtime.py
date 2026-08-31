@@ -129,6 +129,11 @@ _REFERENCE_DEPENDENT_COMPONENTS = frozenset(
 )
 
 
+def _config_table(cfg: Mapping[str, Any], name: str) -> Mapping[str, Any]:
+    value = cfg.get(name, {}) if isinstance(cfg, Mapping) else {}
+    return value if isinstance(value, Mapping) else {}
+
+
 def _reference_root(cfg: Mapping[str, Any], paths: Any) -> Path:
     section = cfg.get("qualification", {}) if isinstance(cfg, Mapping) else {}
     reference = section.get("reference", {}) if isinstance(section, Mapping) else {}
@@ -227,6 +232,32 @@ class QualificationSession:
     resource_scope: Any | None = None
     resource_scope_material: Mapping[str, Any] | None = None
     _deployment_cache: dict[str, tuple[Path, str]] = field(default_factory=dict, repr=False)
+    #: Overrides the runtime stress-reporting fact when a bounded seam, rather
+    #: than the real runtime, provides deployed observations.
+    deployed_stress_supported: bool | None = None
+    minimum_free_disk_gib: float = 20.0
+    _stress_capability: Any = field(default=None, repr=False)
+    _resource_recorder: Any = field(default=None, repr=False)
+
+    @property
+    def resource_recorder(self) -> Any:
+        """Accumulates what this attempt actually cost, lazily and once."""
+
+        from .resource_observation import ResourceObservationRecorder
+
+        if self._resource_recorder is None:
+            self._resource_recorder = ResourceObservationRecorder(
+                binding_digest=self.binding.content_digest,
+                attempt_identity=self.binding.attempt_identity,
+                resource_scope_digest=self.binding.resource_scope_digest,
+                workspace=Path(self.context.paths.workspace),
+                attempt_root=self.attempt_root,
+                minimum_free_disk_gib=float(self.minimum_free_disk_gib),
+                device=str(self.context.method_policies.device),
+                runtime_identity_digest=self.binding.environment.content_digest,
+            )
+            self._resource_recorder.sample_filesystem("start")
+        return self._resource_recorder
 
     # -- artifact plumbing ---------------------------------------------------
     def deployment_identity(self, member: PublishedProductionMember) -> str:
@@ -389,7 +420,14 @@ class QualificationSession:
         if self.deployed_evaluator is not None:
             return self.deployed_evaluator(self, member, list(atoms_list))
         artifact_path, sha = self.deployed_artifact(member)
-        policy = self.binding.specification.component_policy(COMPONENT_DEPLOYMENT_PARITY)
+        # Reading stress is worth the extra thermo work only when the resolved
+        # capability says this product's stress is comparable through the
+        # deployed runtime.  The capability is already resolved by the time the
+        # component asks for observations.
+        include_stress = bool(
+            self._stress_capability is not None
+            and self._stress_capability.deployed_comparable
+        )
         energies: list[float] = []
         forces: list[np.ndarray] = []
         stresses: list[np.ndarray | None] = []
@@ -400,15 +438,7 @@ class QualificationSession:
                 artifact_path=artifact_path,
                 element_types=self._element_types(atoms),
                 working_directory=root / f"probe-{index}",
-                include_stress=bool(policy.get("stress_applicable", False)),
-                stress_units=str(policy.get("stress_units", "ev_per_angstrom3")),
-                stress_voigt_order=tuple(
-                    policy.get(
-                        "stress_voigt_order",
-                        ("xx", "yy", "zz", "xy", "yz", "xz"),
-                    )
-                ),
-                stress_sign=float(policy.get("stress_sign", 1.0)),
+                include_stress=include_stress,
             )
             energies.append(energy)
             forces.append(force)
@@ -452,7 +482,7 @@ class QualificationSession:
                 "data_path": str(data_path),
                 "artifact_path": str(artifact_path),
                 "element_types": list(elements),
-                "periodic": bool(np.all(np.asarray(atoms.get_pbc(), dtype=bool))),
+                "pbc": [bool(value) for value in np.asarray(atoms.get_pbc(), dtype=bool)],
                 "timestep_femtoseconds": float(policy["timestep_femtoseconds"]),
                 "temperature_kelvin": float(temperature_kelvin),
                 "velocity_seed": int(velocity_seed),
@@ -460,13 +490,54 @@ class QualificationSession:
                 "warmup_steps": int(policy["warmup_steps"]),
                 "propagation_steps": int(policy["propagation_steps"]),
                 "sample_interval_steps": int(policy["sample_interval_steps"]),
-                "include_stress": bool(policy.get("stress_applicable", False)),
-                "stress_sign": float(policy.get("stress_sign", 1.0)),
-                "stress_units": str(policy.get("stress_units", "ev_per_angstrom3")),
-                "stress_voigt_order": list(policy.get("stress_voigt_order", ("xx", "yy", "zz", "xy", "yz", "xz"))),
+                "include_stress": bool(
+                    self._stress_capability is not None
+                    and self._stress_capability.deployed_comparable
+                ),
             },
             working_directory=root,
         )
+
+    def stress_capability(
+        self, atoms_list: Sequence[Any], *, probe: Sequence[str] = ()
+    ) -> Any:
+        """Resolve the stress capability decision for this attempt, once.
+
+        The decision needs real facts, so it probes the authenticated model on
+        the same configurations the component will judge and asks the runtime
+        what it can report.  It is deliberately not derived from a
+        configuration boolean.
+        """
+
+        from .providers import member_provider, predict_all, stress_of
+        from .runtime_capability import probe_lammps_runtime
+        from .stress_capability import resolve_stress_capability
+
+        if self._stress_capability is not None:
+            return self._stress_capability
+        policy = self.binding.specification.component_policy(COMPONENT_DEPLOYMENT_PARITY)
+        member = self.publication.members[0]
+        with member_provider(self.context, member) as provider:
+            predictions = predict_all(self.context, provider, list(atoms_list))
+        probe_stresses = [stress_of(item) for item in predictions]
+        runtime = probe_lammps_runtime()
+        decision = resolve_stress_capability(
+            self.context,
+            policy=policy,
+            probe_atoms=list(atoms_list),
+            probe_stresses=probe_stresses,
+            # A supported ML-IAP/LAMMPS runtime reports the pressure tensor
+            # through thermo output; an unavailable runtime reports nothing.
+            runtime_reports_stress=bool(
+                self.deployed_stress_supported
+                if self.deployed_stress_supported is not None
+                else runtime.supports_deployed_execution
+            ),
+            reference_frame_uids=tuple(probe)
+            + tuple(base.frame_uid for base in self.plan.physical_plan.bases),
+        )
+        self._stress_capability = decision
+        return decision
 
     def resolved_case_workers(self, task_count: int) -> int:
         """Worker count for *task_count* cases, through the accepted owner.
@@ -712,6 +783,7 @@ def build_qualification_session(
     deployed_evaluator: Callable[..., DeployedEvaluation] | None = None,
     dynamics_runner: Callable[..., Mapping[str, Any]] | None = None,
     case_workers: int = 1,
+    deployed_stress_supported: bool | None = None,
 ) -> QualificationSession | None:
     """Resolve the current product and freeze one qualification identity.
 
@@ -798,12 +870,24 @@ def build_qualification_session(
         resources=resources,
         resource_scope=resource_scope,
         resource_scope_material=resource_scope_payload(resources, resource_scope),
+        # The campaign already declares a free-disk reserve for expensive
+        # execution; qualification reuses that policy rather than inventing one.
+        minimum_free_disk_gib=float(
+            _config_table(cfg, "execution").get("minimum_free_disk_gib", 20.0)
+        ),
+        deployed_stress_supported=deployed_stress_supported,
     )
 
 
 # ---------------------------------------------------------------------------
 # Execution
 # ---------------------------------------------------------------------------
+
+
+def _utc_stamp() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _waiting_evidence(session: QualificationSession, component: str, detail: str) -> QualificationComponentEvidence:
@@ -833,15 +917,27 @@ def execute_nonlocked_components(
     from .physical import qualify_physical_pes
     from .relaxation import qualify_relaxation
 
+    import time
+
     publish_reference_request(session.reference_root, session.reference_request)
     bundle = load_reference_bundle(session.reference_root, session.reference_request)
+    recorder = session.resource_recorder
     results: list[QualificationComponentEvidence] = []
     for component in session.plan.planned_components:
         expected_input_digest = session.component_input_digest(component, bundle)
         existing = session.completed_component(component, expected_input_digest)
         if existing is not None:
             results.append(existing)
+            recorder.record_component(
+                component, started=_utc_stamp(), elapsed=0.0, reused=True
+            )
             continue
+        # Materializing deployment artifacts and dynamics scratch is the point
+        # where this attempt starts consuming the workspace, so the campaign's
+        # existing free-disk reserve is checked here rather than after the fact.
+        recorder.require_disk_reserve(f"qualification component {component}")
+        component_started = _utc_stamp()
+        component_clock = time.monotonic()
         if component == COMPONENT_DEPLOYMENT_PARITY:
             evidence = qualify_deployment_parity(session)
         elif component == COMPONENT_PHYSICAL_PES:
@@ -881,6 +977,12 @@ def execute_nonlocked_components(
             evidence = qualify_calibration(session)
         else:  # pragma: no cover - enabled_components filters the vocabulary
             raise QualificationError(f"Unsupported qualification component {component!r}.")
+        recorder.record_component(
+            component,
+            started=component_started,
+            elapsed=time.monotonic() - component_clock,
+            reused=False,
+        )
         if evidence.status is ComponentStatus.WAITING_FOR_REFERENCE:
             # Waiting is not durable evidence: it is the absence of evidence, and
             # persisting it would make a later supplied reference unreachable.
@@ -900,6 +1002,7 @@ def build_qualification_record(
     components: Sequence[QualificationComponentEvidence],
     *,
     locked_activation: LockedActivationRecord | None,
+    resource_observation: Any = None,
 ) -> ProductionQualificationRecord:
     outcomes = tuple(
         ComponentOutcome.of(evidence)
@@ -944,6 +1047,9 @@ def build_qualification_record(
         resource_scope_digest=session.binding.resource_scope_digest,
         predecessor_reclosure_digest=session.binding.predecessor_reclosure_digest,
         predecessor_executable_tree_digest=session.binding.predecessor_executable_tree_digest,
+        resource_observation_digest=(
+            None if resource_observation is None else resource_observation.content_digest
+        ),
     )
 
 
@@ -970,11 +1076,21 @@ def publish_qualification_record(
     return record
 
 
+def publish_resource_observation(session: QualificationSession) -> Any:
+    """Freeze what this attempt actually cost, as immutable release evidence."""
+
+    observation = session.resource_recorder.finish()
+    session.store.put(observation)
+    return observation
+
+
 def publish_release_evidence(
     session: QualificationSession,
     campaign_store: Any,
     record: ProductionQualificationRecord,
     components: Sequence[QualificationComponentEvidence],
+    *,
+    resource_observation: Any = None,
 ) -> ReleaseEvidenceIndex:
     index = ReleaseEvidenceIndex(
         qualification_record_digest=record.content_digest,
@@ -996,6 +1112,9 @@ def publish_release_evidence(
         resource_scope_digest=record.resource_scope_digest,
         predecessor_reclosure_digest=record.predecessor_reclosure_digest,
         predecessor_executable_tree_digest=record.predecessor_executable_tree_digest,
+        resource_observation_digest=(
+            None if resource_observation is None else resource_observation.content_digest
+        ),
     )
     session.store.put(index)
     publish_current_qualification_pointer(
@@ -1160,11 +1279,21 @@ def run_qualification(
             # historical one-shot state, not a component object belonging to
             # this new binding, so never attach it to the new record.
             activation_for_record = None
+        observation = publish_resource_observation(session)
         record = build_qualification_record(
-            session, tuple(components) + locked_evidence, locked_activation=activation_for_record
+            session,
+            tuple(components) + locked_evidence,
+            locked_activation=activation_for_record,
+            resource_observation=observation,
         )
         publish_qualification_record(session, campaign_store, paths, record)
-        publish_release_evidence(session, campaign_store, record, tuple(components) + locked_evidence)
+        publish_release_evidence(
+            session,
+            campaign_store,
+            record,
+            tuple(components) + locked_evidence,
+            resource_observation=observation,
+        )
         if record.verdict.is_terminal:
             release_attempt_reference(
                 paths,
@@ -1395,12 +1524,20 @@ def activate_locked_test(
             locked_evidence = session.record_component(
                 qualify_locked_test(session, activation)
             )
+        observation = publish_resource_observation(session)
         record = build_qualification_record(
-            session, tuple(components) + (locked_evidence,), locked_activation=activation
+            session,
+            tuple(components) + (locked_evidence,),
+            locked_activation=activation,
+            resource_observation=observation,
         )
         publish_qualification_record(session, campaign_store, paths, record)
         publish_release_evidence(
-            session, campaign_store, record, tuple(components) + (locked_evidence,)
+            session,
+            campaign_store,
+            record,
+            tuple(components) + (locked_evidence,),
+            resource_observation=observation,
         )
         release_attempt_reference(
             paths,

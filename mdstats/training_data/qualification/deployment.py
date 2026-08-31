@@ -152,6 +152,12 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
                 "be executed in final target-machine qualification."
             )
 
+    # Stress applicability is resolved once, before any member executes, from
+    # product and runtime capability rather than from a configuration switch.
+    capability = session.stress_capability(atoms_list, probe=cohort)
+    stress_required = capability.required
+    stress_applicable = capability.applicable
+
     member_results: list[dict[str, Any]] = []
     failures: list[str] = []
     for member in session.publication.members:
@@ -199,8 +205,6 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
                 "The deployed runtime returned a different number of stress tensors "
                 "than probed configurations."
             )
-        stress_required = bool(policy.get("stress_required", False))
-        stress_applicable = bool(policy.get("stress_applicable", False))
         stress_error = 0.0
         missing_stress = 0
         unavailable_stress = 0
@@ -263,6 +267,7 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
                     else "not_applicable"
                 ),
                 "stress_applicable": stress_applicable,
+                "stress_capability_digest": capability.content_digest,
                 "passed": passed,
             }
         )
@@ -294,6 +299,7 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
             "failed_members": failures,
             "stress_applicable": stress_applicable,
             "stress_required": stress_required,
+            "stress_capability_reasons": list(capability.reason_codes),
             "stress_compared_configurations": sum(
                 int(row["stress_compared_count"]) for row in member_results
             ),
@@ -311,6 +317,7 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
             "probe_frame_uids": list(cohort),
             "runtime_probe": probe.to_dict(),
             "used_real_deployed_runtime": session.deployed_evaluator is None,
+            "stress_capability": capability.to_dict(),
             "members": member_results,
         },
         component_input_digest=session.component_input_digest(

@@ -333,9 +333,6 @@ def deployed_static_observation(
     working_directory: str | os.PathLike[str],
     timeout_seconds: float = 900.0,
     include_stress: bool = False,
-    stress_units: str = "ev_per_angstrom3",
-    stress_voigt_order: Sequence[str] = ("xx", "yy", "zz", "xy", "yz", "xz"),
-    stress_sign: float = 1.0,
 ) -> tuple[float, np.ndarray, np.ndarray | None]:
     """Energy, forces, and optional canonical stress through the real runtime."""
 
@@ -349,15 +346,12 @@ def deployed_static_observation(
             "data_path": str(data_path),
             "artifact_path": str(Path(artifact_path).resolve()),
             "element_types": list(element_types),
-            "periodic": bool(np.all(np.asarray(atoms.get_pbc(), dtype=bool))),
+            "pbc": [bool(value) for value in np.asarray(atoms.get_pbc(), dtype=bool)],
+            # Whether to read stress is a caller decision; how to interpret it
+            # is not.  LAMMPS thermo pressure is bar and positive in
+            # compression, and only the worker's LAMMPS adapter knows that, so
+            # no units, ordering, or sign travels in this request.
             "include_stress": bool(include_stress),
-            # The policy names the canonical evidence convention.  LAMMPS
-            # supplies intensive pressure in bar; the worker converts that
-            # source using the declared ordering/sign before returning
-            # canonical eV/A^3 values.
-            "stress_units": str(stress_units),
-            "stress_voigt_order": list(stress_voigt_order),
-            "stress_sign": float(stress_sign),
         },
         working_directory=root,
         timeout_seconds=timeout_seconds,

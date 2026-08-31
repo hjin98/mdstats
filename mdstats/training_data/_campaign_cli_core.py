@@ -6253,6 +6253,16 @@ force_rtol = 1.0e-3
 # The supported LAMMPS/ML-IAP runtime is required for a real deployment claim.
 # When it is absent, qualification reports unavailable/blocking rather than pass.
 require_deployed_runtime = true
+# Stress applicability is NOT a switch. It is resolved before execution from the
+# accepted training objective, the reference labels, the authenticated model,
+# periodicity, and the runtime. Set stress_required to insist that an applicable
+# channel is qualified; a declared-inapplicable reason is recorded for audit but
+# cannot suppress a stress channel the product actually has. Tensor ordering and
+# the pressure/stress sign belong to each source adapter and are not configurable.
+stress_required = false
+# stress_declared_inapplicable_reason = "why this product has no stress channel"
+stress_atol_ev_per_angstrom3 = 1.0e-4
+stress_rtol = 1.0e-3
 
 [qualification.physical]
 base_count = 4

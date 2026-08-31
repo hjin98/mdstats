@@ -78,7 +78,15 @@ class AnalyticPairPotential:
     real tests rather than accidents of a constant model.
     """
 
-    def __init__(self, *, stiffness: float = 2.0, r0: float = 6.0, cutoff: float = 9.0) -> None:
+    def __init__(
+        self,
+        *,
+        stiffness: float = 2.0,
+        r0: float = 6.0,
+        cutoff: float = 9.0,
+        report_stress: bool = False,
+    ) -> None:
+        self.report_stress = bool(report_stress)
         self.stiffness = float(stiffness)
         self.r0 = float(r0)
         self.cutoff = float(cutoff)
@@ -114,10 +122,48 @@ class AnalyticPairPotential:
             forces[index] += float(1.0) * np.sum(pair_force, axis=0)
         return float(energy), forces
 
+    def virial_stress(self, atoms) -> np.ndarray | None:
+        """Cauchy stress of the same pair potential, by its own virial.
+
+        Returned only for a fully periodic cell, because a Cauchy stress is not
+        defined without one. This is the analytic counterpart of the product's
+        stress channel, not a constant stand-in.
+        """
+
+        pbc = np.asarray(atoms.get_pbc(), dtype=bool)
+        if not np.all(pbc):
+            return None
+        cell = np.asarray(atoms.get_cell(), dtype=np.float64)
+        volume = float(abs(np.linalg.det(cell)))
+        if volume <= 0.0:
+            return None
+        positions = np.asarray(atoms.get_positions(), dtype=np.float64)
+        count = positions.shape[0]
+        virial = np.zeros((3, 3), dtype=np.float64)
+        inverse = np.linalg.inv(cell)
+        for index in range(count - 1):
+            delta = positions[index + 1 :] - positions[index]
+            fractional = delta @ inverse
+            delta = (fractional - np.round(fractional)) @ cell
+            radius = np.sqrt(np.sum(delta * delta, axis=1))
+            mask = (radius < self.cutoff) & (radius > 1.0e-9)
+            if not np.any(mask):
+                continue
+            selected = delta[mask]
+            distance = radius[mask]
+            magnitude = self.stiffness * (distance - self.r0) / distance
+            pair_force = magnitude[:, None] * selected
+            virial += selected.T @ pair_force
+        return virial / volume
+
     def prediction(self, atoms):
         energy, forces = self.evaluate(atoms)
         return SimpleNamespace(
-            energy_ev=energy, forces_ev_per_angstrom=forces, stress_ev_per_angstrom3=None
+            energy_ev=energy,
+            forces_ev_per_angstrom=forces,
+            stress_ev_per_angstrom3=(
+                self.virial_stress(atoms) if self.report_stress else None
+            ),
         )
 
 
@@ -152,6 +198,8 @@ class QualificationHarness:
         self.mliap_heads: list[str | None] = []
         self.locked_evaluations = 0
         self.locked_frame_uids: set[str] = set()
+        #: Perturbs the deployed stress channel so parity can be made to fail.
+        self.deployed_stress_offset = 0.0
         self.evaluated_frames: list[str] = []
 
     # -- label-anchored analytic model ---------------------------------------
@@ -227,7 +275,9 @@ class QualificationHarness:
                 SimpleNamespace(
                     energy_ev=energy,
                     forces_ev_per_angstrom=forces + self._applied_bias(bias, frame_uid),
-                    stress_ev_per_angstrom3=None,
+                    stress_ev_per_angstrom3=self.potential.virial_stress(atoms)
+                    if self.potential.report_stress
+                    else None,
                 )
             )
         return predictions
@@ -274,6 +324,7 @@ class QualificationHarness:
         )
         energies = []
         forces = []
+        stresses: list[np.ndarray | None] = []
         for atoms in atoms_list:
             energy, force = self.evaluate_atoms(atoms)
             if self.deployed_potential is not self.potential:
@@ -283,10 +334,19 @@ class QualificationHarness:
                 np.asarray(force, dtype=np.float64)
                 + self._applied_bias(bias, str(atoms.info.get("frame_uid", "")))
             )
+            stress = (
+                self.deployed_potential.virial_stress(atoms)
+                if self.deployed_potential.report_stress
+                else None
+            )
+            if stress is not None and self.deployed_stress_offset:
+                stress = stress + float(self.deployed_stress_offset)
+            stresses.append(stress)
         artifact_path, sha = session.deployed_artifact(member)
         return DeployedEvaluation(
             energies_ev=tuple(energies),
             forces_ev_per_angstrom=tuple(forces),
+            stresses_ev_per_angstrom3=tuple(stresses),
             artifact_sha256=sha,
             runtime_identity=session.binding.environment.content_digest,
         )
@@ -443,13 +503,22 @@ def fixture_config_text(
 
 
 def build_qualified_campaign(
-    tmp_path: Path, *, config_text: str | None = None, harness: "QualificationHarness | None" = None
+    tmp_path: Path,
+    *,
+    config_text: str | None = None,
+    harness: "QualificationHarness | None" = None,
+    real_mace_checkpoint: bool = False,
 ):
-    """A real campaign driven through the accepted P1-P5 lifecycle."""
+    """A real campaign driven through the accepted P1-P5 lifecycle.
+
+    ``real_mace_checkpoint`` publishes genuine MACE model bytes as the frozen
+    member, which is what the real deployment/ML-IAP export owners need in
+    order to be driven from an actual publication member.
+    """
 
     template = fixture_config_text() if config_text is None else config_text
     config, workspace = p5.build_selected_campaign(tmp_path, config_text=template)
-    p5_harness = p5.PostSelectionHarness()
+    p5_harness = p5.PostSelectionHarness(real_mace_checkpoint=real_mace_checkpoint)
     assert p5.run_cross_validate(config, p5_harness) == 0
     assert p5.run_train_production(config, p5_harness) == 0
     if harness is not None:

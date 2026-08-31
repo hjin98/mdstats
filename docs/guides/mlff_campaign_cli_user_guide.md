@@ -245,7 +245,11 @@ frozen publication:
   target head, converted to the deployed ML-IAP artifact at that same head,
   executed through the real supported LAMMPS runtime, and compared against the
   authenticated in-framework model under dtype-justified tolerances, including
-  stress where the product and runtime support it;
+  stress whenever the product actually has a stress channel. Stress
+  applicability is decided from the accepted training objective, the reference
+  labels, the model, periodicity, and the runtime - not from a configuration
+  switch, so `stress_required` can insist on qualifying an available channel but
+  nothing can quietly suppress one;
 - **local PES** - deterministic symmetric displacement modes on a
   candidate-independent `OUTER_MONITOR` base cohort, checked for pointwise force
   agreement, restoring sign, and stiffness/curvature against matched external
@@ -323,6 +327,15 @@ campaign/qualification-references/<plan>/        reference request and bundle
 Durable qualification evidence is release evidence, not reconstructible scratch:
 storage cleanup never reclaims it, and it also cannot reclaim an artifact an
 in-flight qualification attempt still references.
+
+Each attempt also records what it actually cost - elapsed time overall and per
+component, workspace free space and the attempt's own footprint at start and end,
+peak memory, and accelerator telemetry where available - and the terminal record
+points at it. Before each component materializes artifacts or scratch, the
+campaign's existing `[execution].minimum_free_disk_gib` reserve is checked; an
+attempt that cannot proceed safely aborts rather than changing anything
+scientific. Mixed periodic boundaries are executed exactly as configured, so a
+`[True, True, False]` system runs as itself rather than being silently coerced.
 
 ## Inspect and resume
 

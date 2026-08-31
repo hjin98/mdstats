@@ -105,6 +105,7 @@ class ProductionQualificationRecord:
     resource_scope_digest: str | None = None
     predecessor_reclosure_digest: str | None = None
     predecessor_executable_tree_digest: str | None = None
+    resource_observation_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -145,6 +146,7 @@ class ProductionQualificationRecord:
         for name in (
             "predecessor_reclosure_digest",
             "predecessor_executable_tree_digest",
+            "resource_observation_digest",
         ):
             value = getattr(self, name)
             if value is not None:
@@ -180,6 +182,8 @@ class ProductionQualificationRecord:
             payload["predecessor_reclosure_digest"] = self.predecessor_reclosure_digest
         if self.predecessor_executable_tree_digest is not None:
             payload["predecessor_executable_tree_digest"] = self.predecessor_executable_tree_digest
+        if self.resource_observation_digest is not None:
+            payload["resource_observation_digest"] = self.resource_observation_digest
         return payload
 
     @property
@@ -223,6 +227,11 @@ class ProductionQualificationRecord:
                 None
                 if payload.get("predecessor_executable_tree_digest") is None
                 else str(payload["predecessor_executable_tree_digest"])
+            ),
+            resource_observation_digest=(
+                None
+                if payload.get("resource_observation_digest") is None
+                else str(payload["resource_observation_digest"])
             ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
@@ -281,6 +290,7 @@ class ReleaseEvidenceIndex:
     resource_scope_digest: str | None = None
     predecessor_reclosure_digest: str | None = None
     predecessor_executable_tree_digest: str | None = None
+    resource_observation_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -319,6 +329,7 @@ class ReleaseEvidenceIndex:
         for name in (
             "predecessor_reclosure_digest",
             "predecessor_executable_tree_digest",
+            "resource_observation_digest",
         ):
             value = getattr(self, name)
             if value is not None:
@@ -345,6 +356,8 @@ class ReleaseEvidenceIndex:
             payload["predecessor_reclosure_digest"] = self.predecessor_reclosure_digest
         if self.predecessor_executable_tree_digest is not None:
             payload["predecessor_executable_tree_digest"] = self.predecessor_executable_tree_digest
+        if self.resource_observation_digest is not None:
+            payload["resource_observation_digest"] = self.resource_observation_digest
         return payload
 
     @property
@@ -385,6 +398,11 @@ class ReleaseEvidenceIndex:
                 None
                 if payload.get("predecessor_executable_tree_digest") is None
                 else str(payload["predecessor_executable_tree_digest"])
+            ),
+            resource_observation_digest=(
+                None
+                if payload.get("resource_observation_digest") is None
+                else str(payload["resource_observation_digest"])
             ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
