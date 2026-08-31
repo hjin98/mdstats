@@ -151,6 +151,9 @@ def qualify_relaxation(
             "reference_bundle_digest": bundle.content_digest,
             "members": member_results,
         },
+        component_input_digest=session.component_input_digest(
+            COMPONENT_RELAXATION, bundle
+        ),
     )
 
 

@@ -100,6 +100,22 @@ def load_context(config: Path):
     return cfg, paths, CampaignStore(paths.state_db)
 
 
+def _seeded_raw_checkpoint(directory, epoch: int, optimizer_seed: int):
+    """A toy checkpoint whose bytes actually depend on the optimizer seed.
+
+    Two production seeds are two different trainings and must not produce
+    byte-identical checkpoints: a cross-seed decision keyed by checkpoint
+    identity would otherwise be ill-defined for reasons that exist only in the
+    fixture.
+    """
+
+    import torch
+
+    path = directory / f"model_run-7_epoch-{epoch}.pt"
+    torch.save({"epoch": epoch, "optimizer_seed": int(optimizer_seed)}, path)
+    return path
+
+
 def train_like_mace(request):
     """Play MACE for one post-selection run through the real TRAIN2 runtime.
 
@@ -145,7 +161,7 @@ def train_like_mace(request):
     for epoch in range(request.start_epoch, request.plan.execution_epoch_limit):
         for _ in train_loader:
             p3c._step(model, optimizer, ema)
-        p3c._raw_checkpoint(checkpoint_dir, epoch)
+        _seeded_raw_checkpoint(checkpoint_dir, epoch, seed)
         with metrics.open("a", encoding="utf-8") as handle:
             handle.write(
                 json.dumps(
@@ -165,10 +181,19 @@ def train_like_mace(request):
 class PostSelectionHarness:
     """The two bounded numerical seams, plus a record of what was executed."""
 
-    def __init__(self, force_offset: float = 1.0e-4) -> None:
+    def __init__(
+        self,
+        force_offset: float = 1.0e-4,
+        run_force_offsets: dict[str, float] | None = None,
+    ) -> None:
         self.runs: list[str] = []
         self.requests: list[object] = []
         self.force_offset = force_offset
+        #: Per-run force error, keyed by a substring of the run identity, so a
+        #: test can give two production seeds deliberately different M3 target
+        #: metrics.  The toy trainer writes byte-identical logs, so the run's
+        #: authenticated checkpoint locator is what distinguishes the runs.
+        self.run_force_offsets = dict(run_force_offsets or {})
 
     def train(self, request):
         from mdstats.training_data.post_selection_execution import (
@@ -187,15 +212,24 @@ class PostSelectionHarness:
         )["train_file"]
         return train_like_mace(request)
 
+    def _offset_for(self, provider) -> float:
+        identity = getattr(provider, "checkpoint_identity", None)
+        locator = "" if identity is None else str(getattr(identity, "checkpoint_locator", ""))
+        for key, value in self.run_force_offsets.items():
+            if key and key in locator:
+                return float(value)
+        return float(self.force_offset)
+
     def evaluate(self, provider, atoms_list):
         from mdstats.training_data.mace_export import MaceExtxyzPolicy
 
         policy = MaceExtxyzPolicy()
+        offset = self._offset_for(provider)
         predictions = []
         for atoms in atoms_list:
             forces = (
                 np.asarray(atoms.arrays[policy.forces_key], dtype=np.float64)
-                + self.force_offset
+                + offset
             )
             stress = atoms.info.get(policy.stress_key)
             stress_3x3 = None

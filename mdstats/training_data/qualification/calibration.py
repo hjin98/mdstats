@@ -61,6 +61,9 @@ def qualify_calibration(session: Any) -> QualificationComponentEvidence:
             ),
             metrics={"member_count": len(members)},
             payload={},
+            component_input_digest=session.component_input_digest(
+                COMPONENT_CALIBRATION, None
+            ),
         )
     if len(frames) < int(policy["minimum_frames"]):
         return build_component_evidence(
@@ -74,6 +77,9 @@ def qualify_calibration(session: Any) -> QualificationComponentEvidence:
             ),
             metrics={"calibration_frame_count": len(frames)},
             payload={},
+            component_input_digest=session.component_input_digest(
+                COMPONENT_CALIBRATION, None
+            ),
         )
 
     atoms_list = [atoms_for_frame(session.context, uid) for uid in frames]
@@ -99,6 +105,9 @@ def qualify_calibration(session: Any) -> QualificationComponentEvidence:
             detail="Every committee member produced identical predictions; the spread carries no information.",
             metrics={"member_count": len(members)},
             payload={},
+            component_input_digest=session.component_input_digest(
+                COMPONENT_CALIBRATION, None
+            ),
         )
     # One global scaling factor is the accepted estimator: it is the minimal
     # correction that makes the committee spread a usable interval width without
@@ -135,6 +144,9 @@ def qualify_calibration(session: Any) -> QualificationComponentEvidence:
             "calibration_frame_uids": list(frames),
             "member_ids": [member.member_id for member in members],
         },
+        component_input_digest=session.component_input_digest(
+            COMPONENT_CALIBRATION, None
+        ),
     )
 
 
@@ -147,6 +159,7 @@ def _not_applicable(session: Any, reason: str, detail: str) -> QualificationComp
         detail=detail,
         metrics={"member_count": len(session.publication.members)},
         payload={},
+        component_input_digest=session.component_input_digest(COMPONENT_CALIBRATION, None),
     )
 
 

@@ -102,6 +102,9 @@ class ProductionQualificationRecord:
     verdict: QualificationVerdict
     reason_code: str
     recorded_at: str
+    resource_scope_digest: str | None = None
+    predecessor_reclosure_digest: str | None = None
+    predecessor_executable_tree_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -133,6 +136,19 @@ class ProductionQualificationRecord:
                 raise TrainingDataInputError(f"A qualification record requires {name}.")
             object.__setattr__(self, name, value)
         object.__setattr__(self, "recorded_at", str(self.recorded_at))
+        if self.resource_scope_digest is not None:
+            object.__setattr__(
+                self,
+                "resource_scope_digest",
+                validate_digest(self.resource_scope_digest, name="resource_scope_digest"),
+            )
+        for name in (
+            "predecessor_reclosure_digest",
+            "predecessor_executable_tree_digest",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, validate_digest(value, name=name))
 
     def outcome(self, component: str) -> ComponentOutcome | None:
         for item in self.components:
@@ -141,7 +157,7 @@ class ProductionQualificationRecord:
         return None
 
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": QUALIFICATION_RECORD_SCHEMA,
             "selected_binding_digest": self.selected_binding_digest,
             "binding_digest": self.binding_digest,
@@ -158,7 +174,13 @@ class ProductionQualificationRecord:
             "verdict": self.verdict.value,
             "reason_code": self.reason_code,
             "recorded_at": self.recorded_at,
+            "resource_scope_digest": self.resource_scope_digest,
         }
+        if self.predecessor_reclosure_digest is not None:
+            payload["predecessor_reclosure_digest"] = self.predecessor_reclosure_digest
+        if self.predecessor_executable_tree_digest is not None:
+            payload["predecessor_executable_tree_digest"] = self.predecessor_executable_tree_digest
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -187,6 +209,21 @@ class ProductionQualificationRecord:
             verdict=QualificationVerdict(payload["verdict"]),
             reason_code=str(payload["reason_code"]),
             recorded_at=str(payload["recorded_at"]),
+            resource_scope_digest=(
+                None
+                if payload.get("resource_scope_digest") is None
+                else str(payload["resource_scope_digest"])
+            ),
+            predecessor_reclosure_digest=(
+                None
+                if payload.get("predecessor_reclosure_digest") is None
+                else str(payload["predecessor_reclosure_digest"])
+            ),
+            predecessor_executable_tree_digest=(
+                None
+                if payload.get("predecessor_executable_tree_digest") is None
+                else str(payload["predecessor_executable_tree_digest"])
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Qualification-record digest mismatch.")
@@ -241,6 +278,9 @@ class ReleaseEvidenceIndex:
     locked_activation_digest: str | None
     verdict: QualificationVerdict
     published_at: str
+    resource_scope_digest: str | None = None
+    predecessor_reclosure_digest: str | None = None
+    predecessor_executable_tree_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -270,9 +310,22 @@ class ReleaseEvidenceIndex:
         )
         object.__setattr__(self, "verdict", QualificationVerdict(self.verdict))
         object.__setattr__(self, "published_at", str(self.published_at))
+        if self.resource_scope_digest is not None:
+            object.__setattr__(
+                self,
+                "resource_scope_digest",
+                validate_digest(self.resource_scope_digest, name="resource_scope_digest"),
+            )
+        for name in (
+            "predecessor_reclosure_digest",
+            "predecessor_executable_tree_digest",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, validate_digest(value, name=name))
 
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": RELEASE_EVIDENCE_SCHEMA,
             "qualification_record_digest": self.qualification_record_digest,
             "selected_binding_digest": self.selected_binding_digest,
@@ -286,7 +339,13 @@ class ReleaseEvidenceIndex:
             "locked_activation_digest": self.locked_activation_digest,
             "verdict": self.verdict.value,
             "published_at": self.published_at,
+            "resource_scope_digest": self.resource_scope_digest,
         }
+        if self.predecessor_reclosure_digest is not None:
+            payload["predecessor_reclosure_digest"] = self.predecessor_reclosure_digest
+        if self.predecessor_executable_tree_digest is not None:
+            payload["predecessor_executable_tree_digest"] = self.predecessor_executable_tree_digest
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -312,6 +371,21 @@ class ReleaseEvidenceIndex:
             locked_activation_digest=payload.get("locked_activation_digest"),
             verdict=QualificationVerdict(payload["verdict"]),
             published_at=str(payload["published_at"]),
+            resource_scope_digest=(
+                None
+                if payload.get("resource_scope_digest") is None
+                else str(payload["resource_scope_digest"])
+            ),
+            predecessor_reclosure_digest=(
+                None
+                if payload.get("predecessor_reclosure_digest") is None
+                else str(payload["predecessor_reclosure_digest"])
+            ),
+            predecessor_executable_tree_digest=(
+                None
+                if payload.get("predecessor_executable_tree_digest") is None
+                else str(payload["predecessor_executable_tree_digest"])
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Release-evidence digest mismatch.")

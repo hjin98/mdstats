@@ -74,6 +74,7 @@ class QualificationComponentEvidence:
     detail: str
     metrics: Mapping[str, Any]
     payload: Mapping[str, Any]
+    component_input_digest: str | None = None
 
     def __post_init__(self) -> None:
         component = str(self.component)
@@ -99,6 +100,14 @@ class QualificationComponentEvidence:
         object.__setattr__(self, "detail", str(self.detail))
         object.__setattr__(self, "metrics", json_value(dict(self.metrics)))
         object.__setattr__(self, "payload", json_value(dict(self.payload)))
+        if self.component_input_digest is not None:
+            object.__setattr__(
+                self,
+                "component_input_digest",
+                validate_digest(
+                    self.component_input_digest, name="component_input_digest"
+                ),
+            )
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -115,6 +124,7 @@ class QualificationComponentEvidence:
             "detail": self.detail,
             "metrics": dict(self.metrics),
             "payload": dict(self.payload),
+            "component_input_digest": self.component_input_digest,
         }
 
     @property
@@ -143,6 +153,11 @@ class QualificationComponentEvidence:
             detail=str(payload.get("detail", "")),
             metrics=dict(payload.get("metrics", {})),
             payload=dict(payload.get("payload", {})),
+            component_input_digest=(
+                None
+                if payload.get("component_input_digest") is None
+                else str(payload["component_input_digest"])
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -160,6 +175,7 @@ def build_component_evidence(
     detail: str = "",
     metrics: Mapping[str, Any] | None = None,
     payload: Mapping[str, Any] | None = None,
+    component_input_digest: str | None = None,
 ) -> QualificationComponentEvidence:
     """Bind one component result to the exact attempt identity that produced it."""
 
@@ -176,6 +192,7 @@ def build_component_evidence(
         detail=detail,
         metrics=dict(metrics or {}),
         payload=dict(payload or {}),
+        component_input_digest=component_input_digest,
     )
 
 

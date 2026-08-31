@@ -33,6 +33,22 @@ production training, representative-checkpoint or seed choice, publication
 membership, cache policy, or cleanup policy. There is no code path from a
 qualification outcome back into any of those authorities.
 
+# 1a. Where the product boundary is
+
+The released product is decided by P5, not by P7. `train-production` publishes a
+`FinalProductionPublicationDecision` immediately after the required seeds
+complete: it binds the selected binding, final plan and policy, CV/method
+lineage, frozen M3 membership, every required seed's run evidence and
+already-frozen representative identity, the canonical target head, the committee
+policy, the exact ordered published member set, and a deterministic
+decision-policy identity. Both `all_qualified_final_seeds` and
+`single_best_final_seed` are decided there, using only pre-qualification
+evidence and the accepted target-only EVAL2 ordering.
+
+P7's `AuthenticatedFinalPublication` is a read-only view that copies that
+decision's ordered member set. It contains no ranking, no membership registry,
+and no path that could add, remove, or reorder a member.
+
 # 2. Why the product must be frozen first
 
 Downstream physical evidence is only independent while it cannot influence the
@@ -81,6 +97,49 @@ Machine *capacity* - thread count and installed memory - is recorded but
 deliberately excluded from the identity, because it does not change what a
 deterministic numerical claim means.
 
+# 3a. Product identity through deployment
+
+The canonical P5 target head travels with every published member and is part of
+both the member identity and the deployment identity. Deployment export and the
+MACE ML-IAP builder are both called with that exact head; neither accepts `None`
+for a multihead-capable product, and a model whose heads do not contain it fails
+closed. An artifact built from the replay or foundation head is therefore a
+different product, not the same product serialized differently.
+
+Deployed artifacts are published create-once under an advisory per-artifact lock
+and re-authenticated from a durable receipt plus their bytes before every reuse,
+including after a process restart with an empty in-memory cache. A full PyTorch
+model pickle is not byte-deterministic, so two independent builds of the same
+logical artifact are serialized rather than compared byte-for-byte.
+
+Executing *an* ML-IAP unified model and executing *this MACE product* are
+separate runtime capabilities. The runtime probe reports both, and when the real
+deployed path is in use the stronger one is required; its absence is
+unavailable/blocking, never a pass.
+
+# 3b. Exposure-time currentness
+
+Every public resolver for the qualification plan, the terminal record, and the
+release-evidence index re-establishes the current `QualificationInputBinding` at
+exposure time and validates the located object against it. The campaign-store
+pointer is a locator only. A record published under an older specification,
+executable, environment, or product is historical, and `qualification status`
+cannot report it as the current release verdict. There is deliberately no
+unfenced public read.
+
+Locked disclosure history is kept outside that fence in an append-only reveal
+index, so a currentness change can make a verdict historical without ever making
+a revealed cohort fresh again.
+
+# 3c. Component-input identity
+
+Reference-dependent components are keyed by a component-input identity that
+includes the exact frozen reference request and the exact authenticated bundle
+digest, on top of the qualification binding. Replacing a bundle under the same
+request therefore stales local PES, relaxation, and dynamics - the components
+that consume it - while deployment parity and calibration remain reusable. Old
+evidence stays immutable and historical rather than being overwritten.
+
 # 4. Components and typed outcomes
 
 Every component publishes one immutable `QualificationComponentEvidence` record
@@ -92,7 +151,7 @@ with one of four statuses: `passed`, `rejected`, `waiting_for_reference`, or
 | `deployment_parity` | export, dtype conversion, and ML-IAP/LAMMPS execution preserve the frozen model's E/F | none needed: a bounded M3 development cohort is correct, because the claim is representation equivalence, not generalization |
 | `physical_pes` | correct local restoring physics: force agreement, restoring sign, stiffness and energy curvature | `OUTER_MONITOR` plus matched external references |
 | `relaxation` | fixed-cell minimization preserves protected topology and geometry | `OUTER_MONITOR` bases plus matched reference relaxations |
-| `dynamics` | finite-temperature stability of the deployed artifact | bases descending from the same frozen physical plan |
+| `dynamics` | finite-temperature stability of the deployed artifact, started from the authenticated reference-relaxed geometry | the same frozen physical bases, plus their matched reference relaxations |
 | `calibration` | uncertainty of the exact frozen committee | `UNCERTAINTY_CALIBRATION` |
 | `locked_interpolation_test` | one-shot post-freeze generalization evidence | `LOCKED_INTERPOLATION_TEST` |
 
@@ -119,6 +178,42 @@ Bounded deterministic analytic references are legitimate below this boundary for
 functional testing. A production scientific qualification supplies real external
 references generated under the exact frozen request and protocol identity.
 
+# 5a. Dynamics inputs and diagnostics
+
+Each dynamics case starts from the authenticated `relaxed_positions_angstrom` of
+its physical base. A missing or malformed relaxed reference is
+`waiting_for_reference` or a lineage failure; it never falls back to the
+unrelaxed base geometry. Case identity binds the reference-bundle digest and the
+exact initial relaxed-geometry identity.
+
+The runtime worker returns raw observations only - NVT and NVE temperatures,
+energy components, lossless geometry, forces, and cell identity - and makes no
+scientific decision. The reducer then evaluates, under thresholds frozen before
+execution: NVT stabilization, finite NVE temperature and its tolerance, NVE
+energy drift per atom per picosecond, minimum pair distance, maximum force,
+protected topology damage, and protected displacement, bond, and angle
+degradation. Topology damage must persist for a configured number of consecutive
+sampled violations before it rejects, so transient noise is not read as a broken
+framework; that persistence threshold is part of the specification digest and
+cannot be chosen after seeing a trajectory.
+
+A nonfinite observation is a rejection reason, not a serialization failure:
+immutable evidence is JSON-exact and records the measurement as absent.
+
+# 5b. Stress and deformation conventions
+
+When the frozen product, reference protocol, and runtime expose stress, the
+deployment and physical policies bind whether it is applicable/required, the
+comparison tolerances, tensor sign, Voigt order, units, and the volume source.
+Qualification stores a symmetric Cartesian tensor in eV/Angstrom$^3$. LAMMPS
+thermodynamic pressure is an intensive bar value and is converted through the
+canonical stress owner; an extensive virial must be divided by the
+instantaneous periodic-cell volume before it can enter evidence. Shear order
+and sign are never inferred from a calculator default. Missing stress is an
+explicit unavailable capability when optional, and is blocking when required.
+Isotropic strain response is evaluated against the authenticated reference
+under the same frozen convention, including the corresponding periodic cell.
+
 # 6. The one-shot locked test
 
 Locked evidence is meaningful only while it is unseen. `qualification
@@ -129,7 +224,13 @@ digest, the ordered member digest, the locked role digest, the locked policy
 digest, the executable and environment identities, the prerequisite component
 evidence, and the activation time.
 
-A second activation for the same publication and locked cohort is refused. The
+Activation is an irreversible *open* event, not proof that the evaluation
+completed, and those two facts are recorded separately. If the process dies
+between opening the cohort and publishing the locked result, a rerun resumes the
+same activation identity and finishes the same test rather than opening a second
+one or refusing forever. A second activation is refused only once a genuinely
+terminal result - the terminal record and the release index both referencing
+that activation - already exists. The
 refusal is keyed by product and cohort, not by policy, so loosening a threshold
 after a locked failure cannot manufacture a fresh locked test. A locked failure
 rejects the exact published product; retraining afterwards creates a new product
@@ -161,10 +262,20 @@ P7 introduces no cache authority, no second cleanup policy engine, no global
 retention registry, and no part of the successor storage inventory, archive,
 deduplication, or admission plane.
 
-# 8. Concurrency
+# 8. Concurrency and resource ownership
+
+Concurrency, nested BLAS/OpenMP/PyTorch thread budgets, and worker counts are
+resolved through the accepted campaign resource owner rather than a
+qualification-private policy. The resolved resource scope is bound to the
+attempt separately from the numerical environment identity: machine capacity is
+recorded without making a deterministic numerical claim machine-specific, while
+a materially different resource scope still cannot silently reuse a performance
+or resource claim.
+
+
 
 Independent qualification cases may run with bounded concurrency
-(`qualification run --case-workers N`). Case identity is a pure function of the
+(`qualification run --case-workers N`), capped by that owner. Case identity is a pure function of the
 frozen plan and policy, and every reduction is keyed by identity and sorted
 before it is recorded, so serial and concurrent execution produce byte-identical
 evidence and the same terminal verdict. Resource pressure may change scheduling

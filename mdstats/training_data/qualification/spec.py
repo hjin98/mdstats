@@ -22,6 +22,11 @@ from .components import (
     COMPONENT_RELAXATION,
 )
 from .identity import QUALIFICATION_SPEC_REVISION, QualificationSpecIdentity
+from .stress import (
+    CANONICAL_VOIGT_ORDER,
+    INSTANTANEOUS_CELL_VOLUME_SOURCE,
+    normalize_stress_units,
+)
 
 #: Components a newly initialized campaign must satisfy before release.
 DEFAULT_REQUIRED_COMPONENTS = (
@@ -68,6 +73,13 @@ def _positive_float(value: Any, *, name: str, allow_zero: bool = False) -> float
     return result
 
 
+def _nonzero_float(value: Any, *, name: str) -> float:
+    result = float(value)
+    if not result or result != result or result in (float("inf"), float("-inf")):
+        raise TrainingDataInputError(f"[qualification] {name} must be finite and nonzero.")
+    return result
+
+
 def _float_tuple(values: Any, *, name: str) -> tuple[float, ...]:
     result = tuple(float(v) for v in values)
     if len(set(result)) != len(result):
@@ -79,6 +91,15 @@ def _int_tuple(values: Any, *, name: str) -> tuple[int, ...]:
     result = tuple(int(v) for v in values)
     if not result or len(set(result)) != len(result):
         raise TrainingDataInputError(f"[qualification] {name} must be non-empty and unique.")
+    return result
+
+
+def _nonnegative_int_tuple(values: Any, *, name: str) -> tuple[int, ...]:
+    result = tuple(int(v) for v in values)
+    if any(value < 0 for value in result) or len(set(result)) != len(result):
+        raise TrainingDataInputError(
+            f"[qualification] {name} must contain unique nonnegative atom indices."
+        )
     return result
 
 
@@ -170,6 +191,27 @@ def resolve_qualification_spec_identity(cfg: Mapping[str, Any]) -> Qualification
                 deployment.get("force_rtol", 1.0e-3), name="deployment_parity.force_rtol"
             ),
             "require_deployed_runtime": bool(deployment.get("require_deployed_runtime", True)),
+            "stress_applicable": bool(deployment.get("stress_applicable", False)),
+            "stress_required": bool(deployment.get("stress_required", False)),
+            "stress_units": str(deployment.get("stress_units", "ev_per_angstrom3")),
+            "stress_voigt_order": list(
+                deployment.get("stress_voigt_order", CANONICAL_VOIGT_ORDER)
+            ),
+            "stress_volume_source": str(
+                deployment.get("stress_volume_source", INSTANTANEOUS_CELL_VOLUME_SOURCE)
+            ),
+            "stress_sign": _nonzero_float(
+                deployment.get("stress_sign", 1.0),
+                name="deployment_parity.stress_sign",
+            ),
+            "stress_atol_ev_per_angstrom3": _positive_float(
+                deployment.get("stress_atol_ev_per_angstrom3", 1.0e-4),
+                name="deployment_parity.stress_atol_ev_per_angstrom3",
+            ),
+            "stress_rtol": _positive_float(
+                deployment.get("stress_rtol", 1.0e-3),
+                name="deployment_parity.stress_rtol",
+            ),
         },
         COMPONENT_PHYSICAL_PES: {
             "base_count": _positive_int(physical.get("base_count", 4), name="physical.base_count"),
@@ -197,6 +239,30 @@ def resolve_qualification_spec_identity(cfg: Mapping[str, Any]) -> Qualification
                 physical.get("resolution_floor_ev", 1.0e-6), name="physical.resolution_floor_ev"
             ),
             "require_restoring_sign": bool(physical.get("require_restoring_sign", True)),
+            "stress_applicable": bool(physical.get("stress_applicable", False)),
+            "stress_required": bool(physical.get("stress_required", False)),
+            "stress_units": str(physical.get("stress_units", "ev_per_angstrom3")),
+            "stress_voigt_order": list(
+                physical.get("stress_voigt_order", CANONICAL_VOIGT_ORDER)
+            ),
+            "stress_volume_source": str(
+                physical.get("stress_volume_source", INSTANTANEOUS_CELL_VOLUME_SOURCE)
+            ),
+            "stress_sign": _nonzero_float(
+                physical.get("stress_sign", 1.0), name="physical.stress_sign"
+            ),
+            "stress_atol_ev_per_angstrom3": _positive_float(
+                physical.get("stress_atol_ev_per_angstrom3", 1.0e-4),
+                name="physical.stress_atol_ev_per_angstrom3",
+            ),
+            "stress_rtol": _positive_float(
+                physical.get("stress_rtol", 1.0e-3), name="physical.stress_rtol"
+            ),
+            "strain_response_required": bool(
+                physical.get(
+                    "strain_response_required", physical.get("stress_required", False)
+                )
+            ),
         },
         COMPONENT_RELAXATION: {
             "maximum_steps": _positive_int(
@@ -274,6 +340,54 @@ def resolve_qualification_spec_identity(cfg: Mapping[str, Any]) -> Qualification
             ),
             "base_count": _positive_int(dynamics.get("base_count", 1), name="dynamics.base_count"),
             "require_all_cases": bool(dynamics.get("require_all_cases", True)),
+            "require_nve_temperature": bool(dynamics.get("require_nve_temperature", True)),
+            "nve_temperature_tolerance_kelvin": _positive_float(
+                dynamics.get("nve_temperature_tolerance_kelvin", 250.0),
+                name="dynamics.nve_temperature_tolerance_kelvin",
+            ),
+            "nvt_minimum_samples": _positive_int(
+                dynamics.get("nvt_minimum_samples", 1), name="dynamics.nvt_minimum_samples"
+            ),
+            "nve_minimum_samples": _positive_int(
+                dynamics.get("nve_minimum_samples", 2), name="dynamics.nve_minimum_samples"
+            ),
+            "protected_atom_indices": list(
+                _nonnegative_int_tuple(
+                    dynamics.get("protected_atom_indices", ()),
+                    name="dynamics.protected_atom_indices",
+                )
+            ),
+            "protected_displacement_maximum_angstrom": _positive_float(
+                dynamics.get("protected_displacement_maximum_angstrom", 0.60),
+                name="dynamics.protected_displacement_maximum_angstrom",
+            ),
+            "protected_bond_rmse_maximum_angstrom": _positive_float(
+                dynamics.get("protected_bond_rmse_maximum_angstrom", 0.25),
+                name="dynamics.protected_bond_rmse_maximum_angstrom",
+            ),
+            "protected_bond_maximum_error_angstrom": _positive_float(
+                dynamics.get("protected_bond_maximum_error_angstrom", 0.60),
+                name="dynamics.protected_bond_maximum_error_angstrom",
+            ),
+            "protected_angle_rmse_maximum_degrees": _positive_float(
+                dynamics.get("protected_angle_rmse_maximum_degrees", 30.0),
+                name="dynamics.protected_angle_rmse_maximum_degrees",
+            ),
+            "protected_angle_maximum_error_degrees": _positive_float(
+                dynamics.get("protected_angle_maximum_error_degrees", 60.0),
+                name="dynamics.protected_angle_maximum_error_degrees",
+            ),
+            "minimum_consecutive_topology_violations": _positive_int(
+                dynamics.get("minimum_consecutive_topology_violations", 2),
+                name="dynamics.minimum_consecutive_topology_violations",
+            ),
+            "protected_topology_cutoff_scale": _positive_float(
+                dynamics.get("protected_topology_cutoff_scale", 1.20),
+                name="dynamics.protected_topology_cutoff_scale",
+            ),
+            "require_protected_topology": bool(
+                dynamics.get("require_protected_topology", True)
+            ),
         },
         COMPONENT_CALIBRATION: {
             "method": calibration_method,
@@ -307,6 +421,34 @@ def resolve_qualification_spec_identity(cfg: Mapping[str, Any]) -> Qualification
     ):
         raise TrainingDataInputError(
             "[qualification.dynamics] propagation_steps must cover at least one sample interval."
+        )
+    for component in (COMPONENT_DEPLOYMENT_PARITY, COMPONENT_PHYSICAL_PES):
+        policy = payload[component]
+        if policy["stress_required"] and not policy["stress_applicable"]:
+            raise TrainingDataInputError(
+                f"[qualification] {component}.stress_required requires stress_applicable = true."
+            )
+        order = tuple(str(value).lower() for value in policy["stress_voigt_order"])
+        if len(order) != 6 or set(order) != set(CANONICAL_VOIGT_ORDER):
+            raise TrainingDataInputError(
+                f"[qualification] {component}.stress_voigt_order is not a complete Voigt ordering."
+            )
+        policy["stress_voigt_order"] = list(order)
+        try:
+            units = normalize_stress_units(policy["stress_units"])
+        except Exception as exc:
+            raise TrainingDataInputError(
+                f"[qualification] {component}.stress_units is unsupported; use canonical eV/A^3, GPa, or bar."
+            ) from exc
+        policy["stress_units"] = units
+        if str(policy["stress_volume_source"]).strip() != INSTANTANEOUS_CELL_VOLUME_SOURCE:
+            raise TrainingDataInputError(
+                f"[qualification] {component}.stress_volume_source must be "
+                f"{INSTANTANEOUS_CELL_VOLUME_SOURCE!r}."
+            )
+    if payload[COMPONENT_PHYSICAL_PES]["strain_response_required"] and not strains:
+        raise TrainingDataInputError(
+            "[qualification.physical] strain_response_required needs at least one matched strain pair."
         )
     return QualificationSpecIdentity(
         revision=str(section.get("spec_revision", QUALIFICATION_SPEC_REVISION)),

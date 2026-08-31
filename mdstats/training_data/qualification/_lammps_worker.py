@@ -16,6 +16,8 @@ from typing import Any
 
 import numpy as np
 
+from .stress import canonical_stress_tensor
+
 
 def _minimum_pair_distance(positions: np.ndarray, cell: np.ndarray, pbc: bool) -> float:
     count = positions.shape[0]
@@ -50,6 +52,53 @@ def _local_arrays(instance) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     tags = np.array(instance.numpy.extract_atom("id"), dtype=np.int64, copy=True)[:count]
     order = np.argsort(tags)
     return positions[order], forces[order], tags[order]
+
+
+def _cell_from_instance(instance) -> np.ndarray:
+    box = instance.extract_box()
+    lower, upper = np.asarray(box[0], dtype=np.float64), np.asarray(box[1], dtype=np.float64)
+    xy, yz, xz = float(box[2]), float(box[3]), float(box[4])
+    lengths = upper - lower
+    return np.array(
+        [
+            [lengths[0], 0.0, 0.0],
+            [xy, lengths[1], 0.0],
+            [xz, yz, lengths[2]],
+        ],
+        dtype=np.float64,
+    )
+
+
+def _stress_from_instance(instance, request: dict[str, Any]) -> list[list[float]] | None:
+    if not bool(request.get("include_stress", False)):
+        return None
+    try:
+        # LAMMPS metal pressure is an intensive bar quantity.  Fetch by named
+        # component, then present values in the caller's declared Voigt order
+        # so the canonical converter owns permutation and sign semantics.
+        source = {
+            "xx": float(instance.get_thermo("pxx")),
+            "yy": float(instance.get_thermo("pyy")),
+            "zz": float(instance.get_thermo("pzz")),
+            "xy": float(instance.get_thermo("pxy")),
+            "xz": float(instance.get_thermo("pxz")),
+            "yz": float(instance.get_thermo("pyz")),
+        }
+        order = tuple(
+            str(value).lower()
+            for value in request.get(
+                "stress_voigt_order", ("xx", "yy", "zz", "xy", "yz", "xz")
+            )
+        )
+        values = [source[name] for name in order]
+    except Exception:
+        return None
+    return canonical_stress_tensor(
+        np.asarray(values, dtype=np.float64),
+        units="gpa",
+        voigt_order=order,
+        sign=float(request.get("stress_sign", 1.0)),
+    ).tolist()
 
 
 def _load_deployed_model(artifact_path: str) -> Any:
@@ -111,6 +160,7 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
                 "forces_ev_per_angstrom": forces.tolist(),
                 "positions_angstrom": positions.tolist(),
                 "atom_count": int(tags.size),
+                "stress_ev_per_angstrom3": _stress_from_instance(instance, request),
             }
         if mode == "dynamics":
             timestep = float(request["timestep_femtoseconds"]) / 1000.0
@@ -129,6 +179,7 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
             warmup = int(request["warmup_steps"])
             for _ in range(max(1, warmup // interval)):
                 instance.command(f"run {interval} pre no post no")
+                positions, forces, _tags = _local_arrays(instance)
                 samples.append(
                     {
                         "stage": 0.0,
@@ -136,6 +187,11 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
                         "potential_energy_ev": float(instance.get_thermo("pe")),
                         "kinetic_energy_ev": float(instance.get_thermo("ke")),
                         "total_energy_ev": float(instance.get_thermo("etotal")),
+                        "positions_angstrom": positions.tolist(),
+                        "forces_ev_per_angstrom": forces.tolist(),
+                        "cell_angstrom": _cell_from_instance(instance).tolist(),
+                        "pbc": [bool(request.get("periodic", True))] * 3,
+                        "stress_ev_per_angstrom3": _stress_from_instance(instance, request),
                     }
                 )
             instance.command("unfix nvt_stage")
@@ -147,26 +203,16 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
             for _ in range(max(1, propagation // interval)):
                 instance.command(f"run {interval} pre no post no")
                 positions, forces, _tags = _local_arrays(instance)
-                box = instance.extract_box()
-                lower, upper = np.asarray(box[0], dtype=np.float64), np.asarray(
-                    box[1], dtype=np.float64
-                )
-                xy, yz, xz = float(box[2]), float(box[3]), float(box[4])
-                lengths = upper - lower
-                cell = np.array(
-                    [
-                        [lengths[0], 0.0, 0.0],
-                        [xy, lengths[1], 0.0],
-                        [xz, yz, lengths[2]],
-                    ],
-                    dtype=np.float64,
-                )
+                cell = _cell_from_instance(instance)
                 minimum_distance = min(
                     minimum_distance,
                     _minimum_pair_distance(positions, cell, bool(request.get("periodic", True))),
                 )
                 maximum_force = max(
-                    maximum_force, float(np.max(np.abs(forces))) if forces.size else 0.0
+                    maximum_force,
+                    float(np.max(np.linalg.norm(forces, axis=1)))
+                    if forces.size
+                    else 0.0,
                 )
                 nve.append(
                     {
@@ -175,6 +221,12 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
                         "potential_energy_ev": float(instance.get_thermo("pe")),
                         "kinetic_energy_ev": float(instance.get_thermo("ke")),
                         "total_energy_ev": float(instance.get_thermo("etotal")),
+                        "nve_temperature_kelvin": float(instance.get_thermo("temp")),
+                        "positions_angstrom": positions.tolist(),
+                        "forces_ev_per_angstrom": forces.tolist(),
+                        "cell_angstrom": cell.tolist(),
+                        "pbc": [bool(request.get("periodic", True))] * 3,
+                        "stress_ev_per_angstrom3": _stress_from_instance(instance, request),
                     }
                 )
             positions, _forces, tags = _local_arrays(instance)

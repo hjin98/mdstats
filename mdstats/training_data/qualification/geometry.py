@@ -6,7 +6,11 @@ enumerate covalent bonds and their angles, and relax at fixed cell.  The
 trajectory-statistics owners in :mod:`mdstats.analysis` answer a different
 question (ensemble observables over a collection) and are not duplicated here;
 where an established owner does apply - ASE's relaxation algorithms and ASE's
-covalent-radius table - it is called rather than reimplemented.
+covalent-radius table - it is called rather than reimplemented.  The canonical
+``bond_angle`` analysis owner returns aggregate angle distributions and
+intentionally discards endpoint identity; protected P7 topology needs a
+keyed per-angle observable, so :func:`angle_table` is a narrow adapter over
+the canonical periodic vectors, not a second connectivity owner.
 """
 
 from __future__ import annotations
@@ -91,19 +95,28 @@ def strained_atoms(atoms: Any, magnitude: float) -> Any:
 
 
 def minimum_image_delta(delta: np.ndarray, cell: np.ndarray, pbc: np.ndarray) -> np.ndarray:
-    """Minimum-image displacement for the periodic directions only."""
+    """Adapt the canonical general-cell neighbor owner to one frame."""
 
-    if not np.any(pbc):
-        return delta
-    inverse = np.linalg.inv(cell)
-    fractional = delta @ inverse
-    shift = np.round(fractional)
-    shift[:, ~np.asarray(pbc, dtype=bool)] = 0.0
-    return (fractional - shift) @ cell
+    from ...analysis._neighbors import minimum_image_vectors
+
+    cell = np.asarray(cell, dtype=np.float64)
+    pbc = np.asarray(pbc, dtype=bool)
+    if not np.any(pbc) and abs(float(np.linalg.det(cell))) <= 1.0e-12:
+        # Nonperiodic ASE structures may carry a zero cell.  There is no image
+        # operation to perform, so avoid inventing a physical cell merely for
+        # this direct-distance adapter.
+        return np.asarray(delta, dtype=np.float64)
+    vectors, _distances = minimum_image_vectors(delta, cell=cell, pbc=pbc)
+    return np.asarray(vectors, dtype=np.float64)
 
 
-def displacement_metrics(reference: Any, candidate: Any) -> tuple[float, float]:
-    """``(rms, max)`` atomic displacement in Angstrom, periodicity-aware."""
+def displacement_metrics(
+    reference: Any,
+    candidate: Any,
+    *,
+    atom_indices: Sequence[int] | None = None,
+) -> tuple[float, float]:
+    """``(rms, max)`` periodic displacement for an optional protected subset."""
 
     delta = np.asarray(candidate.get_positions(), dtype=np.float64) - np.asarray(
         reference.get_positions(), dtype=np.float64
@@ -113,6 +126,15 @@ def displacement_metrics(reference: Any, candidate: Any) -> tuple[float, float]:
         np.asarray(reference.get_cell(), dtype=np.float64),
         np.asarray(reference.get_pbc(), dtype=bool),
     )
+    if atom_indices is not None:
+        indices = tuple(int(value) for value in atom_indices)
+        if len(set(indices)) != len(indices) or any(
+            index < 0 or index >= delta.shape[0] for index in indices
+        ):
+            raise QualificationError(
+                "The displacement metric atom_indices must be unique in-range atoms."
+            )
+        delta = delta[list(indices)]
     norms = np.sqrt(np.sum(delta * delta, axis=1))
     if norms.size == 0:
         return 0.0, 0.0
@@ -120,26 +142,78 @@ def displacement_metrics(reference: Any, candidate: Any) -> tuple[float, float]:
 
 
 def bond_table(atoms: Any, *, cutoff_scale: float) -> dict[tuple[int, int], float]:
-    """Covalent bonds of one configuration, keyed by ordered index pair."""
+    """Canonical distance connectivity adapted to one ASE configuration.
+
+    ``mdstats.analysis.atomic_connectivity`` owns cutoff enumeration and the
+    general-cell minimum-image calculation.  This function is intentionally a
+    narrow single-frame adapter that converts its authenticated edge keys into
+    the legacy pair/distance mapping consumed by the P7 geometry reducers.
+    """
 
     from ase.data import covalent_radii
 
-    numbers = np.asarray(atoms.get_atomic_numbers(), dtype=np.int64)
+    from ...analysis.atomic_connectivity import DistanceConnectivity, build_atomic_connectivity_state
+    from ...analysis.cutoffs import PairCutoff, PairCutoffRegistry
+    from ...collection import AtomisticFrameCollection
+    from ...provenance import FrameCollectionProvenance
+
+    numbers = np.asarray(atoms.get_atomic_numbers(), dtype=np.int32)
     positions = np.asarray(atoms.get_positions(), dtype=np.float64)
+    if positions.shape[0] < 2:
+        return {}
     cell = np.asarray(atoms.get_cell(), dtype=np.float64)
     pbc = np.asarray(atoms.get_pbc(), dtype=bool)
-    radii = np.asarray([covalent_radii[int(z)] for z in numbers], dtype=np.float64)
-    bonds: dict[tuple[int, int], float] = {}
-    count = positions.shape[0]
-    for index in range(count - 1):
-        delta = positions[index + 1 :] - positions[index]
-        delta = minimum_image_delta(delta, cell, pbc)
-        distances = np.sqrt(np.sum(delta * delta, axis=1))
-        limits = float(cutoff_scale) * (radii[index] + radii[index + 1 :])
-        for offset, (distance, limit) in enumerate(zip(distances, limits)):
-            if distance <= limit:
-                bonds[(index, index + 1 + offset)] = float(distance)
-    return bonds
+    if abs(float(np.linalg.det(cell))) <= 1.0e-12:
+        # ASE's nonperiodic Atoms commonly carries a zero cell.  A large
+        # synthetic cell preserves direct distances while satisfying the
+        # canonical collection's nonsingular-cell invariant; pbc remains false
+        # so the synthetic boundary has no physical meaning.
+        cell = np.eye(3, dtype=np.float64) * 1.0e6
+    fractional = positions @ np.linalg.inv(cell)
+    collection = AtomisticFrameCollection(
+        frame_semantics="ensemble",
+        frame_ids=np.asarray([0], dtype=np.int64),
+        atomic_numbers=numbers,
+        masses=np.asarray(atoms.get_masses(), dtype=np.float64),
+        pbc=pbc,
+        steps=None,
+        times=None,
+        cells=cell.reshape(1, 3, 3),
+        origins=np.zeros((1, 3), dtype=np.float64),
+        fractional_positions=fractional.reshape(1, len(atoms), 3),
+        provenance=FrameCollectionProvenance(
+            source_format="ase-structure",
+            source_files=(),
+            velocity_source="unavailable",
+            coordinate_normalization="native_unwrapped_cartesian",
+            stress_source=None,
+            units_source="ASE canonical geometry adapter",
+        ),
+    )
+    unique_numbers = sorted({int(value) for value in numbers})
+    cutoffs = [
+        PairCutoff.manual(
+            first,
+            second,
+            radius=float(cutoff_scale)
+            * (float(covalent_radii[first]) + float(covalent_radii[second])),
+            source_metadata={"owner": "qualification.geometry", "adapter": "canonical.atomic_connectivity"},
+        )
+        for index, first in enumerate(unique_numbers)
+        for second in unique_numbers[index:]
+    ]
+    state = build_atomic_connectivity_state(
+        collection,
+        DistanceConnectivity(PairCutoffRegistry.from_cutoffs(cutoffs)),
+        frame_index=0,
+    )
+    result: dict[tuple[int, int], float] = {}
+    for endpoint, shift in zip(state.edge_atom_indices, state.edge_image_shifts, strict=True):
+        first, second = int(endpoint[0]), int(endpoint[1])
+        image = np.asarray(shift, dtype=np.float64) @ cell
+        distance = float(np.linalg.norm(positions[second] + image - positions[first]))
+        result[(min(first, second), max(first, second))] = distance
+    return result
 
 
 def angle_table(

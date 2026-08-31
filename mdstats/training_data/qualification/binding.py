@@ -155,6 +155,11 @@ class QualificationInputBinding:
     environment: EnvironmentFingerprint
     specification: QualificationSpecIdentity
     evidence_roles: EvidenceRoleMembership
+    resource_scope_digest: str | None = None
+    # Revision-11 predecessor reclosure identity.  These are optional only for
+    # deserializing historical bindings; a new P7 session must populate them.
+    predecessor_reclosure_digest: str | None = None
+    predecessor_executable_tree_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -173,9 +178,22 @@ class QualificationInputBinding:
                 raise TrainingDataInputError(
                     f"A qualification input binding requires a real {expected.__name__}."
                 )
+        if self.resource_scope_digest is not None:
+            object.__setattr__(
+                self,
+                "resource_scope_digest",
+                validate_digest(self.resource_scope_digest, name="resource_scope_digest"),
+            )
+        for name in (
+            "predecessor_reclosure_digest",
+            "predecessor_executable_tree_digest",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, validate_digest(value, name=name))
 
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": QUALIFICATION_INPUT_BINDING_SCHEMA,
             "selected_binding_digest": self.selected_binding_digest,
             "publication_digest": self.publication_digest,
@@ -184,7 +202,13 @@ class QualificationInputBinding:
             "environment_digest": self.environment.content_digest,
             "specification_digest": self.specification.content_digest,
             "evidence_role_digest": self.evidence_roles.content_digest,
+            "resource_scope_digest": self.resource_scope_digest,
         }
+        if self.predecessor_reclosure_digest is not None:
+            payload["predecessor_reclosure_digest"] = self.predecessor_reclosure_digest
+        if self.predecessor_executable_tree_digest is not None:
+            payload["predecessor_executable_tree_digest"] = self.predecessor_executable_tree_digest
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -222,6 +246,21 @@ class QualificationInputBinding:
             environment=EnvironmentFingerprint.from_dict(payload["environment"]),
             specification=QualificationSpecIdentity.from_dict(payload["specification"]),
             evidence_roles=EvidenceRoleMembership.from_dict(payload["evidence_roles"]),
+            resource_scope_digest=(
+                None
+                if payload.get("resource_scope_digest") is None
+                else str(payload["resource_scope_digest"])
+            ),
+            predecessor_reclosure_digest=(
+                None
+                if payload.get("predecessor_reclosure_digest") is None
+                else str(payload["predecessor_reclosure_digest"])
+            ),
+            predecessor_executable_tree_digest=(
+                None
+                if payload.get("predecessor_executable_tree_digest") is None
+                else str(payload["predecessor_executable_tree_digest"])
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(

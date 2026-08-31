@@ -220,22 +220,359 @@ def resolve_current_qualification_record(
     *,
     kind: str,
     deserializer: Callable[[Mapping[str, Any]], Any],
+    binding: Any = None,
+    expected_plan_digest: str | None = None,
+    qualification_session: Any = None,
 ) -> Any | None:
-    """Resolve a current P7 descendant through freshly established authority."""
+    """Locate a published P7 record and validate it against current authority.
 
-    binding = context.binding if hasattr(context, "binding") else context
-    pointer = read_current_qualification_pointer(campaign_store, binding=binding, kind=kind)
+    The campaign-store pointer is a *locator*, nothing more.  Selected-binding
+    scoping alone would let a terminal verdict published under an older
+    qualification specification, executable, environment, or product keep
+    answering as "current" until something happened to overwrite the pointer -
+    which is exactly the failure mode where a stale ``release_qualified`` is
+    reported for a product that no longer exists.  So when the caller supplies
+    the freshly resolved :class:`QualificationInputBinding`, every located
+    object must reauthenticate against it; a mismatch is historical, not
+    current, and is reported as ``None``.
+    """
+
+    selected = context.binding if hasattr(context, "binding") else context
+    pointer = read_current_qualification_pointer(campaign_store, binding=selected, kind=kind)
     if pointer is None:
         return None
-    store = open_qualification_store(paths, binding)
+    store = open_qualification_store(paths, selected)
     record = store.get(pointer, deserializer)
     bound = getattr(record, "selected_binding_digest", None)
-    if bound is not None and str(bound) != binding.content_digest:
+    if bound is not None and str(bound) != selected.content_digest:
         raise PostSelectionStaleBindingError(
             "A published qualification record binds a different selected generation "
             "than the current authenticated selection."
         )
+    if binding is not None and not qualification_record_is_current(
+        record, binding, require_extended=True
+    ):
+        return None
+    # Qualification records and release indexes carry ``plan_digest`` and must
+    # be checked against the freshly rebuilt plan.  Activation and plan
+    # objects are themselves part of this resolver's public surface but do not
+    # carry a nested plan digest; their exact binding is the applicable fence.
+    if expected_plan_digest is not None and hasattr(record, "plan_digest"):
+        plan_value = getattr(record, "plan_digest", None)
+        if plan_value is None or str(plan_value) != str(expected_plan_digest):
+            return None
+        nested_binding = getattr(record, "binding", None)
+        if (
+            nested_binding is not None
+            and binding is not None
+            and getattr(nested_binding, "content_digest", None) != binding.content_digest
+        ):
+            return None
+    # A current terminal/release index is only as sound as every immutable
+    # component object it names.  Resolve those objects now so pointer/file
+    # presence can never masquerade as current evidence after corruption.
+    component_digests = list(getattr(record, "component_evidence_digests", ()))
+    # Waiting-for-reference outcomes are intentionally not stored as evidence
+    # objects; they are a durable record of the current absence of evidence,
+    # not reusable component results.  Only terminal component outcomes can be
+    # dereferenced from the immutable object store.
+    component_digests.extend(
+        str(getattr(item, "evidence_digest"))
+        for item in getattr(record, "components", ())
+        if getattr(item, "evidence_digest", None) is not None
+        and str(getattr(getattr(item, "status", None), "value", getattr(item, "status", "")))
+        != "waiting_for_reference"
+    )
+    component_evidence: list[Any] = []
+    if component_digests:
+        from .components import QualificationComponentEvidence
+
+        for component_digest in sorted(set(component_digests)):
+            evidence = store.get(component_digest, QualificationComponentEvidence.from_dict)
+            if binding is not None and not qualification_record_is_current(evidence, binding):
+                return None
+            component_evidence.append(evidence)
+
+    if qualification_session is not None:
+        # A component's binding digest is not enough to identify reference
+        # evidence: the same product can receive a new authenticated bundle
+        # under the same P5/P6 publication.  Re-establish the bundle at the
+        # public exposure boundary and make every reference-dependent evidence
+        # object prove that it consumed this exact bundle.  A waiting record is
+        # current only while the requested bundle is still absent; once it is
+        # supplied, the old waiting observation is historical until ``run``
+        # recomputes the dependent components.
+        reference_components = {"physical_pes", "relaxation", "dynamics"}
+        bundle = qualification_session.authenticated_reference_bundle()
+        outcomes = tuple(getattr(record, "components", ()))
+        if bundle is not None:
+            if any(
+                str(getattr(outcome, "component", "")) in reference_components
+                and str(
+                    getattr(
+                        getattr(outcome, "status", None),
+                        "value",
+                        getattr(outcome, "status", ""),
+                    )
+                )
+                == "waiting_for_reference"
+                for outcome in outcomes
+            ) or (
+                str(
+                    getattr(
+                        getattr(record, "verdict", None),
+                        "value",
+                        getattr(record, "verdict", ""),
+                    )
+                )
+                == "waiting_for_reference"
+                and not component_evidence
+            ):
+                return None
+        for evidence in component_evidence:
+            if evidence.component not in reference_components:
+                continue
+            expected_input = qualification_session.component_input_digest(
+                evidence.component, bundle
+            )
+            if evidence.component_input_digest != expected_input:
+                return None
+            payload_bundle = evidence.payload.get("reference_bundle_digest")
+            expected_bundle = None if bundle is None else bundle.content_digest
+            if payload_bundle != expected_bundle:
+                return None
+    if binding is not None and getattr(record, "resource_scope_digest", None) is not None:
+        if str(record.resource_scope_digest) != str(getattr(binding, "resource_scope_digest", None)):
+            return None
     return record
+
+
+#: Identity fields a current P7 record must reproduce, when it carries them.
+_CURRENT_BINDING_FIELDS = (
+    ("binding_digest", "content_digest"),
+    ("publication_digest", "publication_digest"),
+    ("publication_member_digest", "publication_member_digest"),
+    ("selected_binding_digest", "selected_binding_digest"),
+)
+
+
+def qualification_record_is_current(
+    record: Any, binding: Any, *, require_extended: bool = False
+) -> bool:
+    """Does this published record describe the exact current P7 binding?
+
+    Only the fields a record actually carries are compared, so one predicate
+    serves the plan, the terminal record, the release index, and the locked
+    activation without inventing fields for any of them.
+    """
+
+    for attribute, expected in _CURRENT_BINDING_FIELDS:
+        stored = getattr(record, attribute, None)
+        if stored is not None and str(stored) != str(getattr(binding, expected)):
+            return False
+    # Activation and plan objects are also resolved through this helper, but
+    # their schemas intentionally do not carry the predecessor/resource fields
+    # of a terminal qualification record.  Strict extended-field currentness
+    # applies only to the record/index schemas that actually define
+    # ``plan_digest``; their binding digest still fences every other object.
+    strict_extended = require_extended and hasattr(record, "plan_digest")
+    for attribute, expected in (
+        ("specification_digest", binding.specification.content_digest),
+        ("environment_digest", binding.environment.content_digest),
+        ("executable_digest", binding.executable.content_digest),
+        ("resource_scope_digest", getattr(binding, "resource_scope_digest", None)),
+        (
+            "predecessor_reclosure_digest",
+            getattr(binding, "predecessor_reclosure_digest", None),
+        ),
+        (
+            "predecessor_executable_tree_digest",
+            getattr(binding, "predecessor_executable_tree_digest", None),
+        ),
+    ):
+        stored = getattr(record, attribute, None)
+        if strict_extended:
+            if (stored is None) != (expected is None):
+                return False
+            if stored is not None and str(stored) != str(expected):
+                return False
+        elif stored is not None and str(stored) != str(expected):
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# One-shot locked disclosure history
+# ---------------------------------------------------------------------------
+
+LOCKED_REVEAL_DIRECTORY = "locked-reveals"
+
+
+def locked_reveal_path(paths: Any, binding: PostSelectionBinding, cohort_identity: str) -> Path:
+    identity = validate_digest(str(cohort_identity), name="cohort_identity")
+    # Disclosure is a fact about the reserved cohort, not a generation-scoped
+    # verdict.  Keeping the immutable history beside all generation roots means
+    # a new publication or target-size generation cannot make the same reserved
+    # cohort appear unseen.
+    root = qualification_root(paths, binding.campaign_generation).parent / LOCKED_REVEAL_DIRECTORY
+    root.mkdir(parents=True, exist_ok=True)
+    return root / f"{identity}.json"
+
+
+def record_locked_reveal(
+    paths: Any,
+    binding: PostSelectionBinding,
+    *,
+    cohort_identity: str,
+    activation_digest: str,
+) -> Mapping[str, Any]:
+    """Append-only proof that this exact locked cohort has been opened.
+
+    Disclosure is a fact about the world, not about the current product
+    binding.  It is therefore recorded outside the currentness-fenced pointer
+    graph: a later specification, executable, environment, or publication
+    change may make a *verdict* historical, but it can never make a revealed
+    cohort unseen again.
+    """
+
+    from ..target_size_execution import publish_immutable_json_create_or_verify
+
+    payload = {
+        "schema": "mdstats.qualification-locked-reveal.v1",
+        "cohort_generation_identity": validate_digest(
+            str(cohort_identity), name="cohort_identity"
+        ),
+        "activation_digest": validate_digest(
+            str(activation_digest), name="activation_digest"
+        ),
+    }
+    path = locked_reveal_path(paths, binding, cohort_identity)
+    publish_immutable_json_create_or_verify(
+        path, payload, deserializer=lambda value: _RevealRecord(value)
+    )
+    return payload
+
+
+class _RevealRecord:
+    """Deserializer shim for the create-or-verify reveal record."""
+
+    def __init__(self, payload: Mapping[str, Any]) -> None:
+        self._payload = dict(payload)
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self._payload)
+
+
+def read_locked_reveal(
+    paths: Any, binding: PostSelectionBinding, cohort_identity: str
+) -> Mapping[str, Any] | None:
+    path = locked_reveal_path(paths, binding, cohort_identity)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise QualificationLineageError(
+            f"The locked disclosure record at {path!s} is corrupt; a one-shot "
+            "history is never reconstructed by guessing."
+        ) from exc
+    if payload.get("schema") != "mdstats.qualification-locked-reveal.v1":
+        raise QualificationLineageError(
+            "A locked disclosure record has an unsupported schema."
+        )
+    if str(payload.get("cohort_generation_identity")) != str(cohort_identity):
+        raise QualificationLineageError(
+            "A locked disclosure record describes a different cohort generation."
+        )
+    try:
+        validate_digest(str(payload["cohort_generation_identity"]), name="cohort_identity")
+        validate_digest(str(payload["activation_digest"]), name="activation_digest")
+    except (KeyError, TrainingDataInputError) as exc:
+        raise QualificationLineageError(
+            "A locked disclosure record is missing authenticated identity fields."
+        ) from exc
+    return payload
+
+
+def _qualification_internal_root(workspace_or_paths: Any) -> Path:
+    internal = (
+        Path(workspace_or_paths.internal)
+        if hasattr(workspace_or_paths, "internal")
+        else Path(workspace_or_paths) / ".mdstats"
+    )
+    return internal.resolve() / QUALIFICATION_ROOT_NAME
+
+
+def _locked_activation_from_path(path: Path) -> Any:
+    from .locked import LockedActivationRecord
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        activation = LockedActivationRecord.from_dict(payload)
+    except (OSError, ValueError, KeyError, TrainingDataInputError, TrainingDataSerializationError) as exc:
+        raise QualificationLineageError(
+            f"Locked activation object {path!s} is corrupt; disclosure history "
+            "is never reconstructed by guessing."
+        ) from exc
+    if activation.content_digest != path.stem:
+        raise QualificationLineageError(
+            f"Locked activation object {path!s} is stored under the wrong digest."
+        )
+    return activation
+
+
+def find_locked_activation(
+    workspace_or_paths: Any,
+    activation_digest: str,
+) -> Any | None:
+    """Find one authenticated activation across all generation object stores."""
+
+    value = validate_digest(str(activation_digest), name="activation_digest")
+    root = _qualification_internal_root(workspace_or_paths)
+    matches = sorted(root.glob(f"g*/objects/{value[:2]}/{value}.json"))
+    if not matches:
+        return None
+    activations = [_locked_activation_from_path(path) for path in matches]
+    first = activations[0]
+    if any(item.to_dict() != first.to_dict() for item in activations[1:]):
+        raise QualificationLineageError(
+            "The same locked activation digest resolves to conflicting immutable objects."
+        )
+    return first
+
+
+def find_locked_activation_for_role(
+    workspace_or_paths: Any,
+    locked_role_digest: str,
+) -> Any | None:
+    """Find a prior activation for the same reserved role, including legacy roots."""
+
+    role = validate_digest(str(locked_role_digest), name="locked_role_digest")
+    root = _qualification_internal_root(workspace_or_paths)
+    matches: list[Any] = []
+    for path in sorted(root.glob("g*/objects/*/*.json")):
+        # Only locked activation objects carry this exact schema.  Other
+        # immutable evidence is not inspected as a substitute authority.
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise QualificationLineageError(
+                f"Qualification object {path!s} is corrupt."
+            ) from exc
+        if payload.get("schema") != "mdstats.qualification-locked-activation.v1":
+            continue
+        activation = _locked_activation_from_path(path)
+        if activation.locked_role_digest == role:
+            matches.append(activation)
+    if not matches:
+        return None
+    first = matches[0]
+    if any(item.content_digest != first.content_digest for item in matches[1:]):
+        raise QualificationLineageError(
+            "Multiple immutable locked activations claim the same reserved role; "
+            "the one-shot history is inconsistent."
+        )
+    return first
 
 
 # ---------------------------------------------------------------------------
@@ -372,29 +709,47 @@ def acquire_attempt_reference(
     interrupted qualification still needs.
     """
 
+    from ..target_size_execution import artifact_publication_lock
+
+    attempt_value = validate_digest(str(attempt_identity), name="attempt_identity")
+    publication_value = validate_digest(str(publication_digest), name="publication_digest")
+    binding_value = validate_digest(str(binding_digest), name="binding_digest")
     resolved = tuple(str(Path(value).resolve()) for value in referenced_paths)
-    existing = read_attempt_state(paths, binding, attempt_identity)
-    opened_at = existing.opened_at if existing is not None else _utc_now()
-    if existing is not None and existing.publication_digest != validate_digest(
-        str(publication_digest), name="publication_digest"
-    ):
-        raise QualificationLineageError(
-            "An existing qualification attempt with this identity references a "
-            "different publication; the attempt identity is not authentic."
+    state_path = attempt_state_path(paths, binding, attempt_value)
+    # The read/merge/write sequence is one owner transaction.  Without this
+    # lock, two independent workers can each read the old reference set and
+    # silently lose the other's retention path.
+    with artifact_publication_lock(state_path):
+        existing = read_attempt_state(paths, binding, attempt_value)
+        if existing is not None:
+            if existing.publication_digest != publication_value:
+                raise QualificationLineageError(
+                    "An existing qualification attempt with this identity references a "
+                    "different publication; the attempt identity is not authentic."
+                )
+            if existing.binding_digest != binding_value:
+                raise QualificationLineageError(
+                    "An existing qualification attempt with this identity references a "
+                    "different qualification binding."
+                )
+            # A terminal state is monotonic.  A late retry cannot reopen it and
+            # reintroduce retention references after release.
+            if existing.state == ATTEMPT_TERMINAL:
+                return existing
+        opened_at = existing.opened_at if existing is not None else _utc_now()
+        merged = tuple(sorted(set(resolved) | set(existing.referenced_paths if existing else ())))
+        state = QualificationAttemptState(
+            attempt_identity=attempt_value,
+            binding_digest=binding_value,
+            publication_digest=publication_value,
+            state=ATTEMPT_ACTIVE,
+            referenced_paths=merged,
+            opened_at=opened_at,
+            updated_at=_utc_now(),
+            detail=detail,
         )
-    merged = tuple(sorted(set(resolved) | set(existing.referenced_paths if existing else ())))
-    state = QualificationAttemptState(
-        attempt_identity=attempt_identity,
-        binding_digest=binding_digest,
-        publication_digest=publication_digest,
-        state=ATTEMPT_ACTIVE,
-        referenced_paths=merged,
-        opened_at=opened_at,
-        updated_at=_utc_now(),
-        detail=detail,
-    )
-    _atomic_write_json(attempt_state_path(paths, binding, attempt_identity), state.to_dict())
-    return state
+        _atomic_write_json(state_path, state.to_dict())
+        return state
 
 
 def release_attempt_reference(
@@ -407,21 +762,31 @@ def release_attempt_reference(
 ) -> QualificationAttemptState | None:
     """Release the retention reference on terminal completion or explicit abort."""
 
-    existing = read_attempt_state(paths, binding, attempt_identity)
-    if existing is None:
-        return None
-    state = QualificationAttemptState(
-        attempt_identity=existing.attempt_identity,
-        binding_digest=existing.binding_digest,
-        publication_digest=existing.publication_digest,
-        state=ATTEMPT_TERMINAL if terminal else ATTEMPT_ABORTED,
-        referenced_paths=(),
-        opened_at=existing.opened_at,
-        updated_at=_utc_now(),
-        detail=detail or existing.detail,
-    )
-    _atomic_write_json(attempt_state_path(paths, binding, attempt_identity), state.to_dict())
-    return state
+    from ..target_size_execution import artifact_publication_lock
+
+    attempt_value = validate_digest(str(attempt_identity), name="attempt_identity")
+    state_path = attempt_state_path(paths, binding, attempt_value)
+    with artifact_publication_lock(state_path):
+        existing = read_attempt_state(paths, binding, attempt_value)
+        if existing is None:
+            return None
+        # Terminal completion is immutable, including its released reference
+        # set.  Duplicate completion calls return the existing state rather
+        # than changing timestamps or downgrading it to aborted.
+        if existing.state == ATTEMPT_TERMINAL:
+            return existing
+        state = QualificationAttemptState(
+            attempt_identity=existing.attempt_identity,
+            binding_digest=existing.binding_digest,
+            publication_digest=existing.publication_digest,
+            state=ATTEMPT_TERMINAL if terminal else ATTEMPT_ABORTED,
+            referenced_paths=(),
+            opened_at=existing.opened_at,
+            updated_at=_utc_now(),
+            detail=detail or existing.detail,
+        )
+        _atomic_write_json(state_path, state.to_dict())
+        return state
 
 
 def iter_attempt_states(workspace_or_paths: Any) -> tuple[QualificationAttemptState, ...]:
@@ -511,7 +876,13 @@ def build_qualification_retention_fence(workspace_or_paths: Any) -> Qualificatio
         else Path(workspace_or_paths) / ".mdstats"
     )
     root = internal.resolve() / QUALIFICATION_ROOT_NAME
-    roots = tuple(sorted(path for path in root.glob("g*") if path.is_dir())) if root.is_dir() else ()
+    generation_roots = (
+        tuple(sorted(path for path in root.glob("g*") if path.is_dir()))
+        if root.is_dir()
+        else ()
+    )
+    reveal_root = root / LOCKED_REVEAL_DIRECTORY
+    roots = generation_roots + ((reveal_root,) if reveal_root.is_dir() else ())
     referenced: set[str] = set()
     for state in iter_attempt_states(workspace_or_paths):
         if state.is_active:
@@ -535,17 +906,23 @@ __all__ = [
     "QUALIFICATION_ROOT_NAME",
     "QualificationAttemptState",
     "QualificationEvidenceStore",
+    "LOCKED_REVEAL_DIRECTORY",
     "QualificationRetentionFence",
     "acquire_attempt_reference",
     "attempt_root",
     "attempt_state_path",
     "build_qualification_retention_fence",
+    "find_locked_activation",
+    "find_locked_activation_for_role",
     "iter_attempt_states",
     "open_qualification_store",
     "publish_current_qualification_pointer",
+    "qualification_record_is_current",
     "qualification_root",
     "read_attempt_state",
     "read_current_qualification_pointer",
+    "read_locked_reveal",
+    "record_locked_reveal",
     "release_attempt_reference",
     "resolve_current_qualification_record",
 ]

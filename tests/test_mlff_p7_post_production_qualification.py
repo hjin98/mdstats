@@ -257,21 +257,17 @@ def test_p7a_member_byte_mutation_fails_closed(tmp_path: Path):
         store.close()
 
 
-def test_p7a_unsupportable_committee_policy_fails_closed_rather_than_selecting(
-    tmp_path: Path,
-):
-    """`single_best_final_seed` has no predecessor-published member ranking.
-
-    The accepted P5 owner does not durably publish the pre-qualification
-    development evidence a single-best decision would need.  Qualification
-    refuses rather than inventing a ranking rule, which is exactly the
-    boundary it must not cross.
-    """
+def test_p7a_single_best_committee_policy_is_predecessor_published(tmp_path: Path):
+    """P7 consumes the predecessor's deterministic single-best decision."""
 
     text = fx.fixture_config_text(committee_policy="single_best_final_seed")
     config, workspace, harness = _campaign(tmp_path, config_text=text)
-    with pytest.raises(QualificationError, match="no authority to rank or select"):
-        fx.load_session(config, harness)
+    _cfg, _paths, store, session = fx.load_session(config, harness)
+    try:
+        assert session.publication.committee_policy == "single_best_final_seed"
+        assert [member.member_id for member in session.publication.members] == ["seed-5"]
+    finally:
+        store.close()
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +403,9 @@ def test_p7_assembled_integration_through_real_parser_and_owners(tmp_path: Path,
     terminal = _current_record(config, harness)
     assert terminal.verdict is QualificationVerdict.RELEASE_QUALIFIED
     assert terminal.locked_activation_digest is not None
-    assert terminal.predecessor_executable_commit.startswith("f55d59b2")
+    assert terminal.predecessor_reclosure_digest
+    assert terminal.predecessor_executable_tree_digest
+    assert terminal.predecessor_evidence_commit == terminal.predecessor_reclosure_digest
 
     # Close/reopen reauthenticates the exact terminal state.
     reopened = _current_record(config, harness)
@@ -1048,18 +1046,15 @@ def test_p7_provider_is_released_on_success_and_on_exception(tmp_path: Path):
 
 
 def test_p7_release_evidence_points_at_the_predecessor_baseline(tmp_path: Path):
-    """Terminal evidence records the accepted P1-P6 anchors it descends from."""
-
-    from mdstats.training_data.qualification.runtime import (
-        ACCEPTED_PREDECESSOR_EVIDENCE_COMMIT,
-        ACCEPTED_PREDECESSOR_EXECUTABLE_COMMIT,
-    )
+    """Terminal evidence records the current P5/P6 reclosure it descends from."""
 
     config, workspace, harness = _campaign(tmp_path)
     assert _qualify_nonlocked(config, harness) == 0
     record = _current_record(config, harness)
-    assert record.predecessor_executable_commit == ACCEPTED_PREDECESSOR_EXECUTABLE_COMMIT
-    assert record.predecessor_evidence_commit == ACCEPTED_PREDECESSOR_EVIDENCE_COMMIT
+    assert record.predecessor_reclosure_digest
+    assert record.predecessor_executable_tree_digest
+    assert record.predecessor_executable_commit
+    assert record.predecessor_evidence_commit == record.predecessor_reclosure_digest
 
 
 def test_p7c_strain_modes_are_requested_and_qualified_when_enabled(tmp_path: Path):

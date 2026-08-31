@@ -71,6 +71,20 @@ class _FileLock:
             self._fd = None
 
 
+def artifact_publication_lock(destination: str | Path) -> "_FileLock":
+    """Advisory exclusive lock guarding one destination path's publication.
+
+    Content-addressed records publish through create-or-verify byte equality
+    and need no external lock.  An artifact produced by a *non-deterministic*
+    serializer - a full PyTorch model pickle, for instance - cannot be compared
+    byte-for-byte across two independent builds, so concurrent builders of the
+    same logical artifact must be serialized instead. This exposes the same
+    lock this module already uses, so there is one advisory-lock implementation.
+    """
+
+    return _FileLock(_lock_file_path(Path(destination)))
+
+
 def publish_immutable_bytes_create_or_verify(
     destination: str | Path,
     raw_bytes: bytes,

@@ -23,6 +23,7 @@ from ..post_selection_execution import (
 )
 from .errors import QualificationError, QualificationLineageError
 from .publication import PublishedProductionMember, authenticate_member_bytes
+from .stress import stress_of
 
 
 def _run_evidence(context: Any, member: PublishedProductionMember) -> PostSelectionRunEvidence:
@@ -102,4 +103,4 @@ def energy_of(prediction: Any) -> float:
     return float(prediction.energy_ev)
 
 
-__all__ = ["energy_of", "forces_of", "member_provider", "predict_all"]
+__all__ = ["energy_of", "forces_of", "member_provider", "predict_all", "stress_of"]

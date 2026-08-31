@@ -212,8 +212,18 @@ selected binding and accepted CV evidence current. Both post-selection owners
 re-authenticate currentness before work and publish only under a commit-time
 currentness fence.
 
-The training lifecycle ends at fresh final-production closure. Everything after
-it validates that finished product without being able to change it.
+`train-production` finishes by publishing the **final-production publication
+decision**: which of the completed seeds constitute the released product, under
+the configured `[post_selection.production].committee_policy`. Both policies are
+supported. `all_qualified_final_seeds` publishes every required seed whose
+already-frozen representative checkpoint is admissible; `single_best_final_seed`
+ranks those same already-frozen representatives with the accepted target-only
+EVAL2 ordering over the frozen M3 development evidence and publishes one. The
+decision is taken here, before any qualification evidence exists, and nothing
+downstream can change it.
+
+The training lifecycle ends at that publication. Everything after it validates
+the finished product without being able to change it.
 
 ## 7. Qualify the frozen product
 
@@ -231,10 +241,11 @@ python tools/mdstats-mlff-campaign.py --config campaign.toml qualification run
 `qualification run` executes or resumes the nonlocked components for the exact
 frozen publication:
 
-- **deployment parity** - the published model is exported, converted to the
-  deployed ML-IAP artifact, executed through the real supported LAMMPS runtime,
-  and compared against the authenticated in-framework model under
-  dtype-justified tolerances;
+- **deployment parity** - the published model is exported at the canonical
+  target head, converted to the deployed ML-IAP artifact at that same head,
+  executed through the real supported LAMMPS runtime, and compared against the
+  authenticated in-framework model under dtype-justified tolerances, including
+  stress where the product and runtime support it;
 - **local PES** - deterministic symmetric displacement modes on a
   candidate-independent `OUTER_MONITOR` base cohort, checked for pointwise force
   agreement, restoring sign, and stiffness/curvature against matched external
@@ -243,8 +254,12 @@ frozen publication:
   relaxations, with protected-topology safety judged separately from geometric
   fidelity;
 - **dynamics** - bounded NVT warm-up and NVE propagation through the deployed
-  artifact, checked for temperature behaviour, energy drift, minimum pair
-  distance, force bounds, and persistent topology damage;
+  artifact, started from the authenticated reference-relaxed geometry of each
+  physical base, and checked for NVT and NVE temperature behaviour, energy
+  drift, minimum pair distance, force bounds, and protected topology,
+  displacement, bond, and angle degradation. Topology damage must persist for a
+  configured number of consecutive samples before it rejects, so one noisy
+  sample is not mistaken for a broken framework;
 - **calibration** - uncertainty calibration of the exact frozen committee on the
   reserved `UNCERTAINTY_CALIBRATION` role, or an explicit `not_applicable` for a
   single-model product with no accepted uncertainty estimator.
@@ -258,7 +273,13 @@ Three outcomes are not failures and must not be read as one:
 - `not_applicable` means the frozen policy declares a component inapplicable to
   this product.
 - an *unavailable* supported deployment runtime blocks the deployment claim
-  rather than passing or rejecting it.
+  rather than passing or rejecting it. Executing *an* ML-IAP model and executing
+  *this MACE product* are separate capabilities, and only the second one proves
+  the product path; `qualification status` reports both.
+
+`[qualification.reference].protocol` must name a real reference method before
+any reference-dependent component runs. The generated placeholder fails closed
+rather than letting an unlabelled bundle become a release claim.
 
 A component rejection rejects that exact published product. It never selects a
 different seed, checkpoint, or committee member, never shrinks a committee, and
@@ -280,6 +301,16 @@ product needs genuinely new independent evidence.
 
 A locked pass produces the terminal `release_qualified` verdict; a locked failure
 rejects the exact published product.
+
+Activation is an irreversible *open* event, not a claim that the evaluation
+finished. If the process dies between opening the cohort and publishing the
+result, rerunning `activate-locked --confirm` resumes the same activation and
+finishes the same test; it never opens a second one. Only a genuinely completed
+terminal result makes a further activation a rejected duplicate.
+
+Supplying a new reference bundle for the same frozen request re-runs local PES,
+relaxation, and dynamics - the components that consume it - and reuses the
+deployment and calibration evidence, which do not.
 
 ### Where the evidence lives
 

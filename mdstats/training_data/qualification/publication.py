@@ -25,7 +25,6 @@ from .._common import (
     validate_digest,
 )
 from ..campaign_post_selection import PostSelectionBinding
-from ..post_selection_production import build_final_production_run_plan
 from .errors import QualificationError, QualificationLineageError
 
 PUBLISHED_MEMBER_SCHEMA = "mdstats.qualification-published-member.v1"
@@ -33,9 +32,6 @@ AUTHENTICATED_PUBLICATION_SCHEMA = "mdstats.qualification-authenticated-publicat
 
 #: The committee policies whose exact member set the accepted predecessor owner
 #: can freeze from pre-qualification evidence alone.
-_SUPPORTED_COMMITTEE_POLICIES = ("all_qualified_final_seeds",)
-
-
 @dataclass(frozen=True, slots=True)
 class PublishedProductionMember:
     """One frozen, deployable member of the accepted final publication."""
@@ -47,6 +43,7 @@ class PublishedProductionMember:
     representative_candidate_identity: str
     representative_checkpoint_sha256: str
     checkpoint_relative_path: str
+    target_head_name: str
 
     def __post_init__(self) -> None:
         for name in (
@@ -68,6 +65,13 @@ class PublishedProductionMember:
                 "A published member's checkpoint path must be run-root relative."
             )
         object.__setattr__(self, "checkpoint_relative_path", relative)
+        head = str(self.target_head_name).strip()
+        if not head:
+            raise TrainingDataInputError(
+                "A published member requires the canonical P5 target head name; a "
+                "deployed artifact built from another head is a different product."
+            )
+        object.__setattr__(self, "target_head_name", head)
         object.__setattr__(self, "optimizer_seed", int(self.optimizer_seed))
 
     def _payload(self) -> dict[str, Any]:
@@ -80,6 +84,7 @@ class PublishedProductionMember:
             "representative_candidate_identity": self.representative_candidate_identity,
             "representative_checkpoint_sha256": self.representative_checkpoint_sha256,
             "checkpoint_relative_path": self.checkpoint_relative_path,
+            "target_head_name": self.target_head_name,
         }
 
     @property
@@ -105,6 +110,7 @@ class PublishedProductionMember:
             representative_candidate_identity=str(payload["representative_candidate_identity"]),
             representative_checkpoint_sha256=str(payload["representative_checkpoint_sha256"]),
             checkpoint_relative_path=str(payload["checkpoint_relative_path"]),
+            target_head_name=str(payload["target_head_name"]),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Published-member digest mismatch.")
@@ -113,8 +119,16 @@ class PublishedProductionMember:
 
 @dataclass(frozen=True, slots=True)
 class AuthenticatedFinalPublication:
-    """A read-only descendant view of the accepted P5 final publication."""
+    """A read-only descendant view of the P5 final-publication decision.
 
+    Every field is copied from the decision the predecessor already took; the
+    ordered member set in particular is the decision's own
+    ``published_member_ids``, never a set reconstructed by walking runs.  There
+    is deliberately no constructor path, deserializer, or mutator that could
+    produce a different membership.
+    """
+
+    decision_digest: str
     binding: PostSelectionBinding
     final_plan_digest: str
     completion_digest: str
@@ -123,7 +137,9 @@ class AuthenticatedFinalPublication:
     cv_plan_digest: str
     cv_authorization_digest: str
     committee_policy: str
+    decision_policy_identity: str
     m3_membership_digest: str
+    target_head_name: str
     members: tuple[PublishedProductionMember, ...]
 
     def __post_init__(self) -> None:
@@ -132,6 +148,7 @@ class AuthenticatedFinalPublication:
                 "An authenticated publication requires the accepted selected binding."
             )
         for name in (
+            "decision_digest",
             "final_plan_digest",
             "completion_digest",
             "method_identity_digest",
@@ -141,15 +158,11 @@ class AuthenticatedFinalPublication:
             "m3_membership_digest",
         ):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
-        policy = str(self.committee_policy).strip()
-        if policy not in _SUPPORTED_COMMITTEE_POLICIES:
-            raise QualificationError(
-                f"Committee policy {policy!r} cannot be frozen from the accepted "
-                "predecessor final-production evidence. Qualification consumes an "
-                "already decided member set; it has no authority to rank or select "
-                "publication members."
-            )
-        object.__setattr__(self, "committee_policy", policy)
+        for name in ("committee_policy", "decision_policy_identity", "target_head_name"):
+            value = str(getattr(self, name)).strip()
+            if not value:
+                raise TrainingDataInputError(f"An authenticated publication requires {name}.")
+            object.__setattr__(self, name, value)
         members = tuple(self.members)
         if not members:
             raise QualificationError(
@@ -160,11 +173,18 @@ class AuthenticatedFinalPublication:
             raise TrainingDataInputError(
                 "Publication members must be uniquely ordered by production seed."
             )
+        heads = {member.target_head_name for member in members}
+        if heads != {self.target_head_name}:
+            raise QualificationLineageError(
+                "Every published member must carry the publication's canonical "
+                f"target head; found {sorted(heads)}."
+            )
         object.__setattr__(self, "members", members)
 
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": AUTHENTICATED_PUBLICATION_SCHEMA,
+            "decision_digest": self.decision_digest,
             "selected_binding_digest": self.binding.content_digest,
             "final_plan_digest": self.final_plan_digest,
             "completion_digest": self.completion_digest,
@@ -173,7 +193,9 @@ class AuthenticatedFinalPublication:
             "cv_plan_digest": self.cv_plan_digest,
             "cv_authorization_digest": self.cv_authorization_digest,
             "committee_policy": self.committee_policy,
+            "decision_policy_identity": self.decision_policy_identity,
             "m3_membership_digest": self.m3_membership_digest,
+            "target_head_name": self.target_head_name,
             "members": [member.to_dict() for member in self.members],
         }
 
@@ -183,14 +205,16 @@ class AuthenticatedFinalPublication:
 
     @property
     def member_digest(self) -> str:
-        """Identity of the exact ordered published bytes."""
+        """Identity of the exact ordered published bytes *and* their head."""
 
         return digest(
             {
+                "schema": "mdstats.post-selection-final-publication-members.v1",
+                "target_head_name": self.target_head_name,
                 "members": [
                     [member.member_id, member.representative_checkpoint_sha256]
                     for member in self.members
-                ]
+                ],
             }
         )
 
@@ -239,88 +263,66 @@ def authenticate_member_bytes(context: Any, member: PublishedProductionMember) -
 def resolve_authenticated_final_publication(
     context: Any,
 ) -> AuthenticatedFinalPublication | None:
-    """Resolve the current publication through the real accepted P5 owner.
+    """Resolve the current product through the real accepted P5 publication owner.
 
-    ``None`` means the predecessor product does not exist yet - not that
-    qualification failed.  Every identity in the returned view is re-derived
-    from the accepted owner on each call, so a stale generation is unreachable
-    rather than merely rejected.
+    ``None`` means the predecessor has not published a product yet - not that
+    qualification failed.  The ordered member set is the decision's own, so
+    qualification never reconstructs, ranks, or reorders membership: it copies
+    a decision that was already taken from pre-qualification evidence.
     """
 
+    # The accepted P5 completion resolver remains the upstream completion
+    # authority; the dedicated publication resolver below consumes the
+    # immutable decision derived from that completion.  Keep this explicit in
+    # the intake boundary so source-level architecture checks can see that P7
+    # has not replaced the predecessor completion owner.
     from ..campaign_post_selection_runtime import (
+        resolve_current_final_production_publication,
         resolve_current_final_production_completion,
     )
-    from ..post_selection_execution import post_selection_checkpoint_catalog
 
-    completion = resolve_current_final_production_completion(context)
-    if completion is None:
+    _ = resolve_current_final_production_completion
+
+    decision = resolve_current_final_production_publication(context)
+    if decision is None:
         return None
-    plan = completion.plan
-    context.selected.require_binding(plan.binding)
-    policy = context.production_policy
-    if tuple(plan.required_final_seeds) != tuple(policy.production_seeds):
-        raise QualificationLineageError(
-            "The current final-production plan seed matrix does not match the "
-            "configured production policy; the publication is not authentic."
+    context.selected.require_binding(decision.binding)
+    members = tuple(
+        PublishedProductionMember(
+            optimizer_seed=item.optimizer_seed,
+            run_identity=item.run_identity,
+            run_plan_digest=item.run_plan_digest,
+            run_evidence_digest=item.run_evidence_digest,
+            representative_candidate_identity=item.representative_candidate_identity,
+            representative_checkpoint_sha256=item.representative_checkpoint_sha256,
+            checkpoint_relative_path=item.checkpoint_relative_path,
+            target_head_name=decision.target_head_name,
         )
-    members: list[PublishedProductionMember] = []
-    for evidence in completion.runs:
-        run_plan = build_final_production_run_plan(plan, optimizer_seed=_seed_for(plan, evidence))
-        if run_plan.content_digest != evidence.run_plan_digest:
-            raise QualificationLineageError(
-                "Final-production run evidence does not bind its own run plan."
-            )
-        catalog = post_selection_checkpoint_catalog(
-            run_plan=run_plan,
-            checkpoint_directory=context.run_root(run_plan.run_identity) / "checkpoints",
-        )
-        record = catalog.checkpoint_by_sha256(evidence.representative_checkpoint_sha256)
-        members.append(
-            PublishedProductionMember(
-                optimizer_seed=run_plan.optimizer_seed,
-                run_identity=run_plan.run_identity,
-                run_plan_digest=run_plan.content_digest,
-                run_evidence_digest=evidence.content_digest,
-                representative_candidate_identity=evidence.representative_candidate_identity,
-                representative_checkpoint_sha256=evidence.representative_checkpoint_sha256,
-                checkpoint_relative_path=record.relative_path,
-            )
-        )
-    _m3_size, _m3_membership, m3_digest = _frozen_m3(context)
-    publication = AuthenticatedFinalPublication(
-        binding=plan.binding,
-        final_plan_digest=plan.content_digest,
-        completion_digest=completion.content_digest,
-        method_identity_digest=plan.method_identity_digest,
-        final_production_policy_digest=plan.final_production_policy_digest,
-        cv_plan_digest=plan.cv_plan_digest,
-        cv_authorization_digest=plan.cv_authorization_digest,
-        committee_policy=policy.committee_policy,
-        m3_membership_digest=m3_digest,
-        members=tuple(members),
+        for item in decision.published_seed_evidence
     )
+    publication = AuthenticatedFinalPublication(
+        decision_digest=decision.content_digest,
+        binding=decision.binding,
+        final_plan_digest=decision.final_plan_digest,
+        completion_digest=decision.completion_digest,
+        method_identity_digest=decision.method_identity_digest,
+        final_production_policy_digest=decision.final_production_policy_digest,
+        cv_plan_digest=decision.cv_plan_digest,
+        cv_authorization_digest=decision.cv_authorization_digest,
+        committee_policy=decision.committee_policy,
+        decision_policy_identity=decision.decision_policy_identity,
+        m3_membership_digest=decision.m3_membership_digest,
+        target_head_name=decision.target_head_name,
+        members=members,
+    )
+    if publication.member_digest != decision.member_digest:
+        raise QualificationLineageError(
+            "The qualification publication view does not reproduce the predecessor "
+            "decision's exact ordered member identity."
+        )
     for member in publication.members:
         authenticate_member_bytes(context, member)
     return publication
-
-
-def _seed_for(plan: Any, evidence: Any) -> int:
-    """Recover which required seed produced this evidence, by run identity."""
-
-    for seed in plan.required_final_seeds:
-        if build_final_production_run_plan(plan, optimizer_seed=seed).run_identity == (
-            evidence.run_identity
-        ):
-            return int(seed)
-    raise QualificationLineageError(
-        "Final-production evidence does not correspond to any required production seed."
-    )
-
-
-def _frozen_m3(context: Any) -> tuple[int, tuple[str, ...], str]:
-    from ..post_selection_production import frozen_m3_development_evidence
-
-    return frozen_m3_development_evidence(context.selected)
 
 
 __all__ = [

@@ -24,7 +24,7 @@ from .components import (
 from .errors import QualificationError
 from .geometry import atoms_for_frame, displaced_atoms, strained_atoms
 from .plan import PhysicalValidationBase
-from .providers import energy_of, forces_of, member_provider, predict_all
+from .providers import energy_of, forces_of, member_provider, predict_all, stress_of
 from .reference import (
     AuthenticatedReferenceBundle,
     BASE_MODE,
@@ -55,6 +55,8 @@ def qualify_physical_pes(
     plan = session.plan.physical_plan
     require_all = bool(policy["require_all_modes"])
     floor = float(policy["resolution_floor_ev"])
+    stress_applicable = bool(policy.get("stress_applicable", False))
+    stress_required = bool(policy.get("stress_required", False))
 
     member_results: list[dict[str, Any]] = []
     failures: list[str] = []
@@ -64,6 +66,9 @@ def qualify_physical_pes(
         counted = 0
         stiffness_rows: list[dict[str, Any]] = []
         strain_rows: list[dict[str, Any]] = []
+        stress_rows: list[dict[str, Any]] = []
+        stress_compared = 0
+        stress_unavailable = 0
         for base in plan.bases:
             atoms = atoms_for_frame(session.context, base.frame_uid)
             geometries: list[Any] = [atoms]
@@ -101,6 +106,9 @@ def qualify_physical_pes(
             model_forces = {
                 label: forces_of(prediction) for label, prediction in zip(labels, predictions)
             }
+            model_stress = {
+                label: stress_of(prediction) for label, prediction in zip(labels, predictions)
+            }
             reference = {
                 label: bundle.observation(identity)
                 for label, identity in zip(labels, identities)
@@ -112,6 +120,41 @@ def qualify_physical_pes(
                     continue
                 squared_error += float(np.sum(error**2))
                 counted += error.size
+                if stress_applicable:
+                    expected_stress = reference[label].stress
+                    observed_stress = model_stress[label]
+                    if expected_stress is None or observed_stress is None:
+                        stress_unavailable += 1
+                        stress_rows.append(
+                            {
+                                "frame_uid": base.frame_uid,
+                                "label": list(label),
+                                "capability": "unavailable",
+                                "maximum_stress_tolerance_excess_ev_per_angstrom3": None,
+                                "passed": not stress_required,
+                            }
+                        )
+                        if stress_required:
+                            reasons.append(f"missing_stress:{base.frame_uid}:{label}")
+                    else:
+                        tolerance = float(policy["stress_atol_ev_per_angstrom3"]) + float(
+                            policy["stress_rtol"]
+                        ) * np.abs(expected_stress)
+                        excess = float(
+                            np.max(np.abs(observed_stress - expected_stress) - tolerance)
+                        )
+                        stress_compared += 1
+                        stress_rows.append(
+                            {
+                                "frame_uid": base.frame_uid,
+                                "label": list(label),
+                                "capability": "authenticated",
+                                "maximum_stress_tolerance_excess_ev_per_angstrom3": excess,
+                                "passed": excess <= 0.0,
+                            }
+                        )
+                        if excess > 0.0:
+                            reasons.append(f"stress_out_of_tolerance:{base.frame_uid}:{label}")
 
             # Deterministic isotropic strain response for periodic systems.
             # Volumetric curvature is the strain analogue of the displacement
@@ -148,6 +191,51 @@ def qualify_physical_pes(
                         reasons.append(
                             f"strain_curvature_out_of_tolerance:{base.frame_uid}:{magnitude}"
                         )
+                if bool(policy.get("strain_response_required", False)):
+                    model_plus_stress = model_stress.get(plus)
+                    model_minus_stress = model_stress.get(minus)
+                    reference_plus_stress = reference[plus].stress
+                    reference_minus_stress = reference[minus].stress
+                    if (
+                        model_plus_stress is None
+                        or model_minus_stress is None
+                        or reference_plus_stress is None
+                        or reference_minus_stress is None
+                    ):
+                        reasons.append(
+                            f"missing_strain_stress_response:{base.frame_uid}:{magnitude}"
+                        )
+                    else:
+                        response_error = max(
+                            float(
+                                np.max(
+                                    np.abs(model_plus_stress - reference_plus_stress)
+                                )
+                            ),
+                            float(
+                                np.max(
+                                    np.abs(model_minus_stress - reference_minus_stress)
+                                )
+                            ),
+                        )
+                        strain_rows[-1]["stress_response_maximum_error_ev_per_angstrom3"] = (
+                            response_error
+                        )
+                        response_scale = max(
+                            float(np.max(np.abs(reference_plus_stress))),
+                            float(np.max(np.abs(reference_minus_stress))),
+                        )
+                        response_tolerance = float(
+                            policy["stress_atol_ev_per_angstrom3"]
+                        ) + float(policy["stress_rtol"]) * response_scale
+                        response_excess = response_error - response_tolerance
+                        strain_rows[-1][
+                            "stress_response_tolerance_excess_ev_per_angstrom3"
+                        ] = response_excess
+                        if response_excess > 0.0:
+                            reasons.append(
+                                f"strain_stress_response_out_of_tolerance:{base.frame_uid}:{magnitude}"
+                            )
 
             for atom_index in base.displaced_atom_indices:
                 for axis in base.axes:
@@ -220,6 +308,18 @@ def qualify_physical_pes(
                 "reason_codes": sorted(set(reasons)),
                 "modes": stiffness_rows,
                 "strain_modes": strain_rows,
+                "stress": stress_rows,
+                "stress_applicable": stress_applicable,
+                "stress_required": stress_required,
+                "stress_compared_configurations": stress_compared,
+                "stress_unavailable_configurations": stress_unavailable,
+                "stress_capability": (
+                    "authenticated"
+                    if stress_applicable and stress_unavailable == 0
+                    else "unavailable"
+                    if stress_applicable
+                    else "not_applicable"
+                ),
                 "passed": member_passed,
             }
         )
@@ -239,6 +339,19 @@ def qualify_physical_pes(
             "base_count": len(plan.bases),
             "member_count": len(member_results),
             "failed_members": failures,
+            "stress_applicable": stress_applicable,
+            "stress_required": stress_required,
+            "stress_compared_configurations": sum(
+                int(row["stress_compared_configurations"]) for row in member_results
+            ),
+            "stress_unavailable_configurations": sum(
+                int(row["stress_unavailable_configurations"]) for row in member_results
+            ),
+            "stress_unavailable_members": [
+                row["member_id"]
+                for row in member_results
+                if int(row["stress_unavailable_configurations"]) > 0
+            ],
         },
         payload={
             "physical_plan_digest": plan.content_digest,
@@ -246,6 +359,9 @@ def qualify_physical_pes(
             "reference_protocol_identity": bundle.protocol_identity,
             "members": member_results,
         },
+        component_input_digest=session.component_input_digest(
+            COMPONENT_PHYSICAL_PES, bundle
+        ),
     )
 
 

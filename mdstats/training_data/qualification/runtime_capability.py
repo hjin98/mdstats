@@ -26,6 +26,7 @@ from .._common import (
     digest,
 )
 from .errors import QualificationError, QualificationUnavailableError
+from .stress import canonical_stress_tensor
 
 LAMMPS_RUNTIME_PROBE_SCHEMA = "mdstats.qualification-lammps-runtime-probe.v1"
 
@@ -41,6 +42,11 @@ class LammpsRuntimeProbe:
     mliap_available: bool
     mliappy_available: bool
     python_module_path: str | None
+    #: Whether this runtime's ML-IAP python data object exposes the
+    #: message-passing exchange interface a MACE ML-IAP model requires.  A
+    #: runtime can support ML-IAP in general and still be unable to execute a
+    #: MACE product, which is a materially different claim.
+    mace_mliap_supported: bool = False
     detail: str = ""
 
     def _payload(self) -> dict[str, Any]:
@@ -50,6 +56,7 @@ class LammpsRuntimeProbe:
             "version": self.version,
             "mliap_available": bool(self.mliap_available),
             "mliappy_available": bool(self.mliappy_available),
+            "mace_mliap_supported": bool(self.mace_mliap_supported),
             "python_module_path": self.python_module_path,
         }
 
@@ -59,7 +66,15 @@ class LammpsRuntimeProbe:
 
     @property
     def supports_deployed_execution(self) -> bool:
+        """Can this runtime execute *an* ML-IAP unified model at all?"""
+
         return bool(self.available and self.mliap_available and self.mliappy_available)
+
+    @property
+    def supports_mace_product_execution(self) -> bool:
+        """Can this runtime execute the exact published MACE product?"""
+
+        return bool(self.supports_deployed_execution and self.mace_mliap_supported)
 
     def to_dict(self) -> dict[str, Any]:
         return {**self._payload(), "content_digest": self.content_digest, "detail": self.detail}
@@ -73,6 +88,7 @@ class LammpsRuntimeProbe:
             version=(None if payload.get("version") is None else str(payload["version"])),
             mliap_available=bool(payload["mliap_available"]),
             mliappy_available=bool(payload["mliappy_available"]),
+            mace_mliap_supported=bool(payload.get("mace_mliap_supported", False)),
             python_module_path=(
                 None
                 if payload.get("python_module_path") is None
@@ -108,12 +124,21 @@ def probe_lammps_runtime(*, refresh: bool = False) -> LammpsRuntimeProbe:
         instance = lammps.lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
         version = str(instance.version())
         mliap = bool(instance.has_style("pair", "mliap"))
+        mace_supported = False
         try:
             from lammps import mliap as mliap_module
 
             mliap_module.activate_mliappy(instance)
             mliappy = True
-            detail = "supported runtime with ML-IAP python coupling"
+            mace_supported = _mace_mliap_interface_supported()
+            detail = (
+                "supported runtime with ML-IAP python coupling"
+                if mace_supported
+                else (
+                    "ML-IAP python coupling present, but its data interface does not "
+                    "expose the message-passing exchange a MACE ML-IAP model requires"
+                )
+            )
         except Exception as exc:  # noqa: BLE001
             mliappy = False
             detail = f"ML-IAP python coupling unavailable: {exc}"
@@ -122,6 +147,7 @@ def probe_lammps_runtime(*, refresh: bool = False) -> LammpsRuntimeProbe:
             version=version,
             mliap_available=mliap,
             mliappy_available=mliappy,
+            mace_mliap_supported=mace_supported,
             python_module_path=str(Path(lammps.__file__).resolve()),
             detail=detail,
         )
@@ -141,6 +167,32 @@ def probe_lammps_runtime(*, refresh: bool = False) -> LammpsRuntimeProbe:
             except Exception:
                 pass
     return _PROBE_CACHE
+
+
+def _mace_mliap_interface_supported() -> bool:
+    """Does the activated ML-IAP data object satisfy MACE's model contract?
+
+    MACE's ML-IAP model performs an explicit halo exchange of node features
+    between LAMMPS domains. A LAMMPS build whose python ML-IAP data object does
+    not expose that call can load a MACE artifact and still fail inside the
+    first force evaluation, so the capability is probed here rather than
+    discovered halfway through an expensive qualification.
+    """
+
+    try:
+        import mliap_unified_couple  # type: ignore[import-not-found]
+    except Exception:
+        return False
+    data_class = getattr(mliap_unified_couple, "MLIAPDataPy", None)
+    if data_class is None:
+        return False
+    if not hasattr(data_class, "forward_exchange"):
+        return False
+    try:
+        from mace.calculators.lammps_mliap_mace import LAMMPS_MLIAP_MACE  # noqa: F401
+    except Exception:
+        return False
+    return True
 
 
 def write_lammps_data(atoms: Any, path: str | os.PathLike[str], *, specorder: Sequence[str]) -> str:
@@ -262,6 +314,31 @@ def deployed_static_evaluation(
 ) -> tuple[float, np.ndarray]:
     """Energy/forces for one configuration through the real deployed artifact."""
 
+    energy, forces, _stress = deployed_static_observation(
+        atoms,
+        artifact_path=artifact_path,
+        element_types=element_types,
+        working_directory=working_directory,
+        timeout_seconds=timeout_seconds,
+        include_stress=False,
+    )
+    return energy, forces
+
+
+def deployed_static_observation(
+    atoms: Any,
+    *,
+    artifact_path: str | os.PathLike[str],
+    element_types: Sequence[str],
+    working_directory: str | os.PathLike[str],
+    timeout_seconds: float = 900.0,
+    include_stress: bool = False,
+    stress_units: str = "ev_per_angstrom3",
+    stress_voigt_order: Sequence[str] = ("xx", "yy", "zz", "xy", "yz", "xz"),
+    stress_sign: float = 1.0,
+) -> tuple[float, np.ndarray, np.ndarray | None]:
+    """Energy, forces, and optional canonical stress through the real runtime."""
+
     root = Path(working_directory)
     root.mkdir(parents=True, exist_ok=True)
     data_path = root / "probe.data"
@@ -273,6 +350,14 @@ def deployed_static_evaluation(
             "artifact_path": str(Path(artifact_path).resolve()),
             "element_types": list(element_types),
             "periodic": bool(np.all(np.asarray(atoms.get_pbc(), dtype=bool))),
+            "include_stress": bool(include_stress),
+            # The policy names the canonical evidence convention.  LAMMPS
+            # supplies intensive pressure in bar; the worker converts that
+            # source using the declared ordering/sign before returning
+            # canonical eV/A^3 values.
+            "stress_units": str(stress_units),
+            "stress_voigt_order": list(stress_voigt_order),
+            "stress_sign": float(stress_sign),
         },
         working_directory=root,
         timeout_seconds=timeout_seconds,
@@ -283,13 +368,17 @@ def deployed_static_evaluation(
             "The deployed runtime returned a force array whose shape does not "
             "match the probed configuration."
         )
-    return float(result["potential_energy_ev"]), forces
+    stress = None
+    if result.get("stress_ev_per_angstrom3") is not None:
+        stress = canonical_stress_tensor(result["stress_ev_per_angstrom3"])
+    return float(result["potential_energy_ev"]), forces, stress
 
 
 __all__ = [
     "LAMMPS_RUNTIME_PROBE_SCHEMA",
     "LammpsRuntimeProbe",
     "deployed_static_evaluation",
+    "deployed_static_observation",
     "execute_lammps_request",
     "probe_lammps_runtime",
     "write_lammps_data",

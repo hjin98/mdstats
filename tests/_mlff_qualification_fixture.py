@@ -146,6 +146,12 @@ class QualificationHarness:
         self.evaluated_atoms = 0
         self.deployed_calls: list[str] = []
         self.dynamics_calls: list[str] = []
+        #: Instrumentation the revision-11 acceptance suite reads back.
+        self.dynamics_start_positions: list[np.ndarray] = []
+        self.export_heads: list[str | None] = []
+        self.mliap_heads: list[str | None] = []
+        self.locked_evaluations = 0
+        self.locked_frame_uids: set[str] = set()
         self.evaluated_frames: list[str] = []
 
     # -- label-anchored analytic model ---------------------------------------
@@ -206,6 +212,11 @@ class QualificationHarness:
     # -- accepted P5 inference seam -----------------------------------------
     def evaluate(self, provider, atoms_list):
         self.evaluated_atoms += len(atoms_list)
+        if self.locked_frame_uids and any(
+            str(atoms.info.get("frame_uid", "")) in self.locked_frame_uids
+            for atoms in atoms_list
+        ):
+            self.locked_evaluations += 1
         bias = self._checkpoint_bias(provider)
         predictions = []
         for atoms in atoms_list:
@@ -228,6 +239,7 @@ class QualificationHarness:
 
     # -- P7 deployment seams -------------------------------------------------
     def export_deployment(self, source_model_path, output_directory, *, deployment_dtype, target_head):
+        self.export_heads.append(target_head)
         root = Path(output_directory)
         root.mkdir(parents=True, exist_ok=True)
         target = root / "deployment.model"
@@ -238,6 +250,7 @@ class QualificationHarness:
         )
 
     def build_mliap(self, deployment_path, output_path, *, head):
+        self.mliap_heads.append(head)
         Path(output_path).write_bytes(Path(deployment_path).read_bytes())
         return Path(output_path)
 
@@ -281,43 +294,105 @@ class QualificationHarness:
     def dynamics_runner(
         self, session, member, atoms, *, temperature_kelvin, velocity_seed, case_identity
     ):
+        """Emit faithful *raw* observations; every verdict stays in the reducer.
+
+        The knobs below perturb only what a real runtime could plausibly
+        report - temperatures, energies, geometry, forces - so each frozen
+        diagnostic is exercised through the production reduction rather than by
+        asserting a decision the fixture made.
+        """
+
         self.dynamics_calls.append(case_identity)
+        self.dynamics_start_positions.append(
+            np.asarray(atoms.get_positions(), dtype=np.float64)
+        )
         overrides = self.dynamics_overrides
-        samples = [
-            {
-                "stage": 0.0,
-                "temperature_kelvin": float(overrides.get("nvt_temperature", temperature_kelvin)),
+        _energy, raw_forces = self.evaluate_atoms(atoms)
+        raw_forces = np.asarray(raw_forces, dtype=np.float64)
+        cell = np.asarray(atoms.get_cell(), dtype=np.float64).tolist()
+        pbc = [bool(value) for value in atoms.get_pbc()]
+        base_positions = np.asarray(atoms.get_positions(), dtype=np.float64)
+
+        def _sample(stage: float, positions, *, nve: bool, index: int, drift: float):
+            sample = {
+                "stage": stage,
+                "temperature_kelvin": float(
+                    overrides.get("nvt_temperature", temperature_kelvin)
+                ),
                 "potential_energy_ev": -1.0,
                 "kinetic_energy_ev": 0.5,
-                "total_energy_ev": -0.5,
+                "total_energy_ev": -0.5 + drift * index,
+                "positions_angstrom": np.asarray(positions, dtype=np.float64).tolist(),
+                "forces_ev_per_angstrom": raw_forces.tolist(),
+                "cell_angstrom": cell,
+                "pbc": pbc,
             }
-        ]
-        drift = float(overrides.get("total_energy_drift_ev", 0.0))
-        propagation = [
-            {
-                "stage": 1.0,
-                "temperature_kelvin": float(temperature_kelvin),
-                "potential_energy_ev": -1.0,
-                "kinetic_energy_ev": 0.5,
-                "total_energy_ev": -0.5 + drift * step,
-            }
-            for step in range(2)
-        ]
-        positions = np.asarray(atoms.get_positions(), dtype=np.float64)
+            if nve:
+                sample["nve_temperature_kelvin"] = float(
+                    overrides.get("nve_temperature", temperature_kelvin)
+                )
+            return sample
+
+        nve_sample_count = int(overrides.get("nve_sample_count", 4))
+        nvt_sample_count = int(overrides.get("nvt_sample_count", 2))
+
+        # Geometry perturbations. A displacement/bond/angle knob moves atoms in
+        # every NVE sample; a topology knob breaks a protected bond in only the
+        # first N samples, which is what separates transient noise from
+        # persistent damage under the frozen persistence rule.
+        displaced = base_positions.copy()
+        if "protected_displacement" in overrides:
+            displaced[0] = displaced[0] + np.array(
+                [float(overrides["protected_displacement"]), 0.0, 0.0]
+            )
+        if "protected_bond_error" in overrides and displaced.shape[0] > 1:
+            direction = displaced[1] - displaced[0]
+            norm = float(np.linalg.norm(direction)) or 1.0
+            displaced[1] = displaced[1] + direction / norm * float(
+                overrides["protected_bond_error"]
+            )
+        if "protected_angle_error" in overrides and displaced.shape[0] > 2:
+            displaced[2] = displaced[2] + np.array(
+                [0.0, float(overrides["protected_angle_error"]) * 0.05, 0.0]
+            )
+        # A topology break has to be a *bond* break, not a large displacement,
+        # or a topology test would be indistinguishable from a displacement one.
+        broken = displaced.copy()
+        if broken.shape[0] > 1:
+            direction = broken[1] - broken[0]
+            norm = float(np.linalg.norm(direction)) or 1.0
+            broken[1] = broken[1] + direction / norm * float(
+                overrides.get("topology_break_angstrom", 1.5)
+            )
+        transient = int(overrides.get("transient_topology_violations", 0))
         if overrides.get("collapse"):
-            positions = positions.copy()
-            positions[1] = positions[0] + np.array([0.05, 0.0, 0.0])
+            displaced = displaced.copy()
+            displaced[1] = displaced[0] + np.array([0.05, 0.0, 0.0])
+
+        drift = float(overrides.get("total_energy_drift_ev", 0.0))
+        warmup = [
+            _sample(0.0, base_positions, nve=False, index=index, drift=0.0)
+            for index in range(max(1, nvt_sample_count))
+        ]
+        propagation = []
+        for index in range(max(2, nve_sample_count)):
+            positions = broken if index < transient else displaced
+            propagation.append(_sample(1.0, positions, nve=True, index=index, drift=drift))
+
+        final = np.asarray(propagation[-1]["positions_angstrom"], dtype=np.float64)
         return {
             "mode": "dynamics",
-            "warmup_samples": samples,
+            "warmup_samples": warmup,
             "propagation_samples": propagation,
+            "nvt_samples": warmup,
+            "nve_samples": propagation,
             "minimum_pair_distance_angstrom": float(
                 overrides.get("minimum_pair_distance_angstrom", 2.0)
             ),
             "maximum_force_ev_per_angstrom": float(
                 overrides.get("maximum_force_ev_per_angstrom", 1.0)
             ),
-            "final_positions_angstrom": positions.tolist(),
+            "final_positions_angstrom": final.tolist(),
             "atom_count": int(len(atoms)),
         }
 
@@ -342,6 +417,7 @@ def fixture_config_text(
     committee_policy: str | None = None,
     calibration_overrides: str = "",
     strain_magnitudes: str | None = None,
+    dynamics_overrides: str = "",
 ) -> str:
     text = p5.fixture_config_text().replace("seeds = [5]", f"seeds = {production_seeds}")
     if committee_policy is not None:
@@ -352,6 +428,11 @@ def fixture_config_text(
             "displacement_amplitudes_angstrom = [-0.02, 0.02]",
             "displacement_amplitudes_angstrom = [-0.02, 0.02]\n"
             f"strain_magnitudes = {strain_magnitudes}",
+        )
+    if dynamics_overrides:
+        qualification = qualification.replace(
+            "sample_interval_steps = 10\n",
+            f"sample_interval_steps = 10\n{dynamics_overrides}",
         )
     if calibration_overrides:
         qualification = qualification.replace(
@@ -386,7 +467,13 @@ def attach_labels(harness: "QualificationHarness", config: Path) -> None:
     cfg, paths = cli._load_config(config)
     store = CampaignStore(paths.state_db)
     try:
-        harness.attach_labels(build_post_selection_context(cfg, paths, store))
+        context = build_post_selection_context(cfg, paths, store)
+        harness.attach_labels(context)
+        from mdstats.training_data.qualification import resolve_evidence_role_membership
+
+        harness.locked_frame_uids = set(
+            resolve_evidence_role_membership(context).locked_frame_uids
+        )
     finally:
         store.close()
 
@@ -399,22 +486,26 @@ def run_qualification_command(config: Path, *subcommand: str, harness=None, **ex
 
 
 def load_session(config: Path, harness=None, **overrides):
+    """Build a session on the real owners, with the bounded seams injected.
+
+    Any seam may be overridden with ``None`` to exercise the real owner path
+    instead, which is how the real-runtime blocking cases are reached.
+    """
+
     from mdstats.training_data.qualification import build_qualification_session
 
     active = QualificationHarness() if harness is None else harness
     cfg, paths = cli._load_config(config)
     store = CampaignStore(paths.state_db)
-    session = build_qualification_session(
-        cfg,
-        paths,
-        store,
-        inference_evaluator=active.evaluate,
-        deployment_exporter=active.export_deployment,
-        mliap_builder=active.build_mliap,
-        deployed_evaluator=active.deployed_evaluator,
-        dynamics_runner=active.dynamics_runner,
-        **overrides,
-    )
+    seams = {
+        "inference_evaluator": active.evaluate,
+        "deployment_exporter": active.export_deployment,
+        "mliap_builder": active.build_mliap,
+        "deployed_evaluator": active.deployed_evaluator,
+        "dynamics_runner": active.dynamics_runner,
+    }
+    seams.update(overrides)
+    session = build_qualification_session(cfg, paths, store, **seams)
     return cfg, paths, store, session
 
 

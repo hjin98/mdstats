@@ -120,7 +120,7 @@ def execute_qualification_status(args: Any) -> int:
     _print_header("Post-production qualification status")
     try:
         session = build_qualification_session(cfg, paths, store, **_seams(args))
-    except PostSelectionError as exc:
+    except (PostSelectionError, QualificationError) as exc:
         _warn(str(exc))
         return 0
     if session is None:
@@ -131,9 +131,14 @@ def execute_qualification_status(args: Any) -> int:
     print(f"  executable candidate   {session.binding.executable.content_digest[:16]}", flush=True)
     print(f"  environment            {session.binding.environment.content_digest[:16]}", flush=True)
     print(f"  qualification spec     {session.binding.specification.content_digest[:16]}", flush=True)
+    from .reference import load_reference_bundle
+
+    bundle = load_reference_bundle(session.reference_root, session.reference_request)
     print(f"  attempt identity       {session.binding.attempt_identity[:16]}", flush=True)
     for component in session.plan.planned_components:
-        evidence = session.completed_component(component)
+        evidence = session.completed_component(
+            component, session.component_input_digest(component, bundle)
+        )
         state = "not_started" if evidence is None else evidence.status.value
         reason = "" if evidence is None else evidence.reason_code
         print(f"  {component:<24} {state:<22} {reason}", flush=True)

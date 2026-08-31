@@ -13,7 +13,7 @@ external references generated under the exact frozen request/protocol identity.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 import json
@@ -24,17 +24,20 @@ from .._common import (
     TrainingDataInputError,
     TrainingDataSerializationError,
     digest,
+    json_value,
     validate_digest,
 )
 from .errors import QualificationError, QualificationLineageError
 from .geometry import atoms_for_frame, displaced_atoms, strained_atoms
 from .plan import PhysicalValidationPlan
+from .stress import canonical_stress_tensor
 
 REFERENCE_REQUEST_SCHEMA = "mdstats.qualification-reference-request.v1"
 REFERENCE_BUNDLE_SCHEMA = "mdstats.qualification-reference-bundle.v1"
 
 REFERENCE_REQUEST_FILENAME = "reference-request.json"
 REFERENCE_BUNDLE_FILENAME = "reference-bundle.json"
+REFERENCE_BUNDLE_LOCATOR_SCHEMA = "mdstats.qualification-reference-bundle-locator.v1"
 
 #: Rounding used only for *identity*, never for physics: it makes a geometry
 #: identity stable across text round-trips an external code performs.
@@ -239,6 +242,8 @@ class ReferenceObservation:
     energy_ev: float
     forces_ev_per_angstrom: tuple[tuple[float, float, float], ...]
     relaxed_positions_angstrom: tuple[tuple[float, float, float], ...] | None = None
+    stress_ev_per_angstrom3: tuple[tuple[float, float, float], ...] | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -263,6 +268,14 @@ class ReferenceObservation:
             object.__setattr__(
                 self, "relaxed_positions_angstrom", tuple(tuple(row) for row in relaxed.tolist())
             )
+        if self.stress_ev_per_angstrom3 is not None:
+            stress = canonical_stress_tensor(self.stress_ev_per_angstrom3)
+            object.__setattr__(
+                self,
+                "stress_ev_per_angstrom3",
+                tuple(tuple(float(value) for value in row) for row in stress.tolist()),
+            )
+        object.__setattr__(self, "metadata", json_value(dict(self.metadata)))
 
     @property
     def forces(self) -> np.ndarray:
@@ -274,6 +287,12 @@ class ReferenceObservation:
             return None
         return np.asarray(self.relaxed_positions_angstrom, dtype=np.float64)
 
+    @property
+    def stress(self) -> np.ndarray | None:
+        if self.stress_ev_per_angstrom3 is None:
+            return None
+        return np.asarray(self.stress_ev_per_angstrom3, dtype=np.float64)
+
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "geometry_identity": self.geometry_identity,
@@ -284,6 +303,12 @@ class ReferenceObservation:
             payload["relaxed_positions_angstrom"] = [
                 list(row) for row in self.relaxed_positions_angstrom
             ]
+        if self.stress_ev_per_angstrom3 is not None:
+            payload["stress_ev_per_angstrom3"] = [
+                list(row) for row in self.stress_ev_per_angstrom3
+            ]
+        if self.metadata:
+            payload["metadata"] = json_value(self.metadata)
         return payload
 
     @classmethod
@@ -301,6 +326,15 @@ class ReferenceObservation:
                     tuple(float(v) for v in row) for row in payload["relaxed_positions_angstrom"]
                 )
             ),
+            stress_ev_per_angstrom3=(
+                None
+                if payload.get("stress_ev_per_angstrom3") is None
+                else tuple(
+                    tuple(float(v) for v in row)
+                    for row in payload["stress_ev_per_angstrom3"]
+                )
+            ),
+            metadata=dict(payload.get("metadata", {})),
         )
 
 
@@ -316,7 +350,20 @@ class AuthenticatedReferenceBundle:
         object.__setattr__(
             self, "request_digest", validate_digest(self.request_digest, name="request_digest")
         )
-        object.__setattr__(self, "protocol_identity", str(self.protocol_identity))
+        protocol = str(self.protocol_identity).strip()
+        if not protocol:
+            raise QualificationLineageError(
+                "An authenticated reference bundle requires an explicit protocol identity."
+            )
+        object.__setattr__(self, "protocol_identity", protocol)
+        observations = {str(key): value for key, value in dict(self.observations).items()}
+        if set(observations) != {
+            observation.geometry_identity for observation in observations.values()
+        }:
+            raise QualificationLineageError(
+                "Reference bundle observation keys must match their geometry identities."
+            )
+        object.__setattr__(self, "observations", observations)
 
     @property
     def content_digest(self) -> str:
@@ -330,6 +377,34 @@ class AuthenticatedReferenceBundle:
                 ],
             }
         )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = {
+            "schema": REFERENCE_BUNDLE_SCHEMA,
+            "request_digest": self.request_digest,
+            "protocol_identity": self.protocol_identity,
+            "observations": [
+                self.observations[key].to_dict() for key in sorted(self.observations)
+            ],
+        }
+        return {**payload, "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AuthenticatedReferenceBundle":
+        if payload.get("schema") != REFERENCE_BUNDLE_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported reference-bundle schema.")
+        observations = {
+            str(item["geometry_identity"]): ReferenceObservation.from_dict(item)
+            for item in payload.get("observations", ())
+        }
+        result = cls(
+            request_digest=str(payload["request_digest"]),
+            protocol_identity=str(payload["protocol_identity"]),
+            observations=observations,
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError("Reference-bundle digest mismatch.")
+        return result
 
     def observation(self, geometry: str) -> ReferenceObservation:
         try:
@@ -348,11 +423,23 @@ def reference_bundle_path(root: Path) -> Path:
     return Path(root) / REFERENCE_BUNDLE_FILENAME
 
 
+def reference_bundle_object_path(root: Path, bundle_digest: str) -> Path:
+    """Content-addressed immutable object path for one reference bundle."""
+
+    value = validate_digest(bundle_digest, name="bundle_digest")
+    return Path(root) / "reference-bundles" / value[:2] / f"{value}.json"
+
+
 def publish_reference_request(root: Path, request: PhysicalReferenceRequest) -> Path:
     """Write the actionable request an operator (or a DFT pipeline) fulfils."""
 
     from ..target_size_execution import publish_immutable_json_create_or_verify
 
+    if request.protocol_identity == "external-reference-protocol-unset":
+        raise QualificationError(
+            "The placeholder external-reference protocol cannot be published for "
+            "production qualification."
+        )
     path = reference_request_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     publish_immutable_json_create_or_verify(
@@ -380,8 +467,12 @@ def load_reference_bundle(
         raise QualificationLineageError(
             f"External reference bundle at {path!s} is not readable JSON."
         ) from exc
-    if payload.get("schema") != REFERENCE_BUNDLE_SCHEMA:
+    schema = payload.get("schema")
+    if schema not in (REFERENCE_BUNDLE_LOCATOR_SCHEMA, REFERENCE_BUNDLE_SCHEMA):
         raise QualificationLineageError("Unsupported external reference-bundle schema.")
+    # Authenticate the mutable locator's lineage before opening its object.
+    # This prevents an old valid object from becoming current under a changed
+    # request or reference method.
     if str(payload.get("protocol_identity")) != request.protocol_identity:
         raise QualificationLineageError(
             "External reference bundle was produced under a different reference "
@@ -392,10 +483,64 @@ def load_reference_bundle(
             "External reference bundle does not bind the exact frozen physical "
             "reference request."
         )
-    observations = {
-        str(item["geometry_identity"]): ReferenceObservation.from_dict(item)
-        for item in payload.get("observations", ())
-    }
+    if schema == REFERENCE_BUNDLE_LOCATOR_SCHEMA:
+        bundle_digest = validate_digest(payload.get("bundle_digest", ""), name="bundle_digest")
+        relative = Path(str(payload.get("object_path", "")))
+        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+            raise QualificationLineageError(
+                "External reference bundle locator points outside its reference root."
+            )
+        object_path = Path(root) / relative
+        expected_path = reference_bundle_object_path(root, bundle_digest)
+        if object_path != expected_path:
+            raise QualificationLineageError(
+                "External reference bundle locator does not point to its content-addressed object."
+            )
+        if not object_path.is_file():
+            raise QualificationLineageError(
+                "External reference bundle locator refers to a missing immutable object."
+            )
+        try:
+            object_payload = json.loads(object_path.read_text(encoding="utf-8"))
+            bundle = AuthenticatedReferenceBundle.from_dict(object_payload)
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TrainingDataInputError,
+            TrainingDataSerializationError,
+            QualificationError,
+        ) as exc:
+            raise QualificationLineageError(
+                "External reference bundle immutable object is corrupt or unauthenticated."
+            ) from exc
+        if bundle.content_digest != bundle_digest:
+            raise QualificationLineageError(
+                "External reference bundle object digest does not match its locator."
+            )
+        if bundle.request_digest != request.content_digest or bundle.protocol_identity != request.protocol_identity:
+            raise QualificationLineageError(
+                "External reference bundle immutable object does not bind the frozen request/protocol."
+            )
+        mirrored = payload.get("observations")
+        if mirrored is not None and mirrored != object_payload.get("observations"):
+            raise QualificationLineageError(
+                "External reference bundle locator content differs from its immutable object; "
+                "the frozen request geometry set cannot be authenticated."
+            )
+        if payload.get("content_digest") not in (None, bundle.content_digest):
+            raise QualificationLineageError(
+                "External reference bundle locator digest does not match its immutable object."
+            )
+    else:
+        # An inline JSON record is mutable and therefore cannot be accepted as
+        # revision-11 production evidence.  It must be republished through the
+        # immutable object/locator owner below.
+        raise QualificationLineageError(
+            "External reference bundle is a legacy mutable inline record; republish it "
+            "through the authenticated immutable reference-bundle owner."
+        )
+    observations = dict(bundle.observations)
     required = {item.geometry_identity for item in request.geometries}
     missing = sorted(required - set(observations))
     extra = sorted(set(observations) - required)
@@ -410,11 +555,7 @@ def load_reference_bundle(
             raise QualificationLineageError(
                 "External reference geometry has a different atom count than requested."
             )
-    return AuthenticatedReferenceBundle(
-        request_digest=request.content_digest,
-        protocol_identity=request.protocol_identity,
-        observations=observations,
-    )
+    return bundle
 
 
 def write_reference_bundle(
@@ -424,21 +565,69 @@ def write_reference_bundle(
 ) -> Path:
     """Supply externally computed reference evidence for a frozen request."""
 
-    path = reference_bundle_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schema": REFERENCE_BUNDLE_SCHEMA,
-        "request_digest": request.content_digest,
-        "protocol_identity": request.protocol_identity,
-        "observations": [item.to_dict() for item in observations],
+    from ..target_size_execution import (
+        publish_immutable_json_create_or_verify,
+        publish_mutable_json_atomic,
+    )
+
+    if request.protocol_identity == "external-reference-protocol-unset":
+        raise QualificationError(
+            "The placeholder external-reference protocol cannot publish reference evidence."
+        )
+    supplied = tuple(observations)
+    identities = [str(item.geometry_identity) for item in supplied]
+    required = {item.geometry_identity for item in request.geometries}
+    observed = set(identities)
+    if len(identities) != len(observed) or observed != required:
+        missing = sorted(required - observed)
+        extra = sorted(observed - required)
+        raise QualificationLineageError(
+            "Reference observations must cover the exact frozen request geometry "
+            f"set before publication ({len(missing)} missing, {len(extra)} unexpected)."
+        )
+    by_identity = {item.geometry_identity: item for item in supplied}
+    for item in request.geometries:
+        observation = by_identity[item.geometry_identity]
+        if observation.forces.shape[0] != item.atom_count:
+            raise QualificationLineageError(
+                "Reference observations must preserve the frozen request atom count."
+            )
+        if item.mode == RELAXED_MODE and observation.relaxed_positions is None:
+            raise QualificationLineageError(
+                "The frozen relaxed reference geometry is missing; it cannot be "
+                "published as a complete reference bundle."
+            )
+    bundle = AuthenticatedReferenceBundle(
+        request_digest=request.content_digest,
+        protocol_identity=request.protocol_identity,
+        observations=by_identity,
+    )
+    object_path = reference_bundle_object_path(root, bundle.content_digest)
+    publish_immutable_json_create_or_verify(
+        object_path,
+        bundle.to_dict(),
+        deserializer=AuthenticatedReferenceBundle.from_dict,
+    )
+    locator = {
+        "schema": REFERENCE_BUNDLE_LOCATOR_SCHEMA,
+        "request_digest": bundle.request_digest,
+        "protocol_identity": bundle.protocol_identity,
+        "bundle_digest": bundle.content_digest,
+        "content_digest": bundle.content_digest,
+        "object_path": str(object_path.relative_to(Path(root))),
+        # Operator-visible mirrors are authenticated against the immutable
+        # object on every load; they are never the source of scientific truth.
+        "observations": bundle.to_dict()["observations"],
     }
-    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    path = reference_bundle_path(root)
+    publish_mutable_json_atomic(path, locator)
     return path
 
 
 __all__ = [
     "BASE_MODE",
     "REFERENCE_BUNDLE_FILENAME",
+    "REFERENCE_BUNDLE_LOCATOR_SCHEMA",
     "REFERENCE_BUNDLE_SCHEMA",
     "REFERENCE_REQUEST_FILENAME",
     "REFERENCE_REQUEST_SCHEMA",
@@ -454,6 +643,7 @@ __all__ = [
     "strain_mode_name",
     "publish_reference_request",
     "reference_bundle_path",
+    "reference_bundle_object_path",
     "reference_request_path",
     "write_reference_bundle",
 ]

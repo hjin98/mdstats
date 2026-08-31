@@ -91,6 +91,11 @@ from .post_selection_production import (
     frozen_m3_development_evidence,
     validate_final_production_plan,
 )
+from .post_selection_publication import (
+    FinalProductionPublicationDecision,
+    publish_final_production_publication,
+    resolve_current_final_production_publication,
+)
 from .post_selection_store import (
     POINTER_CV_ACCEPTANCE,
     POINTER_CV_PLAN,
@@ -120,6 +125,10 @@ class PostSelectionContext:
     production_policy: FinalProductionPolicyIdentity
     trainer: Any
     inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None
+    # Qualification adds this execution-only value so exposure-time currentness
+    # can reconstruct the same resource scope that created the P7 attempt.  It
+    # is not a P5 scientific or selection identity.
+    qualification_case_workers: int = 1
     _baseline_replay_cache: dict[str, float] = field(
         default_factory=dict, repr=False, compare=False
     )
@@ -255,6 +264,7 @@ def build_post_selection_context(
     trainer: Any = None,
     inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
     expected_revision: Any = None,
+    qualification_case_workers: int = 1,
 ) -> PostSelectionContext:
     """Re-establish current P4 authority and resolve all three P5 identities.
 
@@ -285,6 +295,7 @@ def build_post_selection_context(
         production_policy=resolve_final_production_policy_identity(cfg),
         trainer=resolved_trainer,
         inference_evaluator=inference_evaluator,
+        qualification_case_workers=max(1, int(qualification_case_workers)),
     )
 
 
@@ -498,124 +509,32 @@ def _retire_post_selection_provider(provider: Any) -> None:
         provider.close()
 
 
-def execute_post_selection_run(
+def evaluate_post_selection_run_candidates(
     context: PostSelectionContext,
     *,
     run_plan: Any,
-    budget_policy: Any,
-    training_frame_uids: Sequence[str],
+    runtime_plan: Any,
+    materialization: Any,
+    material_directory: Path,
+    checkpoint_directory: Path,
+    summary: Any,
     monitor_frame_uids: Sequence[str],
-    outer_evaluation_frame_uids: Sequence[str] | None,
-) -> tuple[PostSelectionRunEvidence, Any, Any]:
-    """Run one post-selection job end to end and return its bound evidence.
+    replay_resolution: Any,
+) -> tuple[Any, Any, Any]:
+    """Evaluate the run's checkpoint candidates and freeze its representative.
 
-    Order matters and is enforced by construction: the representative is frozen
-    from the run's own monitor before the held-out outer data is evaluated at
-    all, so outer evidence cannot influence the checkpoint it judges.
+    This is the one implementation of "which checkpoint does this run publish,
+    and what were its exact M3 target metrics".  It is used both while a run
+    executes and when an already completed run's durable representative records
+    have to be recovered, so recovery re-evaluates through the real EVAL2 owner
+    instead of reconstructing evidence from stored digests.
     """
 
     from .eval2 import assess_eval2_checkpoint
 
     selected = context.selected
-    run_root = context.run_root(run_plan.run_identity)
-    material_directory = run_root / "materialization"
-    checkpoint_directory = run_root / "checkpoints"
-    checkpoint_directory.mkdir(parents=True, exist_ok=True)
-    optimizer_policy = _optimizer_policy_for(
-        context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
-    )
-    extxyz_policy = context.method_policies.extxyz
     admissibility = context.method_policies.checkpoint_admissibility
-    replay_resolution = None
-    if admissibility.replay_enabled:
-        replay_resolution = _resolve_post_selection_replay_resolution(
-            context, require_train=True
-        )
-        if replay_resolution is None or replay_resolution.monitor_artifact is None:
-            raise PostSelectionError(
-                "Could not resolve TRUE_DFT replay monitor artifact for replay-enabled run."
-            )
-
-    preparation, materialization = materialize_post_selection_run(
-        selected,
-        run_plan=run_plan,
-        method=context.method,
-        training_frame_uids=training_frame_uids,
-        monitor_frame_uids=monitor_frame_uids,
-        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
-        optimizer_policy=optimizer_policy,
-        extxyz_policy=extxyz_policy,
-        output_directory=material_directory,
-        common_training_policy=context.method_policies.common_training,
-        mace_architecture=context.method_policies.mace_architecture,
-        foundation_model=context.method_policies.foundation_model,
-        foundation_head=context.method_policies.foundation_head,
-        multiheads_finetuning=(
-            context.method_policies.training_mode == "multihead_replay"
-        ),
-        replay_train=(
-            None if replay_resolution is None else replay_resolution.train_path
-        ),
-        replay_monitor=(
-            None if replay_resolution is None else replay_resolution.monitor_path
-        ),
-    )
-    runtime_plan = post_selection_runtime_plan(
-        method=context.method,
-        optimizer_policy=optimizer_policy,
-        budget_policy=budget_policy,
-        structures_per_epoch=len(preparation.membership),
-        learning_rate_policy=context.method_policies.learning_rate_schedule,
-        replay_monitor_enabled=admissibility.replay_enabled,
-        true_replay_monitor_sha256=(
-            replay_resolution.monitor_artifact.sha256
-            if replay_resolution is not None
-            else None
-        ),
-        target_head_name=context.method_policies.target_head_name,
-        replay_head_name=context.method_policies.replay_head_name,
-    )
-    summary = context.trainer(
-        PostSelectionRungRequest(
-            plan=runtime_plan,
-            run_plan=run_plan,
-            materialization=materialization,
-            materialization_directory=material_directory,
-            checkpoint_directory=checkpoint_directory,
-            optimizer_policy=optimizer_policy,
-            foundation_identity=context.method_policies.foundation_potential_identity,
-            foundation_model_path=(
-                Path(context.method_policies.foundation_model)
-                if context.method_policies.foundation_model
-                else None
-            ),
-            replay_train_artifact=(
-                replay_resolution.train_artifact
-                if replay_resolution is not None
-                else None
-            ),
-            replay_train_path=(
-                Path(replay_resolution.train_path)
-                if replay_resolution is not None and replay_resolution.train_path is not None
-                else None
-            ),
-            replay_monitor_artifact=(
-                replay_resolution.monitor_artifact
-                if replay_resolution is not None
-                else None
-            ),
-            replay_monitor_path=(
-                Path(replay_resolution.monitor_path)
-                if replay_resolution is not None
-                and replay_resolution.monitor_path is not None
-                else None
-            ),
-        )
-    )
-    if summary.plan_digest != runtime_plan.content_digest:
-        raise PostSelectionExecutionError(
-            "The TRAIN2 runtime summary does not belong to this run's runtime plan."
-        )
+    extxyz_policy = context.method_policies.extxyz
 
     candidates = post_selection_checkpoint_candidates(
         run_plan=run_plan,
@@ -789,6 +708,138 @@ def execute_post_selection_run(
         representative.stable_candidate_identity
     ]
 
+    return catalog, representative, monitor_metrics
+
+
+def execute_post_selection_run(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    training_frame_uids: Sequence[str],
+    monitor_frame_uids: Sequence[str],
+    outer_evaluation_frame_uids: Sequence[str] | None,
+) -> tuple[PostSelectionRunEvidence, Any, Any]:
+    """Run one post-selection job end to end and return its bound evidence.
+
+    Order matters and is enforced by construction: the representative is frozen
+    from the run's own monitor before the held-out outer data is evaluated at
+    all, so outer evidence cannot influence the checkpoint it judges.
+    """
+
+    selected = context.selected
+    run_root = context.run_root(run_plan.run_identity)
+    material_directory = run_root / "materialization"
+    checkpoint_directory = run_root / "checkpoints"
+    checkpoint_directory.mkdir(parents=True, exist_ok=True)
+    optimizer_policy = _optimizer_policy_for(
+        context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
+    )
+    extxyz_policy = context.method_policies.extxyz
+    admissibility = context.method_policies.checkpoint_admissibility
+    replay_resolution = None
+    if admissibility.replay_enabled:
+        replay_resolution = _resolve_post_selection_replay_resolution(
+            context, require_train=True
+        )
+        if replay_resolution is None or replay_resolution.monitor_artifact is None:
+            raise PostSelectionError(
+                "Could not resolve TRUE_DFT replay monitor artifact for replay-enabled run."
+            )
+
+    preparation, materialization = materialize_post_selection_run(
+        selected,
+        run_plan=run_plan,
+        method=context.method,
+        training_frame_uids=training_frame_uids,
+        monitor_frame_uids=monitor_frame_uids,
+        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+        optimizer_policy=optimizer_policy,
+        extxyz_policy=extxyz_policy,
+        output_directory=material_directory,
+        common_training_policy=context.method_policies.common_training,
+        mace_architecture=context.method_policies.mace_architecture,
+        foundation_model=context.method_policies.foundation_model,
+        foundation_head=context.method_policies.foundation_head,
+        multiheads_finetuning=(
+            context.method_policies.training_mode == "multihead_replay"
+        ),
+        replay_train=(
+            None if replay_resolution is None else replay_resolution.train_path
+        ),
+        replay_monitor=(
+            None if replay_resolution is None else replay_resolution.monitor_path
+        ),
+    )
+    runtime_plan = post_selection_runtime_plan(
+        method=context.method,
+        optimizer_policy=optimizer_policy,
+        budget_policy=budget_policy,
+        structures_per_epoch=len(preparation.membership),
+        learning_rate_policy=context.method_policies.learning_rate_schedule,
+        replay_monitor_enabled=admissibility.replay_enabled,
+        true_replay_monitor_sha256=(
+            replay_resolution.monitor_artifact.sha256
+            if replay_resolution is not None
+            else None
+        ),
+        target_head_name=context.method_policies.target_head_name,
+        replay_head_name=context.method_policies.replay_head_name,
+    )
+    summary = context.trainer(
+        PostSelectionRungRequest(
+            plan=runtime_plan,
+            run_plan=run_plan,
+            materialization=materialization,
+            materialization_directory=material_directory,
+            checkpoint_directory=checkpoint_directory,
+            optimizer_policy=optimizer_policy,
+            foundation_identity=context.method_policies.foundation_potential_identity,
+            foundation_model_path=(
+                Path(context.method_policies.foundation_model)
+                if context.method_policies.foundation_model
+                else None
+            ),
+            replay_train_artifact=(
+                replay_resolution.train_artifact
+                if replay_resolution is not None
+                else None
+            ),
+            replay_train_path=(
+                Path(replay_resolution.train_path)
+                if replay_resolution is not None and replay_resolution.train_path is not None
+                else None
+            ),
+            replay_monitor_artifact=(
+                replay_resolution.monitor_artifact
+                if replay_resolution is not None
+                else None
+            ),
+            replay_monitor_path=(
+                Path(replay_resolution.monitor_path)
+                if replay_resolution is not None
+                and replay_resolution.monitor_path is not None
+                else None
+            ),
+        )
+    )
+    if summary.plan_digest != runtime_plan.content_digest:
+        raise PostSelectionExecutionError(
+            "The TRAIN2 runtime summary does not belong to this run's runtime plan."
+        )
+
+    catalog, representative, monitor_metrics = evaluate_post_selection_run_candidates(
+        context,
+        run_plan=run_plan,
+        runtime_plan=runtime_plan,
+        materialization=materialization,
+        material_directory=material_directory,
+        checkpoint_directory=checkpoint_directory,
+        summary=summary,
+        monitor_frame_uids=monitor_frame_uids,
+        replay_resolution=replay_resolution,
+    )
+
     outer_metrics = None
     if outer_evaluation_frame_uids:
         checkpoint = catalog.checkpoint_by_sha256(
@@ -838,8 +889,127 @@ def execute_post_selection_run(
     store = context.evidence_store
     store.put(preparation)
     store.put(materialization)
+    # The exact records that *decided* this run's representative are durable
+    # evidence, not intermediate state.  A later cross-seed publication decision
+    # has to authenticate them rather than reconstruct a ranking from digests.
+    store.put(representative)
+    store.put(monitor_metrics)
     store.put(evidence)
     return evidence, representative, outer_metrics
+
+
+def authenticated_run_representative_records(
+    context: PostSelectionContext, run_plan: Any, evidence: PostSelectionRunEvidence
+) -> tuple[Any, Any]:
+    """Return one completed run's exact representative EVAL2 and M3 records.
+
+    Newly executed runs publish both records durably, so the normal path is an
+    authenticated content-addressed read.  A run root written before those
+    records were durable is *re-evaluated through the real EVAL2/provider
+    owner* on the exact authenticated checkpoints and frozen M3; the recovered
+    records must reproduce the digests the run evidence already bound, or the
+    run is not authentic.  Nothing here synthesizes a record from a digest.
+    """
+
+    from .eval2 import Eval2CheckpointRecord, Eval2TargetMetricRecord
+
+    store = context.evidence_store
+    if store.has(evidence.representative_record_digest) and store.has(
+        evidence.monitor_metric_record_digest
+    ):
+        return (
+            store.get(evidence.representative_record_digest, Eval2CheckpointRecord.from_dict),
+            store.get(evidence.monitor_metric_record_digest, Eval2TargetMetricRecord.from_dict),
+        )
+    representative, monitor_metrics = _reevaluate_run_representative_records(
+        context, run_plan, evidence
+    )
+    if (
+        representative.content_digest != evidence.representative_record_digest
+        or monitor_metrics.content_digest != evidence.monitor_metric_record_digest
+    ):
+        raise PostSelectionError(
+            f"Re-evaluating completed production run {run_plan.run_identity[:12]}... "
+            "did not reproduce the representative/monitor evidence it published. "
+            "The affected final-production work must be rerun; a publication "
+            "decision is never taken on reconstructed evidence."
+        )
+    store.put(representative)
+    store.put(monitor_metrics)
+    return representative, monitor_metrics
+
+
+def _reevaluate_run_representative_records(
+    context: PostSelectionContext, run_plan: Any, evidence: PostSelectionRunEvidence
+) -> tuple[Any, Any]:
+    """Recover a legacy run's representative records through the real owner."""
+
+    from .post_selection_execution import (
+        PostSelectionFittedPreparation,
+        PostSelectionMaterialization,
+    )
+    from .train2_runtime import load_train2_runtime_summary
+
+    run_root = context.run_root(run_plan.run_identity)
+    material_directory = run_root / "materialization"
+    checkpoint_directory = run_root / "checkpoints"
+    materialization = context.evidence_store.get(
+        evidence.materialization_digest, PostSelectionMaterialization.from_dict
+    )
+    preparation = context.evidence_store.get(
+        evidence.preparation_digest, PostSelectionFittedPreparation.from_dict
+    )
+    summary = load_train2_runtime_summary(checkpoint_directory)
+    if summary.content_digest != evidence.runtime_summary_digest:
+        raise PostSelectionError(
+            f"The stored TRAIN2 runtime summary for {run_plan.run_identity[:12]}... "
+            "does not match the summary its run evidence bound."
+        )
+    admissibility = context.method_policies.checkpoint_admissibility
+    replay_resolution = None
+    if admissibility.replay_enabled:
+        replay_resolution = _resolve_post_selection_replay_resolution(
+            context, require_train=True
+        )
+    optimizer_policy = _optimizer_policy_for(
+        context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
+    )
+    _m3_size, m3_membership, _m3_digest = frozen_m3_development_evidence(context.selected)
+    runtime_plan = post_selection_runtime_plan(
+        method=context.method,
+        optimizer_policy=optimizer_policy,
+        budget_policy=final_production_training_budget_policy(
+            context.method, context.production_policy
+        ),
+        structures_per_epoch=len(preparation.membership),
+        learning_rate_policy=context.method_policies.learning_rate_schedule,
+        replay_monitor_enabled=admissibility.replay_enabled,
+        true_replay_monitor_sha256=(
+            replay_resolution.monitor_artifact.sha256
+            if replay_resolution is not None and replay_resolution.monitor_artifact is not None
+            else None
+        ),
+        target_head_name=context.method_policies.target_head_name,
+        replay_head_name=context.method_policies.replay_head_name,
+    )
+    if summary.plan_digest != runtime_plan.content_digest:
+        raise PostSelectionError(
+            f"The completed production run {run_plan.run_identity[:12]}... cannot be "
+            "deterministically re-evaluated: its runtime plan is no longer "
+            "reproducible from current authority. Rerun the affected work."
+        )
+    _catalog, representative, monitor_metrics = evaluate_post_selection_run_candidates(
+        context,
+        run_plan=run_plan,
+        runtime_plan=runtime_plan,
+        materialization=materialization,
+        material_directory=material_directory,
+        checkpoint_directory=checkpoint_directory,
+        summary=summary,
+        monitor_frame_uids=m3_membership,
+        replay_resolution=replay_resolution,
+    )
+    return representative, monitor_metrics
 
 
 def _checkpoint_catalog(run_plan: Any, checkpoint_directory: Path) -> Any:
@@ -1082,7 +1252,11 @@ def resolve_current_cv_acceptance(
 
 def execute_final_production(
     context: PostSelectionContext,
-) -> tuple[FinalProductionPlan, tuple[PostSelectionRunEvidence, ...]]:
+) -> tuple[
+    FinalProductionPlan,
+    tuple[PostSelectionRunEvidence, ...],
+    "FinalProductionPublicationDecision",
+]:
     """Authorize and run fresh full-``T_selected`` production.
 
     Authorization is checked before any bytes are written: a missing, stale, or
@@ -1164,7 +1338,14 @@ def execute_final_production(
         )
         _record_completed_run_evidence(context, run_plan, run_evidence)
         evidence.append(run_evidence)
-    return final_plan, tuple(evidence)
+
+    # Deciding which of the completed seeds constitute the released product is
+    # the last pre-qualification act, and it belongs here: every input it uses
+    # already exists, and no downstream release evidence does yet.  Taking the
+    # decision any later would let release evidence choose the product.
+    completion = FinalProductionCompletion(plan=final_plan, runs=tuple(evidence))
+    decision = publish_final_production_publication(context, context.store, completion)
+    return final_plan, tuple(evidence), decision
 
 
 def resolve_current_final_production_plan(
@@ -1358,7 +1539,7 @@ def execute_current_train_production(args: Any) -> int:
         f"producing N_selected={context.selected.n_selected}",
     )
     try:
-        final_plan, evidence = execute_final_production(context)
+        final_plan, evidence, decision = execute_final_production(context)
     except Exception as exc:
         _mark_stage(
             store,
@@ -1374,12 +1555,17 @@ def execute_current_train_production(args: Any) -> int:
         f"{final_plan.planned_epochs} configured [training].max_num_epochs, "
         "under the cross-validation-accepted method"
     )
+    _ok(
+        f"published the final product under `{decision.committee_policy}`: "
+        f"member(s) {list(decision.published_member_ids)} on target head "
+        f"`{decision.target_head_name}`"
+    )
     _mark_stage(
         store,
         paths,
         "post_selection_final_production",
         StageState.COMPLETE,
-        f"final plan {final_plan.content_digest[:12]}",
+        f"final publication {decision.content_digest[:12]}",
     )
     return 0
 
@@ -1401,6 +1587,9 @@ __all__ = [
     "execute_post_selection_run",
     "resolve_current_cv_acceptance",
     "resolve_current_cv_plan",
+    "authenticated_run_representative_records",
+    "evaluate_post_selection_run_candidates",
     "resolve_current_final_production_completion",
+    "resolve_current_final_production_publication",
     "resolve_current_final_production_plan",
 ]

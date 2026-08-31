@@ -50,6 +50,11 @@ from .identity import (
     resolve_executable_candidate_identity,
 )
 from .locked import LockedActivationRecord
+from ..post_selection_reclosure import (
+    PREDECESSOR_RECLOSURE_SCHEMA,
+    PredecessorReclosureRecord,
+    resolve_current_predecessor_reclosure,
+)
 from .plan import (
     PhysicalValidationBase,
     PhysicalValidationPlan,
@@ -80,11 +85,21 @@ from .runtime import (
     activate_locked_test,
     build_qualification_session,
     resolve_current_locked_activation,
+    resolve_current_qualification_plan,
     resolve_current_qualification_verdict,
+    resolve_current_release_evidence,
     run_qualification,
 )
 from .runtime_capability import LammpsRuntimeProbe, probe_lammps_runtime
 from .spec import resolve_qualification_spec_identity
+from .stress import (
+    CANONICAL_STRESS_UNITS,
+    CANONICAL_VOIGT_ORDER,
+    canonical_stress_from_virial,
+    canonical_stress_tensor,
+    normalize_stress_units,
+    stress_of,
+)
 from .store import (
     QualificationAttemptState,
     QualificationEvidenceStore,
@@ -115,6 +130,8 @@ __all__ = [
     "PhysicalReferenceRequest",
     "PhysicalValidationBase",
     "PhysicalValidationPlan",
+    "PREDECESSOR_RECLOSURE_SCHEMA",
+    "PredecessorReclosureRecord",
     "ProductionQualificationPlan",
     "ProductionQualificationRecord",
     "PublishedProductionMember",
@@ -133,6 +150,11 @@ __all__ = [
     "ReferenceObservation",
     "ReleaseEvidenceIndex",
     "activate_locked_test",
+    "canonical_stress_tensor",
+    "canonical_stress_from_virial",
+    "normalize_stress_units",
+    "CANONICAL_STRESS_UNITS",
+    "CANONICAL_VOIGT_ORDER",
     "build_physical_reference_request",
     "build_physical_validation_plan",
     "build_qualification_retention_fence",
@@ -147,10 +169,14 @@ __all__ = [
     "qualification_root",
     "resolve_authenticated_final_publication",
     "resolve_current_locked_activation",
+    "resolve_current_predecessor_reclosure",
+    "resolve_current_qualification_plan",
     "resolve_current_qualification_verdict",
+    "resolve_current_release_evidence",
     "resolve_evidence_role_membership",
     "resolve_executable_candidate_identity",
     "resolve_qualification_spec_identity",
     "run_qualification",
+    "stress_of",
     "write_reference_bundle",
 ]

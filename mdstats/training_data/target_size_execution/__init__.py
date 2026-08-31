@@ -140,8 +140,10 @@ from .export import (
     write_target_size_extxyz_artifact,
 )
 from .persistence import (
+    artifact_publication_lock,
     publish_immutable_bytes_create_or_verify,
     publish_immutable_json_create_or_verify,
+    publish_mutable_json_atomic,
 )
 from .schedule import (
     FRESH_FINAL_PRODUCTION_HORIZON_EPOCHS,
@@ -152,6 +154,7 @@ from .schedule import (
 )
 
 __all__ = [
+    "artifact_publication_lock",
     "authenticate_train2_checkpoint_provider",
     "CommonAtomicReferenceFit",
     "EVALUATION_MODEL_STATE_EMA",
@@ -269,6 +272,7 @@ __all__ = [
     "validate_target_size_materialization",
     "publish_immutable_bytes_create_or_verify",
     "publish_immutable_json_create_or_verify",
+    "publish_mutable_json_atomic",
     "write_target_size_evaluation_artifact",
     "write_target_size_extxyz_artifact",
     "seed_neutral_optimizer_policy_digest",

@@ -1413,6 +1413,7 @@ current selected binding
     -> CV policy / final-production policy
     -> CV plan / final-production plan
     -> fold/final evidence
+    -> final-production publication decision
 ```
 
 Cross-validation uses exactly `T_selected`, preserves P1 protected relations,
@@ -1420,6 +1421,42 @@ requires every configured fold and seed, and accepts or rejects the method.
 It cannot alter `N_selected`. Final production starts fresh from the accepted
 foundation and trains the complete selected set under
 `[training].max_num_epochs`; it cannot continue a screen or CV run.
+
+### The final-production publication decision
+
+Deciding *which* completed production seeds constitute the released product is
+the last pre-qualification act, and it is owned here rather than downstream.
+`train-production` takes it immediately after the required seeds complete, when
+every input it needs already exists and no downstream release evidence does. If
+the decision were taken later, "the committee" would silently become "the
+members that survived qualification" - member selection on release evidence.
+
+Each completed run durably publishes the exact records that chose its
+representative: the representative EVAL2/admissibility record and its M3 target
+metric record. Those were previously referenced by digest only, which left no
+authenticatable basis for any cross-seed decision. A run root written before
+they were durable is *re-evaluated* through the real EVAL2/provider owner on its
+exact authenticated checkpoints and must reproduce the digests its run evidence
+already bound; nothing is ever synthesized from a digest.
+
+The decision record binds the selected binding, the final plan and policy, the
+accepted CV/method lineage, the frozen M3 membership, every required seed's run
+evidence and representative identity, the canonical target head, the committee
+policy, the exact ordered published member set, and a deterministic
+decision-policy identity. Both configured policies are supported:
+
+- `all_qualified_final_seeds` publishes every required seed whose already-frozen
+  representative is admissible under the accepted checkpoint policy;
+- `single_best_final_seed` ranks only those already-frozen representatives with
+  the accepted target-only EVAL2 ordering over the common frozen M3 evidence,
+  with tie material descending from the final-production plan identity, and
+  publishes the first canonical admissible representative.
+
+No downstream metric, target-size statistic, physical score, or locked score
+participates, replay evidence remains admissibility-only, and there is no API
+that adds, removes, or reorders a member afterwards. A decision that no longer
+binds the current lineage stays on disk as historical evidence and is
+unreachable as the current product.
 
 Every current consumer re-resolves the selected binding and current campaign
 revision before exposing a descendant. A stale caller-held object, checkpoint,
@@ -1484,10 +1521,54 @@ accepted current selected binding (P4)
     ProductionQualificationRecord -> ReleaseEvidenceIndex
 ```
 
-The publication resolver is the accepted P5 completion owner; qualification adds
-no publication, membership registry, or member-selection rule. When the
-configured committee policy cannot be frozen from pre-qualification predecessor
-evidence, qualification fails closed rather than inventing a ranking.
+The publication resolver is the accepted P5 publication-decision owner;
+qualification copies that decision's own ordered member set and adds no
+publication, membership registry, or member-selection rule of its own. Both
+committee policies are decided upstream, so qualification contains no cross-seed
+ranking at all.
+
+The exact canonical P5 target head travels with every published member and is
+part of both the member identity and the deployment identity, so an artifact
+exported from the replay or foundation head is a different product rather than
+the same product serialized differently. The deployment export and the ML-IAP
+builder are both called with that head; neither accepts `None` for a
+multihead-capable product. Deployed artifacts are published create-once under an
+advisory per-artifact lock and are re-authenticated from a durable receipt and
+their bytes before every reuse, including after a process restart - a full
+PyTorch model pickle is not byte-deterministic, so identity is carried by the
+receipt rather than inferred from the bytes.
+
+Every public qualification resolver re-establishes the current
+`QualificationInputBinding` at exposure time and validates the located object
+against it. The campaign-store pointer is a locator only: a terminal verdict
+published under an older specification, executable, environment, or product is
+historical, never current, and `qualification status` cannot print it as a
+current release verdict. Locked disclosure history is deliberately kept outside
+that fence, in an append-only reveal index, so a currentness change can make a
+verdict historical but can never make a revealed cohort fresh again.
+
+Reference-dependent components are keyed by a component-input identity that
+includes the exact frozen request and the exact authenticated bundle, so
+replacing a bundle under the same request stales local PES, relaxation, and
+dynamics while leaving deployment and calibration evidence reusable. Dynamics
+runs from the authenticated reference-relaxed coordinates of each physical base,
+never from the unrelaxed base geometry, and its reducer - not the runtime worker
+- decides NVT/NVE temperature behaviour, energy drift, safety bounds, and
+protected topology, displacement, bond, and angle degradation under thresholds
+frozen before execution, including an explicit consecutive-sample persistence
+rule that separates transient noise from real damage.
+
+Locked activation is an irreversible *open* event rather than proof the
+evaluation completed. A crash between opening the cohort and publishing the
+result is resumable onto the same activation identity; only a genuinely terminal
+result makes a second activation a rejected duplicate.
+
+Qualification concurrency and nested thread budgets come from the accepted
+campaign resource owner, and the resolved resource scope is bound to the attempt
+separately from the numerical environment identity, so machine capacity is
+recorded without making a deterministic numerical claim machine-specific while a
+materially different resource scope still cannot silently reuse a
+performance claim.
 
 Downstream evidence has pass, reject, and waiting authority for the exact
 frozen product and nothing else. A failure never changes `N_selected`,

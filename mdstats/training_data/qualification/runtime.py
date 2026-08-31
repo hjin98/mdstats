@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 import hashlib
 import json
+import os
+import shutil
 
 import numpy as np
 
@@ -86,9 +88,15 @@ from .reference import (
     load_reference_bundle,
     publish_reference_request,
 )
-from .runtime_capability import deployed_static_evaluation, execute_lammps_request, write_lammps_data
+from .runtime_capability import (
+    deployed_static_observation,
+    execute_lammps_request,
+    write_lammps_data,
+)
+from .resource_scope import resource_scope_digest, resource_scope_payload
 from .spec import enabled_components, resolve_qualification_spec_identity
 from .store import (
+    _atomic_write_json,
     QualificationEvidenceStore,
     POINTER_LOCKED_ACTIVATION,
     POINTER_QUALIFICATION_PLAN,
@@ -102,16 +110,23 @@ from .store import (
     resolve_current_qualification_record,
 )
 
-#: The independently accepted P1-P6 baseline this qualification descends from.
-#: These are audit anchors recorded in release evidence; executable currentness
-#: is decided by the source-tree identity, never by a branch head.
-ACCEPTED_PREDECESSOR_EXECUTABLE_COMMIT = "f55d59b28c9db890dcb6a3c167a067ef5f37e8a2"
-ACCEPTED_PREDECESSOR_EXECUTABLE_TREE = "e9a6d5f9d1a798f07dab88bd56dafcc73fe0e491"
-ACCEPTED_PREDECESSOR_EVIDENCE_COMMIT = "82371ecdab5f981255d0853a11477596be2623d3"
-
 COMPONENT_POSITION_DIRECTORY = "components"
 
+_DEPLOYMENT_RECEIPT_SCHEMA = "mdstats.qualification-deployment-receipt.v1"
+
+
+def _callable_identity(function: Callable[..., Any]) -> str:
+    """Stable identity of an injected owner/seam, for artifact identity."""
+
+    module = getattr(function, "__module__", "?")
+    name = getattr(function, "__qualname__", getattr(function, "__name__", repr(function)))
+    return f"{module}.{name}"
+
 DEFAULT_REFERENCE_PROTOCOL = "external-reference-protocol-unset"
+
+_REFERENCE_DEPENDENT_COMPONENTS = frozenset(
+    {COMPONENT_PHYSICAL_PES, COMPONENT_RELAXATION, COMPONENT_DYNAMICS}
+)
 
 
 def _reference_root(cfg: Mapping[str, Any], paths: Any) -> Path:
@@ -132,12 +147,71 @@ def _reference_protocol(cfg: Mapping[str, Any]) -> str:
     return DEFAULT_REFERENCE_PROTOCOL
 
 
+def _require_explicit_reference_protocol(
+    cfg: Mapping[str, Any], specification: QualificationSpecIdentity
+) -> str:
+    protocol = _reference_protocol(cfg).strip()
+    needs_reference = bool(
+        _REFERENCE_DEPENDENT_COMPONENTS
+        & (set(specification.required_components) | set(specification.optional_components))
+    )
+    if needs_reference and (
+        not protocol or protocol == DEFAULT_REFERENCE_PROTOCOL
+        or protocol.lower() in {"unset", "none", "placeholder"}
+    ):
+        raise QualificationError(
+            "Required production reference qualification needs an explicit, non-"
+            "placeholder [qualification.reference].protocol identity before the "
+            "reference request is published."
+        )
+    return protocol
+
+
+def _qualification_resource_scope(
+    cfg: Mapping[str, Any], *, device: str, requested_workers: int
+) -> tuple[Any, Any, str]:
+    """Resolve P7 execution resources through the campaign resource owner."""
+
+    from ..resources import build_stage_resource_scope, detect_system_resources
+
+    performance = cfg.get("performance", {})
+    if not isinstance(performance, Mapping):
+        performance = {}
+    resources = detect_system_resources(
+        cpu_fraction=float(performance.get("cpu_fraction", 0.9)),
+        ram_fraction=float(performance.get("ram_fraction", 0.8)),
+        gpu_memory_fraction=float(performance.get("gpu_memory_fraction", 0.9)),
+        device=str(device),
+    )
+    requested = int(requested_workers)
+    if requested < 0:
+        raise TrainingDataInputError("qualification case_workers must be zero or positive")
+    python_workers = (
+        int(resources.cpu_threads_budget)
+        if requested == 0
+        else min(requested, int(resources.cpu_threads_budget))
+    )
+    scope = build_stage_resource_scope(
+        resources,
+        stage_name="post-production-qualification",
+        python_workers=max(1, python_workers),
+        structural_workers=1,
+        tree_workers=1,
+        blas_threads=1,
+        native_openmp_threads=1,
+        pytorch_cpu_workers=1,
+        gpu_jobs=1 if bool(resources.gpu.available) else 0,
+    )
+    return resources, scope, resource_scope_digest(resources, scope)
+
+
 @dataclass
 class QualificationSession:
     """One resolved qualification invocation over one frozen product."""
 
     context: Any
     publication: AuthenticatedFinalPublication
+    predecessor_reclosure: Any
     binding: QualificationInputBinding
     plan: ProductionQualificationPlan
     store: QualificationEvidenceStore
@@ -149,29 +223,157 @@ class QualificationSession:
     deployed_evaluator: Callable[..., DeployedEvaluation] | None = None
     dynamics_runner: Callable[..., Mapping[str, Any]] | None = None
     case_workers: int = 1
+    resources: Any | None = None
+    resource_scope: Any | None = None
+    resource_scope_material: Mapping[str, Any] | None = None
     _deployment_cache: dict[str, tuple[Path, str]] = field(default_factory=dict, repr=False)
 
     # -- artifact plumbing ---------------------------------------------------
-    def deployed_artifact(self, member: PublishedProductionMember) -> tuple[Path, str]:
-        """Build (once per attempt) the exact artifact the runtime executes."""
+    def deployment_identity(self, member: PublishedProductionMember) -> str:
+        """What makes two deployed artifacts the same product, exactly.
 
-        if member.member_id in self._deployment_cache:
-            return self._deployment_cache[member.member_id]
-        root = self.attempt_root / "deployment" / member.member_id
-        root.mkdir(parents=True, exist_ok=True)
-        source = checkpoint_path_for_member(self.context, member)
-        artifact = self.deployment_exporter(
-            source,
-            root,
-            deployment_dtype=self.binding.environment.default_dtype,
-            target_head=None,
+        The canonical target head is part of the identity: an artifact exported
+        from the replay or foundation head is a different product, not the same
+        product serialized differently.
+        """
+
+        return digest(
+            {
+                "schema": "mdstats.qualification-deployment-identity.v1",
+                "publication_digest": self.binding.publication_digest,
+                "member_id": member.member_id,
+                "representative_checkpoint_sha256": member.representative_checkpoint_sha256,
+                "target_head_name": member.target_head_name,
+                "resource_scope_digest": self.binding.resource_scope_digest,
+                "deployment_dtype": self.binding.environment.default_dtype,
+                "exporter": _callable_identity(self.deployment_exporter),
+                "mliap_builder": _callable_identity(self.mliap_builder),
+            }
         )
-        deployment_path = root / str(getattr(artifact, "deployment_relative_path", "deployment.model"))
+
+    def _deployment_root(self, member: PublishedProductionMember) -> Path:
+        return self.attempt_root / "deployment" / self.deployment_identity(member)[:16]
+
+    def deployed_artifact(self, member: PublishedProductionMember) -> tuple[Path, str]:
+        """Return the exact deployed artifact this member's product executes.
+
+        Construction is create-once under an advisory per-artifact lock, so two
+        concurrent dynamics cases for the same member converge on one artifact
+        rather than racing to write the same path. Reuse - including after a
+        process restart with an empty in-memory cache - is authenticated from
+        the durable receipt and the artifact bytes, never from a cache hit: a
+        full PyTorch model pickle is not byte-deterministic, so identity has to
+        be carried by the receipt rather than inferred from the bytes.
+        """
+
+        from ..target_size_execution import artifact_publication_lock
+
+        identity = self.deployment_identity(member)
+        cached = self._deployment_cache.get(identity)
+        if cached is not None and self._authenticated_artifact(cached[0], cached[1]):
+            return cached
+        root = self._deployment_root(member)
+        root.mkdir(parents=True, exist_ok=True)
         mliap_path = root / "deployment-mliap.pt"
-        self.mliap_builder(deployment_path, mliap_path, head=None)
-        sha = hashlib.sha256(mliap_path.read_bytes()).hexdigest()
-        self._deployment_cache[member.member_id] = (mliap_path, sha)
+        receipt_path = root / "deployment-receipt.json"
+        with artifact_publication_lock(mliap_path):
+            existing = self._reuse_published_artifact(member, identity, mliap_path, receipt_path)
+            if existing is not None:
+                self._deployment_cache[identity] = existing
+                return existing
+            sha = self._build_deployment_artifact(member, root, mliap_path)
+            _atomic_write_json(
+                receipt_path,
+                {
+                    "schema": _DEPLOYMENT_RECEIPT_SCHEMA,
+                    "deployment_identity": identity,
+                    "member_id": member.member_id,
+                    "representative_checkpoint_sha256": member.representative_checkpoint_sha256,
+                    "target_head_name": member.target_head_name,
+                    "resource_scope_digest": self.binding.resource_scope_digest,
+                    "deployment_dtype": self.binding.environment.default_dtype,
+                    "artifact_sha256": sha,
+                },
+            )
+        result = (mliap_path, sha)
+        self._deployment_cache[identity] = result
+        return result
+
+    def _reuse_published_artifact(
+        self,
+        member: PublishedProductionMember,
+        identity: str,
+        mliap_path: Path,
+        receipt_path: Path,
+    ) -> tuple[Path, str] | None:
+        if not (mliap_path.is_file() and receipt_path.is_file()):
+            return None
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise QualificationLineageError(
+                f"The deployed-artifact receipt at {receipt_path!s} is corrupt."
+            ) from exc
+        expected = {
+            "schema": _DEPLOYMENT_RECEIPT_SCHEMA,
+            "deployment_identity": identity,
+            "member_id": member.member_id,
+            "representative_checkpoint_sha256": member.representative_checkpoint_sha256,
+            "target_head_name": member.target_head_name,
+            "resource_scope_digest": self.binding.resource_scope_digest,
+            "deployment_dtype": self.binding.environment.default_dtype,
+        }
+        for key, value in expected.items():
+            if str(receipt.get(key)) != str(value):
+                raise QualificationLineageError(
+                    "A published deployed artifact binds a different "
+                    f"{key}; it is not this product's artifact."
+                )
+        sha = str(receipt.get("artifact_sha256", ""))
+        if not self._authenticated_artifact(mliap_path, sha):
+            raise QualificationLineageError(
+                "The deployed artifact bytes changed after publication; "
+                "qualification never executes a mutated artifact."
+            )
         return mliap_path, sha
+
+    @staticmethod
+    def _authenticated_artifact(path: Path, sha: str) -> bool:
+        if not path.is_file() or not sha:
+            return False
+        return hashlib.sha256(path.read_bytes()).hexdigest() == sha
+
+    def _build_deployment_artifact(
+        self, member: PublishedProductionMember, root: Path, mliap_path: Path
+    ) -> str:
+        """Export and convert into scratch, then place the artifact atomically."""
+
+        scratch = root / f".build-{os.getpid()}"
+        if scratch.exists():
+            shutil.rmtree(scratch, ignore_errors=True)
+        scratch.mkdir(parents=True, exist_ok=True)
+        try:
+            source = checkpoint_path_for_member(self.context, member)
+            artifact = self.deployment_exporter(
+                source,
+                scratch,
+                deployment_dtype=self.binding.environment.default_dtype,
+                target_head=member.target_head_name,
+            )
+            deployment_path = scratch / str(
+                getattr(artifact, "deployment_relative_path", "deployment.model")
+            )
+            staged = scratch / "deployment-mliap.pt"
+            self.mliap_builder(deployment_path, staged, head=member.target_head_name)
+            if not staged.is_file():
+                raise QualificationError(
+                    "The ML-IAP builder did not produce a deployed artifact."
+                )
+            sha = hashlib.sha256(staged.read_bytes()).hexdigest()
+            os.replace(staged, mliap_path)
+            return sha
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
 
     def _element_types(self, atoms: Any) -> tuple[str, ...]:
         from ase.data import chemical_symbols
@@ -187,23 +389,36 @@ class QualificationSession:
         if self.deployed_evaluator is not None:
             return self.deployed_evaluator(self, member, list(atoms_list))
         artifact_path, sha = self.deployed_artifact(member)
+        policy = self.binding.specification.component_policy(COMPONENT_DEPLOYMENT_PARITY)
         energies: list[float] = []
         forces: list[np.ndarray] = []
+        stresses: list[np.ndarray | None] = []
         root = self.attempt_root / "deployed" / member.member_id
         for index, atoms in enumerate(atoms_list):
-            energy, force = deployed_static_evaluation(
+            energy, force, stress = deployed_static_observation(
                 atoms,
                 artifact_path=artifact_path,
                 element_types=self._element_types(atoms),
                 working_directory=root / f"probe-{index}",
+                include_stress=bool(policy.get("stress_applicable", False)),
+                stress_units=str(policy.get("stress_units", "ev_per_angstrom3")),
+                stress_voigt_order=tuple(
+                    policy.get(
+                        "stress_voigt_order",
+                        ("xx", "yy", "zz", "xy", "yz", "xz"),
+                    )
+                ),
+                stress_sign=float(policy.get("stress_sign", 1.0)),
             )
             energies.append(energy)
             forces.append(force)
+            stresses.append(stress)
         return DeployedEvaluation(
             energies_ev=tuple(energies),
             forces_ev_per_angstrom=tuple(forces),
             artifact_sha256=sha,
             runtime_identity=self.binding.environment.content_digest,
+            stresses_ev_per_angstrom3=tuple(stresses),
         )
 
     def run_deployed_dynamics(
@@ -245,9 +460,41 @@ class QualificationSession:
                 "warmup_steps": int(policy["warmup_steps"]),
                 "propagation_steps": int(policy["propagation_steps"]),
                 "sample_interval_steps": int(policy["sample_interval_steps"]),
+                "include_stress": bool(policy.get("stress_applicable", False)),
+                "stress_sign": float(policy.get("stress_sign", 1.0)),
+                "stress_units": str(policy.get("stress_units", "ev_per_angstrom3")),
+                "stress_voigt_order": list(policy.get("stress_voigt_order", ("xx", "yy", "zz", "xy", "yz", "xz"))),
             },
             working_directory=root,
         )
+
+    def resolved_case_workers(self, task_count: int) -> int:
+        """Worker count for *task_count* cases, through the accepted owner.
+
+        Exposed so acceptance can prove that resource pressure reduces
+        concurrency without touching any scientific identity.
+        """
+
+        from ..resources import resolve_worker_count
+
+        if self.resources is None or self.resource_scope is None:
+            raise QualificationError(
+                "Qualification case execution has no accepted resource scope."
+            )
+        return int(
+            resolve_worker_count(
+                task_count=int(task_count),
+                resources=self.resources,
+                requested=int(self.case_workers),
+                estimated_bytes_per_worker=64 * 1024 * 1024,
+                maximum_workers=int(self.resource_scope.python_workers),
+            )
+        )
+
+    def authenticated_reference_bundle(self) -> Any | None:
+        """The authenticated external bundle for this attempt's frozen request."""
+
+        return load_reference_bundle(self.reference_root, self.reference_request)
 
     def map_cases(
         self, function: Callable[[Any], tuple[str, Any]], cases: Sequence[Any]
@@ -259,17 +506,32 @@ class QualificationSession:
         scientific content.
         """
 
-        from ..resources import available_cpu_threads
+        from ..resources import resolve_worker_count, stage_resource_scope
 
-        # Concurrency is bounded by the campaign's existing resource owner
-        # rather than by a qualification-private policy.
-        workers = max(1, min(int(self.case_workers), int(available_cpu_threads())))
+        if self.resources is None or self.resource_scope is None:
+            raise QualificationError(
+                "Qualification case execution has no accepted resource scope."
+            )
+        workers = resolve_worker_count(
+            task_count=len(cases),
+            resources=self.resources,
+            requested=int(self.case_workers),
+            # The estimate is deliberately conservative for the lossless raw
+            # dynamics observations retained by the reducer.  It affects only
+            # scheduling; it never changes a scientific input or threshold.
+            estimated_bytes_per_worker=64 * 1024 * 1024,
+            maximum_workers=int(self.resource_scope.python_workers),
+        )
         if workers == 1 or len(cases) <= 1:
-            return dict(function(case) for case in cases)
+            with stage_resource_scope(self.resource_scope):
+                return dict(function(case) for case in cases)
         from concurrent.futures import ThreadPoolExecutor
 
-        with ThreadPoolExecutor(max_workers=min(workers, len(cases))) as pool:
-            return dict(pool.map(function, cases))
+        # The scope's nested native-thread limits are applied around the whole
+        # pool, so every case observes the same accepted BLAS/OpenMP budget.
+        with stage_resource_scope(self.resource_scope):
+            with ThreadPoolExecutor(max_workers=min(workers, len(cases))) as pool:
+                return dict(pool.map(function, cases))
 
     # -- component position records -----------------------------------------
     def _position_path(self, component: str) -> Path:
@@ -277,11 +539,93 @@ class QualificationSession:
         root.mkdir(parents=True, exist_ok=True)
         return root / f"{component}.json"
 
-    def completed_component(self, component: str) -> QualificationComponentEvidence | None:
+    def _position_object_path(self, component: str, component_input_digest: str) -> Path:
+        from .._common import validate_digest
+
+        identity = validate_digest(component_input_digest, name="component_input_digest")
+        root = self.attempt_root / COMPONENT_POSITION_DIRECTORY / str(component)
+        root.mkdir(parents=True, exist_ok=True)
+        return root / f"{identity}.json"
+
+    def component_input_digest(
+        self, component: str, bundle: Any | None, *, extra: Mapping[str, Any] | None = None
+    ) -> str:
+        """Identity of the exact inputs consumed by one component.
+
+        Reference-dependent evidence is deliberately a descendant of the
+        authenticated bundle, while deployment/calibration remain reusable when
+        a new external bundle arrives for the same product.
+        """
+
+        payload: dict[str, Any] = {
+            "schema": "mdstats.qualification-component-input.v1",
+            "component": str(component),
+            "binding_digest": self.binding.content_digest,
+            "plan_digest": self.plan.content_digest,
+            # Only components that consume external observations depend on the
+            # request/bundle identity.  Deployment and calibration evidence is
+            # deliberately reusable when a missing reference bundle arrives
+            # later; otherwise the waiting-to-qualified transition would
+            # spuriously re-execute model-only work.
+            "reference_request_digest": (
+                self.reference_request.content_digest
+                if str(component) in _REFERENCE_DEPENDENT_COMPONENTS
+                else None
+            ),
+            "reference_bundle_digest": (
+                None
+                if bundle is None or str(component) not in _REFERENCE_DEPENDENT_COMPONENTS
+                else str(bundle.content_digest)
+            ),
+        }
+        if str(component) in _REFERENCE_DEPENDENT_COMPONENTS and bundle is not None:
+            payload["reference_geometry_identities"] = sorted(
+                str(key) for key in bundle.observations
+            )
+        if extra:
+            payload["extra"] = dict(extra)
+        return digest(payload)
+
+    def completed_component(
+        self, component: str, expected_input_digest: str | None = None
+    ) -> QualificationComponentEvidence | None:
         path = self._position_path(component)
         if not path.is_file():
             return None
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise QualificationLineageError(
+                f"Qualification component position {path!s} is corrupt."
+            ) from exc
+        object_path = None
+        if payload.get("position_object"):
+            relative = Path(str(payload["position_object"]))
+            if relative.is_absolute() or ".." in relative.parts:
+                raise QualificationLineageError(
+                    "Qualification component position points outside its attempt root."
+                )
+            object_path = self.attempt_root / relative
+            if not object_path.is_file():
+                raise QualificationLineageError(
+                    "Qualification component position refers to a missing immutable "
+                    "position object."
+                )
+            try:
+                object_payload = json.loads(object_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise QualificationLineageError(
+                    f"Qualification component position object {object_path!s} is corrupt."
+                ) from exc
+            if digest(object_payload) != str(payload.get("position_object_digest")):
+                raise QualificationLineageError(
+                    "Qualification component position locator does not authenticate "
+                    "its immutable position object."
+                )
+            payload = object_payload
+        input_digest = payload.get("component_input_digest")
+        if expected_input_digest is not None and str(input_digest) != str(expected_input_digest):
+            return None
         evidence = self.store.get(
             str(payload["evidence_digest"]), QualificationComponentEvidence.from_dict
         )
@@ -289,21 +633,55 @@ class QualificationSession:
             raise QualificationLineageError(
                 "Stored component evidence belongs to a different qualification identity."
             )
+        if expected_input_digest is not None and evidence.component_input_digest != str(
+            expected_input_digest
+        ):
+            return None
+        if input_digest is not None and evidence.component_input_digest != str(input_digest):
+            raise QualificationLineageError(
+                "Qualification component position and evidence input identities differ."
+            )
         return evidence
 
     def record_component(self, evidence: QualificationComponentEvidence) -> QualificationComponentEvidence:
-        from ..target_size_execution import publish_immutable_json_create_or_verify
+        from ..target_size_execution import (
+            publish_immutable_json_create_or_verify,
+            publish_mutable_json_atomic,
+        )
 
         self.store.put(evidence)
-        publish_immutable_json_create_or_verify(
-            self._position_path(evidence.component),
-            {
-                "component": evidence.component,
-                "binding_digest": self.binding.content_digest,
-                "evidence_digest": evidence.content_digest,
-            },
+        if evidence.component_input_digest is None:
+            raise QualificationLineageError(
+                "Durable component evidence must bind its exact component inputs."
+            )
+        position_payload = {
+            "schema": "mdstats.qualification-component-position.v1",
+            "component": evidence.component,
+            "binding_digest": self.binding.content_digest,
+            "component_input_digest": evidence.component_input_digest,
+            "evidence_digest": evidence.content_digest,
+        }
+        object_path = self._position_object_path(
+            evidence.component, evidence.component_input_digest
+        )
+        published = publish_immutable_json_create_or_verify(
+            object_path,
+            position_payload,
             deserializer=lambda payload: _PositionRecord(payload),
         )
+        relative = object_path.relative_to(self.attempt_root)
+        locator = {
+            "schema": "mdstats.qualification-component-position-locator.v1",
+            "component": evidence.component,
+            "binding_digest": self.binding.content_digest,
+            "component_input_digest": evidence.component_input_digest,
+            "evidence_digest": evidence.content_digest,
+            "position_object": str(relative),
+            "position_object_digest": digest(position_payload),
+        }
+        if published is None:  # pragma: no cover - the helper always returns an object
+            raise QualificationLineageError("Component position publication returned no record.")
+        publish_mutable_json_atomic(self._position_path(evidence.component), locator)
         return evidence
 
 
@@ -343,15 +721,28 @@ def build_qualification_session(
     from ..campaign_post_selection_runtime import build_post_selection_context
 
     context = build_post_selection_context(
-        cfg, paths, campaign_store, trainer=trainer, inference_evaluator=inference_evaluator
+        cfg,
+        paths,
+        campaign_store,
+        trainer=trainer,
+        inference_evaluator=inference_evaluator,
+        qualification_case_workers=case_workers,
     )
     publication = resolve_authenticated_final_publication(context)
     if publication is None:
         return None
+    from ..post_selection_reclosure import resolve_current_predecessor_reclosure
+
+    predecessor_reclosure = resolve_current_predecessor_reclosure(context)
     specification = resolve_qualification_spec_identity(cfg)
     environment = capture_environment_fingerprint(
         default_dtype=str(context.method_policies.common_training.default_dtype),
         device=str(context.method_policies.device),
+    )
+    resources, resource_scope, resource_digest = _qualification_resource_scope(
+        cfg,
+        device=str(context.method_policies.device),
+        requested_workers=case_workers,
     )
     executable = resolve_executable_candidate_identity()
     evidence_roles = resolve_evidence_role_membership(context)
@@ -363,6 +754,9 @@ def build_qualification_session(
         environment=environment,
         specification=specification,
         evidence_roles=evidence_roles,
+        resource_scope_digest=resource_digest,
+        predecessor_reclosure_digest=predecessor_reclosure.content_digest,
+        predecessor_executable_tree_digest=predecessor_reclosure.executable_source_tree_digest,
     )
     physical_plan = build_physical_validation_plan(
         context, evidence_roles=evidence_roles, specification=specification
@@ -374,18 +768,22 @@ def build_qualification_session(
     )
     root = attempt_root(paths, context.selected.binding, binding.attempt_identity)
     reference_root = _reference_root(cfg, paths) / physical_plan.content_digest[:16]
+    protocol = _require_explicit_reference_protocol(cfg, specification)
     request = build_physical_reference_request(
         context,
         physical_plan,
-        protocol_identity=_reference_protocol(cfg),
+        protocol_identity=protocol,
         include_relaxed=(
             COMPONENT_RELAXATION in specification.required_components
             or COMPONENT_RELAXATION in specification.optional_components
+            or COMPONENT_DYNAMICS in specification.required_components
+            or COMPONENT_DYNAMICS in specification.optional_components
         ),
     )
     return QualificationSession(
         context=context,
         publication=publication,
+        predecessor_reclosure=predecessor_reclosure,
         binding=binding,
         plan=plan,
         store=open_qualification_store(paths, context.selected.binding),
@@ -397,6 +795,9 @@ def build_qualification_session(
         deployed_evaluator=deployed_evaluator,
         dynamics_runner=dynamics_runner,
         case_workers=case_workers,
+        resources=resources,
+        resource_scope=resource_scope,
+        resource_scope_material=resource_scope_payload(resources, resource_scope),
     )
 
 
@@ -418,6 +819,7 @@ def _waiting_evidence(session: QualificationSession, component: str, detail: str
             "reference_protocol_identity": session.reference_request.protocol_identity,
             "reference_request_path": str(session.reference_root),
         },
+        component_input_digest=session.component_input_digest(component, None),
     )
 
 
@@ -435,7 +837,8 @@ def execute_nonlocked_components(
     bundle = load_reference_bundle(session.reference_root, session.reference_request)
     results: list[QualificationComponentEvidence] = []
     for component in session.plan.planned_components:
-        existing = session.completed_component(component)
+        expected_input_digest = session.component_input_digest(component, bundle)
+        existing = session.completed_component(component, expected_input_digest)
         if existing is not None:
             results.append(existing)
             continue
@@ -464,7 +867,16 @@ def execute_nonlocked_components(
                 )
             )
         elif component == COMPONENT_DYNAMICS:
-            evidence = qualify_dynamics(session)
+            evidence = (
+                qualify_dynamics(session, bundle)
+                if bundle is not None
+                else _waiting_evidence(
+                    session,
+                    component,
+                    "Dynamics qualification is waiting for authenticated reference-"
+                    f"relaxed geometries requested under {session.reference_root!s}.",
+                )
+            )
         elif component == COMPONENT_CALIBRATION:
             evidence = qualify_calibration(session)
         else:  # pragma: no cover - enabled_components filters the vocabulary
@@ -517,8 +929,11 @@ def build_qualification_record(
         specification_digest=session.binding.specification.content_digest,
         environment_digest=session.binding.environment.content_digest,
         executable_digest=session.binding.executable.content_digest,
-        predecessor_executable_commit=ACCEPTED_PREDECESSOR_EXECUTABLE_COMMIT,
-        predecessor_evidence_commit=ACCEPTED_PREDECESSOR_EVIDENCE_COMMIT,
+        predecessor_executable_commit=(
+            session.predecessor_reclosure.executable_git_commit
+            or session.predecessor_reclosure.executable_source_tree_digest
+        ),
+        predecessor_evidence_commit=session.predecessor_reclosure.content_digest,
         components=outcomes,
         locked_activation_digest=(
             None if locked_activation is None else locked_activation.content_digest
@@ -526,6 +941,9 @@ def build_qualification_record(
         verdict=verdict,
         reason_code=reason,
         recorded_at=utc_now(),
+        resource_scope_digest=session.binding.resource_scope_digest,
+        predecessor_reclosure_digest=session.binding.predecessor_reclosure_digest,
+        predecessor_executable_tree_digest=session.binding.predecessor_executable_tree_digest,
     )
 
 
@@ -575,6 +993,9 @@ def publish_release_evidence(
         locked_activation_digest=record.locked_activation_digest,
         verdict=record.verdict,
         published_at=utc_now(),
+        resource_scope_digest=record.resource_scope_digest,
+        predecessor_reclosure_digest=record.predecessor_reclosure_digest,
+        predecessor_executable_tree_digest=record.predecessor_executable_tree_digest,
     )
     session.store.put(index)
     publish_current_qualification_pointer(
@@ -586,27 +1007,116 @@ def publish_release_evidence(
     return index
 
 
+def _fresh_current_qualification_session(
+    campaign_store: Any,
+    paths: Any,
+    context: Any,
+    *,
+    binding: Any = None,
+) -> QualificationSession | None:
+    """Re-establish all P4/P5/P7 identities at the public exposure boundary."""
+
+    if not hasattr(context, "cfg") or not hasattr(context, "selected"):
+        raise QualificationError(
+            "Current qualification resolution requires a full post-selection context, "
+            "not a selected-binding locator alone."
+        )
+    # The context carries only a scheduling value, never volatile free-memory
+    # state.  Rebuilding the session re-resolves publication, executable source,
+    # environment, resource scope, policy, roles, and the candidate-independent
+    # physical plan before any pointer is exposed.
+    current = build_qualification_session(
+        context.cfg,
+        paths,
+        campaign_store,
+        trainer=getattr(context, "trainer", None),
+        inference_evaluator=getattr(context, "inference_evaluator", None),
+        case_workers=int(getattr(context, "qualification_case_workers", 1)),
+    )
+    if current is None:
+        return None
+    # The caller's object may belong to an older exposure.  The rebuilt session
+    # is the authoritative identity used for both pointer lookup and dependent
+    # reference-bundle authentication below.
+    return current
+
+
 def resolve_current_locked_activation(
-    campaign_store: Any, paths: Any, context: Any
+    campaign_store: Any, paths: Any, context: Any, *, binding: Any = None
 ) -> LockedActivationRecord | None:
+    """The activation that is current for *binding*, if any.
+
+    Locked disclosure history is deliberately not resolved here: see
+    :func:`locked_cohort_already_revealed`, which answers the one-shot question
+    from immutable history regardless of what the current binding is.
+    """
+
+    current = _fresh_current_qualification_session(campaign_store, paths, context, binding=binding)
+    if current is None:
+        return None
     return resolve_current_qualification_record(
         campaign_store,
         paths,
-        context.selected,
+        current.context.selected,
         kind=POINTER_LOCKED_ACTIVATION,
         deserializer=LockedActivationRecord.from_dict,
+        binding=current.binding,
+        expected_plan_digest=current.plan.content_digest,
+        qualification_session=current,
     )
 
 
 def resolve_current_qualification_verdict(
-    campaign_store: Any, paths: Any, context: Any
+    campaign_store: Any, paths: Any, context: Any, *, binding: Any = None
 ) -> ProductionQualificationRecord | None:
+    current = _fresh_current_qualification_session(campaign_store, paths, context, binding=binding)
+    if current is None:
+        return None
     return resolve_current_qualification_record(
         campaign_store,
         paths,
-        context.selected,
+        current.context.selected,
         kind=POINTER_QUALIFICATION_RECORD,
         deserializer=ProductionQualificationRecord.from_dict,
+        binding=current.binding,
+        expected_plan_digest=current.plan.content_digest,
+        qualification_session=current,
+    )
+
+
+def resolve_current_release_evidence(
+    campaign_store: Any, paths: Any, context: Any, *, binding: Any = None
+) -> ReleaseEvidenceIndex | None:
+    current = _fresh_current_qualification_session(campaign_store, paths, context, binding=binding)
+    if current is None:
+        return None
+    return resolve_current_qualification_record(
+        campaign_store,
+        paths,
+        current.context.selected,
+        kind=POINTER_RELEASE_EVIDENCE,
+        deserializer=ReleaseEvidenceIndex.from_dict,
+        binding=current.binding,
+        expected_plan_digest=current.plan.content_digest,
+        qualification_session=current,
+    )
+
+
+def resolve_current_qualification_plan(
+    campaign_store: Any, paths: Any, context: Any, *, binding: Any = None
+) -> ProductionQualificationPlan | None:
+    current = _fresh_current_qualification_session(campaign_store, paths, context, binding=binding)
+    if current is None:
+        return None
+    return resolve_current_qualification_record(
+        campaign_store,
+        paths,
+        current.context.selected,
+        kind=POINTER_QUALIFICATION_PLAN,
+        deserializer=ProductionQualificationPlan.from_dict,
+        binding=current.binding,
+        expected_plan_digest=current.plan.content_digest,
+        qualification_session=current,
     )
 
 
@@ -628,14 +1138,30 @@ def run_qualification(
     released = False
     try:
         components = execute_nonlocked_components(session)
-        existing_activation = resolve_current_locked_activation(campaign_store, paths, session.context)
+        existing_activation = locked_cohort_already_revealed(session, paths)
+        activation_for_record = existing_activation
         locked_evidence: tuple[QualificationComponentEvidence, ...] = ()
-        if existing_activation is not None:
-            locked = session.completed_component(COMPONENT_LOCKED_TEST)
+        if (
+            existing_activation is not None
+            and existing_activation.binding_digest == session.binding.content_digest
+        ):
+            locked = session.completed_component(
+                COMPONENT_LOCKED_TEST,
+                session.component_input_digest(
+                    COMPONENT_LOCKED_TEST,
+                    None,
+                    extra={"activation_digest": existing_activation.content_digest},
+                ),
+            )
             if locked is not None:
                 locked_evidence = (locked,)
+        elif existing_activation is not None:
+            # The role has already been disclosed for another product.  It is
+            # historical one-shot state, not a component object belonging to
+            # this new binding, so never attach it to the new record.
+            activation_for_record = None
         record = build_qualification_record(
-            session, tuple(components) + locked_evidence, locked_activation=existing_activation
+            session, tuple(components) + locked_evidence, locked_activation=activation_for_record
         )
         publish_qualification_record(session, campaign_store, paths, record)
         publish_release_evidence(session, campaign_store, record, tuple(components) + locked_evidence)
@@ -661,76 +1187,243 @@ def run_qualification(
         raise
 
 
+def locked_cohort_already_revealed(
+    session: QualificationSession, paths: Any
+) -> LockedActivationRecord | None:
+    """The activation that already opened this exact cohort, from history.
+
+    This deliberately reads immutable disclosure history rather than the
+    currentness-fenced pointer: a specification, executable, environment, or
+    publication change can make a *verdict* historical, but it must never make
+    a revealed cohort fresh again.
+    """
+
+    from .store import (
+        find_locked_activation,
+        find_locked_activation_for_role,
+        read_locked_reveal,
+    )
+
+    candidate = build_locked_activation(session, prerequisite_component_digests=())
+    reveal = read_locked_reveal(
+        paths, session.context.selected.binding, candidate.cohort_generation_identity
+    )
+    activation = None
+    if reveal is not None:
+        activation = find_locked_activation(paths, str(reveal["activation_digest"]))
+        if activation is None:
+            raise QualificationLineageError(
+                "This locked cohort is recorded as revealed but its activation record is "
+                "missing from the release-evidence store. The disclosure stands; the "
+                "evidence must be restored before the test can be completed."
+            )
+        if activation.locked_role_digest != candidate.locked_role_digest:
+            raise QualificationLineageError(
+                "The locked disclosure record and activation disagree about the "
+                "reserved evidence role."
+            )
+    # A crash after activation object publication but before the reveal pointer
+    # is durable is still an opened cohort.  The role scan also recognizes
+    # pre-revision activations whose old product-dependent cohort hash is no
+    # longer reproducible.
+    role_activation = find_locked_activation_for_role(
+        paths, candidate.locked_role_digest
+    )
+    if activation is not None and role_activation is not None:
+        if activation.content_digest != role_activation.content_digest:
+            raise QualificationLineageError(
+                "Locked disclosure history contains conflicting activations for "
+                "the same reserved role."
+            )
+    return activation or role_activation
+
+
 def activate_locked_test(
     session: QualificationSession, campaign_store: Any, paths: Any
 ) -> tuple[ProductionQualificationRecord, QualificationComponentEvidence]:
-    """The only path that opens locked evidence. It is one-shot, by construction."""
+    """The only path that opens locked evidence. One-shot, and crash-resumable.
+
+    Activation is an irreversible *open* event, not proof that the evaluation
+    finished. Treating it as proof made a crash between publishing the
+    activation and publishing the locked result unrecoverable: the cohort was
+    permanently marked revealed and every later attempt refused to finish the
+    test it had already opened. So the two facts are separated - the cohort was
+    opened, and the locked result is complete - and a resume converges on the
+    single already-published activation identity without reopening anything.
+    """
+
+    from .store import record_locked_reveal
 
     if not _locked_required(session):
         raise QualificationActivationError(
             "The frozen qualification policy disables the locked interpolation test; "
             "there is nothing to activate."
         )
-    existing = resolve_current_locked_activation(campaign_store, paths, session.context)
-    activation = build_locked_activation(session, prerequisite_component_digests=())
-    if existing is not None:
-        if existing.cohort_generation_identity == activation.cohort_generation_identity:
-            raise QualificationActivationError(
-                "The locked interpolation test has already been activated for this "
-                "exact publication and locked cohort. A revealed cohort is never a "
-                "fresh locked test again."
-            )
-        raise QualificationActivationError(
-            "A locked activation exists for a different product generation; resolve "
-            "the current publication before activating a new locked test."
-        )
 
-    components = execute_nonlocked_components(session)
-    blocking = [
-        evidence
-        for evidence in components
-        if evidence.component in session.binding.specification.required_components
-        and not evidence.status.is_terminal_success
+    # The retention reference is acquired before any prerequisite work, so an
+    # interruption inside the activation path cannot leave the exact artifacts
+    # this attempt still needs reclaimable.
+    referenced = [
+        str(checkpoint_path_for_member(session.context, member))
+        for member in session.publication.members
     ]
-    if blocking:
-        raise QualificationActivationError(
-            "Locked activation requires every mandatory nonlocked component to have "
-            "completed successfully first; currently blocked by "
-            f"{[item.component for item in blocking]}."
-        )
-    activation = build_locked_activation(
-        session,
-        prerequisite_component_digests=tuple(evidence.content_digest for evidence in components),
-    )
-    session.store.put(activation)
-    publish_current_qualification_pointer(
-        campaign_store,
-        binding=session.context.selected.binding,
-        kind=POINTER_LOCKED_ACTIVATION,
-        content_digest=activation.content_digest,
-    )
-    locked_evidence = session.record_component(qualify_locked_test(session, activation))
-    record = build_qualification_record(
-        session, tuple(components) + (locked_evidence,), locked_activation=activation
-    )
-    publish_qualification_record(session, campaign_store, paths, record)
-    publish_release_evidence(
-        session, campaign_store, record, tuple(components) + (locked_evidence,)
-    )
-    release_attempt_reference(
+    acquire_attempt_reference(
         paths,
         session.context.selected.binding,
         attempt_identity=session.binding.attempt_identity,
-        terminal=True,
-        detail=f"terminal verdict {record.verdict.value}",
+        publication_digest=session.binding.publication_digest,
+        binding_digest=session.binding.content_digest,
+        referenced_paths=referenced,
+        detail="locked activation in progress",
     )
-    return record, locked_evidence
+
+    released = False
+    try:
+        existing = locked_cohort_already_revealed(session, paths)
+        if existing is not None:
+            activation = existing
+            if activation.binding_digest != session.binding.content_digest:
+                raise QualificationActivationError(
+                    "This locked cohort has already been activated under a different product or "
+                    "policy identity. The disclosure is permanent: the same cohort "
+                    "cannot be reused as a fresh locked test for the current product."
+                )
+            locked_evidence = session.completed_component(
+                COMPONENT_LOCKED_TEST,
+                session.component_input_digest(
+                    COMPONENT_LOCKED_TEST,
+                    None,
+                    extra={"activation_digest": activation.content_digest},
+                ),
+            )
+            if locked_evidence is not None:
+                terminal = resolve_current_qualification_verdict(
+                    campaign_store, paths, session.context, binding=session.binding
+                )
+                release = resolve_current_release_evidence(
+                    campaign_store, paths, session.context, binding=session.binding
+                )
+                # "Already completed" means the terminal record *and* the
+                # release index both describe this activation.  A release index
+                # published by an earlier nonlocked run is not evidence that the
+                # locked test finished.
+                if (
+                    terminal is not None
+                    and release is not None
+                    and terminal.locked_activation_digest == activation.content_digest
+                    and release.locked_activation_digest == activation.content_digest
+                ):
+                    release_attempt_reference(
+                        paths,
+                        session.context.selected.binding,
+                        attempt_identity=session.binding.attempt_identity,
+                        terminal=True,
+                        detail="duplicate terminal locked activation",
+                    )
+                    released = True
+                    raise QualificationActivationError(
+                        "The locked interpolation test has already been activated and "
+                        "completed for this exact publication and locked cohort. A "
+                        "revealed cohort is never a fresh locked test again."
+                    )
+        else:
+            activation = None
+
+        components = execute_nonlocked_components(session)
+        blocking = [
+            evidence
+            for evidence in components
+            if evidence.component in session.binding.specification.required_components
+            and not evidence.status.is_terminal_success
+        ]
+        if blocking:
+            raise QualificationActivationError(
+                "Locked activation requires every mandatory nonlocked component to have "
+                "completed successfully first; currently blocked by "
+                f"{[item.component for item in blocking]}."
+            )
+
+        if activation is None:
+            activation = build_locked_activation(
+                session,
+                prerequisite_component_digests=tuple(
+                    evidence.content_digest for evidence in components
+                ),
+            )
+            session.store.put(activation)
+            # History first: if the process dies immediately after this line the
+            # cohort is correctly known to be open, and the resume path above
+            # finishes the exact test rather than opening a second one.
+            record_locked_reveal(
+                paths,
+                session.context.selected.binding,
+                cohort_identity=activation.cohort_generation_identity,
+                activation_digest=activation.content_digest,
+            )
+        # Also repairs the durable reveal/pointer after a crash between the
+        # activation object and either publication step.  Both operations are
+        # create-or-verify/idempotent and never open the cohort twice.
+        if activation.binding_digest != session.binding.content_digest:
+            raise QualificationActivationError(
+                "This locked cohort has already been activated under a different product or "
+                "policy identity. The disclosure is permanent: the same cohort "
+                "cannot be reused as a fresh locked test for the current product."
+            )
+        session.store.put(activation)
+        record_locked_reveal(
+            paths,
+            session.context.selected.binding,
+            cohort_identity=activation.cohort_generation_identity,
+            activation_digest=activation.content_digest,
+        )
+        publish_current_qualification_pointer(
+            campaign_store,
+            binding=session.context.selected.binding,
+            kind=POINTER_LOCKED_ACTIVATION,
+            content_digest=activation.content_digest,
+        )
+
+        locked_evidence = session.completed_component(
+            COMPONENT_LOCKED_TEST,
+            session.component_input_digest(
+                COMPONENT_LOCKED_TEST,
+                None,
+                extra={"activation_digest": activation.content_digest},
+            ),
+        )
+        if locked_evidence is None:
+            locked_evidence = session.record_component(
+                qualify_locked_test(session, activation)
+            )
+        record = build_qualification_record(
+            session, tuple(components) + (locked_evidence,), locked_activation=activation
+        )
+        publish_qualification_record(session, campaign_store, paths, record)
+        publish_release_evidence(
+            session, campaign_store, record, tuple(components) + (locked_evidence,)
+        )
+        release_attempt_reference(
+            paths,
+            session.context.selected.binding,
+            attempt_identity=session.binding.attempt_identity,
+            terminal=True,
+            detail=f"terminal verdict {record.verdict.value}",
+        )
+        released = True
+        return record, locked_evidence
+    except BaseException:
+        if not released:
+            release_attempt_reference(
+                paths,
+                session.context.selected.binding,
+                attempt_identity=session.binding.attempt_identity,
+                terminal=False,
+                detail="locked activation aborted",
+            )
+        raise
 
 
 __all__ = [
-    "ACCEPTED_PREDECESSOR_EVIDENCE_COMMIT",
-    "ACCEPTED_PREDECESSOR_EXECUTABLE_COMMIT",
-    "ACCEPTED_PREDECESSOR_EXECUTABLE_TREE",
     "QualificationSession",
     "activate_locked_test",
     "build_qualification_record",
@@ -738,7 +1431,10 @@ __all__ = [
     "execute_nonlocked_components",
     "publish_qualification_record",
     "publish_release_evidence",
+    "locked_cohort_already_revealed",
     "resolve_current_locked_activation",
+    "resolve_current_qualification_plan",
     "resolve_current_qualification_verdict",
+    "resolve_current_release_evidence",
     "run_qualification",
 ]

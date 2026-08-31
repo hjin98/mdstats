@@ -95,12 +95,17 @@ class LockedActivationRecord:
 
     @property
     def cohort_generation_identity(self) -> str:
-        """What "the same locked cohort for this product" means, exactly."""
+        """What "the same reserved locked cohort" means, exactly.
+
+        Product identity is intentionally absent.  Once this role is opened,
+        replacing the publication must not make the same held-out cohort appear
+        fresh; the activation's product fields still record which product was
+        actually tested.
+        """
 
         return digest(
             {
-                "publication_digest": self.publication_digest,
-                "publication_member_digest": self.publication_member_digest,
+                "schema": "mdstats.qualification-locked-cohort.v2",
                 "locked_role_digest": self.locked_role_digest,
             }
         )
@@ -231,6 +236,11 @@ def qualify_locked_test(
             "locked_role_digest": binding.evidence_roles.locked_digest,
             "members": member_rows,
         },
+        component_input_digest=session.component_input_digest(
+            COMPONENT_LOCKED_TEST,
+            None,
+            extra={"activation_digest": activation.content_digest},
+        ),
     )
 
 
