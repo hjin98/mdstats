@@ -234,7 +234,7 @@ def test_preflight_cleanup_refuses_external_symlink_root(tmp_path: Path) -> None
     victim.write_bytes(b"keep")
     run_dir = paths.runs / "run-a"
     run_dir.mkdir(parents=True)
-    link = run_dir / "checkpoint-model-cache"
+    link = run_dir / "obsolete-runtime-symlink"
     link.symlink_to(external, target_is_directory=True)
     report = campaign_cli._CampaignCleanupReport(
         phase="stor1-test",
@@ -246,7 +246,7 @@ def test_preflight_cleanup_refuses_external_symlink_root(tmp_path: Path) -> None
             ),
         ),
     )
-    campaign_cli._cleanup_checkpoint_model_caches(report, paths, active_run_ids=set())
+    campaign_cli._cleanup_obsolete_training_runtimes(report, paths, active_run_ids=set())
     assert victim.read_bytes() == b"keep"
     assert not link.exists() and not link.is_symlink()
 

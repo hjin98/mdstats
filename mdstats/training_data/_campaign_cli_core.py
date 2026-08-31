@@ -2099,36 +2099,6 @@ def _cleanup_obsolete_training_runtimes(
             )
 
 
-def _cleanup_checkpoint_model_caches(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    *,
-    active_run_ids: set[str],
-    run_roots: Sequence[Path] | None = None,
-) -> None:
-    """Remove reconstructable whole-model checkpoint caches outside live runs."""
-
-    if run_roots is None:
-        if not paths.runs.is_dir():
-            return
-        run_roots = tuple(
-            child for child in paths.runs.iterdir() if child.is_dir()
-        )
-    for run_root in run_roots:
-        if not run_root.is_dir() or run_root.name in active_run_ids:
-            continue
-        _cleanup_remove(
-            report,
-            run_root / "checkpoint-model-cache",
-            reason=(
-                "reconstructable checkpoint-to-model evaluation cache; raw restart "
-                "checkpoint and model records are retained"
-            ),
-            cleanup_class="reconstructable_cache",
-            preserved_capabilities=("exact_checkpoint_reevaluation", "training_restart", "target_head_reexport"),
-        )
-
-
 def _append_cleanup_audit_manifest(
     report: _CampaignCleanupReport,
     paths: CampaignPaths,
@@ -5465,7 +5435,7 @@ def _format_storage_bytes(value: int) -> str:
 
 
 def command_storage(args: argparse.Namespace) -> int:
-    """STOR1 read-only campaign storage accounting and ownership report."""
+    """Read-only campaign storage accounting and ownership report."""
 
     cfg, paths = _load_config(args.config)
     protected_inputs = configured_protected_inputs(
@@ -5478,7 +5448,7 @@ def command_storage(args: argparse.Namespace) -> int:
     )
     payload = report.to_dict()
     destination = paths.results / "storage-report.json"
-    # STOR1 is read-only accounting; the only write is this report, which lives
+    # Read-only storage accounting; the only write is this report, which lives
     # outside any target-size execution root, so no retention fence applies.
     boundary = _campaign_ownership_boundary(cfg, paths)
     output_authorized, output_detail = boundary.destructive_authorization(destination)
@@ -5488,7 +5458,7 @@ def command_storage(args: argparse.Namespace) -> int:
         report_written = True
 
     totals = payload["totals"]
-    print("STOR1 campaign storage report", flush=True)
+    print("Campaign storage report", flush=True)
     print(f"  workspace: {paths.workspace}", flush=True)
     print(
         "  totals: "
@@ -5591,33 +5561,10 @@ def _manual_reclamation_add_cache_tier(
     paths: CampaignPaths,
     store: CampaignStore | None = None,
 ) -> None:
-    # Frame cache is retained by both safe and cache in P6.
-    if not paths.runs.is_dir() or report.ownership_boundary is None:
-        return
-    authorized, detail = report.ownership_boundary.traversal_authorization(paths.runs)
-    if not authorized:
-        report.skipped.append(f"manual cache tier skipped run caches: {detail}: {paths.runs}")
-        return
-    run_roots = tuple(
-        child for child in paths.runs.iterdir()
-        if child.is_dir() and not child.is_symlink()
-    )
-    active_run_ids = _active_training_run_ids(
-        paths,
-        run_roots=run_roots,
-        ownership_boundary=report.ownership_boundary,
-    )
-    for run_root in sorted(run_roots):
-        if run_root.name in active_run_ids:
-            continue
-        _manual_reclamation_add_candidate(
-            report,
-            run_root / "checkpoint-model-cache",
-            reason="manual cache tier: reconstructable checkpoint-to-model cache for inactive run",
-            cleanup_class="manual_cache",
-            preserved_capabilities=_MANUAL_CAPABILITIES,
-            capability_loss=("faster_checkpoint_reevaluation",),
-        )
+    # In P6/P7, all cache families are conservatively retained/deferred to the
+    # post-P7 storage reset (CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1). No destructive
+    # cache candidates are added.
+    return
 
 
 def _manual_reclamation_plan_payload(

@@ -38,9 +38,9 @@ Current-generation campaigns support two non-destructive / low-consequence clean
 - Every safe cleanup event appends an authenticated record to `results/cleanup-manifest.jsonl` with an empty capability-loss set.
 
 ### Cache Tier (`--tier cache`)
-- Includes the safe tier and additionally targets independently reconstructible, non-live caches whose current owner proves they are inactive (specifically, inactive-run `checkpoint-model-cache`).
-- In P6, reusable performance caches such as normalized `frame-cache` are conservatively retained by both safe and cache tiers.
-- Removal of inactive-run model caches incurs no scientific or restart loss, but subsequent offline evaluation may re-derive model instances from retained checkpoints.
+- Includes the safe tier and is reserved for cache-policy intent in the public cleanup vocabulary.
+- In P6/P7, no cache-family eviction is authorized because current P3/P5 do not expose a storage-owner/reconstruction contract suitable for safe eviction; both `frame-cache` and `checkpoint-model-cache` are conservatively retained by both safe and cache tiers.
+- Consequential cache ownership/eviction, leases, archive, deduplication, admission, and cross-owner storage design remain deferred to `CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1`.
 
 ---
 

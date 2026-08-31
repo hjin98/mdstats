@@ -736,12 +736,12 @@ def test_p6_r10_cli_namespace_and_legacy_cleanup_removal(tmp_path: Path):
     assert cli_core.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
 
 
-def test_p6_r10_safe_vs_cache_behavioral_split_and_frame_cache_retention(tmp_path: Path):
-    """R10-C: Safe cleanup has zero cache eviction; cache tier removes inactive model cache, retains frame-cache."""
+def test_p6_r11_safe_and_cache_tiers_retain_all_caches_and_historical_paths(tmp_path: Path):
+    """R11-A / R11-E: Safe and cache cleanup both retain checkpoint-model-cache, frame-cache, and historical paths."""
     config, _workspace = build_selected_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
 
-    # 1. Inactive-run checkpoint-model-cache
+    # 1. Inactive-run checkpoint-model-cache (no active_process.json)
     run_dir = paths.runs / "run-inactive"
     run_dir.mkdir(parents=True)
     model_cache = run_dir / "checkpoint-model-cache"
@@ -765,59 +765,47 @@ def test_p6_r10_safe_vs_cache_behavioral_split_and_frame_cache_retention(tmp_pat
 
     # Safe cleanup: all caches and historical paths are retained
     assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
-    assert model_cache.is_dir(), "safe cleanup must not evict checkpoint-model-cache"
+    assert model_cache.is_dir(), "safe cleanup must retain checkpoint-model-cache"
     assert frame_cache.is_dir(), "safe cleanup must retain frame-cache"
     for d in hist_dirs:
         assert (d / "payload.bin").is_file(), f"safe cleanup must retain historical path {d}"
 
-    # Cache cleanup: removes inactive checkpoint-model-cache; retains frame-cache and historical paths
+    # Cache cleanup: also retains checkpoint-model-cache, frame-cache, and historical paths in P6/P7
     assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
-    assert not model_cache.exists(), "cache cleanup must remove inactive checkpoint-model-cache"
-    assert frame_cache.is_dir(), "cache cleanup must retain frame-cache in P6"
+    assert model_cache.is_dir(), "cache cleanup must retain checkpoint-model-cache in P6/P7"
+    assert frame_cache.is_dir(), "cache cleanup must retain frame-cache in P6/P7"
     for d in hist_dirs:
         assert (d / "payload.bin").is_file(), f"cache cleanup must retain historical path {d}"
 
 
-def test_p6_r10_active_run_cache_retention_real_owner(tmp_path: Path):
-    """R10-C / Section 9.4: Active-run checkpoint-model-cache is retained during live execution."""
+def test_p6_r11_cache_deletion_non_reachability_and_structural_absence(tmp_path: Path):
+    """R11-A / R11-B: Checkpoint model cache deletion is structurally absent and unreachable."""
+    import inspect
+    from mdstats.training_data import _campaign_cli_core as cli_core
+
+    # 1. Structural absence: _cleanup_checkpoint_model_caches is deleted
+    assert not hasattr(cli_core, "_cleanup_checkpoint_model_caches")
+
+    # 2. Source inspection: cache tier planning does not enumerate checkpoint-model-cache
+    cache_tier_src = inspect.getsource(cli_core._manual_reclamation_add_cache_tier)
+    assert "checkpoint-model-cache" not in cache_tier_src
+    assert "_cleanup_remove" not in cache_tier_src
+
+    # 3. Public CLI execution without active_process.json retains cache
     config, _workspace = build_selected_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
 
-    # 1. Create a live active run with real PID
-    active_run = paths.runs / "active-screening-run"
-    active_run.mkdir(parents=True, exist_ok=True)
-    (active_run / "active_process.json").write_text(
-        json.dumps({"pid": os.getpid(), "timestamp": "2026-08-31T00:00:00Z"}),
-        encoding="utf-8",
-    )
-    active_cache = active_run / "checkpoint-model-cache"
-    active_cache.mkdir(parents=True, exist_ok=True)
-    (active_cache / "model.pt").write_bytes(b"live-active-model")
+    arbitrary_cache = paths.runs / "arbitrary-run" / "checkpoint-model-cache"
+    arbitrary_cache.mkdir(parents=True, exist_ok=True)
+    (arbitrary_cache / "payload.pt").write_bytes(b"arbitrary-payload")
 
-    # 2. Create an inactive completed run
-    inactive_run = paths.runs / "inactive-screening-run"
-    inactive_run.mkdir(parents=True, exist_ok=True)
-    inactive_cache = inactive_run / "checkpoint-model-cache"
-    inactive_cache.mkdir(parents=True, exist_ok=True)
-    (inactive_cache / "model.pt").write_bytes(b"inactive-model")
-
-    # While active run is live, invoke storage cleanup --tier cache
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
-
-    # Active run's cache is retained; inactive run's cache is deleted!
-    assert active_cache.is_dir(), "active training run cache must NOT be deleted by cleanup"
-    assert not inactive_cache.exists(), "inactive run cache must be removed by cache cleanup"
-
-    # Finish the active run by removing active_process.json
-    (active_run / "active_process.json").unlink()
-
-    # Now that the run is inactive, another cache cleanup removes its cache
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
-    assert not active_cache.exists(), "now-inactive run cache must be removed by cache cleanup"
+    assert cli_core.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+    assert arbitrary_cache.is_dir(), "arbitrary cache must be retained without active_process.json"
+    assert (arbitrary_cache / "payload.pt").is_file()
 
 
-def test_p6_r10_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Path):
-    """R10-D: storage report contains no retired STOR policy strings and is read-only."""
+def test_p6_r11_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    """R11-C / R11-D: storage report contains no retired STOR policy strings, neutral stdout, and is read-only."""
     from mdstats.training_data.storage_accounting import (
         build_campaign_storage_report,
         configured_protected_inputs,
@@ -842,6 +830,13 @@ def test_p6_r10_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Pa
     (paths.internal / "cold-archive").mkdir(parents=True, exist_ok=True)
     (paths.internal / "cold-archive" / "arc.tar.gz").write_bytes(b"archive")
 
+    # Real CLI invocation checks stdout heading
+    rc = cli.main(["--config", str(config), "storage", "report"])
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert "STOR1" not in stdout
+    assert "Campaign storage report" in stdout
+
     report = build_campaign_storage_report(
         paths.workspace,
         protected_inputs=configured_protected_inputs(
@@ -860,9 +855,16 @@ def test_p6_r10_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Pa
         "compact_nonselected_after_protocol_freeze",
         "compact_after_production_export",
         "protocol_freeze",
+        "cache_candidate_owner_guard_required",
     ]
     for retired in retired_strings:
         assert retired not in payload_str, f"retired string {retired!r} found in storage report: {payload_str}"
+
+    families = {item["family"]: item for item in payload["families"]}
+    assert families["checkpoint_model_cache"]["manual_reclamation_eligibility"] == "deferred_to_storage_reset"
+    assert families["checkpoint_model_cache"]["automatic_reclamation_eligibility"] == "prohibited"
+    assert families["frame-cache"]["manual_reclamation_eligibility"] == "deferred_to_storage_reset"
+    assert families["frame-cache"]["automatic_reclamation_eligibility"] == "prohibited"
 
     assert payload["destructive_actions_performed"] is False
     assert (paths.internal / "evaluation-graphs" / "g.bin").is_file()

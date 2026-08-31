@@ -569,7 +569,7 @@ def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, 
         if "checkpoints" in parts or name.endswith(".pt"):
             return ("training_checkpoints", ArtifactRetentionClass.RESTART_CRITICAL, "prohibited", "prohibited", ("training_restart", "exact_checkpoint_reevaluation"))
         if "checkpoint-model-cache" in parts:
-            return ("checkpoint_model_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "cache_candidate_owner_guard_required", ("faster_checkpoint_reevaluation",))
+            return ("checkpoint_model_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "deferred_to_storage_reset", ("faster_checkpoint_reevaluation",))
         if "logs" in parts or name.endswith(".log") or name.endswith("stdout") or name.endswith("stderr"):
             return ("training_logs", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("training_diagnostics",))
         if "models" in parts or name.endswith(".model"):
