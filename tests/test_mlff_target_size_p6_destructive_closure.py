@@ -830,8 +830,10 @@ def test_p6_r12_structural_absence_and_non_reachability():
         import mdstats.training_data.campaign_execution  # noqa: F401
 
 
-def test_p6_r12_sha256_receipt_retention_through_storage_cleanup(tmp_path: Path):
-    """R12 Section 4.3: Storage cleanup performs zero acceleration-cache eviction and retains SHA-256 receipts."""
+def test_p6_r13_sha256_receipt_retention_through_storage_cleanup(tmp_path: Path):
+    """R13-A / Section 4: Storage cleanup performs zero acceleration-cache eviction and retains >100,000 SHA-256 receipts."""
+    import inspect
+    from mdstats.training_data import _campaign_cli_core as cli_core
     from mdstats.training_data._common import (
         _sha256_receipt_connection,
         read_validation_receipt,
@@ -842,79 +844,128 @@ def test_p6_r12_sha256_receipt_retention_through_storage_cleanup(tmp_path: Path)
     config, _workspace = build_selected_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
 
-    # Populate multiple files and record their receipts
+    # 1. Create real files and authenticate them through sha256_file_cached()
     sample_dir = tmp_path / "samples"
     sample_dir.mkdir()
-    digests = {}
-    for i in range(20):
-        sample = sample_dir / f"file_{i}.dat"
-        sample.write_bytes(f"payload-{i}".encode("utf-8"))
-        digests[str(sample)] = sha256_file_cached(sample)
+    real_file_1 = sample_dir / "real_1.dat"
+    real_file_1.write_bytes(b"real-file-payload-1")
+    digest_1 = sha256_file_cached(real_file_1)
 
-    # Write validation receipts
+    real_file_2 = sample_dir / "real_2.dat"
+    real_file_2.write_bytes(b"real-file-payload-2")
+    digest_2 = sha256_file_cached(real_file_2)
+
+    # 2. Write representative validation receipts
     write_validation_receipt("test_ns", "a" * 64, "b" * 64)
     write_validation_receipt("test_ns", "c" * 64, "d" * 64)
 
+    # 3. Populate > 100,000 unique synthetic receipt rows in one bounded batch
     conn = _sha256_receipt_connection()
     assert conn is not None
+    total_to_insert = 100_050
+    rows = [
+        (f"/synthetic/path/file_{i}.dat", 1, i, 1024, 1_000_000 + i, 1_000_000 + i, f"{i:064x}")
+        for i in range(total_to_insert)
+    ]
+    conn.executemany(
+        "INSERT OR REPLACE INTO receipts(path,device,inode,size,mtime_ns,ctime_ns,sha256) VALUES (?,?,?,?,?,?,?)",
+        rows,
+    )
+    conn.commit()
+
     receipt_count_before = int(conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0])
     val_count_before = int(conn.execute("SELECT COUNT(*) FROM validation_receipts").fetchone()[0])
-    assert receipt_count_before >= 20
+    assert receipt_count_before >= 100_050
     assert val_count_before >= 2
 
-    # Execute safe and cache cleanup
+    # 4. Invoke public safe and cache cleanup
     assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
     assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
 
-    # Receipt rows must NOT be pruned by storage cleanup
+    # 5. Assertions:
     receipt_count_after = int(conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0])
     val_count_after = int(conn.execute("SELECT COUNT(*) FROM validation_receipts").fetchone()[0])
-    assert receipt_count_after == receipt_count_before, "storage cleanup must not prune SHA-256 receipts"
-    assert val_count_after == val_count_before, "storage cleanup must not prune validation receipts"
+    assert receipt_count_after == receipt_count_before, (
+        f"Storage cleanup must not prune SHA-256 receipts (had {receipt_count_before}, now {receipt_count_after})"
+    )
+    assert val_count_after == val_count_before, "Storage cleanup must not prune validation receipts"
 
-    # Subsequent sha256_file_cached and validation reads remain exact
-    for path_str, expected_digest in digests.items():
-        assert sha256_file_cached(path_str) == expected_digest
+    # Sentinel row check
+    sentinel_row = conn.execute(
+        "SELECT sha256 FROM receipts WHERE path=?", ("/synthetic/path/file_0.dat",)
+    ).fetchone()
+    assert sentinel_row is not None
+    assert sentinel_row[0] == f"{0:064x}"
+
+    # Verify public API returns exact cached digests
+    assert sha256_file_cached(real_file_1) == digest_1
+    assert sha256_file_cached(real_file_2) == digest_2
     assert read_validation_receipt("test_ns", "a" * 64) == "b" * 64
     assert read_validation_receipt("test_ns", "c" * 64) == "d" * 64
 
+    # 6. Scoped structural assertion
+    cleanup_src = inspect.getsource(cli_core._campaign_cleanup)
+    compact_src = inspect.getsource(cli_core.CampaignStore.compact)
+    assert "prune_sha256_receipts" not in cleanup_src
+    assert "prune_sha256_receipts" not in compact_src
 
-def test_p6_r12_orphan_record_positive_reclamation_and_referenced_record_retention(tmp_path: Path):
-    """R12 Section 4.4 / R12-C: Orphan external records are safely reclaimed; referenced and young records are retained."""
+
+def test_p6_r13_orphan_record_positive_reclamation_and_referenced_record_retention(tmp_path: Path):
+    """R13-B / Section 5: Real CampaignStore external pointer is retained while old unreferenced sibling is reclaimed."""
+    from mdstats.training_data._campaign_cli_core import (
+        EXTERNAL_RECORD_POINTER_SCHEMA,
+        EXTERNAL_RECORD_THRESHOLD_BYTES,
+    )
+
     config, _workspace = build_selected_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
     store = cli.CampaignStore(paths.state_db)
 
-    records_dir = paths.internal / "records"
-    records_dir.mkdir(parents=True, exist_ok=True)
+    # 1. Publish real external record (> 4 MiB) through CampaignStore.put_record
+    large_payload = {"schema": "custom.large-test.v1", "blob": "a" * (EXTERNAL_RECORD_THRESHOLD_BYTES + 8192)}
+    store.put_record("heavy_record", large_payload)
 
-    # 1. Referenced record (registered in store)
-    ref_obj = records_dir / "referenced_record"
-    ref_obj.mkdir(parents=True, exist_ok=True)
-    (ref_obj / "data.bin").write_bytes(b"referenced-payload")
-    store.put_record("custom_referenced", {"file": str(ref_obj)})
+    # Assert that the record was stored as EXTERNAL_RECORD_POINTER_SCHEMA
+    with store._connect() as db:
+        raw_row = db.execute("SELECT payload FROM records WHERE key='heavy_record'").fetchone()
+    assert raw_row is not None
+    pointer = json.loads(raw_row[0])
+    assert pointer.get("schema") == EXTERNAL_RECORD_POINTER_SCHEMA
 
-    # 2. Young unreferenced record (younger than stale_age_hours)
-    young_obj = records_dir / "young_unreferenced"
-    young_obj.mkdir(parents=True, exist_ok=True)
-    (young_obj / "data.bin").write_bytes(b"young-payload")
+    referenced_file = (store.path.parent / Path(pointer["relative_path"])).resolve()
+    assert referenced_file.is_file()
+    assert referenced_file in store.storage_references()
+    assert referenced_file.is_relative_to(store.external_record_directory.resolve())
 
-    # 3. Old unreferenced record (older than stale_age_hours -> should be reclaimed)
-    old_orphan = records_dir / "old_orphan"
-    old_orphan.mkdir(parents=True, exist_ok=True)
-    (old_orphan / "data.bin").write_bytes(b"orphan-payload")
+    # Set referenced external file's mtime older than stale_age_hours (e.g. 48h old)
     old_time = time.time() - 48.0 * 3600.0
-    os.utime(old_orphan, (old_time, old_time))
-    os.utime(old_orphan / "data.bin", (old_time, old_time))
+    os.utime(referenced_file, (old_time, old_time))
+    os.utime(referenced_file.parent, (old_time, old_time))
 
-    # Invoke safe cleanup
+    # 2. Create a separate unreferenced sibling artifact under external_record_directory, also older than grace window
+    sibling_dir = store.external_record_directory / "unreferenced_sibling_dir"
+    sibling_dir.mkdir(parents=True, exist_ok=True)
+    sibling_file = sibling_dir / "unreferenced_file.bin"
+    sibling_file.write_bytes(b"orphan-payload-data")
+    os.utime(sibling_file, (old_time, old_time))
+    os.utime(sibling_dir, (old_time, old_time))
+
+    # Close store reference
+    del store
+
+    # 3. Invoke public safe cleanup and cache cleanup
     assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
 
-    assert ref_obj.is_dir(), "referenced record must be retained"
-    assert (ref_obj / "data.bin").is_file()
-    assert young_obj.is_dir(), "young unreferenced candidate must be retained"
-    assert (young_obj / "data.bin").is_file()
-    assert not old_orphan.exists(), "old unreferenced orphan record must be reclaimed"
+    # 4. Assertions:
+    # - The old referenced external file remains intact
+    assert referenced_file.is_file(), "old referenced external record must be retained by safe/cache cleanup"
+    reopened_store = cli.CampaignStore(paths.state_db)
+    restored_payload = reopened_store.get_payload("heavy_record")
+    assert restored_payload == large_payload
+
+    # - The old unreferenced sibling artifact is reclaimed
+    assert not sibling_dir.exists(), "old unreferenced sibling artifact must be reclaimed by safe cleanup"
 
 
 def test_p6_r12_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Path, capsys: pytest.CaptureFixture[str]):

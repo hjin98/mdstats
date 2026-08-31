@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,7 +16,8 @@ from ..exceptions import (
     MissingTimeError,
     SpeciesConsistencyError,
 )
-from ..io.common import RawFrameCollection
+if TYPE_CHECKING:
+    from ..io.common import RawFrameCollection
 from ..provenance import FrameCollectionProvenance, SourceFormat
 from ..semantics import FrameSemantics, coerce_frame_semantics
 from .unwrap import (

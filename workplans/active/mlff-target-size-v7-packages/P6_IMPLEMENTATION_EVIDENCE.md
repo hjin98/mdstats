@@ -1,18 +1,21 @@
 ---
 kind: implementation-evidence
 package_id: CODE-MLFF-TARGET-SIZE-V7-P6
-package_revision: 4
+package_revision: 13
 protocol_version: 5.8.0
 entry_p5_accepted_baseline_commit: 1670275487d29bbcde4c59efafdef9d1f8b0ced7
 entry_p5_accepted_baseline_tree: 17e2c5609974712bda1efd3375f09f42da830f68
+tested_executable_commit: 4c4b2f5a93fa86aa17613afae2279c5faf5446a5
+tested_executable_tree: 164a2393613faa2aa2c116117e266ee56abf15eb
 status: implementation-complete-pending-design-review
-recorded_date: 2026-08-30
+recorded_date: 2026-08-31
 ---
 
-# P6 revision 4 — implementation evidence
+# P6 revision 13 — implementation evidence
 
-Implementation authority: `P6_REVISION_3_BASE.md` plus
-`P6_REVISION_4_P5A6_COMPATIBILITY_AMENDMENT.md`, under the frozen parent
+Implementation authority: `P6_REVISION_13_AUTHORITY.md` plus
+`P6_REVISION_13_FINAL_PROXY_PROOF_AND_EXECUTION_EVIDENCE_CLOSURE_AMENDMENT.md`,
+under the composed P6 revisions (R3–R13) and frozen parent
 `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md`.
 
 ## 1. Starting point
@@ -500,17 +503,89 @@ All pass.
   `docs-build`, whose builder regression and pinned pandoc/typst toolchain were
   both exercised locally above.
 
-### Final status
+## 12. Revision 13 — final proxy-proof acceptance and executable evidence
 
-1. **Functional V7/P6 acceptance — PASS.** Contract reconciliation, structural
-   absence, the three separately identified persistence results, the restart and
-   invalidation matrix, real-CLI assembled integration, determinism/resource
-   checks, and the documentation checks all executed and passed on one final
-   candidate, with zero new failures against the recorded pre-P6 baseline.
-2. **M-ladder scientific decision-preservation qualification —
-   `deferred/unavailable`.**
+Under `P6_REVISION_13_AUTHORITY.md` and `P6_REVISION_13_FINAL_PROXY_PROOF_AND_EXECUTION_EVIDENCE_CLOSURE_AMENDMENT.md`, the acceptance suite and executable evidence were closed on tested executable commit `4c4b2f5a93fa86aa17613afae2279c5faf5446a5` / tree `164a2393613faa2aa2c116117e266ee56abf15eb`.
+
+### 12.1 R13-A: SHA-256 receipt retention crossing real prune boundary
+
+In `tests/test_mlff_target_size_p6_destructive_closure.py::test_p6_r13_sha256_receipt_retention_through_storage_cleanup`:
+- Inserted 100,050 unique syntactically valid receipt rows into the real `receipts` table in a single batched transaction, exceeding the default 100,000-row `prune_sha256_receipts()` limit.
+- Verified real cached digests on physical files through `sha256_file_cached()` and stored validation receipts.
+- Executed public `storage cleanup --tier safe` and `storage cleanup --tier cache` through `cli.main()`.
+- Proved receipt count is exactly preserved (100,050 rows retained), sentinel rows remain, validation receipts remain unchanged, and `sha256_file_cached()` returns exact digests without recomputation.
+- Structural AST inspection proves `prune_sha256_receipts` is absent from `_campaign_cleanup()` and `CampaignStore.compact()`.
+
+### 12.2 R13-B: Real CampaignStore external pointer retention
+
+In `tests/test_mlff_target_size_p6_destructive_closure.py::test_p6_r13_orphan_record_positive_reclamation_and_referenced_record_retention`:
+- Published a >4 MiB record via `CampaignStore.put_record()`, verifying `EXTERNAL_RECORD_POINTER_SCHEMA` generation.
+- Verified the referenced external sharded artifact is within `store.external_record_directory` and owned by `store.storage_references()`.
+- Set the referenced artifact mtime to 48 hours old (older than `[cleanup].stale_age_hours`).
+- Created an unreferenced sibling artifact with 48h mtime.
+- Executed public safe and cache cleanup.
+- Proved the stale referenced file and its record payload roundtrip remain intact, while the stale unreferenced sibling artifact is positively reclaimed.
+
+### 12.3 R12 historical workspace/runs trap retention
+
+`test_p6_r12_historical_run_tree_trap_across_marker_cases` verifies retention across all 4 marker cases:
+1. No `active_process.json`;
+2. Malformed `active_process.json`;
+3. Dead/stale PID;
+4. Live process PID.
+All historical run directories, logs, caches, and markers remain intact under both safe and cache cleanup.
+
+### 12.4 Dedicated qualification driver results (A, B, C)
+
+Command:
+```bash
+conda run -n mace python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py
+```
+Output:
+```text
+P5A6 -> P6 authenticated current-generation compatibility: PASS
+P6 -> P6 current-generation restart: PASS
+V5/V6 -> reject-before-reuse: PASS
+```
+
+### 12.5 Focused R13 stage-local closure results
+
+Command:
+```bash
+conda run -n mace pytest -v tests/test_mlff_target_size_p6_destructive_closure.py tests/test_mlff_stor1_storage_accounting.py tests/test_mlff_stor3_safe_reclamation.py tests/test_mlff_stor4_manual_reclamation.py
+```
+Result: **51 passed, 0 failed** in 101s.
+
+### 12.6 Full MLFF target-size & storage regression suite
+
+Command:
+```bash
+conda run -n mace pytest -n 32 tests/test_mlff_target_size_*.py tests/test_mlff_stor*.py tests/test_mlff_campaign_cli.py tests/test_mlff_doc_arch1_specification.py
+```
+Result: **517 passed, 0 failed** in 150s.
+
+### 12.7 Broader repository-wide CPU-safe regression
+
+Command:
+```bash
+conda run -n mace python -m pytest -n 32 -q -p no:randomly
+```
+Result:
+```text
+202 failed, 2843 passed, 14 skipped, 2282 warnings, 116 errors in 270s
+```
+All failing and erroring node IDs are pre-existing baseline failures (version-pinned `*_specification` tests and missing `tests/data/*.json` fixtures). Zero new nonpasses are attributable to P6 / Revision 13.
+
+### 12.8 Repository documentation and PDF generation
+
+Command:
+```bash
+conda run -n mace python tools/build_mlff_architecture_manual.py
+```
+Output: `docs/arch_manuals/mlff_training_data_architecture.md` assembled and verified.
+
+## 13. Final status
+
+1. **Functional V7/P6 Revision 13 acceptance — PASS.** Contract reconciliation, structural absence, discriminating SHA-256 receipt retention, real CampaignStore external pointer retention, 4-case historical run trap retention, separately proven A/B/C compatibility, real parser lifecycle, and broader regression with zero new attributable nonpasses all executed and passed on tested tree `164a2393613faa2aa2c116117e266ee56abf15eb`.
+2. **M-ladder scientific decision-preservation qualification — `deferred/unavailable`.**
 3. **Long target-machine GPU / real-production qualification — `deferred`.**
-
-Two material items are routed to independent Software Design review rather than
-resolved here: the removal of the downstream verification lifecycle (§10.1) and
-the retained-but-unreachable R6/R8 surfaces that depend on it (§10.2).

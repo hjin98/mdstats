@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+import mdstats
+
 
 _DENSITY_RESOURCE_MODULES = {
     "test_atomic_density.py",
