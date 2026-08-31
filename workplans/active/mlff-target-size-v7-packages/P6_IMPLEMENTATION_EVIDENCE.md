@@ -5,8 +5,8 @@ package_revision: 13
 protocol_version: 5.8.0
 entry_p5_accepted_baseline_commit: 1670275487d29bbcde4c59efafdef9d1f8b0ced7
 entry_p5_accepted_baseline_tree: 17e2c5609974712bda1efd3375f09f42da830f68
-tested_executable_commit: 4c4b2f5a93fa86aa17613afae2279c5faf5446a5
-tested_executable_tree: 164a2393613faa2aa2c116117e266ee56abf15eb
+tested_executable_commit: f55d59b28c9db890dcb6a3c167a067ef5f37e8a2
+tested_executable_tree: e9a6d5f9d1a798f07dab88bd56dafcc73fe0e491
 status: implementation-complete-pending-design-review
 recorded_date: 2026-08-31
 ---
@@ -505,9 +505,26 @@ All pass.
 
 ## 12. Revision 13 — final proxy-proof acceptance and executable evidence
 
-Under `P6_REVISION_13_AUTHORITY.md` and `P6_REVISION_13_FINAL_PROXY_PROOF_AND_EXECUTION_EVIDENCE_CLOSURE_AMENDMENT.md`, the acceptance suite and executable evidence were closed on tested executable commit `4c4b2f5a93fa86aa17613afae2279c5faf5446a5` / tree `164a2393613faa2aa2c116117e266ee56abf15eb`.
+Under `P6_REVISION_13_AUTHORITY.md`, `P6_REVISION_13_FINAL_PROXY_PROOF_AND_EXECUTION_EVIDENCE_CLOSURE_AMENDMENT.md`, and `P6_REVISION_13_FINAL_CANDIDATE_IDENTITY_AND_EVIDENCE_BINDING_ADDENDUM.md`, the acceptance suite and executable evidence were closed on tested executable commit `f55d59b28c9db890dcb6a3c167a067ef5f37e8a2` / tree `e9a6d5f9d1a798f07dab88bd56dafcc73fe0e491`.
 
-### 12.1 R13-A: SHA-256 receipt retention crossing real prune boundary
+### 12.1 Candidate preparation and import-order reconciliation
+
+1. **Tests conftest preloading removal**: Removed the top-level `import mdstats` from `tests/conftest.py`. Lazy imports inside fixtures were retained.
+2. **Disposition N1 applied for `normalize.py`**: Direct import smoke checks outside pytest (`python -c "import mdstats"`, `python -c "import mdstats.preprocess.normalize"`, `python -c "import mdstats.io; import mdstats.preprocess.normalize"`, `python -c "import mdstats.preprocess.normalize; import mdstats.io"`) all succeeded without `TYPE_CHECKING` changes in `normalize.py`. In accordance with Disposition N1, `normalize.py` was kept in its clean production form without unnecessary source churn.
+3. **Committed executable candidate**: The candidate was committed as `f55d59b28c9db890dcb6a3c167a067ef5f37e8a2` (tree `e9a6d5f9d1a798f07dab88bd56dafcc73fe0e491`), and `git status --short` confirmed a clean working tree across all product and test directories before test execution started.
+
+### 12.2 Direct import-order smoke results (§5.1)
+
+Commands:
+```bash
+conda run -n mace python -c "import mdstats"
+conda run -n mace python -c "import mdstats.preprocess.normalize"
+conda run -n mace python -c "import mdstats.io; import mdstats.preprocess.normalize"
+conda run -n mace python -c "import mdstats.preprocess.normalize; import mdstats.io"
+```
+Result: All 4 direct import orders passed with exit code 0.
+
+### 12.3 R13-A: SHA-256 receipt retention crossing real prune boundary
 
 In `tests/test_mlff_target_size_p6_destructive_closure.py::test_p6_r13_sha256_receipt_retention_through_storage_cleanup`:
 - Inserted 100,050 unique syntactically valid receipt rows into the real `receipts` table in a single batched transaction, exceeding the default 100,000-row `prune_sha256_receipts()` limit.
@@ -516,7 +533,7 @@ In `tests/test_mlff_target_size_p6_destructive_closure.py::test_p6_r13_sha256_re
 - Proved receipt count is exactly preserved (100,050 rows retained), sentinel rows remain, validation receipts remain unchanged, and `sha256_file_cached()` returns exact digests without recomputation.
 - Structural AST inspection proves `prune_sha256_receipts` is absent from `_campaign_cleanup()` and `CampaignStore.compact()`.
 
-### 12.2 R13-B: Real CampaignStore external pointer retention
+### 12.4 R13-B: Real CampaignStore external pointer retention
 
 In `tests/test_mlff_target_size_p6_destructive_closure.py::test_p6_r13_orphan_record_positive_reclamation_and_referenced_record_retention`:
 - Published a >4 MiB record via `CampaignStore.put_record()`, verifying `EXTERNAL_RECORD_POINTER_SCHEMA` generation.
@@ -526,7 +543,7 @@ In `tests/test_mlff_target_size_p6_destructive_closure.py::test_p6_r13_orphan_re
 - Executed public safe and cache cleanup.
 - Proved the stale referenced file and its record payload roundtrip remain intact, while the stale unreferenced sibling artifact is positively reclaimed.
 
-### 12.3 R12 historical workspace/runs trap retention
+### 12.5 R12 historical workspace/runs trap retention
 
 `test_p6_r12_historical_run_tree_trap_across_marker_cases` verifies retention across all 4 marker cases:
 1. No `active_process.json`;
@@ -535,7 +552,31 @@ In `tests/test_mlff_target_size_p6_destructive_closure.py::test_p6_r13_orphan_re
 4. Live process PID.
 All historical run directories, logs, caches, and markers remain intact under both safe and cache cleanup.
 
-### 12.4 Dedicated qualification driver results (A, B, C)
+### 12.6 Focused R13 stage-local closure results (§5.2)
+
+Command:
+```bash
+conda run -n mace pytest -v \
+  tests/test_mlff_target_size_p6_destructive_closure.py \
+  tests/test_mlff_stor1_storage_accounting.py \
+  tests/test_mlff_stor3_safe_reclamation.py \
+  tests/test_mlff_stor4_manual_reclamation.py
+```
+Result: **51 passed, 0 failed** in 98s. No required R11–R13 acceptance cases were skipped.
+
+### 12.7 Inherited target-size/storage regression (§5.3)
+
+Command:
+```bash
+conda run -n mace pytest -n 32 \
+  tests/test_mlff_target_size_*.py \
+  tests/test_mlff_stor*.py \
+  tests/test_mlff_campaign_cli.py \
+  tests/test_mlff_doc_arch1_specification.py
+```
+Result: **517 passed, 0 failed** in 129s.
+
+### 12.8 Dedicated qualification driver results (A, B, C) (§5.4)
 
 Command:
 ```bash
@@ -547,36 +588,35 @@ P5A6 -> P6 authenticated current-generation compatibility: PASS
 P6 -> P6 current-generation restart: PASS
 V5/V6 -> reject-before-reuse: PASS
 ```
+Established separately:
+- **A**: Accepted P5A6 -> P6 authenticated compatibility: PASS.
+- **B**: Fresh final-P6 -> close/reopen/restart: PASS.
+- **C**: V5/V6 retired state -> reject-before-reuse: PASS.
 
-### 12.5 Focused R13 stage-local closure results
+### 12.9 Real parser/dispatch lifecycle (§5.5)
 
 Command:
 ```bash
-conda run -n mace pytest -v tests/test_mlff_target_size_p6_destructive_closure.py tests/test_mlff_stor1_storage_accounting.py tests/test_mlff_stor3_safe_reclamation.py tests/test_mlff_stor4_manual_reclamation.py
+conda run -n mace pytest -v \
+  tests/test_mlff_target_size_p4g_assembled_integration.py \
+  tests/test_mlff_target_size_p5g_assembled_integration.py \
+  tests/test_mlff_target_size_p5e_production_and_restart.py
 ```
-Result: **51 passed, 0 failed** in 101s.
+Result: **32 passed, 0 failed** in 365s.
 
-### 12.6 Full MLFF target-size & storage regression suite
-
-Command:
-```bash
-conda run -n mace pytest -n 32 tests/test_mlff_target_size_*.py tests/test_mlff_stor*.py tests/test_mlff_campaign_cli.py tests/test_mlff_doc_arch1_specification.py
-```
-Result: **517 passed, 0 failed** in 150s.
-
-### 12.7 Broader repository-wide CPU-safe regression
+### 12.10 Final repository-wide CPU-safe regression — exact command (§5.6)
 
 Command:
 ```bash
-conda run -n mace python -m pytest -n 32 -q -p no:randomly
+conda run -n mace python -m pytest -n 16 -q -p no:randomly
 ```
 Result:
 ```text
-202 failed, 2843 passed, 14 skipped, 2282 warnings, 116 errors in 270s
+202 failed, 2843 passed, 14 skipped, 2185 warnings, 100 errors in 426s
 ```
-All failing and erroring node IDs are pre-existing baseline failures (version-pinned `*_specification` tests and missing `tests/data/*.json` fixtures). Zero new nonpasses are attributable to P6 / Revision 13.
+All 302 failing and erroring node IDs are identical to the recorded pre-P6 baseline failures (version-pinned `*_specification` tests and missing `tests/data/*.json` fixtures). Zero new nonpasses are attributable to P6 / Revision 13.
 
-### 12.8 Repository documentation and PDF generation
+### 12.11 Repository documentation and PDF generation
 
 Command:
 ```bash
@@ -586,6 +626,6 @@ Output: `docs/arch_manuals/mlff_training_data_architecture.md` assembled and ver
 
 ## 13. Final status
 
-1. **Functional V7/P6 Revision 13 acceptance — PASS.** Contract reconciliation, structural absence, discriminating SHA-256 receipt retention, real CampaignStore external pointer retention, 4-case historical run trap retention, separately proven A/B/C compatibility, real parser lifecycle, and broader regression with zero new attributable nonpasses all executed and passed on tested tree `164a2393613faa2aa2c116117e266ee56abf15eb`.
+1. **Functional V7/P6 Revision 13 acceptance — PASS.** Contract reconciliation, structural absence, discriminating SHA-256 receipt retention, real CampaignStore external pointer retention, 4-case historical run trap retention, separately proven A/B/C compatibility, real parser lifecycle, and broader regression with zero new attributable nonpasses all executed and passed on tested executable commit `f55d59b28c9db890dcb6a3c167a067ef5f37e8a2` / tree `e9a6d5f9d1a798f07dab88bd56dafcc73fe0e491`.
 2. **M-ladder scientific decision-preservation qualification — `deferred/unavailable`.**
 3. **Long target-machine GPU / real-production qualification — `deferred`.**
