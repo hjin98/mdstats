@@ -16,8 +16,7 @@ from ..exceptions import (
     MissingTimeError,
     SpeciesConsistencyError,
 )
-if TYPE_CHECKING:
-    from ..io.common import RawFrameCollection
+from ..io.common import RawFrameCollection
 from ..provenance import FrameCollectionProvenance, SourceFormat
 from ..semantics import FrameSemantics, coerce_frame_semantics
 from .unwrap import (
