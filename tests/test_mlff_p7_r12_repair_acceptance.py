@@ -747,12 +747,16 @@ def test_r12b11_real_publication_execution_is_blocking_until_a_capable_runtime(
             atoms = atoms_for_frame(
                 session.context, session.plan.physical_plan.bases[0].frame_uid
             )
+            kokkos_gpu_count = 1 if torch.cuda.is_available() else 0
+            selected_cuda_device = 0 if torch.cuda.is_available() else None
             energy, forces = deployed_static_evaluation(
                 atoms,
                 artifact_path=mliap_path,
                 element_types=("Li", "O"),
                 working_directory=tmp_path / "work",
                 timeout_seconds=900.0,
+                kokkos_gpu_count=kokkos_gpu_count,
+                selected_cuda_device=selected_cuda_device,
             )
         except QualificationUnavailableError as exc:
             pytest.skip(

@@ -954,6 +954,9 @@ def test_p7b_unavailable_runtime_is_blocking_not_passing(tmp_path: Path, monkeyp
             "require_deployed_runtime = false", "require_deployed_runtime = true"
         ),
     )
+    harness.deployed_evaluator = None
+    harness.mliap_builder = None
+    harness.deployment_exporter = None
     monkeypatch.setattr(
         runtime_capability,
         "probe_lammps_runtime",
@@ -966,14 +969,10 @@ def test_p7b_unavailable_runtime_is_blocking_not_passing(tmp_path: Path, monkeyp
             detail="not installed in this environment",
         ),
     )
-    from mdstats.training_data.qualification import deployment as deployment_module
+    from mdstats.training_data.qualification.errors import QualificationUnavailableError
 
-    monkeypatch.setattr(
-        deployment_module, "probe_lammps_runtime", runtime_capability.probe_lammps_runtime
-    )
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(QualificationUnavailableError) as excinfo:
         fx.run_qualification_command(config, "run", harness=harness)
-    assert "unavailable" in str(excinfo.value)
     assert _current_record(config, harness) is None
 
 

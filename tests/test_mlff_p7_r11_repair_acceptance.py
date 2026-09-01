@@ -305,12 +305,16 @@ def test_r11b2_real_mace_product_execution_is_unavailable_or_passes(tmp_path: Pa
             cell=[10.0, 10.0, 10.0],
             pbc=True,
         )
+        kokkos_gpu_count = 1 if torch.cuda.is_available() else 0
+        selected_cuda_device = 0 if torch.cuda.is_available() else None
         energy, forces = deployed_static_evaluation(
             atoms,
             artifact_path=mliap_path,
             element_types=("Li", "O"),
             working_directory=tmp_path / "work",
             timeout_seconds=900.0,
+            kokkos_gpu_count=kokkos_gpu_count,
+            selected_cuda_device=selected_cuda_device,
         )
     except QualificationUnavailableError as exc:
         pytest.skip(

@@ -264,14 +264,8 @@ def write_lammps_data(atoms: Any, path: str | os.PathLike[str], *, specorder: Se
 
 
 def _require_supported_runtime() -> LammpsRuntimeProbe:
-    probe = probe_lammps_runtime()
-    if not probe.supports_deployed_execution:
-        raise QualificationUnavailableError(
-            "The supported LAMMPS/ML-IAP deployment runtime is unavailable "
-            f"({probe.detail or 'no detail'}). Deployment-runtime evidence is "
-            "reported as unavailable rather than passed or rejected."
-        )
-    return probe
+    """Diagnostic only: inspect generic runtime without vetoing execution."""
+    return probe_lammps_runtime()
 
 
 def execute_lammps_request(
@@ -287,7 +281,7 @@ def execute_lammps_request(
     attempt that owns it.
     """
 
-    probe = _require_supported_runtime()
+    probe = probe_lammps_runtime()
     root = Path(working_directory)
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=str(root), prefix="lammps-call-") as scratch:
@@ -434,6 +428,8 @@ def deployed_static_evaluation(
     element_types: Sequence[str],
     working_directory: str | os.PathLike[str],
     timeout_seconds: float = 900.0,
+    kokkos_gpu_count: int = 0,
+    selected_cuda_device: int | str | None = None,
 ) -> tuple[float, np.ndarray]:
     """Energy/forces for one configuration through the real deployed artifact."""
 
@@ -444,6 +440,8 @@ def deployed_static_evaluation(
         working_directory=working_directory,
         timeout_seconds=timeout_seconds,
         include_stress=False,
+        kokkos_gpu_count=kokkos_gpu_count,
+        selected_cuda_device=selected_cuda_device,
     )
     return observation.energy, observation.forces
 

@@ -673,11 +673,10 @@ class QualificationSession:
             }
         )
         if (claim_kind or component) == "deployment":
-            runtime = probe_lammps_runtime()
             runtime_reports = bool(
                 self.deployed_stress_supported
                 if self.deployed_stress_supported is not None
-                else runtime.supports_deployed_execution
+                else True
             )
         else:
             # Physical/reference claims are scientifically independent of the
@@ -1153,24 +1152,16 @@ class QualificationSession:
         if value is None:
             return None
         if str(component) == COMPONENT_DEPLOYMENT_PARITY:
-            from .runtime_capability import probe_lammps_runtime
-
-            current_runtime = bool(
-                self.deployed_stress_supported
-                if self.deployed_stress_supported is not None
-                else probe_lammps_runtime().supports_deployed_execution
-            )
             decisions = payload.get("stress_capabilities")
             if not isinstance(decisions, Mapping) or not decisions:
                 return None
-            if any(
-                not isinstance(decision, Mapping)
-                or bool(decision.get("runtime_reports_stress")) != current_runtime
-                for decision in decisions.values()
-            ):
-                # Force a fresh claim resolution. This changes the component
-                # input digest and makes the old evidence unreachable.
-                return None
+            if self.deployed_stress_supported is not None:
+                if any(
+                    not isinstance(decision, Mapping)
+                    or bool(decision.get("runtime_reports_stress")) != self.deployed_stress_supported
+                    for decision in decisions.values()
+                ):
+                    return None
         return value
 
     def _cached_capability_digest(self, component: str) -> str | None:

@@ -920,3 +920,320 @@ def test_r13_public_release_graph_rejects_missing_resource_or_indexed_terminal(
         ).content_digest == index.content_digest
     finally:
         store.close()
+
+
+# ---------------------------------------------------------------------------
+# R13.2 — generic runtime preflight veto removal and stress/currentness decoupling
+# ---------------------------------------------------------------------------
+
+
+def test_r13_2_generic_probe_failure_does_not_veto_selected_worker(
+    tmp_path: Path, monkeypatch
+):
+    import mdstats.training_data.qualification.runtime_capability as runtime
+
+    failed_probe = runtime.LammpsRuntimeProbe(
+        available=False,
+        version=None,
+        mliap_available=False,
+        mliappy_available=False,
+        python_module_path=None,
+        detail="generic CPU startup failed",
+    )
+    monkeypatch.setattr(runtime, "probe_lammps_runtime", lambda *args, **kwargs: failed_probe)
+
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "", ""
+
+    def fake_popen(argv, **_kwargs):
+        response_path = Path(argv[-1])
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_text(
+            json.dumps(
+                {
+                    "ok": True,
+                    "result": {
+                        "mode": "static",
+                        "potential_energy_ev": -42.0,
+                        "forces_ev_per_angstrom": [[0.0, 0.0, 0.0]],
+                        "positions_angstrom": [[0.0, 0.0, 0.0]],
+                        "atom_count": 1,
+                        "stress_ev_per_angstrom3": None,
+                        "cell_angstrom": [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
+                        "pbc": [True, True, True],
+                        "runtime_evidence": {
+                            "schema": "mdstats.qualification-lammps-runtime-evidence.v1",
+                            "mliappy_activated": True,
+                            "product_callback_executed": True,
+                            "effective_lammps_cmdargs": ["-k", "on", "g", "1", "-sf", "kk"],
+                            "kokkos_gpu_count": 1,
+                            "selected_cuda_device": 0,
+                            "pbc": [True, True, True],
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return FakeProcess()
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+    result = runtime.execute_lammps_request(
+        {
+            "mode": "static",
+            "pbc": [True, True, True],
+            "data_path": str(tmp_path / "probe.data"),
+            "artifact_path": str(tmp_path / "model.pt"),
+            "element_types": ["Li"],
+            "kokkos_gpu_count": 1,
+            "selected_cuda_device": 0,
+        },
+        working_directory=tmp_path,
+    )
+    assert result["potential_energy_ev"] == -42.0
+    assert result["runtime_evidence"]["mliappy_activated"] is True
+    assert result["runtime_evidence"]["product_callback_executed"] is True
+    assert result["runtime_evidence"]["runtime_probe_digest"] == failed_probe.content_digest
+
+
+def test_r13_2_qualify_deployment_parity_reaches_worker_despite_generic_probe_failure(
+    tmp_path: Path, monkeypatch
+):
+    from mdstats.training_data.qualification import (
+        COMPONENT_DEPLOYMENT_PARITY,
+        ComponentStatus,
+        probe_lammps_runtime,
+    )
+    from mdstats.training_data.qualification.deployment import (
+        DeployedEvaluation,
+        qualify_deployment_parity,
+    )
+    import mdstats.training_data.qualification.runtime_capability as runtime
+
+    failed_probe = runtime.LammpsRuntimeProbe(
+        available=False,
+        version=None,
+        mliap_available=False,
+        mliappy_available=False,
+        python_module_path=None,
+        detail="generic CPU probe unavailable",
+    )
+    monkeypatch.setattr(runtime, "probe_lammps_runtime", lambda *args, **kwargs: failed_probe)
+
+    harness = fx.QualificationHarness()
+    config, _workspace = fx.build_qualified_campaign(
+        tmp_path,
+        harness=harness,
+        config_text=fx.fixture_config_text().replace(
+            "require_deployed_runtime = false", "require_deployed_runtime = true"
+        ),
+    )
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        from mdstats.training_data.qualification.deployment import (
+            energy_of,
+            forces_of,
+            member_provider,
+            predict_all,
+            stress_of,
+        )
+        member = session.publication.members[0]
+        called_worker = []
+
+        def mock_evaluator(m, atoms_list, *, stress_capability=None):
+            called_worker.append(m.member_id)
+            with member_provider(session.context, m) as provider:
+                predictions = predict_all(session.context, provider, atoms_list)
+            energies = [energy_of(item) for item in predictions]
+            forces = [forces_of(item) for item in predictions]
+            return DeployedEvaluation(
+                energies_ev=tuple(energies),
+                forces_ev_per_angstrom=tuple(forces),
+                artifact_sha256="0" * 64,
+                runtime_identity=session.binding.environment.content_digest,
+                stresses_ev_per_angstrom3=tuple([None] * len(atoms_list)),
+                cells_angstrom=tuple([np.asarray(a.get_cell(), dtype=np.float64) for a in atoms_list]),
+                pbc=tuple([tuple(bool(v) for v in a.get_pbc()) for a in atoms_list]),
+                runtime_evidence=tuple([{"mliappy_activated": True, "product_callback_executed": True}] * len(atoms_list)),
+            )
+
+        monkeypatch.setattr(session, "evaluate_deployed", mock_evaluator)
+        evidence = qualify_deployment_parity(session)
+        assert called_worker == [member.member_id]
+        assert evidence.status == ComponentStatus.PASSED
+    finally:
+        store.close()
+
+
+def test_r13_2_applicable_stress_requested_and_compared_when_generic_probe_fails(
+    tmp_path: Path, monkeypatch
+):
+    from mdstats.training_data.qualification import (
+        ComponentStatus,
+    )
+    from mdstats.training_data.qualification.deployment import (
+        DeployedEvaluation,
+        energy_of,
+        forces_of,
+        member_provider,
+        predict_all,
+        qualify_deployment_parity,
+        stress_of,
+    )
+    import mdstats.training_data.qualification.runtime_capability as runtime
+
+    failed_probe = runtime.LammpsRuntimeProbe(
+        available=False,
+        version=None,
+        mliap_available=False,
+        mliappy_available=False,
+        python_module_path=None,
+        detail="generic CPU probe unavailable",
+    )
+    monkeypatch.setattr(runtime, "probe_lammps_runtime", lambda *args, **kwargs: failed_probe)
+
+    harness = fx.QualificationHarness()
+    config, _workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        def mock_evaluator(m, atoms_list, *, stress_capability=None):
+            assert stress_capability is not None
+            with member_provider(session.context, m) as provider:
+                predictions = predict_all(session.context, provider, atoms_list)
+            energies = [energy_of(item) for item in predictions]
+            forces = [forces_of(item) for item in predictions]
+            stresses = [stress_of(item) for item in predictions]
+            return DeployedEvaluation(
+                energies_ev=tuple(energies),
+                forces_ev_per_angstrom=tuple(forces),
+                artifact_sha256="0" * 64,
+                runtime_identity=session.binding.environment.content_digest,
+                stresses_ev_per_angstrom3=tuple(stresses),
+                cells_angstrom=tuple([np.asarray(a.get_cell(), dtype=np.float64) for a in atoms_list]),
+                pbc=tuple([tuple(bool(v) for v in a.get_pbc()) for a in atoms_list]),
+                runtime_evidence=tuple([{"mliappy_activated": True, "product_callback_executed": True}] * len(atoms_list)),
+            )
+
+        monkeypatch.setattr(session, "evaluate_deployed", mock_evaluator)
+        evidence = qualify_deployment_parity(session)
+        assert evidence.status == ComponentStatus.PASSED
+    finally:
+        store.close()
+
+
+def test_r13_2_applicable_stress_missing_from_worker_fails_closed(
+    tmp_path: Path, monkeypatch
+):
+    from mdstats.training_data.qualification import (
+        ComponentStatus,
+    )
+    from mdstats.training_data.qualification.deployment import (
+        DeployedEvaluation,
+        qualify_deployment_parity,
+    )
+    from mdstats.training_data.qualification.stress_capability import StressCapabilityDecision
+
+    harness = fx.QualificationHarness()
+    config, _workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        # Force stress capability to report applicable = True
+        orig_stress_cap = session.stress_capability
+
+        def mock_stress_cap(*args, **kwargs):
+            res = orig_stress_cap(*args, **kwargs)
+            return StressCapabilityDecision(
+                training_objective_weights_stress=True,
+                reference_labels_available=True,
+                model_reports_stress=True,
+                fully_periodic=True,
+                runtime_reports_stress=True,
+                policy_requires_stress=False,
+                policy_declared_inapplicable_reason=None,
+                reason_codes=("training_objective_weights_stress",),
+                geometry_applicability=tuple([True] * len(args[0])),
+                model_stress_by_geometry=tuple([True] * len(args[0])),
+                reference_stress_available_by_geometry=tuple([True] * len(args[0])),
+            )
+
+        monkeypatch.setattr(session, "stress_capability", mock_stress_cap)
+
+        def mock_evaluator(m, atoms_list, *, stress_capability=None):
+            energies = [-1.0] * len(atoms_list)
+            forces = [np.zeros((len(a), 3)) for a in atoms_list]
+            # Worker returns None for stress
+            return DeployedEvaluation(
+                energies_ev=tuple(energies),
+                forces_ev_per_angstrom=tuple(forces),
+                artifact_sha256="0" * 64,
+                runtime_identity=session.binding.environment.content_digest,
+                stresses_ev_per_angstrom3=tuple([None] * len(atoms_list)),
+                cells_angstrom=tuple([np.asarray(a.get_cell(), dtype=np.float64) for a in atoms_list]),
+                pbc=tuple([tuple(bool(v) for v in a.get_pbc()) for a in atoms_list]),
+                runtime_evidence=tuple([{"mliappy_activated": True, "product_callback_executed": True}] * len(atoms_list)),
+            )
+
+        monkeypatch.setattr(session, "evaluate_deployed", mock_evaluator)
+        evidence = qualify_deployment_parity(session)
+        assert evidence.status == ComponentStatus.REJECTED
+        assert evidence.payload["members"][0]["missing_stress_count"] > 0
+    finally:
+        store.close()
+
+
+def test_r13_2_diagnostic_probe_flip_does_not_stale_deployment_capability_digest(
+    tmp_path: Path, monkeypatch
+):
+    from mdstats.training_data.qualification import (
+        COMPONENT_DEPLOYMENT_PARITY,
+        probe_lammps_runtime,
+    )
+    from mdstats.training_data.qualification.deployment import qualify_deployment_parity
+    import mdstats.training_data.qualification.runtime_capability as runtime
+
+    harness = fx.QualificationHarness()
+    config, _workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        evidence = qualify_deployment_parity(session)
+        session.record_component(evidence)
+        digest1 = session._stored_capability_digest(COMPONENT_DEPLOYMENT_PARITY)
+        assert digest1 is not None
+
+        # Flip diagnostic generic probe to unavailable
+        failed_probe = runtime.LammpsRuntimeProbe(
+            available=False,
+            version=None,
+            mliap_available=False,
+            mliappy_available=False,
+            python_module_path=None,
+            detail="generic CPU probe unavailable",
+        )
+        monkeypatch.setattr(runtime, "probe_lammps_runtime", lambda *args, **kwargs: failed_probe)
+
+        digest2 = session._stored_capability_digest(COMPONENT_DEPLOYMENT_PARITY)
+        # Stored capability digest remains identical; generic probe flip does not stale evidence
+        assert digest2 == digest1
+    finally:
+        store.close()
+
+
+def test_r13_2_kokkos_launch_args_and_package_options():
+    import mdstats.training_data.qualification.runtime_capability as runtime
+
+    assert runtime._effective_lammps_cmdargs({"kokkos_gpu_count": 1}) == [
+        "-k", "on", "g", "1", "-sf", "kk"
+    ]
+    assert runtime._effective_lammps_cmdargs({"kokkos_gpu_count": 0}) == []
+    assert runtime._effective_lammps_cmdargs({"kokkos_gpu_count": 2}) == [
+        "-k", "on", "g", "2", "-sf", "kk"
+    ]
+    assert runtime._effective_lammps_cmdargs({"lammps_cmdargs": ["-opt1", "-opt2"]}) == [
+        "-opt1", "-opt2"
+    ]
+    with pytest.raises(QualificationError, match="nonnegative"):
+        runtime._effective_lammps_cmdargs({"kokkos_gpu_count": -1})
+

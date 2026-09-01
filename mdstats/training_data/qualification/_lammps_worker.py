@@ -182,28 +182,50 @@ def _build(request: dict[str, Any]):
     from lammps import lammps, mliap
 
     cmdargs = ["-log", "none", "-screen", "none", "-nocite"]
-    cmdargs.extend(_effective_lammps_cmdargs(request))
+    launch_args = list(_effective_lammps_cmdargs(request))
+    cmdargs.extend(launch_args)
+    is_kokkos = bool(
+        int(request.get("kokkos_gpu_count", 0) or 0) > 0
+        or any("-k" in str(arg) or "-sf" in str(arg) or "kk" in str(arg) for arg in launch_args)
+    )
     instance = lammps(cmdargs=cmdargs)
     try:
         mliap.activate_mliappy(instance)
+        if is_kokkos and hasattr(mliap, "activate_mliappy_kokkos"):
+            try:
+                mliap.activate_mliappy_kokkos(instance)
+            except Exception:
+                pass
         # The unified model must be resident before `pair_style ... EXISTS`
         # runs; LAMMPS resolves the already loaded object rather than a file
         # path.
         model = _load_deployed_model(request["artifact_path"])
         mliap.load_unified(model)
+        if is_kokkos and hasattr(mliap, "load_unified_kokkos"):
+            try:
+                mliap.load_unified_kokkos(model)
+            except Exception:
+                pass
 
         pbc = _request_pbc(request)
         commands = [
             "units metal",
             "atom_style atomic",
             "atom_modify map array sort 0 0.0",
+        ]
+        if is_kokkos:
+            commands.extend([
+                "package kokkos neigh half newton on",
+                "newton on",
+            ])
+        commands.extend([
             _boundary_command(pbc),
             f"read_data {request['data_path']}",
             "pair_style mliap unified EXISTS 0",
             "pair_coeff * * " + " ".join(str(v) for v in request["element_types"]),
             "neighbor 1.0 bin",
             "neigh_modify every 1 delay 0 check yes",
-        ]
+        ])
         for line in commands:
             instance.command(line)
         return instance

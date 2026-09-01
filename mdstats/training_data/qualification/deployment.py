@@ -224,24 +224,6 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
         }
     )
 
-    if bool(policy["require_deployed_runtime"]):
-        # Two different capabilities, and only the second one proves the
-        # product path: a runtime can execute *an* ML-IAP model while being
-        # unable to execute *this MACE product*. When the real deployed path is
-        # in use, the stronger capability is the one that must hold.
-        # Static MACE/module introspection is diagnostic only.  The actual
-        # product callback is owned by the worker below and is the only source
-        # that can prove or reject exact MACE execution.
-        capable = probe.supports_deployed_execution
-        if not capable:
-            raise QualificationUnavailableError(
-                "Deployment-parity qualification requires the supported "
-                "LAMMPS/ML-IAP runtime to execute the exact published MACE "
-                f"product, which it cannot ({probe.detail or 'no detail'}). This "
-                "is reported as unavailable/blocking, never as a pass, and must "
-                "be executed in final target-machine qualification."
-            )
-
     member_results: list[dict[str, Any]] = []
     failures: list[str] = []
     for member in session.publication.members:
@@ -320,18 +302,12 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
             if not geometry_stress_applicable:
                 continue
             if runtime_stress_unavailable:
-                # Applicability is an authenticated property of the trained
-                # product and exact geometry claim.  A runtime capability
-                # observation cannot be overridden by a coincidental tensor
-                # returned by an injected evaluator.
                 unavailable_stress += 1
                 missing_stress += 1
                 continue
             if expected is None or observed is None:
-                if geometry_stress_applicable:
-                    unavailable_stress += 1
-                if geometry_stress_applicable:
-                    missing_stress += 1
+                unavailable_stress += 1
+                missing_stress += 1
                 continue
             expected_tensor = np.asarray(expected, dtype=np.float64)
             observed_tensor = np.asarray(observed, dtype=np.float64)
