@@ -636,7 +636,6 @@ class QualificationSession:
         """
 
         from .providers import member_provider, predict_all, stress_of
-        from .runtime_capability import probe_lammps_runtime
         from .stress_capability import resolve_stress_capability
 
         members = tuple(self.publication.members)

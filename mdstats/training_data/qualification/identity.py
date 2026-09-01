@@ -292,15 +292,20 @@ class EnvironmentFingerprint:
     def content_digest(self) -> str:
         """Identity of the claim-relevant environment.
 
-        Resource *capacity* (thread count, memory) and free-text notes describe
-        the machine but do not by themselves change what a deterministic
-        numerical claim means, so they are recorded and excluded from the
-        material identity; every version, device, driver, and precision fact is
-        included, because those do change it.
+        Resource *capacity* (thread count, memory), free-text notes, and
+        volatile generic-probe flags are excluded from the material identity;
+        every stable package version, selected device, driver, and precision
+        fact is included.
         """
 
         payload = self._payload()
-        for key in ("cpu_thread_count", "total_memory_bytes", "accelerator_memory_bytes", "notes"):
+        for key in (
+            "cpu_thread_count",
+            "total_memory_bytes",
+            "accelerator_memory_bytes",
+            "notes",
+            "lammps_mliap_available",
+        ):
             payload.pop(key, None)
         return digest(payload)
 
@@ -362,12 +367,26 @@ def _accelerator_facts(device: str) -> tuple[str | None, str | None, str | None,
     if not torch.cuda.is_available():
         return None, None, None, None
     cuda_version = _optional(getattr(torch.version, "cuda", None))
+    device_str = str(device).strip()
+    device_index = 0
+    if ":" in device_str:
+        try:
+            device_index = int(device_str.split(":", 1)[1])
+        except ValueError as exc:
+            raise TrainingDataInputError(f"Invalid CUDA device identifier: {device!r}") from exc
+    if device_index < 0 or device_index >= torch.cuda.device_count():
+        raise TrainingDataInputError(
+            f"Selected CUDA device {device_index} is out of range for available device count "
+            f"({torch.cuda.device_count()})."
+        )
     try:
-        properties = torch.cuda.get_device_properties(0)
+        properties = torch.cuda.get_device_properties(device_index)
         model = _optional(getattr(properties, "name", None))
         memory = int(getattr(properties, "total_memory", 0)) or None
-    except Exception:
-        model, memory = None, None
+    except Exception as exc:
+        raise TrainingDataInputError(
+            f"Could not read device properties for selected CUDA device {device_index}: {exc}"
+        ) from exc
     driver = None
     try:
         result = subprocess.run(
@@ -378,26 +397,28 @@ def _accelerator_facts(device: str) -> tuple[str | None, str | None, str | None,
             check=False,
         )
         if result.returncode == 0:
-            driver = _optional(result.stdout.splitlines()[0] if result.stdout.splitlines() else None)
+            lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            if 0 <= device_index < len(lines):
+                driver = _optional(lines[device_index])
+            elif lines:
+                driver = _optional(lines[0])
     except (OSError, subprocess.SubprocessError):
         driver = None
     return cuda_version, model, driver, memory
 
 
 def _lammps_facts() -> tuple[str | None, bool]:
-    """Interrogate the supported simulation runtime without asserting it exists."""
+    """Interrogate the installed simulation package without running a simulation instance."""
 
-    try:
-        import lammps  # noqa: F401
-    except Exception:
-        return None, False
-    try:
-        from .runtime_capability import probe_lammps_runtime
+    version = _module_version("lammps")
+    if version is None:
+        try:
+            import lammps
 
-        probe = probe_lammps_runtime()
-    except Exception:
-        return None, False
-    return probe.version, probe.mliap_available
+            version = _optional(getattr(lammps, "__version__", None))
+        except Exception:
+            version = None
+    return version, False
 
 
 @dataclass(frozen=True, slots=True)

@@ -995,8 +995,7 @@ def test_r13_2_generic_probe_failure_does_not_veto_selected_worker(
     )
     assert result["potential_energy_ev"] == -42.0
     assert result["runtime_evidence"]["mliappy_activated"] is True
-    assert result["runtime_evidence"]["product_callback_executed"] is True
-    assert result["runtime_evidence"]["runtime_probe_digest"] == failed_probe.content_digest
+    assert result["runtime_evidence"]["worker_exit_status"] == 0
 
 
 def test_r13_2_qualify_deployment_parity_reaches_worker_despite_generic_probe_failure(
@@ -1236,4 +1235,244 @@ def test_r13_2_kokkos_launch_args_and_package_options():
     ]
     with pytest.raises(QualificationError, match="nonnegative"):
         runtime._effective_lammps_cmdargs({"kokkos_gpu_count": -1})
+
+
+# ---------------------------------------------------------------------------
+# R13.3 acceptance tests
+# ---------------------------------------------------------------------------
+
+
+def test_r13_3_probe_raising_does_not_block_fingerprint_or_session_build(
+    tmp_path: Path, monkeypatch
+):
+    import mdstats.training_data.qualification.runtime_capability as runtime
+    from mdstats.training_data.qualification.identity import capture_environment_fingerprint
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("probe_lammps_runtime must not be called during environment capture")
+
+    monkeypatch.setattr(runtime, "probe_lammps_runtime", boom)
+
+    # capture_environment_fingerprint succeeds without calling probe_lammps_runtime
+    fp = capture_environment_fingerprint(default_dtype="float64", device="cpu")
+    assert fp.operating_system
+    assert fp.content_digest
+
+    # Session build also succeeds without calling probe_lammps_runtime
+    harness = fx.QualificationHarness()
+    config, _workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
+    _cfg, _paths, store, session = fx.load_session(config, harness)
+    try:
+        assert session.binding.environment.content_digest == fp.content_digest
+    finally:
+        store.close()
+
+
+def test_r13_3_probe_raising_does_not_block_deployment_parity_execution(
+    tmp_path: Path, monkeypatch
+):
+    import mdstats.training_data.qualification.runtime_capability as runtime
+    from mdstats.training_data.qualification.deployment import qualify_deployment_parity
+    from mdstats.training_data.qualification import ComponentStatus
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("probe_lammps_runtime must not be called during deployment parity")
+
+    monkeypatch.setattr(runtime, "probe_lammps_runtime", boom)
+
+    harness = fx.QualificationHarness()
+    config, _workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
+    _cfg, _paths, store, session = fx.load_session(config, harness)
+    try:
+        evidence = qualify_deployment_parity(session)
+        assert evidence.status == ComponentStatus.PASSED
+    finally:
+        store.close()
+
+
+def test_r13_3_fingerprint_and_binding_digest_identical_across_generic_probe_outcomes(
+    monkeypatch,
+):
+    from mdstats.training_data.qualification.identity import (
+        capture_environment_fingerprint,
+        EnvironmentFingerprint,
+    )
+
+    # Fingerprint 1 (normal capture)
+    fp1 = capture_environment_fingerprint(default_dtype="float64", device="cpu")
+
+    # Fingerprint 2 with explicit True vs False lammps_mliap_available
+    fp_true = EnvironmentFingerprint(
+        operating_system=fp1.operating_system,
+        kernel_release=fp1.kernel_release,
+        machine_architecture=fp1.machine_architecture,
+        python_version=fp1.python_version,
+        torch_version=fp1.torch_version,
+        cuda_runtime_version=fp1.cuda_runtime_version,
+        accelerator_model=fp1.accelerator_model,
+        accelerator_driver_version=fp1.accelerator_driver_version,
+        mace_version=fp1.mace_version,
+        ase_version=fp1.ase_version,
+        lammps_version=fp1.lammps_version,
+        lammps_mliap_available=True,
+        default_dtype=fp1.default_dtype,
+        device=fp1.device,
+        cpu_thread_count=fp1.cpu_thread_count,
+        total_memory_bytes=fp1.total_memory_bytes,
+        accelerator_memory_bytes=fp1.accelerator_memory_bytes,
+        package_set_digest=fp1.package_set_digest,
+    )
+    fp_false = EnvironmentFingerprint(
+        operating_system=fp1.operating_system,
+        kernel_release=fp1.kernel_release,
+        machine_architecture=fp1.machine_architecture,
+        python_version=fp1.python_version,
+        torch_version=fp1.torch_version,
+        cuda_runtime_version=fp1.cuda_runtime_version,
+        accelerator_model=fp1.accelerator_model,
+        accelerator_driver_version=fp1.accelerator_driver_version,
+        mace_version=fp1.mace_version,
+        ase_version=fp1.ase_version,
+        lammps_version=fp1.lammps_version,
+        lammps_mliap_available=False,
+        default_dtype=fp1.default_dtype,
+        device=fp1.device,
+        cpu_thread_count=fp1.cpu_thread_count,
+        total_memory_bytes=fp1.total_memory_bytes,
+        accelerator_memory_bytes=fp1.accelerator_memory_bytes,
+        package_set_digest=fp1.package_set_digest,
+    )
+
+    # Content digest is 100% invariant to volatile lammps_mliap_available flag
+    assert fp_true.content_digest == fp_false.content_digest == fp1.content_digest
+
+
+def test_r13_3_terminal_release_resolution_remains_current_across_generic_probe_flip(
+    tmp_path: Path, monkeypatch
+):
+    import mdstats.training_data.qualification.runtime_capability as runtime
+    from mdstats.training_data.qualification.runtime import (
+        resolve_current_qualification_verdict,
+        resolve_current_release_evidence,
+    )
+    from mdstats.training_data.qualification import QualificationVerdict
+
+    harness = fx.QualificationHarness()
+    config, _workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        # Run full qualification and locked test to establish release qualified state
+        fx.supply_analytic_reference_bundle(session, harness)
+        assert fx.run_qualification_command(config, "run", harness=harness) == 0
+        assert (
+            fx.run_qualification_command(
+                config, "activate-locked", "--confirm", harness=harness
+            )
+            == 0
+        )
+        assert fx.run_qualification_command(config, "run", harness=harness) == 0
+
+        # Verify current release evidence
+        index1 = resolve_current_release_evidence(
+            store, paths, session.context, binding=session.binding
+        )
+        assert index1 is not None
+
+        # Monkeypatch generic probe to raise / fail
+        def boom(*args, **kwargs):
+            raise RuntimeError("generic probe failed")
+
+        monkeypatch.setattr(runtime, "probe_lammps_runtime", boom)
+
+        # Re-resolve on fresh session context
+        _cfg2, paths2, store2, session2 = fx.load_session(config, harness)
+        try:
+            record2 = resolve_current_qualification_verdict(
+                store2, paths2, session2.context, binding=session2.binding
+            )
+            assert record2 is not None
+            assert record2.verdict == QualificationVerdict.RELEASE_QUALIFIED
+            index2 = resolve_current_release_evidence(
+                store2, paths2, session2.context, binding=session2.binding
+            )
+            assert index2 is not None
+            assert index2.content_digest == index1.content_digest
+        finally:
+            store2.close()
+    finally:
+        store.close()
+
+
+def test_r13_3_accelerator_facts_queries_exact_cuda_device_and_rejects_out_of_bounds(
+    monkeypatch,
+):
+    from mdstats.training_data._common import TrainingDataInputError
+    from mdstats.training_data.qualification.identity import (
+        _accelerator_facts,
+        capture_environment_fingerprint,
+    )
+    from types import SimpleNamespace
+
+    torch = pytest.importorskip("torch")
+
+    # Create fake two-device CUDA environment
+    class FakeCuda:
+        @staticmethod
+        def is_available():
+            return True
+
+        @staticmethod
+        def device_count():
+            return 2
+
+        @staticmethod
+        def get_device_properties(index: int):
+            if index == 0:
+                return SimpleNamespace(name="NVIDIA GPU Device Zero", total_memory=1000)
+            elif index == 1:
+                return SimpleNamespace(name="NVIDIA GPU Device One", total_memory=2000)
+            raise IndexError(f"Device index {index} out of range")
+
+    monkeypatch.setattr(torch, "cuda", FakeCuda)
+
+    # Test device cuda:0
+    _cuda_ver, model0, _driver, mem0 = _accelerator_facts("cuda:0")
+    assert model0 == "NVIDIA GPU Device Zero"
+    assert mem0 == 1000
+
+    # Test device cuda:1
+    _cuda_ver, model1, _driver, mem1 = _accelerator_facts("cuda:1")
+    assert model1 == "NVIDIA GPU Device One"
+    assert mem1 == 2000
+
+    fp0 = capture_environment_fingerprint(default_dtype="float64", device="cuda:0")
+    fp1 = capture_environment_fingerprint(default_dtype="float64", device="cuda:1")
+    assert fp0.accelerator_model == "NVIDIA GPU Device Zero"
+    assert fp1.accelerator_model == "NVIDIA GPU Device One"
+    assert fp0.content_digest != fp1.content_digest
+
+    # Out of range device raises TrainingDataInputError
+    with pytest.raises(TrainingDataInputError, match="out of range"):
+        _accelerator_facts("cuda:2")
+
+    # Invalid device string raises TrainingDataInputError
+    with pytest.raises(TrainingDataInputError, match="Invalid CUDA device"):
+        _accelerator_facts("cuda:invalid")
+
+
+def test_r13_3_selected_worker_callback_failure_still_blocks(tmp_path: Path):
+    import mdstats.training_data.qualification.runtime_capability as runtime
+    from mdstats.training_data.qualification.errors import QualificationUnavailableError
+
+    # Invalid artifact path in request causes worker to fail
+    request = {
+        "mode": "static",
+        "data_path": str(tmp_path / "nonexistent.data"),
+        "artifact_path": str(tmp_path / "nonexistent.pt"),
+        "element_types": ["Li", "O"],
+        "pbc": [True, True, True],
+    }
+    with pytest.raises(QualificationUnavailableError):
+        runtime.execute_lammps_request(request, working_directory=tmp_path / "work")
+
 

@@ -263,9 +263,12 @@ def write_lammps_data(atoms: Any, path: str | os.PathLike[str], *, specorder: Se
     return hashlib.sha256(target.read_bytes()).hexdigest()
 
 
-def _require_supported_runtime() -> LammpsRuntimeProbe:
+def _require_supported_runtime() -> LammpsRuntimeProbe | None:
     """Diagnostic only: inspect generic runtime without vetoing execution."""
-    return probe_lammps_runtime()
+    try:
+        return probe_lammps_runtime()
+    except Exception:
+        return None
 
 
 def execute_lammps_request(
@@ -281,7 +284,6 @@ def execute_lammps_request(
     attempt that owns it.
     """
 
-    probe = probe_lammps_runtime()
     root = Path(working_directory)
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=str(root), prefix="lammps-call-") as scratch:
@@ -359,7 +361,7 @@ def execute_lammps_request(
         )
     if not bool(payload.get("ok")):
         raise QualificationUnavailableError(
-            f"The supported LAMMPS runtime ({probe.version}) failed: {payload.get('error')}"
+            f"The supported LAMMPS runtime failed: {payload.get('error')}"
         )
     result = payload.get("result")
     if not isinstance(result, Mapping):
@@ -383,7 +385,6 @@ def execute_lammps_request(
     result["runtime_evidence"] = {
         **dict(evidence),
         "worker_exit_status": int(process.returncode),
-        "runtime_probe_digest": probe.content_digest,
         "effective_lammps_cmdargs": list(launch_args),
     }
     return result

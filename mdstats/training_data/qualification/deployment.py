@@ -31,7 +31,7 @@ from .errors import (
 from .geometry import atoms_for_frame
 from .providers import energy_of, forces_of, member_provider, predict_all, stress_of
 from .publication import PublishedProductionMember, checkpoint_path_for_member
-from .runtime_capability import deployed_static_evaluation, probe_lammps_runtime
+from .runtime_capability import deployed_static_evaluation
 
 
 def probe_cohort(context: Any, *, count: int) -> tuple[str, ...]:
@@ -202,7 +202,6 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
 
     binding = session.binding
     policy = binding.specification.component_policy(COMPONENT_DEPLOYMENT_PARITY)
-    probe = probe_lammps_runtime()
     cohort = probe_cohort(session.context, count=int(policy["probe_configuration_count"]))
     cohort_digest = digest({"deployment_probe_cohort": list(cohort)})
     atoms_list = [atoms_for_frame(session.context, uid) for uid in cohort]
@@ -444,7 +443,6 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
             "probe_cohort_digest": cohort_digest,
             "probe_geometry_digest": probe_geometry_digest,
             "probe_frame_uids": list(cohort),
-            "runtime_probe": probe.to_dict(),
             "used_real_deployed_runtime": session.deployed_evaluator is None,
             # Kept as a compatibility view for a single-member publication;
             # the authoritative collection is the member-keyed mapping below.
