@@ -50,7 +50,7 @@ from .storage_accounting import (
     build_campaign_storage_report,
     configured_protected_inputs,
 )
-from .storage_reclamation import append_cleanup_manifest, filesystem_identity
+from .storage_reclamation import filesystem_identity
 from .campaign_target_size_retention import build_target_size_retention_fence
 from .campaign_target_size_state import (
     TargetSizeCampaignStateError,
@@ -110,7 +110,9 @@ from .inference_parallel import (
 # 0.20.114a0 implements STOR3 lifecycle-safe automatic reclamation/audit manifests, and
 # 0.20.115a0 implements STOR4 manual tiered reclamation/capability plans, and
 # 0.20.116a0 implements STOR5 immutable deduplication and authenticated cold archive/restore, and
-# 0.20.117a0 consolidates the four storage-management CLI commands under `storage`.
+# 0.20.117a0 consolidates the four storage-management CLI commands under `storage`, and
+# the storage/I-O reset replaces the STOR1-STOR5 tier policy with the owner-driven
+# inventory/plan/executor, cold archive v2, and owner-certified deduplication.
 # None changes the frozen MLFF scientific/materialization identity, so existing
 # 0.20.99a0 campaign state and prediction caches remain reusable.
 MLFF_DATA9B3_VERSION = "0.20.99a0"
@@ -1810,298 +1812,6 @@ def _file_size_mib(path: Path) -> float:
     except OSError:
         return 0.0
 
-
-def _path_size_bytes(path: Path) -> int:
-    """Return allocated logical bytes without following directory symlinks."""
-
-    try:
-        if path.is_symlink():
-            return int(path.lstat().st_size)
-        if path.is_file():
-            return int(path.stat().st_size)
-        total = 0
-        for root, directories, files in os.walk(path, followlinks=False):
-            # Symlinked directories must be counted as links, not traversed.
-            kept: list[str] = []
-            root_path = Path(root)
-            for name in directories:
-                candidate = root_path / name
-                if candidate.is_symlink():
-                    try:
-                        total += int(candidate.lstat().st_size)
-                    except OSError:
-                        pass
-                else:
-                    kept.append(name)
-            directories[:] = kept
-            for name in files:
-                candidate = root_path / name
-                try:
-                    total += int(candidate.lstat().st_size)
-                except OSError:
-                    pass
-        return total
-    except OSError:
-        return 0
-
-
-def _format_reclaimed_bytes(value: int) -> str:
-    gib = float(value) / (1024.0 ** 3)
-    if gib >= 0.1:
-        return f"{gib:.2f} GiB"
-    return f"{float(value) / (1024.0 ** 2):.1f} MiB"
-
-
-@dataclass
-class _CampaignCleanupReport:
-    phase: str
-    dry_run: bool
-    actions: list[dict[str, Any]] = field(default_factory=list)
-    skipped: list[str] = field(default_factory=list)
-    ownership_boundary: CampaignOwnershipBoundary | None = field(default=None, repr=False)
-
-    @property
-    def reclaimed_bytes(self) -> int:
-        return sum(int(item["size_bytes"]) for item in self.actions)
-
-    def add(
-        self,
-        path: Path,
-        *,
-        reason: str,
-        size_bytes: int,
-        cleanup_class: str = "lifecycle_safe",
-        prior_identity: Mapping[str, Any] | None = None,
-        preserved_capabilities: Sequence[str] = (),
-        capability_loss: Sequence[str] = (),
-    ) -> None:
-        self.actions.append(
-            {
-                "path": str(path),
-                "reason": reason,
-                "size_bytes": int(size_bytes),
-                "cleanup_class": str(cleanup_class),
-                "prior_identity": None if prior_identity is None else dict(prior_identity),
-                "capability_loss": list(capability_loss),
-                "preserved_capabilities": list(preserved_capabilities),
-            }
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "schema": "mdstats.mlff-campaign-cleanup-report.v1",
-            "phase": self.phase,
-            "dry_run": self.dry_run,
-            "created_utc": _utc_now(),
-            "reclaimed_bytes": self.reclaimed_bytes,
-            "actions": list(self.actions),
-            "skipped": list(self.skipped),
-        }
-
-
-def _cleanup_remove(
-    report: _CampaignCleanupReport,
-    path: Path,
-    *,
-    reason: str,
-    cleanup_class: str = "lifecycle_safe",
-    preserved_capabilities: Sequence[str] = (),
-    capability_loss: Sequence[str] = (),
-) -> None:
-    if not path.exists() and not path.is_symlink():
-        return
-    if report.ownership_boundary is not None:
-        authorized, detail = report.ownership_boundary.destructive_authorization(path)
-        if not authorized:
-            report.skipped.append(
-                f"cleanup authority denied for {path}: {detail}"
-            )
-            return
-    size = _path_size_bytes(path)
-    try:
-        prior_identity = filesystem_identity(path)
-    except OSError:
-        prior_identity = {"schema": "mdstats.mlff-filesystem-identity.v1", "kind": "unavailable"}
-    if not report.dry_run:
-        if path.is_symlink() or path.is_file():
-            path.unlink(missing_ok=True)
-        else:
-            shutil.rmtree(path, ignore_errors=False)
-    report.add(
-        path,
-        reason=reason,
-        size_bytes=size,
-        cleanup_class=cleanup_class,
-        prior_identity=prior_identity,
-        preserved_capabilities=preserved_capabilities,
-        capability_loss=capability_loss,
-    )
-
-
-def _cleanup_orphan_record_storage(
-    report: _CampaignCleanupReport,
-    store: CampaignStore,
-    *,
-    stale_before: float,
-) -> None:
-    root = store.external_record_directory
-    if report.ownership_boundary is not None:
-        authorized, detail = report.ownership_boundary.traversal_authorization(root)
-        if not authorized:
-            report.skipped.append(
-                f"external-record cleanup skipped because the root failed ownership checks: {detail}: {root}"
-            )
-            return
-    if not root.is_dir():
-        return
-    references = set(store.storage_references())
-    keep_top: set[Path] = set()
-    for reference in references:
-        try:
-            relative = reference.relative_to(root.resolve())
-        except ValueError:
-            continue
-        if relative.parts:
-            keep_top.add((root / relative.parts[0]).resolve())
-    for child in root.iterdir():
-        resolved = child.resolve()
-        if resolved in keep_top:
-            continue
-        try:
-            if child.lstat().st_mtime > stale_before:
-                report.skipped.append(f"young external record candidate retained: {child}")
-                continue
-        except OSError:
-            continue
-        _cleanup_remove(report, child, reason="orphaned external campaign record", cleanup_class="garbage", preserved_capabilities=("all_referenced_campaign_records", "campaign_state"))
-
-
-def _append_cleanup_audit_manifest(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    *,
-    trigger: str,
-) -> None:
-    if report.dry_run or report.ownership_boundary is None:
-        return
-    destination = paths.results / "cleanup-manifest.jsonl"
-    authorized, detail = report.ownership_boundary.destructive_authorization(destination)
-    if not authorized:
-        report.skipped.append(
-            f"cleanup manifest append skipped by ownership boundary: {detail}: {destination}"
-        )
-        return
-    payload = {
-        "created_utc": _utc_now(),
-        "phase": report.phase,
-        "trigger": trigger,
-        "workspace": str(paths.workspace),
-        "reclaimed_bytes": report.reclaimed_bytes,
-        "action_count": len(report.actions),
-        "actions": list(report.actions),
-        "protected_capabilities": [
-            "external_user_inputs",
-            "selected_production_models",
-            "selected_production_checkpoints",
-            "campaign_protocol_and_selection_records",
-            "diagnostic_logs_and_histories",
-            "active_training_restart",
-            "authoritative_scientific_metrics",
-            "qualified_selected_head_training_foundation",
-            "foundation_identity_and_acceleration_realization",
-        ],
-        "capability_loss": sorted({
-            str(capability)
-            for action in report.actions
-            for capability in action.get("capability_loss", [])
-        }),
-    }
-    try:
-        append_cleanup_manifest(destination, payload)
-    except OSError as exc:
-        report.skipped.append(f"cleanup manifest append failed: {exc}")
-
-
-def _campaign_cleanup(
-    cfg: Mapping[str, Any],
-    paths: CampaignPaths,
-    store: CampaignStore,
-    *,
-    phase: str,
-    dry_run: bool = False,
-    include_preparation_caches: bool = False,
-) -> _CampaignCleanupReport:
-    """Conservatively remove only artifacts with surviving current semantic owners."""
-
-    report = _CampaignCleanupReport(
-        phase=phase,
-        dry_run=dry_run,
-        ownership_boundary=_campaign_ownership_boundary(cfg, paths, store),
-    )
-    if not bool(_cfg(cfg, "cleanup", "enabled", True)):
-        report.skipped.append("automatic cleanup disabled by [cleanup].enabled")
-        return report
-    stale_hours = max(0.25, float(_cfg(cfg, "cleanup", "stale_age_hours", 6.0)))
-    stale_before = time.time() - stale_hours * 3600.0
-
-    _cleanup_orphan_record_storage(report, store, stale_before=stale_before)
-
-    if not dry_run:
-        assert report.ownership_boundary is not None
-        store_authorized, store_detail = report.ownership_boundary.destructive_authorization(store.path)
-        if not store_authorized:
-            report.skipped.append(
-                f"SQLite compaction skipped because campaign state failed ownership checks: {store_detail}"
-            )
-        else:
-            try:
-                store.compact(
-                    maximum_events=int(
-                        _cfg(cfg, "cleanup", "maximum_event_records", 10_000)
-                    )
-                )
-            except Exception as exc:
-                report.skipped.append(f"SQLite compaction skipped: {exc}")
-        cleanup_report_path = paths.results / f"cleanup-{phase}.json"
-        output_authorized, output_detail = report.ownership_boundary.destructive_authorization(
-            cleanup_report_path
-        )
-        if output_authorized:
-            try:
-                _atomic_json(cleanup_report_path, report.to_dict())
-            except OSError as exc:
-                report.skipped.append(f"cleanup report write failed: {exc}")
-        else:
-            report.skipped.append(
-                f"cleanup report write skipped by ownership boundary: {output_detail}"
-            )
-        _append_cleanup_audit_manifest(
-            report,
-            paths,
-            trigger=("manual" if phase.startswith("manual") else "automatic_lifecycle"),
-        )
-    return report
-
-
-
-
-def _print_cleanup_report(report: _CampaignCleanupReport) -> None:
-    if report.actions:
-        action = "would reclaim" if report.dry_run else "reclaimed"
-        _ok(
-            f"campaign cleanup {action} {_format_reclaimed_bytes(report.reclaimed_bytes)} "
-            f"from {len(report.actions)} stale/cache artifact(s)"
-        )
-        for item in sorted(report.actions, key=lambda value: int(value["size_bytes"]), reverse=True)[:8]:
-            print(
-                f"  {_format_reclaimed_bytes(int(item['size_bytes'])):>10}  "
-                f"{item['reason']}: {item['path']}",
-                flush=True,
-            )
-    else:
-        _ok("campaign cleanup found no removable stale/cache artifacts")
-    for item in report.skipped[:8]:
-        _warn(item)
 
 
 class _ProgressReporter:
@@ -5311,337 +5021,86 @@ def _atomic_copy_file(source: Path, destination: Path) -> None:
 
 
 
-def _format_storage_bytes(value: int) -> str:
-    value = int(value)
-    units = ("B", "KiB", "MiB", "GiB", "TiB")
-    number = float(value)
-    for unit in units:
-        if abs(number) < 1024.0 or unit == units[-1]:
-            return f"{number:.1f} {unit}" if unit != "B" else f"{int(number)} B"
-        number /= 1024.0
-    return f"{value} B"
+def _storage_command_context(config: Path) -> tuple[Any, Any, "CampaignStore", Any]:
+    """Resolve the one owner/boundary context every storage command shares."""
 
-
-def command_storage(args: argparse.Namespace) -> int:
-    """Read-only campaign storage accounting and ownership report."""
-
-    cfg, paths = _load_config(args.config)
-    protected_inputs = configured_protected_inputs(
-        cfg, config_dir=paths.config_dir, config_path=paths.config
-    )
-    report = build_campaign_storage_report(
-        paths.workspace,
-        protected_inputs=protected_inputs,
-        largest_limit=int(getattr(args, "top", 20)),
-    )
-    payload = report.to_dict()
-    destination = paths.results / "storage-report.json"
-    # Read-only storage accounting; the only write is this report, which lives
-    # outside any target-size execution root, so no retention fence applies.
-    boundary = _campaign_ownership_boundary(cfg, paths)
-    output_authorized, output_detail = boundary.destructive_authorization(destination)
-    report_written = False
-    if output_authorized:
-        _atomic_json(destination, payload)
-        report_written = True
-
-    totals = payload["totals"]
-    print("Campaign storage report", flush=True)
-    print(f"  workspace: {paths.workspace}", flush=True)
-    print(
-        "  totals: "
-        f"logical={_format_storage_bytes(int(totals['logical_bytes']))}; "
-        f"allocated={_format_storage_bytes(int(totals['allocated_physical_bytes']))}; "
-        f"unique-inode={_format_storage_bytes(int(totals['unique_inode_bytes']))}; "
-        f"files={int(totals['file_count'])}; dirs={int(totals['directory_count'])}; "
-        f"symlinks={int(totals['symlink_count'])}",
-        flush=True,
-    )
-    print("  largest families:", flush=True)
-    for item in payload["families"][:10]:
-        print(
-            f"    {_format_storage_bytes(int(item['logical_bytes'])):>10}  "
-            f"{item['family']} [{item['retention_class']}]",
-            flush=True,
-        )
-    catalog = payload["ownership_catalog"]
-    if catalog["symlink_escapes"]:
-        _warn(
-            f"{len(catalog['symlink_escapes'])} workspace symlink(s) resolve outside "
-            "the campaign workspace; targets are not campaign-owned"
-        )
-    if catalog["ambiguous_paths"]:
-        _warn(
-            f"{len(catalog['ambiguous_paths'])} path(s) could not be fully classified; "
-            "destructive authority remains denied"
-        )
-    if report_written:
-        _ok(
-            f"read-only storage report written: {destination}; no cleanup/deletion was performed"
-        )
-    else:
-        _warn(
-            f"storage report was not written because the destination failed ownership/containment checks: "
-            f"{output_detail}; no cleanup/deletion was performed"
-        )
-    return 0
-
-
-
-_MANUAL_RECLAMATION_TIERS = ("safe", "cache")
-_MANUAL_RECLAMATION_RANK = {name: index for index, name in enumerate(_MANUAL_RECLAMATION_TIERS)}
-_MANUAL_CAPABILITIES = (
-    "training_restart",
-    "frame_cache_acceleration",
-    "active_campaign_continuation",
-    "current_production_models",
-)
-
-
-def _manual_reclamation_capability_report(
-    tier: str,
-    actions: Sequence[Mapping[str, Any]],
-) -> dict[str, Any]:
-    losses = {
-        str(value)
-        for action in actions
-        for value in action.get("capability_loss", ())
-    }
-    status: dict[str, dict[str, str]] = {
-        name: {"status": "preserved", "detail": "retained by the requested tier"}
-        for name in _MANUAL_CAPABILITIES
-    }
-    status["current_production_models"] = {
-        "status": "preserved",
-        "detail": "workspace production models are never deletion candidates",
-    }
-    return {
-        "requested_tier": tier,
-        "capabilities": status,
-        "declared_capability_losses": sorted(losses),
-        "archived_capabilities": [],
-    }
-
-
-def _manual_reclamation_add_candidate(
-    report: _CampaignCleanupReport,
-    path: Path,
-    *,
-    reason: str,
-    cleanup_class: str,
-    preserved_capabilities: Sequence[str] = (),
-    capability_loss: Sequence[str] = (),
-) -> None:
-    if not path.exists() and not path.is_symlink():
-        return
-    _cleanup_remove(
-        report,
-        path,
-        reason=reason,
-        cleanup_class=cleanup_class,
-        preserved_capabilities=preserved_capabilities,
-        capability_loss=capability_loss,
-    )
-
-
-def _manual_reclamation_add_cache_tier(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    store: CampaignStore | None = None,
-) -> None:
-    # In P6/P7, all cache families are conservatively retained/deferred to the
-    # post-P7 storage reset (CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1). No destructive
-    # cache candidates are added.
-    return
-
-
-def _manual_reclamation_plan_payload(
-    *,
-    tier: str,
-    reports: Sequence[_CampaignCleanupReport],
-    apply_requested: bool,
-    archive_pending: bool,
-) -> dict[str, Any]:
-    action_by_path: dict[str, dict[str, Any]] = {}
-    for report in reports:
-        for action in report.actions:
-            # Later/more-consequential tier records override the same path from
-            # the safe plan so potential bytes are never double-counted.
-            action_by_path[str(action.get("path", ""))] = dict(action)
-    actions = list(action_by_path.values())
-    skipped = [value for report in reports for value in report.skipped]
-    capability = _manual_reclamation_capability_report(tier, actions)
-    return {
-        "schema": "mdstats.mlff-manual-reclamation-plan.v1",
-        "created_utc": _utc_now(),
-        "requested_tier": tier,
-        "cumulative_tiers": list(_MANUAL_RECLAMATION_TIERS[: _MANUAL_RECLAMATION_RANK[tier] + 1]),
-        "apply_requested": bool(apply_requested),
-        "archive_representation_required": bool(archive_pending),
-        "planned_reclaimed_bytes": sum(int(action.get("size_bytes", 0)) for action in actions),
-        "action_count": len(actions),
-        "actions": actions,
-        "skipped": skipped,
-        "capability_report": capability,
-        "protected_by_all_tiers": [
-            "external_user_inputs",
-            "workspace_production_models",
-            "selected_production_raw_checkpoints",
-            "campaign_protocol_selection_verification_records",
-            "diagnostic_text_logs_histories",
-            "qualified_selected_head_training_foundation",
-            "foundation_identity_and_acceleration_realization",
-        ],
-    }
-
-
-def _print_manual_reclamation_plan(payload: Mapping[str, Any]) -> None:
-    print(f"Transitional storage cleanup plan: tier={payload['requested_tier']}", flush=True)
-    print(
-        f"  candidates={int(payload['action_count'])}; potential reclaim="
-        f"{_format_storage_bytes(int(payload['planned_reclaimed_bytes']))}",
-        flush=True,
-    )
-    capabilities = payload["capability_report"]["capabilities"]
-    for name in _MANUAL_CAPABILITIES:
-        item = capabilities[name]
-        print(f"  {name}: {item['status']} - {item['detail']}", flush=True)
-
-
-def _build_manual_tier_report(
-    tier: str,
-    cfg: Mapping[str, Any],
-    paths: CampaignPaths,
-    store: CampaignStore,
-    *,
-    dry_run: bool,
-) -> _CampaignCleanupReport:
-    if tier in ("recompute", "compact", "archive"):
-        raise CampaignCliError(
-            f"Consequential storage tier {tier!r} is deferred to the post-P7 storage reset "
-            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
-        )
-    if tier not in _MANUAL_RECLAMATION_RANK:
-        raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
-    report = _CampaignCleanupReport(
-        phase=f"manual-{tier}",
-        dry_run=dry_run,
-        ownership_boundary=_campaign_ownership_boundary(cfg, paths, store),
-    )
-    if tier == "cache":
-        _manual_reclamation_add_cache_tier(report, paths, store)
-    return report
-
-
-def command_cleanup(args: argparse.Namespace) -> int:
-    """Explicitly clean up campaign scratch, caches, and storage tiers."""
-
-    cfg, paths = _load_config(args.config)
+    cfg, paths = _load_config(config)
     boundary = _campaign_ownership_boundary(cfg, paths)
     state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
     if not state_authorized:
         raise CampaignCliError(
-            "Refusing cleanup operation because campaign state database is outside "
+            "Refusing the storage operation because campaign state is outside the "
             f"campaign ownership boundary: {state_detail}: {paths.state_db}"
         )
     store = CampaignStore(paths.state_db)
+    # Rebuild the boundary with the store so the P3 publication-window fence and
+    # the P7 durable-evidence fence both reduce deletion authority.
     boundary = _campaign_ownership_boundary(cfg, paths, store)
+    return cfg, paths, store, boundary
 
-    explicit_tier = getattr(args, "tier", None)
-    if explicit_tier is None:
-        tier = "safe" if bool(args.keep_preparation_caches) else "safe"
-    else:
-        tier = str(explicit_tier)
-    if tier in ("recompute", "compact", "archive"):
-        raise CampaignCliError(
-            f"Consequential storage tier {tier!r} is deferred to the post-P7 storage reset "
-            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
-        )
-    if tier not in _MANUAL_RECLAMATION_RANK:
-        raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
-    if bool(getattr(args, "apply", False)) and bool(args.dry_run):
-        raise CampaignCliError("Choose either --dry-run or --apply, not both.")
 
-    # Mandatory plan phase. This is always dry-run.
-    plan_reports: list[_CampaignCleanupReport] = []
-    safe_plan = _campaign_cleanup(
-        cfg,
-        paths,
-        store,
-        phase="manual-plan-safe",
-        dry_run=True,
-        include_preparation_caches=False,
-    )
-    plan_reports.append(safe_plan)
+def _storage_dispatch(args: argparse.Namespace, handler: str, printer: str) -> int:
+    from .storage import commands as storage_commands
+    from .storage.admission import StorageAdmissionError
+    from .storage.archive import StorageArchiveError
+    from .storage.control_plane import StorageControlPlaneError
+    from .storage.commands import StorageDisabledError
+    from .storage.dedup import StorageDedupError
+    from .storage.lease import StorageLeaseUnavailableError
+    from .storage.plan import StoragePlanStaleError
+    from .storage.policy import StoragePolicyError
 
-    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
-        manual_plan = _build_manual_tier_report(
-            tier, cfg, paths, store, dry_run=True
-        )
-        plan_reports.append(manual_plan)
-
-    apply_requested = bool(getattr(args, "apply", False))
-    plan_payload = _manual_reclamation_plan_payload(
-        tier=tier,
-        reports=plan_reports,
-        apply_requested=apply_requested,
-        archive_pending=False,
-    )
-    _print_manual_reclamation_plan(plan_payload)
-    plan_path = paths.results / f"manual-reclamation-plan-{tier}.json"
-    plan_authorized, plan_detail = boundary.destructive_authorization(plan_path)
-    if plan_authorized:
+    cfg, paths, store, boundary = _storage_command_context(args.config)
+    try:
+        context = storage_commands.StorageCommandContext(cfg, paths, store, boundary)
         try:
-            _atomic_json(plan_path, plan_payload)
-            _ok(f"manual reclamation plan written: {plan_path}")
-        except OSError as exc:
-            _warn(f"manual reclamation plan write failed: {exc}")
-    else:
-        _warn(f"manual reclamation plan write denied by ownership boundary: {plan_detail}")
-
-    if bool(args.dry_run):
+            payload = getattr(storage_commands, handler)(context, args)
+        except (
+            StorageAdmissionError,
+            StorageArchiveError,
+            StorageControlPlaneError,
+            StorageDedupError,
+            StorageDisabledError,
+            StorageLeaseUnavailableError,
+            StoragePlanStaleError,
+            StoragePolicyError,
+        ) as exc:
+            raise CampaignCliError(str(exc)) from exc
+        getattr(storage_commands, printer)(payload)
+        print(
+            "  storage operations never grant scientific authority and never change "
+            "a scientific decision",
+            flush=True,
+        )
         return 0
+    finally:
+        store.close()
 
-    # Apply phase.
-    safe_report = _campaign_cleanup(
-        cfg,
-        paths,
-        store,
-        phase="manual-safe",
-        dry_run=False,
-        include_preparation_caches=False,
-    )
-    _print_cleanup_report(safe_report)
 
-    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
-        manual_report = _build_manual_tier_report(
-            tier, cfg, paths, store, dry_run=False
-        )
-        _append_cleanup_audit_manifest(
-            manual_report,
-            paths,
-            trigger=f"manual_tier:{tier}",
-        )
-        output = paths.results / f"cleanup-manual-{tier}.json"
-        output_authorized, output_detail = boundary.destructive_authorization(output)
-        if output_authorized:
-            try:
-                _atomic_json(output, manual_report.to_dict())
-            except OSError as exc:
-                manual_report.skipped.append(f"manual tier report write failed: {exc}")
-        else:
-            manual_report.skipped.append(
-                f"manual tier report write denied by ownership boundary: {output_detail}"
-            )
-        _print_cleanup_report(manual_report)
+def command_storage(args: argparse.Namespace) -> int:
+    """Read-only owner-driven storage report, or an explicit deep audit."""
 
-    disk = shutil.disk_usage(paths.workspace)
-    print(
-        f"Workspace: {paths.workspace}\n"
-        f"Free disk after cleanup: {disk.free / 1024**3:.1f} GiB",
-        flush=True,
-    )
-    return 0
+    return _storage_dispatch(args, "storage_report", "print_storage_report")
+
+
+def command_cleanup(args: argparse.Namespace) -> int:
+    """Plan and, when authorized, apply owner-driven safe/cache cleanup."""
+
+    if bool(getattr(args, "apply", False)) and bool(getattr(args, "dry_run", False)):
+        raise CampaignCliError("Choose either --dry-run or --apply, not both.")
+    return _storage_dispatch(args, "storage_cleanup", "print_cleanup")
+
+
+def command_storage_archive(args: argparse.Namespace) -> int:
+    """Create, list, verify, restore, or resume a cold archive representation."""
+
+    return _storage_dispatch(args, "storage_archive", "print_archive")
+
+
+def command_storage_deduplicate(args: argparse.Namespace) -> int:
+    """Plan and, when authorized, apply owner-certified immutable dedup."""
+
+    return _storage_dispatch(args, "storage_deduplicate", "print_dedup")
 
 
 @dataclass(frozen=True)
@@ -6442,11 +5901,15 @@ evaluation_shared_runtime_residency_mib = 0
 stop_scheduling_after_failure = true
 
 [cleanup]
-# Conservative lifecycle cleanup runs automatically at current stage boundaries.
-# Manual retention is CLI-selected: storage cleanup --tier safe|cache.
+# Storage is operator-driven: storage cleanup --tier safe|cache. It plans first and
+# mutates only with --apply. Setting enabled = false withholds every consequential
+# storage mutation while leaving reporting and planning available.
 enabled = true
-# Young temporary trees are retained to avoid racing a recently interrupted process.
+# Publication window. Evidence younger than this is retained so storage can never
+# race a reference that has not landed yet.
 stale_age_hours = 6.0
+# Bound on retained diagnostic campaign-store events; scientific records and the
+# SHA-256 receipt cache have separate retention.
 maximum_event_records = 10000
 
 [replay]
@@ -6610,18 +6073,30 @@ are rebuilt by their owning stage.
 
 Storage operations
 ------------------
-Use storage report for a read-only inventory. Use storage cleanup with a
-dry-run before applying safe or cache cleanup:
+Storage semantics come from the real P1-P7 owners, never from a pathname, a
+report label, a stage name, or a process id. Every consequential action plans
+first, shows what it would do, and mutates only when you authorize it:
 
-storage report                         read-only inventory
-storage cleanup --tier safe --dry-run  inspect zero-loss cleanup
-storage cleanup --tier cache --dry-run inspect cache tier cleanup
-storage cleanup --tier safe|cache      apply the selected transitional tier
+storage report                          owner-driven read-only inventory
+storage report --deep                   exact recursive physical audit
+storage cleanup --tier safe --dry-run   inspect zero-loss cleanup
+storage cleanup --tier cache --dry-run  inspect owner-certified cache eviction
+storage cleanup --tier safe|cache --apply   apply the shown plan
+storage archive create --dry-run        show cold-replaceable historical bulk
+storage archive create --apply          archive it and reclaim its hot bytes
+storage archive list|verify|restore     catalog, authenticate, bring bytes back
+storage deduplicate --dry-run|--apply   owner-certified immutable dedup
 
-Consequential storage transformations (recompute, compaction, archival,
-and deduplication) are deferred to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1.
-External inputs, current scientific records, restart checkpoints, and logs
-needed for diagnosis remain protected.
+safe loses no scientific, restart, qualification, locked, or acceleration-cache
+capability. cache adds only eviction an owner certifies as exactly
+reconstructible, so it costs recomputation and nothing else. archive is a
+reversible representation change for historical bulk: restored evidence stays
+historical and is never promoted to current. The retired recompute and compact
+loss tiers are not current product authority.
+
+External inputs, current scientific records, restart checkpoints, and the logs
+needed for diagnosis are never deletion candidates. Anything an owner cannot
+positively classify is retained.
 
 The P6 implementation ends at current functional/restart closure. Downstream
 accelerator and long-production qualification is separate evidence and is not
@@ -6751,46 +6226,124 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "storage",
-        help="inspect and manage transitional MLFF campaign storage",
+        help="inspect and manage owner-driven MLFF campaign storage",
         description=(
-            "Transitional P6/P7 storage management. Use `report` or `cleanup`. "
-            "Bare `storage` is a shorthand for `storage report`."
+            "Owner-driven storage management. Semantic eligibility always comes "
+            "from the real P1-P7 owners, never from a pathname or a report label. "
+            "Use `report`, `cleanup`, `archive`, or `deduplicate`; bare `storage` "
+            "is a shorthand for `storage report`."
         ),
     )
     p.add_argument(
         "--top", type=int, default=20,
         help="with bare `storage`, number of largest artifacts retained in the report",
     )
-    storage_sub = p.add_subparsers(dest="storage_command", metavar="{report,cleanup}")
-    p.set_defaults(func=command_storage, storage_command="report")
+    storage_sub = p.add_subparsers(
+        dest="storage_command", metavar="{report,cleanup,archive,deduplicate}"
+    )
+    p.set_defaults(func=command_storage, storage_command="report", deep=False)
 
-    sp = storage_sub.add_parser("report", help="Read-only storage accounting and ownership report")
+    sp = storage_sub.add_parser(
+        "report",
+        help="read-only owner-driven inventory; --deep for exact physical accounting",
+    )
     sp.add_argument(
         "--top", type=int, default=20,
-        help="number of largest individual artifacts to retain in the JSON report",
+        help="number of largest artifacts to retain in the JSON report",
+    )
+    sp.add_argument(
+        "--deep", action="store_true",
+        help=(
+            "run the explicit deep physical audit: exact recursive accounting, "
+            "symlink and ownership inspection. Still read-only."
+        ),
     )
     sp.set_defaults(func=command_storage, storage_command="report")
 
-    sp = storage_sub.add_parser("cleanup", help="Conservative transitional cleanup with capability reporting")
-    sp.add_argument(
-        "--tier", choices=_MANUAL_RECLAMATION_TIERS,
-        default="safe",
-        help="manual retention tier: safe or cache; omitting it defaults to safe",
+    sp = storage_sub.add_parser(
+        "cleanup",
+        help="owner-driven safe/cache cleanup under a mandatory plan-then-authorize flow",
     )
-    sp.add_argument("--dry-run", action="store_true", help="print/write the mandatory capability plan without deleting anything")
+    sp.add_argument(
+        "--tier", choices=("safe", "cache"), default="safe",
+        help=(
+            "safe: zero scientific/restart/qualification/locked and acceleration-cache "
+            "capability loss. cache: safe plus owner-certified exactly reconstructible "
+            "cache eviction, which costs only recomputation."
+        ),
+    )
+    sp.add_argument(
+        "--dry-run", action="store_true",
+        help="print and write the plan without modifying anything",
+    )
     sp.add_argument(
         "--apply", action="store_true",
-        help="authorize reclamation after the plan is shown",
-    )
-    sp.add_argument(
-        "--keep-preparation-caches", action="store_true",
-        help="retain normalized frame and shared preparation caches",
-    )
-    sp.add_argument(
-        "--keep-unselected-checkpoints", action="store_true",
-        help="retain all checkpoint bytes eligible for cleanup",
+        help="authorize the plan; it is revalidated against fresh owner state first",
     )
     sp.set_defaults(func=command_cleanup, storage_command="cleanup")
+
+    sp = storage_sub.add_parser(
+        "archive",
+        help="reversible authenticated cold representation of historical bulk",
+    )
+    archive_sub = sp.add_subparsers(
+        dest="archive_command", metavar="{create,list,verify,restore,reclaim}"
+    )
+    sp.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="list")
+
+    ap = archive_sub.add_parser(
+        "create", help="archive owner-declared cold-replaceable historical bulk"
+    )
+    ap.add_argument(
+        "--root", action="append", default=None,
+        help=(
+            "workspace-relative root to archive; may be repeated. Omitting it archives "
+            "every owner-declared cold-replaceable artifact."
+        ),
+    )
+    ap.add_argument(
+        "--keep-hot", action="store_true",
+        help="create and catalog the archive without reclaiming any hot byte",
+    )
+    ap.add_argument("--dry-run", action="store_true", help="show eligibility and stop")
+    ap.add_argument("--apply", action="store_true", help="authorize archive creation")
+    ap.add_argument(
+        "--archive-codec", default=None, choices=("gzip", "none"),
+        help="archive codec; the default is resolved from [storage]",
+    )
+    ap.add_argument("--archive-compression-level", type=int, default=None)
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="create")
+
+    ap = archive_sub.add_parser("list", help="list the identity-keyed archive catalog")
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="list")
+
+    ap = archive_sub.add_parser("verify", help="authenticate one cataloged archive")
+    ap.add_argument("archive_identity")
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="verify")
+
+    ap = archive_sub.add_parser(
+        "restore", help="restore one cataloged archive; restored evidence stays historical"
+    )
+    ap.add_argument("archive_identity")
+    ap.add_argument("--dry-run", action="store_true", help="authenticate only")
+    ap.add_argument("--apply", action="store_true", help="authorize installation")
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="restore")
+
+    ap = archive_sub.add_parser(
+        "reclaim", help="resume interrupted hot reclamation for an authenticated archive"
+    )
+    ap.add_argument("archive_identity")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--apply", action="store_true")
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="reclaim")
+
+    sp = storage_sub.add_parser(
+        "deduplicate",
+        help="owner-certified immutable deduplication; representation change only",
+    )
+    sp.add_argument("--dry-run", action="store_true", help="plan without relinking")
+    sp.add_argument("--apply", action="store_true", help="authorize inode replacement")
+    sp.set_defaults(func=command_storage_deduplicate, storage_command="deduplicate")
 
     p = sub.add_parser(
         "qualification",

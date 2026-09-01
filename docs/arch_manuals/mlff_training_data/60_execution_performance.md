@@ -198,6 +198,61 @@ re-authenticates currentness before reuse. Cleanup removes only known
 campaign-owned reconstructible state and preserves external inputs, selected
 scientific records, restart checkpoints, and diagnostics needed for recovery.
 
+## Storage and I/O management
+
+Storage is a first-class resource plane and never a second scientific
+authority. `mdstats.training_data.storage` turns each accepted current owner
+into a uniform *owner view* and composes those views into one cross-owner
+inventory. Semantics come from the owning API; pathnames, report labels, stage
+names, process ids, and file ages carry no authority at all.
+
+Every consequential mutation follows one path:
+
+```text
+real P1-P7 owners -> owner views -> cross-owner inventory snapshot
+ -> resolved storage policy -> immutable owner-bound plan
+ -> owner publication barrier + revalidation -> executor -> durable audit
+```
+
+**Retention is a transitive closure, not a per-owner question.** The current P7
+publication is a read-only descendant of the accepted P5 publication and
+re-authenticates the exact P5 checkpoint bytes at their canonical hot paths, so
+those bytes stay pinned after the P7 attempt retention reference is released.
+P4's current terminal authority pins the P3 evidence its canonical loader needs.
+A truthful `waiting_for_reference` pins the whole predecessor lineage. Protection
+is monotone: no owner's cache or history classification overrides another current
+owner's requirement, and the closure is rebuilt from live owner records rather
+than persisted as a second registry.
+
+**Mutation is race-safe, not merely recent.** P5 and P7 both publish an
+immutable object and then the pointer that makes it current, so there is a real
+window in which the object exists and nothing references it. Each owner exposes
+a per-generation publication barrier that the publisher holds across both steps
+and that any storage mutation acquires across revalidation and mutation. The
+storage-operation lease serializes storage against storage only, and is never
+mistaken for serialization against the owners.
+
+**Archive is representation, not resolution.** Hot bytes are replaceable only
+for owner-declared historical bulk with no current or restartable hot
+dependency; no P1-P7 loader is given an implicit cold-read fallback. Archive
+verification and restore bound member paths, member types, member count, total
+expansion, per-member size while streaming, and decompression amplification
+before writing anything, and a manifest carries an identity-owned relative
+locator resolved only inside the storage-owned archive root. Terminal catalog
+and restore receipts are published only downstream of flush, atomic publish,
+directory-entry persistence, and authentication of the published bytes.
+
+**Deduplication is inode sharing under an owner contract.** Exact byte equality
+is necessary but never sufficient: file type and owner-required metadata must
+match, the family must have no accepted in-place writer, and cross-device or
+unsupported filesystems retain duplicate bytes without a correctness failure.
+
+Storage owns durable state of its own - an identity-keyed archive catalog,
+manifests and blobs, restore journals, a bounded execution audit, and
+operation-serialization state - under an explicit control-plane root. None of it
+carries a currentness decision, and none of it can be reclaimed while a retained
+cold representation still needs it.
+
 ## GPU/VRAM and host admission
 
 GPU jobs are admitted against explicit device availability, free memory, and

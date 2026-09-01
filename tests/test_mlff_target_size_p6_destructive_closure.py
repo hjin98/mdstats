@@ -620,35 +620,30 @@ def test_p6_r8_data5_fresh_construction_and_serialization_neutrality():
     assert "cross_validation_seed" not in policy_dict
 
 
-def test_p6_r8_transitional_storage_fails_closed_on_consequential_tiers(tmp_path: Path):
-    """Consequential storage tiers fail closed to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1."""
-    from mdstats.training_data._campaign_cli_core import (
-        CampaignCliError,
-        command_cleanup,
-    )
+def test_p6_r8_retired_loss_tiers_are_not_current_product_authority(tmp_path: Path):
+    """The retired `recompute`/`compact` tiers are rejected by name.
+
+    The storage reset replaced the P6 quarantine with owner-driven archive and
+    deduplication, but it did not resurrect the consequential-loss tiers:
+    intentionally lossy history pruning still requires its own product decision.
+    """
 
     config, _workspace = build_selected_campaign(tmp_path)
     assert run_cross_validate(config, PostSelectionHarness()) == 0
     assert run_train_production(config, PostSelectionHarness()) == 0
 
-    for tier in ("recompute", "compact", "archive"):
-        args = argparse.Namespace(config=str(config), tier=tier, dry_run=False, apply=False, keep_preparation_caches=False)
-        with pytest.raises(CampaignCliError, match="CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1"):
-            command_cleanup(args)
-        # Parser rejects consequential tiers
+    for tier in ("recompute", "compact"):
         with pytest.raises(SystemExit):
             cli.main(["--config", str(config), "storage", "cleanup", "--tier", tier])
 
-    with pytest.raises(SystemExit):
-        cli.main(["--config", str(config), "storage", "deduplicate", "--apply"])
-
-    with pytest.raises(SystemExit):
-        cli.main(["--config", str(config), "storage", "archive", "create"])
-
-    # Safe and cache tiers remain operational
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+    # Archive and deduplication are current, and both plan before they mutate.
+    assert cli.main(["--config", str(config), "storage", "archive", "create", "--dry-run"]) == 0
+    assert cli.main(["--config", str(config), "storage", "deduplicate", "--dry-run"]) == 0
+    assert cli.main(["--config", str(config), "storage", "archive", "list"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe", "--apply"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache", "--apply"]) == 0
     assert cli.main(["--config", str(config), "storage", "report"]) == 0
+    assert cli.main(["--config", str(config), "storage", "report", "--deep"]) == 0
 
 
 def test_p6_r8_final_production_completion_distinct_digest_and_verification(tmp_path: Path):
@@ -709,16 +704,15 @@ def test_p6_r10_configuration_and_help_truthfulness():
     assert "recompute|compact|archive" not in example_text
 
     guide = cli_core.GUIDE_TEXT
-    assert "storage report                         read-only inventory" in guide
-    assert "storage cleanup --tier safe --dry-run  inspect zero-loss cleanup" in guide
-    assert "storage cleanup --tier cache --dry-run inspect cache tier cleanup" in guide
-    assert "storage cleanup --tier safe|cache      apply the selected transitional tier" in guide
-    assert "CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1" in guide
+    assert "storage report                          owner-driven read-only inventory" in guide
+    assert "storage cleanup --tier safe --dry-run   inspect zero-loss cleanup" in guide
+    assert "storage cleanup --tier cache --dry-run  inspect owner-certified cache eviction" in guide
+    assert "storage archive create --apply" in guide
+    assert "storage deduplicate --dry-run|--apply" in guide
+    assert "retired recompute and compact" in guide
+    # The retired loss tiers are never offered as commands.
     assert "storage cleanup --tier recompute" not in guide
     assert "storage cleanup --tier compact" not in guide
-    assert "storage cleanup --tier archive" not in guide
-    assert "storage archive create" not in guide
-    assert "storage deduplicate --apply" not in guide
 
 
 def test_p6_r10_cli_namespace_and_legacy_cleanup_removal(tmp_path: Path):
@@ -734,7 +728,7 @@ def test_p6_r10_cli_namespace_and_legacy_cleanup_removal(tmp_path: Path):
 
     storage_sub = sub_action.choices["storage"]
     storage_action = next(a for a in storage_sub._actions if getattr(a, "dest", None) == "storage_command")
-    assert set(storage_action.choices) == {"report", "cleanup"}
+    assert set(storage_action.choices) == {"report", "cleanup", "archive", "deduplicate"}
 
     cleanup_parser = storage_action.choices["cleanup"]
     tier_action = next(a for a in cleanup_parser._actions if "--tier" in getattr(a, "option_strings", []))
@@ -828,12 +822,19 @@ def test_p6_r12_structural_absence_and_non_reachability():
     assert not hasattr(cli_core, "_write_cleanup_diagnostic")
     assert not hasattr(cli_core, "_cleanup_checkpoint_model_caches")
 
-    # 2. Source inspection: _campaign_cleanup does not inspect paths.runs or active_process.json
-    cleanup_src = inspect.getsource(cli_core._campaign_cleanup)
-    assert "paths.runs" not in cleanup_src
-    assert "active_process" not in cleanup_src
-    assert "_active_training_run_ids" not in cleanup_src
-    assert "_cleanup_obsolete_training_runtimes" not in cleanup_src
+    # 2. The transitional cleanup owner is gone; the successor executor is the
+    #    single destructive path and inspects no run tree or process marker.
+    assert not hasattr(cli_core, "_campaign_cleanup")
+    assert not hasattr(cli_core, "_cleanup_remove")
+    from mdstats.training_data.storage import executor as storage_executor
+    from mdstats.training_data.storage import owners as storage_owners
+
+    for module in (storage_executor, storage_owners):
+        source = inspect.getsource(module)
+        assert "paths.runs" not in source
+        assert "active_process" not in source
+        assert "_active_training_run_ids" not in source
+        assert "_cleanup_obsolete_training_runtimes" not in source
 
     # 3. campaign_execution remains absent
     with pytest.raises(ImportError):
@@ -889,8 +890,8 @@ def test_p6_r13_sha256_receipt_retention_through_storage_cleanup(tmp_path: Path)
     assert val_count_before >= 2
 
     # 4. Invoke public safe and cache cleanup
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe", "--apply"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache", "--apply"]) == 0
 
     # 5. Assertions:
     receipt_count_after = int(conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0])
@@ -914,7 +915,9 @@ def test_p6_r13_sha256_receipt_retention_through_storage_cleanup(tmp_path: Path)
     assert read_validation_receipt("test_ns", "c" * 64) == "d" * 64
 
     # 6. Scoped structural assertion
-    cleanup_src = inspect.getsource(cli_core._campaign_cleanup)
+    from mdstats.training_data.storage import executor as storage_executor
+
+    cleanup_src = inspect.getsource(storage_executor)
     compact_src = inspect.getsource(cli_core.CampaignStore.compact)
     assert "prune_sha256_receipts" not in cleanup_src
     assert "prune_sha256_receipts" not in compact_src
@@ -964,8 +967,8 @@ def test_p6_r13_orphan_record_positive_reclamation_and_referenced_record_retenti
     del store
 
     # 3. Invoke public safe cleanup and cache cleanup
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
-    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe", "--apply"]) == 0
+    assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache", "--apply"]) == 0
 
     # 4. Assertions:
     # - The old referenced external file remains intact
@@ -1009,7 +1012,7 @@ def test_p6_r12_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Pa
     assert rc == 0
     stdout = capsys.readouterr().out
     assert "STOR1" not in stdout
-    assert "Campaign storage report" in stdout
+    assert "Campaign storage report (owner-driven, read-only)" in stdout
 
     report = build_campaign_storage_report(
         paths.workspace,
@@ -1035,9 +1038,10 @@ def test_p6_r12_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Pa
         assert retired not in payload_str, f"retired string {retired!r} found in storage report: {payload_str}"
 
     families = {item["family"]: item for item in payload["families"]}
-    assert families["checkpoint_model_cache"]["manual_reclamation_eligibility"] == "deferred_to_storage_reset"
+    # Physical accounting never grants authority: an owner decides, never a family.
+    assert families["checkpoint_model_cache"]["manual_reclamation_eligibility"] == "owner_decided"
     assert families["checkpoint_model_cache"]["automatic_reclamation_eligibility"] == "prohibited"
-    assert families["frame-cache"]["manual_reclamation_eligibility"] == "deferred_to_storage_reset"
+    assert families["frame-cache"]["manual_reclamation_eligibility"] == "owner_decided"
     assert families["frame-cache"]["automatic_reclamation_eligibility"] == "prohibited"
 
     assert payload["destructive_actions_performed"] is False

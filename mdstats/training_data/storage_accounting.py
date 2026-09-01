@@ -92,8 +92,9 @@ class StorageFamilyRecord:
     """Read-only advisory storage family accounting record.
 
     Advisory accounting only: this classification never grants deletion
-    authority. Physical deletion requires current owner authorization,
-    containment, and retention/liveness validation.
+    authority.  ``owner_decided`` means exactly that - the owning P1-P7 API
+    decides, through the storage inventory's cross-owner closure, and a
+    pathname family label never does.
     """
     family: str
     ownership: str
@@ -295,11 +296,13 @@ def configured_protected_inputs(
 
 
 class CampaignOwnershipBoundary:
-    """Deletion-authority boundary shared by STOR1 and existing cleanup.
+    """The final mandatory physical guard on every campaign mutation.
 
-    STOR1 itself is read-only.  Existing cleanup code may use this object only to
-    *reduce* its prior authority: any ambiguous path, real-path escape, or overlap
-    with a configured user/reference input is denied.
+    Owner views decide semantic eligibility; this object decides whether the
+    bytes are campaign-owned at all.  It only ever *reduces* authority: any
+    ambiguous path, real-path escape, or overlap with a configured
+    user/reference input is denied, and a lifecycle retention fence can deny
+    further but never grant.
     """
 
     def __init__(
@@ -582,14 +585,14 @@ def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, 
     if parts[0] == "models":
         return ("production_models", ArtifactRetentionClass.PROTECTED_PRODUCTION, "prohibited", "prohibited", ("production_inference",))
     if parts[0] == "data":
-        return ("data7_data8_materializations", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "deferred_to_storage_reset", ("data8_hot_materialization", "training_input_materialization"))
+        return ("data7_data8_materializations", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "owner_decided", ("data8_hot_materialization", "training_input_materialization"))
     if parts[0] == "runs":
         if "evaluation-capsules" in parts or name.endswith(".eval-state.pt"):
-            return ("evaluation_state_capsules", ArtifactRetentionClass.EVALUATION_CAPSULE, "prohibited", "deferred_to_storage_reset", ("nonselected_checkpoint_reevaluation", "target_head_reexport"))
+            return ("evaluation_state_capsules", ArtifactRetentionClass.EVALUATION_CAPSULE, "prohibited", "owner_decided", ("nonselected_checkpoint_reevaluation", "target_head_reexport"))
         if "checkpoints" in parts or name.endswith(".pt"):
             return ("training_checkpoints", ArtifactRetentionClass.RESTART_CRITICAL, "prohibited", "prohibited", ("training_restart", "exact_checkpoint_reevaluation"))
         if "checkpoint-model-cache" in parts:
-            return ("checkpoint_model_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "deferred_to_storage_reset", ("faster_checkpoint_reevaluation",))
+            return ("checkpoint_model_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "owner_decided", ("faster_checkpoint_reevaluation",))
         if "logs" in parts or name.endswith(".log") or name.endswith("stdout") or name.endswith("stderr"):
             return ("training_logs", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("training_diagnostics",))
         if "models" in parts or name.endswith(".model"):
@@ -600,14 +603,20 @@ def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, 
             return _target_size_family(parts)
         if len(parts) >= 2 and parts[1] == "post-selection":
             return _post_selection_family(parts)
-        if len(parts) >= 2 and parts[1] in {"campaign.sqlite3", "records", "hash-receipts.sqlite3"}:
+        if len(parts) >= 2 and parts[1] in {"campaign.sqlite3", "records"}:
             return ("campaign_state_and_provenance", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("campaign_state", "scientific_provenance"))
+        if len(parts) >= 2 and parts[1] == "hash-receipts.sqlite3":
+            # Receipt accounting is split from CampaignStore authority: losing a
+            # receipt only forces a fresh byte hash.
+            return ("sha256_receipt_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "owner_decided", ("hashing_acceleration",))
+        if len(parts) >= 2 and parts[1] == "storage":
+            return ("storage_control_plane", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("cold_archive_location_and_recovery",))
         if len(parts) >= 2 and parts[1] == "frame-cache":
-            return ("frame-cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "deferred_to_storage_reset", ("faster_frame_access",))
+            return ("frame-cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "owner_decided", ("faster_frame_access",))
         if len(parts) >= 2 and parts[1] in {"data7-cache", "data8-fixed-cache", "evaluation-graphs"}:
-            return (parts[1], ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "deferred_to_storage_reset", ("historical_cache",))
+            return (parts[1], ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "owner_decided", ("historical_cache",))
         if len(parts) >= 2 and parts[1] in {"model-sweep", "evaluation-predictions", "true-label-replay"}:
-            return (parts[1], ArtifactRetentionClass.SCIENTIFIC_CACHE, "prohibited", "deferred_to_storage_reset", ("historical_predictions_or_sweep",))
+            return (parts[1], ArtifactRetentionClass.SCIENTIFIC_CACHE, "prohibited", "owner_decided", ("historical_predictions_or_sweep",))
         if len(parts) >= 2 and parts[1] == "foundation-selected-head":
             return (
                 "selected_head_training_foundation",
@@ -620,11 +629,11 @@ def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, 
                 ),
             )
         if len(parts) >= 2 and parts[1] == "content-store":
-            return ("immutable_content_store", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "deferred_to_storage_reset", ("physical_deduplication_backing",))
+            return ("immutable_content_store", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "owner_decided", ("physical_deduplication_backing",))
         if len(parts) >= 2 and parts[1] == "cold-archive":
-            return ("cold_archive", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "deferred_to_storage_reset", ("archived_hot_representation_restore",))
+            return ("cold_archive", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "owner_decided", ("archived_hot_representation_restore",))
         if len(parts) >= 2 and parts[1] == "preflight-smoke":
-            return ("preflight_artifacts", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "deferred_to_storage_reset", ("preflight_reexecution",))
+            return ("preflight_artifacts", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "owner_decided", ("preflight_reexecution",))
         return ("internal_campaign_artifacts", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "prohibited", ("campaign_reanalysis",))
     if name.endswith(".json") or name.endswith(".csv") or name.endswith(".log"):
         return ("workspace_diagnostics", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("scientific_provenance",))

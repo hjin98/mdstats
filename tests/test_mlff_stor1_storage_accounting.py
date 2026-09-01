@@ -112,43 +112,40 @@ def test_cleanup_authority_denies_external_and_configured_inputs(tmp_path: Path)
         paths.workspace,
         protected_inputs=configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config),
     )
-    report = campaign_cli._CampaignCleanupReport(
-        phase="stor1-test", dry_run=False, ownership_boundary=boundary
-    )
-    campaign_cli._cleanup_remove(report, source, reason="must be denied")
-    campaign_cli._cleanup_remove(report, external, reason="must be denied")
-
+    for candidate in (source, external):
+        authorized, detail = boundary.destructive_authorization(candidate)
+        assert not authorized
+        assert detail
     assert source.read_bytes() == b"source"
     assert external.read_bytes() == b"external"
-    assert report.actions == []
-    assert len(report.skipped) == 2
-    assert all("cleanup authority denied" in item for item in report.skipped)
 
 
-def test_cleanup_symlink_unlinks_only_campaign_link_not_external_target(tmp_path: Path) -> None:
+def test_boundary_authorizes_a_campaign_symlink_object_but_never_its_target(
+    tmp_path: Path,
+) -> None:
     config = _write_config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
     external = tmp_path / "external-cache"
     external.mkdir()
     payload = external / "important.bin"
     payload.write_bytes(b"keep")
+    paths.internal.mkdir(parents=True, exist_ok=True)
     link = paths.internal / "frame-cache"
     link.symlink_to(external, target_is_directory=True)
 
-    report = campaign_cli._CampaignCleanupReport(
-        phase="stor1-test",
-        dry_run=False,
-        ownership_boundary=CampaignOwnershipBoundary(
-            paths.workspace,
-            protected_inputs=configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config),
+    boundary = CampaignOwnershipBoundary(
+        paths.workspace,
+        protected_inputs=configured_protected_inputs(
+            cfg, config_dir=paths.config_dir, config_path=paths.config
         ),
     )
-    campaign_cli._cleanup_remove(report, link, reason="remove campaign link only")
-    assert not link.exists()
-    assert not link.is_symlink()
+    authorized, _detail = boundary.destructive_authorization(link)
+    assert authorized, "the campaign-owned link object itself is unlinkable"
+    traversal, _detail = boundary.traversal_authorization(link)
+    assert not traversal, "the external target is never traversed"
+    authorized, _detail = boundary.destructive_authorization(payload)
+    assert not authorized
     assert payload.read_bytes() == b"keep"
-    assert len(report.actions) == 1
-
 
 def test_storage_cli_writes_read_only_report(tmp_path: Path) -> None:
     config = _write_config(tmp_path)
@@ -156,13 +153,24 @@ def test_storage_cli_writes_read_only_report(tmp_path: Path) -> None:
     (paths.runs / "run-a" / "checkpoints").mkdir(parents=True)
     (paths.runs / "run-a" / "checkpoints" / "epoch.pt").write_bytes(b"x" * 1024)
 
-    rc = campaign_cli.command_storage(SimpleNamespace(config=str(config), top=5))
+    rc = campaign_cli.command_storage(
+        SimpleNamespace(config=str(config), top=5, deep=False)
+    )
     assert rc == 0
     destination = paths.results / "storage-report.json"
     payload = json.loads(destination.read_text(encoding="utf-8"))
     assert payload["read_only_gate"] == "advisory_read_only"
     assert payload["destructive_actions_performed"] is False
-    assert len(payload["largest_artifacts"]) <= 5
+    assert payload["grants_mutation_authority"] is False
+    assert len(payload["artifacts"]) <= 5
+
+    rc = campaign_cli.command_storage(
+        SimpleNamespace(config=str(config), top=5, deep=True)
+    )
+    assert rc == 0
+    deep = json.loads((paths.results / "storage-deep-audit.json").read_text(encoding="utf-8"))
+    assert deep["accounting_mode"] == "exact_recursive_physical"
+    assert len(deep["largest_artifacts"]) <= 5
 
 
 
@@ -197,35 +205,45 @@ def test_storage_cli_refuses_report_write_through_results_symlink(tmp_path: Path
     paths.results.rmdir()
     paths.results.symlink_to(external, target_is_directory=True)
 
-    rc = campaign_cli.command_storage(SimpleNamespace(config=str(config), top=5))
+    rc = campaign_cli.command_storage(
+        SimpleNamespace(config=str(config), top=5, deep=False)
+    )
     assert rc == 0
     assert not (external / "storage-report.json").exists()
 
 
-def test_cleanup_does_not_traverse_external_records_symlink(tmp_path: Path) -> None:
+def test_cleanup_does_not_traverse_an_external_records_symlink(tmp_path: Path) -> None:
+    from types import SimpleNamespace as _NS
+
     config = _write_config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
     external = tmp_path / "external-records"
     external.mkdir()
     victim = external / "orphan-payload.bin"
     victim.write_bytes(b"keep")
+    paths.ensure()
     store = campaign_cli.CampaignStore(paths.state_db)
-    paths.internal.mkdir(parents=True, exist_ok=True)
-    (paths.internal / "records").symlink_to(external, target_is_directory=True)
+    try:
+        (paths.internal / "records").symlink_to(external, target_is_directory=True)
+        from mdstats.training_data.storage import commands as storage_commands
 
-    report = campaign_cli._campaign_cleanup(
-        cfg,
-        paths,
-        store,
-        phase="stor1-test",
-        dry_run=False,
-        include_preparation_caches=False,
-    )
+        boundary = campaign_cli._campaign_ownership_boundary(cfg, paths, store)
+        context = storage_commands.StorageCommandContext(cfg, paths, store, boundary)
+        payload = storage_commands.storage_cleanup(
+            context, _NS(tier="safe", apply=True, dry_run=False)
+        )
+        planned = {item["path"] for item in payload["execution"]["completed_actions"]}
+        assert str(victim) not in planned
+    finally:
+        store.close()
     assert victim.read_bytes() == b"keep"
-    assert any("external-record cleanup skipped" in item for item in report.skipped)
 
 
-def test_cleanup_remove_unlinks_campaign_symlink_without_touching_external_target(tmp_path: Path) -> None:
+def test_executor_unlinks_a_campaign_symlink_without_touching_its_target(
+    tmp_path: Path,
+) -> None:
+    from mdstats.training_data.storage.executor import _remove_durably
+
     config = _write_config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
     external = tmp_path / "external-cache"
@@ -235,17 +253,15 @@ def test_cleanup_remove_unlinks_campaign_symlink_without_touching_external_targe
     link = paths.internal / "temporary-symlink"
     link.parent.mkdir(parents=True, exist_ok=True)
     link.symlink_to(external, target_is_directory=True)
-    report = campaign_cli._CampaignCleanupReport(
-        phase="stor1-test",
-        dry_run=False,
-        ownership_boundary=CampaignOwnershipBoundary(
-            paths.workspace,
-            protected_inputs=configured_protected_inputs(
-                cfg, config_dir=paths.config_dir, config_path=paths.config
-            ),
+    boundary = CampaignOwnershipBoundary(
+        paths.workspace,
+        protected_inputs=configured_protected_inputs(
+            cfg, config_dir=paths.config_dir, config_path=paths.config
         ),
     )
-    campaign_cli._cleanup_remove(report, link, reason="test remove symlink")
+    authorized, _detail = boundary.destructive_authorization(link)
+    assert authorized
+    assert _remove_durably(link)
     assert victim.read_bytes() == b"keep"
     assert not link.exists() and not link.is_symlink()
 
@@ -261,14 +277,11 @@ def test_manual_cleanup_refuses_external_campaign_state_symlink(tmp_path: Path) 
     try:
         campaign_cli.command_cleanup(
             SimpleNamespace(
-                config=str(config),
-                keep_preparation_caches=False,
-                keep_unselected_checkpoints=False,
-                dry_run=False,
+                config=str(config), tier="safe", apply=False, dry_run=True
             )
         )
     except campaign_cli.CampaignCliError as exc:
-        assert "campaign state database is outside" in str(exc)
+        assert "outside the campaign ownership boundary" in str(exc)
     else:
         raise AssertionError("cleanup must fail closed before opening an external state database")
     assert not (external / "campaign.sqlite3").exists()

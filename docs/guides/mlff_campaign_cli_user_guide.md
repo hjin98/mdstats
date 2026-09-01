@@ -26,7 +26,8 @@ family:
 qualification status | qualification run | qualification activate-locked
 ```
 
-`storage` is an orthogonal artifact-management command. `status` reports the
+`storage` is an orthogonal artifact-management command whose eligibility comes
+from the real owners, not from pathnames. `status` reports the
 training lifecycle, and `advance` chooses the next safe owner from that
 lifecycle; neither introduces another scientific state machine, and `advance`
 never runs qualification or opens locked evidence.
@@ -363,22 +364,72 @@ or rerunning another owner.
 
 ## Storage management
 
-Storage is orthogonal to scientific lifecycle. Start with a read-only report:
+Storage is orthogonal to the scientific lifecycle. What may be touched is
+decided by the real P1-P7 owners - never by a pathname, a report label, a stage
+name, a file age, or a process id. Start with a read-only report:
 
 ```bash
 python tools/mdstats-mlff-campaign.py --config campaign.toml storage report
-python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier safe --dry-run
-python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier cache --dry-run
-python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier safe
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage report --deep
 ```
 
-Use a dry run before cleanup. Transitional P6/P7 storage provides `storage report`,
-`storage cleanup --tier safe`, and `storage cleanup --tier cache`. In P6/P7, both safe
-and cache cleanup perform zero acceleration-cache eviction, retaining performance and
-model caches like `frame-cache` and `checkpoint-model-cache`. Consequential operations
-(recompute, compaction, archival, deduplication) are deferred to the post-P7 storage
-reset (`CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1`). Cleanup protects external inputs,
-current scientific records, selected checkpoints, restart evidence, and diagnostics.
+`storage report` reads the owner views and bounded physical metadata; it tells
+you which owner holds each family, what is current, and how much each action
+could reclaim. `--deep` runs an exact recursive physical audit. Both are
+read-only and neither grants any deletion authority.
+
+Every consequential action plans first and mutates only when you authorize it:
+
+```bash
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier safe --dry-run
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier safe --apply
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier cache --dry-run
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier cache --apply
+```
+
+`--tier safe` loses no scientific, restart, qualification, locked, or
+acceleration-cache capability: it removes only artifacts an owner has positively
+released, such as external record payloads no campaign state row references.
+`--tier cache` adds eviction that an owner can certify as exactly
+reconstructible right now - today that is the normalized frame cache, whose
+rebuild costs one source read per DATA2 run and reproduces the identical
+authenticated cache. The SHA-256 receipt store is accounted as a cache but
+retained by both tiers. Anything no owner can certify is retained, so a `cache`
+run on a campaign with nothing certified is legitimately a no-op.
+
+Cold archive turns owner-declared *historical* bulk into a reversible,
+authenticated, identity-keyed cold representation:
+
+```bash
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive create --dry-run
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive create --apply
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive list
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive verify <identity>
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive restore <identity> --apply
+```
+
+Hot bytes are removed only after the archive is authenticated and cataloged, and
+only for artifacts no current or restartable owner needs hot - a checkpoint the
+current qualification publication still authenticates is never archived out from
+under it. Restoring an archive brings the bytes back as *historical* evidence;
+it never promotes anything to current. If a reclamation was interrupted,
+`storage archive reclaim <identity> --apply` resumes it against a freshly
+authenticated archive.
+
+Deduplication is a representation change only:
+
+```bash
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage deduplicate --dry-run
+python tools/mdstats-mlff-campaign.py --config campaign.toml storage deduplicate --apply
+```
+
+It shares one inode between byte-identical files whose owner certifies both
+immutability and matching filesystem metadata. Equal bytes alone are never
+enough, and a cross-device or unsupported filesystem simply keeps the duplicates.
+
+Every action protects external inputs, current scientific records, selected
+checkpoints, restart evidence, and diagnostics. The retired `recompute` and
+`compact` loss tiers are not current product authority and are rejected by name.
 
 ## Interpreting outcomes and limitations
 

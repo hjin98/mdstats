@@ -21,9 +21,10 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from ._common import (
     TrainingDataInputError,
@@ -153,6 +154,37 @@ def open_post_selection_store(
     return PostSelectionEvidenceStore(root=root)
 
 
+#: Name of the owner-local publication barrier guarding the object-then-pointer
+#: window for one generation's P5 evidence.
+PUBLICATION_BARRIER_NAME = ".publication-barrier"
+
+
+@contextmanager
+def post_selection_publication_barrier(
+    paths: Any, generation: int | str
+) -> Iterator[None]:
+    """Serialize this generation's object-then-pointer publication.
+
+    Publishing an immutable object and publishing the CampaignStore pointer
+    that makes it current are deliberately separate transactions, so there is a
+    legitimate window in which the object exists and nothing references it.  A
+    reclaiming storage operation that only took a snapshot could delete the
+    object inside that window and still let the pointer publication succeed.
+
+    Both the publisher and any storage mutation that could touch this
+    generation's evidence acquire this barrier, so the window is never observed
+    half-open by a mutator.  It is an advisory file lock, so a crashed holder is
+    released by the kernel and never deadlocks the campaign.
+    """
+
+    from .target_size_execution.persistence import artifact_publication_lock
+
+    root = post_selection_root(paths, generation)
+    root.mkdir(parents=True, exist_ok=True)
+    with artifact_publication_lock(root / PUBLICATION_BARRIER_NAME):
+        yield
+
+
 def _pointer_key(binding: PostSelectionBinding, kind: str) -> str:
     if kind not in POINTER_KINDS:
         raise TrainingDataInputError(f"Unknown post-selection pointer kind {kind!r}.")
@@ -268,8 +300,10 @@ __all__ = [
     "POINTER_PREDECESSOR_RECLOSURE",
     "POINTER_KINDS",
     "POST_SELECTION_ROOT_NAME",
+    "PUBLICATION_BARRIER_NAME",
     "PostSelectionEvidenceStore",
     "PostSelectionPublicationConflictError",
+    "post_selection_publication_barrier",
     "open_post_selection_store",
     "post_selection_root",
     "publish_current_post_selection_pointer",

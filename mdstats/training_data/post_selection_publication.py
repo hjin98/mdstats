@@ -525,29 +525,37 @@ def publish_final_production_publication(
     from .post_selection_store import (
         POINTER_FINAL_PUBLICATION,
         POINTER_PREDECESSOR_RECLOSURE,
+        post_selection_publication_barrier,
         publish_current_post_selection_pointer,
     )
     from .post_selection_reclosure import build_predecessor_reclosure
 
     decision = decide_final_production_publication(context, completion)
-    context.evidence_store.put(decision)
-    # P5/P6 reclosure is a separate immutable predecessor record.  It binds the
-    # exact decision and the repaired executable source surface before any P7
-    # descendant can expose the product.
-    reclosure = build_predecessor_reclosure(context, decision)
-    context.evidence_store.put(reclosure)
-    publish_current_post_selection_pointer(
-        campaign_store,
-        binding=context.selected.binding,
-        kind=POINTER_PREDECESSOR_RECLOSURE,
-        content_digest=reclosure.content_digest,
-    )
-    publish_current_post_selection_pointer(
-        campaign_store,
-        binding=context.selected.binding,
-        kind=POINTER_FINAL_PUBLICATION,
-        content_digest=decision.content_digest,
-    )
+    # Object publication and the pointers that make them current share the
+    # owner's publication barrier: a storage mutation that could reclaim P5
+    # evidence acquires the same barrier, so it can never delete an object
+    # inside the window in which no pointer references it yet.
+    with post_selection_publication_barrier(
+        context.paths, context.selected.binding.campaign_generation
+    ):
+        context.evidence_store.put(decision)
+        # P5/P6 reclosure is a separate immutable predecessor record.  It binds
+        # the exact decision and the repaired executable source surface before
+        # any P7 descendant can expose the product.
+        reclosure = build_predecessor_reclosure(context, decision)
+        context.evidence_store.put(reclosure)
+        publish_current_post_selection_pointer(
+            campaign_store,
+            binding=context.selected.binding,
+            kind=POINTER_PREDECESSOR_RECLOSURE,
+            content_digest=reclosure.content_digest,
+        )
+        publish_current_post_selection_pointer(
+            campaign_store,
+            binding=context.selected.binding,
+            kind=POINTER_FINAL_PUBLICATION,
+            content_digest=decision.content_digest,
+        )
     return decision
 
 

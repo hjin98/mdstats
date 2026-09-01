@@ -108,6 +108,7 @@ from .store import (
     attempt_root,
     open_qualification_store,
     publish_current_qualification_pointer,
+    qualification_publication_barrier,
     release_attempt_reference,
     resolve_current_qualification_record,
 )
@@ -1632,20 +1633,26 @@ def publish_qualification_record(
     paths: Any,
     record: ProductionQualificationRecord,
 ) -> ProductionQualificationRecord:
-    session.store.put(record)
-    publish_current_qualification_pointer(
-        campaign_store,
-        binding=session.context.selected.binding,
-        kind=POINTER_QUALIFICATION_RECORD,
-        content_digest=record.content_digest,
-    )
-    session.store.put(session.plan)
-    publish_current_qualification_pointer(
-        campaign_store,
-        binding=session.context.selected.binding,
-        kind=POINTER_QUALIFICATION_PLAN,
-        content_digest=session.plan.content_digest,
-    )
+    # The immutable objects and the pointers that make them current share the
+    # P7 owner's publication barrier, so a concurrent storage mutation cannot
+    # observe the object-before-pointer window half-open.
+    with qualification_publication_barrier(
+        session.context.paths, session.context.selected.binding.campaign_generation
+    ):
+        session.store.put(record)
+        publish_current_qualification_pointer(
+            campaign_store,
+            binding=session.context.selected.binding,
+            kind=POINTER_QUALIFICATION_RECORD,
+            content_digest=record.content_digest,
+        )
+        session.store.put(session.plan)
+        publish_current_qualification_pointer(
+            campaign_store,
+            binding=session.context.selected.binding,
+            kind=POINTER_QUALIFICATION_PLAN,
+            content_digest=session.plan.content_digest,
+        )
     return record
 
 
@@ -1715,13 +1722,16 @@ def publish_release_evidence(
             None if resource_observation is None else resource_observation.content_digest
         ),
     )
-    session.store.put(index)
-    publish_current_qualification_pointer(
-        campaign_store,
-        binding=session.context.selected.binding,
-        kind=POINTER_RELEASE_EVIDENCE,
-        content_digest=index.content_digest,
-    )
+    with qualification_publication_barrier(
+        session.context.paths, session.context.selected.binding.campaign_generation
+    ):
+        session.store.put(index)
+        publish_current_qualification_pointer(
+            campaign_store,
+            binding=session.context.selected.binding,
+            kind=POINTER_RELEASE_EVIDENCE,
+            content_digest=index.content_digest,
+        )
     return index
 
 
@@ -2114,19 +2124,22 @@ def activate_locked_test(
                 "policy identity. The disclosure is permanent: the same cohort "
                 "cannot be reused as a fresh locked test for the current product."
             )
-        session.store.put(activation)
-        record_locked_reveal(
-            paths,
-            session.context.selected.binding,
-            cohort_identity=activation.cohort_generation_identity,
-            activation_digest=activation.content_digest,
-        )
-        publish_current_qualification_pointer(
-            campaign_store,
-            binding=session.context.selected.binding,
-            kind=POINTER_LOCKED_ACTIVATION,
-            content_digest=activation.content_digest,
-        )
+        with qualification_publication_barrier(
+            session.context.paths, session.context.selected.binding.campaign_generation
+        ):
+            session.store.put(activation)
+            record_locked_reveal(
+                paths,
+                session.context.selected.binding,
+                cohort_identity=activation.cohort_generation_identity,
+                activation_digest=activation.content_digest,
+            )
+            publish_current_qualification_pointer(
+                campaign_store,
+                binding=session.context.selected.binding,
+                kind=POINTER_LOCKED_ACTIVATION,
+                content_digest=activation.content_digest,
+            )
 
         locked_evidence = session.completed_component(
             COMPONENT_LOCKED_TEST,

@@ -663,15 +663,34 @@ def test_p5e_post_selection_evidence_is_owned_storage_and_never_auto_reclaimed(
 
     from mdstats.training_data import _campaign_cli_core as cli
 
+    # The owner-driven report attributes this evidence to P5 and shows the
+    # cross-owner closure protecting it; the deep physical audit still knows its
+    # path families and never grants deletion authority to either.
     assert cli.main(["--config", str(config), "storage", "report"]) == 0
+    assert cli.main(["--config", str(config), "storage", "report", "--deep"]) == 0
     cfg, paths, store = load_context(config)
     try:
-        payload = json.loads(
+        owner_payload = json.loads(
             (paths.results / "storage-report.json").read_text(encoding="utf-8")
+        )
+        deep_payload = json.loads(
+            (paths.results / "storage-deep-audit.json").read_text(encoding="utf-8")
         )
     finally:
         store.close()
-    families = {item["family"]: item for item in payload["families"]}
+
+    assert "p5" in {item["owner"] for item in owner_payload["owner_families"]}
+    protected = [
+        item
+        for item in owner_payload["artifacts"]
+        if item["owner"] == "p5" and item["protected"]
+    ]
+    assert protected, owner_payload["artifacts"]
+    reclaim = owner_payload["potential_reclaim_by_action"]
+    assert reclaim["archive"]["eligible_count"] == 0
+    assert owner_payload["destructive_actions_performed"] is False
+
+    families = {item["family"]: item for item in deep_payload["families"]}
     post_selection = {
         name: item
         for name, item in families.items()

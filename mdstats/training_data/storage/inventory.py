@@ -1,0 +1,440 @@
+"""Cross-owner inventory: one protection closure, then eligibility.
+
+Per-owner classification is not sufficient.  The current P7 publication is a
+read-only descendant of the accepted P5 publication and re-authenticates the
+exact P5 checkpoint bytes at their canonical hot paths; P4's current terminal
+authority re-reads P3 evidence; a truthful ``waiting_for_reference`` keeps the
+whole predecessor lineage resumable.  Asking each artifact's nominal owner in
+isolation would preserve every local owner and still break a downstream one.
+
+So the inventory composes the owner-supplied dependency edges into a single
+transitive protection closure over every current/restartable owner, and only
+then decides what a safe/cache/archive action may touch.  Protection is
+monotone: if any reachable current or restartable owner requires an artifact,
+no other owner's cache or history classification can override that.
+
+The closure is derived from current owner records on every invocation.  There
+is deliberately no second persistent dependency database: a stale one would be
+exactly the wrong kind of authority.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from ..storage_accounting import ProtectedInputPath
+from .control_plane import StorageControlPlane, open_storage_control_plane
+from .owners import (
+    ArtifactClass,
+    OwnerArtifactView,
+    OwnerViewSet,
+    build_owner_views,
+)
+
+STORAGE_INVENTORY_SCHEMA = "mdstats.mlff-storage-inventory.v1"
+
+
+@dataclass(frozen=True, slots=True)
+class ProtectionReason:
+    """Why one artifact is protected, and by which reachable dependent."""
+
+    artifact_id: str
+    required_by: str
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class StorageInventorySnapshot:
+    """The cross-owner snapshot every storage plan is derived from."""
+
+    workspace: Path
+    owner_views: OwnerViewSet
+    protected_ids: frozenset[str]
+    protection_reasons: tuple[ProtectionReason, ...]
+    protected_inputs: tuple[ProtectedInputPath, ...]
+    control_plane: StorageControlPlane
+    #: Paths a retained cold representation still needs; never reclaimable.
+    retained_control_paths: frozenset[str]
+    #: ``(root, reason, container_only)`` for every protected artifact, resolved
+    #: once.  Protection is asked per candidate file during dedup and cleanup, so
+    #: this stays a flat scan over a small tuple rather than a per-call lookup
+    #: through the whole view list.
+    protection_index: tuple[tuple[Path, str, bool], ...] = ()
+
+    # -- queries ---------------------------------------------------------
+
+    @property
+    def views(self) -> tuple[OwnerArtifactView, ...]:
+        return self.owner_views.views
+
+    @property
+    def current_generation(self) -> int | None:
+        return self.owner_views.current_generation
+
+    def view(self, artifact_id: str) -> OwnerArtifactView | None:
+        for item in self.views:
+            if item.artifact_id == artifact_id:
+                return item
+        return None
+
+    def is_protected(self, artifact_id: str) -> bool:
+        return artifact_id in self.protected_ids
+
+    def protecting_paths(self) -> tuple[Path, ...]:
+        """Every canonical path the closure protects, deduplicated."""
+
+        return tuple(
+            sorted(
+                {view.path for view in self.views if view.artifact_id in self.protected_ids}
+            )
+        )
+
+    def hot_required_paths(self) -> tuple[Path, ...]:
+        """Canonical paths a current public resolver dereferences directly."""
+
+        return tuple(sorted({view.path for view in self.views if view.hot_path_required}))
+
+    def path_protection(self, path: str | os.PathLike[str]) -> tuple[bool, str]:
+        """Whether the closure protects one filesystem path, and why.
+
+        A path is protected if it *is*, is inside, or contains a protected
+        artifact root.  Containment in both directions matters: removing a
+        parent removes the protected artifact, and removing a child breaks the
+        protected artifact.
+        """
+
+        candidate = _absolute(path)
+        if str(candidate) in self.retained_control_paths:
+            return True, (
+                "path is storage control-plane state a retained cold representation "
+                "still needs to locate, authenticate, resume, or restore"
+            )
+        for root, detail, container_only in self.protection_index:
+            if candidate == root or _within(candidate, root):
+                # ``candidate`` is, or contains, the protected artifact root.
+                return True, detail
+            if not container_only and _within(root, candidate):
+                # ``candidate`` is inside a protected artifact whose owner
+                # protects its whole subtree.
+                return True, detail
+        for item in self.protected_inputs:
+            for root in (Path(item.path), Path(item.real_path)):
+                if candidate == root or _within(root, candidate) or _within(candidate, root):
+                    return True, (
+                        f"path overlaps the configured external input {item.key!r}, which "
+                        "is never destructible regardless of how it is referenced"
+                    )
+        for owner, detail in self.owner_views.unresolved:
+            root = self._owner_family_root(owner)
+            if candidate == root or _within(root, candidate) or _within(candidate, root):
+                return True, (
+                    f"the {owner} owner could not be authenticated ({detail}); storage "
+                    "fails toward retention for its artifacts while ownership is unresolved"
+                )
+        return False, ""
+
+    def _owner_family_root(self, owner: str) -> Path:
+        """The subtree an unresolved owner's failure must retain.
+
+        Retention on owner failure is scoped to that owner's family root rather
+        than to the whole workspace: an unreadable P7 record must not silently
+        disable unrelated storage-native scratch reclamation, but it must
+        absolutely retain every P7 artifact.
+        """
+
+        internal = self.workspace / ".mdstats"
+        roots = {
+            "p1": internal,
+            "p2": internal,
+            "p3": internal / "target-size",
+            "p4": internal,
+            "p5": internal / "post-selection",
+            "p7": internal / "qualification",
+            "campaign_store": internal,
+            "storage_control_plane": self.control_plane.root,
+        }
+        return roots.get(owner, self.workspace)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": STORAGE_INVENTORY_SCHEMA,
+            "workspace": str(self.workspace),
+            "current_generation": self.current_generation,
+            "owner_views": [view.to_dict() for view in self.views],
+            "unresolved_owners": [
+                {"owner": owner, "detail": detail}
+                for owner, detail in self.owner_views.unresolved
+            ],
+            "protection_closure": [
+                {
+                    "artifact_id": reason.artifact_id,
+                    "required_by": reason.required_by,
+                    "detail": reason.detail,
+                }
+                for reason in self.protection_reasons
+            ],
+            "protected_inputs": [item.to_dict() for item in self.protected_inputs],
+        }
+
+
+def build_storage_inventory(
+    cfg: Mapping[str, Any],
+    paths: Any,
+    store: Any,
+    *,
+    protected_inputs: Sequence[ProtectedInputPath] = (),
+    control_plane: StorageControlPlane | None = None,
+) -> StorageInventorySnapshot:
+    """Interrogate the owners and compose the transitive protection closure."""
+
+    plane = control_plane or open_storage_control_plane(paths)
+    owner_views = build_owner_views(cfg, paths, store, control_plane=plane)
+    protected_ids, reasons = compute_protection_closure(owner_views)
+    by_id = owner_views.by_id()
+    index: list[tuple[Path, str, bool]] = []
+    for reason in reasons:
+        view = by_id.get(reason.artifact_id)
+        if view is None:
+            continue
+        index.append((view.path, reason.detail, bool(view.container_only)))
+    return StorageInventorySnapshot(
+        workspace=_absolute(paths.workspace),
+        owner_views=owner_views,
+        protected_ids=protected_ids,
+        protection_reasons=reasons,
+        protected_inputs=tuple(protected_inputs),
+        control_plane=plane,
+        retained_control_paths=plane.retained_archive_paths(),
+        protection_index=tuple(index),
+    )
+
+
+def compute_protection_closure(
+    owner_views: OwnerViewSet,
+) -> tuple[frozenset[str], tuple[ProtectionReason, ...]]:
+    """Transitively close protection over every current/restartable owner.
+
+    Seeds are the artifacts an owner itself declares current or restart
+    required.  From each seed, every ``requires`` edge is followed, so an
+    artifact whose own producing stage is terminal stays protected while any
+    reachable current or restartable descendant needs it.
+    """
+
+    by_id = owner_views.by_id()
+    reasons: dict[str, ProtectionReason] = {}
+    pending: list[tuple[str, str]] = []
+
+    for view in owner_views.views:
+        if view.current or view.restart_required:
+            pending.append((view.artifact_id, view.artifact_id))
+
+    while pending:
+        artifact_id, required_by = pending.pop()
+        if artifact_id in reasons:
+            continue
+        view = by_id.get(artifact_id)
+        if view is None:
+            # An edge naming an artifact no owner reported is not a licence to
+            # ignore it; it is recorded so a planner can still refuse.
+            reasons[artifact_id] = ProtectionReason(
+                artifact_id=artifact_id,
+                required_by=required_by,
+                detail=(
+                    f"artifact {artifact_id} is required by {required_by} but was not "
+                    "reported by any owner view"
+                ),
+            )
+            continue
+        if artifact_id == required_by:
+            detail = (
+                f"{view.owner} declares this artifact "
+                f"{'current' if view.current else 'restart-required'}: {view.detail}"
+            )
+        else:
+            detail = (
+                f"required by {required_by} through the cross-owner dependency closure: "
+                f"{view.detail}"
+            )
+        reasons[artifact_id] = ProtectionReason(
+            artifact_id=artifact_id, required_by=required_by, detail=detail
+        )
+        for dependency in view.requires:
+            if dependency not in reasons:
+                pending.append((dependency, artifact_id))
+
+    ordered = tuple(sorted(reasons.values(), key=lambda item: item.artifact_id))
+    return frozenset(reasons), ordered
+
+
+@dataclass(frozen=True, slots=True)
+class EligibilityDecision:
+    """One artifact's eligibility for one requested storage action."""
+
+    artifact_id: str
+    path: Path
+    eligible: bool
+    reason: str
+    capability_cost: str = "none"
+
+
+def safe_candidates(snapshot: StorageInventorySnapshot) -> tuple[EligibilityDecision, ...]:
+    """Zero-capability-loss candidates the owners positively released.
+
+    Safe never performs acceleration-cache eviction: the SHA receipt store and
+    the frame cache are retained by this tier even when their owners could
+    certify reconstruction.
+    """
+
+    decisions: list[EligibilityDecision] = []
+    for view in snapshot.views:
+        if not view.safe_reclaimable or not _present(view.path):
+            continue
+        protected, why = snapshot.path_protection(view.path)
+        if protected:
+            decisions.append(
+                EligibilityDecision(view.artifact_id, view.path, False, why)
+            )
+            continue
+        decisions.append(
+            EligibilityDecision(
+                view.artifact_id,
+                view.path,
+                True,
+                f"{view.owner} released this artifact: {view.detail}",
+            )
+        )
+    return tuple(decisions)
+
+
+def cache_candidates(snapshot: StorageInventorySnapshot) -> tuple[EligibilityDecision, ...]:
+    """Owner-certified exactly reconstructible cache/index eviction.
+
+    An artifact reaches this list only when its owner can still prove the exact
+    reconstruction *now*, not merely because it sits in a directory whose name
+    contains "cache".  Everything else is retained, and a `cache` action over a
+    campaign with no certified family is legitimately a no-op.
+    """
+
+    decisions: list[EligibilityDecision] = []
+    for view in snapshot.views:
+        if view.artifact_class is not ArtifactClass.REUSABLE_CACHE_INDEX:
+            continue
+        if not _present(view.path):
+            continue
+        if not (view.cache_reconstructible and view.cache_evictable):
+            decisions.append(
+                EligibilityDecision(
+                    view.artifact_id,
+                    view.path,
+                    False,
+                    (
+                        f"no owner-certified exact reconstruction: {view.detail}"
+                        if not view.cache_reconstructible
+                        else f"owner retains this cache in the cache tier: {view.detail}"
+                    ),
+                )
+            )
+            continue
+        protected, why = snapshot.path_protection(view.path)
+        if protected:
+            decisions.append(EligibilityDecision(view.artifact_id, view.path, False, why))
+            continue
+        decisions.append(
+            EligibilityDecision(
+                view.artifact_id,
+                view.path,
+                True,
+                f"owner-certified reconstructible: {view.reconstruction}",
+                capability_cost="recomputation_only",
+            )
+        )
+    return tuple(decisions)
+
+
+def archive_candidates(snapshot: StorageInventorySnapshot) -> tuple[EligibilityDecision, ...]:
+    """Owner-declared cold-replaceable reproducibility bulk.
+
+    Hot removal additionally requires that no current public resolver
+    dereferences the canonical hot path.  Archive is not a transparent virtual
+    filesystem: this package never gives a P1-P7 loader an implicit
+    "if missing, read the storage archive" fallback, so an artifact a current
+    resolver needs hot simply is not archive-removable.
+    """
+
+    hot_required = set(snapshot.hot_required_paths())
+    decisions: list[EligibilityDecision] = []
+    for view in snapshot.views:
+        if not view.archive_eligible or not _present(view.path):
+            continue
+        protected, why = snapshot.path_protection(view.path)
+        if protected:
+            decisions.append(EligibilityDecision(view.artifact_id, view.path, False, why))
+            continue
+        conflict = next(
+            (
+                required
+                for required in hot_required
+                if required == view.path
+                or _within(view.path, required)
+                or _within(required, view.path)
+            ),
+            None,
+        )
+        if conflict is not None:
+            decisions.append(
+                EligibilityDecision(
+                    view.artifact_id,
+                    view.path,
+                    False,
+                    (
+                        "a current public owner resolver dereferences this canonical hot "
+                        f"path directly ({conflict}); archive never inserts a cold-read "
+                        "dependency underneath a scientific or currentness owner"
+                    ),
+                )
+            )
+            continue
+        decisions.append(
+            EligibilityDecision(
+                view.artifact_id,
+                view.path,
+                True,
+                f"{view.owner} declares this historical reproducibility bulk: {view.detail}",
+                capability_cost="explicit_restore_required",
+            )
+        )
+    return tuple(decisions)
+
+
+def _present(path: Path) -> bool:
+    """An artifact that is not on disk is not a reclamation candidate."""
+
+    return path.exists() or path.is_symlink()
+
+
+def _absolute(path: Any) -> Path:
+    return Path(os.path.abspath(os.fspath(path)))
+
+
+def _within(root: Path, candidate: Path) -> bool:
+    try:
+        candidate.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+__all__ = [
+    "STORAGE_INVENTORY_SCHEMA",
+    "EligibilityDecision",
+    "ProtectionReason",
+    "StorageInventorySnapshot",
+    "archive_candidates",
+    "build_storage_inventory",
+    "cache_candidates",
+    "compute_protection_closure",
+    "safe_candidates",
+]

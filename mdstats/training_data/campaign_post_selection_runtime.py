@@ -101,6 +101,7 @@ from .post_selection_store import (
     POINTER_CV_PLAN,
     POINTER_FINAL_PLAN,
     open_post_selection_store,
+    post_selection_publication_barrier,
     post_selection_root,
     publish_current_post_selection_pointer,
     resolve_current_post_selection_record,
@@ -1145,17 +1146,23 @@ def execute_post_selection_cross_validation(
     store = context.evidence_store
     # The policy identities are persisted as records, not just as digests, so a
     # later reader can reproduce exactly which resolved configuration authorized
-    # this campaign without re-reading a possibly edited campaign.toml.
-    store.put(context.method)
-    store.put(context.cv_policy)
-    store.put(projection)
-    store.put(plan)
-    publish_current_post_selection_pointer(
-        context.store,
-        binding=selected.binding,
-        kind=POINTER_CV_PLAN,
-        content_digest=plan.content_digest,
-    )
+    # this campaign without re-reading a possibly edited campaign.toml.  The
+    # object publications and the pointer that makes one of them current share
+    # the owner's publication barrier, so a concurrent storage mutation cannot
+    # observe the object-before-pointer window half-open.
+    with post_selection_publication_barrier(
+        context.paths, selected.binding.campaign_generation
+    ):
+        store.put(context.method)
+        store.put(context.cv_policy)
+        store.put(projection)
+        store.put(plan)
+        publish_current_post_selection_pointer(
+            context.store,
+            binding=selected.binding,
+            kind=POINTER_CV_PLAN,
+            content_digest=plan.content_digest,
+        )
 
     budget_policy = cv_training_budget_policy(context.method, context.cv_policy)
     acceptances: list[CvFoldAcceptance] = []
@@ -1195,13 +1202,16 @@ def execute_post_selection_cross_validation(
         acceptances.append(acceptance)
 
     campaign = accept_post_selection_cv_campaign(plan, context.cv_policy, acceptances)
-    store.put(campaign)
-    publish_current_post_selection_pointer(
-        context.store,
-        binding=selected.binding,
-        kind=POINTER_CV_ACCEPTANCE,
-        content_digest=campaign.content_digest,
-    )
+    with post_selection_publication_barrier(
+        context.paths, selected.binding.campaign_generation
+    ):
+        store.put(campaign)
+        publish_current_post_selection_pointer(
+            context.store,
+            binding=selected.binding,
+            kind=POINTER_CV_ACCEPTANCE,
+            content_digest=campaign.content_digest,
+        )
     return plan, campaign
 
 
@@ -1306,15 +1316,18 @@ def execute_final_production(
         replay_lineage_digest=replay_lineage_digest,
     )
     store = context.evidence_store
-    store.put(context.method)
-    store.put(context.production_policy)
-    store.put(final_plan)
-    publish_current_post_selection_pointer(
-        context.store,
-        binding=selected.binding,
-        kind=POINTER_FINAL_PLAN,
-        content_digest=final_plan.content_digest,
-    )
+    with post_selection_publication_barrier(
+        context.paths, selected.binding.campaign_generation
+    ):
+        store.put(context.method)
+        store.put(context.production_policy)
+        store.put(final_plan)
+        publish_current_post_selection_pointer(
+            context.store,
+            binding=selected.binding,
+            kind=POINTER_FINAL_PLAN,
+            content_digest=final_plan.content_digest,
+        )
 
     _m3_size, m3_membership, _m3_digest = frozen_m3_development_evidence(selected)
     budget_policy = final_production_training_budget_policy(

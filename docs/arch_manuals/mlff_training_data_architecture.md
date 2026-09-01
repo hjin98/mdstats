@@ -1232,6 +1232,61 @@ re-authenticates currentness before reuse. Cleanup removes only known
 campaign-owned reconstructible state and preserves external inputs, selected
 scientific records, restart checkpoints, and diagnostics needed for recovery.
 
+## Storage and I/O management
+
+Storage is a first-class resource plane and never a second scientific
+authority. `mdstats.training_data.storage` turns each accepted current owner
+into a uniform *owner view* and composes those views into one cross-owner
+inventory. Semantics come from the owning API; pathnames, report labels, stage
+names, process ids, and file ages carry no authority at all.
+
+Every consequential mutation follows one path:
+
+```text
+real P1-P7 owners -> owner views -> cross-owner inventory snapshot
+ -> resolved storage policy -> immutable owner-bound plan
+ -> owner publication barrier + revalidation -> executor -> durable audit
+```
+
+**Retention is a transitive closure, not a per-owner question.** The current P7
+publication is a read-only descendant of the accepted P5 publication and
+re-authenticates the exact P5 checkpoint bytes at their canonical hot paths, so
+those bytes stay pinned after the P7 attempt retention reference is released.
+P4's current terminal authority pins the P3 evidence its canonical loader needs.
+A truthful `waiting_for_reference` pins the whole predecessor lineage. Protection
+is monotone: no owner's cache or history classification overrides another current
+owner's requirement, and the closure is rebuilt from live owner records rather
+than persisted as a second registry.
+
+**Mutation is race-safe, not merely recent.** P5 and P7 both publish an
+immutable object and then the pointer that makes it current, so there is a real
+window in which the object exists and nothing references it. Each owner exposes
+a per-generation publication barrier that the publisher holds across both steps
+and that any storage mutation acquires across revalidation and mutation. The
+storage-operation lease serializes storage against storage only, and is never
+mistaken for serialization against the owners.
+
+**Archive is representation, not resolution.** Hot bytes are replaceable only
+for owner-declared historical bulk with no current or restartable hot
+dependency; no P1-P7 loader is given an implicit cold-read fallback. Archive
+verification and restore bound member paths, member types, member count, total
+expansion, per-member size while streaming, and decompression amplification
+before writing anything, and a manifest carries an identity-owned relative
+locator resolved only inside the storage-owned archive root. Terminal catalog
+and restore receipts are published only downstream of flush, atomic publish,
+directory-entry persistence, and authentication of the published bytes.
+
+**Deduplication is inode sharing under an owner contract.** Exact byte equality
+is necessary but never sufficient: file type and owner-required metadata must
+match, the family must have no accepted in-place writer, and cross-device or
+unsupported filesystems retain duplicate bytes without a correctness failure.
+
+Storage owns durable state of its own - an identity-keyed archive catalog,
+manifests and blobs, restore journals, a bounded execution audit, and
+operation-serialization state - under an explicit control-plane root. None of it
+carries a currentness decision, and none of it can be reclaimed while a retained
+cold representation still needs it.
+
 ## GPU/VRAM and host admission
 
 GPU jobs are admitted against explicit device availability, free memory, and
@@ -1340,7 +1395,7 @@ quarantined/reprepared rather than translated.
 | target monitor | current monitor policy | authorized development role | deterministic monitor | target membership |
 | replay monitor | replay policy | authorized replay evidence | deterministic replay monitor | target ranking or method acceptance credit |
 | execution/provider lifetime | current stage owners | authenticated plans and resource budgets | bounded task/cache/provider state | scientific decisions |
-| transitional storage management | transitional storage owners | campaign-owned artifact inventory | safe/cache cleanup, read-only accounting | lifecycle progression (consequential storage reset deferred to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) |
+| storage and I/O management | `mdstats.training_data.storage` | owner views over every current P1-P7 owner | owner-bound plan, safe/cache cleanup, cold archive, dedup, admission, read-only reporting | any scientific or currentness decision |
 
 A narrow specification may refine a row's realization, but it cannot create a
 second semantic owner for the same decision.
@@ -1475,8 +1530,9 @@ init -> doctor -> prepare -> select-target-size -> cross-validate -> train-produ
 selects nothing. `select-target-size` owns candidate training and the reducer.
 `cross-validate` owns selected-only method acceptance. `train-production` owns
 fresh final publication. `status` and `advance` project these same owners;
-they do not create another state machine. `storage` is orthogonal and manages
-reconstructible artifacts without advancing scientific lifecycle.
+they do not create another state machine. `storage` is orthogonal: it manages
+representation, retention, caching, archival, and admission, and it advances no
+scientific lifecycle.
 
 Post-production qualification is a separate downstream family and is
 deliberately not part of that lifecycle:
@@ -1579,7 +1635,7 @@ which the terminal record and release index both point at. Those observations ar
 evidence and never stale numerical results; their one operational role is that an
 attempt which cannot satisfy the existing disk reserve aborts before materializing
 work rather than changing any scientific input. Reading that reserve is an
-owner-local safety check, not the successor storage plane.
+owner-local safety check, not the storage admission plane.
 
 Stress applicability is likewise a capability decision rather than a
 configuration switch: it is resolved before execution from the accepted training
@@ -1624,8 +1680,8 @@ attempt-local state and bulk scratch. Currentness is never persisted as a second
 truth: it is re-established through the P4/P5/P7 owners and published as a
 generation-fenced pointer in the campaign store, exactly as P5 descendants are.
 
-A successor storage subsystem consumes these owner entry points and needs no
-pathname inference:
+The storage subsystem consumes these owner entry points and needs no pathname
+inference:
 
 ```text
 CampaignStore                          current campaign state owner
@@ -1636,12 +1692,13 @@ P7 publication resolver                resolve_authenticated_final_publication
 P7 qualification root/store            qualification_root, QualificationEvidenceStore
 P7 terminal result owner               ProductionQualificationRecord, ReleaseEvidenceIndex
 P7 attempt/retention owner             QualificationAttemptState, QualificationRetentionFence
-current cache / safe-cleanup owners    unchanged P6 transitional authorities
+P1 frame-cache owner                   the one exact-reconstruction cache seam
+CampaignStore receipt cache            stat-keyed SHA-256 acceleration only
 ```
 
 Qualification adds no cache authority, no second cleanup policy engine, no
-global retention registry, and no part of the successor storage inventory,
-archive, deduplication, or admission plane. Its retention reference is
+global retention registry, and no part of the storage inventory, archive,
+deduplication, or admission plane. Its retention reference is
 coordination metadata only: it says that one already authoritative artifact is
 actively referenced by an in-flight attempt, it is released on terminal
 completion or explicit abort, and it can never make a stale publication current.

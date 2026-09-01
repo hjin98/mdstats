@@ -106,10 +106,16 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
     # 4. Storage accounting sees the promoted evidence, and safe cleanup cannot
     #    touch it even when everything is aged well past every stale threshold.
     assert cli.main(["--config", str(config), "storage", "report"]) == 0
+    assert cli.main(["--config", str(config), "storage", "report", "--deep"]) == 0
     payload = json.loads(
         (paths.results / "storage-report.json").read_text(encoding="utf-8")
     )
-    families = {item["family"] for item in payload["families"]}
+    owners = {item["owner"] for item in payload["owner_families"]}
+    assert "p3" in owners, sorted(owners)
+    deep = json.loads(
+        (paths.results / "storage-deep-audit.json").read_text(encoding="utf-8")
+    )
+    families = {item["family"] for item in deep["families"]}
     assert any(name.startswith("target_size_") for name in families), sorted(families)
 
     root = workspace / revision.state.execution_root
@@ -121,7 +127,15 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
         os.utime(path, (old, old))
     store = CampaignStore(state_db)
     try:
-        cli._campaign_cleanup(cfg, paths, store, phase="p4g", dry_run=False)
+        from types import SimpleNamespace
+
+        from mdstats.training_data.storage import commands as storage_commands
+
+        boundary = cli._campaign_ownership_boundary(cfg, paths, store)
+        storage_commands.storage_cleanup(
+            storage_commands.StorageCommandContext(cfg, paths, store, boundary),
+            SimpleNamespace(tier="safe", apply=True, dry_run=False),
+        )
     finally:
         store.close()
     after = {

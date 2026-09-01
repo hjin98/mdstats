@@ -53,7 +53,7 @@ quarantined/reprepared rather than translated.
 | target monitor | current monitor policy | authorized development role | deterministic monitor | target membership |
 | replay monitor | replay policy | authorized replay evidence | deterministic replay monitor | target ranking or method acceptance credit |
 | execution/provider lifetime | current stage owners | authenticated plans and resource budgets | bounded task/cache/provider state | scientific decisions |
-| transitional storage management | transitional storage owners | campaign-owned artifact inventory | safe/cache cleanup, read-only accounting | lifecycle progression (consequential storage reset deferred to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) |
+| storage and I/O management | `mdstats.training_data.storage` | owner views over every current P1-P7 owner | owner-bound plan, safe/cache cleanup, cold archive, dedup, admission, read-only reporting | any scientific or currentness decision |
 
 A narrow specification may refine a row's realization, but it cannot create a
 second semantic owner for the same decision.
@@ -188,8 +188,9 @@ init -> doctor -> prepare -> select-target-size -> cross-validate -> train-produ
 selects nothing. `select-target-size` owns candidate training and the reducer.
 `cross-validate` owns selected-only method acceptance. `train-production` owns
 fresh final publication. `status` and `advance` project these same owners;
-they do not create another state machine. `storage` is orthogonal and manages
-reconstructible artifacts without advancing scientific lifecycle.
+they do not create another state machine. `storage` is orthogonal: it manages
+representation, retention, caching, archival, and admission, and it advances no
+scientific lifecycle.
 
 Post-production qualification is a separate downstream family and is
 deliberately not part of that lifecycle:
@@ -292,7 +293,7 @@ which the terminal record and release index both point at. Those observations ar
 evidence and never stale numerical results; their one operational role is that an
 attempt which cannot satisfy the existing disk reserve aborts before materializing
 work rather than changing any scientific input. Reading that reserve is an
-owner-local safety check, not the successor storage plane.
+owner-local safety check, not the storage admission plane.
 
 Stress applicability is likewise a capability decision rather than a
 configuration switch: it is resolved before execution from the accepted training
@@ -337,8 +338,8 @@ attempt-local state and bulk scratch. Currentness is never persisted as a second
 truth: it is re-established through the P4/P5/P7 owners and published as a
 generation-fenced pointer in the campaign store, exactly as P5 descendants are.
 
-A successor storage subsystem consumes these owner entry points and needs no
-pathname inference:
+The storage subsystem consumes these owner entry points and needs no pathname
+inference:
 
 ```text
 CampaignStore                          current campaign state owner
@@ -349,12 +350,13 @@ P7 publication resolver                resolve_authenticated_final_publication
 P7 qualification root/store            qualification_root, QualificationEvidenceStore
 P7 terminal result owner               ProductionQualificationRecord, ReleaseEvidenceIndex
 P7 attempt/retention owner             QualificationAttemptState, QualificationRetentionFence
-current cache / safe-cleanup owners    unchanged P6 transitional authorities
+P1 frame-cache owner                   the one exact-reconstruction cache seam
+CampaignStore receipt cache            stat-keyed SHA-256 acceleration only
 ```
 
 Qualification adds no cache authority, no second cleanup policy engine, no
-global retention registry, and no part of the successor storage inventory,
-archive, deduplication, or admission plane. Its retention reference is
+global retention registry, and no part of the storage inventory, archive,
+deduplication, or admission plane. Its retention reference is
 coordination metadata only: it says that one already authoritative artifact is
 actively referenced by an in-flight attempt, it is released on terminal
 completion or explicit abort, and it can never make a stale publication current.

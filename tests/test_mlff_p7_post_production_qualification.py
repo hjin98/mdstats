@@ -1123,13 +1123,13 @@ def test_p7_publication_identity_composes_the_full_upstream_lineage(tmp_path: Pa
 
 
 def test_p7_introduces_no_second_cache_or_cleanup_authority():
-    """Cache and safe cleanup remain the single accepted P6 owners."""
+    """Cache and cleanup authority stays with the one storage owner."""
 
     joined = "\n".join(_qualification_sources().values())
     for forbidden in (
         "def command_cleanup",
         "def command_storage",
-        "_MANUAL_RECLAMATION_TIERS",
+        "StorageInventorySnapshot",
         "frame_cache",
         "def evict",
         "def reclaim",
@@ -1137,7 +1137,7 @@ def test_p7_introduces_no_second_cache_or_cleanup_authority():
         assert forbidden not in joined, forbidden
     core = Path(cli.__file__).read_text(encoding="utf-8")
     assert core.count("def command_cleanup") == 1
-    assert core.count("_MANUAL_RECLAMATION_TIERS = ") == 1
+    assert core.count("def command_storage(") == 1
     # The qualification fence only ever *reduces* deletion authority; it is
     # composed with the target-size fence rather than replacing it.
     from mdstats.training_data.storage_accounting import CompositeRetentionFence

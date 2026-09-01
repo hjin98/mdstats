@@ -15,9 +15,10 @@ store, exactly as the accepted P5 descendants do.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 import json
 import os
 import tempfile
@@ -177,6 +178,27 @@ def attempt_root(paths: Any, binding: PostSelectionBinding, attempt_identity: st
     root = qualification_root(paths, binding.campaign_generation) / "attempts" / identity
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+#: Owner-local publication barrier for one generation's P7 evidence.
+PUBLICATION_BARRIER_NAME = ".publication-barrier"
+
+
+@contextmanager
+def qualification_publication_barrier(paths: Any, generation: int | str) -> Iterator[None]:
+    """Serialize this generation's qualification object-then-pointer window.
+
+    Same contract as the P5 barrier: the publisher and any storage mutation
+    that could touch this generation's P7 evidence acquire it, so a storage
+    operation can never observe the window half-open.
+    """
+
+    from ..target_size_execution import artifact_publication_lock
+
+    root = qualification_root(paths, generation)
+    root.mkdir(parents=True, exist_ok=True)
+    with artifact_publication_lock(root / PUBLICATION_BARRIER_NAME):
+        yield
 
 
 def _pointer_key(binding: PostSelectionBinding, kind: str) -> str:
@@ -1132,6 +1154,7 @@ __all__ = [
     "ATTEMPT_TERMINAL",
     "POINTER_KINDS",
     "POINTER_LOCKED_ACTIVATION",
+    "PUBLICATION_BARRIER_NAME",
     "POINTER_QUALIFICATION_PLAN",
     "POINTER_QUALIFICATION_RECORD",
     "POINTER_RELEASE_EVIDENCE",
@@ -1151,6 +1174,7 @@ __all__ = [
     "open_qualification_store",
     "publish_current_qualification_pointer",
     "qualification_record_is_current",
+    "qualification_publication_barrier",
     "qualification_root",
     "read_attempt_state",
     "read_current_qualification_pointer",

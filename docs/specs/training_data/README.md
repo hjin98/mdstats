@@ -44,8 +44,7 @@ specification.
 ## Post-selection validation and campaign realization
 
 - `mlff_data9b3_campaign_cli_spec.md` — current campaign CLI contract.
-- `mlff_data9b4_storage_restart_spec.md` — campaign storage/restart behavior.
-- `mlff_storage_management_spec.md` — bounded storage/scratch retention policy.
+- `mlff_storage_management_spec.md` — owner-driven campaign storage and I/O management.
 
 The CLI's current implementation ends at selected-only method validation and
 fresh final production. Deployment parity, physical validation, uncertainty
