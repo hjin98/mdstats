@@ -254,21 +254,17 @@ def test_r11b2_real_mace_target_head_deployment_owner_executes(tmp_path: Path):
 def test_r11b2_real_mace_product_execution_is_unavailable_or_passes(tmp_path: Path):
     """Execute the real MACE product in LAMMPS, or record it as blocking.
 
-    The installed LAMMPS ML-IAP python data object does not expose the
-    message-passing exchange MACE's ML-IAP model requires. That is a genuine
-    capability gap on this host, so it is reported as unavailable/blocking and
-    deferred to target-machine qualification rather than being papered over by
-    the analytic ML-IAP smoke, which proves process plumbing only.
+    Static ML-IAP interface inspection is diagnostic only.  This test must
+    enter the actual worker/product callback; if that callback is unavailable
+    on the host, the typed result is truthfully deferred to target-machine
+    qualification rather than being replaced by an analytic ML-IAP smoke.
     """
 
     probe = probe_lammps_runtime(refresh=True)
-    if not probe.supports_mace_product_execution:
-        assert probe.supports_deployed_execution, probe.detail
-        assert "exchange" in probe.detail or "unavailable" in probe.detail
+    if not probe.supports_deployed_execution:
         pytest.skip(
-            "UNAVAILABLE/BLOCKING: the supported runtime cannot execute the exact "
-            f"MACE product on this host ({probe.detail}); deferred to final "
-            "target-machine qualification."
+            "UNAVAILABLE/BLOCKING: the supported LAMMPS/ML-IAP runtime is absent "
+            f"({probe.detail}); deferred to final target-machine qualification."
         )
 
     torch = pytest.importorskip("torch")
@@ -282,6 +278,7 @@ def test_r11b2_real_mace_product_execution_is_unavailable_or_passes(tmp_path: Pa
     from mdstats.training_data.qualification.runtime_capability import (
         deployed_static_evaluation,
     )
+    from mdstats.training_data.qualification.errors import QualificationUnavailableError
 
     model = _tiny_mace(
         heads=[POST_SELECTION_REPLAY_HEAD_NAME, POST_SELECTION_TARGET_HEAD_NAME],
@@ -292,28 +289,34 @@ def test_r11b2_real_mace_product_execution_is_unavailable_or_passes(tmp_path: Pa
     )
     source = tmp_path / "production.model"
     torch.save(model, source)
-    artifact = default_deployment_exporter(
-        source, tmp_path / "d", deployment_dtype="float64",
-        target_head=POST_SELECTION_TARGET_HEAD_NAME,
-    )
-    mliap_path = default_mliap_artifact_builder(
-        tmp_path / "d" / artifact.deployment_relative_path,
-        tmp_path / "m.pt",
-        head=POST_SELECTION_TARGET_HEAD_NAME,
-    )
-    atoms = Atoms(
-        "Li2O2",
-        positions=[[0, 0, 0], [2.0, 0, 0], [0, 2.0, 0], [2.0, 2.0, 0.0]],
-        cell=[10.0, 10.0, 10.0],
-        pbc=True,
-    )
-    energy, forces = deployed_static_evaluation(
-        atoms,
-        artifact_path=mliap_path,
-        element_types=("Li", "O"),
-        working_directory=tmp_path / "work",
-        timeout_seconds=900.0,
-    )
+    try:
+        artifact = default_deployment_exporter(
+            source, tmp_path / "d", deployment_dtype="float64",
+            target_head=POST_SELECTION_TARGET_HEAD_NAME,
+        )
+        mliap_path = default_mliap_artifact_builder(
+            tmp_path / "d" / artifact.deployment_relative_path,
+            tmp_path / "m.pt",
+            head=POST_SELECTION_TARGET_HEAD_NAME,
+        )
+        atoms = Atoms(
+            "Li2O2",
+            positions=[[0, 0, 0], [2.0, 0, 0], [0, 2.0, 0], [2.0, 2.0, 0.0]],
+            cell=[10.0, 10.0, 10.0],
+            pbc=True,
+        )
+        energy, forces = deployed_static_evaluation(
+            atoms,
+            artifact_path=mliap_path,
+            element_types=("Li", "O"),
+            working_directory=tmp_path / "work",
+            timeout_seconds=900.0,
+        )
+    except QualificationUnavailableError as exc:
+        pytest.skip(
+            "UNAVAILABLE/BLOCKING: the actual MACE callback could not execute on "
+            f"this host ({exc}); deferred to final target-machine qualification."
+        )
     assert np.isfinite(energy)
     assert forces.shape == (4, 3) and np.all(np.isfinite(forces))
 
@@ -335,9 +338,6 @@ def test_r11b2_real_runtime_gate_blocks_rather_than_passing(tmp_path: Path):
         "require_deployed_runtime = false", "require_deployed_runtime = true"
     )
     config, _workspace, harness = _campaign(tmp_path, config_text=text)
-    probe = probe_lammps_runtime()
-    if probe.supports_mace_product_execution:
-        pytest.skip("the host can execute the MACE product; the blocking path is not exercised")
     _cfg, paths, store, session = fx.load_session(
         config, harness, deployed_evaluator=None, mliap_builder=None, deployment_exporter=None
     )

@@ -70,10 +70,37 @@ def _request_pbc(request: Mapping[str, Any]) -> tuple[bool, bool, bool]:
             "A deployed runtime request must carry its exact three-axis periodicity; "
             "there is no safe default."
         )
-    axes = tuple(bool(item) for item in value)
-    if len(axes) != 3:
+    if not isinstance(value, (list, tuple)) or len(value) != 3 or any(
+        type(item) is not bool for item in value
+    ):
         raise ValueError("Periodicity must be an exact three-axis boolean vector.")
-    return axes
+    return tuple(value)
+
+
+def _effective_lammps_cmdargs(request: Mapping[str, Any]) -> tuple[str, ...]:
+    """Use the authenticated parent launch contract without inventing flags."""
+
+    requested = request.get("lammps_cmdargs")
+    if requested is not None:
+        return tuple(str(value) for value in requested)
+    gpu_count = int(request.get("kokkos_gpu_count", 0) or 0)
+    if gpu_count < 0:
+        raise ValueError("KOKKOS GPU count must be nonnegative.")
+    return ("-k", "on", "g", str(gpu_count), "-sf", "kk") if gpu_count else ()
+
+
+def _runtime_evidence(request: Mapping[str, Any]) -> dict[str, Any]:
+    """Facts proved only after the live product callback returned."""
+
+    return {
+        "schema": "mdstats.qualification-lammps-runtime-evidence.v1",
+        "mliappy_activated": True,
+        "product_callback_executed": True,
+        "effective_lammps_cmdargs": list(_effective_lammps_cmdargs(request)),
+        "kokkos_gpu_count": int(request.get("kokkos_gpu_count", 0) or 0),
+        "selected_cuda_device": request.get("selected_cuda_device"),
+        "pbc": list(_request_pbc(request)),
+    }
 
 
 def _local_arrays(instance) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -154,28 +181,42 @@ def _load_deployed_model(artifact_path: str) -> Any:
 def _build(request: dict[str, Any]):
     from lammps import lammps, mliap
 
-    instance = lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
-    mliap.activate_mliappy(instance)
-    # The unified model must be resident before `pair_style ... EXISTS` runs;
-    # LAMMPS resolves the already loaded object rather than a file path.
-    model = _load_deployed_model(request["artifact_path"])
-    mliap.load_unified(model)
+    cmdargs = ["-log", "none", "-screen", "none", "-nocite"]
+    cmdargs.extend(_effective_lammps_cmdargs(request))
+    instance = lammps(cmdargs=cmdargs)
+    try:
+        mliap.activate_mliappy(instance)
+        # The unified model must be resident before `pair_style ... EXISTS`
+        # runs; LAMMPS resolves the already loaded object rather than a file
+        # path.
+        model = _load_deployed_model(request["artifact_path"])
+        mliap.load_unified(model)
 
-    pbc = _request_pbc(request)
-    commands = [
-        "units metal",
-        "atom_style atomic",
-        "atom_modify map array sort 0 0.0",
-        _boundary_command(pbc),
-        f"read_data {request['data_path']}",
-        "pair_style mliap unified EXISTS 0",
-        "pair_coeff * * " + " ".join(str(v) for v in request["element_types"]),
-        "neighbor 1.0 bin",
-        "neigh_modify every 1 delay 0 check yes",
-    ]
-    for line in commands:
-        instance.command(line)
-    return instance
+        pbc = _request_pbc(request)
+        commands = [
+            "units metal",
+            "atom_style atomic",
+            "atom_modify map array sort 0 0.0",
+            _boundary_command(pbc),
+            f"read_data {request['data_path']}",
+            "pair_style mliap unified EXISTS 0",
+            "pair_coeff * * " + " ".join(str(v) for v in request["element_types"]),
+            "neighbor 1.0 bin",
+            "neigh_modify every 1 delay 0 check yes",
+        ]
+        for line in commands:
+            instance.command(line)
+        return instance
+    except BaseException:
+        # Setup failures occur before ``_run`` can enter its normal execution
+        # ``finally`` block.  Close the worker-owned instance here as well;
+        # this never invokes Python finalization and preserves the external
+        # interpreter lifecycle contract.
+        try:
+            instance.close()
+        except Exception:
+            pass
+        raise
 
 
 def _run(request: dict[str, Any]) -> dict[str, Any]:
@@ -194,6 +235,9 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
                 "positions_angstrom": positions.tolist(),
                 "atom_count": int(tags.size),
                 "stress_ev_per_angstrom3": _stress_from_instance(instance, request),
+                "cell_angstrom": _cell_from_instance(instance).tolist(),
+                "pbc": list(pbc),
+                "runtime_evidence": _runtime_evidence(request),
             }
         if mode == "dynamics":
             timestep = float(request["timestep_femtoseconds"]) / 1000.0
@@ -271,6 +315,9 @@ def _run(request: dict[str, Any]) -> dict[str, Any]:
                 "maximum_force_ev_per_angstrom": float(maximum_force),
                 "final_positions_angstrom": positions.tolist(),
                 "atom_count": int(tags.size),
+                "cell_angstrom": _cell_from_instance(instance).tolist(),
+                "pbc": list(pbc),
+                "runtime_evidence": _runtime_evidence(request),
             }
         raise ValueError(f"Unsupported LAMMPS worker mode {mode!r}.")
     finally:

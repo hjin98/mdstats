@@ -178,12 +178,18 @@ class QualificationHarness:
         member_bias: dict[str, float] | None = None,
         checkpoint_force_bias: dict[str, float] | None = None,
         dynamics_overrides: dict | None = None,
+        deployed_stress_members_without: set[str] | None = None,
+        model_stress_members_without: set[str] | None = None,
     ) -> None:
         self.potential = potential or AnalyticPairPotential()
         self.deployed_potential = deployed_potential or self.potential
         self.member_bias = dict(member_bias or {})
         self.checkpoint_force_bias = dict(checkpoint_force_bias or {})
         self.dynamics_overrides = dict(dynamics_overrides or {})
+        self.deployed_stress_members_without = set(deployed_stress_members_without or ())
+        # Values are member-id/run-identity tokens.  The provider owner exposes
+        # the authenticated checkpoint locator, which includes the run identity.
+        self.model_stress_members_without = set(model_stress_members_without or ())
         self.labels: dict[str, tuple[float, np.ndarray]] = {}
         #: When set, a per-member bias applies only to these frames, so a test
         #: can make two committee members differ on one evidence role without
@@ -266,6 +272,13 @@ class QualificationHarness:
         ):
             self.locked_evaluations += 1
         bias = self._checkpoint_bias(provider)
+        checkpoint_locator = str(
+            getattr(getattr(provider, "checkpoint_identity", None), "checkpoint_locator", "")
+        )
+        model_reports_stress = not any(
+            token and token in checkpoint_locator
+            for token in self.model_stress_members_without
+        )
         predictions = []
         for atoms in atoms_list:
             frame_uid = str(atoms.info.get("frame_uid", ""))
@@ -276,7 +289,7 @@ class QualificationHarness:
                     energy_ev=energy,
                     forces_ev_per_angstrom=forces + self._applied_bias(bias, frame_uid),
                     stress_ev_per_angstrom3=self.potential.virial_stress(atoms)
-                    if self.potential.report_stress
+                    if self.potential.report_stress and model_reports_stress
                     else None,
                 )
             )
@@ -336,7 +349,10 @@ class QualificationHarness:
             )
             stress = (
                 self.deployed_potential.virial_stress(atoms)
-                if self.deployed_potential.report_stress
+                if (
+                    self.deployed_potential.report_stress
+                    and member.member_id not in self.deployed_stress_members_without
+                )
                 else None
             )
             if stress is not None and self.deployed_stress_offset:
@@ -592,6 +608,7 @@ def supply_analytic_reference_bundle(session, harness: QualificationHarness) -> 
         ReferenceObservation,
         write_reference_bundle,
     )
+    from mdstats.training_data.qualification.stress import ExternalStressProvenance
 
     request = session.reference_request
     by_identity = {}
@@ -626,14 +643,32 @@ def supply_analytic_reference_bundle(session, harness: QualificationHarness) -> 
                 force_convergence=0.05,
             )
             relaxed = np.asarray(outcome.relaxed.get_positions(), dtype=np.float64)
-        observations.append(
-            ReferenceObservation(
-                geometry_identity=item.geometry_identity,
-                energy_ev=energy,
-                forces_ev_per_angstrom=tuple(tuple(row) for row in forces.tolist()),
-                relaxed_positions_angstrom=(
-                    None if relaxed is None else tuple(tuple(row) for row in relaxed.tolist())
-                ),
-            )
+        stress = (
+            harness.potential.virial_stress(atoms)
+            if harness.potential.report_stress
+            else None
         )
+        common = {
+            "geometry_identity": item.geometry_identity,
+            "energy_ev": energy,
+            "forces_ev_per_angstrom": tuple(tuple(row) for row in forces.tolist()),
+            "relaxed_positions_angstrom": (
+                None if relaxed is None else tuple(tuple(row) for row in relaxed.tolist())
+            ),
+        }
+        if stress is None:
+            observations.append(ReferenceObservation(**common))
+        else:
+            observations.append(
+                ReferenceObservation.from_external_stress(
+                    **common,
+                    stress_value=stress,
+                    stress_provenance=ExternalStressProvenance(
+                        representation="tensor",
+                        units="ev_per_angstrom3",
+                        sign_convention="tensile_positive",
+                        source="bounded-analytic-reference.v1",
+                    ),
+                )
+            )
     return write_reference_bundle(session.reference_root, request, observations)

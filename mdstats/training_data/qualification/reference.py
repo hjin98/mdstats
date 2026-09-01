@@ -30,7 +30,11 @@ from .._common import (
 from .errors import QualificationError, QualificationLineageError
 from .geometry import atoms_for_frame, displaced_atoms, strained_atoms
 from .plan import PhysicalValidationPlan
-from .stress import canonical_stress_tensor
+from .stress import (
+    ExternalStressProvenance,
+    canonical_stress_tensor,
+    canonicalize_external_stress,
+)
 
 REFERENCE_REQUEST_SCHEMA = "mdstats.qualification-reference-request.v1"
 REFERENCE_BUNDLE_SCHEMA = "mdstats.qualification-reference-bundle.v1"
@@ -121,6 +125,12 @@ class PhysicalReferenceRequest:
     protocol_identity: str
     physical_plan_digest: str
     geometries: tuple[ReferenceGeometryRequest, ...]
+    # Candidate-independent requests may identify exact geometries for which a
+    # stress observation is mandatory.  Model-specific applicability is still
+    # re-established by the physical component; this field is the explicit
+    # external-evidence contract when the frozen request already knows the
+    # stress channel is required.
+    stress_required_geometry_identities: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         protocol = str(self.protocol_identity).strip()
@@ -142,6 +152,26 @@ class PhysicalReferenceRequest:
         if len(set(identities)) != len(identities):
             raise TrainingDataInputError("Reference request geometries must be unique.")
         object.__setattr__(self, "geometries", geometries)
+        stress_ids = tuple(
+            validate_digest(str(value), name="stress_required_geometry_identity")
+            for value in self.stress_required_geometry_identities
+        )
+        if len(set(stress_ids)) != len(stress_ids):
+            raise TrainingDataInputError(
+                "Reference request stress geometries must be unique."
+            )
+        unknown = set(stress_ids) - set(identities)
+        if unknown:
+            raise TrainingDataInputError(
+                "Reference request stress geometries must be members of its geometry set."
+            )
+        object.__setattr__(self, "stress_required_geometry_identities", stress_ids)
+
+    @property
+    def required_stress_geometry_identities(self) -> tuple[str, ...]:
+        """Alias used by callers that describe the same external contract."""
+
+        return self.stress_required_geometry_identities
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -149,6 +179,9 @@ class PhysicalReferenceRequest:
             "protocol_identity": self.protocol_identity,
             "physical_plan_digest": self.physical_plan_digest,
             "geometries": [item.to_dict() for item in self.geometries],
+            "stress_required_geometry_identities": list(
+                self.stress_required_geometry_identities
+            ),
         }
 
     @property
@@ -168,6 +201,9 @@ class PhysicalReferenceRequest:
             geometries=tuple(
                 ReferenceGeometryRequest.from_dict(item) for item in payload["geometries"]
             ),
+            stress_required_geometry_identities=tuple(
+                payload.get("stress_required_geometry_identities", ())
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Reference-request digest mismatch.")
@@ -180,6 +216,7 @@ def build_physical_reference_request(
     *,
     protocol_identity: str,
     include_relaxed: bool,
+    stress_required: bool = False,
 ) -> PhysicalReferenceRequest:
     """Enumerate every geometry the frozen physical plan needs a reference for."""
 
@@ -229,10 +266,27 @@ def build_physical_reference_request(
                     atom_count=len(strained),
                 )
             )
+    # An explicit policy requirement is a candidate-independent external
+    # contract.  Applicability derived from each published member is checked
+    # again by the physical reducer, so a default-false policy cannot suppress
+    # an actually trained/applicable channel.
+    # ``PhysicalValidationPlan`` intentionally does not carry the mutable
+    # specification object.  The caller passes the already frozen policy fact;
+    # member-scoped applicability is still re-established by the reducer.
+    stress_ids: tuple[str, ...] = () if not bool(stress_required) else tuple(
+        item.geometry_identity
+        for item in geometries
+        if np.all(
+            np.asarray(
+                atoms_for_frame(context, item.frame_uid).get_pbc(), dtype=bool
+            )
+        )
+    )
     return PhysicalReferenceRequest(
         protocol_identity=protocol_identity,
         physical_plan_digest=plan.content_digest,
         geometries=tuple(geometries),
+        stress_required_geometry_identities=stress_ids,
     )
 
 
@@ -244,6 +298,11 @@ class ReferenceObservation:
     relaxed_positions_angstrom: tuple[tuple[float, float, float], ...] | None = None
     stress_ev_per_angstrom3: tuple[tuple[float, float, float], ...] | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    # ``stress_source_value`` is retained alongside the canonical tensor so
+    # load-time authentication can replay the exact conversion rather than
+    # trusting a declaration about units/sign/order after the fact.
+    stress_source_value: Any | None = None
+    stress_provenance: ExternalStressProvenance | Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -269,13 +328,88 @@ class ReferenceObservation:
                 self, "relaxed_positions_angstrom", tuple(tuple(row) for row in relaxed.tolist())
             )
         if self.stress_ev_per_angstrom3 is not None:
-            stress = canonical_stress_tensor(self.stress_ev_per_angstrom3)
+            provenance = self.stress_provenance
+            if provenance is None:
+                provenance = ExternalStressProvenance.canonical_inline()
+            elif not isinstance(provenance, ExternalStressProvenance):
+                provenance = ExternalStressProvenance.from_dict(provenance)
+            source = self.stress_source_value
+            if provenance.source_declared:
+                # Explicitly declared source values are imported through the
+                # canonical owner.  The legacy field name is retained for
+                # compatibility, but a GPa/bar/virial value is never first
+                # interpreted as canonical and then converted a second time.
+                if source is None:
+                    raise QualificationLineageError(
+                        "Declared external reference stress must carry the raw source "
+                        "value; canonical stress cannot be converted a second time."
+                    )
+                try:
+                    replayed = canonicalize_external_stress(source, provenance)
+                except Exception as exc:  # noqa: BLE001 - boundary becomes lineage failure
+                    raise QualificationLineageError(
+                        "Reference stress source/provenance cannot be authenticated."
+                    ) from exc
+                stress = replayed
+            else:
+                stress = canonical_stress_tensor(self.stress_ev_per_angstrom3)
+                if source is None:
+                    source = stress
+            if not np.all(np.isfinite(stress)):
+                raise QualificationLineageError(
+                    "Reference stress canonicalization produced a nonfinite tensor."
+                )
             object.__setattr__(
                 self,
                 "stress_ev_per_angstrom3",
                 tuple(tuple(float(value) for value in row) for row in stress.tolist()),
             )
+            object.__setattr__(
+                self,
+                "stress_source_value",
+                json_value(np.asarray(source, dtype=np.float64).tolist()),
+            )
+            object.__setattr__(self, "stress_provenance", provenance)
+        elif self.stress_source_value is not None or self.stress_provenance is not None:
+            raise QualificationLineageError(
+                "Reference stress provenance cannot exist without a canonical stress value."
+            )
         object.__setattr__(self, "metadata", json_value(dict(self.metadata)))
+
+    @classmethod
+    def from_external_stress(
+        cls,
+        *,
+        geometry_identity: str,
+        energy_ev: float,
+        forces_ev_per_angstrom: tuple[tuple[float, float, float], ...],
+        stress_value: Any,
+        stress_provenance: ExternalStressProvenance | Mapping[str, Any],
+        relaxed_positions_angstrom: tuple[tuple[float, float, float], ...] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> "ReferenceObservation":
+        """Build an observation by importing a raw, explicitly described stress."""
+
+        provenance = (
+            stress_provenance
+            if isinstance(stress_provenance, ExternalStressProvenance)
+            else ExternalStressProvenance.from_dict(stress_provenance)
+        )
+        # Pass the raw source through the constructor once.  The constructor
+        # owns the single canonicalization call; precomputing here would make
+        # the external value look as though it had been normalized twice.
+        raw = np.asarray(stress_value, dtype=np.float64)
+        raw_value = json_value(raw.tolist())
+        return cls(
+            geometry_identity=geometry_identity,
+            energy_ev=energy_ev,
+            forces_ev_per_angstrom=forces_ev_per_angstrom,
+            relaxed_positions_angstrom=relaxed_positions_angstrom,
+            stress_ev_per_angstrom3=raw_value,
+            metadata={} if metadata is None else metadata,
+            stress_source_value=raw_value,
+            stress_provenance=provenance,
+        )
 
     @property
     def forces(self) -> np.ndarray:
@@ -307,13 +441,21 @@ class ReferenceObservation:
             payload["stress_ev_per_angstrom3"] = [
                 list(row) for row in self.stress_ev_per_angstrom3
             ]
+            payload["stress_source_value"] = json_value(self.stress_source_value)
+            payload["stress_provenance"] = self.stress_provenance.to_dict()
         if self.metadata:
             payload["metadata"] = json_value(self.metadata)
         return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ReferenceObservation":
-        return cls(
+        if payload.get("stress_ev_per_angstrom3") is not None and payload.get(
+            "stress_provenance"
+        ) is None:
+            raise QualificationLineageError(
+                "Persisted reference stress is missing its source provenance."
+            )
+        result = cls(
             geometry_identity=str(payload["geometry_identity"]),
             energy_ev=float(payload["energy_ev"]),
             forces_ev_per_angstrom=tuple(
@@ -335,7 +477,33 @@ class ReferenceObservation:
                 )
             ),
             metadata=dict(payload.get("metadata", {})),
+            stress_source_value=payload.get("stress_source_value"),
+            stress_provenance=(
+                None
+                if payload.get("stress_provenance") is None
+                else ExternalStressProvenance.from_dict(payload["stress_provenance"])
+            ),
         )
+        # Source/provenance is the canonicalization authority, but the
+        # serialized canonical tensor is still part of the immutable evidence
+        # representation. Replaying the source and silently discarding a
+        # changed canonical field would let a tampered object retain its old
+        # content identity.
+        serialized_stress = payload.get("stress_ev_per_angstrom3")
+        if serialized_stress is not None:
+            try:
+                stored = np.asarray(serialized_stress, dtype=np.float64)
+                canonical = np.asarray(result.stress, dtype=np.float64)
+            except (TypeError, ValueError) as exc:
+                raise TrainingDataSerializationError(
+                    "Persisted reference stress is not a numeric canonical tensor."
+                ) from exc
+            if stored.shape != canonical.shape or not np.array_equal(stored, canonical):
+                raise TrainingDataSerializationError(
+                    "Persisted canonical reference stress disagrees with its "
+                    "authenticated source/provenance replay."
+                )
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -555,6 +723,22 @@ def load_reference_bundle(
             raise QualificationLineageError(
                 "External reference geometry has a different atom count than requested."
             )
+    for identity in request.stress_required_geometry_identities:
+        observed = observations[identity]
+        if observed.stress is None:
+            raise QualificationLineageError(
+                "The authenticated reference bundle is missing stress for a geometry "
+                "whose exact request requires it."
+            )
+        if (
+            observed.stress_provenance is None
+            or not observed.stress_provenance.source_declared
+            or observed.stress_source_value is None
+        ):
+            raise QualificationLineageError(
+                "Required reference stress is present without an authenticated source "
+                "representation."
+            )
     return bundle
 
 
@@ -596,6 +780,30 @@ def write_reference_bundle(
             raise QualificationLineageError(
                 "The frozen relaxed reference geometry is missing; it cannot be "
                 "published as a complete reference bundle."
+            )
+        if item.geometry_identity in request.stress_required_geometry_identities:
+            if observation.stress is None:
+                raise QualificationLineageError(
+                    "The exact reference request requires stress for every listed "
+                    "geometry; publication cannot omit it."
+                )
+            if (
+                observation.stress_provenance is None
+                or not observation.stress_provenance.source_declared
+                or observation.stress_source_value is None
+            ):
+                raise QualificationLineageError(
+                    "Required reference stress must carry explicit source units, sign, "
+                    "order, and canonicalization provenance."
+                )
+        elif observation.stress is not None and (
+            observation.stress_provenance is None
+            or not observation.stress_provenance.source_declared
+            or observation.stress_source_value is None
+        ):
+            raise QualificationLineageError(
+                "Any supplied external reference stress must carry explicit source "
+                "provenance; a canonical tensor alone is not publishable evidence."
             )
     bundle = AuthenticatedReferenceBundle(
         request_digest=request.content_digest,

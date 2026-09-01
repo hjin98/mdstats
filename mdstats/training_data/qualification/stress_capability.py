@@ -32,6 +32,7 @@ from .._common import (
     TrainingDataInputError,
     TrainingDataSerializationError,
     digest,
+    validate_digest,
 )
 from .errors import QualificationError
 
@@ -66,6 +67,20 @@ class StressCapabilityDecision:
     policy_requires_stress: bool
     policy_declared_inapplicable_reason: str | None
     reason_codes: tuple[str, ...]
+    # The fields below make the decision a claim-scoped object rather than a
+    # session-wide singleton.  Defaults preserve deserialization of the
+    # earlier in-memory API; new qualification evidence always supplies them.
+    qualification_binding_digest: str | None = None
+    component: str = ""
+    claim_kind: str = ""
+    member_id: str | None = None
+    geometry_or_cohort_digest: str | None = None
+    reference_stress_available: bool | None = None
+    # When a claim covers a cohort, retain the per-geometry facts instead of
+    # collapsing a mixed periodic/open cohort to the first caller's boolean.
+    geometry_applicability: tuple[bool, ...] = ()
+    model_stress_by_geometry: tuple[bool, ...] = ()
+    reference_stress_available_by_geometry: tuple[bool, ...] = ()
 
     def __post_init__(self) -> None:
         for name in (
@@ -86,6 +101,50 @@ class StressCapabilityDecision:
         object.__setattr__(
             self, "reason_codes", tuple(sorted({str(v) for v in self.reason_codes}))
         )
+        if self.qualification_binding_digest is not None:
+            object.__setattr__(
+                self,
+                "qualification_binding_digest",
+                validate_digest(
+                    self.qualification_binding_digest,
+                    name="qualification_binding_digest",
+                ),
+            )
+        for name in ("component", "claim_kind"):
+            object.__setattr__(self, name, str(getattr(self, name)).strip())
+        if self.member_id is not None:
+            member = str(self.member_id).strip()
+            object.__setattr__(self, "member_id", member or None)
+        if self.geometry_or_cohort_digest is not None:
+            object.__setattr__(
+                self,
+                "geometry_or_cohort_digest",
+                validate_digest(
+                    self.geometry_or_cohort_digest,
+                    name="geometry_or_cohort_digest",
+                ),
+            )
+        if self.reference_stress_available is not None:
+            object.__setattr__(
+                self,
+                "reference_stress_available",
+                bool(self.reference_stress_available),
+            )
+        for name in (
+            "geometry_applicability",
+            "model_stress_by_geometry",
+            "reference_stress_available_by_geometry",
+        ):
+            values = tuple(bool(value) for value in getattr(self, name))
+            if values and not self.geometry_applicability:
+                raise TrainingDataInputError(
+                    f"{name} cannot be supplied without geometry_applicability."
+                )
+            if values and len(values) != len(self.geometry_applicability):
+                raise TrainingDataInputError(
+                    f"{name} must align with geometry_applicability."
+                )
+            object.__setattr__(self, name, values)
         if self.policy_requires_stress and not self.applicable:
             # A policy that requires stress on a product that cannot produce it
             # is a contradiction the operator has to resolve, not something to
@@ -100,11 +159,50 @@ class StressCapabilityDecision:
     def applicable(self) -> bool:
         """Stress is applicable when the product can actually produce it."""
 
+        if self.geometry_applicability:
+            return bool(
+                self.training_objective_weights_stress
+                and any(self.geometry_applicability)
+            )
         return bool(
             self.training_objective_weights_stress
             and self.model_reports_stress
             and self.fully_periodic
         )
+
+    @property
+    def applicable_geometry_count(self) -> int:
+        if self.geometry_applicability:
+            return sum(self.geometry_applicability)
+        return int(self.applicable)
+
+    @property
+    def inapplicable_geometry_count(self) -> int:
+        if self.geometry_applicability:
+            return len(self.geometry_applicability) - self.applicable_geometry_count
+        return 0 if self.applicable else 1
+
+    def geometry_is_applicable(self, index: int) -> bool:
+        """Return the exact claim applicability for one cohort geometry."""
+
+        if self.geometry_applicability:
+            try:
+                return bool(self.geometry_applicability[int(index)])
+            except IndexError as exc:
+                raise QualificationError(
+                    "Stress capability geometry index is outside its authenticated cohort."
+                ) from exc
+        return bool(self.applicable)
+
+    def reference_stress_is_available(self, index: int) -> bool:
+        if self.reference_stress_available_by_geometry:
+            try:
+                return bool(self.reference_stress_available_by_geometry[int(index)])
+            except IndexError as exc:
+                raise QualificationError(
+                    "Reference stress geometry index is outside its authenticated cohort."
+                ) from exc
+        return self.reference_evidence_available
 
     @property
     def required(self) -> bool:
@@ -118,7 +216,17 @@ class StressCapabilityDecision:
 
     @property
     def reference_comparable(self) -> bool:
-        return bool(self.applicable and self.reference_labels_available)
+        return bool(self.applicable and self.reference_evidence_available)
+
+    @property
+    def reference_evidence_available(self) -> bool:
+        """Whether the exact claim geometry has authenticated reference stress."""
+
+        return bool(
+            self.reference_stress_available
+            if self.reference_stress_available is not None
+            else self.reference_labels_available
+        )
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -133,6 +241,17 @@ class StressCapabilityDecision:
             "applicable": self.applicable,
             "required": self.required,
             "reason_codes": list(self.reason_codes),
+            "qualification_binding_digest": self.qualification_binding_digest,
+            "component": self.component,
+            "claim_kind": self.claim_kind,
+            "member_id": self.member_id,
+            "geometry_or_cohort_digest": self.geometry_or_cohort_digest,
+            "reference_stress_available": self.reference_stress_available,
+            "geometry_applicability": list(self.geometry_applicability),
+            "model_stress_by_geometry": list(self.model_stress_by_geometry),
+            "reference_stress_available_by_geometry": list(
+                self.reference_stress_available_by_geometry
+            ),
         }
 
     @property
@@ -161,6 +280,17 @@ class StressCapabilityDecision:
                 "policy_declared_inapplicable_reason"
             ),
             reason_codes=tuple(payload.get("reason_codes", ())),
+            qualification_binding_digest=payload.get("qualification_binding_digest"),
+            component=str(payload.get("component", "")),
+            claim_kind=str(payload.get("claim_kind", "")),
+            member_id=payload.get("member_id"),
+            geometry_or_cohort_digest=payload.get("geometry_or_cohort_digest"),
+            reference_stress_available=payload.get("reference_stress_available"),
+            geometry_applicability=tuple(payload.get("geometry_applicability", ())),
+            model_stress_by_geometry=tuple(payload.get("model_stress_by_geometry", ())),
+            reference_stress_available_by_geometry=tuple(
+                payload.get("reference_stress_available_by_geometry", ())
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -189,6 +319,13 @@ def resolve_stress_capability(
     probe_stresses: Sequence[Any] | None,
     runtime_reports_stress: bool,
     reference_frame_uids: Sequence[str] = (),
+    reference_stress_available: bool | None = None,
+    qualification_binding_digest: str | None = None,
+    component: str = "",
+    claim_kind: str = "",
+    member_id: str | None = None,
+    geometry_or_cohort_digest: str | None = None,
+    reference_stress_available_by_geometry: Sequence[bool] | None = None,
 ) -> StressCapabilityDecision:
     """Decide the stress channel from product/runtime capability plus policy."""
 
@@ -200,17 +337,60 @@ def resolve_stress_capability(
             "applicability cannot be resolved from product capability."
         )
     trained = float(getattr(objective, "stress_weight", 0.0)) > 0.0
+    if probe_stresses is not None and len(probe_stresses) != len(probe_atoms):
+        raise TrainingDataInputError(
+            "Model stress observations must align with the exact claim geometry cohort."
+        )
 
-    model_reports = bool(
-        probe_stresses is not None
-        and len(probe_stresses) > 0
-        and all(item is not None for item in probe_stresses)
+    periodic_by_geometry = tuple(
+        bool(np.all(np.asarray(atoms.get_pbc(), dtype=bool))) for atoms in probe_atoms
     )
-    periodic = bool(
-        probe_atoms
-        and all(np.all(np.asarray(atoms.get_pbc(), dtype=bool)) for atoms in probe_atoms)
+    model_by_geometry = tuple(
+        bool(probe_stresses is not None and index < len(probe_stresses) and probe_stresses[index] is not None)
+        for index in range(len(probe_atoms))
+    )
+    periodic = bool(periodic_by_geometry and all(periodic_by_geometry))
+    applicable_by_geometry = tuple(
+        bool(trained and periodic_value and model_value)
+        for periodic_value, model_value in zip(
+            periodic_by_geometry, model_by_geometry, strict=True
+        )
+    )
+    model_reports = bool(
+        any(periodic_by_geometry)
+        and all(
+            model_value
+            for periodic_value, model_value in zip(
+                periodic_by_geometry, model_by_geometry, strict=True
+            )
+            if periodic_value
+        )
     )
     labels = _frames_carry_stress_labels(context, reference_frame_uids)
+    if reference_stress_available_by_geometry is not None:
+        exact_reference_by_geometry = tuple(
+            bool(value) for value in reference_stress_available_by_geometry
+        )
+    elif reference_stress_available is None:
+        exact_reference_by_geometry = tuple(labels for _ in probe_atoms)
+    else:
+        exact_reference_by_geometry = tuple(
+            bool(reference_stress_available) for _ in probe_atoms
+        )
+    if exact_reference_by_geometry and len(exact_reference_by_geometry) != len(probe_atoms):
+        raise TrainingDataInputError(
+            "Reference stress availability must align with the exact claim geometry cohort."
+        )
+    exact_reference = bool(
+        exact_reference_by_geometry
+        and all(
+            available
+            for available, applicable_value in zip(
+                exact_reference_by_geometry, applicable_by_geometry, strict=True
+            )
+            if applicable_value
+        )
+    )
 
     declared = policy.get("stress_declared_inapplicable_reason")
     declared_reason = None if declared in (None, "") else str(declared)
@@ -221,6 +401,16 @@ def resolve_stress_capability(
         REASON_RUNTIME_SUPPORTS if runtime_reports_stress else REASON_RUNTIME_UNSUPPORTED,
         REASON_REFERENCE_LABELS if labels else REASON_NO_REFERENCE_LABELS,
     }
+    if reference_stress_available is not None:
+        reasons.add(
+            "exact_reference_stress_available"
+            if exact_reference
+            else "exact_reference_stress_unavailable"
+        )
+    if any(periodic_by_geometry) and not all(periodic_by_geometry):
+        reasons.add("mixed_periodic_applicability")
+    if any(applicable_by_geometry) and not all(exact_reference_by_geometry[index] for index, value in enumerate(applicable_by_geometry) if value):
+        reasons.add("applicable_geometry_missing_reference_stress")
     if bool(policy.get("stress_required", False)):
         reasons.add(REASON_POLICY_REQUIRES)
     if declared_reason is not None:
@@ -234,6 +424,15 @@ def resolve_stress_capability(
         policy_requires_stress=bool(policy.get("stress_required", False)),
         policy_declared_inapplicable_reason=declared_reason,
         reason_codes=tuple(reasons),
+        qualification_binding_digest=qualification_binding_digest,
+        component=component,
+        claim_kind=claim_kind,
+        member_id=member_id,
+        geometry_or_cohort_digest=geometry_or_cohort_digest,
+        reference_stress_available=exact_reference,
+        geometry_applicability=applicable_by_geometry,
+        model_stress_by_geometry=model_by_geometry,
+        reference_stress_available_by_geometry=exact_reference_by_geometry,
     )
 
 

@@ -123,9 +123,32 @@ class QualificationEvidenceStore:
                 f"Qualification object {str(content_digest)[:12]}... is missing from "
                 "the campaign-owned release-evidence store."
             )
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        record = deserializer(payload)
-        if str(record.content_digest) != str(content_digest):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise TrainingDataSerializationError(
+                f"Qualification object {path!s} is not readable JSON."
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise TrainingDataSerializationError(
+                f"Qualification object {path!s} must contain a JSON object."
+            )
+        try:
+            record = deserializer(payload)
+            record_digest = str(record.content_digest)
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            ValueError,
+            TrainingDataInputError,
+            TrainingDataSerializationError,
+            QualificationError,
+        ) as exc:
+            raise TrainingDataSerializationError(
+                f"Qualification object {path!s} cannot be deserialized."
+            ) from exc
+        if record_digest != str(content_digest):
             raise TrainingDataSerializationError(
                 "Stored qualification object does not reproduce its content digest."
             )
@@ -213,6 +236,197 @@ def read_current_qualification_pointer(
     return None if row is None else str(row[0])
 
 
+def _qualification_verdict_value(record: Any) -> str:
+    value = getattr(record, "verdict", "")
+    return str(getattr(value, "value", value))
+
+
+def _expected_attempt_identity(binding_digest: str) -> str:
+    return digest(
+        {
+            "schema": "mdstats.qualification-attempt-identity.v1",
+            "binding": str(binding_digest),
+        }
+    )
+
+
+def _authenticate_resource_observation(
+    store: QualificationEvidenceStore,
+    record: Any,
+    *,
+    binding: Any = None,
+    authority_record: Any | None = None,
+) -> Any:
+    """Dereference and authenticate the resource object named by ``record``.
+
+    Resource observations are intentionally immutable descendants rather than
+    part of the scientific verdict.  At the public boundary, however, a
+    terminal/release claim is not complete unless its measured attempt history
+    is present and belongs to the same exact qualification binding.
+    """
+
+    from .resource_observation import QualificationResourceObservation
+
+    resource_digest = getattr(record, "resource_observation_digest", None)
+    if resource_digest is None:
+        raise QualificationLineageError(
+            "A terminal/release qualification object does not name its immutable "
+            "resource observation."
+        )
+    authority = authority_record if authority_record is not None else record
+    expected_binding = (
+        getattr(binding, "content_digest", None)
+        or getattr(authority, "binding_digest", None)
+    )
+    if expected_binding is None:
+        raise QualificationLineageError(
+            "The qualification resource observation belongs to a different binding."
+        )
+    expected_attempt = getattr(binding, "attempt_identity", None)
+    if expected_attempt is None:
+        expected_attempt = _expected_attempt_identity(str(expected_binding))
+    expected_scope = getattr(binding, "resource_scope_digest", None)
+    if expected_scope is None:
+        expected_scope = getattr(authority, "resource_scope_digest", None)
+    if expected_scope is None:
+        raise QualificationLineageError(
+            "The qualification resource observation belongs to a different resource scope."
+        )
+
+    # The pointer names the newest cumulative observation, but the attempt
+    # history is a content-addressed predecessor chain. Authenticate every
+    # link so a terminal record cannot hide a missing, substituted, cyclic, or
+    # scope-drifting earlier resume segment behind a valid tail.
+    current = str(resource_digest)
+    seen: set[str] = set()
+    latest = None
+    while current:
+        if current in seen:
+            raise QualificationLineageError(
+                "The qualification resource-observation predecessor chain is cyclic."
+            )
+        seen.add(current)
+        try:
+            observation = store.get(
+                current, QualificationResourceObservation.from_dict
+            )
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TrainingDataInputError,
+            TrainingDataSerializationError,
+        ) as exc:
+            raise QualificationLineageError(
+                "The qualification resource observation chain is missing or corrupt; "
+                "the terminal/release view is not current."
+            ) from exc
+        if observation.binding_digest != str(expected_binding):
+            raise QualificationLineageError(
+                "The qualification resource observation belongs to a different binding."
+            )
+        if observation.attempt_identity != str(expected_attempt):
+            raise QualificationLineageError(
+                "The qualification resource observation belongs to a different attempt."
+            )
+        if observation.resource_scope_digest != str(expected_scope):
+            raise QualificationLineageError(
+                "The qualification resource observation belongs to a different resource scope."
+            )
+        material = dict(observation.resource_scope_material)
+        if not material or digest(material) != observation.resource_scope_digest:
+            raise QualificationLineageError(
+                "The qualification resource observation has no authenticated stable "
+                "resource-scope material."
+            )
+        if latest is None:
+            latest = observation
+        predecessor = observation.previous_observation_digest
+        current = "" if predecessor is None else str(predecessor)
+    return latest
+
+
+def _authenticate_release_index_record(
+    store: QualificationEvidenceStore,
+    index: Any,
+    *,
+    binding: Any = None,
+    expected_plan_digest: str | None = None,
+) -> Any:
+    """Resolve the single terminal-record authority behind a release index."""
+
+    from .record import ProductionQualificationRecord
+
+    terminal_digest = getattr(index, "qualification_record_digest", None)
+    if terminal_digest is None:
+        raise QualificationLineageError(
+            "A release-evidence index does not name its qualification record."
+        )
+    try:
+        terminal = store.get(
+            str(terminal_digest), ProductionQualificationRecord.from_dict
+        )
+    except (OSError, ValueError, KeyError, TrainingDataInputError, TrainingDataSerializationError) as exc:
+        raise QualificationLineageError(
+            "The release-evidence index names a missing or corrupt qualification record."
+        ) from exc
+    if binding is not None and not qualification_record_is_current(
+        terminal, binding, require_extended=True
+    ):
+        raise QualificationLineageError(
+            "The release-evidence index names a qualification record that is not "
+            "current for the authenticated binding."
+        )
+    if expected_plan_digest is not None and terminal.plan_digest != str(expected_plan_digest):
+        raise QualificationLineageError(
+            "The release-evidence index names a qualification record from a different plan."
+        )
+    if _qualification_verdict_value(index) != _qualification_verdict_value(terminal):
+        raise QualificationLineageError(
+            "The release-evidence index verdict disagrees with its qualification record."
+        )
+    for attribute in (
+        "selected_binding_digest",
+        "publication_digest",
+        "publication_member_digest",
+        "executable_digest",
+        "specification_digest",
+        "environment_digest",
+        "plan_digest",
+        "locked_activation_digest",
+        "resource_scope_digest",
+        "predecessor_reclosure_digest",
+        "predecessor_executable_tree_digest",
+        "resource_observation_digest",
+    ):
+        if getattr(index, attribute, None) != getattr(terminal, attribute, None):
+            raise QualificationLineageError(
+                "The release-evidence index disagrees with its qualification record "
+                f"for {attribute}."
+            )
+    indexed_components = tuple(sorted(getattr(index, "component_evidence_digests", ())))
+    terminal_components = tuple(
+        sorted(
+            outcome.evidence_digest
+            for outcome in getattr(terminal, "components", ())
+            if str(
+                getattr(
+                    getattr(outcome, "status", None),
+                    "value",
+                    getattr(outcome, "status", ""),
+                )
+            )
+            != "waiting_for_reference"
+        )
+    )
+    if indexed_components != terminal_components:
+        raise QualificationLineageError(
+            "The release-evidence index component graph disagrees with its "
+            "qualification record."
+        )
+    return terminal
+
+
 def resolve_current_qualification_record(
     campaign_store: Any,
     paths: Any,
@@ -268,6 +482,25 @@ def resolve_current_qualification_record(
             and getattr(nested_binding, "content_digest", None) != binding.content_digest
         ):
             return None
+    terminal_record = None
+    if kind == POINTER_RELEASE_EVIDENCE:
+        terminal_record = _authenticate_release_index_record(
+            store,
+            record,
+            binding=binding,
+            expected_plan_digest=expected_plan_digest,
+        )
+    verdict_is_terminal = _qualification_verdict_value(record) in {
+        "rejected",
+        "release_qualified",
+    }
+    if kind == POINTER_RELEASE_EVIDENCE or verdict_is_terminal:
+        _authenticate_resource_observation(
+            store,
+            record,
+            binding=binding,
+            authority_record=terminal_record,
+        )
     # A current terminal/release index is only as sound as every immutable
     # component object it names.  Resolve those objects now so pointer/file
     # presence can never masquerade as current evidence after corruption.

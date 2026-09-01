@@ -55,17 +55,33 @@ def qualify_physical_pes(
     plan = session.plan.physical_plan
     require_all = bool(policy["require_all_modes"])
     floor = float(policy["resolution_floor_ev"])
-    # The same capability decision the deployment component used: stress is a
-    # product/runtime fact resolved before execution, not a policy switch.
-    capability = session.stress_capability(
-        [atoms_for_frame(session.context, base.frame_uid) for base in plan.bases]
-    )
-    stress_applicable = capability.reference_comparable
-    stress_required = capability.required
+    # Resolve the exact physical claim cohort once as input material, then make
+    # one immutable member-scoped decision per published member. Reference
+    # availability is deliberately separate from applicability: missing
+    # external stress cannot turn an applicable claim into a pass.
+    (
+        claim_geometries,
+        claim_frames,
+        exact_reference,
+        exact_reference_by_geometry,
+        claim_geometry_digest,
+    ) = session._physical_stress_inputs(bundle)
 
     member_results: list[dict[str, Any]] = []
     failures: list[str] = []
     for member in session.publication.members:
+        capability = session.stress_capability(
+            claim_geometries,
+            probe=claim_frames,
+            member=member,
+            component=COMPONENT_PHYSICAL_PES,
+            claim_kind="physical",
+            reference_stress_available=exact_reference,
+            reference_stress_available_by_geometry=exact_reference_by_geometry,
+            geometry_or_cohort_digest=claim_geometry_digest,
+        )
+        stress_applicable = capability.applicable
+        stress_required = capability.required
         reasons: list[str] = []
         squared_error = 0.0
         counted = 0
@@ -74,6 +90,7 @@ def qualify_physical_pes(
         stress_rows: list[dict[str, Any]] = []
         stress_compared = 0
         stress_unavailable = 0
+        claim_offset = 0
         for base in plan.bases:
             atoms = atoms_for_frame(session.context, base.frame_uid)
             geometries: list[Any] = [atoms]
@@ -93,6 +110,7 @@ def qualify_physical_pes(
                 )
                 labels.append((atom_index, axis, amplitude))
             strain_labels: list[float] = []
+            strain_claim_indices: dict[float, int] = {}
             for magnitude in plan.strain_magnitudes:
                 strained = strained_atoms(atoms, magnitude)
                 geometries.append(strained)
@@ -103,6 +121,7 @@ def qualify_physical_pes(
                 )
                 labels.append((-2, "strain", float(magnitude)))
                 strain_labels.append(float(magnitude))
+                strain_claim_indices[float(magnitude)] = claim_offset + len(labels) - 1
             with member_provider(session.context, member) as provider:
                 predictions = predict_all(session.context, provider, geometries)
             model_energy = {
@@ -118,29 +137,39 @@ def qualify_physical_pes(
                 label: bundle.observation(identity)
                 for label, identity in zip(labels, identities)
             }
-            for label in labels:
+            for label_index, label in enumerate(labels):
+                claim_index = claim_offset + label_index
+                geometry_stress_applicable = capability.geometry_is_applicable(claim_index)
                 error = model_forces[label] - reference[label].forces
                 if not np.all(np.isfinite(error)):
                     reasons.append(f"nonfinite_force:{base.frame_uid}:{label}")
                     continue
                 squared_error += float(np.sum(error**2))
                 counted += error.size
-                if stress_applicable:
+                if geometry_stress_applicable:
                     expected_stress = reference[label].stress
                     observed_stress = model_stress[label]
-                    if expected_stress is None or observed_stress is None:
+                    reference_stress_available = capability.reference_stress_is_available(
+                        claim_index
+                    )
+                    if (
+                        not reference_stress_available
+                        or expected_stress is None
+                        or observed_stress is None
+                    ):
                         stress_unavailable += 1
                         stress_rows.append(
                             {
                                 "frame_uid": base.frame_uid,
                                 "label": list(label),
                                 "capability": "unavailable",
+                                "applicable": True,
+                                "reference_stress_available": reference_stress_available,
                                 "maximum_stress_tolerance_excess_ev_per_angstrom3": None,
-                                "passed": not stress_required,
+                                "passed": False,
                             }
                         )
-                        if stress_required:
-                            reasons.append(f"missing_stress:{base.frame_uid}:{label}")
+                        reasons.append(f"missing_stress:{base.frame_uid}:{label}")
                     else:
                         tolerance = float(policy["stress_atol_ev_per_angstrom3"]) + float(
                             policy["stress_rtol"]
@@ -154,12 +183,16 @@ def qualify_physical_pes(
                                 "frame_uid": base.frame_uid,
                                 "label": list(label),
                                 "capability": "authenticated",
+                                "applicable": True,
+                                "reference_stress_available": True,
                                 "maximum_stress_tolerance_excess_ev_per_angstrom3": excess,
                                 "passed": excess <= 0.0,
                             }
                         )
                         if excess > 0.0:
                             reasons.append(f"stress_out_of_tolerance:{base.frame_uid}:{label}")
+
+            claim_offset += len(labels)
 
             # Deterministic isotropic strain response for periodic systems.
             # Volumetric curvature is the strain analogue of the displacement
@@ -197,6 +230,19 @@ def qualify_physical_pes(
                             f"strain_curvature_out_of_tolerance:{base.frame_uid}:{magnitude}"
                         )
                 if bool(policy.get("strain_response_required", False)):
+                    plus_claim_index = strain_claim_indices.get(float(magnitude))
+                    minus_claim_index = strain_claim_indices.get(float(-magnitude))
+                    if (
+                        plus_claim_index is None
+                        or minus_claim_index is None
+                        or not capability.geometry_is_applicable(plus_claim_index)
+                        or not capability.geometry_is_applicable(minus_claim_index)
+                    ):
+                        # An open/non-periodic strain is outside the Cauchy
+                        # stress domain.  The exact applicability decision is
+                        # already retained in the claim-scoped capability; it
+                        # must not be turned into a fake missing-stress failure.
+                        continue
                     model_plus_stress = model_stress.get(plus)
                     model_minus_stress = model_stress.get(minus)
                     reference_plus_stress = reference[plus].stress
@@ -317,6 +363,8 @@ def qualify_physical_pes(
                 "stress_applicable": stress_applicable,
                 "stress_required": stress_required,
                 "stress_capability_digest": capability.content_digest,
+                "stress_capability_reasons": list(capability.reason_codes),
+                "stress_capability_decision": capability.to_dict(),
                 "stress_compared_configurations": stress_compared,
                 "stress_unavailable_configurations": stress_unavailable,
                 "stress_capability": (
@@ -331,6 +379,9 @@ def qualify_physical_pes(
         )
 
     status = ComponentStatus.PASSED if not failures else ComponentStatus.REJECTED
+    capability_set_digest = session.stress_capability_digest(
+        COMPONENT_PHYSICAL_PES, bundle
+    )
     return build_component_evidence(
         component=COMPONENT_PHYSICAL_PES,
         binding=binding,
@@ -345,8 +396,19 @@ def qualify_physical_pes(
             "base_count": len(plan.bases),
             "member_count": len(member_results),
             "failed_members": failures,
-            "stress_applicable": stress_applicable,
-            "stress_required": stress_required,
+            "stress_applicable": any(
+                bool(row["stress_applicable"]) for row in member_results
+            ),
+            "stress_required": any(
+                bool(row["stress_required"]) for row in member_results
+            ),
+            "stress_capability_reasons": sorted(
+                {
+                    reason
+                    for row in member_results
+                    for reason in row.get("stress_capability_reasons", ())
+                }
+            ),
             "stress_compared_configurations": sum(
                 int(row["stress_compared_configurations"]) for row in member_results
             ),
@@ -363,6 +425,11 @@ def qualify_physical_pes(
             "physical_plan_digest": plan.content_digest,
             "reference_bundle_digest": bundle.content_digest,
             "reference_protocol_identity": bundle.protocol_identity,
+            "stress_capabilities": {
+                row["member_id"]: row["stress_capability_decision"]
+                for row in member_results
+            },
+            "stress_capability_set_digest": capability_set_digest,
             "members": member_results,
         },
         component_input_digest=session.component_input_digest(

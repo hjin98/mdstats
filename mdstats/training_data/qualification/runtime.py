@@ -21,10 +21,11 @@ import hashlib
 import json
 import os
 import shutil
+import threading
 
 import numpy as np
 
-from .._common import TrainingDataInputError, digest
+from .._common import TrainingDataInputError, TrainingDataSerializationError, digest
 from ..campaign_post_selection import PostSelectionError
 from .binding import (
     EvidenceRoleMembership,
@@ -87,6 +88,7 @@ from .reference import (
     build_physical_reference_request,
     load_reference_bundle,
     publish_reference_request,
+    reference_request_path,
 )
 from .runtime_capability import (
     deployed_static_observation,
@@ -191,11 +193,13 @@ def _qualification_resource_scope(
     requested = int(requested_workers)
     if requested < 0:
         raise TrainingDataInputError("qualification case_workers must be zero or positive")
-    python_workers = (
-        int(resources.cpu_threads_budget)
-        if requested == 0
-        else min(requested, int(resources.cpu_threads_budget))
-    )
+    # ``case_workers`` is an execution-only scheduling cap.  It must not enter
+    # the authenticated qualification binding: otherwise a rerun with a
+    # different harmless concurrency setting would make the same scientific
+    # record unreachable as current.  The stage scope records the stable
+    # machine allocation/budget; ``map_cases`` applies the per-invocation
+    # requested cap when it resolves the actual pool size.
+    python_workers = int(resources.cpu_threads_budget)
     scope = build_stage_resource_scope(
         resources,
         stage_name="post-production-qualification",
@@ -236,27 +240,51 @@ class QualificationSession:
     #: than the real runtime, provides deployed observations.
     deployed_stress_supported: bool | None = None
     minimum_free_disk_gib: float = 20.0
-    _stress_capability: Any = field(default=None, repr=False)
+    _stress_capabilities: dict[str, Any] = field(default_factory=dict, repr=False)
     _resource_recorder: Any = field(default=None, repr=False)
+    _resource_recorder_lock: Any = field(
+        default_factory=threading.RLock, init=False, repr=False
+    )
 
     @property
     def resource_recorder(self) -> Any:
         """Accumulates what this attempt actually cost, lazily and once."""
 
-        from .resource_observation import ResourceObservationRecorder
+        from .resource_observation import (
+            QualificationResourceObservation,
+            ResourceObservationRecorder,
+            read_resource_observation_pointer,
+        )
 
         if self._resource_recorder is None:
-            self._resource_recorder = ResourceObservationRecorder(
-                binding_digest=self.binding.content_digest,
-                attempt_identity=self.binding.attempt_identity,
-                resource_scope_digest=self.binding.resource_scope_digest,
-                workspace=Path(self.context.paths.workspace),
-                attempt_root=self.attempt_root,
-                minimum_free_disk_gib=float(self.minimum_free_disk_gib),
-                device=str(self.context.method_policies.device),
-                runtime_identity_digest=self.binding.environment.content_digest,
-            )
-            self._resource_recorder.sample_filesystem("start")
+            with self._resource_recorder_lock:
+                if self._resource_recorder is None:
+                    previous_digest = read_resource_observation_pointer(self.attempt_root)
+                    previous = (
+                        None
+                        if previous_digest is None
+                        else self.store.get(
+                            previous_digest, QualificationResourceObservation.from_dict
+                        )
+                    )
+                    self._resource_recorder = ResourceObservationRecorder(
+                        binding_digest=self.binding.content_digest,
+                        attempt_identity=self.binding.attempt_identity,
+                        resource_scope_digest=self.binding.resource_scope_digest,
+                        workspace=Path(self.context.paths.workspace),
+                        attempt_root=self.attempt_root,
+                        minimum_free_disk_gib=float(self.minimum_free_disk_gib),
+                        device=str(self.context.method_policies.device),
+                        runtime_identity_digest=self.binding.environment.content_digest,
+                        resource_scope_material=(
+                            {}
+                            if self.resource_scope_material is None
+                            else self.resource_scope_material
+                        ),
+                        previous_observation=previous,
+                        previous_observation_digest=previous_digest,
+                    )
+                    self._resource_recorder.sample_filesystem("start")
         return self._resource_recorder
 
     # -- artifact plumbing ---------------------------------------------------
@@ -304,6 +332,7 @@ class QualificationSession:
         if cached is not None and self._authenticated_artifact(cached[0], cached[1]):
             return cached
         root = self._deployment_root(member)
+        self._require_component_disk_reserve(COMPONENT_DEPLOYMENT_PARITY)
         root.mkdir(parents=True, exist_ok=True)
         mliap_path = root / "deployment-mliap.pt"
         receipt_path = root / "deployment-receipt.json"
@@ -414,8 +443,75 @@ class QualificationSession:
             for number in sorted({int(v) for v in atoms.get_atomic_numbers()})
         )
 
+    def _runtime_launch_options(self) -> dict[str, Any]:
+        """Translate the authenticated resource assignment for the worker."""
+
+        gpu = getattr(self.resources, "gpu", None)
+        available = bool(getattr(gpu, "available", False))
+        selected = getattr(gpu, "selected_device", None)
+        device = str(self.context.method_policies.device)
+        if selected is None and device.startswith("cuda:"):
+            try:
+                selected = int(device.split(":", 1)[1])
+            except ValueError as exc:
+                raise QualificationLineageError(
+                    f"The authenticated resource policy has an invalid device {device!r}."
+                ) from exc
+        gpu_jobs = int(getattr(self.resource_scope, "gpu_jobs", 0) or 0)
+        return {
+            # This is the allocation actually granted to the stage, not a
+            # universal one-GPU assumption.  The worker receives no KOKKOS
+            # accelerator flags when the authenticated scope is CPU-only.
+            "kokkos_gpu_count": max(0, gpu_jobs) if available else 0,
+            "selected_cuda_device": selected if available else None,
+        }
+
+    def required_incremental_headroom_bytes(self, component: str) -> int:
+        """Return a bounded owner-local write allowance for one component.
+
+        Qualification does not become a global storage scheduler. It reserves
+        only enough room for output this attempt can estimate: fixed scratch
+        plus two copies of authenticated publication checkpoints for runtime
+        and artifact work.
+        """
+
+        base = 64 * 1024 * 1024
+        if str(component) not in {
+            COMPONENT_DEPLOYMENT_PARITY,
+            COMPONENT_DYNAMICS,
+            COMPONENT_PHYSICAL_PES,
+            COMPONENT_RELAXATION,
+            COMPONENT_CALIBRATION,
+            COMPONENT_LOCKED_TEST,
+        }:
+            return base
+        checkpoint_bytes = 0
+        for member in self.publication.members:
+            try:
+                checkpoint_bytes += max(
+                    0,
+                    int(checkpoint_path_for_member(self.context, member).stat().st_size),
+                )
+            except OSError:
+                # The retention fence reports a missing checkpoint separately;
+                # keep the fixed allowance for this owner-local admission.
+                continue
+        return max(base, 2 * checkpoint_bytes + base)
+
+    def _require_component_disk_reserve(self, component: str) -> float:
+        return self.resource_recorder.require_disk_reserve(
+            f"qualification component {component}",
+            required_incremental_headroom_bytes=self.required_incremental_headroom_bytes(
+                component
+            ),
+        )
+
     def evaluate_deployed(
-        self, member: PublishedProductionMember, atoms_list: Sequence[Any]
+        self,
+        member: PublishedProductionMember,
+        atoms_list: Sequence[Any],
+        *,
+        stress_capability: Any | None = None,
     ) -> DeployedEvaluation:
         if self.deployed_evaluator is not None:
             return self.deployed_evaluator(self, member, list(atoms_list))
@@ -424,31 +520,49 @@ class QualificationSession:
         # capability says this product's stress is comparable through the
         # deployed runtime.  The capability is already resolved by the time the
         # component asks for observations.
-        include_stress = bool(
-            self._stress_capability is not None
-            and self._stress_capability.deployed_comparable
-        )
+        capability = stress_capability
+        if capability is None:
+            # Standalone owner callers still need the exact member/cohort claim;
+            # a cache-key lookup by member id would either miss the digest-keyed
+            # cache or accidentally select a decision for another geometry.
+            capability = self.stress_capability(
+                atoms_list,
+                member=member,
+                component=COMPONENT_DEPLOYMENT_PARITY,
+                claim_kind="deployment",
+            )
+        include_stress = bool(capability is not None and capability.deployed_comparable)
         energies: list[float] = []
         forces: list[np.ndarray] = []
         stresses: list[np.ndarray | None] = []
+        cells: list[np.ndarray] = []
+        pbc_values: list[tuple[bool, bool, bool]] = []
+        runtime_evidence: list[Mapping[str, Any]] = []
         root = self.attempt_root / "deployed" / member.member_id
         for index, atoms in enumerate(atoms_list):
-            energy, force, stress = deployed_static_observation(
+            observation = deployed_static_observation(
                 atoms,
                 artifact_path=artifact_path,
                 element_types=self._element_types(atoms),
                 working_directory=root / f"probe-{index}",
                 include_stress=include_stress,
+                **self._runtime_launch_options(),
             )
-            energies.append(energy)
-            forces.append(force)
-            stresses.append(stress)
+            energies.append(observation.energy)
+            forces.append(observation.forces)
+            stresses.append(observation.stress)
+            cells.append(observation.cell_angstrom)
+            pbc_values.append(observation.pbc)
+            runtime_evidence.append(observation.runtime_evidence)
         return DeployedEvaluation(
             energies_ev=tuple(energies),
             forces_ev_per_angstrom=tuple(forces),
             artifact_sha256=sha,
             runtime_identity=self.binding.environment.content_digest,
             stresses_ev_per_angstrom3=tuple(stresses),
+            cells_angstrom=tuple(cells),
+            pbc=tuple(pbc_values),
+            runtime_evidence=tuple(runtime_evidence),
         )
 
     def run_deployed_dynamics(
@@ -470,8 +584,10 @@ class QualificationSession:
                 case_identity=case_identity,
             )
         policy = self.binding.specification.component_policy(COMPONENT_DYNAMICS)
+        capability = self._deployment_stress_capability(member.member_id, atoms)
         artifact_path, _sha = self.deployed_artifact(member)
         root = self.attempt_root / "dynamics" / case_identity
+        self._require_component_disk_reserve(COMPONENT_DYNAMICS)
         root.mkdir(parents=True, exist_ok=True)
         data_path = root / "case.data"
         elements = self._element_types(atoms)
@@ -491,53 +607,360 @@ class QualificationSession:
                 "propagation_steps": int(policy["propagation_steps"]),
                 "sample_interval_steps": int(policy["sample_interval_steps"]),
                 "include_stress": bool(
-                    self._stress_capability is not None
-                    and self._stress_capability.deployed_comparable
+                    capability is not None and capability.deployed_comparable
                 ),
+                **self._runtime_launch_options(),
             },
             working_directory=root,
         )
 
     def stress_capability(
-        self, atoms_list: Sequence[Any], *, probe: Sequence[str] = ()
+        self,
+        atoms_list: Sequence[Any],
+        *,
+        probe: Sequence[str] = (),
+        member: PublishedProductionMember | None = None,
+        component: str = COMPONENT_DEPLOYMENT_PARITY,
+        claim_kind: str | None = None,
+        reference_stress_available: bool | None = None,
+        geometry_or_cohort_digest: str | None = None,
+        reference_stress_available_by_geometry: Sequence[bool] | None = None,
     ) -> Any:
-        """Resolve the stress capability decision for this attempt, once.
+        """Resolve one immutable stress claim for one member/cohort.
 
-        The decision needs real facts, so it probes the authenticated model on
-        the same configurations the component will judge and asks the runtime
-        what it can report.  It is deliberately not derived from a
-        configuration boolean.
+        A session may execute several components and several published members;
+        none of those decisions share a mutable singleton.  Omitting ``member``
+        is only permitted for the historical one-member convenience API and is
+        rejected for a committee so evidence cannot accidentally inherit member
+        zero's capability.
         """
 
         from .providers import member_provider, predict_all, stress_of
         from .runtime_capability import probe_lammps_runtime
         from .stress_capability import resolve_stress_capability
 
-        if self._stress_capability is not None:
-            return self._stress_capability
-        policy = self.binding.specification.component_policy(COMPONENT_DEPLOYMENT_PARITY)
-        member = self.publication.members[0]
-        with member_provider(self.context, member) as provider:
-            predictions = predict_all(self.context, provider, list(atoms_list))
-        probe_stresses = [stress_of(item) for item in predictions]
-        runtime = probe_lammps_runtime()
-        decision = resolve_stress_capability(
-            self.context,
-            policy=policy,
-            probe_atoms=list(atoms_list),
-            probe_stresses=probe_stresses,
-            # A supported ML-IAP/LAMMPS runtime reports the pressure tensor
-            # through thermo output; an unavailable runtime reports nothing.
-            runtime_reports_stress=bool(
+        members = tuple(self.publication.members)
+        if member is None:
+            if len(members) != 1:
+                raise QualificationError(
+                    "Stress capability is claim-scoped; a multi-member publication "
+                    "must resolve each exact publication member explicitly."
+                )
+            selected_member = members[0]
+        else:
+            selected_member = member
+            if selected_member.member_id not in {item.member_id for item in members}:
+                raise QualificationLineageError(
+                    "Stress capability was requested for a member outside the "
+                    "authenticated publication."
+                )
+        atoms = list(atoms_list)
+        policy = self.binding.specification.component_policy(str(component))
+        geometry_digest = geometry_or_cohort_digest or digest(
+            {
+                "schema": "mdstats.qualification-stress-geometry.v1",
+                "geometries": [
+                    {
+                        "numbers": [int(value) for value in item.get_atomic_numbers()],
+                        "positions": np.asarray(
+                            item.get_positions(), dtype=np.float64
+                        ).tolist(),
+                        "cell": np.asarray(item.get_cell(), dtype=np.float64).tolist(),
+                        "pbc": [bool(value) for value in item.get_pbc()],
+                    }
+                    for item in atoms
+                ],
+            }
+        )
+        if (claim_kind or component) == "deployment":
+            runtime = probe_lammps_runtime()
+            runtime_reports = bool(
                 self.deployed_stress_supported
                 if self.deployed_stress_supported is not None
                 else runtime.supports_deployed_execution
-            ),
+            )
+        else:
+            # Physical/reference claims are scientifically independent of the
+            # deployment runtime. Their evidence availability is supplied by
+            # the authenticated bundle; probing LAMMPS here would let an
+            # unrelated runtime outage leak into the physical capability cache.
+            runtime_reports = True
+        cache_key = digest(
+            {
+                "component": str(component),
+                "claim_kind": str(claim_kind or component),
+                "member_id": selected_member.member_id,
+                "geometry_or_cohort_digest": geometry_digest,
+                "reference_stress_available": reference_stress_available,
+                "reference_stress_available_by_geometry": (
+                    None
+                    if reference_stress_available_by_geometry is None
+                    else list(reference_stress_available_by_geometry)
+                ),
+                "runtime_reports_stress": runtime_reports,
+                "component_stress_policy": dict(policy),
+            }
+        )
+        cached = self._stress_capabilities.get(cache_key)
+        if cached is not None:
+            return cached
+        with member_provider(self.context, selected_member) as provider:
+            predictions = predict_all(self.context, provider, atoms)
+        decision = resolve_stress_capability(
+            self.context,
+            policy=policy,
+            probe_atoms=atoms,
+            probe_stresses=[stress_of(item) for item in predictions],
+            runtime_reports_stress=runtime_reports,
             reference_frame_uids=tuple(probe)
             + tuple(base.frame_uid for base in self.plan.physical_plan.bases),
+            reference_stress_available=reference_stress_available,
+            reference_stress_available_by_geometry=reference_stress_available_by_geometry,
+            qualification_binding_digest=self.binding.content_digest,
+            component=str(component),
+            claim_kind=str(claim_kind or component),
+            member_id=selected_member.member_id,
+            geometry_or_cohort_digest=geometry_digest,
         )
-        self._stress_capability = decision
+        self._stress_capabilities[cache_key] = decision
         return decision
+
+    def _deployment_stress_capability(
+        self, member_id: str, atoms: Any | None = None
+    ) -> Any | None:
+        """Return the exact deployment claim for one member/geometry.
+
+        Dynamics may visit a geometry outside the bounded deployment probe
+        cohort. Selecting an arbitrary cached member decision would reuse a
+        different geometry claim, so an exact atom is required for a new
+        lookup. The optional legacy form returns no decision rather than
+        leaking a singleton into another claim.
+        """
+
+        if atoms is None:
+            return None
+        member = next(
+            (item for item in self.publication.members if item.member_id == str(member_id)),
+            None,
+        )
+        if member is None:
+            raise QualificationLineageError(
+                "Dynamics requested deployment stress for a member outside the publication."
+            )
+        return self.stress_capability(
+            [atoms],
+            member=member,
+            component=COMPONENT_DEPLOYMENT_PARITY,
+            claim_kind="deployment",
+        )
+
+    def _resolve_physical_reference_request_stress(
+        self, request: PhysicalReferenceRequest
+    ) -> PhysicalReferenceRequest:
+        """Add the exact physical stress claim geometries to a new request.
+
+        The request is created before an external bundle exists, so the
+        candidate-independent geometry enumeration alone cannot know whether a
+        published member actually exposes a trained stress channel.  Resolve
+        that product fact once for every member here and union only the exact
+        applicable geometries.  Later sessions reuse the immutable published
+        request and therefore do not rerun model forwards merely to inspect
+        currentness.
+        """
+
+        from dataclasses import replace
+
+        from .providers import member_provider, predict_all, stress_of
+        from .reference import RELAXED_MODE
+        from .stress_capability import resolve_stress_capability
+
+        (
+            claim_geometries,
+            claim_frames,
+            _exact_reference,
+            _exact_reference_by_geometry,
+            claim_geometry_digest,
+        ) = self._physical_stress_inputs(None)
+        request_geometries = tuple(
+            item for item in request.geometries if item.mode != RELAXED_MODE
+        )
+        if len(request_geometries) != len(claim_geometries):
+            raise QualificationLineageError(
+                "The physical reference request geometry order does not match the "
+                "authenticated physical stress claim cohort."
+            )
+        policy = self.binding.specification.component_policy(COMPONENT_PHYSICAL_PES)
+        required = [False] * len(claim_geometries)
+        for member in self.publication.members:
+            with member_provider(self.context, member) as provider:
+                predictions = predict_all(self.context, provider, claim_geometries)
+            decision = resolve_stress_capability(
+                self.context,
+                policy=policy,
+                probe_atoms=claim_geometries,
+                probe_stresses=[stress_of(item) for item in predictions],
+                runtime_reports_stress=True,
+                reference_frame_uids=tuple(claim_frames)
+                + tuple(base.frame_uid for base in self.plan.physical_plan.bases),
+                qualification_binding_digest=self.binding.content_digest,
+                component=COMPONENT_PHYSICAL_PES,
+                claim_kind="physical",
+                member_id=member.member_id,
+                geometry_or_cohort_digest=claim_geometry_digest,
+            )
+            if len(decision.geometry_applicability) != len(required):
+                raise QualificationLineageError(
+                    "The physical stress capability did not preserve exact claim "
+                    "geometry cardinality."
+                )
+            for index, applicable in enumerate(decision.geometry_applicability):
+                required[index] = bool(required[index] or applicable)
+        stress_ids = tuple(
+            item.geometry_identity
+            for item, applicable in zip(request_geometries, required, strict=True)
+            if applicable
+        )
+        return replace(
+            request,
+            stress_required_geometry_identities=stress_ids,
+        )
+
+    def _physical_stress_inputs(
+        self, bundle: Any | None
+    ) -> tuple[list[Any], tuple[str, ...], bool, tuple[bool, ...], str]:
+        from .geometry import atoms_for_frame, displaced_atoms, strained_atoms
+        from .reference import BASE_MODE, geometry_identity, mode_name, strain_mode_name
+
+        geometries: list[Any] = []
+        identities: list[str] = []
+        frames: list[str] = []
+        for base in self.plan.physical_plan.bases:
+            frames.append(base.frame_uid)
+            atoms = atoms_for_frame(self.context, base.frame_uid)
+            geometries.append(atoms)
+            identities.append(
+                geometry_identity(atoms, frame_uid=base.frame_uid, mode=BASE_MODE)
+            )
+            for atom_index, axis, amplitude in base.modes():
+                moved = displaced_atoms(
+                    atoms, atom_index=atom_index, axis=axis, amplitude=amplitude
+                )
+                geometries.append(moved)
+                identities.append(
+                    geometry_identity(
+                        moved,
+                        frame_uid=base.frame_uid,
+                        mode=mode_name(atom_index, axis, amplitude),
+                    )
+                )
+            for magnitude in self.plan.physical_plan.strain_magnitudes:
+                strained = strained_atoms(atoms, magnitude)
+                geometries.append(strained)
+                identities.append(
+                    geometry_identity(
+                        strained,
+                        frame_uid=base.frame_uid,
+                        mode=strain_mode_name(magnitude),
+                    )
+                )
+        exact_reference_by_geometry = tuple(
+            bool(
+                bundle is not None
+                and bundle.observations.get(identity) is not None
+                and bundle.observations[identity].stress is not None
+                and bundle.observations[identity].stress_provenance is not None
+                and bundle.observations[identity].stress_provenance.source_declared
+            )
+            for identity in identities
+        )
+        exact_reference = bool(exact_reference_by_geometry and all(exact_reference_by_geometry))
+        geometry_digest = digest(
+            {
+                "schema": "mdstats.qualification-physical-stress-cohort.v1",
+                "geometry_identities": list(identities),
+            }
+        )
+        return (
+            geometries,
+            tuple(frames),
+            exact_reference,
+            exact_reference_by_geometry,
+            geometry_digest,
+        )
+
+    def stress_capability_digest(self, component: str, bundle: Any | None) -> str | None:
+        """Resolve and digest every stress decision consumed by a component."""
+
+        if str(component) == COMPONENT_DEPLOYMENT_PARITY:
+            from .deployment import probe_cohort
+            from .geometry import atoms_for_frame
+
+            policy = self.binding.specification.component_policy(component)
+            cohort = probe_cohort(
+                self.context, count=int(policy["probe_configuration_count"])
+            )
+            atoms = [atoms_for_frame(self.context, uid) for uid in cohort]
+            geometry_digest = digest(
+                {
+                    "schema": "mdstats.qualification-deployment-stress-cohort.v1",
+                    "frame_uids": list(cohort),
+                    "geometries": [
+                        {
+                            "numbers": [int(value) for value in item.get_atomic_numbers()],
+                            "positions": np.asarray(
+                                item.get_positions(), dtype=np.float64
+                            ).tolist(),
+                            "cell": np.asarray(item.get_cell(), dtype=np.float64).tolist(),
+                            "pbc": [bool(value) for value in item.get_pbc()],
+                        }
+                        for item in atoms
+                    ],
+                }
+            )
+            decisions = [
+                self.stress_capability(
+                    atoms,
+                    probe=cohort,
+                    member=member,
+                    component=component,
+                    claim_kind="deployment",
+                    geometry_or_cohort_digest=geometry_digest,
+                )
+                for member in self.publication.members
+            ]
+        elif str(component) == COMPONENT_PHYSICAL_PES:
+            (
+                atoms,
+                frames,
+                exact_reference,
+                exact_reference_by_geometry,
+                geometry_digest,
+            ) = self._physical_stress_inputs(bundle)
+            decisions = [
+                self.stress_capability(
+                    atoms,
+                    probe=frames,
+                    member=member,
+                    component=component,
+                    claim_kind="physical",
+                    reference_stress_available=exact_reference,
+                    reference_stress_available_by_geometry=exact_reference_by_geometry,
+                    geometry_or_cohort_digest=geometry_digest,
+                )
+                for member in self.publication.members
+            ]
+        else:
+            return None
+        return digest(
+            {
+                "schema": "mdstats.qualification-stress-capability-set.v1",
+                "component": str(component),
+                "decisions": [
+                    item.to_dict()
+                    for item in sorted(decisions, key=lambda value: value.member_id or "")
+                ],
+            }
+        )
 
     def resolved_case_workers(self, task_count: int) -> int:
         """Worker count for *task_count* cases, through the accepted owner.
@@ -619,7 +1042,12 @@ class QualificationSession:
         return root / f"{identity}.json"
 
     def component_input_digest(
-        self, component: str, bundle: Any | None, *, extra: Mapping[str, Any] | None = None
+        self,
+        component: str,
+        bundle: Any | None,
+        *,
+        extra: Mapping[str, Any] | None = None,
+        capability_digest: str | None = None,
     ) -> str:
         """Identity of the exact inputs consumed by one component.
 
@@ -628,9 +1056,10 @@ class QualificationSession:
         a new external bundle arrives for the same product.
         """
 
+        component_name = str(component)
         payload: dict[str, Any] = {
             "schema": "mdstats.qualification-component-input.v1",
-            "component": str(component),
+            "component": component_name,
             "binding_digest": self.binding.content_digest,
             "plan_digest": self.plan.content_digest,
             # Only components that consume external observations depend on the
@@ -640,22 +1069,134 @@ class QualificationSession:
             # spuriously re-execute model-only work.
             "reference_request_digest": (
                 self.reference_request.content_digest
-                if str(component) in _REFERENCE_DEPENDENT_COMPONENTS
+                if component_name in _REFERENCE_DEPENDENT_COMPONENTS
                 else None
             ),
             "reference_bundle_digest": (
                 None
-                if bundle is None or str(component) not in _REFERENCE_DEPENDENT_COMPONENTS
+                if bundle is None or component_name not in _REFERENCE_DEPENDENT_COMPONENTS
                 else str(bundle.content_digest)
             ),
         }
-        if str(component) in _REFERENCE_DEPENDENT_COMPONENTS and bundle is not None:
+        if component_name in _REFERENCE_DEPENDENT_COMPONENTS and bundle is not None:
             payload["reference_geometry_identities"] = sorted(
                 str(key) for key in bundle.observations
             )
+        if component_name in {
+            COMPONENT_DEPLOYMENT_PARITY,
+            COMPONENT_PHYSICAL_PES,
+        }:
+            resolved_capability_digest = capability_digest or self._cached_capability_digest(
+                component_name
+            )
+            if resolved_capability_digest is None:
+                # A completed component already stores the exact capability set
+                # that produced it. Reuse that authenticated set for identity
+                # lookup instead of running a second numerical model forward.
+                # The deployment runtime portion is re-probed by
+                # _stored_capability_digest, so a changed runtime cannot make
+                # old stress-bearing evidence current.
+                resolved_capability_digest = self._stored_capability_digest(
+                    component_name
+                )
+            if resolved_capability_digest is None:
+                # No durable capability evidence exists yet, so this is a new
+                # component identity and the claim-scoped owner must resolve
+                # every member/geometry decision before execution.
+                resolved_capability_digest = self.stress_capability_digest(
+                    component_name, bundle
+                )
+            payload["stress_capability_digest"] = resolved_capability_digest
         if extra:
             payload["extra"] = dict(extra)
         return digest(payload)
+
+    @staticmethod
+    def _capability_set_digest_from_payload(
+        component: str, payload: Mapping[str, Any]
+    ) -> str | None:
+        """Recover the authenticated claim-set digest from stored evidence."""
+
+        stored = payload.get("stress_capability_set_digest")
+        if stored is not None:
+            try:
+                from .._common import validate_digest
+
+                return validate_digest(str(stored), name="stress_capability_set_digest")
+            except (TypeError, ValueError):
+                return None
+        decisions = payload.get("stress_capabilities")
+        if not isinstance(decisions, Mapping) or not decisions:
+            return None
+        normalized: list[Mapping[str, Any]] = []
+        for decision in decisions.values():
+            if not isinstance(decision, Mapping):
+                return None
+            normalized.append(decision)
+        normalized.sort(key=lambda value: str(value.get("member_id", "")))
+        return digest(
+            {
+                "schema": "mdstats.qualification-stress-capability-set.v1",
+                "component": str(component),
+                "decisions": normalized,
+            }
+        )
+
+    def _stored_capability_digest(self, component: str) -> str | None:
+        """Use stored capability evidence for identity without re-running E/F."""
+
+        existing = self.completed_component(component, None)
+        if existing is None:
+            return None
+        payload = existing.payload
+        value = self._capability_set_digest_from_payload(component, payload)
+        if value is None:
+            return None
+        if str(component) == COMPONENT_DEPLOYMENT_PARITY:
+            from .runtime_capability import probe_lammps_runtime
+
+            current_runtime = bool(
+                self.deployed_stress_supported
+                if self.deployed_stress_supported is not None
+                else probe_lammps_runtime().supports_deployed_execution
+            )
+            decisions = payload.get("stress_capabilities")
+            if not isinstance(decisions, Mapping) or not decisions:
+                return None
+            if any(
+                not isinstance(decision, Mapping)
+                or bool(decision.get("runtime_reports_stress")) != current_runtime
+                for decision in decisions.values()
+            ):
+                # Force a fresh claim resolution. This changes the component
+                # input digest and makes the old evidence unreachable.
+                return None
+        return value
+
+    def _cached_capability_digest(self, component: str) -> str | None:
+        """Digest a complete in-memory claim set without another model forward."""
+
+        decisions = [
+            value
+            for value in self._stress_capabilities.values()
+            if getattr(value, "component", None) == str(component)
+        ]
+        members = tuple(self.publication.members)
+        if len(decisions) != len(members):
+            return None
+        by_member = {str(getattr(value, "member_id", "")): value for value in decisions}
+        if set(by_member) != {str(member.member_id) for member in members}:
+            return None
+        return digest(
+            {
+                "schema": "mdstats.qualification-stress-capability-set.v1",
+                "component": str(component),
+                "decisions": [
+                    by_member[str(member.member_id)].to_dict()
+                    for member in sorted(members, key=lambda item: item.member_id)
+                ],
+            }
+        )
 
     def completed_component(
         self, component: str, expected_input_digest: str | None = None
@@ -851,8 +1392,40 @@ def build_qualification_session(
             or COMPONENT_DYNAMICS in specification.required_components
             or COMPONENT_DYNAMICS in specification.optional_components
         ),
+        stress_required=False,
     )
-    return QualificationSession(
+    request_path = reference_request_path(reference_root)
+    persisted_request = None
+    if request_path.is_file():
+        try:
+            persisted_request = PhysicalReferenceRequest.from_dict(
+                json.loads(request_path.read_text(encoding="utf-8"))
+            )
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            TrainingDataInputError,
+            TrainingDataSerializationError,
+            QualificationError,
+            QualificationLineageError,
+        ) as exc:
+            raise QualificationLineageError(
+                f"The persisted physical reference request {request_path!s} is corrupt."
+            ) from exc
+        if (
+            persisted_request.protocol_identity != request.protocol_identity
+            or persisted_request.physical_plan_digest != request.physical_plan_digest
+            or persisted_request.geometries != request.geometries
+        ):
+            raise QualificationLineageError(
+                "The persisted physical reference request does not match the current "
+                "authenticated physical plan/protocol."
+            )
+        request = persisted_request
+    session = QualificationSession(
         context=context,
         publication=publication,
         predecessor_reclosure=predecessor_reclosure,
@@ -877,6 +1450,11 @@ def build_qualification_session(
         ),
         deployed_stress_supported=deployed_stress_supported,
     )
+    if persisted_request is None:
+        session.reference_request = session._resolve_physical_reference_request_stress(
+            request
+        )
+    return session
 
 
 # ---------------------------------------------------------------------------
@@ -935,54 +1513,59 @@ def execute_nonlocked_components(
         # Materializing deployment artifacts and dynamics scratch is the point
         # where this attempt starts consuming the workspace, so the campaign's
         # existing free-disk reserve is checked here rather than after the fact.
-        recorder.require_disk_reserve(f"qualification component {component}")
+        session._require_component_disk_reserve(component)
         component_started = _utc_stamp()
         component_clock = time.monotonic()
-        if component == COMPONENT_DEPLOYMENT_PARITY:
-            evidence = qualify_deployment_parity(session)
-        elif component == COMPONENT_PHYSICAL_PES:
-            evidence = (
-                qualify_physical_pes(session, bundle)
-                if bundle is not None
-                else _waiting_evidence(
-                    session,
-                    component,
-                    "Local PES qualification is waiting for the external reference "
-                    f"bundle requested under {session.reference_root!s}.",
+        try:
+            if component == COMPONENT_DEPLOYMENT_PARITY:
+                evidence = qualify_deployment_parity(session)
+            elif component == COMPONENT_PHYSICAL_PES:
+                evidence = (
+                    qualify_physical_pes(session, bundle)
+                    if bundle is not None
+                    else _waiting_evidence(
+                        session,
+                        component,
+                        "Local PES qualification is waiting for the external reference "
+                        f"bundle requested under {session.reference_root!s}.",
+                    )
                 )
-            )
-        elif component == COMPONENT_RELAXATION:
-            evidence = (
-                qualify_relaxation(session, bundle)
-                if bundle is not None
-                else _waiting_evidence(
-                    session,
-                    component,
-                    "Relaxation qualification is waiting for matched external "
-                    f"reference relaxations requested under {session.reference_root!s}.",
+            elif component == COMPONENT_RELAXATION:
+                evidence = (
+                    qualify_relaxation(session, bundle)
+                    if bundle is not None
+                    else _waiting_evidence(
+                        session,
+                        component,
+                        "Relaxation qualification is waiting for matched external "
+                        f"reference relaxations requested under {session.reference_root!s}.",
+                    )
                 )
-            )
-        elif component == COMPONENT_DYNAMICS:
-            evidence = (
-                qualify_dynamics(session, bundle)
-                if bundle is not None
-                else _waiting_evidence(
-                    session,
-                    component,
-                    "Dynamics qualification is waiting for authenticated reference-"
-                    f"relaxed geometries requested under {session.reference_root!s}.",
+            elif component == COMPONENT_DYNAMICS:
+                evidence = (
+                    qualify_dynamics(session, bundle)
+                    if bundle is not None
+                    else _waiting_evidence(
+                        session,
+                        component,
+                        "Dynamics qualification is waiting for authenticated reference-"
+                        f"relaxed geometries requested under {session.reference_root!s}.",
+                    )
                 )
+            elif component == COMPONENT_CALIBRATION:
+                evidence = qualify_calibration(session)
+            else:  # pragma: no cover - enabled_components filters the vocabulary
+                raise QualificationError(f"Unsupported qualification component {component!r}.")
+        finally:
+            # A failed operational/runtime owner is still part of the attempt's
+            # measured history.  It must not become scientific evidence, but a
+            # later resume must not silently erase the time already spent.
+            recorder.record_component(
+                component,
+                started=component_started,
+                elapsed=time.monotonic() - component_clock,
+                reused=False,
             )
-        elif component == COMPONENT_CALIBRATION:
-            evidence = qualify_calibration(session)
-        else:  # pragma: no cover - enabled_components filters the vocabulary
-            raise QualificationError(f"Unsupported qualification component {component!r}.")
-        recorder.record_component(
-            component,
-            started=component_started,
-            elapsed=time.monotonic() - component_clock,
-            reused=False,
-        )
         if evidence.status is ComponentStatus.WAITING_FOR_REFERENCE:
             # Waiting is not durable evidence: it is the absence of evidence, and
             # persisting it would make a later supplied reference unreachable.
@@ -1079,9 +1662,35 @@ def publish_qualification_record(
 def publish_resource_observation(session: QualificationSession) -> Any:
     """Freeze what this attempt actually cost, as immutable release evidence."""
 
+    from .resource_observation import publish_resource_observation_pointer
+
     observation = session.resource_recorder.finish()
     session.store.put(observation)
+    # The object is immutable; this tiny attempt-local locator is the only
+    # mutable state used to resume the same attempt after a process restart.
+    # Publish it only after the object store has acknowledged the object, then
+    # advance the in-memory recorder so a later invocation aggregates from the
+    # exact bytes just published rather than starting a parallel measurement.
+    publish_resource_observation_pointer(session.attempt_root, observation=observation)
+    session.resource_recorder.mark_published(observation)
     return observation
+
+
+def _publish_resource_observation_best_effort(session: QualificationSession) -> None:
+    """Retain partial attempt measurements when an invocation aborts.
+
+    Operational/runtime failures must preserve the work already performed so a
+    later resume cannot silently erase it.  The original qualification failure
+    remains authoritative; a failure in this diagnostic persistence path is
+    deliberately swallowed rather than replacing the more useful exception.
+    """
+
+    if session._resource_recorder is None:
+        return
+    try:
+        publish_resource_observation(session)
+    except BaseException:
+        pass
 
 
 def publish_release_evidence(
@@ -1255,6 +1864,7 @@ def run_qualification(
         detail="nonlocked qualification in progress",
     )
     released = False
+    resource_published = False
     try:
         components = execute_nonlocked_components(session)
         existing_activation = locked_cohort_already_revealed(session, paths)
@@ -1274,12 +1884,19 @@ def run_qualification(
             )
             if locked is not None:
                 locked_evidence = (locked,)
+                session.resource_recorder.record_component(
+                    COMPONENT_LOCKED_TEST,
+                    started=_utc_stamp(),
+                    elapsed=0.0,
+                    reused=True,
+                )
         elif existing_activation is not None:
             # The role has already been disclosed for another product.  It is
             # historical one-shot state, not a component object belonging to
             # this new binding, so never attach it to the new record.
             activation_for_record = None
         observation = publish_resource_observation(session)
+        resource_published = True
         record = build_qualification_record(
             session,
             tuple(components) + locked_evidence,
@@ -1305,6 +1922,8 @@ def run_qualification(
             released = True
         return record, tuple(components) + locked_evidence
     except BaseException:
+        if not resource_published:
+            _publish_resource_observation_best_effort(session)
         if not released:
             release_attempt_reference(
                 paths,
@@ -1382,6 +2001,7 @@ def activate_locked_test(
     """
 
     from .store import record_locked_reveal
+    import time
 
     if not _locked_required(session):
         raise QualificationActivationError(
@@ -1407,6 +2027,7 @@ def activate_locked_test(
     )
 
     released = False
+    resource_published = False
     try:
         existing = locked_cohort_already_revealed(session, paths)
         if existing is not None:
@@ -1472,6 +2093,11 @@ def activate_locked_test(
                 f"{[item.component for item in blocking]}."
             )
 
+        # Opening or resuming the locked owner may materialize durable
+        # activation/evidence state, so apply the same reserve-plus-headroom
+        # admission before either path is entered.
+        session._require_component_disk_reserve(COMPONENT_LOCKED_TEST)
+
         if activation is None:
             activation = build_locked_activation(
                 session,
@@ -1521,10 +2147,28 @@ def activate_locked_test(
             ),
         )
         if locked_evidence is None:
-            locked_evidence = session.record_component(
-                qualify_locked_test(session, activation)
+            locked_started = _utc_stamp()
+            locked_clock = time.monotonic()
+            try:
+                locked_evidence = session.record_component(
+                    qualify_locked_test(session, activation)
+                )
+            finally:
+                session.resource_recorder.record_component(
+                    COMPONENT_LOCKED_TEST,
+                    started=locked_started,
+                    elapsed=time.monotonic() - locked_clock,
+                    reused=False,
+                )
+        else:
+            session.resource_recorder.record_component(
+                COMPONENT_LOCKED_TEST,
+                started=_utc_stamp(),
+                elapsed=0.0,
+                reused=True,
             )
         observation = publish_resource_observation(session)
+        resource_published = True
         record = build_qualification_record(
             session,
             tuple(components) + (locked_evidence,),
@@ -1549,6 +2193,8 @@ def activate_locked_test(
         released = True
         return record, locked_evidence
     except BaseException:
+        if not resource_published:
+            _publish_resource_observation_best_effort(session)
         if not released:
             release_attempt_reference(
                 paths,

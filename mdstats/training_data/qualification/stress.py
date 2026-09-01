@@ -13,11 +13,13 @@ and thermodynamic stress conventions are not universal.
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from dataclasses import dataclass
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from .errors import QualificationError
+from .._common import TrainingDataSerializationError, digest
+from .errors import QualificationError, QualificationLineageError
 
 EV_PER_ANGSTROM3_TO_GPA = 160.21766208
 BAR_TO_GPA = 1.0e-4
@@ -38,6 +40,263 @@ LAMMPS_PRESSURE_TO_CANONICAL_STRESS_SIGN = -1.0
 
 #: The named component order LAMMPS thermo exposes for the pressure tensor.
 LAMMPS_PRESSURE_COMPONENTS = ("pxx", "pyy", "pzz", "pxy", "pyz", "pxz")
+
+EXTERNAL_STRESS_PROVENANCE_SCHEMA = "mdstats.qualification-external-stress-provenance.v1"
+STRESS_CANONICALIZATION_OWNER = "mdstats.training_data.qualification.stress"
+STRESS_CANONICALIZATION_VERSION = "1"
+
+
+def _normalize_representation(value: str) -> str:
+    normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "tensor": "tensor",
+        "cartesian_tensor": "tensor",
+        "matrix": "tensor",
+        "voigt": "voigt",
+        "voigt6": "voigt",
+        "virial": "virial",
+        "extensive_virial": "virial",
+    }
+    try:
+        return aliases[normalized]
+    except KeyError as exc:
+        raise QualificationLineageError(
+            "External stress provenance must declare tensor, voigt, or virial "
+            f"representation, not {value!r}."
+        ) from exc
+
+
+def _normalize_sign_convention(value: str) -> tuple[str, float]:
+    normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in {
+        "tensile_positive",
+        "tension_positive",
+        "stress_positive_in_tension",
+    }:
+        return "tensile_positive", 1.0
+    if normalized in {
+        "compressive_positive",
+        "compression_positive",
+        "pressure_positive_compression",
+        "pressure_positive",
+    }:
+        return "compressive_positive", -1.0
+    raise QualificationLineageError(
+        "External stress provenance must declare an explicit tensile-positive or "
+        f"compressive-positive sign convention, not {value!r}."
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ExternalStressProvenance:
+    """Machine-checkable source convention for one external stress value.
+
+    The numerical tensor stored in a reference observation is canonical
+    ``eV/A^3`` and tensile-positive.  This record retains the source
+    representation, units, sign, order, virial volume, and conversion owner so
+    a persisted reference cannot be reinterpreted by metadata or by a second
+    caller's defaults.
+    """
+
+    representation: str
+    units: str
+    sign_convention: str
+    source: str = "external-reference"
+    voigt_order: tuple[str, ...] = CANONICAL_VOIGT_ORDER
+    volume_angstrom3: float | None = None
+    volume_source: str | None = None
+    canonicalization_owner: str = STRESS_CANONICALIZATION_OWNER
+    canonicalization_version: str = STRESS_CANONICALIZATION_VERSION
+    source_declared: bool = True
+
+    def __post_init__(self) -> None:
+        representation = _normalize_representation(self.representation)
+        object.__setattr__(self, "representation", representation)
+        if representation == "virial":
+            source_units = str(self.units).strip().lower()
+            if source_units not in {"ev", "electronvolt", "electronvolts"}:
+                raise QualificationLineageError(
+                    "External virial stress provenance must declare eV units."
+                )
+            object.__setattr__(self, "units", "ev")
+        else:
+            object.__setattr__(self, "units", normalize_stress_units(self.units))
+        sign_name, _sign = _normalize_sign_convention(self.sign_convention)
+        object.__setattr__(self, "sign_convention", sign_name)
+        source = str(self.source).strip()
+        if self.source_declared and not source:
+            raise QualificationLineageError(
+                "External stress provenance requires a nonempty source identity."
+            )
+        object.__setattr__(self, "source", source)
+        order = tuple(str(item).strip().lower() for item in self.voigt_order)
+        if representation == "voigt" and (
+            len(order) != 6 or set(order) != set(CANONICAL_VOIGT_ORDER)
+        ):
+            raise QualificationLineageError(
+                "External Voigt stress provenance must declare xx, yy, zz, xy, yz, xz "
+                "exactly once."
+            )
+        if representation == "tensor" and order != CANONICAL_VOIGT_ORDER:
+            # Keeping this field canonical for a tensor makes a later change to
+            # tensor/Voigt representation visible in the content digest instead
+            # of allowing an irrelevant-looking order to hide a source change.
+            raise QualificationLineageError(
+                "Cartesian tensor stress provenance must use the canonical Voigt "
+                "order declaration."
+            )
+        object.__setattr__(self, "voigt_order", order)
+        if representation == "virial":
+            if self.volume_angstrom3 is None:
+                raise QualificationLineageError(
+                    "External virial stress provenance requires the instantaneous "
+                    "cell volume."
+                )
+            volume = float(self.volume_angstrom3)
+            if not np.isfinite(volume) or volume <= 0.0:
+                raise QualificationLineageError(
+                    "External virial stress provenance requires a finite positive volume."
+                )
+            object.__setattr__(self, "volume_angstrom3", volume)
+            source = None if self.volume_source is None else str(self.volume_source).strip()
+            if not source:
+                raise QualificationLineageError(
+                    "External virial stress provenance requires an authenticated volume source."
+                )
+            object.__setattr__(self, "volume_source", source)
+        elif self.volume_angstrom3 is not None or self.volume_source is not None:
+            raise QualificationLineageError(
+                "A tensor or Voigt stress cannot carry virial volume metadata."
+            )
+        owner = str(self.canonicalization_owner).strip()
+        version = str(self.canonicalization_version).strip()
+        if owner != STRESS_CANONICALIZATION_OWNER or version != STRESS_CANONICALIZATION_VERSION:
+            raise QualificationLineageError(
+                "External stress provenance must identify the accepted canonicalization "
+                f"owner/version {STRESS_CANONICALIZATION_OWNER!r}/{STRESS_CANONICALIZATION_VERSION!r}."
+            )
+        object.__setattr__(self, "canonicalization_owner", owner)
+        object.__setattr__(self, "canonicalization_version", version)
+        if type(self.source_declared) is not bool:
+            raise QualificationLineageError(
+                "External stress provenance source_declared must be a JSON boolean."
+            )
+        object.__setattr__(self, "source_declared", self.source_declared)
+
+    @classmethod
+    def canonical_inline(cls) -> "ExternalStressProvenance":
+        """Compatibility marker for an in-memory canonical tensor.
+
+        It is deliberately marked undeclared.  A reference bundle that needs
+        stress refuses this marker; callers importing external values must use
+        an explicit source provenance record.
+        """
+
+        return cls(
+            representation="tensor",
+            units=CANONICAL_STRESS_UNITS,
+            sign_convention="tensile_positive",
+            source="in-memory-canonical",
+            source_declared=False,
+        )
+
+    @property
+    def sign_multiplier(self) -> float:
+        return _normalize_sign_convention(self.sign_convention)[1]
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": EXTERNAL_STRESS_PROVENANCE_SCHEMA,
+            "representation": self.representation,
+            "units": self.units,
+            "sign_convention": self.sign_convention,
+            "source": self.source,
+            "voigt_order": list(self.voigt_order),
+            "volume_angstrom3": self.volume_angstrom3,
+            "volume_source": self.volume_source,
+            "canonicalization_owner": self.canonicalization_owner,
+            "canonicalization_version": self.canonicalization_version,
+            "source_declared": self.source_declared,
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ExternalStressProvenance":
+        if payload.get("schema") != EXTERNAL_STRESS_PROVENANCE_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported external-stress provenance schema."
+            )
+        result = cls(
+            representation=str(payload["representation"]),
+            units=str(payload["units"]),
+            sign_convention=str(payload["sign_convention"]),
+            source=str(payload["source"]),
+            voigt_order=tuple(payload.get("voigt_order", CANONICAL_VOIGT_ORDER)),
+            volume_angstrom3=(
+                None
+                if payload.get("volume_angstrom3") is None
+                else float(payload["volume_angstrom3"])
+            ),
+            volume_source=payload.get("volume_source"),
+            canonicalization_owner=str(payload["canonicalization_owner"]),
+            canonicalization_version=str(payload["canonicalization_version"]),
+            source_declared=payload.get("source_declared", True),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "External-stress provenance digest mismatch."
+            )
+        return result
+
+
+def canonicalize_external_stress(
+    value: Any, provenance: ExternalStressProvenance
+) -> np.ndarray:
+    """Convert an explicitly described external stress to canonical form."""
+
+    if not isinstance(provenance, ExternalStressProvenance):
+        raise QualificationLineageError(
+            "External stress conversion requires an ExternalStressProvenance record."
+        )
+    if not provenance.source_declared:
+        raise QualificationLineageError(
+            "An undeclared in-memory stress tensor cannot be published as external evidence."
+        )
+    if provenance.representation == "virial":
+        if provenance.units != "ev":
+            raise QualificationLineageError(
+                "External virial stress must declare eV virial units."
+            )
+        result = canonical_stress_from_virial(
+            value,
+            volume_angstrom3=float(provenance.volume_angstrom3),
+            virial_units=provenance.units,
+            voigt_order=provenance.voigt_order,
+            sign=provenance.sign_multiplier,
+        )
+    else:
+        shape = np.asarray(value).shape
+        if provenance.representation == "tensor" and shape != (3, 3):
+            raise QualificationLineageError(
+                "External tensor stress provenance does not match a 3x3 source value."
+            )
+        if provenance.representation == "voigt" and shape != (6,):
+            raise QualificationLineageError(
+                "External Voigt stress provenance does not match a six-component source value."
+            )
+        result = canonical_stress_tensor(
+            value,
+            units=provenance.units,
+            voigt_order=provenance.voigt_order,
+            sign=provenance.sign_multiplier,
+        )
+    return np.asarray(result, dtype=np.float64)
 
 
 def normalize_stress_units(units: str) -> str:
@@ -186,11 +445,14 @@ __all__ = [
     "LAMMPS_PRESSURE_TO_CANONICAL_STRESS_SIGN",
     "CANONICAL_STRESS_UNITS",
     "CANONICAL_VOIGT_ORDER",
+    "EXTERNAL_STRESS_PROVENANCE_SCHEMA",
     "EV_PER_ANGSTROM3_TO_GPA",
+    "ExternalStressProvenance",
     "INSTANTANEOUS_CELL_VOLUME_SOURCE",
     "canonical_stress_from_lammps_metal_pressure",
     "canonical_stress_from_virial",
     "canonical_stress_tensor",
+    "canonicalize_external_stress",
     "normalize_stress_units",
     "stress_of",
 ]

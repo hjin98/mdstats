@@ -73,17 +73,22 @@ def resource_scope_payload(resources: Any, scope: Any) -> dict[str, Any]:
                 ),
             },
         },
-        # Worker counts and nested-thread limits are scheduling choices made by
-        # ``resolve_worker_count`` at execution time.  They must not enter the
-        # scientific/resource identity: otherwise replaying the same evidence
-        # with a different bounded case-worker request would manufacture a new
-        # product binding.  The stable capacity and configured budgets above
-        # are the resource scope; the live stage scope remains available on the
-        # session for admission and thread limiting.
+        # The resolved worker counts and nested-thread limits are included so a
+        # measurement can be interpreted after restart.  They remain execution
+        # scope material only: they never alter scientific membership, thresholds,
+        # timestep, precision, or model-selection decisions.
         "stage": {
             "stage_name": str(scope.stage_name),
             "cpu_threads_available": int(scope.cpu_threads_available),
             "cpu_threads_budget": int(scope.cpu_threads_budget),
+            "python_workers": int(scope.python_workers),
+            "structural_workers": int(scope.structural_workers),
+            "tree_workers": int(scope.tree_workers),
+            "blas_threads": int(scope.blas_threads),
+            "native_openmp_threads": int(scope.native_openmp_threads),
+            "pytorch_cpu_workers": int(scope.pytorch_cpu_workers),
+            "gpu_jobs": int(scope.gpu_jobs),
+            "estimated_nested_cpu_threads": int(scope.estimated_nested_cpu_threads),
             "ram_budget_configured_bytes": (
                 None
                 if _stable_ram_capacity_bytes() is None
