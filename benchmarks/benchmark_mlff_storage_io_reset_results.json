@@ -1,55 +1,112 @@
 {
   "archive_codecs": {
     "gzip:1": {
-      "archive_bytes": 202286848,
-      "create_seconds": 5.018026434001513,
-      "ratio": 1.9905059967121541,
-      "restore_seconds": 1.9866137869976228
+      "archive_bytes": 3293054,
+      "create_seconds": 1.6442817210045177,
+      "member_count": 204,
+      "member_logical_bytes": 6517267,
+      "ratio": 1.9790950892393504,
+      "represented_artifact_ids": [
+        "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
+        "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
+        "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
+      ],
+      "restore_exit_code": 0,
+      "restore_seconds": 1.5022375580010703
     },
     "gzip:6": {
-      "archive_bytes": 201603567,
-      "create_seconds": 5.880118411005242,
-      "ratio": 1.9972522807594968,
-      "restore_seconds": 2.550284485987504
+      "archive_bytes": 3276192,
+      "create_seconds": 1.6551365240011364,
+      "member_count": 204,
+      "member_logical_bytes": 6517267,
+      "ratio": 1.9892811532413242,
+      "represented_artifact_ids": [
+        "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
+        "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
+        "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
+      ],
+      "restore_exit_code": 0,
+      "restore_seconds": 1.5215407259966014
     },
     "gzip:9": {
-      "archive_bytes": 201603408,
-      "create_seconds": 5.904791881999699,
-      "ratio": 1.997253855946721,
-      "restore_seconds": 2.553359539990197
+      "archive_bytes": 3274902,
+      "create_seconds": 1.663765074001276,
+      "member_count": 204,
+      "member_logical_bytes": 6517267,
+      "ratio": 1.9900647408685816,
+      "represented_artifact_ids": [
+        "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
+        "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
+        "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
+      ],
+      "restore_exit_code": 0,
+      "restore_seconds": 1.5234046230034437
     },
     "none:0": {
-      "archive_bytes": 402677760,
-      "create_seconds": 1.6904063019901514,
-      "ratio": 0.9999389685688129,
-      "restore_seconds": 1.5227949090040056
+      "archive_bytes": 6840320,
+      "create_seconds": 1.5556620889983606,
+      "member_count": 204,
+      "member_logical_bytes": 6517267,
+      "ratio": 0.9527722387256736,
+      "represented_artifact_ids": [
+        "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
+        "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
+        "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
+      ],
+      "restore_exit_code": 0,
+      "restore_seconds": 1.4956401709932834
     }
   },
   "fixture": {
     "compressible_fraction": 0.5,
-    "file_count": 12,
-    "file_size_bytes": 33554432,
-    "logical_bytes": 402653184
+    "historical_run_roots": 3,
+    "kind": "real P1-P5 campaign with one superseded generation",
+    "padded_file_count": 24,
+    "padded_file_size_bytes": 262144,
+    "padded_logical_bytes": 6291456
   },
   "io_concurrency_note": "I/O workers are configured separately from CPU workers so a storage scan cannot create a metadata or hash thundering herd",
   "io_concurrency_seconds": {
-    "1": 0.23318140400806442,
-    "2": 0.12367083500430454,
-    "4": 0.06670365198806394,
-    "8": 0.048451795999426395
+    "1": 0.00569986600021366,
+    "2": 0.010101651001605205,
+    "4": 0.009090658990317024,
+    "8": 0.010594742998364381
   },
   "receipt_reuse": {
-    "first_accelerated_seconds": 0.5310112580045825,
+    "file_count": 149,
+    "first_accelerated_seconds": 0.006810214996221475,
     "note": "receipts accelerate repeated hashing of large immutable artifacts and never establish validity; below RECEIPT_ACCELERATION_MINIMUM_BYTES the direct hash is used because the receipt round-trip costs more than the read it avoids",
-    "reused_seconds": 0.155607990003773,
-    "speedup_on_reuse": 1.5109077110273355,
-    "uncached_seconds": 0.23510931199416518
+    "reused_seconds": 0.006685968997771852,
+    "speedup_on_reuse": 0.9856257208153016,
+    "uncached_seconds": 0.006589863012777641
+  },
+  "report_scaling": {
+    "descendants_added": 96,
+    "entry_visits_after": 38,
+    "entry_visits_before": 38,
+    "note": "adding descendants to an owner-declared artifact must not change the bounded report's entry-visit count",
+    "seconds_after": 0.007176840997999534,
+    "seconds_before": 0.007072455002344213
   },
   "reporting": {
-    "deep_physical_audit_seconds": 0.02200550600537099,
-    "fast_owner_report_seconds": 0.03299609798705205,
-    "note": "the fast report is bounded by the owner-claimed subtrees while the deep audit is bounded by the whole workspace. This fixture makes the two coincide, so no physical speedup is claimed here: the fast report's value is that it answers ownership questions a physical walk cannot answer at all",
-    "ratio_deep_over_fast": 0.6669123729116738
+    "deep_audit": {
+      "cold_entry_visits": 8627,
+      "cold_seconds": 0.11010870098834857,
+      "complete": true,
+      "file_count": 841,
+      "warm_entry_visits": 8627,
+      "warm_seconds": 0.10768700200424064
+    },
+    "entry_visit_ratio_deep_over_owner": 227.02631578947367,
+    "note": "the owner report visits one entry per owner-declared artifact and never walks a subtree, so its cost is set by how many artifacts the owners declare; the deep audit is the explicit opt-in whose cost is set by how much the campaign holds",
+    "owner_report": {
+      "artifact_count": 20,
+      "cold_entry_visits": 38,
+      "cold_seconds": 0.007027687010122463,
+      "owner_family_count": 16,
+      "warm_entry_visits": 38,
+      "warm_seconds": 0.006759876006981358
+    }
   },
-  "schema": "mdstats.mlff-storage-io-reset-benchmark.v1"
+  "schema": "mdstats.mlff-storage-io-reset-benchmark.v2"
 }

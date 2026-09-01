@@ -1,10 +1,28 @@
-"""One canonical resolved storage policy identity.
+"""One canonical resolved storage policy, and one action-scoped identity.
 
 A plan that was inspected under one reserve/codec/threshold/concurrency policy
 must not execute later under silently different defaults.  Every CLI, config,
 and API entry point resolves through :func:`resolve_storage_policy`, which
 normalizes aliases *before* hashing so equivalent spellings produce one
 identity, and rejects unsupported combinations before any mutation.
+
+Three boundaries are load-bearing here.
+
+*Authorization is invocation-local.*  Only the current caller's explicit
+``--apply`` (or the equivalent explicit API argument) can authorize a mutation.
+Persistent configuration, environment, manifests, plans, and prior audit
+records never carry apply authority, and configuration cannot redirect which
+action a command performs.
+
+*Policy identity is action-scoped.*  Each action binds only the fields that can
+change its own candidate set, physical realization, admission, synchronization,
+or terminal behavior.  Changing an archive codec must not stale an unapplied
+cleanup plan, and changing a deep-audit bound must not stale anything that does
+not consume it.
+
+*Every public knob is real.*  A field that no action consumes is not a policy
+knob; it is drift.  Each field below appears in at least one action scope and
+is enforced by the code that action runs.
 
 Dynamic measurements - free bytes, inode headroom, observed saturation - are
 execution observations recorded on the plan, never policy defaults, so a
@@ -15,7 +33,6 @@ does invalidate an unapplied plan.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import Any, Mapping
 
 from .durability import canonical_digest
@@ -102,6 +119,68 @@ _DEDUP_ALIASES = {
 }
 
 
+#: Configuration keys that would carry authorization or redirect the invoked
+#: action.  They are rejected outright rather than tolerated: a persisted
+#: ``apply = true`` must never be able to turn a nominal dry-run into a
+#: mutation, and a persisted ``action`` must never redirect what a command means.
+FORBIDDEN_AUTHORITY_KEYS = ("apply", "action")
+
+#: Fields each action actually consumes.  ``action`` and ``tier`` are implicit
+#: members of every scope.  A field absent from an action's scope cannot stale
+#: that action's plan, and a field absent from *every* scope is not a policy
+#: knob at all - see :func:`_validate_scope_coverage`.
+_ACTION_POLICY_SCOPE: dict[str, tuple[str, ...]] = {
+    ACTION_REPORT: (),
+    ACTION_AUDIT: ("deep_audit_entry_limit",),
+    ACTION_CLEANUP: (
+        "safety_reserve_bytes",
+        "safety_reserve_fraction",
+        "minimum_free_inodes",
+        "cache_eviction_maximum_bytes",
+        "sqlite_compaction_maximum_events",
+        "sqlite_compaction_minimum_reclaimable_bytes",
+        "sqlite_compaction_minimum_reclaimable_fraction",
+        "operation_lease_timeout_seconds",
+        "audit_retention_records",
+    ),
+    ACTION_DEDUPLICATE: (
+        "dedup_realization",
+        "dedup_minimum_file_bytes",
+        "io_worker_limit",
+        "safety_reserve_bytes",
+        "safety_reserve_fraction",
+        "minimum_free_inodes",
+        "operation_lease_timeout_seconds",
+        "audit_retention_records",
+    ),
+    ACTION_ARCHIVE: (
+        "archive_codec",
+        "archive_compression_level",
+        "archive_member_limit",
+        "archive_expanded_bytes_limit",
+        "archive_expansion_ratio_limit",
+        "io_worker_limit",
+        "safety_reserve_bytes",
+        "safety_reserve_fraction",
+        "minimum_free_inodes",
+        "operation_lease_timeout_seconds",
+        "audit_retention_records",
+    ),
+    ACTION_RESTORE: (
+        "archive_member_limit",
+        "archive_expanded_bytes_limit",
+        "archive_expansion_ratio_limit",
+        "io_worker_limit",
+        "safety_reserve_bytes",
+        "safety_reserve_fraction",
+        "minimum_free_inodes",
+        "operation_lease_timeout_seconds",
+        "audit_retention_records",
+        "restore_journal_retention_records",
+    ),
+}
+
+
 class StoragePolicyError(ValueError):
     """A requested storage policy is unsupported or internally inconsistent."""
 
@@ -155,6 +234,8 @@ class StoragePolicy:
     minimum_free_inodes: int
     cache_eviction_maximum_bytes: int
     sqlite_compaction_maximum_events: int
+    sqlite_compaction_minimum_reclaimable_bytes: int
+    sqlite_compaction_minimum_reclaimable_fraction: float
     archive_codec: str
     archive_compression_level: int
     archive_member_limit: int
@@ -166,6 +247,7 @@ class StoragePolicy:
     deep_audit_entry_limit: int
     operation_lease_timeout_seconds: float
     audit_retention_records: int
+    restore_journal_retention_records: int
 
     def __post_init__(self) -> None:
         if self.action not in ACTIONS:
@@ -190,6 +272,10 @@ class StoragePolicy:
             raise StoragePolicyError(
                 "The archive tier belongs to the archive action; safe/cache cleanup "
                 "never performs archive representation changes."
+            )
+        if not 0.0 <= self.sqlite_compaction_minimum_reclaimable_fraction < 1.0:
+            raise StoragePolicyError(
+                "sqlite_compaction_minimum_reclaimable_fraction must be within [0, 1)."
             )
         if not 0.0 <= self.safety_reserve_fraction < 1.0:
             raise StoragePolicyError(
@@ -217,6 +303,12 @@ class StoragePolicy:
             "minimum_free_inodes": int(self.minimum_free_inodes),
             "cache_eviction_maximum_bytes": int(self.cache_eviction_maximum_bytes),
             "sqlite_compaction_maximum_events": int(self.sqlite_compaction_maximum_events),
+            "sqlite_compaction_minimum_reclaimable_bytes": int(
+                self.sqlite_compaction_minimum_reclaimable_bytes
+            ),
+            "sqlite_compaction_minimum_reclaimable_fraction": float(
+                self.sqlite_compaction_minimum_reclaimable_fraction
+            ),
             "archive_codec": self.archive_codec,
             "archive_compression_level": int(self.archive_compression_level),
             "archive_member_limit": int(self.archive_member_limit),
@@ -228,24 +320,54 @@ class StoragePolicy:
             "deep_audit_entry_limit": int(self.deep_audit_entry_limit),
             "operation_lease_timeout_seconds": float(self.operation_lease_timeout_seconds),
             "audit_retention_records": int(self.audit_retention_records),
+            "restore_journal_retention_records": int(self.restore_journal_retention_records),
+        }
+
+    def scoped_fields(self) -> tuple[str, ...]:
+        """The field names this action's behavior actually depends on."""
+
+        return tuple(sorted(_ACTION_POLICY_SCOPE[self.action]))
+
+    def _scoped_payload(self) -> dict[str, Any]:
+        payload = self._payload()
+        scope = set(self.scoped_fields())
+        return {
+            "schema": STORAGE_POLICY_SCHEMA,
+            "action": self.action,
+            "tier": self.tier,
+            **{name: payload[name] for name in sorted(scope)},
         }
 
     @property
     def policy_identity(self) -> str:
-        """Digest of the resolved consequential policy.
+        """Action-scoped digest of the resolved consequential policy.
 
-        ``apply`` is excluded: a dry-run plan and its authorized application are
-        the same policy, and requiring a re-plan between them would make the
-        mandatory plan/authorize sequence impossible.
+        ``apply`` is excluded because authorization is not policy: a dry-run
+        plan and its authorized application share one semantic intention, and
+        requiring a re-plan between them would make the mandatory
+        plan-then-authorize sequence impossible.
+
+        Fields outside this action's scope are excluded because they cannot
+        change what this action does.  Bumping an archive compression level
+        must not invalidate an unapplied cleanup plan.
         """
 
-        payload = {k: v for k, v in self._payload().items() if k != "apply"}
-        return canonical_digest(payload)
+        return canonical_digest(self._scoped_payload())
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self._payload(), "policy_identity": self.policy_identity}
+        return {
+            **self._payload(),
+            "policy_identity": self.policy_identity,
+            "policy_identity_scope": list(self.scoped_fields()),
+        }
 
     def for_apply(self, *, apply: bool) -> "StoragePolicy":
+        """Attach explicit invocation-local authorization to this policy.
+
+        This is the only way ``apply`` ever becomes true, and callers may only
+        pass a value that the current invocation supplied explicitly.
+        """
+
         return replace(self, apply=bool(apply))
 
     def describe(self) -> str:
@@ -270,29 +392,72 @@ def _section(cfg: Mapping[str, Any], name: str) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _validate_scope_coverage() -> None:
+    """Every public policy field belongs to at least one action scope.
+
+    A knob nothing consumes is drift, not policy.  This runs once at import so
+    a field added without a consumer fails loudly instead of becoming a
+    decorative hashed value.
+    """
+
+    fields = {
+        name
+        for name in StoragePolicy.__slots__  # type: ignore[attr-defined]
+        if name not in ("action", "tier", "apply")
+    }
+    covered = {name for scope in _ACTION_POLICY_SCOPE.values() for name in scope}
+    orphaned = sorted(fields - covered)
+    if orphaned:  # pragma: no cover - a development-time contract failure
+        raise StoragePolicyError(
+            f"Storage policy field(s) {orphaned} are consumed by no action scope."
+        )
+    unknown = sorted(covered - fields)
+    if unknown:  # pragma: no cover - a development-time contract failure
+        raise StoragePolicyError(
+            f"Action scope names unknown storage policy field(s) {unknown}."
+        )
+
+
 def resolve_storage_policy(
     cfg: Mapping[str, Any] | None = None,
     *,
     action: str = ACTION_REPORT,
-    tier: str = TIER_SAFE,
+    tier: str | None = None,
     apply: bool = False,
     overrides: Mapping[str, Any] | None = None,
 ) -> StoragePolicy:
     """Resolve one canonical storage policy from config plus explicit overrides.
 
-    Only the ``[storage]`` configuration section participates.  No environment
-    variable may widen deletion or archive authority: this resolver reads none,
-    so a deployment cannot silently expand what a storage action is allowed to
-    remove.
+    Only the ``[storage]`` configuration section participates, and it may not
+    carry authority. ``apply`` comes from the current invocation alone; the
+    invoked command selects ``action``; and an explicit invocation ``tier``
+    beats a configured default while a configured default only fills in a
+    field the caller did not select.
+
+    No environment variable may widen deletion or archive authority: this
+    resolver reads none, so a deployment cannot silently expand what a storage
+    action is allowed to remove.
     """
 
     config = _section(cfg or {}, "storage")
+    forbidden = sorted(key for key in config if str(key).strip().lower() in FORBIDDEN_AUTHORITY_KEYS)
+    if forbidden:
+        raise StoragePolicyError(
+            f"[storage] must not contain authority-bearing key(s) {forbidden}. "
+            "Only the current invocation can authorize a mutation or select the "
+            "action; remove these keys and pass --apply explicitly instead."
+        )
     merged: dict[str, Any] = dict(config)
     for key, value in dict(overrides or {}).items():
         if value is not None:
             merged[key] = value
+    # An override may not smuggle authority back in either.
+    for key in FORBIDDEN_AUTHORITY_KEYS:
+        merged.pop(key, None)
 
-    requested_tier = merged.pop("tier", tier)
+    # An explicit invocation tier wins; a configured default only fills in.
+    requested_tier = tier if tier is not None else merged.pop("tier", TIER_SAFE)
+    merged.pop("tier", None)
     if str(requested_tier).strip().lower() in RETIRED_TIERS:
         raise StoragePolicyError(
             f"Storage tier {requested_tier!r} is a retired consequential-loss tier and "
@@ -301,9 +466,9 @@ def resolve_storage_policy(
         )
 
     policy = StoragePolicy(
-        action=_normalize(merged.pop("action", action), _ACTION_ALIASES, name="action"),
+        action=_normalize(action, _ACTION_ALIASES, name="action"),
         tier=_normalize(requested_tier, _TIER_ALIASES, name="tier"),
-        apply=bool(merged.pop("apply", apply)),
+        apply=bool(apply),
         safety_reserve_bytes=_positive_int(
             merged.pop("safety_reserve_bytes", 2 * 1024**3),
             name="safety_reserve_bytes",
@@ -325,6 +490,15 @@ def resolve_storage_policy(
             merged.pop("sqlite_compaction_maximum_events", 10_000),
             name="sqlite_compaction_maximum_events",
             minimum=0,
+        ),
+        sqlite_compaction_minimum_reclaimable_bytes=_positive_int(
+            merged.pop("sqlite_compaction_minimum_reclaimable_bytes", 4 * 1024**2),
+            name="sqlite_compaction_minimum_reclaimable_bytes",
+            minimum=0,
+        ),
+        sqlite_compaction_minimum_reclaimable_fraction=_nonnegative_float(
+            merged.pop("sqlite_compaction_minimum_reclaimable_fraction", 0.25),
+            name="sqlite_compaction_minimum_reclaimable_fraction",
         ),
         archive_codec=_normalize(
             merged.pop("archive_codec", CODEC_GZIP), _CODEC_ALIASES, name="archive codec"
@@ -371,6 +545,11 @@ def resolve_storage_policy(
             name="audit_retention_records",
             minimum=1,
         ),
+        restore_journal_retention_records=_positive_int(
+            merged.pop("restore_journal_retention_records", 64),
+            name="restore_journal_retention_records",
+            minimum=1,
+        ),
     )
     unknown = sorted(key for key in merged if not str(key).startswith("_"))
     if unknown:
@@ -380,6 +559,9 @@ def resolve_storage_policy(
             "narrow storage authority."
         )
     return policy
+
+
+_validate_scope_coverage()
 
 
 def storage_reserve_bytes(policy: StoragePolicy, total_bytes: int) -> int:
@@ -395,14 +577,9 @@ def default_policy_for(action: str, **kwargs: Any) -> StoragePolicy:
     return resolve_storage_policy({}, action=action, **kwargs)
 
 
-def workspace_policy_path(workspace: str | Path) -> Path:
-    """Where a resolved policy is echoed for operator diagnostics."""
-
-    return Path(workspace) / ".mdstats" / "storage" / "resolved-policy.json"
-
-
 __all__ = [
     "ACTIONS",
+    "FORBIDDEN_AUTHORITY_KEYS",
     "ACTION_ARCHIVE",
     "ACTION_AUDIT",
     "ACTION_CLEANUP",
@@ -426,5 +603,4 @@ __all__ = [
     "default_policy_for",
     "resolve_storage_policy",
     "storage_reserve_bytes",
-    "workspace_policy_path",
 ]

@@ -668,16 +668,27 @@ def test_p5e_post_selection_evidence_is_owned_storage_and_never_auto_reclaimed(
     # path families and never grants deletion authority to either.
     assert cli.main(["--config", str(config), "storage", "report"]) == 0
     assert cli.main(["--config", str(config), "storage", "report", "--deep"]) == 0
+    from types import SimpleNamespace
+
+    from mdstats.training_data.storage import commands as storage_commands
+
     cfg, paths, store = load_context(config)
     try:
-        owner_payload = json.loads(
-            (paths.results / "storage-report.json").read_text(encoding="utf-8")
-        )
-        deep_payload = json.loads(
-            (paths.results / "storage-deep-audit.json").read_text(encoding="utf-8")
-        )
+        boundary = cli._campaign_ownership_boundary(cfg, paths, store)
+        context = storage_commands.StorageCommandContext(cfg, paths, store, boundary)
+        with cli.observational_campaign_state():
+            owner_payload = storage_commands.storage_report(
+                context, SimpleNamespace(top=200, deep=False)
+            )
+            deep_payload = storage_commands.storage_report(
+                context, SimpleNamespace(top=200, deep=True)
+            )
     finally:
         store.close()
+    # A read-only report describes the campaign; it no longer deposits a file in
+    # it, so there is nothing in `results/` to read back.
+    assert not (paths.results / "storage-report.json").exists()
+    assert not (paths.results / "storage-deep-audit.json").exists()
 
     assert "p5" in {item["owner"] for item in owner_payload["owner_families"]}
     protected = [
@@ -690,17 +701,13 @@ def test_p5e_post_selection_evidence_is_owned_storage_and_never_auto_reclaimed(
     assert reclaim["archive"]["eligible_count"] == 0
     assert owner_payload["destructive_actions_performed"] is False
 
+    # The deep audit is a physical accounting keyed by where bytes actually
+    # live; reclamation authority is stated by the owner report above, which
+    # already showed this evidence protected and archive-ineligible.
     families = {item["family"]: item for item in deep_payload["families"]}
-    post_selection = {
-        name: item
-        for name, item in families.items()
-        if name.startswith("post_selection_")
-    }
-    assert post_selection, sorted(families)
-    for name, item in post_selection.items():
-        assert item["automatic_reclamation_eligibility"] == "prohibited", name
-        assert item["manual_reclamation_eligibility"] == "prohibited", name
-    assert "internal_campaign_artifacts" not in post_selection
+    assert ".mdstats/post-selection" in families, sorted(families)
+    assert families[".mdstats/post-selection"]["logical_bytes"] > 0
+    assert deep_payload["destructive_actions_performed"] is False
 
 
 def test_p5e_cv_only_policy_change_leaves_p4_byte_identical(tmp_path: Path):

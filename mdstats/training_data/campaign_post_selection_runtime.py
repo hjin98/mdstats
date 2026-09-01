@@ -29,6 +29,7 @@ lineage, restart, and publication behavior while substituting only MACE.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -730,6 +731,31 @@ def execute_post_selection_run(
 
     selected = context.selected
     run_root = context.run_root(run_plan.run_identity)
+    with post_selection_run_activity_lease(run_root):
+        return _execute_post_selection_run_locked(
+            context,
+            run_plan=run_plan,
+            budget_policy=budget_policy,
+            training_frame_uids=training_frame_uids,
+            monitor_frame_uids=monitor_frame_uids,
+            outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+            run_root=run_root,
+        )
+
+
+def _execute_post_selection_run_locked(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    training_frame_uids: Sequence[str],
+    monitor_frame_uids: Sequence[str],
+    outer_evaluation_frame_uids: Sequence[str] | None,
+    run_root: Path,
+) -> tuple[PostSelectionRunEvidence, Any, Any]:
+    """The run body, executed while this run root's activity lease is held."""
+
+    selected = context.selected
     material_directory = run_root / "materialization"
     checkpoint_directory = run_root / "checkpoints"
     checkpoint_directory.mkdir(parents=True, exist_ok=True)
@@ -1030,6 +1056,187 @@ FOLD_ACCEPTANCE_FILENAME = "fold-acceptance.json"
 #: The same idea for one completed final-production job.
 RUN_EVIDENCE_FILENAME = "run-evidence.json"
 
+#: The exact set of files this owner produced under one run root, written when
+#: the run reaches its terminal record.  Digests and sizes are deliberately not
+#: repeated here - they belong to the evidence records - but the *membership* is,
+#: because membership is the one thing a downstream consumer cannot re-derive
+#: and must not guess.  A consumer that wants to treat the run tree as a closed
+#: unit asks this owner, and gets a yes only if what is on disk is exactly what
+#: P5 wrote.
+RUN_MEMBER_MANIFEST_FILENAME = "run-members.json"
+RUN_MEMBER_MANIFEST_SCHEMA = "mdstats.post-selection-run-members.v1"
+
+#: Advisory lock files this owner's own publication primitive leaves beside the
+#: records it writes.  They are P5 infrastructure, not run evidence: they are
+#: never members, and they never make a run root look uncertified.
+_OWNED_LOCK_NAMES: frozenset[str] = frozenset(
+    f".{name}.lock"
+    for name in (
+        FOLD_ACCEPTANCE_FILENAME,
+        RUN_EVIDENCE_FILENAME,
+        RUN_MEMBER_MANIFEST_FILENAME,
+    )
+)
+
+#: Advisory activity lease guarding one run root's write lifetime.  P5 holds it
+#: while it materializes, trains, and publishes that run; anything that wants to
+#: change the run tree's representation must hold it exclusively first.
+#:
+#: The lease file lives *beside* the run root rather than inside it, so a run
+#: root's contents stay exactly what this owner's execution wrote and remain
+#: certifiable as a closed subtree.
+RUN_ACTIVITY_LEASE_SUFFIX = ".run-activity"
+
+
+def post_selection_run_activity_lease(run_root: str | os.PathLike[str]):
+    """The owner-local no-write lease for one post-selection run root.
+
+    Generation supersession is not a liveness proof: P5 deliberately permits a
+    run that began under an older selected binding to keep executing, and only
+    refuses *publication* once a newer campaign revision is current.  A process
+    that started while ``g1`` was current can therefore still be writing
+    ``g1/runs/...`` long after ``g2`` became current.
+
+    This lease is what makes that provable rather than guessed.  The real
+    execution path below holds it for the run's whole write lifetime, and any
+    consumer that wants to archive, deduplicate, or otherwise re-represent the
+    run tree must acquire it exclusively.  It is an advisory ``flock``, so a
+    crashed holder is released by the kernel and no PID, age, or pathname
+    inference is ever needed.
+
+    Lock order: a run-activity lease is always acquired *before* the
+    generation's publication barrier, never after, so P5 execution and storage
+    share one cycle-free order.
+    """
+
+    from .target_size_execution import artifact_publication_lock
+
+    root = Path(run_root)
+    root.parent.mkdir(parents=True, exist_ok=True)
+    return artifact_publication_lock(
+        root.parent / f".{root.name}{RUN_ACTIVITY_LEASE_SUFFIX}"
+    )
+
+
+def _run_root_relative_files(root: Path) -> list[str]:
+    """Every regular file under one run root, as sorted POSIX relative paths."""
+
+    members: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if path.name in _OWNED_LOCK_NAMES:
+            continue
+        members.append(relative)
+    return sorted(members)
+
+
+def record_post_selection_run_members(run_root: str | os.PathLike[str]) -> Path:
+    """Freeze the exact member set this owner produced under one run root.
+
+    Written once, when the run reaches its terminal record, so that a later
+    consumer can ask P5 - rather than guess from pathnames - whether a run tree
+    still contains exactly what P5 put there.
+    """
+
+    from .target_size_execution import publish_mutable_json_atomic
+
+    root = Path(run_root)
+    destination = root / RUN_MEMBER_MANIFEST_FILENAME
+    members = [
+        name
+        for name in _run_root_relative_files(root)
+        if name != RUN_MEMBER_MANIFEST_FILENAME
+    ]
+    publish_mutable_json_atomic(
+        destination,
+        {
+            "schema": RUN_MEMBER_MANIFEST_SCHEMA,
+            "run_root": root.name,
+            "members": members,
+            "member_count": len(members),
+        },
+    )
+    return destination
+
+
+def recorded_post_selection_run_members(
+    run_root: str | os.PathLike[str],
+) -> tuple[str, ...]:
+    """The member set this owner recorded for one run root, or empty."""
+
+    path = Path(run_root) / RUN_MEMBER_MANIFEST_FILENAME
+    if not path.is_file():
+        return ()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ()
+    if payload.get("schema") != RUN_MEMBER_MANIFEST_SCHEMA:
+        return ()
+    return tuple(sorted(str(item) for item in payload.get("members", ())))
+
+
+def certify_closed_post_selection_run_root(
+    run_root: str | os.PathLike[str],
+) -> tuple[bool, str]:
+    """Whether P5 certifies every descendant of one run root as its own.
+
+    Two things must hold. The run must be finished, and what is on disk must be
+    contained in the member set P5 recorded when it finished. The second
+    condition is what turns "beneath a P5 directory" into "produced by P5": a
+    file dropped into ``checkpoints/`` by anything else is not in the recorded
+    set and makes the whole run root uncertified.
+    """
+
+    root = Path(run_root)
+    if not root.is_dir() or root.is_symlink():
+        return False, f"{root} is not a plain directory"
+    try:
+        children = sorted(entry.name for entry in os.scandir(root))
+    except OSError as exc:
+        return False, f"{root} could not be enumerated: {exc}"
+    terminal = {FOLD_ACCEPTANCE_FILENAME, RUN_EVIDENCE_FILENAME} & set(children)
+    if not terminal:
+        return False, (
+            "run root carries no terminal fold-acceptance/run-evidence record, so the "
+            "owner cannot certify the run is finished"
+        )
+    # There is deliberately no pathname allowlist here. The run directory is
+    # delegated to the configured trainer, which writes its own layout inside it
+    # (per-epoch metric logs, framework results/logs trees, and so on). Guessing
+    # that layout is exactly the pathname inference this certification exists to
+    # replace; the recorded member set below is the owner's own answer.
+    manifest_path = root / RUN_MEMBER_MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        return False, (
+            "run root carries no recorded member manifest, so this owner cannot "
+            "certify which descendants it produced"
+        )
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return False, f"run member manifest is unreadable ({exc})"
+    if payload.get("schema") != RUN_MEMBER_MANIFEST_SCHEMA:
+        return False, "run member manifest carries an unsupported schema"
+    recorded = set(payload.get("members", ()))
+    observed = {
+        name
+        for name in _run_root_relative_files(root)
+        if name != RUN_MEMBER_MANIFEST_FILENAME
+    }
+    extra = sorted(observed - recorded)
+    if extra:
+        return False, f"run root contains descendant(s) P5 did not write: {extra[:5]}"
+    # A recorded member that is *absent* means content has legitimately left the
+    # tree - reclaimed into a cold archive, for instance. The guarantee this
+    # certification makes is that nothing foreign is present, not that nothing
+    # has been removed.
+    return True, (
+        "terminal run whose descendants all belong to the member set P5 recorded"
+    )
+
 
 def _completed_fold_acceptance(
     context: PostSelectionContext, run_plan: Any
@@ -1070,11 +1277,13 @@ def _record_completed_fold_acceptance(
 ) -> None:
     from .target_size_execution import publish_immutable_json_create_or_verify
 
+    run_root = context.run_root(run_plan.run_identity)
     publish_immutable_json_create_or_verify(
-        context.run_root(run_plan.run_identity) / FOLD_ACCEPTANCE_FILENAME,
+        run_root / FOLD_ACCEPTANCE_FILENAME,
         acceptance.to_dict(),
         deserializer=CvFoldAcceptance.from_dict,
     )
+    record_post_selection_run_members(run_root)
 
 
 def _completed_run_evidence(
@@ -1101,11 +1310,13 @@ def _record_completed_run_evidence(
 ) -> None:
     from .target_size_execution import publish_immutable_json_create_or_verify
 
+    run_root = context.run_root(run_plan.run_identity)
     publish_immutable_json_create_or_verify(
-        context.run_root(run_plan.run_identity) / RUN_EVIDENCE_FILENAME,
+        run_root / RUN_EVIDENCE_FILENAME,
         evidence.to_dict(),
         deserializer=PostSelectionRunEvidence.from_dict,
     )
+    record_post_selection_run_members(run_root)
 
 
 # ---------------------------------------------------------------------------

@@ -335,8 +335,11 @@ stop_scheduling_after_failure = true
 
 [cleanup]
 # Storage is operator-driven: storage cleanup --tier safe|cache. It plans first and
-# mutates only with --apply. Setting enabled = false withholds every consequential
-# storage mutation while leaving reporting and planning available.
+# mutates only with --apply on the invocation you run; a persisted apply/action key
+# under [storage] is rejected rather than obeyed. Setting enabled = false withholds
+# every consequential storage mutation while leaving reporting and planning
+# available. Optional [storage] policy keys tune codecs, bounds, and reserves only;
+# they never widen deletion or archive authority.
 enabled = true
 # Publication window. Evidence younger than this is retained so storage can never
 # race a reference that has not landed yet.

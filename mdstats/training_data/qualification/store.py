@@ -920,6 +920,125 @@ def attempt_state_path(paths: Any, binding: PostSelectionBinding, attempt_identi
     return attempt_root(paths, binding, attempt_identity) / ATTEMPT_STATE_FILENAME
 
 
+#: Membership record for one finished attempt's own scratch tree.
+#:
+#: Attempt-local bulk - the exported deployment, the per-component evidence - is
+#: disposable once the attempt is terminal, but "beneath the attempt directory"
+#: is containment, not authorship.  A downstream consumer that wants to reclaim
+#: that bulk needs this owner to say which descendants it actually produced, so
+#: that anything else present withholds authority instead of being deleted with
+#: it.  The record is written exactly when the attempt reaches a terminal or
+#: aborted state, which is the moment P7 stops writing into the tree.
+ATTEMPT_MEMBER_MANIFEST_FILENAME = "attempt-members.json"
+ATTEMPT_MEMBER_MANIFEST_SCHEMA = "mdstats.qualification-attempt-members.v1"
+
+#: Attempt-root infrastructure this owner writes beside its records.  These are
+#: never members and never make an attempt tree look uncertified.
+ATTEMPT_INFRASTRUCTURE_NAMES: frozenset[str] = frozenset(
+    {
+        ATTEMPT_STATE_FILENAME,
+        ATTEMPT_MEMBER_MANIFEST_FILENAME,
+        f".{ATTEMPT_STATE_FILENAME}.lock",
+        f".{ATTEMPT_MEMBER_MANIFEST_FILENAME}.lock",
+    }
+)
+
+
+def _attempt_relative_files(root: Path) -> list[str]:
+    """Every regular file under one attempt root, as sorted relative paths."""
+
+    members: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        if relative.parts[0] in ATTEMPT_INFRASTRUCTURE_NAMES:
+            continue
+        if len(relative.parts) == 1 and relative.name.endswith(".lock"):
+            # Advisory locks this owner's publication primitive leaves beside
+            # its own top-level records.
+            continue
+        members.append(relative.as_posix())
+    return members
+
+
+def record_attempt_members(attempt_directory: str | os.PathLike[str]) -> Path:
+    """Freeze the exact member set this owner produced under one attempt root."""
+
+    root = Path(attempt_directory)
+    destination = root / ATTEMPT_MEMBER_MANIFEST_FILENAME
+    members = _attempt_relative_files(root)
+    _atomic_write_json(
+        destination,
+        {
+            "schema": ATTEMPT_MEMBER_MANIFEST_SCHEMA,
+            "attempt_root": root.name,
+            "members": members,
+            "member_count": len(members),
+        },
+    )
+    return destination
+
+
+def recorded_attempt_members(
+    attempt_directory: str | os.PathLike[str],
+) -> tuple[str, ...]:
+    """The member set this owner recorded for one attempt root, or empty."""
+
+    path = Path(attempt_directory) / ATTEMPT_MEMBER_MANIFEST_FILENAME
+    if not path.is_file():
+        return ()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ()
+    if payload.get("schema") != ATTEMPT_MEMBER_MANIFEST_SCHEMA:
+        return ()
+    return tuple(sorted(str(item) for item in payload.get("members", ())))
+
+
+def certify_closed_attempt_member(
+    attempt_directory: str | os.PathLike[str], member_name: str
+) -> tuple[bool, str, tuple[str, ...]]:
+    """Whether P7 certifies every descendant of one attempt-local member.
+
+    Returns the certification, a truthful detail, and the recorded member paths
+    relative to ``member_name`` itself, which is what a consumer needs in order
+    to act on exactly those files and nothing else.
+    """
+
+    root = Path(attempt_directory)
+    member = root / member_name
+    recorded = recorded_attempt_members(root)
+    if not recorded:
+        return False, (
+            "the attempt recorded no member manifest, so this owner cannot certify "
+            "which descendants it produced"
+        ), ()
+    prefix = f"{member_name}/"
+    inside = tuple(
+        item[len(prefix) :] for item in recorded if item.startswith(prefix)
+    )
+    if not member.is_dir() or member.is_symlink():
+        return False, f"{member} is not a plain directory", ()
+    observed = {
+        path.relative_to(member).as_posix()
+        for path in member.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    }
+    extra = sorted(observed - set(inside))
+    if extra:
+        return False, (
+            f"attempt member contains descendant(s) P7 did not write: {extra[:5]}"
+        ), ()
+    # A recorded member that is absent has legitimately left the tree; the
+    # guarantee is that nothing foreign is present, not that nothing is gone.
+    return True, (
+        "released attempt-local member whose descendants all belong to the set P7 "
+        "recorded when the attempt became terminal"
+    ), inside
+
+
 def read_attempt_state(
     paths: Any, binding: PostSelectionBinding, attempt_identity: str
 ) -> QualificationAttemptState | None:
@@ -1040,6 +1159,11 @@ def release_attempt_reference(
             updated_at=_utc_now(),
             detail=detail or existing.detail,
         )
+        # The attempt stops being written exactly here, so this is the one
+        # moment at which its membership can be recorded truthfully. Recording
+        # it before the state write keeps the manifest a precondition of the
+        # released state rather than a promise made after it.
+        record_attempt_members(state_path.parent)
         _atomic_write_json(state_path, state.to_dict())
         return state
 
@@ -1150,6 +1274,9 @@ def build_qualification_retention_fence(workspace_or_paths: Any) -> Qualificatio
 __all__ = [
     "ATTEMPT_ABORTED",
     "ATTEMPT_ACTIVE",
+    "ATTEMPT_INFRASTRUCTURE_NAMES",
+    "ATTEMPT_MEMBER_MANIFEST_FILENAME",
+    "ATTEMPT_MEMBER_MANIFEST_SCHEMA",
     "ATTEMPT_STATE_FILENAME",
     "ATTEMPT_TERMINAL",
     "POINTER_KINDS",
@@ -1166,6 +1293,9 @@ __all__ = [
     "QualificationRetentionFence",
     "acquire_attempt_reference",
     "attempt_root",
+    "certify_closed_attempt_member",
+    "record_attempt_members",
+    "recorded_attempt_members",
     "attempt_state_path",
     "build_qualification_retention_fence",
     "find_locked_activation",

@@ -25,8 +25,9 @@ import errno
 import fcntl
 import os
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterable, Iterator
 
 # The owner-local barriers live with their owners, which is where the publishers
 # acquire them.  Storage re-exports them so there is exactly one implementation
@@ -107,30 +108,82 @@ def storage_operation_lease(control_plane: Any, *, timeout_seconds: float = 30.0
     )
 
 
-@contextmanager
-def owner_mutation_barrier(paths: Any, generations: tuple[int, ...]) -> Iterator[None]:
-    """Hold every owner barrier a storage mutation could race against.
+@dataclass(frozen=True, slots=True)
+class OwnerSynchronization:
+    """Exactly which owner seams one plan's mutations must hold.
 
-    Generations are entered in a deterministic order so two storage operations
-    can never deadlock against each other, and the P5 barrier is always taken
-    before the P7 one for the same reason.
+    Derived from the *planned artifacts*, never from "whatever generation is
+    current": an action that rewrites a historical ``g1`` run tree needs g1's
+    seams, and taking only the current generation's barriers would fence the
+    wrong owner entirely.
     """
 
-    ordered = tuple(sorted({int(value) for value in generations}))
-    if not ordered:
+    #: Generations whose publication barriers must be held, ascending.
+    generations: tuple[int, ...] = ()
+    #: P5 run roots whose activity leases must be held exclusively, sorted.
+    run_roots: tuple[Path, ...] = ()
+
+    @classmethod
+    def of(
+        cls,
+        generations: Iterable[int] = (),
+        run_roots: Iterable[Path] = (),
+    ) -> "OwnerSynchronization":
+        return cls(
+            generations=tuple(sorted({int(value) for value in generations})),
+            run_roots=tuple(sorted({Path(value) for value in run_roots})),
+        )
+
+    def merged_with(self, other: "OwnerSynchronization") -> "OwnerSynchronization":
+        return OwnerSynchronization.of(
+            (*self.generations, *other.generations),
+            (*self.run_roots, *other.run_roots),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "generations": list(self.generations),
+            "run_roots": [str(item) for item in self.run_roots],
+        }
+
+
+@contextmanager
+def owner_mutation_barrier(
+    paths: Any, synchronization: OwnerSynchronization
+) -> Iterator[None]:
+    """Hold every owner seam a storage mutation could race against.
+
+    One order, everywhere, so storage and the owners can never deadlock against
+    each other:
+
+    ``storage-operation lease -> owner run-activity leases (path order) ->
+    P5 publication barriers (generation order) -> P7 publication barriers
+    (generation order) -> fresh revalidation -> narrow mutation``
+
+    P5's own execution path takes the same run-activity lease before it ever
+    reaches its publication barrier, so the two acquire the shared locks in the
+    same direction and no cycle exists.
+    """
+
+    from ..campaign_post_selection_runtime import post_selection_run_activity_lease
+
+    if not synchronization.generations and not synchronization.run_roots:
         yield
         return
 
     with ExitStack() as stack:
-        for generation in ordered:
+        for run_root in synchronization.run_roots:
+            stack.enter_context(post_selection_run_activity_lease(run_root))
+        for generation in synchronization.generations:
             stack.enter_context(post_selection_publication_barrier(paths, generation))
-        for generation in ordered:
+        for generation in synchronization.generations:
             stack.enter_context(qualification_publication_barrier(paths, generation))
         yield
 
 
 __all__ = [
     "STORAGE_OPERATION_LOCK_NAME",
+    "OwnerSynchronization",
     "StorageLeaseUnavailableError",
     "owner_mutation_barrier",
     "post_selection_publication_barrier",

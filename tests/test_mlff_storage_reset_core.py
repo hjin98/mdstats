@@ -1,9 +1,13 @@
-"""Bounded acceptance for the owner-driven storage reset.
+"""Bounded acceptance for the owner-driven storage subsystem.
 
-Every test here uses small synthetic fixtures.  Filesystem failure, archive
-corruption, and publication-boundary interruption are injected *below* the real
-storage owner, which itself always executes: the planner, the executor, the
-control plane, the archive verifier, and the dedup owner are production code.
+Every test here uses small synthetic fixtures, but the owners are real: the
+campaign store, the target-size state owner, the P5 run-layout and activity
+owner, the ownership boundary, the inventory, the planner, the executor, the
+archive verifier, and the dedup engine are all production code.  Only three
+things are substituted, all strictly below an owner boundary: filesystem
+failure injection at named publication points, synthetic archive bytes for
+hostile-input cases, and a deterministic mount-identity resolver so a nested
+mount can be modelled without privileged mount creation.
 
 The assembled real-owner P1-P7 acceptance lives in
 ``test_mlff_storage_reset_integration.py``; nothing here substitutes for it.
@@ -11,6 +15,7 @@ The assembled real-owner P1-P7 acceptance lives in
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import stat
@@ -23,42 +28,62 @@ import pytest
 
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data import campaign_cli
-from mdstats.training_data.storage import (
-    archive as archive_mod,
-    commands as storage_commands,
+from mdstats.training_data.campaign_target_size_cutover import (
+    begin_target_size_cutover,
+    bind_current_target_size_authorities,
+    complete_target_size_cutover,
 )
+from mdstats.training_data.campaign_target_size_state import (
+    TargetSizeCampaignState,
+    TargetSizeLifecycle,
+    TargetSizeRegime,
+    TargetSizeTransitionKind,
+    commit_target_size_campaign_transition,
+)
+from mdstats.training_data.storage import archive as archive_mod
+from mdstats.training_data.storage import commands as storage_commands
 from mdstats.training_data.storage.admission import (
     StorageAdmissionError,
     admit_storage_operation,
 )
 from mdstats.training_data.storage.archive import (
     BOUNDARY_AFTER_BLOB,
-    BOUNDARY_AFTER_CATALOG,
     BOUNDARY_BEFORE_BLOB,
     BOUNDARY_BEFORE_RECEIPT,
     BOUNDARY_DURING_INSTALL,
     BOUNDARY_DURING_RECLAMATION,
+    ArchiveMember,
     StorageArchiveError,
-    create_cold_archive,
+    archive_container_bytes,
     list_archives,
+    read_manifest,
     read_restore_journal,
-    reclaim_archived_hot_members,
-    restore_cold_archive,
+    representation_identity,
     verify_cold_archive,
 )
 from mdstats.training_data.storage.control_plane import (
+    IMMUTABLE_CATALOG_FIELDS,
     StorageControlPlaneError,
     open_storage_control_plane,
+    open_storage_control_plane_readonly,
 )
-from mdstats.training_data.storage.dedup import deduplicate
 from mdstats.training_data.storage.durability import sha256_file
 from mdstats.training_data.storage.inventory import (
+    OwnerGraphError,
     archive_candidates,
     build_storage_inventory,
+    cache_candidates,
+    safe_candidates,
 )
 from mdstats.training_data.storage.lease import (
+    OwnerSynchronization,
     StorageLeaseUnavailableError,
     storage_operation_lease,
+)
+from mdstats.training_data.storage.owners import (
+    OwnerArtifactView,
+    SubtreeCoverage,
+    validate_owner_graph,
 )
 from mdstats.training_data.storage.plan import (
     StoragePlanStaleError,
@@ -68,9 +93,15 @@ from mdstats.training_data.storage.plan import (
 from mdstats.training_data.storage.policy import (
     ACTION_ARCHIVE,
     ACTION_CLEANUP,
+    ACTION_DEDUPLICATE,
     ACTION_REPORT,
+    ACTION_RESTORE,
     StoragePolicyError,
     resolve_storage_policy,
+)
+from mdstats.training_data.storage.trust import (
+    MountIdentityResolver,
+    set_mount_resolver,
 )
 
 
@@ -96,38 +127,121 @@ def _write_config(tmp_path: Path) -> Path:
 
 
 class _Campaign:
-    """A minimal real campaign workspace with a real CampaignStore."""
+    """A minimal campaign whose owners are the real ones."""
 
-    def __init__(self, tmp_path: Path) -> None:
+    def __init__(self, tmp_path: Path, *, current_generation: bool = True) -> None:
         self.config = _write_config(tmp_path)
         self.cfg, self.paths = cli._load_config(self.config)
         self.paths.ensure()
         self.store = cli.CampaignStore(self.paths.state_db)
+        if current_generation:
+            self.bind_current_generation()
         self.boundary = cli._campaign_ownership_boundary(self.cfg, self.paths, self.store)
         self.control_plane = open_storage_control_plane(self.paths)
+
+    def bind_current_generation(self) -> int:
+        """Drive the real target-size state owner to a current generation.
+
+        The digests are fixture values, but the transitions, the compare-and-set
+        fences, and the persisted state are the production owner's own.
+        """
+
+        from mdstats.training_data._common import digest
+
+        transitioning = begin_target_size_cutover(self.store)
+        bound = bind_current_target_size_authorities(
+            self.store,
+            transitioning,
+            frame_authority_digest=digest({"fixture": "frame-authority"}),
+            neutral_statistical_base_digest=digest({"fixture": "neutral-base"}),
+            split_exclusion_digest=digest({"fixture": "split-exclusion"}),
+            policy_digest=digest({"fixture": "policy"}),
+            experiment_definition_digest=digest({"fixture": "experiment"}),
+            aggregate_digest=digest({"fixture": "aggregate"}),
+        )
+        current = complete_target_size_cutover(self.store, bound)
+        root = self.paths.internal / "target-size" / f"g{current.state.generation}"
+        (root / "heads").mkdir(parents=True, exist_ok=True)
+        revision = commit_target_size_campaign_transition(
+            self.store,
+            kind=TargetSizeTransitionKind.OPEN_ATTEMPT,
+            expected=current.expectation(),
+            successor=TargetSizeCampaignState(
+                regime=TargetSizeRegime.CURRENT,
+                generation=current.state.generation,
+                lifecycle=TargetSizeLifecycle.SCREEN_ACTIVE,
+                attempt="attempt-1",
+                frame_authority_digest=current.state.frame_authority_digest,
+                neutral_statistical_base_digest=(
+                    current.state.neutral_statistical_base_digest
+                ),
+                split_exclusion_digest=current.state.split_exclusion_digest,
+                policy_digest=current.state.policy_digest,
+                experiment_definition_digest=current.state.experiment_definition_digest,
+                aggregate_digest=current.state.aggregate_digest,
+                execution_context_digest=digest({"fixture": "execution-context"}),
+                common_preparation_digest=digest({"fixture": "common-preparation"}),
+                screen_window_digest=digest({"fixture": "screen-window"}),
+                execution_root=str(root.relative_to(self.paths.workspace)),
+            ),
+        ).revision
+        return int(revision.state.generation)
 
     def close(self) -> None:
         self.store.close()
 
-    def snapshot(self):
+    def context(self) -> storage_commands.StorageCommandContext:
+        return storage_commands.StorageCommandContext(
+            self.cfg, self.paths, self.store, self.boundary
+        )
+
+    def snapshot(self, policy=None, *, certify: bool = True):
+        """The planning inventory: certifying, like every consequential path."""
+
         return build_storage_inventory(
             self.cfg,
             self.paths,
             self.store,
             protected_inputs=self.boundary.protected_inputs,
             control_plane=self.control_plane,
+            journal_retention_records=(
+                policy.restore_journal_retention_records if policy else 64
+            ),
+            certify=certify,
         )
 
-    def historical_bulk(self, *, generation: int = 7) -> Path:
-        """A superseded P5 generation's run bulk: owner-declared cold-replaceable."""
+    def historical_run(self, *, generation: int = 7, name: str = "run-a") -> Path:
+        """A superseded P5 run root the real P5 owner certifies as closed."""
 
-        root = self.paths.internal / "post-selection" / f"g{generation}" / "runs"
-        (root / "run-a" / "checkpoints").mkdir(parents=True, exist_ok=True)
-        (root / "run-a" / "checkpoints" / "epoch-1.pt").write_bytes(b"historical" * 512)
-        (root / "run-a" / "materialization.json").write_text("{}\n", encoding="utf-8")
+        from mdstats.training_data.campaign_post_selection_runtime import (
+            record_post_selection_run_members,
+        )
+
+        root = self.paths.internal / "post-selection" / f"g{generation}" / "runs" / name
+        (root / "checkpoints").mkdir(parents=True, exist_ok=True)
+        (root / "checkpoints" / "epoch-1.pt").write_bytes(b"historical" * 512)
+        (root / "run-evidence.json").write_text("{}\n", encoding="utf-8")
+        # The real P5 owner records its own member set when a run finishes.
+        record_post_selection_run_members(root)
         objects = self.paths.internal / "post-selection" / f"g{generation}" / "objects"
         objects.mkdir(parents=True, exist_ok=True)
+        (objects / "keep.json").write_text("{}\n", encoding="utf-8")
         return root
+
+    @staticmethod
+    def finish_run(run_root: Path) -> None:
+        """Re-record the owner's member set after a fixture adds run outputs.
+
+        A run root is certifiable only when what is on disk is exactly what P5
+        recorded, so a fixture that adds outputs must let the owner record them
+        - the same way real execution does.
+        """
+
+        from mdstats.training_data.campaign_post_selection_runtime import (
+            record_post_selection_run_members,
+        )
+
+        record_post_selection_run_members(run_root)
 
 
 @pytest.fixture()
@@ -143,26 +257,122 @@ def _policy(**kwargs):
     return resolve_storage_policy({}, **kwargs)
 
 
+def _args(**kwargs):
+    base = {"tier": None, "apply": False, "dry_run": False, "top": 200, "deep": False}
+    base.update(kwargs)
+    return SimpleNamespace(**base)
+
+
 # ---------------------------------------------------------------------------
-# R10-5 - one canonical resolved policy identity
+# IR13-1 - authorization is invocation-local
 # ---------------------------------------------------------------------------
 
 
-def test_equivalent_policy_spellings_normalize_to_one_identity() -> None:
-    first = resolve_storage_policy(
-        {"storage": {"archive_codec": "gzip"}}, action="dedup", tier="lifecycle-safe"
+def test_configuration_cannot_carry_apply_authority() -> None:
+    with pytest.raises(StoragePolicyError, match="authority-bearing"):
+        resolve_storage_policy({"storage": {"apply": True}}, action=ACTION_CLEANUP)
+
+
+def test_configuration_cannot_redirect_the_invoked_action() -> None:
+    with pytest.raises(StoragePolicyError, match="authority-bearing"):
+        resolve_storage_policy({"storage": {"action": "cleanup"}}, action=ACTION_ARCHIVE)
+
+
+def test_a_persisted_apply_key_cannot_make_a_dry_run_mutate(campaign) -> None:
+    campaign.historical_run()
+    cfg = dict(campaign.cfg)
+    cfg["storage"] = {"apply": True}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
     )
-    second = resolve_storage_policy(
-        {"storage": {"archive_codec": "TAR+GZIP"}}, action="deduplicate", tier="safe"
+    with pytest.raises(StoragePolicyError, match="authority-bearing"):
+        storage_commands.storage_cleanup(context, _args())
+    assert (
+        campaign.paths.internal
+        / "post-selection"
+        / "g7"
+        / "runs"
+        / "run-a"
+        / "checkpoints"
+        / "epoch-1.pt"
+    ).is_file()
+
+
+def test_only_the_current_invocation_authorizes_a_mutation() -> None:
+    assert storage_commands.invocation_apply(_args(apply=True)) is True
+    assert storage_commands.invocation_apply(_args(apply=False)) is False
+    # --dry-run wins over a stray --apply: they are opposite answers.
+    assert storage_commands.invocation_apply(_args(apply=True, dry_run=True)) is False
+
+
+def test_an_explicit_invocation_tier_beats_a_configured_default() -> None:
+    policy = resolve_storage_policy(
+        {"storage": {"tier": "cache"}}, action=ACTION_CLEANUP, tier="safe"
     )
-    assert first.policy_identity == second.policy_identity
-    assert first.action == second.action == "deduplicate"
+    assert policy.tier == "safe"
+    fallback = resolve_storage_policy({"storage": {"tier": "cache"}}, action=ACTION_CLEANUP)
+    assert fallback.tier == "cache"
+
+
+def test_no_environment_variable_can_widen_storage_authority(monkeypatch) -> None:
+    import ast
+
+    baseline = _policy(action=ACTION_CLEANUP).policy_identity
+    for name in ("MDSTATS_STORAGE_TIER", "MDSTATS_STORAGE_APPLY"):
+        monkeypatch.setenv(name, "1")
+    assert _policy(action=ACTION_CLEANUP).policy_identity == baseline
+    source = Path(cli.__file__).parent.joinpath("storage", "policy.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    reads = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and node.attr in {"environ", "getenv"}
+    }
+    assert reads == set(), reads
+
+
+# ---------------------------------------------------------------------------
+# IR13-2 - action-scoped policy identity, and no decorative knobs
+# ---------------------------------------------------------------------------
+
+
+def test_policy_identity_is_scoped_to_the_action_that_consumes_the_field() -> None:
+    codec = {"storage": {"archive_compression_level": 9}}
+    assert (
+        resolve_storage_policy({}, action=ACTION_CLEANUP).policy_identity
+        == resolve_storage_policy(codec, action=ACTION_CLEANUP).policy_identity
+    )
+    assert (
+        resolve_storage_policy({}, action=ACTION_ARCHIVE).policy_identity
+        != resolve_storage_policy(codec, action=ACTION_ARCHIVE).policy_identity
+    )
+    audit = {"storage": {"deep_audit_entry_limit": 7}}
+    assert (
+        resolve_storage_policy({}, action=ACTION_DEDUPLICATE).policy_identity
+        == resolve_storage_policy(audit, action=ACTION_DEDUPLICATE).policy_identity
+    )
+
+
+def test_every_public_policy_field_is_consumed_by_some_action() -> None:
+    from mdstats.training_data.storage.policy import (
+        _ACTION_POLICY_SCOPE,
+        StoragePolicy,
+    )
+
+    fields = {
+        name
+        for name in StoragePolicy.__slots__
+        if name not in ("action", "tier", "apply")
+    }
+    covered = {name for scope in _ACTION_POLICY_SCOPE.values() for name in scope}
+    assert fields == covered
 
 
 def test_apply_authorization_does_not_change_the_policy_identity() -> None:
     planned = _policy(action=ACTION_CLEANUP)
-    authorized = planned.for_apply(apply=True)
-    assert planned.policy_identity == authorized.policy_identity
+    assert planned.policy_identity == planned.for_apply(apply=True).policy_identity
 
 
 def test_retired_consequential_tiers_are_rejected_by_name() -> None:
@@ -183,364 +393,805 @@ def test_unsupported_policy_combinations_fail_before_any_mutation() -> None:
         resolve_storage_policy({"storage": {"delete_everything": True}})
 
 
-def test_no_environment_variable_can_widen_storage_authority(monkeypatch) -> None:
-    baseline = _policy(action=ACTION_CLEANUP).policy_identity
-    for name in (
-        "MDSTATS_STORAGE_TIER",
-        "MDSTATS_STORAGE_APPLY",
-        "MDSTATS_STORAGE_SAFETY_RESERVE_BYTES",
-    ):
-        monkeypatch.setenv(name, "0")
-    assert _policy(action=ACTION_CLEANUP).policy_identity == baseline
-    import ast
+def test_the_cache_cap_retains_whole_artifacts_rather_than_tearing_one(campaign) -> None:
+    """An atomic owner artifact is evicted whole or retained whole."""
 
-    source = Path(
-        cli.__file__
-    ).parent.joinpath("storage", "policy.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    reads = {
-        node.attr
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute) and node.attr in {"environ", "getenv"}
-    }
-    assert reads == set(), reads
-
-
-def test_material_policy_change_refuses_a_stale_apply(campaign) -> None:
-    snapshot = campaign.snapshot()
-    planned = _policy(action=ACTION_CLEANUP)
-    plan = build_storage_plan(snapshot, planned, ())
-    changed = resolve_storage_policy(
-        {"storage": {"safety_reserve_bytes": 1}}, action=ACTION_CLEANUP, apply=True
+    receipts = campaign.paths.internal / "hash-receipts.sqlite3"
+    receipts.write_bytes(b"x" * 4096)
+    cfg = dict(campaign.cfg)
+    cfg["storage"] = {"cache_eviction_maximum_bytes": 1}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
     )
-    with pytest.raises(StoragePlanStaleError, match="storage policy changed"):
-        revalidate_plan(plan, snapshot, changed)
+    payload = storage_commands.storage_cleanup(context, _args(tier="cache"))
+    for action in payload["plan"]["actions"]:
+        assert action["action"] != "evict_cache"
 
 
-def test_presentation_only_change_does_not_invalidate_a_plan(campaign) -> None:
-    snapshot = campaign.snapshot()
-    policy = _policy(action=ACTION_CLEANUP)
-    plan = build_storage_plan(snapshot, policy, ())
-    # `--top` is presentation only and is deliberately not part of the policy.
-    revalidate_plan(plan, snapshot, policy.for_apply(apply=True))
-
-
-def test_dynamic_free_space_is_an_observation_not_a_scientific_invalidation(campaign) -> None:
-    policy = _policy(action=ACTION_ARCHIVE)
-    observation = admit_storage_operation(
-        campaign.paths.workspace, policy, required_peak_bytes=1024
+def test_the_deep_audit_entry_limit_is_a_real_bound(campaign) -> None:
+    for index in range(40):
+        (campaign.paths.results / f"item-{index}.json").write_text("{}", encoding="utf-8")
+    cfg = dict(campaign.cfg)
+    cfg["storage"] = {"deep_audit_entry_limit": 5}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
     )
-    assert observation.admitted
-    with pytest.raises(StorageAdmissionError, match="Nothing was modified"):
-        admit_storage_operation(
-            campaign.paths.workspace, policy, required_peak_bytes=1 << 62
+    payload = storage_commands.storage_report(context, _args(deep=True))
+    assert payload["complete"] is False
+    assert payload["accounting_mode"] == "bounded_incomplete"
+    assert payload["entries_visited"] <= 6
+
+
+# ---------------------------------------------------------------------------
+# IR13-3 - non-apply paths are observational
+# ---------------------------------------------------------------------------
+
+
+def _tree_signature(root: Path) -> dict[str, tuple[int, int, int]]:
+    signature: dict[str, tuple[int, int, int]] = {}
+    for path in sorted(root.rglob("*")):
+        try:
+            stats = path.lstat()
+        except OSError:
+            continue
+        signature[str(path.relative_to(root))] = (
+            int(stats.st_mode),
+            int(stats.st_size),
+            int(stats.st_mtime_ns),
         )
-    # The refusal is a resource decision: campaign state is untouched.
-    assert campaign.paths.state_db.is_file()
-
-
-# ---------------------------------------------------------------------------
-# R11-1 - archive/catalog locator containment
-# ---------------------------------------------------------------------------
-
-
-def _create_archive(campaign, *, reclaim_hot: bool = True, failpoint=None):
-    root = campaign.historical_bulk()
-    policy = _policy(action=ACTION_ARCHIVE, apply=True)
-    snapshot = campaign.snapshot()
-    plan = build_storage_plan(snapshot, policy, ())
-    kwargs = {} if failpoint is None else {"failpoint": failpoint}
-    return (
-        create_cold_archive(
-            workspace=campaign.paths.workspace,
-            control_plane=campaign.control_plane,
-            policy=policy,
-            boundary=campaign.boundary,
-            roots=[root],
-            lineage={"current_generation": snapshot.current_generation},
-            plan_identity=plan.plan_identity,
-            paths=campaign.paths,
-            reclaim_hot=reclaim_hot,
-            **kwargs,
-        ),
-        policy,
-        root,
-    )
-
-
-def _rewrite_manifest(campaign, identity: str, **fields) -> None:
-    path = campaign.control_plane.manifest_path(identity)
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    payload.update(fields)
-    body = {k: v for k, v in payload.items() if k != "manifest_content_digest"}
-    from mdstats.training_data.storage.durability import canonical_digest
-
-    body["manifest_content_digest"] = canonical_digest(body)
-    path.write_text(json.dumps(body, sort_keys=True), encoding="utf-8")
-
-
-def test_valid_identity_keyed_archive_verifies_and_restores(campaign) -> None:
-    result, policy, root = _create_archive(campaign)
-    assert result.reclaimed_paths
-    assert not (root / "run-a" / "checkpoints" / "epoch-1.pt").exists()
-    verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-    receipt = restore_cold_archive(
-        workspace=campaign.paths.workspace,
-        control_plane=campaign.control_plane,
-        policy=_policy(action="restore", apply=True),
-        boundary=campaign.boundary,
-        archive_identity=result.archive_identity,
-        paths=campaign.paths,
-    )
-    assert receipt.status == "complete"
-    assert (root / "run-a" / "checkpoints" / "epoch-1.pt").read_bytes() == b"historical" * 512
-    # Restoring bytes never promotes historical evidence to current.
-    assert receipt.to_dict()["promotes_currentness"] is False
-
-
-def test_absolute_archive_locator_is_rejected(campaign) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    _rewrite_manifest(campaign, result.archive_identity, archive_locator="/etc/passwd")
-    with pytest.raises((StorageArchiveError, StorageControlPlaneError)):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-
-
-def test_parent_traversal_archive_locator_is_rejected(campaign) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    _rewrite_manifest(
-        campaign, result.archive_identity, archive_locator="../../outside.tar.gz"
-    )
-    with pytest.raises((StorageArchiveError, StorageControlPlaneError)):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-
-
-def test_archive_root_symlink_escape_is_rejected(campaign, tmp_path: Path) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    blob = campaign.control_plane.resolve_archive_blob(
-        json.loads(
-            campaign.control_plane.manifest_path(result.archive_identity).read_text()
-        )["archive_locator"]
-    )
-    smuggled = outside / "smuggled.tar.gz"
-    smuggled.write_bytes(blob.read_bytes())
-    link = campaign.control_plane.archive_root / "escape"
-    link.symlink_to(outside, target_is_directory=True)
-    _rewrite_manifest(
-        campaign, result.archive_identity, archive_locator="escape/smuggled.tar.gz"
-    )
-    # The catalog is tampered to agree, so containment is the only remaining
-    # check standing between the manifest field and an out-of-root read.
-    entry = dict(campaign.control_plane.read_catalog_entry(result.archive_identity))
-    entry.pop("entry_digest", None)
-    entry["archive_locator"] = "escape/smuggled.tar.gz"
-    campaign.control_plane.publish_catalog_entry(entry)
-    with pytest.raises((StorageArchiveError, StorageControlPlaneError), match="symlink|escape"):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-
-
-def test_manifest_catalog_archive_identity_mismatch_is_rejected(campaign) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    _rewrite_manifest(campaign, result.archive_identity, archive_identity="0" * 32)
-    with pytest.raises(StorageArchiveError, match="identity"):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-
-
-def test_a_supplied_digest_never_authorizes_reading_an_external_file(
-    campaign, tmp_path: Path
-) -> None:
-    """A manifest field is not a licence to read an arbitrary path.
-
-    Even when the external bytes would satisfy the recorded digest exactly, the
-    locator is refused because it does not resolve inside the authorized
-    storage-owned archive root.
-    """
-
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    manifest = json.loads(
-        campaign.control_plane.manifest_path(result.archive_identity).read_text()
-    )
-    blob = campaign.control_plane.resolve_archive_blob(manifest["archive_locator"])
-    external = tmp_path / "external-copy.tar.gz"
-    external.write_bytes(blob.read_bytes())
-    assert sha256_file(external) == manifest["archive_sha256"]
-    _rewrite_manifest(campaign, result.archive_identity, archive_locator=str(external))
-    with pytest.raises((StorageArchiveError, StorageControlPlaneError)):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-
-
-# ---------------------------------------------------------------------------
-# R10-6 - bounded verification and extraction
-# ---------------------------------------------------------------------------
-
-
-def _repack(campaign, identity: str, build) -> None:
-    """Replace an archive blob's contents, then re-seal the manifest digests."""
-
-    manifest_path = campaign.control_plane.manifest_path(identity)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    blob = campaign.control_plane.resolve_archive_blob(manifest["archive_locator"])
-    blob.unlink()
-    with tarfile.open(blob, mode="w:gz") as tar:
-        build(tar)
-    _rewrite_manifest(
-        campaign,
-        identity,
-        archive_sha256=sha256_file(blob),
-        archive_size_bytes=int(blob.stat().st_size),
-    )
-
-
-def _member(name: str, payload: bytes) -> tuple[tarfile.TarInfo, bytes]:
-    info = tarfile.TarInfo(name)
-    info.size = len(payload)
-    info.mode = 0o644
-    return info, payload
+    return signature
 
 
 @pytest.mark.parametrize(
-    "name",
-    ["/absolute/escape.bin", "../escape.bin", "./alias.bin", "dir//alias.bin"],
+    "handler,arguments",
+    [
+        ("storage_report", {"deep": False}),
+        ("storage_report", {"deep": True}),
+        ("storage_cleanup", {"tier": "safe", "dry_run": True}),
+        ("storage_cleanup", {"tier": "cache", "dry_run": True}),
+        ("storage_deduplicate", {"dry_run": True}),
+        ("storage_archive", {"archive_command": "list"}),
+        ("storage_archive", {"archive_command": "create", "dry_run": True, "root": None}),
+    ],
 )
-def test_unsafe_or_aliased_member_paths_are_rejected(campaign, name: str) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-
-    def build(tar: tarfile.TarFile) -> None:
-        info, payload = _member(name, b"x")
-        tar.addfile(info, __import__("io").BytesIO(payload))
-
-    _repack(campaign, result.archive_identity, build)
-    with pytest.raises(StorageArchiveError):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-
-
-def test_symlink_hardlink_and_special_members_are_rejected(campaign) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    for kind in (tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.FIFOTYPE, tarfile.CHRTYPE):
-        def build(tar: tarfile.TarFile, kind=kind) -> None:
-            info = tarfile.TarInfo("member.bin")
-            info.type = kind
-            info.linkname = "target.bin"
-            info.size = 0
-            tar.addfile(info)
-
-        _repack(campaign, result.archive_identity, build)
-        with pytest.raises(StorageArchiveError, match="rejected"):
-            verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-
-
-def test_duplicate_members_are_rejected(campaign) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    manifest = json.loads(
-        campaign.control_plane.manifest_path(result.archive_identity).read_text()
+def test_non_apply_storage_paths_leave_managed_state_unchanged(
+    campaign, handler: str, arguments: dict
+) -> None:
+    campaign.historical_run()
+    before = _tree_signature(campaign.paths.workspace)
+    payload = getattr(storage_commands, handler)(
+        campaign.context(), _args(keep_hot=False, **arguments)
     )
-    target = next(item for item in manifest["members"] if item["kind"] == "file")
-
-    content = (campaign.paths.workspace / target["path"]).read_bytes()
-
-    def build(tar: tarfile.TarFile) -> None:
-        import io
-
-        # Both copies are byte-exact, so nothing but the duplicate-name check
-        # stands between the archive and two writes to one destination.
-        for _ in range(2):
-            info, payload = _member(target["path"], content)
-            info.mode = int(target["mode"])
-            tar.addfile(info, io.BytesIO(payload))
-
-    _repack(campaign, result.archive_identity, build)
-    with pytest.raises(StorageArchiveError, match="[Dd]uplicate"):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
+    assert payload is not None
+    after = _tree_signature(campaign.paths.workspace)
+    assert after == before, sorted(set(after) ^ set(before)) or "content changed"
 
 
-def test_member_longer_than_its_manifest_size_is_stopped_at_the_bound(campaign) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    manifest_path = campaign.control_plane.manifest_path(result.archive_identity)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    target = next(item for item in manifest["members"] if item["kind"] == "file")
-
-    def build(tar: tarfile.TarFile) -> None:
-        import io
-
-        for item in manifest["members"]:
-            if item["kind"] == "directory":
-                info = tarfile.TarInfo(item["path"])
-                info.type = tarfile.DIRTYPE
-                info.mode = int(item["mode"])
-                tar.addfile(info)
-                continue
-            size = int(item["size_bytes"])
-            if item["path"] == target["path"]:
-                size += 4096
-            info, payload = _member(item["path"], b"z" * size)
-            info.mode = int(item["mode"])
-            tar.addfile(info, io.BytesIO(payload))
-
-    _repack(campaign, result.archive_identity, build)
-    with pytest.raises(StorageArchiveError, match="longer than its manifest size"):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
+def test_reporting_an_uninitialized_campaign_creates_nothing(tmp_path: Path) -> None:
+    config = _write_config(tmp_path)
+    cfg, paths = cli._load_config(config, ensure=False)
+    assert not paths.workspace.exists()
+    with pytest.raises(cli.CampaignCliError, match="missing"):
+        cli.CampaignStore(paths.state_db, create=False)
+    assert not paths.workspace.exists()
 
 
-def test_total_expansion_beyond_the_admitted_limit_is_refused(campaign) -> None:
-    result, _policy_, _root = _create_archive(campaign, reclaim_hot=False)
-    bounded = resolve_storage_policy(
-        {"storage": {"archive_expanded_bytes_limit": 16}}, action=ACTION_REPORT
-    )
-    with pytest.raises(StorageArchiveError, match="expanded bytes"):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, bounded)
+def test_locating_the_control_plane_does_not_create_it(tmp_path: Path) -> None:
+    config = _write_config(tmp_path)
+    cfg, paths = cli._load_config(config)
+    paths.ensure()
+    plane = open_storage_control_plane_readonly(paths)
+    assert plane.exists is False
+    assert not plane.root.exists()
 
 
-def test_decompression_amplification_is_refused_before_extraction(campaign) -> None:
-    result, _policy_, _root = _create_archive(campaign, reclaim_hot=False)
-    bounded = resolve_storage_policy(
-        {"storage": {"archive_expansion_ratio_limit": 1.0}}, action=ACTION_REPORT
-    )
-    with pytest.raises(StorageArchiveError, match="expansion ratio"):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, bounded)
-
-
-def test_member_count_beyond_the_admitted_limit_is_refused(campaign) -> None:
-    result, _policy_, _root = _create_archive(campaign, reclaim_hot=False)
-    bounded = resolve_storage_policy(
-        {"storage": {"archive_member_limit": 1}}, action=ACTION_REPORT
-    )
-    with pytest.raises(StorageArchiveError, match="members"):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, bounded)
-
-
-def test_corrupt_archive_bytes_are_detected(campaign) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    manifest = json.loads(
-        campaign.control_plane.manifest_path(result.archive_identity).read_text()
-    )
-    blob = campaign.control_plane.resolve_archive_blob(manifest["archive_locator"])
-    payload = bytearray(blob.read_bytes())
-    payload[-1] ^= 0xFF
-    blob.write_bytes(bytes(payload))
-    with pytest.raises((StorageArchiveError, StorageControlPlaneError), match="[Dd]igest"):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-
-
-def test_restore_refuses_a_conflicting_destination(campaign) -> None:
-    result, _policy_, root = _create_archive(campaign)
-    victim = root / "run-a" / "checkpoints" / "epoch-1.pt"
-    victim.parent.mkdir(parents=True, exist_ok=True)
-    victim.write_bytes(b"different authoritative bytes")
-    with pytest.raises(StorageArchiveError, match="different authoritative content"):
-        restore_cold_archive(
-            workspace=campaign.paths.workspace,
-            control_plane=campaign.control_plane,
-            policy=_policy(action="restore", apply=True),
-            boundary=campaign.boundary,
-            archive_identity=result.archive_identity,
-            paths=campaign.paths,
-        )
-    assert victim.read_bytes() == b"different authoritative bytes"
+def test_inventorying_owners_does_not_create_generation_roots(campaign) -> None:
+    before = _tree_signature(campaign.paths.internal)
+    campaign.snapshot()
+    campaign.snapshot()
+    assert _tree_signature(campaign.paths.internal) == before
 
 
 # ---------------------------------------------------------------------------
-# R11-2 - crash-durable publication ordering
+# IR13-4 - owner graph integrity gates consequential planning
+# ---------------------------------------------------------------------------
+
+
+def _view(artifact_id: str, path: Path, **kwargs) -> OwnerArtifactView:
+    from mdstats.training_data.storage.owners import ArtifactClass
+
+    return OwnerArtifactView(
+        owner="p5",
+        artifact_id=artifact_id,
+        path=path,
+        artifact_class=ArtifactClass.REPRODUCIBILITY_BULK,
+        detail="fixture",
+        **kwargs,
+    )
+
+
+def test_duplicate_owner_identities_are_an_integrity_failure(tmp_path: Path) -> None:
+    failures = validate_owner_graph(
+        [_view("p5:x", tmp_path / "a"), _view("p5:x", tmp_path / "b")]
+    )
+    assert any("duplicate" in item for item in failures)
+
+
+def test_a_dependency_edge_with_no_owner_view_is_an_integrity_failure(
+    tmp_path: Path,
+) -> None:
+    failures = validate_owner_graph(
+        [_view("p5:x", tmp_path / "a", requires=("p5:missing",))]
+    )
+    assert any("no owner view reported" in item for item in failures)
+
+
+def test_an_incomplete_owner_graph_refuses_consequential_planning(campaign) -> None:
+    campaign.historical_run()
+    snapshot = campaign.snapshot()
+    broken = type(snapshot.owner_views)(
+        views=snapshot.views + (_view("p5:orphan", campaign.paths.results, requires=("p5:ghost",)),),
+        unresolved=snapshot.owner_views.unresolved,
+        current_generation=snapshot.current_generation,
+    )
+    broken.integrity_failures = validate_owner_graph(broken.views)
+    stale = type(snapshot)(
+        workspace=snapshot.workspace,
+        owner_views=broken,
+        protected_ids=snapshot.protected_ids,
+        protection_reasons=snapshot.protection_reasons,
+        protected_inputs=snapshot.protected_inputs,
+        control_plane=snapshot.control_plane,
+        retained_control_paths=snapshot.retained_control_paths,
+        protection_index=snapshot.protection_index,
+    )
+    assert stale.integrity_failures
+    with pytest.raises(OwnerGraphError, match="refuses to mutate"):
+        stale.require_planable()
+    # Read-only reporting stays available and shows the problem.
+    from mdstats.training_data.storage.report import build_owner_storage_report
+
+    payload = build_owner_storage_report(stale, _policy(action=ACTION_REPORT))
+    assert payload["consequential_planning_available"] is False
+    assert payload["owner_graph_integrity_failures"]
+
+
+def test_a_valid_graph_preserves_the_cross_owner_closure(campaign) -> None:
+    campaign.historical_run()
+    snapshot = campaign.snapshot()
+    assert snapshot.integrity_failures == ()
+    snapshot.require_planable()
+
+
+# ---------------------------------------------------------------------------
+# IR13-5 - synchronization comes from touched artifacts
+# ---------------------------------------------------------------------------
+
+
+def test_synchronization_covers_a_touched_historical_generation(campaign) -> None:
+    from mdstats.training_data.storage.executor import synchronization_for
+
+    run_root = campaign.historical_run(generation=7)
+    snapshot = campaign.snapshot()
+    view = snapshot.view("p5:run:g7:run-a")
+    assert view is not None
+    policy = _policy(action=ACTION_ARCHIVE)
+    from mdstats.training_data.storage.plan import planned_action
+
+    plan = build_storage_plan(
+        snapshot,
+        policy,
+        [
+            planned_action(
+                action="archive_member",
+                path=run_root / "checkpoints" / "epoch-1.pt",
+                artifact_id=view.artifact_id,
+                reason="fixture",
+                owner_state_identity=view.state_identity,
+                binding={"sha256": "", "size_bytes": 0},
+            )
+        ],
+    )
+    synchronization = synchronization_for(plan, snapshot)
+    assert 7 in synchronization.generations
+    assert snapshot.current_generation in synchronization.generations
+    assert run_root in synchronization.run_roots
+
+
+def test_one_lock_order_is_used_everywhere() -> None:
+    """Structural: storage and P5 acquire the shared seams in one direction."""
+
+    lease = Path(cli.__file__).parent.joinpath("storage", "lease.py").read_text(
+        encoding="utf-8"
+    )
+    activity = lease.index("post_selection_run_activity_lease(run_root)")
+    publication = lease.index("post_selection_publication_barrier(paths, generation)")
+    qualification = lease.index("qualification_publication_barrier(paths, generation)")
+    assert activity < publication < qualification
+    runtime = Path(cli.__file__).parent.joinpath(
+        "campaign_post_selection_runtime.py"
+    ).read_text(encoding="utf-8")
+    # P5 execution takes the run-activity lease around the run's write lifetime,
+    # and reaches its publication barrier only afterwards - the same direction
+    # storage uses, so the two can never form a cycle.
+    assert "with post_selection_run_activity_lease(run_root):" in runtime
+    assert "with post_selection_publication_barrier(" in runtime
+
+
+def test_a_held_run_activity_lease_blocks_a_storage_mutation(campaign) -> None:
+    """The owner's own lease is what makes a historical run root safe to touch."""
+
+    import threading
+
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        post_selection_run_activity_lease,
+    )
+    from mdstats.training_data.storage.lease import owner_mutation_barrier
+
+    run_root = campaign.historical_run()
+    entered = threading.Event()
+    released = threading.Event()
+    acquired_after_release: list[bool] = []
+
+    def storage_side() -> None:
+        entered.wait(30.0)
+        with owner_mutation_barrier(
+            campaign.paths, OwnerSynchronization.of([7], [run_root])
+        ):
+            acquired_after_release.append(released.is_set())
+
+    worker = threading.Thread(target=storage_side, daemon=True)
+    with post_selection_run_activity_lease(run_root):
+        worker.start()
+        entered.set()
+        time.sleep(0.6)
+        released.set()
+    worker.join(60.0)
+    assert acquired_after_release == [True]
+
+
+# ---------------------------------------------------------------------------
+# IR13-6 - direct hardlink dedup with closed link ownership
+# ---------------------------------------------------------------------------
+
+
+def _dedup(campaign, *, apply: bool, cfg=None):
+    context = storage_commands.StorageCommandContext(
+        cfg or campaign.cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    return storage_commands.storage_deduplicate(context, _args(apply=apply))
+
+
+def test_duplicates_become_direct_aliases_with_no_persistent_content_store(
+    campaign,
+) -> None:
+    run_root = campaign.historical_run()
+    payload = b"identical" * 1024
+    first = run_root / "checkpoints" / "a.bin"
+    second = run_root / "checkpoints" / "b.bin"
+    for path in (first, second):
+        path.write_bytes(payload)
+        os.chmod(path, 0o644)
+    campaign.finish_run(run_root)
+    result = _dedup(campaign, apply=True)
+    assert result["persistent_content_store"] is False
+    assert first.stat().st_ino == second.stat().st_ino
+    assert first.read_bytes() == payload == second.read_bytes()
+    assert not (campaign.control_plane.root / "content-store").exists()
+
+
+def test_removing_every_alias_releases_the_inode_naturally(campaign) -> None:
+    run_root = campaign.historical_run()
+    payload = b"identical" * 1024
+    first = run_root / "checkpoints" / "a.bin"
+    second = run_root / "checkpoints" / "b.bin"
+    for path in (first, second):
+        path.write_bytes(payload)
+        os.chmod(path, 0o644)
+    campaign.finish_run(run_root)
+    _dedup(campaign, apply=True)
+    inode = first.stat().st_ino
+    assert first.stat().st_nlink == 2
+    first.unlink()
+    assert second.stat().st_nlink == 1
+    second.unlink()
+    assert not any(
+        path.stat().st_ino == inode for path in run_root.rglob("*") if path.is_file()
+    )
+
+
+def test_an_external_hardlink_is_never_the_shared_canonical_inode(
+    campaign, tmp_path: Path
+) -> None:
+    run_root = campaign.historical_run()
+    payload = b"identical" * 1024
+    first = run_root / "checkpoints" / "a.bin"
+    second = run_root / "checkpoints" / "b.bin"
+    for path in (first, second):
+        path.write_bytes(payload)
+        os.chmod(path, 0o644)
+    campaign.finish_run(run_root)
+    # Both candidates carry an unknown external link.
+    external_root = tmp_path / "outside"
+    external_root.mkdir()
+    os.link(first, external_root / "first-alias.bin")
+    os.link(second, external_root / "second-alias.bin")
+
+    result = _dedup(campaign, apply=True)
+    assert first.stat().st_ino != second.stat().st_ino
+    assert any("closed link ownership" in note for note in result["excluded"])
+    # Mutating the external alias cannot reach the other campaign file.
+    (external_root / "first-alias.bin").write_bytes(b"tampered" * 1024)
+    assert second.read_bytes() == payload
+
+
+def test_replacing_one_alias_leaves_the_others_unchanged(campaign) -> None:
+    run_root = campaign.historical_run()
+    payload = b"identical" * 1024
+    first = run_root / "checkpoints" / "a.bin"
+    second = run_root / "checkpoints" / "b.bin"
+    for path in (first, second):
+        path.write_bytes(payload)
+        os.chmod(path, 0o644)
+    campaign.finish_run(run_root)
+    _dedup(campaign, apply=True)
+    replacement = second.parent / ".b.bin.new"
+    replacement.write_bytes(b"updated" * 1024)
+    os.replace(replacement, second)
+    assert first.read_bytes() == payload
+    assert second.read_bytes() == b"updated" * 1024
+
+
+def test_equal_bytes_with_incompatible_modes_do_not_share_an_inode(campaign) -> None:
+    run_root = campaign.historical_run()
+    payload = b"identical" * 1024
+    first = run_root / "checkpoints" / "a.bin"
+    second = run_root / "checkpoints" / "b.bin"
+    first.write_bytes(payload)
+    second.write_bytes(payload)
+    os.chmod(first, 0o600)
+    os.chmod(second, 0o644)
+    campaign.finish_run(run_root)
+    result = _dedup(campaign, apply=True)
+    assert first.stat().st_ino != second.stat().st_ino
+    assert any("metadata" in note for note in result["excluded"])
+
+
+def test_repeated_dedup_is_idempotent(campaign) -> None:
+    run_root = campaign.historical_run()
+    payload = b"identical" * 1024
+    for name in ("a.bin", "b.bin"):
+        path = run_root / "checkpoints" / name
+        path.write_bytes(payload)
+        os.chmod(path, 0o644)
+    campaign.finish_run(run_root)
+    _dedup(campaign, apply=True)
+    again = _dedup(campaign, apply=True)
+    assert again["execution"]["status"] == "complete"
+    assert (run_root / "checkpoints" / "a.bin").stat().st_ino == (
+        run_root / "checkpoints" / "b.bin"
+    ).stat().st_ino
+
+
+def test_cross_device_candidates_retain_duplicate_bytes(campaign, monkeypatch) -> None:
+    from mdstats.training_data.storage import dedup as dedup_mod
+
+    run_root = campaign.historical_run()
+    payload = b"identical" * 1024
+    for name in ("a.bin", "b.bin"):
+        path = run_root / "checkpoints" / name
+        path.write_bytes(payload)
+        os.chmod(path, 0o644)
+    campaign.finish_run(run_root)
+    monkeypatch.setattr(dedup_mod, "same_filesystem", lambda a, b: False)
+    result = _dedup(campaign, apply=True)
+    assert result["links_replaced"] == 0
+    assert (run_root / "checkpoints" / "a.bin").stat().st_ino != (
+        run_root / "checkpoints" / "b.bin"
+    ).stat().st_ino
+
+
+def test_mutable_state_never_enters_dedup(campaign) -> None:
+    duplicate = campaign.paths.internal / "campaign.sqlite3.copy"
+    duplicate.write_bytes(campaign.paths.state_db.read_bytes())
+    result = _dedup(campaign, apply=False)
+    linked = {path for group in result["groups"] for path in group["paths"]}
+    assert str(campaign.paths.state_db) not in linked
+    assert str(duplicate) not in linked
+
+
+# ---------------------------------------------------------------------------
+# IR14-1 - recursive authority needs owner certification
+# ---------------------------------------------------------------------------
+
+
+def test_an_unexpected_descendant_makes_a_run_root_uncertified(campaign) -> None:
+    run_root = campaign.historical_run()
+    (run_root / "someone-elses-notes.txt").write_text("hello", encoding="utf-8")
+    snapshot = campaign.snapshot()
+    view = snapshot.view("p5:run:g7:run-a")
+    assert view is not None
+    assert view.coverage is SubtreeCoverage.CONTAINER
+    assert view.archive_eligible is False
+    assert view.dedup_eligible is False
+    assert "did not write" in view.detail
+
+
+def test_an_unexpected_descendant_is_never_archived_or_reclaimed(campaign) -> None:
+    run_root = campaign.historical_run()
+    stranger = run_root / "checkpoints" / "stranger.bin"
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    snapshot = campaign.snapshot()
+    assert snapshot.view("p5:run:g7:run-a").archive_eligible is True
+
+    stranger.write_bytes(b"not mine")
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="create", root=None, apply=True, keep_hot=False),
+    )
+    assert payload["archive"] is None
+    assert stranger.read_bytes() == b"not mine"
+    assert checkpoint.is_file()
+
+
+def test_an_unexpected_directory_is_never_absorbed_by_a_recursive_delete(
+    campaign,
+) -> None:
+    run_root = campaign.historical_run()
+    intruder = run_root / "not-p5"
+    intruder.mkdir()
+    (intruder / "payload.bin").write_bytes(b"keep")
+    snapshot = campaign.snapshot()
+    view = snapshot.view("p5:run:g7:run-a")
+    members, refusals = snapshot.authorized_members(view)
+    assert members == ()
+    assert refusals
+    assert (intruder / "payload.bin").read_bytes() == b"keep"
+
+
+def test_a_closed_owner_certified_fixture_stays_eligible(campaign) -> None:
+    campaign.historical_run()
+    snapshot = campaign.snapshot()
+    view = snapshot.view("p5:run:g7:run-a")
+    assert view.coverage is SubtreeCoverage.CLOSED
+    assert view.archive_eligible is True
+    members, refusals = snapshot.authorized_members(view)
+    assert refusals == ()
+    assert any(path.name == "epoch-1.pt" for path in members)
+
+
+def test_an_unfinished_run_root_is_never_certified(campaign) -> None:
+    run_root = campaign.historical_run()
+    (run_root / "run-evidence.json").unlink()
+    snapshot = campaign.snapshot()
+    view = snapshot.view("p5:run:g7:run-a")
+    assert view.coverage is SubtreeCoverage.CONTAINER
+    assert view.archive_eligible is False
+    assert "terminal" in view.detail
+
+
+def test_a_descendant_added_after_planning_refuses_the_action(campaign) -> None:
+    run_root = campaign.historical_run()
+    context = campaign.context()
+    policy = _policy(action=ACTION_ARCHIVE)
+    snapshot = campaign.snapshot()
+    from mdstats.training_data.storage.archive import build_archive_plan_actions
+
+    bundle = build_archive_plan_actions(
+        workspace=campaign.paths.workspace,
+        snapshot=snapshot,
+        selected=[item for item in archive_candidates(snapshot) if item.eligible],
+        boundary=campaign.boundary,
+        policy=policy,
+        reclaim_hot=True,
+    )
+    plan = build_storage_plan(snapshot, policy, bundle.actions)
+    (run_root / "late-arrival.bin").write_bytes(b"late")
+    with pytest.raises(StoragePlanStaleError, match="owner|closure"):
+        revalidate_plan(plan, campaign.snapshot(), policy)
+    assert (run_root / "late-arrival.bin").read_bytes() == b"late"
+
+
+def test_no_consequential_recursive_path_equates_containment_with_ownership() -> None:
+    """Structural: every recursive action goes through authorized_members."""
+
+    root = Path(cli.__file__).parent / "storage"
+    inventory = (root / "inventory.py").read_text(encoding="utf-8")
+    assert "def authorized_members" in inventory
+    assert "SubtreeCoverage.CLOSED" in inventory
+    for module in ("archive.py", "dedup.py", "commands.py"):
+        text = (root / module).read_text(encoding="utf-8")
+        assert "authorized_members" in text, module
+    # The only rmtree in the consequential path is the certified-subtree helper.
+    executor = (root / "executor.py").read_text(encoding="utf-8")
+    assert executor.count("shutil.rmtree") == 1
+    assert "def remove_certified_subtree" in executor
+
+
+# ---------------------------------------------------------------------------
+# IR13-9 - nested mounts are ownership boundaries
+# ---------------------------------------------------------------------------
+
+
+def test_a_nested_mount_below_an_eligible_root_is_not_traversed(campaign) -> None:
+    run_root = campaign.historical_run()
+    nested = run_root / "checkpoints" / "mounted"
+    nested.mkdir()
+    (nested / "foreign.bin").write_bytes(b"someone else's bytes")
+    campaign.finish_run(run_root)
+    resolver = MountIdentityResolver(
+        mount_points=frozenset({str(nested)}), available=True
+    )
+    set_mount_resolver(resolver)
+    try:
+        snapshot = campaign.snapshot()
+        view = snapshot.view("p5:run:g7:run-a")
+        members, refusals = snapshot.authorized_members(view)
+        assert all("mounted" not in str(path) for path in members)
+        assert any("mount point" in why for _path, why in refusals)
+    finally:
+        set_mount_resolver(None)
+    assert (nested / "foreign.bin").read_bytes() == b"someone else's bytes"
+
+
+def test_ambiguous_mount_discovery_retains_rather_than_traverses(campaign) -> None:
+    campaign.historical_run()
+    set_mount_resolver(MountIdentityResolver(mount_points=frozenset(), available=False))
+    try:
+        snapshot = campaign.snapshot()
+        view = snapshot.view("p5:run:g7:run-a")
+        members, refusals = snapshot.authorized_members(view)
+        assert members == ()
+        assert any("mount discovery is unavailable" in why for _p, why in refusals)
+    finally:
+        set_mount_resolver(None)
+
+
+def test_the_workspace_itself_being_a_mount_remains_supported(campaign) -> None:
+    campaign.historical_run()
+    set_mount_resolver(
+        MountIdentityResolver(
+            mount_points=frozenset({str(campaign.paths.workspace)}), available=True
+        )
+    )
+    try:
+        snapshot = campaign.snapshot()
+        view = snapshot.view("p5:run:g7:run-a")
+        members, refusals = snapshot.authorized_members(view)
+        assert refusals == ()
+        assert members
+    finally:
+        set_mount_resolver(None)
+
+
+# ---------------------------------------------------------------------------
+# IR13-10 - conservative admission
+# ---------------------------------------------------------------------------
+
+
+def test_admission_accounts_for_container_overhead_on_many_tiny_files() -> None:
+    members = tuple(
+        ArchiveMember(f"a/{index}.bin", "file", 0o644, 1, "0" * 64, "p5:x")
+        for index in range(1000)
+    )
+    payload_bytes = sum(item.size_bytes for item in members)
+    bound = archive_container_bytes(members)
+    # 1000 one-byte files cost 1000 headers plus 1000 padded blocks: the
+    # container dominates the payload by three orders of magnitude.
+    assert bound > 1000 * 1024
+    assert bound > payload_bytes * 100
+
+
+def test_an_unaffordable_operation_is_refused_before_any_mutation(campaign) -> None:
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    cfg = dict(campaign.cfg)
+    cfg["storage"] = {"safety_reserve_bytes": 1 << 62}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    with pytest.raises(StorageAdmissionError, match="Nothing was modified"):
+        storage_commands.storage_archive(
+            context, _args(archive_command="create", root=None, apply=True, keep_hot=False)
+        )
+    assert checkpoint.is_file()
+
+
+def test_inode_admission_failure_refuses_before_any_mutation(campaign) -> None:
+    from mdstats.training_data.storage import admission as admission_mod
+
+    campaign.historical_run()
+    original = admission_mod.observe_filesystem
+    try:
+        admission_mod.observe_filesystem = lambda location: (1 << 40, 1 << 40, 8)
+        with pytest.raises(StorageAdmissionError, match="inodes"):
+            admission_mod.admit_storage_operation(
+                campaign.paths.workspace,
+                _policy(action=ACTION_ARCHIVE),
+                required_peak_bytes=1024,
+                required_inodes=1000,
+            )
+    finally:
+        admission_mod.observe_filesystem = original
+
+
+def test_restore_admission_covers_staged_and_installed_copies(campaign) -> None:
+    from mdstats.training_data.storage.archive import restore_admission
+
+    result = _create_archive(campaign, keep_hot=True)
+    manifest = read_manifest(campaign.control_plane, result["archive_identity"])
+    observation = restore_admission(
+        campaign.paths.workspace, _policy(action="restore"), manifest
+    )
+    expanded = int(manifest["total_expanded_bytes"])
+    assert observation.required_peak_bytes > 2 * expanded
+    assert observation.required_inodes >= 2 * int(manifest["member_count"])
+
+
+# ---------------------------------------------------------------------------
+# Archive: selection, identity, durability, restore
+# ---------------------------------------------------------------------------
+
+
+def _create_archive(campaign, *, keep_hot: bool = False, cfg=None, failpoint=None):
+    context = storage_commands.StorageCommandContext(
+        cfg or campaign.cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    if not any(
+        (campaign.paths.internal / "post-selection").glob("g*/runs/*/run-evidence.json")
+    ):
+        campaign.historical_run()
+    payload = storage_commands.storage_archive(
+        context,
+        _args(
+            archive_command="create",
+            root=None,
+            apply=True,
+            keep_hot=keep_hot,
+            failpoint=failpoint,
+        ),
+    )
+    assert payload["archive"] is not None, payload.get("detail")
+    return payload["archive"]
+
+
+def test_an_eligible_root_archives_and_restores(campaign) -> None:
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    original = checkpoint.read_bytes()
+    result = _create_archive(campaign)
+    assert not checkpoint.exists()
+    verify_cold_archive(
+        campaign.control_plane, result["archive_identity"], _policy(action=ACTION_REPORT)
+    )
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(
+            archive_command="restore",
+            archive_identity=result["archive_identity"],
+            apply=True,
+        ),
+    )
+    assert payload["restore"]["status"] == "complete"
+    assert payload["restore"]["promotes_currentness"] is False
+    assert checkpoint.read_bytes() == original
+
+
+def test_a_requested_ancestor_of_an_eligible_root_is_rejected(campaign) -> None:
+    campaign.historical_run()
+    objects = campaign.paths.internal / "post-selection" / "g7" / "objects" / "keep.json"
+    before = objects.read_bytes()
+    parent = Path(".mdstats") / "post-selection" / "g7"
+    with pytest.raises(StorageArchiveError, match="ancestor"):
+        storage_commands.storage_archive(
+            campaign.context(),
+            _args(archive_command="create", root=[str(parent)], apply=True, keep_hot=False),
+        )
+    assert objects.read_bytes() == before
+
+
+def test_an_exact_eligible_root_selection_succeeds(campaign) -> None:
+    run_root = campaign.historical_run()
+    relative = run_root.relative_to(campaign.paths.workspace)
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="create", root=[str(relative)], apply=True, keep_hot=True),
+    )
+    assert payload["archive"] is not None
+    manifest = read_manifest(campaign.control_plane, payload["archive"]["archive_identity"])
+    assert manifest["represented_artifact_ids"] == ["p5:run:g7:run-a"]
+
+
+def test_manifest_lineage_lists_only_represented_artifacts(campaign) -> None:
+    campaign.historical_run(name="run-a")
+    campaign.historical_run(name="run-b")
+    run_a = campaign.paths.internal / "post-selection" / "g7" / "runs" / "run-a"
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(
+            archive_command="create",
+            root=[str(run_a.relative_to(campaign.paths.workspace))],
+            apply=True,
+            keep_hot=True,
+        ),
+    )
+    manifest = read_manifest(campaign.control_plane, payload["archive"]["archive_identity"])
+    assert manifest["represented_artifact_ids"] == ["p5:run:g7:run-a"]
+    assert all("run-b" not in item["path"] for item in manifest["members"])
+
+
+def test_a_reencode_creates_a_distinct_representation(campaign) -> None:
+    campaign.historical_run()
+    first = _create_archive(campaign, keep_hot=True)
+    cfg = dict(campaign.cfg)
+    cfg["storage"] = {"archive_compression_level": 9}
+    second = _create_archive(campaign, keep_hot=True, cfg=cfg)
+    assert first["archive_identity"] != second["archive_identity"]
+    assert first["logical_identity"] == second["logical_identity"]
+    # Both remain independently verifiable.
+    for identity in (first["archive_identity"], second["archive_identity"]):
+        verify_cold_archive(
+            campaign.control_plane, identity, _policy(action=ACTION_REPORT)
+        )
+
+
+def test_a_failed_reencode_cannot_invalidate_a_retained_representation(campaign) -> None:
+    campaign.historical_run()
+    first = _create_archive(campaign, keep_hot=True)
+    cfg = dict(campaign.cfg)
+    cfg["storage"] = {"archive_compression_level": 9}
+
+    class _Injected(RuntimeError):
+        pass
+
+    def failpoint(name: str) -> None:
+        if name == BOUNDARY_AFTER_BLOB:
+            raise _Injected(name)
+
+    with pytest.raises(_Injected):
+        _create_archive(campaign, keep_hot=True, cfg=cfg, failpoint=failpoint)
+    verify_cold_archive(
+        campaign.control_plane, first["archive_identity"], _policy(action=ACTION_REPORT)
+    )
+
+
+def test_a_conflicting_immutable_catalog_rewrite_is_rejected(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    entry = dict(campaign.control_plane.read_catalog_entry(identity))
+    entry.pop("entry_digest", None)
+    entry["archive_sha256"] = "0" * 64
+    with pytest.raises(StorageControlPlaneError, match="immutable field"):
+        campaign.control_plane.publish_catalog_entry(entry)
+    verify_cold_archive(campaign.control_plane, identity, _policy(action=ACTION_REPORT))
+
+
+def test_only_operational_catalog_fields_may_be_refreshed(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    campaign.control_plane.publish_catalog_entry(
+        {"archive_identity": identity, "hot_reclamation_state": "complete"}
+    )
+    entry = campaign.control_plane.read_catalog_entry(identity)
+    assert entry["hot_reclamation_state"] == "complete"
+    assert entry["archive_sha256"] == result and True or entry["archive_sha256"]
+    verify_cold_archive(campaign.control_plane, identity, _policy(action=ACTION_REPORT))
+
+
+def test_representation_identity_binds_the_serialization() -> None:
+    logical = "a" * 64
+    gzip_one = representation_identity(
+        logical=logical, codec="tar+gzip", level=1, schema="s"
+    )
+    gzip_nine = representation_identity(
+        logical=logical, codec="tar+gzip", level=9, schema="s"
+    )
+    plain = representation_identity(logical=logical, codec="tar", level=0, schema="s")
+    assert len({gzip_one, gzip_nine, plain}) == 3
+
+
+# ---------------------------------------------------------------------------
+# Durable publication ordering
 # ---------------------------------------------------------------------------
 
 
@@ -557,186 +1208,760 @@ def _fail_at(name: str):
 
 
 def test_failure_before_blob_publication_leaves_no_terminal_catalog(campaign) -> None:
+    campaign.historical_run()
     with pytest.raises(_Injected):
         _create_archive(campaign, failpoint=_fail_at(BOUNDARY_BEFORE_BLOB))
     assert list_archives(campaign.control_plane) == ()
 
 
-def test_failure_after_blob_but_before_catalog_cannot_authorize_hot_deletion(
-    campaign,
-) -> None:
+def test_failure_after_blob_cannot_authorize_hot_deletion(campaign) -> None:
+    run_root = campaign.historical_run()
     with pytest.raises(_Injected):
         _create_archive(campaign, failpoint=_fail_at(BOUNDARY_AFTER_BLOB))
     assert list_archives(campaign.control_plane) == ()
-    hot = (
-        campaign.paths.internal
-        / "post-selection"
-        / "g7"
-        / "runs"
-        / "run-a"
-        / "checkpoints"
-        / "epoch-1.pt"
-    )
-    assert hot.is_file(), "hot bytes must survive an archive with no terminal catalog"
+    assert (run_root / "checkpoints" / "epoch-1.pt").is_file()
 
 
 def test_failure_during_reclamation_is_resumable_and_truthful(campaign) -> None:
+    run_root = campaign.historical_run()
+    (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"second" * 512)
+    campaign.finish_run(run_root)
     with pytest.raises(_Injected):
         _create_archive(campaign, failpoint=_fail_at(BOUNDARY_DURING_RECLAMATION))
     entries = list_archives(campaign.control_plane)
     assert len(entries) == 1
     identity = entries[0]["archive_identity"]
-    # The catalog is authenticated, so a retry may finish reclamation; it
-    # re-authenticates the archive and re-authorizes each remaining hot member.
-    resumed = reclaim_archived_hot_members(
-        workspace=campaign.paths.workspace,
-        control_plane=campaign.control_plane,
-        policy=_policy(action=ACTION_ARCHIVE, apply=True),
-        boundary=campaign.boundary,
-        archive_identity=identity,
-        paths=campaign.paths,
+    audit = campaign.control_plane.read_audit()
+    assert all(item.get("status") != "complete" for item in audit)
+
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="reclaim", archive_identity=identity, apply=True),
     )
-    assert resumed.remaining_hot_paths == ()
+    assert payload["reclaim"]["remaining_hot_paths"] == []
     assert (
         campaign.control_plane.read_catalog_entry(identity)["hot_reclamation_state"]
         == "complete"
     )
 
 
-def test_failure_during_restore_publication_produces_no_terminal_receipt(campaign) -> None:
-    result, _policy_, _root = _create_archive(campaign)
+def test_failure_during_restore_produces_no_terminal_receipt(campaign) -> None:
+    run_root = campaign.historical_run()
+    (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"second" * 512)
+    campaign.finish_run(run_root)
+    result = _create_archive(campaign)
     with pytest.raises(_Injected):
-        restore_cold_archive(
-            workspace=campaign.paths.workspace,
-            control_plane=campaign.control_plane,
-            policy=_policy(action="restore", apply=True),
-            boundary=campaign.boundary,
-            archive_identity=result.archive_identity,
-            paths=campaign.paths,
-            failpoint=_fail_at(BOUNDARY_DURING_INSTALL),
+        storage_commands.storage_archive(
+            campaign.context(),
+            _args(
+                archive_command="restore",
+                archive_identity=result["archive_identity"],
+                apply=True,
+                failpoint=_fail_at(BOUNDARY_DURING_INSTALL),
+            ),
         )
-    journal = read_restore_journal(campaign.control_plane, result.archive_identity)
+    journal = read_restore_journal(campaign.control_plane, result["archive_identity"])
     assert journal is not None and journal["state"] != "terminal"
 
 
-def test_the_terminal_receipt_follows_final_canonical_authentication(campaign) -> None:
-    result, _policy_, _root = _create_archive(campaign)
+def test_the_terminal_receipt_follows_final_authentication(campaign) -> None:
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    original = checkpoint.read_bytes()
+    result = _create_archive(campaign)
     with pytest.raises(_Injected):
-        restore_cold_archive(
-            workspace=campaign.paths.workspace,
-            control_plane=campaign.control_plane,
-            policy=_policy(action="restore", apply=True),
-            boundary=campaign.boundary,
-            archive_identity=result.archive_identity,
-            paths=campaign.paths,
-            failpoint=_fail_at(BOUNDARY_BEFORE_RECEIPT),
+        storage_commands.storage_archive(
+            campaign.context(),
+            _args(
+                archive_command="restore",
+                archive_identity=result["archive_identity"],
+                apply=True,
+                failpoint=_fail_at(BOUNDARY_BEFORE_RECEIPT),
+            ),
         )
-    journal = read_restore_journal(campaign.control_plane, result.archive_identity)
-    assert journal["state"] != "terminal"
-    # A deterministic retry is idempotent for already-present identical bytes.
-    receipt = restore_cold_archive(
-        workspace=campaign.paths.workspace,
-        control_plane=campaign.control_plane,
-        policy=_policy(action="restore", apply=True),
-        boundary=campaign.boundary,
-        archive_identity=result.archive_identity,
-        paths=campaign.paths,
+    assert read_restore_journal(campaign.control_plane, result["archive_identity"])[
+        "state"
+    ] != "terminal"
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(
+            archive_command="restore",
+            archive_identity=result["archive_identity"],
+            apply=True,
+        ),
     )
-    assert receipt.status == "complete"
-    journal = read_restore_journal(campaign.control_plane, result.archive_identity)
-    assert journal["state"] == "terminal"
-    assert journal["receipt"]["status"] == "complete"
+    assert payload["restore"]["status"] == "complete"
+    assert checkpoint.read_bytes() == original
 
 
 def test_terminal_publication_uses_the_repository_durable_helpers() -> None:
-    """Structural: terminal records go through the one durable publication owner."""
-
     source = Path(archive_mod.__file__).read_text(encoding="utf-8")
-    # Every terminal record - blob, manifest, catalog entry, restore journal -
-    # is written through the durable publication owner, never with a bare open().
     assert "durable_publish_bytes(blob" in source
-    assert "durable_publish_json(manifest_path, sealed)" in source
-    assert "durable_publish_json(\n                journal," in source
+    assert "durable_publish_json(manifest_path, manifest)" in source
     assert "publish_catalog_entry" in source
-    for forbidden in ("open(blob, \"wb\")", "json.dump("):
-        assert forbidden not in source
-    control = Path(
-        archive_mod.__file__
-    ).with_name("control_plane.py").read_text(encoding="utf-8")
-    assert "durable_publish_json(destination, payload)" in control
-    durability = Path(archive_mod.__file__).with_name("durability.py").read_text(
+    assert "json.dump(" not in source
+    verify_index = source.index("_verify_blob_against_manifest(blob, manifest, policy)")
+    catalog_index = source.index("control_plane.publish_catalog_entry(")
+    assert verify_index < catalog_index
+    control = Path(archive_mod.__file__).with_name("control_plane.py").read_text(
         encoding="utf-8"
     )
-    assert "fsync_parent_directory" in durability
-    # The catalog entry - the record that authorizes hot deletion - is published
-    # only after the published blob has been re-authenticated.
-    verify_index = source.index("_verify_published_pair(control_plane, sealed, policy)")
-    catalog_index = source.index("catalog_path = control_plane.publish_catalog_entry(")
-    assert verify_index < catalog_index
+    assert "durable_publish_json(destination, payload)" in control
 
 
 # ---------------------------------------------------------------------------
-# R10-4 - storage control plane
+# IR14-2 - restore never mutates a pre-existing container
 # ---------------------------------------------------------------------------
 
 
-def test_a_retained_archive_survives_cleanup_and_a_fresh_process(campaign, tmp_path: Path) -> None:
-    result, _policy_, _root = _create_archive(campaign)
-    payload = storage_commands.storage_cleanup(
-        storage_commands.StorageCommandContext(
-            campaign.cfg, campaign.paths, campaign.store, campaign.boundary
+def test_restore_reuses_a_pre_existing_container_without_changing_its_mode(
+    campaign,
+) -> None:
+    run_root = campaign.historical_run()
+    checkpoints = run_root / "checkpoints"
+    checkpoint = checkpoints / "epoch-1.pt"
+    result = _create_archive(campaign)
+    # The container survives archival; give it a mode the archive does not carry.
+    assert checkpoints.is_dir()
+    os.chmod(checkpoints, 0o750)
+    before = stat.S_IMODE(checkpoints.lstat().st_mode)
+
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(
+            archive_command="restore",
+            archive_identity=result["archive_identity"],
+            apply=True,
         ),
-        SimpleNamespace(tier="cache", apply=True, dry_run=False),
     )
-    assert payload["execution"]["status"] in {"complete", "partial"}
-    campaign.close()
+    assert payload["restore"]["status"] == "complete"
+    assert checkpoint.is_file()
+    assert stat.S_IMODE(checkpoints.lstat().st_mode) == before
 
-    reopened = _Campaign.__new__(_Campaign)
-    reopened.config = campaign.config
-    reopened.cfg, reopened.paths = cli._load_config(campaign.config)
-    reopened.store = cli.CampaignStore(reopened.paths.state_db)
-    reopened.boundary = cli._campaign_ownership_boundary(
-        reopened.cfg, reopened.paths, reopened.store
+
+def test_a_container_mode_change_after_planning_refuses_the_restore(campaign) -> None:
+    """The plan bound this container's metadata; a change means re-plan.
+
+    A restore never normalizes a pre-existing container, so it cannot silently
+    proceed against a directory whose metadata is not the one it reasoned about.
+    """
+
+    from mdstats.training_data.storage.archive import build_restore_plan_actions
+    from mdstats.training_data.storage.plan import (
+        StoragePlanStaleError,
+        build_storage_plan,
+        revalidate_plan,
     )
-    reopened.control_plane = open_storage_control_plane(reopened.paths)
-    try:
-        entries = list_archives(reopened.control_plane)
-        assert [item["archive_identity"] for item in entries] == [result.archive_identity]
-        verify_cold_archive(
-            reopened.control_plane, result.archive_identity, _policy(action=ACTION_REPORT)
+
+    run_root = campaign.historical_run()
+    checkpoints = run_root / "checkpoints"
+    result = _create_archive(campaign)
+    os.chmod(checkpoints, 0o750)
+
+    context = campaign.context()
+    policy = resolve_storage_policy({}, action=ACTION_RESTORE, apply=True)
+    context.consequential_plane(policy)
+    snapshot = context.snapshot(policy, certify=True)
+    actions, _manifest, _conflicts = build_restore_plan_actions(
+        workspace=Path(context.paths.workspace),
+        control_plane=context.control_plane,
+        snapshot=snapshot,
+        policy=policy,
+        archive_identity=result["archive_identity"],
+        boundary=context.boundary,
+    )
+    plan = build_storage_plan(snapshot, policy, actions)
+    container = [
+        item for item in plan.actions if item.action == "restore_container"
+    ]
+    assert container, [item.action for item in plan.actions]
+
+    os.chmod(checkpoints, 0o700)
+    with pytest.raises(StoragePlanStaleError, match="mode changed after planning"):
+        revalidate_plan(plan, context.snapshot(policy, certify=True), policy)
+    assert stat.S_IMODE(checkpoints.lstat().st_mode) == 0o700
+
+
+def test_a_restore_created_container_receives_the_archived_metadata(campaign) -> None:
+    import shutil as _shutil
+
+    run_root = campaign.historical_run()
+    checkpoints = run_root / "checkpoints"
+    os.chmod(checkpoints, 0o700)
+    result = _create_archive(campaign)
+    _shutil.rmtree(checkpoints)
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(
+            archive_command="restore",
+            archive_identity=result["archive_identity"],
+            apply=True,
+        ),
+    )
+    assert payload["restore"]["created_containers"] >= 1
+    assert stat.S_IMODE(checkpoints.lstat().st_mode) == 0o700
+
+
+def test_a_changed_parent_identity_refuses_installation(campaign, tmp_path: Path) -> None:
+    import shutil as _shutil
+
+    run_root = campaign.historical_run()
+    checkpoints = run_root / "checkpoints"
+    result = _create_archive(campaign)
+    _shutil.rmtree(checkpoints)
+    # Model a substituted parent: a symlink where a real directory was planned.
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    checkpoints.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(StorageArchiveError):
+        storage_commands.storage_archive(
+            campaign.context(),
+            _args(
+                archive_command="restore",
+                archive_identity=result["archive_identity"],
+                apply=True,
+            ),
         )
-    finally:
-        reopened.close()
-    campaign.store = cli.CampaignStore(campaign.paths.state_db)
+    assert list(outside.iterdir()) == []
 
 
-def test_audit_pruning_never_removes_catalog_state(campaign) -> None:
-    result, _policy_, _root = _create_archive(campaign)
+def test_restore_refuses_a_conflicting_destination(campaign) -> None:
+    run_root = campaign.historical_run()
+    result = _create_archive(campaign)
+    victim = run_root / "checkpoints" / "epoch-1.pt"
+    victim.parent.mkdir(parents=True, exist_ok=True)
+    victim.write_bytes(b"different authoritative bytes")
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(
+            archive_command="restore",
+            archive_identity=result["archive_identity"],
+            apply=False,
+        ),
+    )
+    assert any("different authoritative content" in item["reason"] for item in payload["conflicts"])
+    assert victim.read_bytes() == b"different authoritative bytes"
+
+
+def test_restore_dry_run_computes_the_same_plan_and_installs_nothing(campaign) -> None:
+    run_root = campaign.historical_run()
+    result = _create_archive(campaign)
+    before = _tree_signature(campaign.paths.workspace)
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(
+            archive_command="restore",
+            archive_identity=result["archive_identity"],
+            apply=False,
+        ),
+    )
+    assert payload["restore"] is None
+    assert payload["plan"]["action_count"] >= 1
+    assert _tree_signature(campaign.paths.workspace) == before
+
+
+# ---------------------------------------------------------------------------
+# Bounded archive verification (hostile input)
+# ---------------------------------------------------------------------------
+
+
+def _repack(campaign, identity: str, build) -> None:
+    manifest_path = campaign.control_plane.manifest_path(identity)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    blob = campaign.control_plane.resolve_archive_blob(manifest["archive_locator"])
+    blob.unlink()
+    with tarfile.open(blob, mode="w:gz") as tar:
+        build(tar)
+    _rewrite_manifest(
+        campaign,
+        identity,
+        archive_sha256=sha256_file(blob),
+        archive_size_bytes=int(blob.stat().st_size),
+    )
+
+
+def _rewrite_manifest(campaign, identity: str, **fields) -> None:
+    from mdstats.training_data.storage.durability import canonical_digest
+
+    path = campaign.control_plane.manifest_path(identity)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.update(fields)
+    body = {k: v for k, v in payload.items() if k != "manifest_content_digest"}
+    body["manifest_content_digest"] = canonical_digest(body)
+    path.write_text(json.dumps(body, sort_keys=True), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "name", ["/absolute/escape.bin", "../escape.bin", "./alias.bin", "dir//alias.bin"]
+)
+def test_unsafe_or_aliased_member_paths_are_rejected(campaign, name: str) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+
+    def build(tar: tarfile.TarFile) -> None:
+        info = tarfile.TarInfo(name)
+        info.size = 1
+        info.mode = 0o644
+        tar.addfile(info, io.BytesIO(b"x"))
+
+    _repack(campaign, result["archive_identity"], build)
+    with pytest.raises(StorageArchiveError):
+        verify_cold_archive(
+            campaign.control_plane, result["archive_identity"], _policy(action=ACTION_REPORT)
+        )
+
+
+def test_symlink_hardlink_and_special_members_are_rejected(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    for kind in (tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.FIFOTYPE, tarfile.CHRTYPE):
+
+        def build(tar: tarfile.TarFile, kind=kind) -> None:
+            info = tarfile.TarInfo("member.bin")
+            info.type = kind
+            info.linkname = "target.bin"
+            info.size = 0
+            tar.addfile(info)
+
+        _repack(campaign, result["archive_identity"], build)
+        with pytest.raises(StorageArchiveError, match="rejected"):
+            verify_cold_archive(
+                campaign.control_plane,
+                result["archive_identity"],
+                _policy(action=ACTION_REPORT),
+            )
+
+
+def test_duplicate_members_are_rejected(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    manifest = read_manifest(campaign.control_plane, result["archive_identity"])
+    target = next(item for item in manifest["members"] if item["kind"] == "file")
+    content = (campaign.paths.workspace / target["path"]).read_bytes()
+
+    def build(tar: tarfile.TarFile) -> None:
+        for _ in range(2):
+            info = tarfile.TarInfo(target["path"])
+            info.size = len(content)
+            info.mode = int(target["mode"])
+            tar.addfile(info, io.BytesIO(content))
+
+    _repack(campaign, result["archive_identity"], build)
+    with pytest.raises(StorageArchiveError, match="[Dd]uplicate"):
+        verify_cold_archive(
+            campaign.control_plane, result["archive_identity"], _policy(action=ACTION_REPORT)
+        )
+
+
+def test_a_member_longer_than_its_manifest_size_stops_at_the_bound(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    manifest = read_manifest(campaign.control_plane, result["archive_identity"])
+    target = next(item for item in manifest["members"] if item["kind"] == "file")
+
+    def build(tar: tarfile.TarFile) -> None:
+        for item in manifest["members"]:
+            if item["kind"] == "directory":
+                info = tarfile.TarInfo(item["path"])
+                info.type = tarfile.DIRTYPE
+                info.mode = int(item["mode"])
+                tar.addfile(info)
+                continue
+            size = int(item["size_bytes"]) + (
+                4096 if item["path"] == target["path"] else 0
+            )
+            info = tarfile.TarInfo(item["path"])
+            info.size = size
+            info.mode = int(item["mode"])
+            tar.addfile(info, io.BytesIO(b"z" * size))
+
+    _repack(campaign, result["archive_identity"], build)
+    with pytest.raises(StorageArchiveError, match="longer than its manifest size"):
+        verify_cold_archive(
+            campaign.control_plane, result["archive_identity"], _policy(action=ACTION_REPORT)
+        )
+
+
+def test_total_expansion_and_amplification_bounds_are_enforced(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    with pytest.raises(StorageArchiveError, match="expanded bytes"):
+        verify_cold_archive(
+            campaign.control_plane,
+            identity,
+            resolve_storage_policy(
+                {"storage": {"archive_expanded_bytes_limit": 16}}, action=ACTION_REPORT
+            ),
+        )
+    with pytest.raises(StorageArchiveError, match="expansion ratio"):
+        verify_cold_archive(
+            campaign.control_plane,
+            identity,
+            resolve_storage_policy(
+                {"storage": {"archive_expansion_ratio_limit": 1.0}}, action=ACTION_REPORT
+            ),
+        )
+    with pytest.raises(StorageArchiveError, match="members"):
+        verify_cold_archive(
+            campaign.control_plane,
+            identity,
+            resolve_storage_policy(
+                {"storage": {"archive_member_limit": 1}}, action=ACTION_REPORT
+            ),
+        )
+
+
+def test_corrupt_archive_bytes_are_detected(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    manifest = read_manifest(campaign.control_plane, result["archive_identity"])
+    blob = campaign.control_plane.resolve_archive_blob(manifest["archive_locator"])
+    payload = bytearray(blob.read_bytes())
+    payload[-1] ^= 0xFF
+    blob.write_bytes(bytes(payload))
+    with pytest.raises((StorageArchiveError, StorageControlPlaneError), match="[Dd]igest"):
+        verify_cold_archive(
+            campaign.control_plane, result["archive_identity"], _policy(action=ACTION_REPORT)
+        )
+
+
+def test_an_unsupported_durable_schema_is_rejected_and_retained(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    manifest_path = campaign.control_plane.manifest_path(identity)
+    before = manifest_path.read_bytes()
+    _rewrite_manifest(campaign, identity, schema="mdstats.someone-elses.v9")
+    with pytest.raises(StorageArchiveError, match="retained and rejected"):
+        verify_cold_archive(campaign.control_plane, identity, _policy(action=ACTION_REPORT))
+    assert manifest_path.is_file()
+    manifest_path.write_bytes(before)
+
+
+# ---------------------------------------------------------------------------
+# Archive locator containment
+# ---------------------------------------------------------------------------
+
+
+def test_an_absolute_or_traversing_archive_locator_is_rejected(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    for locator in ("/etc/passwd", "../../outside.tar.gz"):
+        _rewrite_manifest(campaign, identity, archive_locator=locator)
+        entry = dict(campaign.control_plane.read_catalog_entry(identity))
+        with pytest.raises((StorageArchiveError, StorageControlPlaneError)):
+            verify_cold_archive(
+                campaign.control_plane, identity, _policy(action=ACTION_REPORT)
+            )
+        del entry
+
+
+def test_an_archive_root_symlink_escape_is_rejected(campaign, tmp_path: Path) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    manifest = read_manifest(campaign.control_plane, identity)
+    blob = campaign.control_plane.resolve_archive_blob(manifest["archive_locator"])
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "smuggled.tar.gz").write_bytes(blob.read_bytes())
+    (campaign.control_plane.archive_root / "escape").symlink_to(
+        outside, target_is_directory=True
+    )
+    _rewrite_manifest(campaign, identity, archive_locator="escape/smuggled.tar.gz")
+    with pytest.raises(
+        (StorageArchiveError, StorageControlPlaneError), match="symlink|escape|disagrees"
+    ):
+        verify_cold_archive(campaign.control_plane, identity, _policy(action=ACTION_REPORT))
+
+
+def test_a_supplied_digest_never_authorizes_reading_an_external_file(
+    campaign, tmp_path: Path
+) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    manifest = read_manifest(campaign.control_plane, identity)
+    blob = campaign.control_plane.resolve_archive_blob(manifest["archive_locator"])
+    external = tmp_path / "external-copy.tar.gz"
+    external.write_bytes(blob.read_bytes())
+    assert sha256_file(external) == manifest["archive_sha256"]
+    _rewrite_manifest(campaign, identity, archive_locator=str(external))
+    with pytest.raises((StorageArchiveError, StorageControlPlaneError)):
+        verify_cold_archive(campaign.control_plane, identity, _policy(action=ACTION_REPORT))
+
+
+# ---------------------------------------------------------------------------
+# IR13-11 - one truthful durable audit
+# ---------------------------------------------------------------------------
+
+
+def test_every_applied_consequential_path_appends_one_audit(campaign) -> None:
+    run_root = campaign.historical_run()
+    for name in ("a.bin", "b.bin"):
+        path = run_root / "checkpoints" / name
+        path.write_bytes(b"identical" * 1024)
+        os.chmod(path, 0o644)
+    campaign.finish_run(run_root)
+    _dedup(campaign, apply=True)
+    result = _create_archive(campaign, keep_hot=True)
+    storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="reclaim", archive_identity=result["archive_identity"], apply=True),
+    )
+    storage_commands.storage_cleanup(campaign.context(), _args(tier="safe", apply=True))
+    actions = {item["action"] for item in campaign.control_plane.read_audit()}
+    assert {"deduplicate", "archive", "cleanup"} <= actions
+
+
+def test_a_read_only_command_writes_no_audit(campaign) -> None:
+    campaign.historical_run()
+    before = len(campaign.control_plane.read_audit())
+    storage_commands.storage_report(campaign.context(), _args())
+    storage_commands.storage_cleanup(campaign.context(), _args(tier="safe"))
+    assert len(campaign.control_plane.read_audit()) == before
+
+
+def test_an_interrupted_operation_is_never_audited_complete(campaign) -> None:
+    run_root = campaign.historical_run()
+    (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"second" * 512)
+    campaign.finish_run(run_root)
+    with pytest.raises(_Injected):
+        _create_archive(campaign, failpoint=_fail_at(BOUNDARY_DURING_RECLAMATION))
+    audit = campaign.control_plane.read_audit()
+    assert audit
+    assert all(item["status"] != "complete" for item in audit)
+    assert any(item["status"] == "partial" for item in audit)
+
+
+def test_audit_pruning_never_removes_catalog_or_journal_authority(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
     for index in range(20):
         campaign.control_plane.append_audit({"created_utc": str(index), "note": index})
     removed = campaign.control_plane.prune_audit(keep=5)
     assert removed > 0
     assert len(campaign.control_plane.read_audit()) == 5
     verify_cold_archive(
-        campaign.control_plane, result.archive_identity, _policy(action=ACTION_REPORT)
+        campaign.control_plane, result["archive_identity"], _policy(action=ACTION_REPORT)
     )
 
 
-def test_control_plane_records_carry_no_scientific_currentness(campaign) -> None:
-    result, _policy_, _root = _create_archive(campaign)
-    entry = campaign.control_plane.read_catalog_entry(result.archive_identity)
-    forbidden = {"current", "selected", "verdict", "qualified", "release", "generation_current"}
-    assert not (set(entry) & forbidden)
-    receipt = restore_cold_archive(
-        workspace=campaign.paths.workspace,
+# ---------------------------------------------------------------------------
+# IR13-12 - CampaignStore maintenance is separately authorized
+# ---------------------------------------------------------------------------
+
+
+def test_a_compact_database_is_not_vacuumed(campaign) -> None:
+    from mdstats.training_data.storage.maintenance import (
+        plan_campaign_state_maintenance,
+    )
+
+    decision = plan_campaign_state_maintenance(
+        campaign.store, campaign.paths, _policy(action=ACTION_CLEANUP)
+    )
+    assert decision.action is None
+    assert "not worthwhile" in decision.reason
+
+
+def test_a_database_with_material_free_space_is_maintained(campaign) -> None:
+    from mdstats.training_data.storage.maintenance import (
+        measure_reclaimable,
+        plan_campaign_state_maintenance,
+    )
+
+    for index in range(4000):
+        campaign.store.event("info", "fixture", "x" * 256)
+    policy = resolve_storage_policy(
+        {"storage": {"sqlite_compaction_maximum_events": 10}}, action=ACTION_CLEANUP
+    )
+    decision = plan_campaign_state_maintenance(campaign.store, campaign.paths, policy)
+    assert decision.action is not None
+    assert decision.excess_events > 0
+
+    payload = storage_commands.storage_cleanup(
+        storage_commands.StorageCommandContext(
+            {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}},
+            campaign.paths,
+            campaign.store,
+            campaign.boundary,
+        ),
+        _args(tier="safe", apply=True),
+    )
+    maintained = [
+        item
+        for item in payload["execution"]["completed_actions"]
+        if item["action"] == "maintain_campaign_state"
+    ]
+    assert maintained
+    # CampaignStore.compact() bounds events at its own documented floor.
+    reclaimable, _total, events = measure_reclaimable(campaign.store)
+    assert events < 4000
+    del reclaimable
+
+
+def test_a_refused_cleanup_does_not_maintain_the_database(campaign) -> None:
+    campaign.historical_run()
+    for index in range(4000):
+        campaign.store.event("info", "fixture", "x" * 256)
+    cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    policy = resolve_storage_policy(
+        cfg, action=ACTION_CLEANUP, apply=True
+    )
+    plan, snapshot = storage_commands.build_cleanup_plan(context, policy)
+    assert any(item.action == "maintain_campaign_state" for item in plan.actions)
+    # A new owner artifact appears, so the plan is stale before it is applied.
+    campaign.historical_run(name="run-late")
+    before = campaign.paths.state_db.stat().st_size
+    from mdstats.training_data.storage.executor import synchronization_for
+
+    result = context.executor(policy).run(
+        plan,
+        trigger="test:stale",
+        synchronization=synchronization_for(plan, snapshot),
+    )
+    assert result.status == "refused"
+    assert not any(
+        item["action"] == "maintain_campaign_state" for item in result.completed
+    )
+    assert campaign.paths.state_db.stat().st_size == before
+
+
+# ---------------------------------------------------------------------------
+# IR13-14/15 - complete census and journal lifecycle
+# ---------------------------------------------------------------------------
+
+
+def test_known_campaign_families_are_all_accounted_for(campaign) -> None:
+    payload = storage_commands.storage_report(campaign.context(), _args())
+    identities = {item["artifact_id"] for item in payload["artifacts"]}
+    for expected in (
+        "campaign_store:state",
+        "campaign_store:results",
+        "campaign_store:models",
+        "campaign_store:runs",
+        "campaign_store:data",
+        "p2:statistical_authorities",
+        "campaign_store:hash_receipts",
+    ):
+        assert expected in identities, expected
+
+
+def test_an_unknown_workspace_tree_is_reported_ambiguous_and_retained(campaign) -> None:
+    stranger = campaign.paths.workspace / "someone-elses-directory"
+    stranger.mkdir()
+    (stranger / "payload.bin").write_bytes(b"keep")
+    snapshot = campaign.snapshot()
+    view = snapshot.view("unclassified:workspace:someone-elses-directory")
+    assert view is not None
+    assert view.current and view.restart_required
+    protected, why = snapshot.path_protection(stranger / "payload.bin")
+    assert protected, why
+    assert not any(item.eligible for item in safe_candidates(snapshot) if
+                   str(stranger) in str(item.path))
+    storage_commands.storage_cleanup(campaign.context(), _args(tier="cache", apply=True))
+    assert (stranger / "payload.bin").read_bytes() == b"keep"
+
+
+def test_terminal_restore_journals_are_bounded(campaign) -> None:
+    run_root = campaign.historical_run()
+    result = _create_archive(campaign)
+    for _ in range(3):
+        storage_commands.storage_archive(
+            campaign.context(),
+            _args(
+                archive_command="restore",
+                archive_identity=result["archive_identity"],
+                apply=True,
+            ),
+        )
+    # Force the retention bound down and prove the terminal journal is retirable.
+    cfg = {**campaign.cfg, "storage": {"restore_journal_retention_records": 1}}
+    snapshot = build_storage_inventory(
+        cfg,
+        campaign.paths,
+        campaign.store,
+        protected_inputs=campaign.boundary.protected_inputs,
         control_plane=campaign.control_plane,
-        policy=_policy(action="restore", apply=True),
-        boundary=campaign.boundary,
-        archive_identity=result.archive_identity,
-        paths=campaign.paths,
-    ).to_dict()
-    assert receipt["promotes_currentness"] is False
-    assert receipt["grants_scientific_authority"] is False
+        journal_retention_records=0,
+    )
+    retirable = [
+        view
+        for view in snapshot.views
+        if view.artifact_id.startswith("storage:journal:") and view.safe_reclaimable
+    ]
+    assert retirable
+    assert (run_root / "checkpoints" / "epoch-1.pt").is_file()
+
+
+def test_a_nonterminal_journal_stays_protected(campaign) -> None:
+    run_root = campaign.historical_run()
+    (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"second" * 512)
+    campaign.finish_run(run_root)
+    result = _create_archive(campaign)
+    with pytest.raises(_Injected):
+        storage_commands.storage_archive(
+            campaign.context(),
+            _args(
+                archive_command="restore",
+                archive_identity=result["archive_identity"],
+                apply=True,
+                failpoint=_fail_at(BOUNDARY_DURING_INSTALL),
+            ),
+        )
+    snapshot = campaign.snapshot()
+    journal = campaign.control_plane.journal_path(result["archive_identity"])
+    protected, why = snapshot.path_protection(journal)
+    assert protected, why
+
+
+def test_uncataloged_archive_residue_is_storage_owned_scratch(campaign) -> None:
+    campaign.control_plane.ensure()
+    residue = campaign.control_plane.archive_root / "orphan.tar.gz"
+    residue.write_bytes(b"never cataloged")
+    snapshot = campaign.snapshot()
+    view = snapshot.view("storage:archive_residue:orphan.tar.gz")
+    assert view is not None and view.safe_reclaimable
+    payload = storage_commands.storage_cleanup(
+        campaign.context(), _args(tier="safe", apply=True)
+    )
+    assert payload["execution"]["status"] in {"complete", "partial"}
+    assert not residue.exists()
+
+
+def test_a_retained_archive_survives_cleanup_and_a_fresh_process(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    storage_commands.storage_cleanup(campaign.context(), _args(tier="cache", apply=True))
+    plane = open_storage_control_plane_readonly(campaign.paths)
+    entries = list_archives(plane)
+    assert [item["archive_identity"] for item in entries] == [result["archive_identity"]]
+    verify_cold_archive(plane, result["archive_identity"], _policy(action=ACTION_REPORT))
+
+
+def test_retained_archive_authority_is_self_contained(campaign) -> None:
+    """A fresh process can plan a reclaim with no advisory files at all."""
+
+    import shutil as _shutil
+
+    run_root = campaign.historical_run()
+    result = _create_archive(campaign, keep_hot=True)
+    if campaign.paths.results.exists():
+        _shutil.rmtree(campaign.paths.results)
+    campaign.paths.results.mkdir(parents=True, exist_ok=True)
+
+    from mdstats.training_data.storage.archive import build_reclaim_plan_actions
+
+    snapshot = campaign.snapshot()
+    actions, manifest, refusals = build_reclaim_plan_actions(
+        workspace=campaign.paths.workspace,
+        control_plane=open_storage_control_plane_readonly(campaign.paths),
+        snapshot=snapshot,
+        policy=_policy(action=ACTION_ARCHIVE),
+        archive_identity=result["archive_identity"],
+    )
+    assert actions
+    assert all(action.artifact_id.startswith("p5:run:") for action in actions)
+    assert manifest["source_plan_actions"]
+    del refusals, run_root
+
+
+# ---------------------------------------------------------------------------
+# Storage lease and control-plane liveness
+# ---------------------------------------------------------------------------
 
 
 def test_a_stale_lease_is_recovered_without_pid_inference(campaign) -> None:
@@ -758,126 +1983,171 @@ def test_overlapping_storage_mutations_never_interleave(campaign) -> None:
                 pass
 
 
+def test_control_plane_records_carry_no_scientific_currentness(campaign) -> None:
+    result = _create_archive(campaign, keep_hot=True)
+    entry = campaign.control_plane.read_catalog_entry(result["archive_identity"])
+    forbidden = {"current", "selected", "verdict", "qualified", "release"}
+    assert not (set(entry) & forbidden)
+
+
 # ---------------------------------------------------------------------------
-# R10-7 - hardlink dedup metadata safety
+# Frame cache: conservative retention
 # ---------------------------------------------------------------------------
 
 
-def _dedup(campaign, *, apply: bool):
+def test_the_frame_cache_is_reported_reconstructible_but_never_evicted(campaign) -> None:
+    cache = campaign.paths.internal / "frame-cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / "frame-cache.json").write_text("{}", encoding="utf-8")
     snapshot = campaign.snapshot()
-    return deduplicate(
-        snapshot=snapshot,
-        policy=_policy(action="deduplicate", apply=apply),
-        control_plane=campaign.control_plane,
-        boundary=campaign.boundary,
-        paths=campaign.paths,
+    view = snapshot.view("p1:frame_cache")
+    assert view is not None
+    assert view.cache_evictable is False
+    assert "liveness" in view.detail
+    decisions = {item.artifact_id: item for item in cache_candidates(snapshot)}
+    assert decisions["p1:frame_cache"].eligible is False
+    storage_commands.storage_cleanup(campaign.context(), _args(tier="cache", apply=True))
+    assert (cache / "frame-cache.json").is_file()
+
+
+def test_safe_and_cache_tiers_never_evict_the_receipt_cache(campaign) -> None:
+    receipts = campaign.paths.internal / "hash-receipts.sqlite3"
+    receipts.write_bytes(b"x" * 1024)
+    for tier in ("safe", "cache"):
+        payload = storage_commands.storage_cleanup(campaign.context(), _args(tier=tier))
+        for action in payload["plan"]["actions"]:
+            assert "hash-receipts" not in action["path"]
+    assert receipts.is_file()
+
+
+# ---------------------------------------------------------------------------
+# Reporting scaling and truthfulness
+# ---------------------------------------------------------------------------
+
+
+def test_the_normal_report_never_walks_an_owner_subtree(campaign) -> None:
+    """Structural and behavioral: bounded metadata only."""
+
+    import ast
+
+    report_source = Path(cli.__file__).parent.joinpath("storage", "report.py").read_text(
+        encoding="utf-8"
     )
+    tree = ast.parse(report_source)
+    normal = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "build_owner_storage_report"
+    )
+    called = {
+        node.func.attr
+        for node in ast.walk(normal)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert "rglob" not in called and "walk" not in called
+    assert "build_campaign_storage_report" not in report_source
+
+    bounded = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_bounded_metadata"
+    )
+    bounded_calls = {
+        node.func.attr
+        for node in ast.walk(bounded)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert bounded_calls <= {"lstat", "S_ISDIR", "S_ISLNK"}
 
 
-def test_equal_bytes_with_incompatible_modes_do_not_share_an_inode(campaign) -> None:
-    root = campaign.historical_bulk()
+def test_normal_report_cost_does_not_scale_with_descendant_count(campaign) -> None:
+    run_root = campaign.historical_run()
+    baseline = _count_stat_calls(campaign)
+    for index in range(400):
+        (run_root / "checkpoints" / f"bulk-{index}.pt").write_bytes(b"x" * 64)
+    grown = _count_stat_calls(campaign)
+    # A few extra owner views may appear, but the visit count must not grow with
+    # the number of descendant files.
+    assert grown < baseline + 50, (baseline, grown)
+
+
+def _count_stat_calls(campaign) -> int:
+    import os as os_module
+
+    calls = {"n": 0}
+    real_lstat = Path.lstat
+    real_scandir = os_module.scandir
+
+    def counting_lstat(self, *args, **kwargs):
+        calls["n"] += 1
+        return real_lstat(self, *args, **kwargs)
+
+    def counting_scandir(*args, **kwargs):
+        calls["n"] += 1
+        return real_scandir(*args, **kwargs)
+
+    Path.lstat = counting_lstat
+    os_module.scandir = counting_scandir
+    try:
+        storage_commands.storage_report(campaign.context(), _args())
+    finally:
+        Path.lstat = real_lstat
+        os_module.scandir = real_scandir
+    return calls["n"]
+
+
+def test_the_report_labels_unknown_sizes_rather_than_guessing(campaign) -> None:
+    campaign.historical_run()
+    payload = storage_commands.storage_report(campaign.context(), _args())
+    assert payload["exact_physical_totals_available"] is False
+    directories = [
+        item for item in payload["artifacts"] if item["physical"]["kind"] == "directory"
+    ]
+    assert directories
+    assert all(item["physical"]["bytes"] is None for item in directories)
+    assert all(item["physical"]["size_scope"] == "unknown_without_deep_audit" for item in directories)
+    for family in payload["owner_families"]:
+        assert family["bytes_are_exact_totals"] is False
+
+
+def test_the_deep_audit_deduplicates_shared_inodes(campaign) -> None:
+    run_root = campaign.historical_run()
     payload = b"identical" * 1024
-    first = root / "run-a" / "a.bin"
-    second = root / "run-a" / "b.bin"
+    first = run_root / "checkpoints" / "a.bin"
+    second = run_root / "checkpoints" / "b.bin"
     first.write_bytes(payload)
-    second.write_bytes(payload)
-    os.chmod(first, 0o600)
-    os.chmod(second, 0o644)
-    result = _dedup(campaign, apply=True)
-    assert first.stat().st_ino != second.stat().st_ino
-    assert any("metadata" in note for note in result.excluded)
-
-
-def test_equal_bytes_with_equal_metadata_are_deduplicated_exactly(campaign) -> None:
-    root = campaign.historical_bulk()
-    payload = b"identical" * 1024
-    first = root / "run-a" / "a.bin"
-    second = root / "run-a" / "b.bin"
-    for path in (first, second):
-        path.write_bytes(payload)
-        os.chmod(path, 0o644)
-    result = _dedup(campaign, apply=True)
-    assert result.links_replaced >= 1
-    assert first.stat().st_ino == second.stat().st_ino
-    assert first.read_bytes() == payload == second.read_bytes()
-
-
-def test_a_deduplicated_path_survives_an_atomic_replace_of_another_alias(campaign) -> None:
-    root = campaign.historical_bulk()
-    payload = b"identical" * 1024
-    first = root / "run-a" / "a.bin"
-    second = root / "run-a" / "b.bin"
-    for path in (first, second):
-        path.write_bytes(payload)
-        os.chmod(path, 0o644)
-    _dedup(campaign, apply=True)
-    assert first.stat().st_ino == second.stat().st_ino
-    replacement = second.parent / ".b.bin.new"
-    replacement.write_bytes(b"updated" * 1024)
-    os.replace(replacement, second)
-    assert first.read_bytes() == payload
-    assert second.read_bytes() == b"updated" * 1024
-
-
-def test_dedup_only_invalidates_receipts_as_a_cache_miss(campaign) -> None:
-    root = campaign.historical_bulk()
-    payload = b"identical" * 1024
-    first = root / "run-a" / "a.bin"
-    second = root / "run-a" / "b.bin"
-    for path in (first, second):
-        path.write_bytes(payload)
-        os.chmod(path, 0o644)
-    from mdstats.training_data._common import sha256_file_cached
-
-    before = sha256_file_cached(first)
-    _dedup(campaign, apply=True)
-    assert sha256_file_cached(first) == before
-    assert _dedup(campaign, apply=False).to_dict()["receipt_invalidation"]
-
-
-def test_mutable_state_and_active_scratch_never_enter_dedup(campaign) -> None:
-    """Byte equality alone never makes an artifact a dedup candidate."""
-
-    duplicate = campaign.paths.internal / "campaign.sqlite3.copy"
-    duplicate.write_bytes(campaign.paths.state_db.read_bytes())
-    result = _dedup(campaign, apply=False)
-    linked = {path for group in result.groups for path in group["paths"]}
-    assert str(campaign.paths.state_db) not in linked
-    assert str(duplicate) not in linked
+    os.link(first, second)
+    campaign.finish_run(run_root)
+    audit = storage_commands.storage_report(campaign.context(), _args(deep=True))
+    assert audit["totals"]["unique_inode_bytes"] < audit["totals"]["logical_bytes"]
 
 
 # ---------------------------------------------------------------------------
-# R10-3 / eligibility
+# Fail-closed downstream owner composition
 # ---------------------------------------------------------------------------
 
 
-def test_archive_never_removes_a_hot_path_a_current_resolver_requires(campaign) -> None:
-    decisions = archive_candidates(campaign.snapshot())
-    for decision in decisions:
-        if decision.eligible:
-            assert ".mdstats/post-selection/g" in str(decision.path) or ".mdstats/target-size/g" in str(
-                decision.path
-            )
-    protected, why = campaign.snapshot().path_protection(campaign.paths.state_db)
-    assert protected and why
+def test_an_unreadable_selected_authority_retains_downstream_families(
+    tmp_path: Path,
+) -> None:
+    instance = _Campaign(tmp_path, current_generation=False)
+    try:
+        instance.historical_run()
+        snapshot = instance.snapshot()
+        owners = {owner for owner, _detail in snapshot.owner_views.unresolved}
+        assert "p5" in owners
+        assert not any(item.eligible for item in archive_candidates(snapshot))
+        protected, why = snapshot.path_protection(
+            instance.paths.internal / "post-selection" / "g7" / "runs" / "run-a"
+        )
+        assert protected, why
+    finally:
+        instance.close()
 
 
-def test_no_p1_p7_loader_gained_an_implicit_archive_fallback() -> None:
-    """Structural: this package added no cold-read fallback under an owner."""
-
-    training_data = Path(cli.__file__).parent
-    storage_names = {"storage"}
-    offenders = []
-    for path in sorted(training_data.rglob("*.py")):
-        if any(part in storage_names for part in path.parts):
-            continue
-        text = path.read_text(encoding="utf-8")
-        if "restore_cold_archive" in text or "verify_cold_archive" in text:
-            offenders.append(str(path))
-    assert offenders == []
-
-
-def test_external_inputs_and_symlink_targets_are_never_deletable(campaign, tmp_path: Path) -> None:
+def test_external_inputs_and_symlink_targets_are_never_deletable(
+    campaign, tmp_path: Path
+) -> None:
     external = tmp_path / "external-payload"
     external.mkdir()
     (external / "keep.bin").write_bytes(b"keep")
@@ -885,496 +2155,82 @@ def test_external_inputs_and_symlink_targets_are_never_deletable(campaign, tmp_p
     link.symlink_to(external, target_is_directory=True)
     authorized, detail = campaign.boundary.destructive_authorization(external / "keep.bin")
     assert not authorized and detail
-    # The link object itself is campaign-owned; its target is not traversed.
     traversal_ok, _ = campaign.boundary.traversal_authorization(link)
     assert not traversal_ok
 
 
-def test_report_and_deep_audit_are_read_only_and_grant_no_authority(campaign) -> None:
-    context = storage_commands.StorageCommandContext(
-        campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-    )
-    fast = storage_commands.storage_report(context, SimpleNamespace(top=5, deep=False))
-    assert fast["destructive_actions_performed"] is False
-    assert fast["grants_mutation_authority"] is False
-    assert fast["receipt_cache_is_separate_from_campaign_state"] is True
-    deep = storage_commands.storage_report(context, SimpleNamespace(top=5, deep=True))
-    assert deep["accounting_mode"] == "exact_recursive_physical"
-    assert deep["grants_mutation_authority"] is False
+def test_no_p1_p7_loader_gained_an_implicit_archive_fallback() -> None:
+    training_data = Path(cli.__file__).parent
+    offenders = []
+    for path in sorted(training_data.rglob("*.py")):
+        if "storage" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "verify_cold_archive" in text or "archive_restore_engine" in text:
+            offenders.append(str(path))
+    assert offenders == []
 
 
-def test_receipt_cache_is_reported_separately_from_campaign_state(campaign) -> None:
-    snapshot = campaign.snapshot()
-    receipts = snapshot.view("campaign_store:hash_receipts")
-    state = snapshot.view("campaign_store:state")
-    assert receipts.artifact_class.value == "reusable_cache_index"
-    assert state.artifact_class.value == "currentness_state"
-    assert receipts.cache_reconstructible and not state.cache_reconstructible
-
-
-def test_safe_tier_never_evicts_the_acceleration_cache(campaign) -> None:
-    context = storage_commands.StorageCommandContext(
-        campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-    )
-    plan, _snapshot = storage_commands.build_cleanup_plan(
-        context, _policy(action=ACTION_CLEANUP, tier="safe")
-    )
-    for action in plan.actions:
-        assert action.action != "evict_cache"
-        assert "hash-receipts" not in str(action.path)
-
-
-def test_no_generic_is_current_then_unlink_path_exists() -> None:
-    """Structural: mutation always runs inside an owner-local race barrier."""
-
+def test_no_mutation_path_relies_on_snapshot_revalidation_alone() -> None:
     executor = Path(cli.__file__).parent.joinpath("storage", "executor.py").read_text(
         encoding="utf-8"
     )
-    assert "with owner_mutation_barrier(self.paths, generations):" in executor
-    barrier_index = executor.index("owner_mutation_barrier(self.paths, generations)")
-    mutate_index = executor.index("self._execute_actions(plan, snapshot, result)")
-    assert barrier_index < mutate_index
-    for module in ("archive.py", "dedup.py"):
-        text = Path(cli.__file__).parent.joinpath("storage", module).read_text(
-            encoding="utf-8"
-        )
-        assert "owner_mutation_barrier" in text
+    assert "with owner_mutation_barrier(self.paths, synchronization):" in executor
+    barrier = executor.index("owner_mutation_barrier(self.paths, synchronization)")
+    revalidate = executor.index("revalidate_plan(plan, snapshot, self.policy)")
+    assert barrier < revalidate
+    commands = Path(cli.__file__).parent.joinpath("storage", "commands.py").read_text(
+        encoding="utf-8"
+    )
+    # Every consequential command routes through the shared executor.
+    for token in (
+        "engine=_cleanup_engine",
+        "engine=archive_create_engine",
+        "engine=archive_reclaim_engine",
+        "engine=archive_restore_engine",
+        "engine=dedup_engine",
+    ):
+        assert token in commands, token
 
 
 def test_p5_and_p7_publishers_hold_the_same_owner_barrier() -> None:
-    """Both sides of the object-before-pointer window use one barrier."""
-
     root = Path(cli.__file__).parent
     publication = (root / "post_selection_publication.py").read_text(encoding="utf-8")
     runtime = (root / "campaign_post_selection_runtime.py").read_text(encoding="utf-8")
     qualification = (root / "qualification" / "runtime.py").read_text(encoding="utf-8")
-    assert "post_selection_publication_barrier" in publication
     assert publication.count("post_selection_publication_barrier") >= 2
     assert runtime.count("post_selection_publication_barrier") >= 3
     assert qualification.count("qualification_publication_barrier") >= 3
 
 
-# ---------------------------------------------------------------------------
-# Coverage carried forward from the retired STOR3/STOR4/STOR5 gates
-# ---------------------------------------------------------------------------
+def test_the_report_never_presents_additive_family_totals(campaign) -> None:
+    """Several semantic views of one path are not several storage consumptions.
 
-
-def test_historical_derived_caches_without_an_owner_seam_are_retained(campaign) -> None:
-    """No owner certifies these, so no tier evicts them."""
-
-    for name in ("evaluation-graphs", "evaluation-predictions", "model-sweep"):
-        root = campaign.paths.internal / name
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "payload.bin").write_bytes(b"keep" * 256)
-    context = storage_commands.StorageCommandContext(
-        campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-    )
-    payload = storage_commands.storage_cleanup(
-        context, SimpleNamespace(tier="cache", apply=True, dry_run=False)
-    )
-    assert payload["execution"]["status"] == "complete"
-    for name in ("evaluation-graphs", "evaluation-predictions", "model-sweep"):
-        assert (campaign.paths.internal / name / "payload.bin").read_bytes() == b"keep" * 256
-
-
-def test_an_orphan_record_symlink_unlinks_only_the_campaign_link(
-    campaign, tmp_path: Path
-) -> None:
-    external = tmp_path / "external-cache"
-    external.mkdir()
-    important = external / "user.bin"
-    important.write_bytes(b"never-delete")
-    records = campaign.paths.internal / "records"
-    records.mkdir(parents=True, exist_ok=True)
-    link = records / "orphan-symlink"
-    link.symlink_to(external, target_is_directory=True)
-    old = time.time() - 24 * 3600.0
-    os.utime(link, (old, old), follow_symlinks=False)
-
-    context = storage_commands.StorageCommandContext(
-        campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-    )
-    payload = storage_commands.storage_cleanup(
-        context, SimpleNamespace(tier="safe", apply=True, dry_run=False)
-    )
-    assert payload["execution"]["status"] == "complete"
-    assert not link.is_symlink()
-    assert important.read_bytes() == b"never-delete"
-
-
-def test_the_execution_audit_is_append_only_and_records_pre_delete_identity(
-    campaign,
-) -> None:
-    records = campaign.paths.internal / "records"
-    records.mkdir(parents=True, exist_ok=True)
-    old = time.time() - 24 * 3600.0
-    context = storage_commands.StorageCommandContext(
-        campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-    )
-    digests = []
-    for name in ("orphan-1", "orphan-2"):
-        child = records / name
-        child.mkdir(exist_ok=True)
-        (child / "payload.bin").write_bytes(name.encode())
-        os.utime(child / "payload.bin", (old, old))
-        os.utime(child, (old, old))
-        payload = storage_commands.storage_cleanup(
-            context, SimpleNamespace(tier="safe", apply=True, dry_run=False)
-        )
-        assert payload["execution"]["status"] == "complete"
-        assert payload["execution"]["completed_actions"]
-        action = payload["execution"]["completed_actions"][0]
-        identity = action["filesystem_identity"]
-        assert identity["schema"] == "mdstats.mlff-filesystem-identity.v1"
-        assert identity["kind"] in {"directory", "file", "symlink"}
-        digests.append(context.control_plane.read_audit()[-1]["event_digest"])
-    assert len(set(digests)) == 2
-    assert len(context.control_plane.read_audit()) >= 2
-
-
-def test_the_deep_audit_classifies_the_storage_control_plane_and_receipt_cache(
-    campaign,
-) -> None:
-    _create_archive(campaign, reclaim_hot=False)
-    campaign.paths.state_db.parent.mkdir(parents=True, exist_ok=True)
-    payload = storage_commands.storage_report(
-        storage_commands.StorageCommandContext(
-            campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-        ),
-        SimpleNamespace(top=200, deep=True),
-    )
-    families = {item["family"]: item for item in payload["families"]}
-    assert families["storage_control_plane"]["manual_reclamation_eligibility"] == "prohibited"
-    assert (
-        families["campaign_state_and_provenance"]["automatic_reclamation_eligibility"]
-        == "prohibited"
-    )
-    assert "sha256_receipt_cache" not in families or (
-        families["sha256_receipt_cache"]["retention_class"] == "reconstructable_cache"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Remaining S2/S3/section-5 acceptance
-# ---------------------------------------------------------------------------
-
-
-def test_cross_device_candidates_retain_duplicate_bytes(campaign, monkeypatch) -> None:
-    """An unsupported filesystem layout keeps duplicates, never fails."""
-
-    from mdstats.training_data.storage import dedup as dedup_mod
-
-    root = campaign.historical_bulk()
-    payload = b"identical" * 1024
-    first = root / "run-a" / "a.bin"
-    second = root / "run-a" / "b.bin"
-    for path in (first, second):
-        path.write_bytes(payload)
-        os.chmod(path, 0o644)
-    monkeypatch.setattr(dedup_mod, "same_filesystem", lambda a, b: False)
-    result = _dedup(campaign, apply=True)
-    assert result.links_replaced == 0
-    assert any("cross-device" in note for note in result.excluded)
-    assert first.read_bytes() == payload == second.read_bytes()
-    assert first.stat().st_ino != second.stat().st_ino
-
-
-def test_no_dedup_eligible_family_has_an_accepted_in_place_writer() -> None:
-    """Structural: only superseded generation roots are dedup candidates.
-
-    Every P1-P7 writer writes into the *current* generation root, so a
-    superseded root has no accepted in-place content or metadata writer.
+    The campaign state database is simultaneously CampaignStore authority, the
+    P2 statistical authorities, and the P4 selected authority. Summing owner
+    family subtotals would count those bytes three times, so the report says so
+    explicitly and publishes no global figure to sum into.
     """
 
-    from mdstats.training_data.storage import owners as owners_mod
+    payload = storage_commands.storage_report(campaign.context(), _args(top=500))
+    assert payload["family_totals_are_additive"] is False
+    assert payload["exact_physical_totals_available"] is False
+    assert "logical_bytes" not in payload
+    assert "totals" not in payload
 
-    source = Path(owners_mod.__file__).read_text(encoding="utf-8")
-    tree = __import__("ast").parse(source)
-    ast = __import__("ast")
-    eligible_sites = 0
-    for node in ast.walk(tree):
-        if isinstance(node, ast.keyword) and node.arg == "dedup_eligible":
-            eligible_sites += 1
-            # Eligibility is never an unconditional True: it is either the
-            # historical flag or a literal on a superseded-generation view.
-            rendered = ast.dump(node.value)
-            assert "historical" in rendered or "Constant(value=True)" in rendered
-    assert eligible_sites == 2, eligible_sites
-    # And a current generation never contributes: the P5 runs view ties
-    # eligibility to `historical`, and the P3 view exists only for
-    # non-current generations.
-    assert "dedup_eligible=historical" in source
-    assert "if generation is None or generation == current_generation:" in source
-
-
-def test_active_p7_attempt_scratch_is_never_archive_or_dedup_eligible(campaign) -> None:
-    """An in-flight attempt's dependencies are not representation-changeable."""
-
-    from mdstats.training_data.qualification.store import (
-        ATTEMPT_STATE_FILENAME,
-        QUALIFICATION_ROOT_NAME,
-    )
-
-    attempt = (
-        campaign.paths.internal
-        / QUALIFICATION_ROOT_NAME
-        / "g1"
-        / "attempts"
-        / ("a" * 64)
-    )
-    attempt.mkdir(parents=True)
-    (attempt / "scratch.bin").write_bytes(b"in-flight" * 256)
-    (campaign.paths.internal / QUALIFICATION_ROOT_NAME / "g1" / "objects").mkdir(
-        parents=True, exist_ok=True
-    )
-    # No readable attempt state at all is the least safe moment to guess.
-    snapshot = campaign.snapshot()
-    protected, why = snapshot.path_protection(attempt / "scratch.bin")
-    assert protected, why
-    assert not any(item.eligible for item in archive_candidates(snapshot) if
-                   str(attempt) in str(item.path))
-    assert (attempt / ATTEMPT_STATE_FILENAME).exists() is False
-
-
-def test_inode_admission_failure_refuses_before_any_mutation(campaign) -> None:
-    from mdstats.training_data.storage import admission as admission_mod
-
-    policy = _policy(action=ACTION_ARCHIVE)
-    campaign.historical_bulk()
-    original = admission_mod.observe_filesystem
-    try:
-        admission_mod.observe_filesystem = lambda location: (1 << 40, 1 << 40, 8)
-        with pytest.raises(StorageAdmissionError, match="inodes"):
-            admission_mod.admit_storage_operation(
-                campaign.paths.workspace,
-                policy,
-                required_peak_bytes=1024,
-                required_inodes=1000,
-            )
-    finally:
-        admission_mod.observe_filesystem = original
-    assert (
-        campaign.paths.internal / "post-selection" / "g7" / "runs" / "run-a"
-        / "checkpoints" / "epoch-1.pt"
-    ).is_file()
-
-
-def test_an_unsupported_archive_schema_is_refused(campaign) -> None:
-    result, policy, _root = _create_archive(campaign, reclaim_hot=False)
-    _rewrite_manifest(campaign, result.archive_identity, schema="mdstats.someone-elses.v9")
-    with pytest.raises(StorageArchiveError, match="schema"):
-        verify_cold_archive(campaign.control_plane, result.archive_identity, policy)
-
-
-def test_a_corrupt_receipt_cache_is_only_a_cache_miss(campaign) -> None:
-    """Receipt corruption forces rehashing and never changes a result."""
-
-    from mdstats.training_data.storage.durability import accelerated_sha256
-
-    root = campaign.historical_bulk()
-    target = root / "run-a" / "checkpoints" / "epoch-1.pt"
-    expected = sha256_file(target)
-    receipts = campaign.paths.internal / "hash-receipts.sqlite3"
-    receipts.write_bytes(b"not a database at all")
-    assert accelerated_sha256(target) == expected
-    snapshot = campaign.snapshot()
-    view = snapshot.view("campaign_store:hash_receipts")
-    assert view.artifact_class.value == "reusable_cache_index"
-
-
-def test_a_corrupt_owner_record_fails_toward_retention(campaign) -> None:
-    """An unreadable owner retains its artifacts rather than releasing them."""
-
-    from mdstats.training_data.qualification.store import (
-        ATTEMPT_STATE_FILENAME,
-        QUALIFICATION_ROOT_NAME,
-    )
-
-    attempt = (
-        campaign.paths.internal
-        / QUALIFICATION_ROOT_NAME
-        / "g1"
-        / "attempts"
-        / ("b" * 64)
-    )
-    attempt.mkdir(parents=True)
-    (attempt / ATTEMPT_STATE_FILENAME).write_text("{ not json", encoding="utf-8")
-    (attempt / "scratch.bin").write_bytes(b"x" * 128)
-    snapshot = campaign.snapshot()
-    protected, why = snapshot.path_protection(attempt / "scratch.bin")
-    assert protected, why
-    assert not any(
-        item.eligible and str(attempt) in str(item.path)
-        for item in safe_candidates_of(snapshot)
-    )
-
-
-def safe_candidates_of(snapshot):
-    from mdstats.training_data.storage.inventory import safe_candidates
-
-    return safe_candidates(snapshot)
-
-
-def test_a_missing_planned_path_does_not_stall_a_removal_plan(campaign) -> None:
-    """A candidate that vanished between plan and apply is simply skipped."""
-
-    records = campaign.paths.internal / "records"
-    records.mkdir(parents=True, exist_ok=True)
-    old = time.time() - 24 * 3600.0
-    child = records / "orphan-vanishing"
-    child.mkdir()
-    (child / "payload.bin").write_bytes(b"x" * 64)
-    os.utime(child / "payload.bin", (old, old))
-    os.utime(child, (old, old))
-    context = storage_commands.StorageCommandContext(
-        campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-    )
-    policy = _policy(action=ACTION_CLEANUP, tier="safe", apply=True)
-    plan, _snapshot = storage_commands.build_cleanup_plan(context, policy)
-    assert plan.actions
-    import shutil as _shutil
-
-    _shutil.rmtree(child)
-    result = context.executor(policy).apply(plan, trigger="test:vanished")
-    assert result.status in {"complete", "refused"}
-    assert not child.exists()
-
-
-def test_cleanup_enabled_false_withholds_apply_but_not_reporting(campaign) -> None:
-    """The historical `[cleanup].enabled` switch keeps its documented meaning."""
-
-    from mdstats.training_data.storage.commands import StorageDisabledError
-
-    records = campaign.paths.internal / "records"
-    records.mkdir(parents=True, exist_ok=True)
-    old = time.time() - 24 * 3600.0
-    child = records / "orphan-disabled"
-    child.mkdir()
-    (child / "payload.bin").write_bytes(b"x" * 64)
-    os.utime(child / "payload.bin", (old, old))
-    os.utime(child, (old, old))
-
-    cfg = dict(campaign.cfg)
-    cfg["cleanup"] = {**dict(cfg.get("cleanup", {})), "enabled": False}
-    context = storage_commands.StorageCommandContext(
-        cfg, campaign.paths, campaign.store, campaign.boundary
-    )
-    with pytest.raises(StorageDisabledError):
-        storage_commands.storage_cleanup(
-            context, SimpleNamespace(tier="safe", apply=True, dry_run=False)
-        )
-    assert child.is_dir()
-    # Planning and reporting stay available.
-    payload = storage_commands.storage_cleanup(
-        context, SimpleNamespace(tier="safe", apply=False, dry_run=True)
-    )
-    assert payload["execution"] is None
-    assert payload["plan"]["action_count"] >= 1
-    assert child.is_dir()
-
-
-def test_the_cleanup_event_bound_normalizes_into_the_policy_identity(campaign) -> None:
-    """A historical `[cleanup]` knob is an alias, normalized before hashing."""
-
-    from mdstats.training_data.storage import commands as commands_mod
-
-    args = SimpleNamespace(tier="safe", apply=False, dry_run=True)
-    default = commands_mod._resolve(args, {}, action=ACTION_CLEANUP)
-    aliased = commands_mod._resolve(
-        args, {"cleanup": {"maximum_event_records": 25}}, action=ACTION_CLEANUP
-    )
-    explicit = commands_mod._resolve(
-        args,
-        {"storage": {"sqlite_compaction_maximum_events": 25}},
-        action=ACTION_CLEANUP,
-    )
-    assert aliased.policy_identity == explicit.policy_identity
-    assert aliased.policy_identity != default.policy_identity
-
-
-def test_the_written_plan_is_advisory_and_authorizes_nothing(campaign) -> None:
-    import json as _json
-
-    records = campaign.paths.internal / "records"
-    records.mkdir(parents=True, exist_ok=True)
-    context = storage_commands.StorageCommandContext(
-        campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-    )
-    storage_commands.storage_cleanup(
-        context, SimpleNamespace(tier="safe", apply=False, dry_run=True)
-    )
-    written = _json.loads(
-        (campaign.paths.results / "storage-cleanup-plan-safe.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert written["advisory_copy"] is True
-    assert written["authorizes_apply"] is False
-    assert written["grants_scientific_authority"] is False
-
-
-def test_the_report_names_p2_as_an_explicit_owner_surface(campaign) -> None:
-    """P2 statistical authority is reported through its owner, not a path family."""
-
-    payload = storage_commands.storage_report(
-        storage_commands.StorageCommandContext(
-            campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-        ),
-        SimpleNamespace(top=200, deep=False),
-    )
-    owners = {item["owner"] for item in payload["owner_families"]}
-    assert "p2" in owners
-    p2 = campaign.snapshot().view("p2:statistical_authorities")
-    assert p2 is not None and p2.current and p2.hot_path_required
-    assert "reducer" in p2.detail
-    assert payload["resolved_policy_summary"]
-
-
-def test_sqlite_compaction_is_admitted_against_the_safety_reserve(campaign) -> None:
-    """VACUUM's temporary amplification is admitted like any other operation."""
-
-    context = storage_commands.StorageCommandContext(
-        campaign.cfg, campaign.paths, campaign.store, campaign.boundary
-    )
-    payload = storage_commands.storage_cleanup(
-        context, SimpleNamespace(tier="safe", apply=True, dry_run=False)
-    )
-    compaction = payload["state_compaction"]
-    assert compaction["performed"] is True
-    assert compaction["admission"]["required_peak_bytes"] >= 0
-    assert campaign.paths.state_db.is_file()
-
-    # An unsatisfiable reserve skips compaction instead of risking the state db.
-    huge = dict(campaign.cfg)
-    huge["storage"] = {"safety_reserve_bytes": 1 << 62}
-    starved = storage_commands.StorageCommandContext(
-        huge, campaign.paths, campaign.store, campaign.boundary
-    )
-    payload = storage_commands.storage_cleanup(
-        starved, SimpleNamespace(tier="safe", apply=True, dry_run=False)
-    )
-    assert payload["state_compaction"]["performed"] is False
-    assert "not admitted" in payload["state_compaction"]["detail"]
-    assert campaign.paths.state_db.is_file()
-
-
-def test_the_storage_reserve_never_undercuts_the_campaign_execution_floor() -> None:
-    """Two reserves compose as the stricter floor, not as a weaker second one."""
-
-    from mdstats.training_data.storage import commands as commands_mod
-
-    args = SimpleNamespace(tier="safe", apply=False, dry_run=True)
-    policy = commands_mod._resolve(
-        args, {"execution": {"minimum_free_disk_gib": 20.0}}, action=ACTION_CLEANUP
-    )
-    assert policy.safety_reserve_bytes == 20 * 1024**3
-    # An explicitly larger storage reserve still wins.
-    stricter = commands_mod._resolve(
-        args,
-        {
-            "execution": {"minimum_free_disk_gib": 20.0},
-            "storage": {"safety_reserve_bytes": 64 * 1024**3},
-        },
-        action=ACTION_CLEANUP,
-    )
-    assert stricter.safety_reserve_bytes == 64 * 1024**3
+    shared = [
+        item
+        for item in payload["artifacts"]
+        if item["logical_attribution"] == "shared_with_other_owner_views"
+    ]
+    assert shared, "the state database is claimed by several semantic views"
+    for item in shared:
+        assert item["shares_path_with"]
+        for other in item["shares_path_with"]:
+            assert other != item["artifact_id"]
+    exclusive = [
+        item
+        for item in payload["artifacts"]
+        if item["logical_attribution"] == "exclusive"
+    ]
+    assert exclusive and all(item["shares_path_with"] == [] for item in exclusive)

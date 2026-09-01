@@ -57,12 +57,11 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .control_plane import (
-    RECOVERY_CRITICAL_DIRECTORIES,
     StorageControlPlane,
-    open_storage_control_plane,
+    open_storage_control_plane_readonly,
 )
 
 
@@ -93,8 +92,40 @@ OWNER_P7 = "p7"
 OWNER_STORAGE = "storage_control_plane"
 
 
+class SubtreeCoverage(str, Enum):
+    """How far down a directory artifact the owner's certification reaches.
+
+    Lexical containment beneath an owner path is never by itself semantic
+    ownership.  A directory view must say which of these it is, and a
+    consequential recursive action may only recurse destructively through
+    ``CLOSED``.
+
+    ``CLOSED``
+        The owner certifies, from its own authenticated records or layout
+        contract, that every traversable descendant belongs to this artifact.
+        Recursive collection, deletion, and dedup enumeration are permitted,
+        and an unexpected descendant contradicts the certification.
+
+    ``CONTAINER``
+        The directory is owner-known but its descendants are not certified as
+        a set.  Only individually owner-certified descendants may be acted on;
+        every other child is ambiguous and retained.
+
+    ``NOT_APPLICABLE``
+        The artifact is a single file or is never a recursion target.
+    """
+
+    CLOSED = "closed_subtree"
+    CONTAINER = "container_open_subtree"
+    NOT_APPLICABLE = "not_applicable"
+
+
 class OwnerViewError(RuntimeError):
     """An owner could not be interrogated, so its artifacts stay retained."""
+
+
+class OwnerGraphError(RuntimeError):
+    """The owner graph is not a valid basis for consequential planning."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +136,12 @@ class OwnerArtifactView:
     remain valid.  Edges point from dependent to dependency, which is what lets
     the inventory compute a protection closure without any owner having to know
     about storage policy.
+
+    ``state_identity`` is the owner's own canonical identity for the state this
+    view describes - a head digest, a pointer digest, a revision. It is derived
+    from real owner records and is never a storage-authored reconstruction of
+    scientific state. Its only job is to make same-generation owner advancement
+    visible to plan revalidation.
     """
 
     owner: str
@@ -139,6 +176,19 @@ class OwnerArtifactView:
     #: per child.  Without this, a container view would blanket-protect members
     #: its owner has positively released.
     container_only: bool = False
+    #: How far the owner's certification reaches below a directory artifact.
+    coverage: SubtreeCoverage = SubtreeCoverage.NOT_APPLICABLE
+    #: Exactly the descendants the owner releases for action, relative to
+    #: ``path``.  For ``CLOSED`` coverage this is the owner's recorded member
+    #: set; for ``CONTAINER`` coverage it names the individually authorized
+    #: children.
+    certified_members: tuple[str, ...] = ()
+    #: Descendants the owner knows about and never releases - its own record
+    #: and lock files.  They are neither members nor contradictions: archiving
+    #: or removing them would destroy the certification itself.
+    retained_members: tuple[str, ...] = ()
+    #: The owner's canonical identity for the state this view describes.
+    state_identity: str = ""
     requires: tuple[str, ...] = ()
     reconstruction: str = ""
 
@@ -161,6 +211,10 @@ class OwnerArtifactView:
             "metadata_contract": self.metadata_contract,
             "safe_reclaimable": bool(self.safe_reclaimable),
             "container_only": bool(self.container_only),
+            "coverage": self.coverage.value,
+            "certified_members": list(self.certified_members),
+            "retained_members": list(self.retained_members),
+            "state_identity": self.state_identity,
             "requires": list(self.requires),
             "reconstruction": self.reconstruction,
         }
@@ -174,9 +228,48 @@ class OwnerViewSet:
     #: Owners that could not be authenticated.  Each entry retains its subtree.
     unresolved: tuple[tuple[str, str], ...] = ()
     current_generation: int | None = None
+    #: Graph integrity problems: duplicate identities, or dependency edges that
+    #: resolve to no owner view.  A non-empty list makes the protection closure
+    #: incomplete and fails consequential planning closed.
+    integrity_failures: tuple[str, ...] = ()
 
     def by_id(self) -> dict[str, OwnerArtifactView]:
         return {view.artifact_id: view for view in self.views}
+
+    @property
+    def is_consequentially_planable(self) -> bool:
+        return not self.integrity_failures
+
+
+def validate_owner_graph(views: Sequence[OwnerArtifactView]) -> tuple[str, ...]:
+    """Uniqueness and dependency-resolution integrity of one owner graph.
+
+    An incomplete dependency graph cannot establish deletion, archive, or dedup
+    authority: a `requires` edge naming an artifact nobody reported is a hole in
+    the protection closure, and a duplicate identity means one owner's statement
+    silently replaced another's.  Both are reported rather than repaired, and
+    neither is papered over with a synthetic path or a guessed owner.
+    """
+
+    failures: list[str] = []
+    seen: dict[str, OwnerArtifactView] = {}
+    for view in views:
+        previous = seen.get(view.artifact_id)
+        if previous is not None:
+            failures.append(
+                f"duplicate owner artifact identity {view.artifact_id!r} reported by "
+                f"{previous.owner!r} ({previous.path}) and {view.owner!r} ({view.path})"
+            )
+            continue
+        seen[view.artifact_id] = view
+    for view in views:
+        for dependency in view.requires:
+            if dependency not in seen:
+                failures.append(
+                    f"owner artifact {view.artifact_id!r} requires {dependency!r}, which "
+                    "no owner view reported; the protection closure is incomplete"
+                )
+    return tuple(sorted(set(failures)))
 
 
 def _absolute(path: Any) -> Path:
@@ -316,7 +409,10 @@ def frame_cache_view(paths: Any, store: Any) -> OwnerArtifactView | None:
     root = _absolute(paths.internal) / FRAME_CACHE_DIRECTORY
     if not root.exists():
         return None
-    detail = "normalized frame arrays"
+    detail = (
+        "normalized frame arrays; retained by every tier because P1 exposes no "
+        "consumer/builder liveness seam that could prove concurrent non-use"
+    )
     reconstructible = False
     reconstruction = ""
     try:
@@ -367,7 +463,13 @@ def frame_cache_view(paths: Any, store: Any) -> OwnerArtifactView | None:
         artifact_class=ArtifactClass.REUSABLE_CACHE_INDEX,
         detail=detail,
         cache_reconstructible=reconstructible,
-        cache_evictable=reconstructible,
+        # Reconstructibility proves capability recovery, not concurrent non-use.
+        # P1 exposes no consumer/builder liveness seam: the cache is opened
+        # mmap-backed and its handles can outlive the helper call that made
+        # them, so nothing here can prove no reader or builder is active. Until
+        # such a seam exists, the cache tier reports this family and evicts
+        # nothing, which is a legitimate no-op rather than a guess.
+        cache_evictable=False,
         reconstruction=reconstruction,
     )
 
@@ -431,6 +533,7 @@ def _orphan_external_record_views(
                 )
             )
             continue
+        certified, certification, members = store.certify_closed_external_record(child)
         views.append(
             OwnerArtifactView(
                 owner=OWNER_CAMPAIGN_STORE,
@@ -440,11 +543,21 @@ def _orphan_external_record_views(
                 detail=(
                     "external record payload retained inside the publication window"
                     if recent
-                    else "external record payload no campaign state row references"
+                    else f"external record payload no campaign state row references; "
+                    f"{certification}"
                 ),
                 current=recent,
                 restart_required=recent,
-                safe_reclaimable=not recent,
+                safe_reclaimable=not recent and certified,
+                coverage=(
+                    SubtreeCoverage.CLOSED
+                    if certified and child.is_dir()
+                    else SubtreeCoverage.CONTAINER
+                    if child.is_dir()
+                    else SubtreeCoverage.NOT_APPLICABLE
+                ),
+                certified_members=members if certified else (),
+                container_only=child.is_dir() and not certified,
             )
         )
     return views
@@ -468,13 +581,24 @@ def _resolve_source_catalog(store: Any) -> Any | None:
 # ---------------------------------------------------------------------------
 
 
-def target_size_views(paths: Any, store: Any) -> tuple[list[OwnerArtifactView], int | None]:
-    """P3 execution evidence and the P4 current authority that pins it."""
+def target_size_views(
+    paths: Any, store: Any
+) -> tuple[list[OwnerArtifactView], int | None, tuple[tuple[str, str], ...]]:
+    """P3 execution evidence and the P4 current authority that pins it.
+
+    The third return value carries unresolved-owner facts.  When the P3/P4
+    authority cannot be read at all, ``current_generation`` is unknown - and an
+    unknown current generation must never be read as "every generation is
+    historical".  That is the difference between a campaign with no selection
+    and a campaign whose selection authority is broken, and only the second one
+    is a reason to refuse.
+    """
 
     from ..campaign_target_size_paths import (
         TARGET_SIZE_EXECUTION_ROOT_NAME,
         target_size_execution_root,
     )
+    from ..campaign_target_size_retention import certify_closed_execution_root
     from ..campaign_target_size_state import (
         TargetSizeRegime,
         load_target_size_campaign_revision,
@@ -483,10 +607,49 @@ def target_size_views(paths: Any, store: Any) -> tuple[list[OwnerArtifactView], 
     internal = _absolute(paths.internal)
     family_root = internal / TARGET_SIZE_EXECUTION_ROOT_NAME
     views: list[OwnerArtifactView] = []
+    unresolved: list[tuple[str, str]] = []
     current_generation: int | None = None
-    revision = load_target_size_campaign_revision(store)
+    revision_identity = ""
+    try:
+        revision = load_target_size_campaign_revision(store)
+    except Exception as exc:
+        unresolved.append((OWNER_P3, f"target-size campaign revision unreadable: {exc}"))
+        unresolved.append(
+            (
+                OWNER_P4,
+                "the selected/current-terminal authority cannot be established while "
+                "the target-size revision is unreadable",
+            )
+        )
+        unresolved.append(
+            (
+                OWNER_P5,
+                "downstream post-selection classification is unresolved because its "
+                "upstream selected authority is unreadable",
+            )
+        )
+        unresolved.append(
+            (
+                OWNER_P7,
+                "downstream qualification classification is unresolved because its "
+                "upstream selected authority is unreadable",
+            )
+        )
+        return views, None, tuple(unresolved)
     if revision is not None and revision.state.regime is not TargetSizeRegime.LEGACY:
         current_generation = revision.state.generation
+        revision_identity = "|".join(
+            str(value)
+            for value in (
+                revision.state_revision,
+                revision.state.regime.value,
+                revision.state.lifecycle.value,
+                revision.state.adopted_execution_head_digest,
+                revision.state.screen_window_digest,
+                revision.state.experiment_definition_digest,
+                revision.state.terminal,
+            )
+        )
 
     if current_generation is not None:
         root = _absolute(target_size_execution_root(paths, current_generation))
@@ -505,6 +668,8 @@ def target_size_views(paths: Any, store: Any) -> tuple[list[OwnerArtifactView], 
                 restart_required=True,
                 hot_path_required=True,
                 immutable=False,
+                coverage=SubtreeCoverage.CONTAINER,
+                state_identity=revision_identity,
             )
         )
         views.append(
@@ -521,6 +686,8 @@ def target_size_views(paths: Any, store: Any) -> tuple[list[OwnerArtifactView], 
                 current=True,
                 restart_required=True,
                 hot_path_required=True,
+                container_only=True,
+                state_identity=revision_identity,
                 requires=(
                     f"p3:execution_root:g{current_generation}",
                     "campaign_store:state",
@@ -532,6 +699,7 @@ def target_size_views(paths: Any, store: Any) -> tuple[list[OwnerArtifactView], 
         generation = _generation_of(root)
         if generation is None or generation == current_generation:
             continue
+        layout_ok, why = certify_closed_execution_root(root)
         views.append(
             OwnerArtifactView(
                 owner=OWNER_P3,
@@ -540,19 +708,25 @@ def target_size_views(paths: Any, store: Any) -> tuple[list[OwnerArtifactView], 
                 artifact_class=ArtifactClass.REPRODUCIBILITY_BULK,
                 detail=(
                     "historical target-size execution evidence for a superseded "
-                    "generation; cold-replaceable when nothing current depends on it"
+                    f"generation; {why}. P3 records no per-run member manifest, so "
+                    "this root stays an open container: storage reports it and acts "
+                    "on nothing inside it"
                 ),
                 generation=generation,
-                immutable=True,
-                archive_eligible=True,
-                # Every P3 writer writes into the *current* generation root, so a
-                # superseded root has no accepted in-place content or metadata
-                # writer and its inodes may be shared.
-                dedup_eligible=True,
+                immutable=False,
+                # A closed-subtree certification needs an explicit owner-recorded
+                # member set. P3 has a layout contract but no member manifest, so
+                # no descendant here is individually authorized.
+                archive_eligible=False,
+                dedup_eligible=False,
                 metadata_contract="mode_only",
+                coverage=SubtreeCoverage.CONTAINER,
+                container_only=True,
+                state_identity=revision_identity,
             )
         )
-    return views, current_generation
+        del layout_ok
+    return views, current_generation, tuple(unresolved)
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +735,12 @@ def target_size_views(paths: Any, store: Any) -> tuple[list[OwnerArtifactView], 
 
 
 def post_selection_views(
-    cfg: Mapping[str, Any], paths: Any, store: Any, *, current_generation: int | None
+    cfg: Mapping[str, Any],
+    paths: Any,
+    store: Any,
+    *,
+    current_generation: int | None,
+    certify: bool = True,
 ) -> tuple[list[OwnerArtifactView], tuple[tuple[str, str], ...]]:
     """P5 objects, run bulk, and the exact current publication member pins.
 
@@ -573,6 +752,10 @@ def post_selection_views(
     attempt lease.
     """
 
+    from ..campaign_post_selection_runtime import (
+        certify_closed_post_selection_run_root,
+        recorded_post_selection_run_members,
+    )
     from ..post_selection_store import POST_SELECTION_ROOT_NAME, post_selection_root
 
     internal = _absolute(paths.internal)
@@ -580,11 +763,23 @@ def post_selection_views(
     views: list[OwnerArtifactView] = []
     unresolved: list[tuple[str, str]] = []
 
+    if current_generation is None and _generation_roots(family_root):
+        # An unknown current generation is not the same as "nothing is current".
+        # Classifying every P5 generation as historical on that basis would be a
+        # semantic guess, so the family is recorded unresolved and retained.
+        unresolved.append(
+            (
+                OWNER_P5,
+                "no current target-size generation is established, so no post-selection "
+                "generation can be classified as historical",
+            )
+        )
+
     for root in _generation_roots(family_root):
         generation = _generation_of(root)
         if generation is None:
             continue
-        historical = generation != current_generation
+        historical = current_generation is not None and generation != current_generation
         if (root / "objects").is_dir():
             views.append(
                 OwnerArtifactView(
@@ -601,10 +796,62 @@ def post_selection_views(
                     restart_required=not historical,
                     immutable=True,
                     hot_path_required=not historical,
+                    coverage=SubtreeCoverage.CONTAINER,
                 )
             )
         runs_root = root / "runs"
         if runs_root.is_dir():
+            # The runs root is a container: P5 owns it, but each run root is the
+            # unit the owner can actually certify. A run that is still executing,
+            # or that carries a descendant P5 did not write, is never eligible.
+            certified: list[str] = []
+            for run_root in sorted(
+                child for child in runs_root.iterdir() if child.is_dir()
+            ):
+                if certify:
+                    closed, why = certify_closed_post_selection_run_root(run_root)
+                else:
+                    # Reporting must stay bounded, so it asks the cheap question
+                    # - has this run finished and recorded a member set? - and
+                    # leaves the exact comparison to consequential planning.
+                    closed, why = _run_looks_finished(run_root)
+                eligible = bool(historical and closed)
+                recorded = (
+                    recorded_post_selection_run_members(run_root)
+                    if (closed and certify)
+                    else ()
+                )
+                if eligible:
+                    certified.append(run_root.name)
+                views.append(
+                    OwnerArtifactView(
+                        owner=OWNER_P5,
+                        artifact_id=f"p5:run:g{generation}:{run_root.name}",
+                        path=run_root,
+                        artifact_class=ArtifactClass.REPRODUCIBILITY_BULK,
+                        detail=(
+                            "post-selection run evidence, materializations, and "
+                            f"checkpoints; {why}"
+                        ),
+                        generation=generation,
+                        current=not historical,
+                        restart_required=not historical,
+                        archive_eligible=eligible,
+                        immutable=eligible,
+                        dedup_eligible=eligible,
+                        metadata_contract="mode_only",
+                        coverage=(
+                            SubtreeCoverage.CLOSED
+                            if (closed and certify)
+                            else SubtreeCoverage.CONTAINER
+                        ),
+                        certified_members=recorded,
+                        retained_members=_run_infrastructure_members(run_root),
+                        requires=(f"p5:objects:g{generation}",)
+                        if (root / "objects").is_dir()
+                        else (),
+                    )
+                )
             views.append(
                 OwnerArtifactView(
                     owner=OWNER_P5,
@@ -612,16 +859,18 @@ def post_selection_views(
                     path=runs_root,
                     artifact_class=ArtifactClass.REPRODUCIBILITY_BULK,
                     detail=(
-                        "post-selection run evidence, materializations, and checkpoints"
+                        "post-selection run container; each run root is certified "
+                        "individually and an uncertified child is never acted on"
                     ),
                     generation=generation,
                     current=not historical,
                     restart_required=not historical,
-                    archive_eligible=historical,
-                    immutable=historical,
-                    dedup_eligible=historical,
-                    metadata_contract="mode_only",
-                    requires=(f"p5:objects:g{generation}",),
+                    container_only=True,
+                    coverage=SubtreeCoverage.CONTAINER,
+                    certified_members=tuple(certified),
+                    requires=(f"p5:objects:g{generation}",)
+                    if (root / "objects").is_dir()
+                    else (),
                 )
             )
 
@@ -629,6 +878,10 @@ def post_selection_views(
         return views, tuple(unresolved)
 
     publication_id = f"p5:publication:g{current_generation}"
+    if not selection_is_expected(store):
+        # The campaign has not selected a target size yet, so there is no current
+        # publication to resolve and nothing downstream to be unresolved about.
+        return views, tuple(unresolved)
     try:
         context = _read_only_post_selection_context(cfg, paths, store)
     except Exception as exc:
@@ -681,6 +934,14 @@ def post_selection_views(
                 requires=(f"p5:objects:g{current_generation}",),
             )
         )
+    reported = {view.artifact_id for view in views}
+    requires = [item for item in member_ids]
+    for candidate in (
+        f"p5:objects:g{current_generation}",
+        f"p4:current_selected:g{current_generation}",
+    ):
+        if candidate in reported or candidate.startswith("p4:"):
+            requires.append(candidate)
     views.append(
         OwnerArtifactView(
             owner=OWNER_P5,
@@ -693,13 +954,101 @@ def post_selection_views(
             restart_required=True,
             immutable=True,
             hot_path_required=True,
-            requires=tuple(
-                [f"p5:objects:g{current_generation}", f"p4:current_selected:g{current_generation}"]
-                + member_ids
+            container_only=True,
+            coverage=SubtreeCoverage.CONTAINER,
+            # The publication's own identity: a same-generation republication
+            # changes this even when every path and byte stays the same.
+            state_identity="|".join(
+                str(value)
+                for value in (
+                    decision.content_digest,
+                    decision.member_digest,
+                    decision.completion_digest,
+                    decision.final_plan_digest,
+                )
             ),
+            requires=tuple(requires),
         )
     )
     return views, tuple(unresolved)
+
+
+def selection_is_expected(store: Any) -> bool:
+    """Whether the target-size owner says a current selected binding should exist.
+
+    "No selection yet" and "the selection authority is broken" produce the same
+    exception from the downstream resolver, but they are opposite facts for
+    storage: the first is an ordinary campaign state, the second must retain
+    every downstream artifact. The target-size owner's own lifecycle is what
+    separates them.
+    """
+
+    from ..campaign_target_size_state import (
+        TargetSizeLifecycle,
+        load_target_size_campaign_revision,
+    )
+
+    try:
+        revision = load_target_size_campaign_revision(store)
+    except Exception:
+        return False
+    if revision is None:
+        return False
+    return revision.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
+
+
+def _run_looks_finished(run_root: Path) -> tuple[bool, str]:
+    """The bounded prefilter reporting uses instead of exact certification.
+
+    A handful of ``stat`` calls: did the run reach a terminal record, and did
+    its owner record a member set? Both are necessary for certification, so a
+    negative answer here is final; a positive one is provisional and is proved
+    exactly at planning time.
+    """
+
+    from ..campaign_post_selection_runtime import (
+        FOLD_ACCEPTANCE_FILENAME,
+        RUN_EVIDENCE_FILENAME,
+        RUN_MEMBER_MANIFEST_FILENAME,
+    )
+
+    if not run_root.is_dir() or run_root.is_symlink():
+        return False, f"{run_root} is not a plain directory"
+    terminal = any(
+        (run_root / name).is_file()
+        for name in (FOLD_ACCEPTANCE_FILENAME, RUN_EVIDENCE_FILENAME)
+    )
+    if not terminal:
+        return False, (
+            "run root carries no terminal fold-acceptance/run-evidence record, so the "
+            "owner cannot certify the run is finished"
+        )
+    if not (run_root / RUN_MEMBER_MANIFEST_FILENAME).is_file():
+        return False, (
+            "run root carries no recorded member manifest, so this owner cannot "
+            "certify which descendants it produced"
+        )
+    return True, (
+        "terminal run with a recorded member set; exact certification happens at "
+        "planning time"
+    )
+
+
+def _run_infrastructure_members(run_root: Path) -> tuple[str, ...]:
+    """P5's own certification record and locks inside one run root.
+
+    These sit at known top-level names, so this is a handful of ``stat`` calls
+    rather than a subtree walk: building an inventory must stay bounded
+    independently of how much bulk a run holds.
+    """
+
+    from ..campaign_post_selection_runtime import (
+        RUN_MEMBER_MANIFEST_FILENAME,
+        _OWNED_LOCK_NAMES,
+    )
+
+    names = (RUN_MEMBER_MANIFEST_FILENAME, *sorted(_OWNED_LOCK_NAMES))
+    return tuple(name for name in names if (run_root / name).is_file())
 
 
 def _read_only_post_selection_context(
@@ -726,9 +1075,10 @@ def qualification_views(
     """P7 durable evidence, attempt scratch, and the P5 dependency it carries."""
 
     from ..qualification.store import (
-        ATTEMPT_STATE_FILENAME,
+        ATTEMPT_INFRASTRUCTURE_NAMES,
         LOCKED_REVEAL_DIRECTORY,
         QUALIFICATION_ROOT_NAME,
+        certify_closed_attempt_member,
         iter_attempt_states,
         qualification_root,
     )
@@ -751,6 +1101,7 @@ def qualification_views(
                 restart_required=True,
                 immutable=True,
                 hot_path_required=True,
+                coverage=SubtreeCoverage.CONTAINER,
             )
         )
 
@@ -785,6 +1136,7 @@ def qualification_views(
                     restart_required=not historical,
                     immutable=True,
                     hot_path_required=not historical,
+                    coverage=SubtreeCoverage.CONTAINER,
                 )
             )
         attempts_root = root / "attempts"
@@ -814,8 +1166,35 @@ def qualification_views(
             if not released:
                 continue
             for member in sorted(attempt.iterdir()):
-                if member.name == ATTEMPT_STATE_FILENAME:
+                if member.name in ATTEMPT_INFRASTRUCTURE_NAMES:
                     continue
+                if member.is_file() and not member.is_symlink():
+                    # A single file is its own closed unit; there is no subtree
+                    # whose authorship could be in question.
+                    views.append(
+                        OwnerArtifactView(
+                            owner=OWNER_P7,
+                            artifact_id=(
+                                f"p7:attempt_scratch:{generation}:{attempt.name}:"
+                                f"{member.name}"
+                            ),
+                            path=member,
+                            artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
+                            detail=(
+                                f"{why}; attempt-local bulk of a released attempt is "
+                                "disposable while the attempt record itself is retained"
+                            ),
+                            generation=generation,
+                            safe_reclaimable=True,
+                            requires=(objects_id,),
+                        )
+                    )
+                    continue
+                if not member.is_dir() or member.is_symlink():
+                    continue
+                certified, member_why, members = certify_closed_attempt_member(
+                    attempt, member.name
+                )
                 views.append(
                     OwnerArtifactView(
                         owner=OWNER_P7,
@@ -826,10 +1205,21 @@ def qualification_views(
                         artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
                         detail=(
                             f"{why}; attempt-local bulk of a released attempt is "
-                            "disposable while the attempt record itself is retained"
+                            f"disposable while the attempt record itself is retained; "
+                            f"{member_why}"
                         ),
                         generation=generation,
-                        safe_reclaimable=True,
+                        # Containment beneath a released attempt is not
+                        # authorship: only what this owner recorded may be acted
+                        # on, and an uncertified tree is reported and retained.
+                        safe_reclaimable=certified,
+                        coverage=(
+                            SubtreeCoverage.CLOSED
+                            if certified
+                            else SubtreeCoverage.CONTAINER
+                        ),
+                        certified_members=members if certified else (),
+                        container_only=not certified,
                         requires=(objects_id,),
                     )
                 )
@@ -844,8 +1234,13 @@ def qualification_views(
     record_state = _current_qualification_state(cfg, paths, store)
     if record_state is None:
         return views, tuple(unresolved)
-    verdict, detail = record_state
-    requires = [f"p7:objects:g{current_generation}"]
+    verdict, detail, record_identity = record_state
+    reported = {view.artifact_id for view in views}
+    requires = [
+        item
+        for item in (f"p7:objects:g{current_generation}",)
+        if item in reported
+    ]
     if publication_present:
         requires.append(f"p5:publication:g{current_generation}")
     views.append(
@@ -863,6 +1258,8 @@ def qualification_views(
             # The generation root must survive, but attempt-local scratch inside
             # it is classified per attempt by the P7 owner itself.
             container_only=True,
+            coverage=SubtreeCoverage.CONTAINER,
+            state_identity=record_identity,
             requires=tuple(requires),
         )
     )
@@ -884,6 +1281,8 @@ def qualification_views(
                 immutable=True,
                 hot_path_required=True,
                 container_only=True,
+                coverage=SubtreeCoverage.CONTAINER,
+                state_identity=record_identity,
                 requires=tuple(requires),
             )
         )
@@ -905,6 +1304,7 @@ def qualification_views(
                     restart_required=True,
                     immutable=True,
                     hot_path_required=True,
+                    coverage=SubtreeCoverage.CONTAINER,
                 )
             )
     return views, tuple(unresolved)
@@ -960,7 +1360,7 @@ def _attempt_release_state(
 
 def _current_qualification_state(
     cfg: Mapping[str, Any], paths: Any, store: Any
-) -> tuple[str, str] | None:
+) -> tuple[str, str, str] | None:
     """Ask the P7 owner whether a current record exists, and what it says.
 
     Retention only needs to know that a P7 record is published for the current
@@ -973,6 +1373,8 @@ def _current_qualification_state(
     is both cheaper and safer.
     """
 
+    if not selection_is_expected(store):
+        return None
     try:
         from ..campaign_post_selection import load_current_selected_training_context
 
@@ -982,6 +1384,7 @@ def _current_qualification_state(
             "unresolved",
             "the current selected authority could not be authenticated; the P7 "
             "predecessor lineage stays pinned until ownership is repaired",
+            "unresolved",
         )
     try:
         from ..qualification.record import ProductionQualificationRecord
@@ -1008,9 +1411,14 @@ def _current_qualification_state(
             "unresolved",
             "a current qualification pointer exists but its record could not be "
             "authenticated; the predecessor lineage stays pinned",
+            "unresolved",
         )
     verdict = str(getattr(getattr(record, "verdict", None), "value", getattr(record, "verdict", "")))
-    return verdict, f"current qualification record (verdict={verdict or 'unknown'})"
+    # The pointer digest is P7's own identity for what is current: republishing a
+    # different record under the same binding changes it, which is exactly the
+    # same-generation advancement a plan must notice.
+    identity = "|".join((str(pointer), verdict))
+    return verdict, f"current qualification record (verdict={verdict or 'unknown'})", identity
 
 
 # ---------------------------------------------------------------------------
@@ -1018,26 +1426,64 @@ def _current_qualification_state(
 # ---------------------------------------------------------------------------
 
 
-def control_plane_views(control_plane: StorageControlPlane) -> list[OwnerArtifactView]:
-    """Storage-native state, owned explicitly so it cannot reclaim itself."""
+def control_plane_views(
+    control_plane: StorageControlPlane, *, policy_journal_retention: int = 64
+) -> list[OwnerArtifactView]:
+    """Storage-native state, owned explicitly so it cannot reclaim itself.
+
+    Three lifetimes live here and must not be confused. A *cataloged* archive is
+    durable recovery authority for as long as it is retained. A *nonterminal*
+    restore journal is recovery state. Everything else the subsystem writes -
+    terminal journals, abandoned staging, uncataloged publication residue, the
+    execution audit - is bounded operational evidence that must not grow without
+    limit and must never become scientific authority.
+    """
 
     views = [
         OwnerArtifactView(
             owner=OWNER_STORAGE,
-            artifact_id=f"storage:{name}",
-            path=control_plane.root / name,
+            artifact_id="storage:catalog",
+            path=control_plane.catalog_root,
             artifact_class=ArtifactClass.STORAGE_CONTROL_PLANE,
             detail=(
-                "durable storage recovery authority required to locate, authenticate, "
-                "resume, or restore an existing cold representation"
+                "identity-keyed archive catalog: the durable authority that says which "
+                "cold representations are retained"
             ),
             current=True,
             restart_required=True,
             hot_path_required=True,
-        )
-        for name in RECOVERY_CRITICAL_DIRECTORIES
-    ]
-    views.append(
+            container_only=True,
+            coverage=SubtreeCoverage.CONTAINER,
+        ),
+        OwnerArtifactView(
+            owner=OWNER_STORAGE,
+            artifact_id="storage:archives",
+            path=control_plane.archive_root,
+            artifact_class=ArtifactClass.ARCHIVE_REPRESENTATION,
+            detail=(
+                "archive blobs and manifests; a cataloged pair is durable authority "
+                "while uncataloged residue is bounded storage-owned scratch"
+            ),
+            current=True,
+            restart_required=True,
+            hot_path_required=True,
+            container_only=True,
+            coverage=SubtreeCoverage.CONTAINER,
+        ),
+        OwnerArtifactView(
+            owner=OWNER_STORAGE,
+            artifact_id="storage:journal",
+            path=control_plane.journal_root,
+            artifact_class=ArtifactClass.STORAGE_CONTROL_PLANE,
+            detail=(
+                "restore journals; a nonterminal journal is recovery authority and a "
+                "terminal one is bounded diagnostic evidence"
+            ),
+            current=True,
+            restart_required=True,
+            container_only=True,
+            coverage=SubtreeCoverage.CONTAINER,
+        ),
         OwnerArtifactView(
             owner=OWNER_STORAGE,
             artifact_id="storage:audit",
@@ -1047,9 +1493,9 @@ def control_plane_views(control_plane: StorageControlPlane) -> list[OwnerArtifac
                 "bounded storage execution audit; losing an old record cannot "
                 "invalidate scientific currentness"
             ),
-        )
-    )
-    views.append(
+            container_only=True,
+            coverage=SubtreeCoverage.CONTAINER,
+        ),
         OwnerArtifactView(
             owner=OWNER_STORAGE,
             artifact_id="storage:locks",
@@ -1057,11 +1503,29 @@ def control_plane_views(control_plane: StorageControlPlane) -> list[OwnerArtifac
             artifact_class=ArtifactClass.STORAGE_CONTROL_PLANE,
             detail="operational liveness only; never scientific currentness",
             current=True,
-        )
-    )
+            container_only=True,
+            coverage=SubtreeCoverage.CONTAINER,
+        ),
+        OwnerArtifactView(
+            owner=OWNER_STORAGE,
+            artifact_id="storage:staging",
+            path=control_plane.staging_root,
+            artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
+            detail="restore staging container; each staging tree is judged individually",
+            current=True,
+            container_only=True,
+            coverage=SubtreeCoverage.CONTAINER,
+        ),
+    ]
+
+    # Restore staging with no journal is abandoned; with a journal it is either
+    # live recovery state or, once terminal, bounded evidence.
     if control_plane.staging_root.is_dir():
-        for stale in sorted(p for p in control_plane.staging_root.iterdir() if p.is_dir()):
-            journal = control_plane.journal_root / f"{stale.name}.json"
+        for stale in sorted(
+            item for item in control_plane.staging_root.iterdir() if item.is_dir()
+        ):
+            journal = control_plane.journal_path_for_name(stale.name)
+            open_journal = control_plane.journal_is_nonterminal(stale.name)
             views.append(
                 OwnerArtifactView(
                     owner=OWNER_STORAGE,
@@ -1069,15 +1533,69 @@ def control_plane_views(control_plane: StorageControlPlane) -> list[OwnerArtifac
                     path=stale,
                     artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
                     detail=(
-                        "restore staging without an open journal is abandoned scratch"
-                        if not journal.is_file()
-                        else "restore staging for an open restore journal"
+                        "restore staging for an open restore journal"
+                        if open_journal
+                        else "restore staging without an open journal is abandoned scratch"
                     ),
-                    current=journal.is_file(),
-                    restart_required=journal.is_file(),
-                    safe_reclaimable=not journal.is_file(),
+                    current=open_journal,
+                    restart_required=open_journal,
+                    safe_reclaimable=not open_journal,
+                    coverage=SubtreeCoverage.CLOSED,
                 )
             )
+            del journal
+
+    # Terminal restore journals beyond the retention bound are bounded evidence.
+    for name, terminal in control_plane.journal_states():
+        if not terminal:
+            views.append(
+                OwnerArtifactView(
+                    owner=OWNER_STORAGE,
+                    artifact_id=f"storage:journal:{name}",
+                    path=control_plane.journal_path_for_name(name),
+                    artifact_class=ArtifactClass.STORAGE_CONTROL_PLANE,
+                    detail=(
+                        "nonterminal restore journal: recovery authority until the "
+                        "restore reaches a verified terminal result"
+                    ),
+                    current=True,
+                    restart_required=True,
+                    hot_path_required=True,
+                )
+            )
+    retirable = control_plane.retirable_terminal_journals(
+        keep=int(policy_journal_retention)
+    )
+    for name in retirable:
+        views.append(
+            OwnerArtifactView(
+                owner=OWNER_STORAGE,
+                artifact_id=f"storage:journal:{name}",
+                path=control_plane.journal_path_for_name(name),
+                artifact_class=ArtifactClass.DIAGNOSTIC_EVIDENCE,
+                detail=(
+                    "terminal restore journal beyond the retention bound; the archive "
+                    "catalog, manifest, and blob it refers to are untouched"
+                ),
+                safe_reclaimable=True,
+            )
+        )
+
+    # Archive blob/manifest pairs with no catalog entry are publication residue.
+    for name in control_plane.uncataloged_archive_residue():
+        views.append(
+            OwnerArtifactView(
+                owner=OWNER_STORAGE,
+                artifact_id=f"storage:archive_residue:{name}",
+                path=control_plane.archive_root / name,
+                artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
+                detail=(
+                    "archive publication residue with no catalog entry: it authorizes "
+                    "nothing, and no live operation still references it"
+                ),
+                safe_reclaimable=True,
+            )
+        )
     return views
 
 
@@ -1086,16 +1604,136 @@ def control_plane_views(control_plane: StorageControlPlane) -> list[OwnerArtifac
 # ---------------------------------------------------------------------------
 
 
+def workspace_family_views(paths: Any, control_plane: StorageControlPlane) -> list[OwnerArtifactView]:
+    """Every other known campaign family, plus whatever is unrecognized.
+
+    A family that no owner adapter mentions is not thereby reclaimable; it is
+    invisible, which is worse.  This closes the census: the known campaign roots
+    are reported as their real owners' diagnostic or production evidence, and
+    anything else in the workspace is reported as ambiguous and retained rather
+    than quietly treated as campaign-owned scratch.
+    """
+
+    workspace = _absolute(paths.workspace)
+    internal = _absolute(paths.internal)
+    known: dict[Path, tuple[str, ArtifactClass, str]] = {
+        _absolute(paths.results): (
+            "campaign_store:results",
+            ArtifactClass.DIAGNOSTIC_EVIDENCE,
+            "operator-facing summaries and reports; restart/currentness neutral",
+        ),
+        _absolute(paths.models): (
+            "campaign_store:models",
+            ArtifactClass.DURABLE_SCIENTIFIC_EVIDENCE,
+            "current production model evidence",
+        ),
+        _absolute(paths.runs): (
+            "campaign_store:runs",
+            ArtifactClass.DIAGNOSTIC_EVIDENCE,
+            "historical training run tree retained by the campaign owner",
+        ),
+        _absolute(paths.data): (
+            "campaign_store:data",
+            ArtifactClass.REPRODUCIBILITY_BULK,
+            "materialized training inputs",
+        ),
+        _absolute(paths.manifest): (
+            "campaign_store:manifest",
+            ArtifactClass.DURABLE_SCIENTIFIC_EVIDENCE,
+            "approved campaign source manifest",
+        ),
+    }
+    views: list[OwnerArtifactView] = []
+    for path, (artifact_id, artifact_class, detail) in known.items():
+        if not path.exists() and not path.is_symlink():
+            continue
+        views.append(
+            OwnerArtifactView(
+                owner=OWNER_CAMPAIGN_STORE,
+                artifact_id=artifact_id,
+                path=path,
+                artifact_class=artifact_class,
+                detail=detail,
+                current=True,
+                restart_required=True,
+                container_only=True,
+                coverage=SubtreeCoverage.CONTAINER,
+            )
+        )
+
+    # Anything else directly under the workspace or `.mdstats` is unrecognized.
+    accounted = set(known) | {internal, control_plane.root}
+    for parent, prefix in ((workspace, "workspace"), (internal, "internal")):
+        if not parent.is_dir():
+            continue
+        for child in sorted(parent.iterdir()):
+            absolute = _absolute(child)
+            if absolute in accounted or _is_recognized_internal(child, internal):
+                continue
+            views.append(
+                OwnerArtifactView(
+                    owner=OWNER_EXTERNAL,
+                    artifact_id=f"unclassified:{prefix}:{child.name}",
+                    path=absolute,
+                    artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
+                    detail=(
+                        "no current owner claims this path; it is reported so it is "
+                        "visible and retained so it is never a candidate"
+                    ),
+                    current=True,
+                    restart_required=True,
+                    coverage=SubtreeCoverage.CONTAINER,
+                )
+            )
+    return views
+
+
+#: Internal families a dedicated owner adapter already reports.
+_RECOGNIZED_INTERNAL_NAMES = frozenset(
+    {
+        "campaign.sqlite3",
+        "campaign.sqlite3-wal",
+        "campaign.sqlite3-shm",
+        "records",
+        "hash-receipts.sqlite3",
+        "frame-cache",
+        "target-size",
+        "post-selection",
+        "qualification",
+        "storage",
+        "data7-cache",
+        "data8-fixed-cache",
+        "evaluation-graphs",
+    }
+)
+
+
+def _is_recognized_internal(child: Path, internal: Path) -> bool:
+    try:
+        relative = _absolute(child).relative_to(internal)
+    except ValueError:
+        return False
+    return bool(relative.parts) and relative.parts[0] in _RECOGNIZED_INTERNAL_NAMES
+
+
 def build_owner_views(
     cfg: Mapping[str, Any],
     paths: Any,
     store: Any,
     *,
     control_plane: StorageControlPlane | None = None,
+    journal_retention_records: int = 64,
+    certify: bool = True,
 ) -> OwnerViewSet:
-    """Interrogate every current owner and compose one owner view set."""
+    """Interrogate every current owner and compose one owner view set.
 
-    plane = control_plane or open_storage_control_plane(paths)
+    This is read-only with respect to managed campaign state: it opens the
+    control plane without creating it, resolves owner state through
+    non-creating readers, and never materializes a generation root, cache, or
+    receipt merely to describe what exists.
+    """
+
+    plane = control_plane or open_storage_control_plane_readonly(paths)
     views: list[OwnerArtifactView] = []
     unresolved: list[tuple[str, str]] = []
 
@@ -1105,16 +1743,35 @@ def build_owner_views(
         views.append(frame_cache)
 
     try:
-        target_views, current_generation = target_size_views(paths, store)
+        target_views, current_generation, target_unresolved = target_size_views(paths, store)
         views.extend(target_views)
+        unresolved.extend(target_unresolved)
     except Exception as exc:
         unresolved.append((OWNER_P3, f"target-size owner state unreadable: {exc}"))
+        unresolved.append(
+            (
+                OWNER_P5,
+                "downstream post-selection classification is unresolved because its "
+                "upstream selected authority is unreadable",
+            )
+        )
+        unresolved.append(
+            (
+                OWNER_P7,
+                "downstream qualification classification is unresolved because its "
+                "upstream selected authority is unreadable",
+            )
+        )
         current_generation = None
 
     publication_present = False
     try:
         p5_views, p5_unresolved = post_selection_views(
-            cfg, paths, store, current_generation=current_generation
+            cfg,
+            paths,
+            store,
+            current_generation=current_generation,
+            certify=certify,
         )
         views.extend(p5_views)
         unresolved.extend(p5_unresolved)
@@ -1137,11 +1794,15 @@ def build_owner_views(
     except Exception as exc:
         unresolved.append((OWNER_P7, f"qualification owner state unreadable: {exc}"))
 
-    views.extend(control_plane_views(plane))
+    views.extend(
+        control_plane_views(plane, policy_journal_retention=journal_retention_records)
+    )
+    views.extend(workspace_family_views(paths, plane))
     return OwnerViewSet(
         views=tuple(views),
         unresolved=tuple(unresolved),
         current_generation=current_generation,
+        integrity_failures=validate_owner_graph(views),
     )
 
 
@@ -1190,6 +1851,8 @@ def _within(root: Path, candidate: Path) -> bool:
 
 __all__ = [
     "ArtifactClass",
+    "OwnerGraphError",
+    "SubtreeCoverage",
     "OWNER_CAMPAIGN_STORE",
     "OWNER_EXTERNAL",
     "OWNER_P1",
@@ -1207,6 +1870,9 @@ __all__ = [
     "control_plane_views",
     "frame_cache_view",
     "post_selection_views",
+    "selection_is_expected",
     "qualification_views",
     "target_size_views",
+    "validate_owner_graph",
+    "workspace_family_views",
 ]

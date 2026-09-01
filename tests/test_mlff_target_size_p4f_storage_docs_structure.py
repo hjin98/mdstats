@@ -114,6 +114,32 @@ def test_p4f_req1_storage_report_accounts_promoted_target_size_families(
     assert "internal_campaign_artifacts" not in present
 
 
+
+def _storage_report_payload(config, *, deep: bool, top: int = 50):
+    """The report payload itself.
+
+    A read-only report is returned to its caller and printed; it is no longer
+    deposited in `results/`, because a nominally observational command must not
+    produce campaign artifacts.
+    """
+
+    from types import SimpleNamespace
+
+    from mdstats.training_data.storage import commands as storage_commands
+
+    cfg, paths = cli._load_config(config, ensure=False)
+    store = CampaignStore(paths.state_db, create=False)
+    try:
+        boundary = cli._campaign_ownership_boundary(cfg, paths, store)
+        context = storage_commands.StorageCommandContext(cfg, paths, store, boundary)
+        with cli.observational_campaign_state():
+            return storage_commands.storage_report(
+                context, SimpleNamespace(config=str(config), top=top, deep=deep)
+            )
+    finally:
+        store.close()
+
+
 def test_p4f_req1_storage_command_reports_target_size_bytes(tmp_path: Path):
     from types import SimpleNamespace
 
@@ -123,9 +149,8 @@ def test_p4f_req1_storage_command_reports_target_size_bytes(tmp_path: Path):
     assert cli.command_storage(
         SimpleNamespace(config=str(config), top=50, deep=False)
     ) == 0
-    payload = json.loads(
-        (paths.results / "storage-report.json").read_text(encoding="utf-8")
-    )
+    payload = _storage_report_payload(config, deep=False)
+    assert not (paths.results / "storage-report.json").exists()
     owners = {item["owner"] for item in payload["owner_families"]}
     assert "p3" in owners
     assert payload["destructive_actions_performed"] is False
@@ -135,11 +160,11 @@ def test_p4f_req1_storage_command_reports_target_size_bytes(tmp_path: Path):
     assert cli.command_storage(
         SimpleNamespace(config=str(config), top=50, deep=True)
     ) == 0
-    deep = json.loads(
-        (paths.results / "storage-deep-audit.json").read_text(encoding="utf-8")
-    )
+    deep = _storage_report_payload(config, deep=True)
+    # The deep audit keys bytes by where they physically live; the semantic
+    # target-size family names above come from the owner-driven report.
     families = {item["family"] for item in deep["families"]}
-    assert _TARGET_SIZE_FAMILIES & families
+    assert ".mdstats/target-size" in families, sorted(families)
     assert deep["destructive_actions_performed"] is False
 
 

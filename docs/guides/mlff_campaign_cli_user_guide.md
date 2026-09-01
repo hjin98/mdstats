@@ -375,10 +375,21 @@ python tools/mdstats-mlff-campaign.py --config campaign.toml storage report --de
 
 `storage report` reads the owner views and bounded physical metadata; it tells
 you which owner holds each family, what is current, and how much each action
-could reclaim. `--deep` runs an exact recursive physical audit. Both are
-read-only and neither grants any deletion authority.
+could reclaim. It is bounded - one `lstat` per owner artifact, no subtree walk -
+so a directory's total size is reported as unknown rather than guessed, and
+`--deep` is the explicit opt-in to an exact recursive physical audit.
 
-Every consequential action plans first and mutates only when you authorize it:
+Both are read-only, and read-only here means the command changes nothing at all:
+it does not create the workspace or the campaign database, it writes no report
+file into `results/`, and it does not even warm the SHA-256 receipt cache. The
+report is printed, not deposited. Running it against a directory that was never
+prepared tells you the campaign is uninitialized instead of initializing it.
+
+Authority to change anything comes only from the invocation you are running.
+`--apply` on this command line authorizes the mutation and the subcommand you
+typed selects the action; a persisted `apply` or `action` key under `[storage]`
+in your TOML is rejected outright rather than obeyed. Every consequential action
+plans first and mutates only when you authorize it:
 
 ```bash
 python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier safe --dry-run
@@ -390,12 +401,21 @@ python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --t
 `--tier safe` loses no scientific, restart, qualification, locked, or
 acceleration-cache capability: it removes only artifacts an owner has positively
 released, such as external record payloads no campaign state row references.
-`--tier cache` adds eviction that an owner can certify as exactly
-reconstructible right now - today that is the normalized frame cache, whose
-rebuild costs one source read per DATA2 run and reproduces the identical
-authenticated cache. The SHA-256 receipt store is accounted as a cache but
-retained by both tiers. Anything no owner can certify is retained, so a `cache`
-run on a campaign with nothing certified is legitimately a no-op.
+`--tier cache` adds eviction that an owner can certify as exactly reconstructible
+right now *and* can certify nothing is currently depending on. Reconstructibility
+alone is not enough. The normalized frame cache is reported as exactly
+reconstructible - rebuilding costs one source read per DATA2 run and reproduces
+the identical authenticated cache - but P1 exposes no liveness seam that could
+prove no reader is using it at this instant, so it is retained by both tiers and
+reported as `cache_reconstructible = true, cache_evictable = false`. The SHA-256
+receipt store is likewise accounted as a cache and retained. Anything no owner
+can certify is retained, so a `cache` run today is legitimately a no-op on most
+campaigns.
+
+Cleanup also plans campaign-state maintenance as its own action rather than as a
+side effect: bounding diagnostic events and rewriting the SQLite file happen only
+when SQLite's own free-space accounting says the rewrite is worth its cost, and
+only when there is room for the temporary copy it makes.
 
 Cold archive turns owner-declared *historical* bulk into a reversible,
 authenticated, identity-keyed cold representation:
@@ -411,8 +431,18 @@ python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive res
 Hot bytes are removed only after the archive is authenticated and cataloged, and
 only for artifacts no current or restartable owner needs hot - a checkpoint the
 current qualification publication still authenticates is never archived out from
-under it. Restoring an archive brings the bytes back as *historical* evidence;
-it never promotes anything to current. If a reclamation was interrupted,
+under it. Only descendants the owning component certifies as its own are
+collected: a file something else dropped inside an otherwise eligible run tree
+is left alone, and its presence withholds authority over that whole tree until
+you remove it.
+
+`--root` may narrow the selection to one eligible artifact. It may not widen it:
+naming a parent directory is rejected rather than reinterpreted, because a parent
+sweeps in siblings no owner released.
+
+Restoring an archive brings the bytes back as *historical* evidence; it never
+promotes anything to current, and it never changes the permissions or ownership
+of a directory that already existed. If a reclamation was interrupted,
 `storage archive reclaim <identity> --apply` resumes it against a freshly
 authenticated archive.
 
@@ -423,9 +453,12 @@ python tools/mdstats-mlff-campaign.py --config campaign.toml storage deduplicate
 python tools/mdstats-mlff-campaign.py --config campaign.toml storage deduplicate --apply
 ```
 
-It shares one inode between byte-identical files whose owner certifies both
-immutability and matching filesystem metadata. Equal bytes alone are never
-enough, and a cross-device or unsupported filesystem simply keeps the duplicates.
+It shares one inode directly between byte-identical files whose owner certifies
+both immutability and matching filesystem metadata. There is no separate content
+store, so deleting the last remaining name releases the bytes with nothing left
+to collect. Equal bytes alone are never enough; a file already hardlinked to
+something outside the campaign is never chosen as the shared inode, and a
+cross-device or unsupported filesystem simply keeps the duplicates.
 
 Every action protects external inputs, current scientific records, selected
 checkpoints, restart evidence, and diagnostics. The retired `recompute` and

@@ -571,7 +571,7 @@ def test_p4c_no_target_size_transaction_body_nests_reconciliation_or_cleanup():
         "reconcile_and_adopt_target_size_head",
         "commit_target_size_boundary_batch",
         "record_candidate_boundary_outcome",
-        "_remove_durably",
+        "remove_durably",
         "durable_unlink",
         "deduplicate",
         "create_cold_archive",
@@ -775,7 +775,7 @@ def _cleanup_production_race_child(
         _campaign_ownership_boundary,
         _load_config,
     )
-    from mdstats.training_data.storage.executor import _remove_durably
+    from mdstats.training_data.storage.executor import remove_durably
 
     workspace = Path(workspace_text)
     if config_path_text is not None:
@@ -812,7 +812,7 @@ def _cleanup_production_race_child(
             if not authorized:
                 skipped_messages.append(f"cleanup authority denied for {candidate}: {detail}")
                 continue
-            _remove_durably(candidate)
+            remove_durably(candidate)
             removed_paths.append(str(candidate))
         if return_list:
             queue.put(removed_paths)
@@ -892,7 +892,7 @@ def test_p4c_production_cleanup_owner_consumes_the_retention_fence(tmp_path: Pat
         CampaignPaths,
         _campaign_ownership_boundary,
     )
-    from mdstats.training_data.storage.executor import _remove_durably
+    from mdstats.training_data.storage.executor import remove_durably
 
     env = _env(tmp_path, root_name="screen_production_cleanup")
     store, revision = _campaign(tmp_path, env)
@@ -921,7 +921,7 @@ def test_p4c_production_cleanup_owner_consumes_the_retention_fence(tmp_path: Pat
             _os.utime(path, (old, old))
             authorized, detail = boundary.destructive_authorization(path)
             if authorized:
-                _remove_durably(path)
+                remove_durably(path)
                 removed.append(path)
             else:
                 denials.append(detail)

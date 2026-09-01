@@ -831,10 +831,19 @@ def test_p6_r12_structural_absence_and_non_reachability():
 
     for module in (storage_executor, storage_owners):
         source = inspect.getsource(module)
-        assert "paths.runs" not in source
         assert "active_process" not in source
         assert "_active_training_run_ids" not in source
         assert "_cleanup_obsolete_training_runtimes" not in source
+    # The destructive executor never reaches the training run tree at all.
+    assert "paths.runs" not in inspect.getsource(storage_executor)
+    # The owner census does name `runs/` - a complete inventory has to account
+    # for every campaign family - but it accounts for it as a retained container
+    # the campaign owner keeps, never as something storage may reclaim.
+    from mdstats.training_data.storage.owners import workspace_family_views
+
+    runs_source = inspect.getsource(workspace_family_views)
+    assert "safe_reclaimable" not in runs_source
+    assert "cache_evictable" not in runs_source
 
     # 3. campaign_execution remains absent
     with pytest.raises(ImportError):

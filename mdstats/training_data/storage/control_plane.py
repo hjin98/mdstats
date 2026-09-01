@@ -48,6 +48,29 @@ STAGING_DIRECTORY = "staging"
 
 STORAGE_AUDIT_SCHEMA = "mdstats.mlff-storage-audit.v1"
 STORAGE_CATALOG_ENTRY_SCHEMA = "mdstats.mlff-storage-archive-catalog-entry.v1"
+STORAGE_RESTORE_JOURNAL_SCHEMA = "mdstats.mlff-storage-restore-journal.v1"
+
+#: Durable storage-control schemas this build understands.  Anything else is
+#: rejected and retained rather than reinterpreted: an unsupported archive or
+#: journal format is a compatibility question for a future migration, never a
+#: licence to guess at what old bytes meant.
+SUPPORTED_JOURNAL_SCHEMAS = frozenset({STORAGE_RESTORE_JOURNAL_SCHEMA})
+SUPPORTED_CATALOG_SCHEMAS = frozenset({STORAGE_CATALOG_ENTRY_SCHEMA})
+
+#: Catalog fields that are create-once for one representation identity.  A
+#: later publication may refresh only operational status; rewriting any of
+#: these would silently repoint a retained archive.
+IMMUTABLE_CATALOG_FIELDS = (
+    "archive_identity",
+    "archive_locator",
+    "manifest_locator",
+    "archive_sha256",
+    "archive_size_bytes",
+    "member_count",
+    "total_expanded_bytes",
+    "representation_identity",
+    "logical_identity",
+)
 
 #: Control-plane subdirectories that no storage action may delete or archive
 #: while any archive they describe is retained.
@@ -94,6 +117,15 @@ class StorageControlPlane:
         return self.audit_root / "storage-operations.jsonl"
 
     def ensure(self) -> "StorageControlPlane":
+        """Materialize the control-plane directories.
+
+        Only an explicitly authorized consequential invocation may call this.
+        Read-only inspection uses :func:`open_storage_control_plane_readonly`,
+        which never creates anything: a `storage report` that had to create
+        `.mdstats/storage` in order to say no storage control plane exists
+        would have changed the campaign to describe it.
+        """
+
         for directory in (
             self.catalog_root,
             self.archive_root,
@@ -104,6 +136,120 @@ class StorageControlPlane:
         ):
             directory.mkdir(parents=True, exist_ok=True)
         return self
+
+    @property
+    def exists(self) -> bool:
+        return self.root.is_dir()
+
+    # -- restore journal lifecycle ---------------------------------------
+
+    def journal_path_for_name(self, name: str) -> Path:
+        return self.journal_root / f"{name}.json"
+
+    def journal_states(self) -> tuple[tuple[str, bool], ...]:
+        """``(identity, is_terminal)`` for every restore journal on disk."""
+
+        if not self.journal_root.is_dir():
+            return ()
+        states: list[tuple[str, bool]] = []
+        for path in sorted(self.journal_root.glob("*.json")):
+            states.append((path.stem, self._journal_is_terminal(path)))
+        return tuple(states)
+
+    def journal_is_nonterminal(self, name: str) -> bool:
+        path = self.journal_path_for_name(name)
+        return path.is_file() and not self._journal_is_terminal(path)
+
+    def _journal_is_terminal(self, path: Path) -> bool:
+        """Whether one restore journal has reached its verified terminal state.
+
+        An unreadable or unsupported journal is treated as *nonterminal*: that
+        is the direction that retains recovery authority, and an unsupported
+        durable schema must be rejected and kept rather than reinterpreted.
+        """
+
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        if payload.get("schema") not in SUPPORTED_JOURNAL_SCHEMAS:
+            return False
+        return str(payload.get("state")) == "terminal"
+
+    def retirable_terminal_journals(self, *, keep: int) -> tuple[str, ...]:
+        """Terminal journals beyond the retention bound, oldest first.
+
+        Retiring one removes bounded diagnostic evidence only; the archive
+        catalog, manifest, and blob it refers to are never touched.
+        """
+
+        terminal = [name for name, done in self.journal_states() if done]
+        if len(terminal) <= max(0, int(keep)):
+            return ()
+        ordered = sorted(
+            terminal,
+            key=lambda name: (
+                self.journal_path_for_name(name).stat().st_mtime
+                if self.journal_path_for_name(name).is_file()
+                else 0.0
+            ),
+        )
+        return tuple(ordered[: len(ordered) - max(0, int(keep))])
+
+    # -- archive publication residue -------------------------------------
+
+    def uncataloged_archive_residue(self) -> tuple[str, ...]:
+        """Archive files under the archive root that no catalog entry claims.
+
+        An archive blob or manifest without a catalog entry authorizes nothing:
+        it cannot justify a hot deletion and cannot be restored from. Once no
+        live operation holds the storage lease, it is storage-owned scratch.
+        Anything a retained catalog entry names is excluded by construction.
+        """
+
+        if not self.archive_root.is_dir():
+            return ()
+        claimed: set[str] = set()
+        for entry in self._safe_catalog_entries():
+            identity = str(entry.get("archive_identity", ""))
+            locator = str(entry.get("archive_locator", ""))
+            manifest = str(entry.get("manifest_locator", ""))
+            if locator:
+                claimed.add(locator)
+            if manifest:
+                claimed.add(manifest)
+            if identity:
+                claimed.add(f"{identity}.manifest.json")
+        residue: list[str] = []
+        for path in sorted(self.archive_root.iterdir()):
+            if not path.is_file() or path.is_symlink():
+                continue
+            if path.name in claimed:
+                continue
+            residue.append(path.name)
+        return tuple(residue)
+
+    def _safe_catalog_entries(self) -> tuple[dict[str, Any], ...]:
+        """Catalog entries that parse, without failing the whole enumeration.
+
+        An unreadable entry is not silently dropped: it keeps the archive root
+        conservatively claimed so nothing beneath it is treated as residue.
+        """
+
+        if not self.catalog_root.is_dir():
+            return ()
+        entries: list[dict[str, Any]] = []
+        for path in sorted(self.catalog_root.glob("*.json")):
+            try:
+                entries.append(self.read_catalog_entry(path.stem))
+            except StorageControlPlaneError:
+                # Claim everything rather than risk calling live authority residue.
+                return tuple(
+                    [{"archive_locator": item.name} for item in self.archive_root.iterdir()]
+                    if self.archive_root.is_dir()
+                    else []
+                )
+        return tuple(entries)
 
     # -- archive locator containment (R11-1) -----------------------------
 
@@ -143,14 +289,43 @@ class StorageControlPlane:
     # -- durable records --------------------------------------------------
 
     def publish_catalog_entry(self, entry: Mapping[str, Any]) -> Path:
-        """Durably publish one identity-keyed archive catalog entry."""
+        """Durably publish one identity-keyed archive catalog entry.
+
+        Create-once for the fields that locate and authenticate a retained
+        representation, update-allowed for operational status. Republishing the
+        same identity with a different blob digest, locator, or member identity
+        is refused, so a retained archive can never be silently repointed at
+        different bytes; the old entry stays independently verifiable.
+        """
 
         identity = _validated_identity(entry.get("archive_identity", ""))
         payload = dict(entry)
         payload["schema"] = STORAGE_CATALOG_ENTRY_SCHEMA
         payload.pop("entry_digest", None)
-        payload["entry_digest"] = canonical_digest(payload)
+
         destination = self.catalog_entry_path(identity)
+        if destination.is_file():
+            existing = self.read_catalog_entry(identity)
+            conflicts = [
+                field
+                for field in IMMUTABLE_CATALOG_FIELDS
+                if field in existing
+                and field in payload
+                and existing[field] != payload[field]
+            ]
+            if conflicts:
+                raise StorageControlPlaneError(
+                    f"Archive catalog entry {identity[:12]}... already exists with "
+                    f"different immutable field(s) {sorted(conflicts)}; a retained "
+                    "representation is never rewritten in place."
+                )
+            # Carry forward any immutable field the caller did not restate, so a
+            # status refresh cannot drop locating authority.
+            for field in IMMUTABLE_CATALOG_FIELDS:
+                if field in existing and field not in payload:
+                    payload[field] = existing[field]
+
+        payload["entry_digest"] = canonical_digest(payload)
         self.catalog_root.mkdir(parents=True, exist_ok=True)
         durable_publish_json(destination, payload)
         return destination
@@ -162,9 +337,10 @@ class StorageControlPlane:
                 f"No storage archive catalog entry for identity {archive_identity[:12]}..."
             )
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if payload.get("schema") != STORAGE_CATALOG_ENTRY_SCHEMA:
+        if payload.get("schema") not in SUPPORTED_CATALOG_SCHEMAS:
             raise StorageControlPlaneError(
-                f"Unsupported storage catalog entry schema at {path}."
+                f"Unsupported storage catalog entry schema {payload.get('schema')!r} at "
+                f"{path}; it is retained and rejected rather than reinterpreted."
             )
         expected = payload.get("entry_digest")
         observed = canonical_digest({k: v for k, v in payload.items() if k != "entry_digest"})
@@ -322,9 +498,7 @@ def _resolve(path: Path) -> Path:
         return Path(os.path.abspath(os.fspath(path)))
 
 
-def open_storage_control_plane(workspace_or_paths: Any) -> StorageControlPlane:
-    """Open (and create) the campaign-owned storage control plane."""
-
+def _locate_storage_control_plane(workspace_or_paths: Any) -> StorageControlPlane:
     internal = (
         Path(workspace_or_paths.internal)
         if hasattr(workspace_or_paths, "internal")
@@ -335,11 +509,30 @@ def open_storage_control_plane(workspace_or_paths: Any) -> StorageControlPlane:
         if hasattr(workspace_or_paths, "workspace")
         else Path(workspace_or_paths)
     )
-    plane = StorageControlPlane(
+    return StorageControlPlane(
         workspace=Path(os.path.abspath(os.fspath(workspace))),
         root=Path(os.path.abspath(os.fspath(internal))) / STORAGE_CONTROL_ROOT_NAME,
     )
-    return plane.ensure()
+
+
+def open_storage_control_plane_readonly(workspace_or_paths: Any) -> StorageControlPlane:
+    """Locate the control plane without creating any of it.
+
+    Reporting, listing, verifying, and planning all use this. A campaign with no
+    storage control plane must still be reportable, and reporting it must not be
+    what brings it into existence.
+    """
+
+    return _locate_storage_control_plane(workspace_or_paths)
+
+
+def open_storage_control_plane(workspace_or_paths: Any) -> StorageControlPlane:
+    """Open and create the campaign-owned storage control plane.
+
+    Reserved for an explicitly authorized consequential invocation.
+    """
+
+    return _locate_storage_control_plane(workspace_or_paths).ensure()
 
 
 def authenticate_file(path: Path, *, expected_sha256: str, expected_size: int) -> None:
@@ -367,10 +560,15 @@ __all__ = [
     "STAGING_DIRECTORY",
     "STORAGE_AUDIT_SCHEMA",
     "STORAGE_CATALOG_ENTRY_SCHEMA",
+    "IMMUTABLE_CATALOG_FIELDS",
     "STORAGE_CONTROL_ROOT_NAME",
+    "STORAGE_RESTORE_JOURNAL_SCHEMA",
+    "SUPPORTED_CATALOG_SCHEMAS",
+    "SUPPORTED_JOURNAL_SCHEMAS",
     "StorageControlPlane",
     "StorageControlPlaneError",
     "authenticate_file",
     "open_storage_control_plane",
+    "open_storage_control_plane_readonly",
     "resolve_inside_root",
 ]

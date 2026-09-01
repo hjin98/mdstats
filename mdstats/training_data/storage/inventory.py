@@ -26,13 +26,16 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from ..storage_accounting import ProtectedInputPath
-from .control_plane import StorageControlPlane, open_storage_control_plane
+from .control_plane import StorageControlPlane, open_storage_control_plane_readonly
 from .owners import (
     ArtifactClass,
     OwnerArtifactView,
+    OwnerGraphError,
     OwnerViewSet,
+    SubtreeCoverage,
     build_owner_views,
 )
+from .trust import crosses_mount_boundary, walk_contained
 
 STORAGE_INVENTORY_SCHEMA = "mdstats.mlff-storage-inventory.v1"
 
@@ -158,6 +161,103 @@ class StorageInventorySnapshot:
         }
         return roots.get(owner, self.workspace)
 
+    # -- consequential-planning gate --------------------------------------
+
+    @property
+    def integrity_failures(self) -> tuple[str, ...]:
+        return self.owner_views.integrity_failures
+
+    def require_planable(self) -> None:
+        """Refuse consequential planning unless the owner graph is sound.
+
+        An incomplete or ambiguous dependency graph cannot establish deletion,
+        archive, or dedup authority, so nothing consequential is planned from
+        it.  Read-only reporting stays available and shows the exact problem.
+        """
+
+        if self.integrity_failures:
+            raise OwnerGraphError(
+                "The owner graph is not a valid basis for consequential storage "
+                "planning; storage refuses to mutate until it is repaired:\n  - "
+                + "\n  - ".join(self.integrity_failures)
+            )
+
+    # -- recursive authorization ------------------------------------------
+
+    def authorized_members(
+        self, view: OwnerArtifactView
+    ) -> tuple[tuple[Path, ...], tuple[tuple[Path, str], ...]]:
+        """The files this owner actually certifies, and what was refused.
+
+        Lexical containment beneath an owner root is not semantic ownership. A
+        ``CLOSED`` subtree may be walked, because its owner certified that every
+        descendant belongs to the artifact. A ``CONTAINER`` may not: only its
+        individually certified children participate, and everything else is
+        refused and left alone.
+
+        Mount boundaries, symlinks, and the physical ownership boundary reduce
+        this further; they are applied by the caller, which knows whether it is
+        deleting, archiving, or relinking.
+        """
+
+        refused: list[tuple[Path, str]] = []
+        root = view.path
+        if root.is_file() and not root.is_symlink():
+            return (root,), ()
+        if not root.is_dir():
+            return (), ()
+
+        if view.coverage is SubtreeCoverage.CLOSED:
+            if not view.certified_members:
+                return (), (
+                    (
+                        root,
+                        "the owner declares a closed subtree but recorded no member "
+                        "set, so no descendant is individually authorized",
+                    ),
+                )
+            certified = {root / name for name in view.certified_members}
+            retained = {root / name for name in view.retained_members}
+            members: list[Path] = []
+            # Walk the real tree as well: the certification says these members
+            # are exactly what the owner produced, so anything else present is a
+            # contradiction that must reduce authority rather than be ignored.
+            for child in walk_contained(
+                root, on_refused=lambda path, why: refused.append((path, why))
+            ):
+                if child.is_dir():
+                    continue
+                if child.is_symlink():
+                    refused.append((child, "symlink members are never collected"))
+                    continue
+                if child in retained:
+                    # The owner's own certification record and locks: known,
+                    # never released, and never a contradiction.
+                    continue
+                if child not in certified:
+                    refused.append(
+                        (child, "not part of the member set this owner recorded")
+                    )
+                    continue
+                members.append(child)
+            # A recorded member that is absent has legitimately left the tree
+            # (reclaimed into an archive, for instance); it bounds what may be
+            # acted on, and its absence is not a contradiction.
+            return tuple(sorted(members)), tuple(refused)
+
+        if view.coverage is SubtreeCoverage.CONTAINER and view.certified_members:
+            members = []
+            for name in view.certified_members:
+                child = root / name
+                crossed, why = crosses_mount_boundary(root, child)
+                if crossed:
+                    refused.append((child, why))
+                    continue
+                members.append(child)
+            return tuple(sorted(members)), tuple(refused)
+
+        return (), ((root, "the owner certifies no descendant of this container"),)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": STORAGE_INVENTORY_SCHEMA,
@@ -168,6 +268,8 @@ class StorageInventorySnapshot:
                 {"owner": owner, "detail": detail}
                 for owner, detail in self.owner_views.unresolved
             ],
+            "owner_graph_integrity_failures": list(self.integrity_failures),
+            "consequential_planning_available": not self.integrity_failures,
             "protection_closure": [
                 {
                     "artifact_id": reason.artifact_id,
@@ -187,11 +289,29 @@ def build_storage_inventory(
     *,
     protected_inputs: Sequence[ProtectedInputPath] = (),
     control_plane: StorageControlPlane | None = None,
+    journal_retention_records: int = 64,
+    certify: bool = False,
 ) -> StorageInventorySnapshot:
-    """Interrogate the owners and compose the transitive protection closure."""
+    """Interrogate the owners and compose the transitive protection closure.
 
-    plane = control_plane or open_storage_control_plane(paths)
-    owner_views = build_owner_views(cfg, paths, store, control_plane=plane)
+    Read-only: the control plane is located rather than created, and the owner
+    adapters use non-creating readers.
+
+    ``certify`` decides how hard the owners are asked.  Reporting uses the cheap
+    answer, so its cost stays bounded independently of how much bulk a campaign
+    holds.  Consequential planning uses the exact one, because that is where a
+    wrong answer would mutate bytes.
+    """
+
+    plane = control_plane or open_storage_control_plane_readonly(paths)
+    owner_views = build_owner_views(
+        cfg,
+        paths,
+        store,
+        control_plane=plane,
+        journal_retention_records=journal_retention_records,
+        certify=certify,
+    )
     protected_ids, reasons = compute_protection_closure(owner_views)
     by_id = owner_views.by_id()
     index: list[tuple[Path, str, bool]] = []
@@ -429,6 +549,7 @@ def _within(root: Path, candidate: Path) -> bool:
 
 __all__ = [
     "STORAGE_INVENTORY_SCHEMA",
+    "OwnerGraphError",
     "EligibilityDecision",
     "ProtectionReason",
     "StorageInventorySnapshot",

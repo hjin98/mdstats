@@ -299,11 +299,89 @@ class _TrainingMethodSpec:
 
 
 
+#: Invocation-scoped observational mode.
+#:
+#: A read-only storage command must not change managed campaign state, and that
+#: is a property of the *invocation*, not of one call site.  Owner loaders reach
+#: campaign state through several independent helpers, some of which open their
+#: own :class:`CampaignStore` in order to read one record; each of those opens
+#: would otherwise bootstrap a schema row and turn on write-through SHA-256
+#: receipts, so merely describing a campaign would rewrite two managed databases.
+#:
+#: While this flag is set, every store opened anywhere below is observational
+#: and the durable receipt cache stays disconnected.  It is thread-local because
+#: the storage owner fans reads out across worker threads within one invocation.
+_OBSERVATIONAL_STATE = threading.local()
+
+
+def _observational_campaign_state_active() -> bool:
+    return bool(getattr(_OBSERVATIONAL_STATE, "active", False))
+
+
+@contextmanager
+def observational_campaign_state() -> Iterable[None]:
+    """Forbid this invocation from creating or writing managed campaign state.
+
+    Receipts are a pure acceleration cache - losing one only forces a fresh byte
+    hash - but the cache is itself a managed artifact this package inventories,
+    so an observational command leaves it exactly as it found it.
+    """
+
+    from . import _common
+
+    previous_active = _observational_campaign_state_active()
+    previous_receipts = _common._SHA256_RECEIPT_PATH
+    _OBSERVATIONAL_STATE.active = True
+    configure_sha256_receipt_store(None)
+    try:
+        yield
+    finally:
+        _OBSERVATIONAL_STATE.active = previous_active
+        configure_sha256_receipt_store(previous_receipts)
+
+
+def _declared_relative_paths(payload: Any) -> set[str]:
+    """Every ``relative_path`` a sharded-record manifest declares, at any depth."""
+
+    found: set[str] = set()
+    if isinstance(payload, Mapping):
+        value = payload.get("relative_path")
+        if isinstance(value, str):
+            found.add(value)
+        for item in payload.values():
+            found |= _declared_relative_paths(item)
+    elif isinstance(payload, (list, tuple)):
+        for item in payload:
+            found |= _declared_relative_paths(item)
+    return found
+
+
 class CampaignStore:
     """Single-file durable state for orchestration records and stage summaries."""
 
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, *, create: bool = True):
+        """Open the campaign state database.
+
+        ``create=False`` is the observational open used by read-only storage
+        paths: it will not create the directory, will not initialize a schema,
+        and will not turn on write-through SHA-256 receipts. Describing a
+        campaign must never be what brings its state into existence.
+        """
+
         self.path = Path(path)
+        if _observational_campaign_state_active():
+            # An observational invocation cannot be made consequential by a
+            # nested helper that happens to open the store for itself.
+            create = False
+        self.read_only = not create
+        if not create:
+            if not self.path.is_file():
+                raise CampaignCliError(
+                    f"Campaign state database is missing: {self.path}. It is reported "
+                    "as uninitialized rather than created by an observational command."
+                )
+            self._db_local = threading.local()
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._db_local = threading.local()
         configure_sha256_receipt_store(self.path.parent / "hash-receipts.sqlite3")
@@ -404,6 +482,73 @@ class CampaignStore:
     @property
     def external_record_directory(self) -> Path:
         return self.path.parent / "records"
+
+    def certify_closed_external_record(
+        self, entry: str | Path
+    ) -> tuple[bool, str, tuple[str, ...]]:
+        """Whether this owner certifies every descendant of one payload entry.
+
+        ``records/`` is this store's private externalized-payload area.  This
+        owner creates it, is its only writer, and delegates no part of it to any
+        other component - which is what makes a closed-subtree statement here a
+        truthful ownership claim rather than a containment guess.  Contrast the
+        post-selection run tree, whose contents are written by a configured
+        third-party trainer and therefore need an explicit recorded membership.
+
+        The claim is still refused for anything this owner cannot have written
+        (symlinks, special files), and for a sharded record the authenticated
+        manifest bounds the member set exactly, so a foreign file dropped inside
+        one withholds authority over the whole entry.
+
+        Returns ``(certified, detail, members)`` where members are POSIX paths
+        relative to ``entry`` itself.
+        """
+
+        from .data4_sharded_store import DATA4_SHARDED_MANIFEST_SCHEMA
+
+        root = Path(entry)
+        if root.is_symlink():
+            return False, "a symlink is never a record payload this owner wrote", ()
+        if root.is_file():
+            return True, "single-file external record payload", ()
+        if not root.is_dir():
+            return False, f"{root} is neither a payload file nor a payload directory", ()
+
+        observed: list[str] = []
+        for path in sorted(root.rglob("*")):
+            if path.is_symlink():
+                return False, (
+                    f"record payload contains a symlink this owner did not write: {path.name}"
+                ), ()
+            if path.is_dir():
+                continue
+            if not path.is_file():
+                return False, (
+                    f"record payload contains a special file: {path.name}"
+                ), ()
+            observed.append(path.relative_to(root).as_posix())
+
+        manifest_path = root / "manifest.json"
+        if manifest_path.is_file():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                return False, f"record manifest is unreadable ({exc})", ()
+            if manifest.get("schema") == DATA4_SHARDED_MANIFEST_SCHEMA:
+                declared = {"manifest.json", *_declared_relative_paths(manifest)}
+                extra = sorted(set(observed) - declared)
+                if extra:
+                    return False, (
+                        "sharded record contains descendant(s) its manifest does not "
+                        f"declare: {extra[:5]}"
+                    ), ()
+                return True, (
+                    "sharded external record whose descendants are exactly what its "
+                    "authenticated manifest declares"
+                ), tuple(sorted(observed))
+        return True, (
+            "external record payload in this owner's exclusively written record area"
+        ), tuple(sorted(observed))
 
     def _write_external_payload(self, key: str, payload: Mapping[str, Any]) -> tuple[str, str]:
         """Stream a large JSON record to content-addressed storage.
@@ -800,7 +945,16 @@ def _resolve_path(value: str | Path, base: Path) -> Path:
     return (path if path.is_absolute() else base / path).resolve()
 
 
-def _load_config(path: str | Path) -> tuple[dict[str, Any], CampaignPaths]:
+def _load_config(
+    path: str | Path, *, ensure: bool = True
+) -> tuple[dict[str, Any], CampaignPaths]:
+    """Resolve configuration and campaign paths.
+
+    ``ensure=False`` inspects a campaign without materializing its directory
+    layout. Observational storage commands use it so that reporting on a
+    campaign cannot be what creates its workspace.
+    """
+
     config_path = Path(path).expanduser().resolve()
     if not config_path.is_file():
         raise CampaignCliError(f"Configuration not found: {config_path}. Run `init` first.")
@@ -810,7 +964,8 @@ def _load_config(path: str | Path) -> tuple[dict[str, Any], CampaignPaths]:
         raise CampaignCliError(f"Unsupported campaign configuration schema: {cfg.get('schema')!r}.")
     _normalize_target_size_fidelity_config(cfg)
     paths = CampaignPaths.from_config(config_path, cfg)
-    paths.ensure()
+    if ensure:
+        paths.ensure()
     # TRAIN2A migration authority is configuration-level and must fail on every
     # command, not only when DATA8 is rebuilt. Historical configs without an
     # explicit policy_generation remain under their original semantics.
@@ -5021,10 +5176,18 @@ def _atomic_copy_file(source: Path, destination: Path) -> None:
 
 
 
-def _storage_command_context(config: Path) -> tuple[Any, Any, "CampaignStore", Any]:
-    """Resolve the one owner/boundary context every storage command shares."""
+def _storage_command_context(
+    config: Path, *, consequential: bool
+) -> tuple[Any, Any, "CampaignStore", Any]:
+    """Resolve the one owner/boundary context every storage command shares.
 
-    cfg, paths = _load_config(config)
+    ``consequential`` decides whether this invocation may create anything. An
+    observational command resolves paths without materializing them and opens
+    the state database read-only; only an explicitly authorized apply is allowed
+    to bring campaign state into existence.
+    """
+
+    cfg, paths = _load_config(config, ensure=consequential)
     boundary = _campaign_ownership_boundary(cfg, paths)
     state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
     if not state_authorized:
@@ -5032,7 +5195,7 @@ def _storage_command_context(config: Path) -> tuple[Any, Any, "CampaignStore", A
             "Refusing the storage operation because campaign state is outside the "
             f"campaign ownership boundary: {state_detail}: {paths.state_db}"
         )
-    store = CampaignStore(paths.state_db)
+    store = CampaignStore(paths.state_db, create=consequential)
     # Rebuild the boundary with the store so the P3 publication-window fence and
     # the P7 durable-evidence fence both reduce deletion authority.
     boundary = _campaign_ownership_boundary(cfg, paths, store)
@@ -5046,11 +5209,38 @@ def _storage_dispatch(args: argparse.Namespace, handler: str, printer: str) -> i
     from .storage.control_plane import StorageControlPlaneError
     from .storage.commands import StorageDisabledError
     from .storage.dedup import StorageDedupError
+    from .storage.executor import StorageAuthorizationError
+    from .storage.inventory import OwnerGraphError
     from .storage.lease import StorageLeaseUnavailableError
     from .storage.plan import StoragePlanStaleError
     from .storage.policy import StoragePolicyError
 
-    cfg, paths, store, boundary = _storage_command_context(args.config)
+    consequential = storage_commands.invocation_apply(args)
+    if not consequential:
+        with observational_campaign_state():
+            return _storage_dispatch_locked(args, handler, printer)
+    return _storage_dispatch_locked(args, handler, printer)
+
+
+def _storage_dispatch_locked(
+    args: argparse.Namespace, handler: str, printer: str
+) -> int:
+    from .storage import commands as storage_commands
+    from .storage.admission import StorageAdmissionError
+    from .storage.archive import StorageArchiveError
+    from .storage.control_plane import StorageControlPlaneError
+    from .storage.commands import StorageDisabledError
+    from .storage.dedup import StorageDedupError
+    from .storage.executor import StorageAuthorizationError
+    from .storage.inventory import OwnerGraphError
+    from .storage.lease import StorageLeaseUnavailableError
+    from .storage.plan import StoragePlanStaleError
+    from .storage.policy import StoragePolicyError
+
+    consequential = storage_commands.invocation_apply(args)
+    cfg, paths, store, boundary = _storage_command_context(
+        args.config, consequential=consequential
+    )
     try:
         context = storage_commands.StorageCommandContext(cfg, paths, store, boundary)
         try:
@@ -5061,9 +5251,11 @@ def _storage_dispatch(args: argparse.Namespace, handler: str, printer: str) -> i
             StorageControlPlaneError,
             StorageDedupError,
             StorageDisabledError,
+            StorageAuthorizationError,
             StorageLeaseUnavailableError,
             StoragePlanStaleError,
             StoragePolicyError,
+            OwnerGraphError,
         ) as exc:
             raise CampaignCliError(str(exc)) from exc
         getattr(storage_commands, printer)(payload)
@@ -5083,23 +5275,31 @@ def command_storage(args: argparse.Namespace) -> int:
     return _storage_dispatch(args, "storage_report", "print_storage_report")
 
 
-def command_cleanup(args: argparse.Namespace) -> int:
-    """Plan and, when authorized, apply owner-driven safe/cache cleanup."""
+def _reject_conflicting_authorization(args: argparse.Namespace) -> None:
+    """`--dry-run` and `--apply` are opposite answers to the same question."""
 
     if bool(getattr(args, "apply", False)) and bool(getattr(args, "dry_run", False)):
         raise CampaignCliError("Choose either --dry-run or --apply, not both.")
+
+
+def command_cleanup(args: argparse.Namespace) -> int:
+    """Plan and, when authorized, apply owner-driven safe/cache cleanup."""
+
+    _reject_conflicting_authorization(args)
     return _storage_dispatch(args, "storage_cleanup", "print_cleanup")
 
 
 def command_storage_archive(args: argparse.Namespace) -> int:
     """Create, list, verify, restore, or resume a cold archive representation."""
 
+    _reject_conflicting_authorization(args)
     return _storage_dispatch(args, "storage_archive", "print_archive")
 
 
 def command_storage_deduplicate(args: argparse.Namespace) -> int:
     """Plan and, when authorized, apply owner-certified immutable dedup."""
 
+    _reject_conflicting_authorization(args)
     return _storage_dispatch(args, "storage_deduplicate", "print_dedup")
 
 
@@ -5902,8 +6102,11 @@ stop_scheduling_after_failure = true
 
 [cleanup]
 # Storage is operator-driven: storage cleanup --tier safe|cache. It plans first and
-# mutates only with --apply. Setting enabled = false withholds every consequential
-# storage mutation while leaving reporting and planning available.
+# mutates only with --apply on the invocation you run; a persisted apply/action key
+# under [storage] is rejected rather than obeyed. Setting enabled = false withholds
+# every consequential storage mutation while leaving reporting and planning
+# available. Optional [storage] policy keys tune codecs, bounds, and reserves only;
+# they never widen deletion or archive authority.
 enabled = true
 # Publication window. Evidence younger than this is retained so storage can never
 # race a reference that has not landed yet.
@@ -5989,7 +6192,10 @@ Post-production qualification is a separate, downstream family:
 qualification status | qualification run | qualification activate-locked
 
 The orthogonal storage command reports and manages reconstructible campaign
-artifacts. status and advance project the training lifecycle only; advance never
+artifacts. Its report modes and every --dry-run are observational: they change
+nothing, not even a cache, and they never create a campaign. Only --apply on the
+invocation you are running authorizes a mutation; configuration cannot carry that
+authority. status and advance project the training lifecycle only; advance never
 runs qualification and never opens locked evidence. A target-size scientific
 failure is terminal evidence; it does not authorize a production command.
 

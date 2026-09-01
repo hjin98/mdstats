@@ -1,14 +1,24 @@
-"""Operator-facing storage commands, resolved through one canonical policy.
+"""Operator-facing storage commands.
 
-Every command here resolves the same :class:`~.policy.StoragePolicy`, builds
-the same cross-owner inventory, and - when consequential - applies through the
-same :class:`~.executor.StorageExecutor`.  There is no second destructive path
-and no command that can act on a report label.
+Two invariants shape every function here.
 
-The mandatory sequence for a consequential action is plan, show, authorize:
-``--dry-run`` prints and writes the plan and stops; ``--apply`` re-derives the
-inventory, revalidates the plan against fresh owner state under the owning
-publication barriers, and only then mutates.
+*Authorization is invocation-local.*  A command mutates only when the current
+caller explicitly asked it to.  Configuration can tune how an action behaves; it
+can never authorize one, and it can never redirect which action a command
+performs.
+
+*Non-apply is observational.*  Report, list, verify, and every dry-run leave
+managed campaign state byte-for-byte unchanged.  They open the campaign store
+read-only, locate the storage control plane without creating it, never
+materialize an owner's generation root, and return their result rather than
+writing it somewhere.  A command that had to create state in order to describe
+the campaign would have already changed the thing it was describing.
+
+Every consequential path - cleanup, dedup, archive create, hot reclaim, restore,
+and campaign-state maintenance - is realized by its own engine but authorized by
+one shared contract in :class:`~.executor.StorageExecutor`: owner-bound plan,
+fresh under-synchronization revalidation, physical boundary, admission, and
+truthful terminal audit.  The engines differ; the authorization does not.
 """
 
 from __future__ import annotations
@@ -19,24 +29,46 @@ from typing import Any, Mapping, Sequence
 
 from .admission import StorageAdmissionError, admit_storage_operation
 from .archive import (
+    ArchivePlanBundle,
     StorageArchiveError,
-    create_cold_archive,
+    archive_admission,
+    archive_create_engine,
+    archive_reclaim_engine,
+    archive_restore_engine,
+    build_archive_plan_actions,
+    build_reclaim_plan_actions,
+    build_restore_plan_actions,
     list_archives,
     read_restore_journal,
-    reclaim_archived_hot_members,
-    restore_cold_archive,
+    restore_admission,
+    select_archive_roots,
     verify_cold_archive,
 )
-from .control_plane import open_storage_control_plane
-from .dedup import deduplicate
-from .durability import durable_publish_json
-from .executor import StorageExecutor
+from .control_plane import (
+    StorageControlPlane,
+    open_storage_control_plane,
+    open_storage_control_plane_readonly,
+)
+from .dedup import DedupResult, build_dedup_plan, dedup_engine
+from .executor import (
+    STATUS_PLANNED,
+    StorageAuthorizationError,
+    StorageExecutionResult,
+    StorageExecutor,
+    remove_certified_subtree,
+    remove_durably,
+    synchronization_for,
+)
 from .inventory import (
     StorageInventorySnapshot,
     archive_candidates,
     build_storage_inventory,
     cache_candidates,
     safe_candidates,
+)
+from .maintenance import (
+    campaign_state_maintenance_engine,
+    plan_campaign_state_maintenance,
 )
 from .plan import (
     ACTION_EVICT_CACHE,
@@ -60,7 +92,9 @@ from .policy import (
 from .report import build_deep_storage_audit, build_owner_storage_report
 
 
-def _format_bytes(value: int) -> str:
+def _format_bytes(value: int | None) -> str:
+    if value is None:
+        return "unknown"
     number = float(int(value))
     for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
         if abs(number) < 1024.0 or unit == "TiB":
@@ -95,6 +129,19 @@ def _execution_reserve_bytes(cfg: Mapping[str, Any]) -> int | None:
         return None
 
 
+def invocation_apply(args: Any) -> bool:
+    """Whether *this* invocation explicitly authorized a mutation.
+
+    Only an explicit ``--apply`` on the current command counts. ``--dry-run``
+    and the absence of ``--apply`` are both non-mutating, and no configuration,
+    environment value, stored plan, or prior audit record can substitute.
+    """
+
+    if bool(getattr(args, "dry_run", False)):
+        return False
+    return bool(getattr(args, "apply", False))
+
+
 def _resolve(args: Any, cfg: Mapping[str, Any], *, action: str, tier: str = TIER_SAFE):
     """Normalize every configuration and CLI surface into one policy identity.
 
@@ -105,19 +152,21 @@ def _resolve(args: Any, cfg: Mapping[str, Any], *, action: str, tier: str = TIER
 
     overrides: dict[str, Any] = {}
     cleanup = _cleanup_section(cfg)
-    if "maximum_event_records" in cleanup:
+    storage_section = cfg.get("storage", {}) if isinstance(cfg, Mapping) else {}
+    storage_section = storage_section if isinstance(storage_section, Mapping) else {}
+    if (
+        "maximum_event_records" in cleanup
+        and "sqlite_compaction_maximum_events" not in storage_section
+    ):
+        # A historical alias fills in only where the current key is unset; it
+        # never overrides an explicitly configured value.
         overrides["sqlite_compaction_maximum_events"] = cleanup["maximum_event_records"]
     # The campaign already owns a free-disk floor for execution. Storage does not
     # get a second, weaker one: a reserve is a floor, and the only safe
     # composition of two floors is the stricter of the two.
     execution_reserve = _execution_reserve_bytes(cfg)
     if execution_reserve is not None:
-        storage_section = cfg.get("storage", {}) if isinstance(cfg, Mapping) else {}
-        configured = (
-            storage_section.get("safety_reserve_bytes")
-            if isinstance(storage_section, Mapping)
-            else None
-        )
+        configured = storage_section.get("safety_reserve_bytes")
         floor = int(configured) if configured is not None else _DEFAULT_RESERVE_BYTES
         overrides["safety_reserve_bytes"] = max(floor, execution_reserve)
     for name in (
@@ -129,11 +178,13 @@ def _resolve(args: Any, cfg: Mapping[str, Any], *, action: str, tier: str = TIER
         value = getattr(args, name, None)
         if value is not None:
             overrides[name] = value
+
+    explicit_tier = getattr(args, "tier", None)
     policy = resolve_storage_policy(
         cfg,
         action=action,
-        tier=str(getattr(args, "tier", tier) or tier),
-        apply=bool(getattr(args, "apply", False)),
+        tier=str(explicit_tier) if explicit_tier is not None else tier,
+        apply=invocation_apply(args),
         overrides=overrides,
     )
     if policy.apply and not bool(cleanup.get("enabled", True)):
@@ -146,46 +197,70 @@ def _resolve(args: Any, cfg: Mapping[str, Any], *, action: str, tier: str = TIER
 
 
 class StorageCommandContext:
-    """Everything a storage command needs, resolved once through real owners."""
+    """Everything a storage command needs, resolved once through real owners.
+
+    The control plane is *located*, not created. Only :meth:`consequential_plane`
+    materializes it, and only an explicitly authorized invocation calls that.
+    """
 
     def __init__(self, cfg: Mapping[str, Any], paths: Any, store: Any, boundary: Any) -> None:
         self.cfg = cfg
         self.paths = paths
         self.store = store
         self.boundary = boundary
-        self.control_plane = open_storage_control_plane(paths)
+        self.control_plane = open_storage_control_plane_readonly(paths)
         self.protected_inputs = getattr(boundary, "protected_inputs", ())
 
-    def snapshot(self) -> StorageInventorySnapshot:
+    def consequential_plane(self, policy: StoragePolicy) -> StorageControlPlane:
+        """Materialize the control plane, once, for an authorized invocation.
+
+        This happens *before* planning rather than between plan and apply: the
+        control plane is itself an owner surface, so creating it after a plan
+        was built would make that plan stale against state the same invocation
+        had just created.
+        """
+
+        if not policy.apply:
+            raise StorageAuthorizationError(
+                "the storage control plane is only created by an explicitly "
+                "authorized consequential invocation"
+            )
+        if not self.control_plane.exists:
+            self.control_plane = open_storage_control_plane(self.paths)
+        return self.control_plane
+
+    def snapshot(
+        self, policy: StoragePolicy | None = None, *, certify: bool = False
+    ) -> StorageInventorySnapshot:
+        """Inventory the owners.
+
+        ``certify`` is on for planning and apply and off for reporting: exact
+        subtree certification is what authorizes a mutation, and it is also what
+        would make a report scale with campaign bulk.
+        """
+
         return build_storage_inventory(
             self.cfg,
             self.paths,
             self.store,
             protected_inputs=self.protected_inputs,
             control_plane=self.control_plane,
+            journal_retention_records=(
+                policy.restore_journal_retention_records if policy is not None else 64
+            ),
+            certify=certify,
         )
 
     def executor(self, policy: StoragePolicy) -> StorageExecutor:
         return StorageExecutor(
             paths=self.paths,
             policy=policy,
-            control_plane=self.control_plane,
+            control_plane=self.consequential_plane(policy)
+            if policy.apply
+            else self.control_plane,
             boundary=self.boundary,
-            resnapshot=self.snapshot,
+            resnapshot=lambda: self.snapshot(policy, certify=True),
         )
-
-    def generations(self, snapshot: StorageInventorySnapshot) -> tuple[int, ...]:
-        current = snapshot.current_generation
-        return () if current is None else (int(current),)
-
-    def write_result(self, name: str, payload: Mapping[str, Any]) -> Path | None:
-        destination = Path(self.paths.results) / name
-        authorized, _detail = self.boundary.destructive_authorization(destination)
-        if not authorized:
-            return None
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        durable_publish_json(destination, dict(payload))
-        return destination
 
 
 # ---------------------------------------------------------------------------
@@ -200,23 +275,20 @@ def storage_report(context: StorageCommandContext, args: Any) -> dict[str, Any]:
     policy = _resolve(args, context.cfg, action=ACTION_AUDIT if deep else ACTION_REPORT)
     top = int(getattr(args, "top", 20) or 20)
     if deep:
-        payload = build_deep_storage_audit(
+        return build_deep_storage_audit(
             Path(context.paths.workspace),
             protected_inputs=context.protected_inputs,
             top=top,
+            entry_limit=policy.deep_audit_entry_limit,
         )
-        context.write_result("storage-deep-audit.json", payload)
-        return payload
-    snapshot = context.snapshot()
-    payload = build_owner_storage_report(snapshot, policy, top=top)
-    context.write_result("storage-report.json", payload)
-    return payload
+    return build_owner_storage_report(context.snapshot(policy), policy, top=top)
 
 
 def print_storage_report(payload: Mapping[str, Any]) -> None:
-    if payload.get("schema", "").endswith("deep-audit.v1"):
+    if payload.get("schema", "").startswith("mdstats.mlff-storage-deep-audit"):
         totals = payload["totals"]
-        print("Campaign storage deep physical audit (read-only)", flush=True)
+        completeness = "complete" if payload["complete"] else "INCOMPLETE (entry limit reached)"
+        print(f"Campaign storage deep physical audit (read-only, {completeness})", flush=True)
         print(
             "  totals: "
             f"logical={_format_bytes(int(totals['logical_bytes']))}; "
@@ -225,15 +297,24 @@ def print_storage_report(payload: Mapping[str, Any]) -> None:
             f"files={int(totals['file_count'])}; dirs={int(totals['directory_count'])}",
             flush=True,
         )
+        for item in payload["refused_paths"][:5]:
+            print(f"  ! not traversed: {item['path']}: {item['reason']}", flush=True)
         return
     print("Campaign storage report (owner-driven, read-only)", flush=True)
     print(f"  workspace: {payload['workspace']}", flush=True)
     print(f"  current generation: {payload['current_generation']}", flush=True)
+    print(
+        "  sizes below are bounded owner metadata, not exact totals; "
+        "use `storage report --deep` for exact accounting",
+        flush=True,
+    )
     print("  owner families:", flush=True)
     for item in payload["owner_families"][:10]:
         print(
-            f"    {_format_bytes(int(item['logical_bytes'])):>10}  "
-            f"{item['owner']} [{item['artifact_class']}]",
+            f"    {_format_bytes(int(item['measured_bytes'])):>10}  "
+            f"{item['owner']} [{item['artifact_class']}] "
+            f"({item['artifact_count']} artifact(s), "
+            f"{item['unmeasured_artifact_count']} unmeasured)",
             flush=True,
         )
     reclaim = payload["potential_reclaim_by_action"]
@@ -241,7 +322,7 @@ def print_storage_report(payload: Mapping[str, Any]) -> None:
         entry = reclaim[name]
         print(
             f"  potential {name}: {entry['eligible_count']} eligible "
-            f"({_format_bytes(int(entry['eligible_bytes']))}); "
+            f"(>= {_format_bytes(int(entry['measured_eligible_bytes']))}); "
             f"{entry['refused_count']} refused by an owner",
             flush=True,
         )
@@ -251,6 +332,8 @@ def print_storage_report(payload: Mapping[str, Any]) -> None:
             "(its artifacts are retained)",
             flush=True,
         )
+    for failure in payload["owner_graph_integrity_failures"]:
+        print(f"  ! owner graph integrity: {failure}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -261,10 +344,13 @@ def print_storage_report(payload: Mapping[str, Any]) -> None:
 def build_cleanup_plan(
     context: StorageCommandContext, policy: StoragePolicy
 ) -> tuple[StoragePlan, StorageInventorySnapshot]:
-    snapshot = context.snapshot()
+    """The exact cleanup intention, including planned owner maintenance."""
+
+    snapshot = context.snapshot(policy, certify=True)
     actions = []
     refusals: list[dict[str, Any]] = []
     for decision in safe_candidates(snapshot):
+        view = snapshot.view(decision.artifact_id)
         if decision.eligible:
             actions.append(
                 planned_action(
@@ -272,24 +358,51 @@ def build_cleanup_plan(
                     path=decision.path,
                     artifact_id=decision.artifact_id,
                     reason=decision.reason,
+                    owner_state_identity=view.state_identity if view else "",
                 )
             )
         else:
             refusals.append({"path": str(decision.path), "reason": decision.reason})
     if policy.tier == TIER_CACHE:
+        budget = int(policy.cache_eviction_maximum_bytes)
+        spent = 0
         for decision in cache_candidates(snapshot):
-            if decision.eligible:
-                actions.append(
-                    planned_action(
-                        action=ACTION_EVICT_CACHE,
-                        path=decision.path,
-                        artifact_id=decision.artifact_id,
-                        reason=decision.reason,
-                        capability_cost=decision.capability_cost,
-                    )
-                )
-            else:
+            if not decision.eligible:
                 refusals.append({"path": str(decision.path), "reason": decision.reason})
+                continue
+            view = snapshot.view(decision.artifact_id)
+            action = planned_action(
+                action=ACTION_EVICT_CACHE,
+                path=decision.path,
+                artifact_id=decision.artifact_id,
+                reason=decision.reason,
+                capability_cost=decision.capability_cost,
+                owner_state_identity=view.state_identity if view else "",
+            )
+            # An owner artifact is evicted whole or retained whole: partially
+            # deleting a cache tree to hit a byte cap would leave a torn cache
+            # that no owner promised to be able to rebuild.
+            if spent + int(action.size_bytes) > budget:
+                refusals.append(
+                    {
+                        "path": str(decision.path),
+                        "reason": (
+                            "evicting this artifact would exceed the configured "
+                            f"cache eviction cap of {budget} bytes; it is retained whole"
+                        ),
+                    }
+                )
+                continue
+            spent += int(action.size_bytes)
+            actions.append(action)
+
+    maintenance = plan_campaign_state_maintenance(context.store, context.paths, policy)
+    if maintenance.action is not None:
+        actions.append(maintenance.action)
+    else:
+        refusals.append(
+            {"path": str(context.paths.state_db), "reason": maintenance.reason}
+        )
     plan = build_storage_plan(snapshot, policy, actions, refusals=refusals)
     return plan, snapshot
 
@@ -298,77 +411,66 @@ def storage_cleanup(context: StorageCommandContext, args: Any) -> dict[str, Any]
     """Plan, show, and - only when authorized - apply safe/cache cleanup."""
 
     policy = _resolve(args, context.cfg, action=ACTION_CLEANUP, tier=TIER_SAFE)
-    plan, _snapshot = build_cleanup_plan(context, policy.for_apply(apply=False))
-    payload: dict[str, Any] = {"plan": plan.to_dict()}
-    # The written plan is an operator-facing advisory copy. Apply always
-    # re-derives the inventory and revalidates in-process; nothing is ever
-    # authorized by reading this file back.
-    context.write_result(
-        f"storage-cleanup-plan-{policy.tier}.json",
-        {**plan.to_dict(), "advisory_copy": True, "authorizes_apply": False},
-    )
+    if policy.apply:
+        context.consequential_plane(policy)
+    plan, snapshot = build_cleanup_plan(context, policy.for_apply(apply=False))
+    payload: dict[str, Any] = {"plan": plan.to_dict(), "execution": None}
     if not policy.apply:
-        payload["execution"] = None
         return payload
-    # The applied plan carries the apply flag; its policy identity is unchanged,
-    # which is exactly why a plan can be authorized without a re-plan while a
-    # material policy change still refuses.
+
     apply_plan = build_storage_plan(
-        _snapshot,
+        snapshot,
         policy,
         plan.actions,
         refusals=plan.refusals,
         created_utc=plan.created_utc,
     )
-    result = context.executor(policy).apply(apply_plan, trigger=f"cli:cleanup:{policy.tier}")
+    result = context.executor(policy).run(
+        apply_plan,
+        trigger=f"cli:cleanup:{policy.tier}",
+        synchronization=synchronization_for(apply_plan, snapshot),
+        engine=_cleanup_engine(context, policy),
+    )
     payload["execution"] = result.to_dict()
-    context.write_result(f"storage-cleanup-{policy.tier}.json", result.to_dict())
-    _compact_campaign_state(context, policy, payload)
     return payload
 
 
-def _compact_campaign_state(
-    context: StorageCommandContext, policy: StoragePolicy, payload: dict[str, Any]
-) -> None:
-    """Bounded diagnostic-event housekeeping on the authoritative store.
+def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
+    """Cleanup removals plus the separately planned owner maintenance."""
 
-    Compaction is a store-owner maintenance operation, not a deletion of
-    scientific state: it bounds diagnostic event retention, which is separate
-    from scientific records and from the receipt cache.
+    maintenance = campaign_state_maintenance_engine(context.store, policy)
 
-    ``VACUUM`` rewrites the database into a temporary copy, so it is admitted
-    against the same safety reserve as any other storage operation. Running it
-    without that admission is exactly how a maintenance step turns into an
-    out-of-space failure on the authoritative state.
-    """
+    def _engine(
+        plan: StoragePlan,
+        snapshot: StorageInventorySnapshot,
+        result: StorageExecutionResult,
+    ) -> None:
+        executor = context.executor(policy)
+        for action in plan.actions:
+            if action.action not in (ACTION_REMOVE, ACTION_EVICT_CACHE):
+                maintenance(action, snapshot, result)
+                continue
+            authorized, detail = executor.authorize_path(action.path, snapshot)
+            if not authorized:
+                result.refused.append({**action.to_dict(), "refusal": detail})
+                continue
+            view = snapshot.view(action.artifact_id)
+            if view is not None and view.path == action.path and action.path.is_dir():
+                members, refusals = snapshot.authorized_members(view)
+                removed, why = remove_certified_subtree(
+                    action.path, members=members, refusals=refusals
+                )
+                result.completed.append(
+                    {**action.to_dict(), "removed": removed, "detail": why}
+                )
+                if removed:
+                    result.reclaimed_bytes += int(action.size_bytes)
+                continue
+            removed = remove_durably(action.path)
+            result.completed.append({**action.to_dict(), "removed": removed})
+            result.reclaimed_bytes += int(action.size_bytes)
 
-    state_db = Path(context.paths.state_db)
-    authorized, detail = context.boundary.destructive_authorization(state_db)
-    if not authorized:
-        payload["state_compaction"] = {"performed": False, "detail": detail}
-        return
-    try:
-        size = int(state_db.stat().st_size) if state_db.is_file() else 0
-        admission = admit_storage_operation(
-            state_db.parent,
-            policy,
-            # VACUUM's peak is the original plus its rewritten copy.
-            required_peak_bytes=2 * size,
-            required_inodes=1,
-        )
-        context.store.compact(maximum_events=int(policy.sqlite_compaction_maximum_events))
-        payload["state_compaction"] = {
-            "performed": True,
-            "detail": "diagnostic events bounded and the database rewritten",
-            "admission": admission.to_dict(),
-        }
-    except StorageAdmissionError as exc:
-        payload["state_compaction"] = {
-            "performed": False,
-            "detail": f"compaction was not admitted and was skipped: {exc}",
-        }
-    except Exception as exc:
-        payload["state_compaction"] = {"performed": False, "detail": str(exc)}
+    return _engine
 
 
 def print_cleanup(payload: Mapping[str, Any]) -> None:
@@ -382,7 +484,7 @@ def print_cleanup(payload: Mapping[str, Any]) -> None:
     for action in plan["actions"][:10]:
         print(
             f"    {_format_bytes(int(action['size_bytes'])):>10}  "
-            f"[{action['capability_cost']}] {action['path']}",
+            f"[{action['capability_cost']}] {action['action']} {action['path']}",
             flush=True,
         )
     for refusal in plan["refusals"][:5]:
@@ -421,138 +523,193 @@ def storage_archive(context: StorageCommandContext, args: Any) -> dict[str, Any]
         )
         return {"verified": True, "manifest": manifest}
     if subcommand == "restore":
-        policy = _resolve(args, context.cfg, action=ACTION_RESTORE)
-        journal = read_restore_journal(context.control_plane, str(args.archive_identity))
-        if not policy.apply:
-            manifest = verify_cold_archive(
-                context.control_plane, str(args.archive_identity), policy
-            )
-            return {
-                "restore": None,
-                "journal": journal,
-                "manifest": manifest,
-                "detail": "dry-run: the archive was authenticated; nothing was installed",
-            }
-        snapshot = context.snapshot()
-        receipt = restore_cold_archive(
-            workspace=Path(context.paths.workspace),
-            control_plane=context.control_plane,
-            policy=policy,
-            boundary=context.boundary,
-            archive_identity=str(args.archive_identity),
-            paths=context.paths,
-            generations=context.generations(snapshot),
-        )
-        payload = {"restore": receipt.to_dict()}
-        context.write_result("storage-restore-receipt.json", receipt.to_dict())
-        return payload
+        return _storage_restore(context, args)
     if subcommand == "reclaim":
-        policy = _resolve(args, context.cfg, action=ACTION_ARCHIVE)
-        if not policy.apply:
-            return {
-                "reclaim": None,
-                "detail": "dry-run: hot reclamation was not resumed",
-            }
-        snapshot = context.snapshot()
-        result = reclaim_archived_hot_members(
-            workspace=Path(context.paths.workspace),
-            control_plane=context.control_plane,
-            policy=policy,
-            boundary=context.boundary,
-            archive_identity=str(args.archive_identity),
-            paths=context.paths,
-            generations=context.generations(snapshot),
-        )
-        return {"reclaim": result.to_dict()}
+        return _storage_reclaim(context, args)
     if subcommand != "create":
         raise StorageArchiveError(f"Unknown storage archive subcommand {subcommand!r}.")
+    return _storage_archive_create(context, args)
 
+
+def _storage_archive_create(context: StorageCommandContext, args: Any) -> dict[str, Any]:
     policy = _resolve(args, context.cfg, action=ACTION_ARCHIVE)
-    snapshot = context.snapshot()
+    if policy.apply:
+        context.consequential_plane(policy)
+    snapshot = context.snapshot(policy, certify=True)
+    snapshot.require_planable()
     decisions = archive_candidates(snapshot)
-    eligible = [item for item in decisions if item.eligible]
     refused = [item for item in decisions if not item.eligible]
-    requested = _requested_roots(args, snapshot, eligible)
+    selected, _ = select_archive_roots(snapshot, getattr(args, "root", None))
+    reclaim_hot = not bool(getattr(args, "keep_hot", False))
+
     payload: dict[str, Any] = {
         "eligible": [
             {"artifact_id": item.artifact_id, "path": str(item.path), "reason": item.reason}
-            for item in eligible
+            for item in decisions
+            if item.eligible
         ],
         "refused": [
             {"artifact_id": item.artifact_id, "path": str(item.path), "reason": item.reason}
             for item in refused
         ],
-        "selected_roots": [str(item) for item in requested],
+        "selected_roots": [str(item.path) for item in selected],
         "policy": policy.to_dict(),
+        "resolved_policy_summary": policy.describe(),
+        "archive": None,
+        "execution": None,
     }
-    if not requested:
-        payload["archive"] = None
+    if not selected:
         payload["detail"] = (
             "no owner declared any artifact cold-replaceable; nothing was archived"
         )
         return payload
-    plan = build_storage_plan(snapshot, policy, ())
+
+    bundle = build_archive_plan_actions(
+        workspace=Path(context.paths.workspace),
+        snapshot=snapshot,
+        selected=selected,
+        boundary=context.boundary,
+        policy=policy,
+        reclaim_hot=reclaim_hot,
+    )
+    bundle.admission = archive_admission(
+        Path(context.paths.internal), policy, bundle.members
+    )
+    plan = build_storage_plan(
+        snapshot,
+        policy,
+        bundle.actions,
+        refusals=bundle.refusals,
+        admission=bundle.admission,
+    )
+    payload["plan"] = plan.to_dict()
     if not policy.apply:
-        payload["archive"] = None
         payload["detail"] = "dry-run: no archive was created and no hot byte was removed"
         return payload
-    result = create_cold_archive(
-        workspace=Path(context.paths.workspace),
-        control_plane=context.control_plane,
-        policy=policy,
-        boundary=context.boundary,
-        roots=requested,
-        lineage={
-            "current_generation": snapshot.current_generation,
-            "owner_binding": dict(plan.owner_binding),
-            "artifact_ids": sorted(item.artifact_id for item in eligible),
-        },
-        plan_identity=plan.plan_identity,
-        paths=context.paths,
-        generations=context.generations(snapshot),
-        reclaim_hot=not bool(getattr(args, "keep_hot", False)),
+
+    control_plane = context.consequential_plane(policy)
+    result = context.executor(policy).run(
+        plan,
+        trigger="cli:archive:create",
+        synchronization=synchronization_for(plan, snapshot),
+        engine=archive_create_engine(
+            workspace=Path(context.paths.workspace),
+            control_plane=control_plane,
+            policy=policy,
+            boundary=context.boundary,
+            bundle=bundle,
+            reclaim_hot=reclaim_hot,
+            failpoint=getattr(args, "failpoint", None) or (lambda _name: None),
+        ),
     )
-    payload["archive"] = result.to_dict()
-    payload["resolved_policy_summary"] = policy.describe()
-    context.write_result("storage-archive-receipt.json", result.to_dict())
+    payload["execution"] = result.to_dict()
+    payload["archive"] = result.payload or None
     return payload
 
 
-def _requested_roots(
-    args: Any, snapshot: StorageInventorySnapshot, eligible: Sequence[Any]
-) -> tuple[Path, ...]:
-    """Resolve operator-selected roots, restricted to owner-eligible artifacts."""
-
-    selected = [Path(item.path) for item in eligible]
-    requested = list(getattr(args, "root", None) or ())
-    if not requested:
-        return tuple(selected)
-    chosen: list[Path] = []
-    for value in requested:
-        candidate = Path(os.path.abspath(os.fspath(Path(snapshot.workspace) / value)))
-        match = next(
-            (
-                item
-                for item in selected
-                if item == candidate or _within(item, candidate) or _within(candidate, item)
-            ),
-            None,
+def _storage_reclaim(context: StorageCommandContext, args: Any) -> dict[str, Any]:
+    policy = _resolve(args, context.cfg, action=ACTION_ARCHIVE)
+    if policy.apply:
+        context.consequential_plane(policy)
+    snapshot = context.snapshot(policy, certify=True)
+    snapshot.require_planable()
+    actions, manifest, refusals = build_reclaim_plan_actions(
+        workspace=Path(context.paths.workspace),
+        control_plane=context.control_plane,
+        snapshot=snapshot,
+        policy=policy,
+        archive_identity=str(args.archive_identity),
+    )
+    plan = build_storage_plan(snapshot, policy, actions, refusals=refusals)
+    payload: dict[str, Any] = {
+        "reclaim": None,
+        "plan": plan.to_dict(),
+        "manifest_identity": str(manifest["archive_identity"]),
+        "execution": None,
+    }
+    if not policy.apply:
+        payload["detail"] = (
+            "dry-run: the archive was authenticated and a current reclamation plan "
+            "was computed; no hot byte was removed"
         )
-        if match is None:
-            raise StorageArchiveError(
-                f"{candidate} is not owner-declared cold-replaceable; archive never "
-                "removes hot bytes an owner still requires."
-            )
-        chosen.append(candidate)
-    return tuple(chosen)
+        return payload
+    control_plane = context.consequential_plane(policy)
+    result = context.executor(policy).run(
+        plan,
+        trigger="cli:archive:reclaim",
+        synchronization=synchronization_for(plan, snapshot),
+        engine=archive_reclaim_engine(
+            workspace=Path(context.paths.workspace),
+            control_plane=control_plane,
+            boundary=context.boundary,
+            manifest=manifest,
+            failpoint=getattr(args, "failpoint", None) or (lambda _name: None),
+        ),
+    )
+    payload["execution"] = result.to_dict()
+    payload["reclaim"] = result.payload or None
+    return payload
 
 
-def _within(root: Path, candidate: Path) -> bool:
-    try:
-        candidate.relative_to(root)
-        return True
-    except ValueError:
-        return False
+def _storage_restore(context: StorageCommandContext, args: Any) -> dict[str, Any]:
+    policy = _resolve(args, context.cfg, action=ACTION_RESTORE)
+    if policy.apply:
+        context.consequential_plane(policy)
+    snapshot = context.snapshot(policy, certify=True)
+    snapshot.require_planable()
+    actions, manifest, conflicts = build_restore_plan_actions(
+        workspace=Path(context.paths.workspace),
+        control_plane=context.control_plane,
+        snapshot=snapshot,
+        policy=policy,
+        archive_identity=str(args.archive_identity),
+        boundary=context.boundary,
+    )
+    admission = restore_admission(Path(context.paths.workspace), policy, manifest)
+    plan = build_storage_plan(
+        snapshot, policy, actions, refusals=conflicts, admission=admission
+    )
+    journal = read_restore_journal(context.control_plane, str(args.archive_identity))
+    payload: dict[str, Any] = {
+        "restore": None,
+        "plan": plan.to_dict(),
+        "journal": journal,
+        "conflicts": conflicts,
+        "execution": None,
+    }
+    if conflicts:
+        payload["detail"] = (
+            "the restore plan reports destination conflicts; nothing was installed"
+        )
+        if not policy.apply:
+            return payload
+        raise StorageArchiveError(
+            "restore refuses to install while destination conflicts remain: "
+            + "; ".join(f"{item['path']}: {item['reason']}" for item in conflicts[:3])
+        )
+    if not policy.apply:
+        payload["detail"] = (
+            "dry-run: the archive was authenticated and the exact restore plan was "
+            "computed; nothing was staged or installed"
+        )
+        return payload
+    control_plane = context.consequential_plane(policy)
+    result = context.executor(policy).run(
+        plan,
+        trigger="cli:archive:restore",
+        synchronization=synchronization_for(plan, snapshot),
+        engine=archive_restore_engine(
+            workspace=Path(context.paths.workspace),
+            control_plane=control_plane,
+            policy=policy,
+            boundary=context.boundary,
+            manifest=manifest,
+            failpoint=getattr(args, "failpoint", None) or (lambda _name: None),
+        ),
+    )
+    payload["execution"] = result.to_dict()
+    payload["restore"] = result.payload or None
+    return payload
 
 
 def print_archive(payload: Mapping[str, Any]) -> None:
@@ -578,26 +735,29 @@ def print_archive(payload: Mapping[str, Any]) -> None:
         )
         return
     if "restore" in payload:
+        _print_plan_summary(payload)
         receipt = payload["restore"]
         if receipt is None:
-            print(f"  {payload['detail']}", flush=True)
+            print(f"  {payload.get('detail', 'nothing was installed')}", flush=True)
+            for item in payload.get("conflicts", [])[:5]:
+                print(f"  conflict: {item['path']}: {item['reason']}", flush=True)
             return
         print(
-            f"Restored archive {receipt['archive_identity']}: "
-            f"{receipt['restored_files']} file(s) installed, "
-            f"{receipt['already_present_files']} already present; "
-            "restored evidence remains historical",
+            f"  restored {receipt['restored_files']} file(s), reused "
+            f"{receipt['already_present_files']}, created "
+            f"{receipt['created_containers']} container(s); restored evidence "
+            "remains historical",
             flush=True,
         )
         return
     if "reclaim" in payload:
+        _print_plan_summary(payload)
         result = payload["reclaim"]
         if result is None:
-            print(f"  {payload['detail']}", flush=True)
+            print(f"  {payload.get('detail', 'nothing was reclaimed')}", flush=True)
             return
         print(
-            f"Resumed hot reclamation for {result['archive_identity']}: "
-            f"{len(result['reclaimed_hot_paths'])} reclaimed, "
+            f"  reclaimed {len(result['reclaimed_hot_paths'])} hot file(s); "
             f"{len(result['remaining_hot_paths'])} still hot",
             flush=True,
         )
@@ -607,6 +767,7 @@ def print_archive(payload: Mapping[str, Any]) -> None:
         print(f"  eligible: {item['path']}", flush=True)
     for item in payload["refused"][:5]:
         print(f"  retained hot: {item['path']}: {item['reason']}", flush=True)
+    _print_plan_summary(payload)
     result = payload.get("archive")
     if result is None:
         print(f"  {payload.get('detail', 'nothing was archived')}", flush=True)
@@ -619,6 +780,17 @@ def print_archive(payload: Mapping[str, Any]) -> None:
     )
 
 
+def _print_plan_summary(payload: Mapping[str, Any]) -> None:
+    plan = payload.get("plan")
+    if not plan:
+        return
+    print(
+        f"  plan: {plan['policy_summary']}; actions={plan['action_count']}; "
+        f"refusals={len(plan['refusals'])}",
+        flush=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # deduplicate
 # ---------------------------------------------------------------------------
@@ -626,24 +798,46 @@ def print_archive(payload: Mapping[str, Any]) -> None:
 
 def storage_deduplicate(context: StorageCommandContext, args: Any) -> dict[str, Any]:
     policy = _resolve(args, context.cfg, action=ACTION_DEDUPLICATE)
-    snapshot = context.snapshot()
-    result = deduplicate(
-        snapshot=snapshot,
-        policy=policy,
-        control_plane=context.control_plane,
-        boundary=context.boundary,
-        paths=context.paths,
-        generations=context.generations(snapshot),
+    if policy.apply:
+        context.consequential_plane(policy)
+    snapshot = context.snapshot(policy, certify=True)
+    if policy.apply:
+        snapshot.require_planable()
+    actions, groups, excluded = build_dedup_plan(snapshot, policy)
+    plan = build_storage_plan(
+        snapshot,
+        policy,
+        actions,
+        refusals=[{"path": "", "reason": note} for note in excluded],
     )
-    payload = result.to_dict()
-    context.write_result("storage-deduplication.json", payload)
+    payload: dict[str, Any] = {
+        **DedupResult(
+            applied=False,
+            groups=groups,
+            excluded=excluded,
+            realization=policy.dedup_realization,
+        ).to_dict(),
+        "plan": plan.to_dict(),
+        "execution": None,
+    }
+    if not policy.apply:
+        return payload
+    result = context.executor(policy).run(
+        plan,
+        trigger="cli:deduplicate",
+        synchronization=synchronization_for(plan, snapshot),
+        engine=dedup_engine(boundary=context.boundary, groups=groups, excluded=excluded),
+    )
+    payload["execution"] = result.to_dict()
+    if result.payload:
+        payload.update(result.payload)
     return payload
 
 
 def print_dedup(payload: Mapping[str, Any]) -> None:
     print(
-        f"Immutable deduplication ({payload['realization']}): "
-        f"{payload['group_count']} group(s)",
+        f"Immutable deduplication ({payload['realization']}, no persistent content "
+        f"store): {payload['group_count']} group(s)",
         flush=True,
     )
     if payload["applied"]:
@@ -662,6 +856,7 @@ __all__ = [
     "StorageCommandContext",
     "StorageDisabledError",
     "build_cleanup_plan",
+    "invocation_apply",
     "print_archive",
     "print_cleanup",
     "print_dedup",

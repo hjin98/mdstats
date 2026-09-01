@@ -15,6 +15,9 @@ This specification defines how the MLFF campaign subsystem manages persistent st
 5. **Ambiguity retains.** Corrupt, unreadable, or unclassifiable owner state retains the affected artifacts until ownership is repaired or they are independently proven disposable.
 6. **A report never authorizes a mutation.** Both report modes are read-only and advisory.
 7. **Retired authority stays retired.** STOR1-STOR5 tier policy, `workspace/runs` conventions, `active_process.json`, PID/age/pathname rules, the retired `evaluate`/`verify` stages, DATA7/DATA8 stage folklore, and SELECT2 never regain destructive authority.
+8. **Only the current invocation authorizes.** Authority to mutate comes from `--apply` on the invocation being run, and the action comes from the subcommand being run. Persisted configuration cannot carry either: an `apply` or `action` key under `[storage]` is rejected outright rather than honored or silently ignored, and no environment variable is read.
+9. **Containment is not ownership.** Being beneath an owner's directory does not make a file that owner's. A directory artifact is destructively recursed into only under an explicit closed-subtree contract from the real owner; otherwise only individually certified children participate and every unexpected descendant is retained.
+10. **A mount boundary is an ownership boundary.** A filesystem mounted below an authorized root exposes externally owned bytes through a campaign-looking path. Traversal stops there, and if the platform cannot answer the question the artifact is retained.
 
 ## 2. The one consequential flow
 
@@ -46,13 +49,16 @@ Normative consequences:
 - a truthful `waiting_for_reference` pins every predecessor artifact needed to resume the exact frozen publication and qualification lineage, including the frozen external-reference request;
 - protection is monotone: no owner's cache or history classification can override another current owner's requirement;
 - historical evidence becomes archive- or reclamation-eligible only after no current or restartable descendant needs its hot representation;
-- the closure is derived from current owner records on every invocation. There is no second persistent dependency database.
+- the closure is derived from current owner records on every invocation. There is no second persistent dependency database;
+- the owner graph is checked for integrity before any consequential planning: owner identities must be unique and every declared dependency edge must resolve to a real owner view. An incomplete or contradictory graph refuses consequential planning instead of planning against a closure it cannot compute.
 
 ## 4. Race-safe mutation
 
 A recent snapshot is not an authorization. P5 and P7 both publish an immutable object and then publish the current pointer that makes it current, so there is a legitimate window in which the object exists and nothing references it.
 
 - Each owner exposes a **publication barrier** for one generation. The publisher holds it across object publication and pointer commit; any storage mutation that could touch that generation's evidence acquires the same barrier across revalidation and mutation.
+- Which barriers an operation must hold is **derived from the artifacts the plan actually touches**, not from a fixed list: the generations and run roots named by the planned actions determine the seams acquired. All acquisitions follow one order - run-activity leases, then P5 publication barriers, then P7 publication barriers - so P5 execution, P7 publication, and storage share a single cycle-free order.
+- Generation supersession is not a liveness proof. A post-selection run that began under an older selected binding may still be executing, so its owner holds a run-activity lease for its whole write lifetime and storage waits for the owner rather than for a pathname to look old.
 - The storage-operation lease serializes storage operations against each other. It does **not** serialize storage against P1-P7 writers, and it is never treated as if it did.
 - No broad CampaignStore transaction is held across hashing, compression, or recursive scans.
 - Where an owner exposes no race-safe reclamation seam, the affected artifact is retained.
@@ -63,7 +69,13 @@ A recent snapshot is not an authorization. P5 and P7 both publish an immutable o
 
 ### `storage report`
 
-Owner views supply semantics; bounded physical metadata supplies size. Reports logical bytes, file and directory counts, owner and artifact class, current/historical/restart/cache/archive state, potential reclaim per action, unresolved owners, and protected inputs. The SHA-256 receipt cache is reported separately from CampaignStore authority.
+Owner views supply semantics; bounded physical metadata supplies size. The normal report is **bounded**: it performs one `lstat` per owner artifact and never walks a subtree, so its cost is a function of how many artifacts the owners declare and not of how much bulk the campaign holds. A directory's aggregate size is therefore reported as unknown rather than guessed, and the field says so (`size_scope = "unknown_without_deep_audit"`).
+
+The report is a **complete census**: every known campaign family is accounted for, and any workspace tree no owner adapter claims is reported as ambiguous and retained rather than being pooled into a generic bucket or silently omitted. It reports owner and artifact class, current/historical/restart/cache/archive state, coverage semantics, potential reclaim per action, unresolved owners, owner-graph integrity failures, and protected inputs. The SHA-256 receipt cache is reported separately from CampaignStore authority.
+
+### Observational commands are side-effect-free
+
+`report`, `report --deep`, `--dry-run` planning, `archive list`, and `archive verify` are observational. They do not create the workspace, the campaign state database, generation roots, or the storage control plane; they do not write acceleration receipts; and they do not deposit a report file in the campaign. The payload is returned to the caller and printed. Describing a campaign is never what brings it into existence, and an uninitialized campaign is reported as uninitialized rather than created.
 
 ### `storage report --deep`
 
@@ -75,7 +87,15 @@ Zero scientific, restart, qualification, locked, and acceleration-cache capabili
 
 ### `storage cleanup --tier cache`
 
-Safe plus eviction of cache/index state whose owner can prove exact reconstruction *at that moment*. The normalized frame cache qualifies while the DATA2 source catalog resolves, the cache manifest binds that exact catalog digest, and every per-run source identity and control signature still matches; eviction then costs one source read per run and reproduces the identical authenticated cache. The SHA-256 receipt store is reclassified as reusable cache for accounting and ownership, and is retained by both tiers: it is the acceleration cache the running storage operation is itself writing to. Anything an owner cannot certify is retained, and a `cache` action over a campaign with no certified family is legitimately a no-op.
+Safe plus eviction of cache/index state whose owner can prove exact reconstruction *at that moment* **and** can prove that no live consumer is depending on it right now.
+
+Reconstructibility alone is not sufficient. The normalized frame cache is reported as exactly reconstructible - the DATA2 source catalog resolves, the cache manifest binds that exact catalog digest, and every per-run source identity and control signature matches, so a rebuild costs one source read per run and reproduces the identical authenticated cache - but P1 exposes no consumer/builder liveness seam, so evicting it could race a reader mid-campaign. It is therefore **retained by both tiers** and reported as `cache_reconstructible = true, cache_evictable = false`. Positive eviction is unlocked by adding a real P1 liveness seam, not by relaxing this rule.
+
+The SHA-256 receipt store is likewise accounted as reusable cache and retained by both tiers: it is the acceleration cache the running storage operation is itself writing to. Anything an owner cannot certify is retained, and a `cache` action over a campaign with no certified family is legitimately a no-op.
+
+### `storage cleanup` and campaign-state maintenance
+
+Bounding the campaign store's diagnostic events and rewriting its SQLite file are a **separately planned action**, not a free tail call on a cleanup. Maintenance appears in the plan as its own action or it does not happen; a refused or empty cleanup can never piggyback a database rewrite. The rewrite is benefit-gated on SQLite's own freelist accounting or on genuinely excess diagnostic events, and it is admitted for the temporary copy `VACUUM` makes beside the original. A skipped or failed maintenance is reported truthfully and changes nothing about whether the file actions succeeded.
 
 ### `storage archive`
 
@@ -89,11 +109,29 @@ Owner-certified immutable deduplication. See section 8.
 
 `recompute` and `compact` are retired consequential-loss tiers. They are rejected by name; intentionally lossy history pruning requires a separate explicit product decision.
 
+## 5b. Recursive authority: closed subtrees and containers
+
+A directory-level owner view carries one of two explicit coverage semantics, declared by the owner:
+
+- **closed subtree** - the real owner certifies, from its own authenticated record or exclusive-writer contract, that every traversable descendant belongs to that artifact. The certification bounds what may be acted on: a descendant the owner did not record is a contradiction that withholds authority over the whole artifact rather than being absorbed into it. A recorded member that is *absent* is not a contradiction, because content may legitimately have left the tree into a cold archive.
+- **container / open subtree** - the directory is owner-known but its descendants require individual owner views. Unknown descendants stay ambiguous and retained, and the container itself is reported but never acted on.
+
+Certification comes from the owner, never from a filename extension, an age, a stage name, or a storage-authored pathname convention. Concretely:
+
+- a post-selection run root is closed only when P5 has written its terminal record *and* its own member manifest, because the run directory is delegated to the configured trainer and P5 alone can say what it produced there;
+- a released P7 attempt records its member set at the moment it becomes terminal, which is the moment the owner stops writing into the tree;
+- the campaign store's externalized record area is closed by exclusive-writer contract, tightened to exact manifest agreement for a sharded record;
+- a superseded target-size execution root records no member manifest, so it is honestly a container: storage reports it and never acts on it.
+
+Recursive cleanup, archive collection and hot reclamation, dedup enumeration, and restore planning recurse destructively only through a freshly revalidated closed-subtree contract. An unexpected descendant that appears between planning and apply reduces or refuses the planned action rather than being deleted with it, and an archive manifest records only owner-certified members.
+
 ## 6. Resolved storage policy
 
 One canonical resolved policy is shared by every CLI, config, and API entry point. It normalizes aliases before hashing, so equivalent spellings produce one identity, and it binds the requested action and tier, storage and scratch safety reserve, cache eviction limits, SQLite compaction thresholds, archive codec/level/expansion bounds, dedup realization and minimum file size, I/O worker limits, deep-audit bounds, lease timeout, and audit retention.
 
-- Changing a material policy value invalidates an unapplied plan.
+Policy identity is **action-scoped**: it hashes only the fields the invoked action actually consumes, so changing an archive codec cannot invalidate an unapplied cleanup plan and cannot change a cleanup's identity. Every public policy field is consumed by at least one action; a knob no action reads would be a false contract and is rejected at import.
+
+- Changing a material policy value invalidates an unapplied plan for the actions that consume it.
 - A storage policy change never invalidates a P1-P7 scientific identity.
 - Presentation-only options are deliberately outside the policy identity.
 - Free bytes, inode headroom, and observed saturation are **execution observations** recorded on the plan, not policy. A changed disk causes admission revalidation, not scientific invalidation.
@@ -111,6 +149,18 @@ Archive replaces hot bytes only when **all** of the following hold:
 5. the archive is authenticated and cataloged before any hot deletion.
 
 Archive is **not** a transparent virtual filesystem. No P1-P7 loader is given an implicit "if missing, read the storage archive" fallback by this subsystem.
+
+### Selection, representation identity, and the restore plan
+
+`--root` may **narrow** a selection into an eligible owner artifact; it may never **widen** it to an ancestor. A requested root that is an ancestor of an eligible artifact is rejected outright rather than silently reinterpreted, because an ancestor sweeps in siblings no owner released.
+
+An archive's identity binds its **representation**, not only its logical content: the codec, the compression level, and the serialization contract are part of the identity. Re-encoding the same logical members under a different codec produces a distinct retained representation, and a failed re-encode can never invalidate the representation already retained.
+
+A restore is an **exact owner-bound plan** over named members and containers, computed before anything is staged. `--dry-run` computes the same plan and installs nothing.
+
+### Restore never mutates a pre-existing container
+
+Restore distinguishes a directory it creates from one that was already there. A directory this restore creates may receive the archived owner-certified mode and metadata. A **pre-existing** directory is never `chmod`-ed, replaced, or otherwise metadata-mutated merely because the archive contains a directory entry with the same path; only its own owner changes it. Its timestamp may move for the ordinary reason that its entries came back.
 
 ### Locator containment
 
@@ -137,7 +187,11 @@ The catalog is identity-keyed. There is no `latest` authority. Restoring bytes n
 
 ## 8. Immutable deduplication
 
-Eligibility is `owner-certified immutability + exact content identity + owner-certified metadata compatibility + filesystem realization support + race-safe replacement`.
+Deduplication is **direct**: byte-identical members share one inode among themselves. There is no persistent content-addressed store, because a second durable copy of campaign bytes would be a second retention authority with its own lifecycle, reference counting, and failure modes. Removing the last alias therefore releases the inode naturally, with nothing left behind to garbage-collect.
+
+Eligibility is `owner-certified immutability + exact content identity + owner-certified metadata compatibility + closed link ownership + filesystem realization support + race-safe replacement`.
+
+**Closed link ownership** means the canonical member's link count is fully accounted for: either it has exactly one link, or every one of its links is a known member of the group being deduplicated. A file that is already hardlinked to something outside the campaign is never chosen as the shared canonical inode, because relinking to it would silently give an external file authority over campaign bytes.
 
 - File type and required mode, ownership, and other owner-required metadata must match; equal bytes with divergent metadata are never hardlink aliases.
 - A deduplicated family must have no accepted in-place content or material-metadata writer. Only superseded-generation roots participate, because every P1-P7 writer writes into the current generation.
@@ -152,6 +206,8 @@ The subsystem owns durable state of its own under `.mdstats/storage/`: an identi
 
 - The catalog, manifests, blobs, and journals required to locate, authenticate, resume, or restore a retained cold representation are never deleted or archived away by any action, including audit pruning.
 - The execution audit is diagnostic evidence with bounded retention. Losing an old record cannot invalidate scientific currentness, and an incomplete operation is never recorded as complete.
+- Restore journals are bounded: a nonterminal journal is recovery authority and is never pruned, while terminal journals are diagnostic evidence retained to a configured bound.
+- Catalog fields that establish what a retained representation *is* are create-once. A rewrite that would change an immutable field is rejected; only operational fields may be refreshed.
 - Operation-serialization state is operational liveness only. A crashed holder's advisory lock is released by the kernel; recovery never infers authority from a PID, hostname, or pathname.
 - No control-plane record carries a scientific currentness decision, and none can make a historical owner artifact current. Plans, audits, and manifests carry no secrets or machine credentials.
 
@@ -167,6 +223,8 @@ Every multi-action operation has an explicit terminality contract.
 - **Dedup**: each replacement is exact and idempotent; a retry reauthenticates both the canonical member and the content object before linking.
 - **Archive**: archive bytes without an authenticated catalog never authorize hot deletion. An authenticated catalog may truthfully coexist with still-hot members after an interruption; the catalog records that state, and a retry reconciles which members remain and removes only those still authorized under a fresh owner-bound plan.
 - **Restore**: partial staged or installed state is never accepted as complete. The terminal receipt follows final canonical-byte authentication. A retry is idempotent for already-present identical bytes and fails closed on conflicts.
+
+Exactly one truthful durable audit record is appended for every applied consequential path, and none for a read-only one. An interrupted operation is recorded as `partial`, never as `complete`, and a failure to write the audit is surfaced rather than papered over.
 
 ## 12. Production qualification disposition
 

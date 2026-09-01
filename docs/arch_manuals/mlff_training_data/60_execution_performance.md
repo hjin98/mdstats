@@ -206,6 +206,14 @@ into a uniform *owner view* and composes those views into one cross-owner
 inventory. Semantics come from the owning API; pathnames, report labels, stage
 names, process ids, and file ages carry no authority at all.
 
+**Authority is invocation-local.** `--apply` on the invocation being run is the
+only thing that authorizes a mutation, and the subcommand being run is the only
+thing that selects the action; an `apply` or `action` key under `[storage]` is
+rejected rather than obeyed, and no environment variable is consulted. The
+complement is that every non-apply path is genuinely observational: it creates
+no workspace, no state database, no generation root, no control plane, no
+acceleration receipt, and no report artifact.
+
 Every consequential mutation follows one path:
 
 ```text
@@ -232,26 +240,61 @@ and that any storage mutation acquires across revalidation and mutation. The
 storage-operation lease serializes storage against storage only, and is never
 mistaken for serialization against the owners.
 
+**Containment is not ownership.** A directory owner view declares one of two
+coverage semantics. A *closed subtree* is one whose real owner certifies, from
+its own authenticated record or exclusive-writer contract, that every traversable
+descendant belongs to that artifact; a *container* is owner-known but its
+descendants need individual views, and anything unknown beneath it stays
+ambiguous and retained. Only a freshly revalidated closed subtree may be recursed
+into destructively. P5 records a run-member manifest when a run reaches its
+terminal record, because the run directory is delegated to the configured
+trainer; P7 records an attempt-member manifest at the moment an attempt becomes
+terminal; the campaign store's externalized record area is closed by
+exclusive-writer contract. A superseded target-size execution root records no
+such membership and is therefore honestly a container. A nested mount below an
+authorized root is a further ownership boundary and is never traversed.
+
 **Archive is representation, not resolution.** Hot bytes are replaceable only
 for owner-declared historical bulk with no current or restartable hot
 dependency; no P1-P7 loader is given an implicit cold-read fallback. Archive
 verification and restore bound member paths, member types, member count, total
 expansion, per-member size while streaming, and decompression amplification
 before writing anything, and a manifest carries an identity-owned relative
-locator resolved only inside the storage-owned archive root. Terminal catalog
-and restore receipts are published only downstream of flush, atomic publish,
+locator resolved only inside the storage-owned archive root. A requested root may
+narrow a selection into an eligible artifact but never widen it to an ancestor,
+an archive identity binds its representation (codec, level, serialization) and
+not only its logical content, and a restore is an exact owner-bound plan that
+never metadata-mutates a container that already existed. Terminal catalog and
+restore receipts are published only downstream of flush, atomic publish,
 directory-entry persistence, and authentication of the published bytes.
 
-**Deduplication is inode sharing under an owner contract.** Exact byte equality
-is necessary but never sufficient: file type and owner-required metadata must
-match, the family must have no accepted in-place writer, and cross-device or
-unsupported filesystems retain duplicate bytes without a correctness failure.
+**Deduplication is direct inode sharing under an owner contract.** Byte-identical
+members share one inode among themselves; there is deliberately no persistent
+content-addressed store, which would be a second durable copy of campaign bytes
+with its own retention lifecycle. Exact byte equality is necessary but never
+sufficient: file type and owner-required metadata must match, the canonical
+member's link count must be fully accounted for inside the group, the family must
+have no accepted in-place writer, and cross-device or unsupported filesystems
+retain duplicate bytes without a correctness failure.
+
+**Reporting is bounded and complete.** The normal report costs one `lstat` per
+declared owner artifact and never walks a subtree, so directory aggregates are
+labelled unknown rather than guessed and `--deep` is the explicit opt-in to exact
+recursive physical accounting. The census is complete: an unrecognized workspace
+tree is reported as ambiguous and retained rather than omitted or pooled.
+
+**Campaign-state maintenance is a planned action.** Bounding diagnostic events
+and rewriting the state database appear in the plan as their own action, gated on
+SQLite's own free-space accounting and admitted for the temporary copy `VACUUM`
+makes; a refused or empty cleanup can never carry one along.
 
 Storage owns durable state of its own - an identity-keyed archive catalog,
 manifests and blobs, restore journals, a bounded execution audit, and
-operation-serialization state - under an explicit control-plane root. None of it
-carries a currentness decision, and none of it can be reclaimed while a retained
-cold representation still needs it.
+operation-serialization state - under an explicit control-plane root. Terminal
+restore journals are retained to a bound while a nonterminal one is recovery
+authority, and catalog fields that establish what a representation *is* are
+create-once. None of it carries a currentness decision, and none of it can be
+reclaimed while a retained cold representation still needs it.
 
 ## GPU/VRAM and host admission
 
