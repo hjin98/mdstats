@@ -701,16 +701,6 @@ def test_r12b11_real_publication_execution_is_blocking_until_a_capable_runtime(
 ):
     """Execute the published member in LAMMPS, or record the gate as blocking."""
 
-    from mdstats.training_data.qualification import probe_lammps_runtime
-
-    probe = probe_lammps_runtime(refresh=True)
-    if not probe.supports_deployed_execution:
-        pytest.skip(
-            "UNAVAILABLE/BLOCKING: this host lacks the supported LAMMPS/ML-IAP "
-            f"runtime ({probe.detail}); R12-B11 is deferred to the supported "
-            "target machine and is not downgraded to an analytic ML-IAP pass."
-        )
-
     torch = pytest.importorskip("torch")
     from mdstats.training_data.qualification.deployment import (
         default_deployment_exporter,
