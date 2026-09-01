@@ -142,67 +142,6 @@ def test_gpu_telemetry_prefers_nvml_and_falls_back_to_nvidia_smi(
     assert training_parallel.query_gpu_telemetry("cpu") is None
 
 
-def test_post_calibration_inference_gpu_polling_is_sparse(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[str] = []
-    sample = training_parallel.GpuTelemetrySample(1.0, 0, 10.0, 1, 10)
-    monkeypatch.setattr(
-        campaign_cli._core,
-        "query_gpu_telemetry",
-        lambda device: calls.append(device) or sample,
-    )
-    policy = SimpleNamespace(monitor_interval_seconds=2.0)
-    cfg = {
-        "execution": {
-            "parallel_inference_post_calibration_monitor_interval_seconds": 30.0
-        }
-    }
-    calibrated = SimpleNamespace(gpu_calibrated=True)
-    value, last = campaign_cli._maybe_query_inference_gpu_telemetry(
-        cfg=cfg,
-        policy=policy,
-        controller=calibrated,
-        device="cuda:0",
-        active_jobs=2,
-        now=100.0,
-        last_sample_monotonic=0.0,
-    )
-    assert value is sample and last == 100.0
-    value, last = campaign_cli._maybe_query_inference_gpu_telemetry(
-        cfg=cfg,
-        policy=policy,
-        controller=calibrated,
-        device="cuda:0",
-        active_jobs=2,
-        now=110.0,
-        last_sample_monotonic=last,
-    )
-    assert value is None and last == 100.0
-    value, last = campaign_cli._maybe_query_inference_gpu_telemetry(
-        cfg=cfg,
-        policy=policy,
-        controller=calibrated,
-        device="cuda:0",
-        active_jobs=2,
-        now=131.0,
-        last_sample_monotonic=last,
-    )
-    assert value is sample and last == 131.0
-    assert calls == ["cuda:0", "cuda:0"]
-
-    # During the one-time calibration, retain the original high-frequency cadence.
-    uncalibrated = SimpleNamespace(gpu_calibrated=False)
-    value, _ = campaign_cli._maybe_query_inference_gpu_telemetry(
-        cfg=cfg,
-        policy=policy,
-        controller=uncalibrated,
-        device="cuda:0",
-        active_jobs=1,
-        now=134.0,
-        last_sample_monotonic=131.0,
-    )
-    assert value is sample
 
 
 def test_replay_weight_scaling_streams_extxyz_frames(

@@ -27,15 +27,21 @@ from ._common import (
     validate_serialized_digest,
 )
 from .eligibility import FrameEligibilityState
-from .role_budget import PartitionRoleBudgetPolicy
 from .profile_extensions import profile_partition_state_changed
+from .role_budget import (
+    LEGACY_PARTITION_ROLE_BUDGET_POLICY_SCHEMA,
+    PARTITION_ROLE_BUDGET_POLICY_SCHEMA,
+    PartitionRoleBudgetPolicy,
+)
 
-PARTITION_POLICY_SCHEMA = "mdstats.mlff-partition-policy.v1"
+PARTITION_POLICY_SCHEMA = "mdstats.mlff-partition-policy.v2"
+LEGACY_PARTITION_POLICY_SCHEMA = "mdstats.mlff-partition-policy.v1"
 PARTITION_POLICY_VERSION = "mdstats.mlff-data5.partition.2026-07.v1"
 PARTITION_CONDITION_KEY_SCHEMA = "mdstats.partition-condition-key.v1"
 PARTITION_UNIT_SCHEMA = "mdstats.partition-unit.v2"
 PARTITION_UNIT_CATALOG_SCHEMA = "mdstats.partition-unit-catalog.v1"
-PARTITION_FEASIBILITY_REPORT_SCHEMA = "mdstats.partition-feasibility-report.v1"
+PARTITION_FEASIBILITY_REPORT_SCHEMA = "mdstats.partition-feasibility-report.v2"
+LEGACY_PARTITION_FEASIBILITY_REPORT_SCHEMA = "mdstats.partition-feasibility-report.v1"
 OUTER_ROLE_ASSIGNMENT_SCHEMA = "mdstats.outer-role-assignment.v1"
 OUTER_PARTITION_SCHEMA = "mdstats.outer-partition.v1"
 PARTITION_INDEPENDENCE_REPORT_SCHEMA = "mdstats.partition-independence-report.v1"
@@ -92,6 +98,7 @@ class PartitionPolicy:
     minimum_units_per_condition_for_full_outer_roles: int = 7
     cross_validation_seed: int = 104729
     policy_version: str = PARTITION_POLICY_VERSION
+    schema: str = PARTITION_POLICY_SCHEMA
     _legacy_omits_cross_validation_seed: bool = field(
         default=False, init=False, repr=False, compare=False
     )
@@ -113,13 +120,15 @@ class PartitionPolicy:
             raise TrainingDataInputError("cross_validation_seed must be nonnegative.")
         if not self.policy_version.strip():
             raise TrainingDataInputError("policy_version must be non-empty.")
+        if self.schema not in (PARTITION_POLICY_SCHEMA, LEGACY_PARTITION_POLICY_SCHEMA):
+            raise TrainingDataInputError("Unsupported partition-policy schema.")
         object.__setattr__(self, "accepted_eligibility_states", states)
         object.__setattr__(self, "autocorrelation_observables", observables)
         object.__setattr__(self, "cross_validation_seed", seed)
 
     def _payload(self) -> dict[str, Any]:
-        payload = {
-            "schema": PARTITION_POLICY_SCHEMA,
+        payload: dict[str, Any] = {
+            "schema": self.schema,
             "policy_version": self.policy_version,
             "role_budget": self.role_budget.to_dict(),
             "block_policy": self.block_policy.to_dict(),
@@ -130,7 +139,7 @@ class PartitionPolicy:
             "allow_global_role_fallback": self.allow_global_role_fallback,
             "minimum_units_per_condition_for_full_outer_roles": self.minimum_units_per_condition_for_full_outer_roles,
         }
-        if not self._legacy_omits_cross_validation_seed:
+        if self.schema == LEGACY_PARTITION_POLICY_SCHEMA and not self._legacy_omits_cross_validation_seed:
             payload["cross_validation_seed"] = self.cross_validation_seed
         return payload
 
@@ -143,7 +152,8 @@ class PartitionPolicy:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PartitionPolicy":
-        if payload.get("schema") != PARTITION_POLICY_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in (PARTITION_POLICY_SCHEMA, LEGACY_PARTITION_POLICY_SCHEMA):
             raise TrainingDataSerializationError("Unsupported partition-policy schema.")
         result = cls(
             role_budget=PartitionRoleBudgetPolicy.from_dict(payload["role_budget"]),
@@ -156,8 +166,9 @@ class PartitionPolicy:
             minimum_units_per_condition_for_full_outer_roles=int(payload["minimum_units_per_condition_for_full_outer_roles"]),
             cross_validation_seed=int(payload.get("cross_validation_seed", 104729)),
             policy_version=str(payload["policy_version"]),
+            schema=schema,
         )
-        if "cross_validation_seed" not in payload:
+        if "cross_validation_seed" not in payload and schema == LEGACY_PARTITION_POLICY_SCHEMA:
             object.__setattr__(result, "_legacy_omits_cross_validation_seed", True)
         validate_serialized_digest(
             payload,
@@ -472,21 +483,24 @@ class PartitionFeasibilityReport:
     outcome: PartitionFeasibilityOutcome
     available_unit_count: int
     available_condition_count: int
-    requested_cross_validation_folds: int
-    resolved_cross_validation_folds: int
-    calibration_deferred: bool
-    temporal_blocks_only: bool
-    per_condition_unit_counts: tuple[tuple[str, int], ...]
-    missing_outer_role_conditions: tuple[tuple[str, tuple[str, ...]], ...]
-    reason_codes: tuple[str, ...]
+    requested_cross_validation_folds: int = 3
+    resolved_cross_validation_folds: int = 3
+    calibration_deferred: bool = False
+    temporal_blocks_only: bool = False
+    per_condition_unit_counts: tuple[tuple[str, int], ...] = ()
+    missing_outer_role_conditions: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    reason_codes: tuple[str, ...] = ()
+    schema: str = PARTITION_FEASIBILITY_REPORT_SCHEMA
 
     def __post_init__(self) -> None:
         for name in ("policy_digest", "unit_catalog_digest"):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
         if not self.label_domain_id.strip() or self.available_unit_count < 0 or self.available_condition_count < 0:
             raise TrainingDataInputError("Invalid feasibility-report identifiers or counts.")
-        if self.requested_cross_validation_folds < 2 or self.resolved_cross_validation_folds < 0:
+        if self.requested_cross_validation_folds < 0 or self.resolved_cross_validation_folds < 0:
             raise TrainingDataInputError("Invalid cross-validation fold count.")
+        if self.schema not in (PARTITION_FEASIBILITY_REPORT_SCHEMA, LEGACY_PARTITION_FEASIBILITY_REPORT_SCHEMA):
+            raise TrainingDataInputError("Unsupported partition-feasibility-report schema.")
         counts = tuple(sorted((str(key), int(value)) for key, value in self.per_condition_unit_counts))
         if any(value < 0 for _, value in counts):
             raise TrainingDataInputError("Condition unit counts must be nonnegative.")
@@ -504,22 +518,24 @@ class PartitionFeasibilityReport:
         }
 
     def _payload(self) -> dict[str, Any]:
-        return {
-            "schema": PARTITION_FEASIBILITY_REPORT_SCHEMA,
+        payload: dict[str, Any] = {
+            "schema": self.schema,
             "label_domain_id": self.label_domain_id,
             "policy_digest": self.policy_digest,
             "unit_catalog_digest": self.unit_catalog_digest,
             "outcome": self.outcome.value,
             "available_unit_count": self.available_unit_count,
             "available_condition_count": self.available_condition_count,
-            "requested_cross_validation_folds": self.requested_cross_validation_folds,
-            "resolved_cross_validation_folds": self.resolved_cross_validation_folds,
             "calibration_deferred": self.calibration_deferred,
             "temporal_blocks_only": self.temporal_blocks_only,
             "per_condition_unit_counts": dict(self.per_condition_unit_counts),
             "missing_outer_role_conditions": {role: list(values) for role, values in self.missing_outer_role_conditions},
             "reason_codes": list(self.reason_codes),
         }
+        if self.schema == LEGACY_PARTITION_FEASIBILITY_REPORT_SCHEMA:
+            payload["requested_cross_validation_folds"] = self.requested_cross_validation_folds
+            payload["resolved_cross_validation_folds"] = self.resolved_cross_validation_folds
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -530,8 +546,15 @@ class PartitionFeasibilityReport:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PartitionFeasibilityReport":
-        if payload.get("schema") != PARTITION_FEASIBILITY_REPORT_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in (PARTITION_FEASIBILITY_REPORT_SCHEMA, LEGACY_PARTITION_FEASIBILITY_REPORT_SCHEMA):
             raise TrainingDataSerializationError("Unsupported partition-feasibility-report schema.")
+        if schema == LEGACY_PARTITION_FEASIBILITY_REPORT_SCHEMA:
+            req_folds = int(payload.get("requested_cross_validation_folds", 3))
+            res_folds = int(payload.get("resolved_cross_validation_folds", 3))
+        else:
+            req_folds = int(payload.get("requested_cross_validation_folds", 0))
+            res_folds = int(payload.get("resolved_cross_validation_folds", 0))
         result = cls(
             label_domain_id=str(payload["label_domain_id"]),
             policy_digest=str(payload["policy_digest"]),
@@ -539,13 +562,14 @@ class PartitionFeasibilityReport:
             outcome=PartitionFeasibilityOutcome(payload["outcome"]),
             available_unit_count=int(payload["available_unit_count"]),
             available_condition_count=int(payload["available_condition_count"]),
-            requested_cross_validation_folds=int(payload["requested_cross_validation_folds"]),
-            resolved_cross_validation_folds=int(payload["resolved_cross_validation_folds"]),
+            requested_cross_validation_folds=req_folds,
+            resolved_cross_validation_folds=res_folds,
             calibration_deferred=bool(payload["calibration_deferred"]),
             temporal_blocks_only=bool(payload["temporal_blocks_only"]),
             per_condition_unit_counts=tuple((str(k), int(v)) for k, v in payload["per_condition_unit_counts"].items()),
             missing_outer_role_conditions=tuple((str(k), tuple(str(v) for v in values)) for k, values in payload["missing_outer_role_conditions"].items()),
             reason_codes=tuple(str(v) for v in payload.get("reason_codes", ())),
+            schema=schema,
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Partition-feasibility-report digest mismatch.")
@@ -1284,32 +1308,58 @@ def assess_partition_feasibility(
             for unit in units
         )
         calibration_deferred = False
-        resolved_folds = min(budget.cross_validation_folds, max(0, len(units) - 3))
-        if len(units) < minimum_total:
-            if budget.allow_calibration_deferral and len(units) >= minimum_total - budget.calibration_minimum_independent_units:
-                calibration_deferred = True
-                reason_codes.append("calibration_deferred_for_role_budget")
-                outcome = PartitionFeasibilityOutcome.CALIBRATION_DEFERRED
-            elif len(units) < budget.locked_interpolation_test_minimum_independent_units + budget.development_minimum_independent_units:
-                outcome = PartitionFeasibilityOutcome.INSUFFICIENT_FOR_LOCKED_TEST
-                reason_codes.append("insufficient_units_for_development_and_locked_test")
-            else:
+        if budget.schema == LEGACY_PARTITION_ROLE_BUDGET_POLICY_SCHEMA:
+            requested_folds = budget.cross_validation_folds
+            resolved_folds = min(budget.cross_validation_folds, max(0, len(units) - 3))
+            if len(units) < minimum_total:
+                if budget.allow_calibration_deferral and len(units) >= minimum_total - budget.calibration_minimum_independent_units:
+                    calibration_deferred = True
+                    reason_codes.append("calibration_deferred_for_role_budget")
+                    outcome = PartitionFeasibilityOutcome.CALIBRATION_DEFERRED
+                elif len(units) < budget.locked_interpolation_test_minimum_independent_units + budget.development_minimum_independent_units:
+                    outcome = PartitionFeasibilityOutcome.INSUFFICIENT_FOR_LOCKED_TEST
+                    reason_codes.append("insufficient_units_for_development_and_locked_test")
+                else:
+                    outcome = PartitionFeasibilityOutcome.INSUFFICIENT_FOR_REQUESTED_ROLES
+                    reason_codes.append("insufficient_units_for_requested_outer_roles")
+            elif resolved_folds < 2:
                 outcome = PartitionFeasibilityOutcome.INSUFFICIENT_FOR_REQUESTED_ROLES
-                reason_codes.append("insufficient_units_for_requested_outer_roles")
-        elif resolved_folds < 2:
-            outcome = PartitionFeasibilityOutcome.INSUFFICIENT_FOR_REQUESTED_ROLES
-            reason_codes.append("insufficient_units_for_cross_validation")
-        elif resolved_folds < budget.cross_validation_folds:
-            outcome = PartitionFeasibilityOutcome.REDUCED_CROSS_VALIDATION_FOLDS
-            reason_codes.append("cross_validation_fold_count_reduced")
-        elif temporal_only:
-            outcome = PartitionFeasibilityOutcome.SUPPORTED_WITH_TEMPORAL_BLOCKS_ONLY
-            reason_codes.append("no_independent_replica_or_run_support")
-        elif any(missing.values()):
-            outcome = PartitionFeasibilityOutcome.SUPPORTED_WITH_TEMPORAL_BLOCKS_ONLY
-            reason_codes.append("not_all_conditions_support_all_outer_roles")
+                reason_codes.append("insufficient_units_for_cross_validation")
+            elif resolved_folds < budget.cross_validation_folds:
+                outcome = PartitionFeasibilityOutcome.REDUCED_CROSS_VALIDATION_FOLDS
+                reason_codes.append("cross_validation_fold_count_reduced")
+            elif temporal_only:
+                outcome = PartitionFeasibilityOutcome.SUPPORTED_WITH_TEMPORAL_BLOCKS_ONLY
+                reason_codes.append("no_independent_replica_or_run_support")
+            elif any(missing.values()):
+                outcome = PartitionFeasibilityOutcome.SUPPORTED_WITH_TEMPORAL_BLOCKS_ONLY
+                reason_codes.append("not_all_conditions_support_all_outer_roles")
+            else:
+                outcome = PartitionFeasibilityOutcome.FULLY_SUPPORTED
+            report_schema = LEGACY_PARTITION_FEASIBILITY_REPORT_SCHEMA
         else:
-            outcome = PartitionFeasibilityOutcome.FULLY_SUPPORTED
+            requested_folds = 0
+            resolved_folds = 0
+            if len(units) < minimum_total:
+                if budget.allow_calibration_deferral and len(units) >= minimum_total - budget.calibration_minimum_independent_units:
+                    calibration_deferred = True
+                    reason_codes.append("calibration_deferred_for_role_budget")
+                    outcome = PartitionFeasibilityOutcome.CALIBRATION_DEFERRED
+                elif len(units) < budget.locked_interpolation_test_minimum_independent_units + budget.development_minimum_independent_units:
+                    outcome = PartitionFeasibilityOutcome.INSUFFICIENT_FOR_LOCKED_TEST
+                    reason_codes.append("insufficient_units_for_development_and_locked_test")
+                else:
+                    outcome = PartitionFeasibilityOutcome.INSUFFICIENT_FOR_REQUESTED_ROLES
+                    reason_codes.append("insufficient_units_for_requested_outer_roles")
+            elif temporal_only:
+                outcome = PartitionFeasibilityOutcome.SUPPORTED_WITH_TEMPORAL_BLOCKS_ONLY
+                reason_codes.append("no_independent_replica_or_run_support")
+            elif any(missing.values()):
+                outcome = PartitionFeasibilityOutcome.SUPPORTED_WITH_TEMPORAL_BLOCKS_ONLY
+                reason_codes.append("not_all_conditions_support_all_outer_roles")
+            else:
+                outcome = PartitionFeasibilityOutcome.FULLY_SUPPORTED
+            report_schema = PARTITION_FEASIBILITY_REPORT_SCHEMA
         reports.append(
             PartitionFeasibilityReport(
                 label_domain_id=domain_id,
@@ -1318,13 +1368,14 @@ def assess_partition_feasibility(
                 outcome=outcome,
                 available_unit_count=len(units),
                 available_condition_count=len(groups),
-                requested_cross_validation_folds=budget.cross_validation_folds,
+                requested_cross_validation_folds=requested_folds,
                 resolved_cross_validation_folds=max(0, resolved_folds),
                 calibration_deferred=calibration_deferred,
                 temporal_blocks_only=temporal_only,
                 per_condition_unit_counts=counts,
                 missing_outer_role_conditions=tuple((role, tuple(values)) for role, values in missing.items()),
                 reason_codes=tuple(reason_codes),
+                schema=report_schema,
             )
         )
     return tuple(reports)
@@ -1612,20 +1663,21 @@ def build_cross_validation_plans(
         temporal_index = _build_temporal_neighbor_index(development)
         report = report_map[domain_id]
         if fold_count_override is None:
-            fold_count = min(
-                report.resolved_cross_validation_folds, len(development)
+            max_avail = report.resolved_cross_validation_folds or min(
+                active.role_budget.cross_validation_folds, max(0, len(development) - 3)
             )
+            fold_count = min(max_avail, len(development))
         else:
             requested_override = int(fold_count_override)
             if requested_override < 2:
                 raise TrainingDataInputError(
                     "Cross-validation fold override must be at least two."
                 )
-            if requested_override > report.resolved_cross_validation_folds:
+            limit = report.resolved_cross_validation_folds or len(development)
+            if requested_override > limit:
                 raise TrainingDataInputError(
                     f"Requested {requested_override} cross-validation folds for "
-                    f"{domain_id}, but DATA5 supports only "
-                    f"{report.resolved_cross_validation_folds}."
+                    f"{domain_id}, but DATA5 supports only {limit}."
                 )
             fold_count = requested_override
         if fold_count < 2:

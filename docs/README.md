@@ -41,7 +41,7 @@ GitHub Actions runs the same driver for pushed documentation changes on every br
 - `arch_manuals/mlff_training_data_architecture.{md,pdf}` is the current normative MLFF architecture. It is assembled from indexed current-state chapter sources under `arch_manuals/mlff_training_data/` by `tools/build_mlff_architecture_manual.py`.
 - `arch_manuals/mlff_training_data_dependency_graph.json` is the machine-readable **current product/data/runtime dependency architecture**; developer execution status is not stored there.
 - `specs/training_data/` owns current MLFF behavior. Its legacy-named `mlff_data_stage_plan_spec.md` is the cross-cutting system contract, not an implementation roadmap.
-- `guides/mlff_campaign_cli_user_guide.{md,pdf}` and `guides/mlff_final_gpu1_workstation_runbook.{md,pdf}` are operational runbooks.
+- `guides/mlff_campaign_cli_user_guide.{md,pdf}` is the current P6 campaign runbook. `guides/mlff_final_gpu1_workstation_runbook.{md,pdf}` is a separate release-pinned downstream accelerator qualification handoff and is not part of the current campaign lifecycle.
 - `history/mlff/` owns non-normative MLFF architecture/release lineage and selected pre-migration snapshots.
 - active unfinished engineering transitions, including deferred workstation qualification work, live under `../workplans/active/` rather than in architecture/specification authority.
 

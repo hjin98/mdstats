@@ -18,13 +18,13 @@ REL_INDEX = ROOT / "docs/history/mlff/release_notes/INDEX.md"
 def test_doc_arch1_release_and_current_authority_are_synchronized():
     assert mdstats.__version__ == "0.20.242a0"
     text = MANUAL.read_text(encoding="utf-8")
-    assert "architecture_revision: 106" in text
+    assert "architecture_revision: 107" in text
     assert "# Part VI - Bounded execution, restart, and performance architecture" in text
     assert "# Part VII - Ownership and extension boundaries" in text
     assert "## Context retrieval index" in text
-    assert "MVSEL2 target order" in text
-    assert "independent MVQUAL prefix qualification" in text
-    assert "configurable target-size study" in text
+    assert "one canonical training order pi_train" in text
+    assert "paired optimizer-seed screen over candidate sizes" in text
+    assert "post-selection cross-validation on exactly T_selected" in text
     assert not (ROOT / "mlff_training_data_architecture.md").exists()
     assert not (ROOT / "mlff_training_data_dependency_graph.json").exists()
 
@@ -33,7 +33,7 @@ def test_doc_arch1_manual_is_deterministically_assembled_from_numbered_sources()
     order = [
         "00_front_matter.md", "10_foundations.md", "20_data_contracts.md",
         "30_statistical_design.md", "40_training_evaluation.md",
-        "50_target_multiview.md", "60_execution_performance.md",
+        "50_target_size_selection.md", "60_execution_performance.md",
         "80_ownership_and_decisions.md", "90_references.md",
     ]
     expected = "\n\n".join((CHAPTERS / name).read_text(encoding="utf-8").rstrip() for name in order) + "\n"
@@ -44,16 +44,27 @@ def test_doc_arch1_manual_is_deterministically_assembled_from_numbered_sources()
 def test_doc_arch1_current_target_size_and_execution_contract():
     text = MANUAL.read_text(encoding="utf-8")
     for token in (
-        "MVSEL2", "REPAIR2", "MVSTATE2", "MVQUAL",
-        "TargetSizeStudyPolicy", "exact neighborhood engine",
-        "bounded in anonymous RAM", "deterministic", "restart",
+        "pi_train", "T_selected", "common target-size preparation",
+        "paired optimizer-seed", "post-selection cross-validation",
+        "fresh final production", "deterministic", "restart",
     ):
         assert token.lower() in text.lower()
-    assert "MVQUAL is the sole hard target-size eligibility authority" in text
-    assert "q < 3" in text
-    assert "nonconverged_at_fixed_ceiling" in text
-    assert "0 -> n1 coarse -> n2 short -> n3 final screen" in text
-    assert "no alternate MVSEL1/REPAIR1 path" in text
+    assert "the reducer is the sole target-size authority" in text
+    assert "Fewer than three qualified sizes is a typed failure" in text
+    assert "nonconverged_at_configured_ceiling" in text
+    assert "n1 / M1  ->  n2 / M2  ->  n3 / M3" in text
+    assert "exactly one target-size architecture" in text
+
+
+def test_doc_arch1_manual_names_no_retired_target_size_owner():
+    """The current manual may not present retired topology as current authority."""
+
+    text = MANUAL.read_text(encoding="utf-8")
+    for token in (
+        "MVSEL2", "REPAIR2", "MVSTATE2", "MVQUAL", "MVIDX", "FEAS1",
+        "TargetSizeStudyPolicy", "TargetDataRoleFreeze", "target_size_study",
+    ):
+        assert token not in text, token
 
 
 def test_doc_arch1_external_algorithmic_provenance_is_cited():
@@ -80,23 +91,30 @@ def test_doc_arch1_history_is_indexed_once_and_current_revision_is_recorded():
 
 def test_doc_arch1_graph_and_directory_ownership_are_current():
     graph = json.loads(GRAPH.read_text())
-    assert graph["schema_version"] == 2
+    assert graph["schema_version"] == 3
     assert graph["authority_model"] == "single_generation_current_dependency_architecture"
     node_ids = {node["id"] for node in graph["nodes"]}
     for node in (
-        "FEASIBILITY_EVIDENCE", "EXACT_NEIGHBORHOOD_AUTHORITY",
-        "DOMAIN_SELECTION_ORDER", "DOMAIN_REPAIRED_MASTER_ORDER",
-        "COMPACT_CONTINUATION_STATE", "PREFIX_QUALIFICATION_EVIDENCE",
-        "TARGET_SIZE_STUDY_POLICY", "QUALIFIED_TARGET_SIZE_POPULATION",
-        "TARGET_SIZE_DECISION", "COARSE_SCREEN", "SHORT_SCREEN",
+        "TARGET_SIZE_DEVELOPMENT_SPLIT", "CANONICAL_TRAINING_ORDER",
+        "CANONICAL_EVALUATION_LADDER", "COMMON_TARGET_SIZE_PREPARATION",
+        "TARGET_SIZE_POLICY", "TARGET_SIZE_DECISION",
+        "CURRENT_SELECTED_SET", "POST_SELECTION_CV_ACCEPTANCE",
+        "FRESH_FINAL_PRODUCTION", "COARSE_SCREEN", "SHORT_SCREEN",
         "FINAL_SCREEN", "FULL_TRAIN2_SCHEDULE",
         "OUT_OF_FOLD_PROTOCOL_EVIDENCE", "DEPLOYMENT_ARTIFACTS",
     ):
         assert node in node_ids
+    for retired in (
+        "FEASIBILITY_EVIDENCE", "EXACT_NEIGHBORHOOD_AUTHORITY",
+        "DOMAIN_SELECTION_ORDER", "DOMAIN_REPAIRED_MASTER_ORDER",
+        "COMPACT_CONTINUATION_STATE", "PREFIX_QUALIFICATION_EVIDENCE",
+        "QUALIFIED_TARGET_SIZE_POPULATION", "DOMAIN_LOCAL_TARGET_PREFIXES",
+    ):
+        assert retired not in node_ids
     assert not any(node.startswith("SIZE_STUDY_EPOCH") for node in node_ids)
     forbidden = "\n".join(graph["forbidden_current_paths"])
-    assert "MVMIGRATE" in forbidden
-    assert "held-out CV evaluation -> target-size decision" in forbidden
+    assert "retired target-size migration" in forbidden
+    assert "post-selection cross-validation -> target-size decision" in forbidden
     root_names = {p.name for p in ROOT.iterdir() if p.is_file()}
     assert not any(name.startswith("ARCHITECTURE_NOTES_") for name in root_names)
     assert not any(name.startswith("PATCH_NOTES_") for name in root_names)

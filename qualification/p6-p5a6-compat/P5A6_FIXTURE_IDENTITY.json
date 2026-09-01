@@ -1,0 +1,29 @@
+{
+  "adopted_execution_head_digest": "9638877d223bbadee13b896f1e46806afc8e6879e83786327d633be63d471ba1",
+  "baseline_commit": "1670275487d29bbcde4c59efafdef9d1f8b0ced7",
+  "baseline_tree": "17e2c5609974712bda1efd3375f09f42da830f68",
+  "common_preparation_digest": "caf18499536ae4d7caebb64db990d8155abffdcac98a661e89839fdf65c720b7",
+  "content_manifest_digest": "79833746e8a24e8b27fc41a504e494fa579faad5768e52c753375b5e4cc3ca28",
+  "cv_acceptance_digest": "8cf95a90aaa6dd33eed1df37c24103ca2d6a7c112ee1aac560df41cf89d19f68",
+  "cv_plan_digest": "ebaab03a82991770669efb557cca70e407b78fba1343f495545b967555ab3773",
+  "experiment_definition_digest": "dfeef167d9ac3c77075512e60d5ff183212832897902faea295b918f3c8a6203",
+  "file_count": 802,
+  "final_plan_digest": "d9ec29dc9e7e70c857340f85fff967fb57267be22f737e3c9d742e4d61e7189a",
+  "frame_authority_digest": "8483a0f42201c14829905c6bcb6354a08c417eb347fedfd77f73535143de9f41",
+  "generation": 1,
+  "lifecycle": "terminal_selected",
+  "method_identity_digest": "c66a6f05766800aa854da834755ff9ff31d9a7a21a16d889d37f1c39099a4df2",
+  "n_selected": 4,
+  "neutral_statistical_base_digest": "fc47e214f67e9d8cf15a86c8495b9d007500a30eaf5374c5a0efbd973183cee2",
+  "regime": "current",
+  "selected_binding_digest": "77337bc37b98b3236609dec20b8ae8a4b7da3851a4555ffdbe3b507282c75294",
+  "selected_membership": [
+    "05f675b6f17d0547b4a74939193f1d4cfaf28f4814b7b9152abd09382b0e2907",
+    "0abf632f6cc04574efc06889c7a5dcfa6122bab2a3d87f08501777abbb1835f4",
+    "13c32fe7f22efc4cfcde0053e7658af07f9253461d9d2465d5168d6b02a11ac2",
+    "17ace60f4b72648d1ca851996b4b304790e7b9e98e34fdcc2f51b304764293f3"
+  ],
+  "selected_membership_digest": "dcca0861c90169e39ec5643fe10832482711b3f68dec70f4423e062d4325655b",
+  "split_exclusion_digest": "6fa07c938c26a86ad37566c3b40cf59b379845c680513ec2df177d9cc0c0527b",
+  "workspace_relative_path": "qualification/p6-p5a6-compat/workspace"
+}

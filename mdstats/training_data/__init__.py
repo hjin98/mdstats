@@ -236,8 +236,10 @@ from .eligibility import (
     FrameEligibilityDecision,
     FrameEligibilityPolicy,
     FrameEligibilityState,
+    RequiredLabelContractResult,
     StressRequirement,
     assess_frame_eligibility,
+    evaluate_required_label_contract,
 )
 from .frame_catalog import (
     FRAME_DATA_SCHEMA,
@@ -363,266 +365,25 @@ from .data5_bundle import (
     Data5PartitionBundle,
     build_data5_partition_bundle,
 )
-from .target_data_roles import (
-    TARGET_DATA_CORRELATION_FAMILY_SCHEMA,
-    TARGET_DATA_DEVELOPMENT_INTERVAL_SCHEMA,
-    TARGET_DATA_DOMAIN_ROLE_FREEZE_SCHEMA,
-    TARGET_DATA_ROLE_FREEZE_POLICY_SCHEMA,
-    TARGET_DATA_ROLE_FREEZE_SCHEMA,
-    TARGET_DATA_ROLE_FREEZE_VERSION,
-    TARGET_DATA_SOURCE_LINEAGE_SCHEMA,
-    TargetDataCorrelationFamilyRecord,
-    TargetDataDomainRoleFreeze,
-    TargetDataRoleFreeze,
-    TargetDataRoleFreezePolicy,
-    TargetDataSourceLineageRecord,
-    TargetDevelopmentInterval,
-    build_target_data_role_freeze,
-)
 
-from .foundation_audit import (
-    FOUNDATION_AUDIT_DOMAIN_SCHEMA,
-    FOUNDATION_AUDIT_PROBE_CONTRACT_SCHEMA,
-    FOUNDATION_AUDIT_VERSION,
-    FOUNDATION_TARGET_AUDIT_SCHEMA,
-    TARGET_MODEL_AUDIT_METRICS_SCHEMA,
-    TARGET_MODEL_AUDIT_POLICY_SCHEMA,
-    TARGET_MODEL_CONDITIONED_BIN_SCHEMA,
-    TARGET_MODEL_CONDITIONED_SUMMARY_SCHEMA,
-    TARGET_MODEL_FORCE_TAIL_SCHEMA,
-    TARGET_MODEL_SPECIES_FORCE_METRIC_SCHEMA,
-    FoundationAuditDomainRecord,
-    FoundationAuditProbeContract,
-    FoundationTargetAudit,
-    TargetModelAuditMetrics,
-    TargetModelAuditPolicy,
-    TargetModelConditionedForceBin,
-    TargetModelConditionedForceSummary,
-    TargetModelForceTailMetric,
-    TargetModelSpeciesForceMetric,
-    build_foundation_target_audit,
-    validate_foundation_target_audit_authority,
-)
 
-from .target_coverage import (
-    TARGET_COVERAGE_POLICY_SCHEMA,
-    TARGET_COVERAGE_EXTENT_SCHEMA,
-    TARGET_COVERAGE_ARRAY_SCHEMA,
-    TARGET_COVERAGE_FAMILY_LEGACY_SCHEMA,
-    TARGET_COVERAGE_FAMILY_SCHEMA,
-    TARGET_COVERAGE_STRATUM_SCHEMA,
-    TARGET_COVERAGE_DOMAIN_LEGACY_SCHEMA,
-    TARGET_COVERAGE_DOMAIN_SCHEMA,
-    TARGET_COVERAGE_REFERENCE_LEGACY_SCHEMA,
-    TARGET_COVERAGE_REFERENCE_SCHEMA,
-    TARGET_COVERAGE_FAMILY_REPORT_SCHEMA,
-    TARGET_COVERAGE_STRATUM_REPORT_SCHEMA,
-    TARGET_COVERAGE_REPORT_SCHEMA,
-    TARGET_COVERAGE_VERSION,
-    TARGET_COVERAGE_PERSISTENCE_VERSION,
-    TARGET_COVERAGE_MIGRATION_SCHEMA,
-    TargetCoveragePolicy,
-    TargetCoverageExtentChannel,
-    TargetCoverageFamilyReference,
-    TargetCoverageStratumRequirement,
-    TargetCoverageDomainReference,
-    TargetCoverageReference,
-    TargetCoverageMigrationReport,
-    TargetCoverageFamilyReport,
-    TargetCoverageStratumReport,
-    TargetCoverageReport,
-    build_target_coverage_reference,
-    compare_target_coverage_references_exact,
-    score_target_subset_coverage,
-    assert_nested_coverage_monotonicity,
-    validate_target_coverage_reference_authority,
-)
 
-from .target_coverage_feasibility import (
-    TARGET_COVERAGE_FEASIBILITY_POLICY_SCHEMA,
-    TARGET_COVERAGE_SUPPORT_SCHEMA,
-    TARGET_COVERAGE_FAMILY_FEASIBILITY_SCHEMA,
-    TARGET_COVERAGE_DOMAIN_FEASIBILITY_SCHEMA,
-    TARGET_COVERAGE_FEASIBILITY_SCHEMA,
-    TARGET_COVERAGE_FEASIBILITY_VERSION,
-    TargetCoverageFeasibilityPolicy,
-    TargetCoverageSupportDegreeReport,
-    TargetCoverageFamilyFeasibilityReport,
-    TargetCoverageDomainFeasibilityReport,
-    TargetCoverageFeasibilityReport,
-    build_target_coverage_feasibility_artifacts,
-    build_target_coverage_feasibility_report,
-    validate_target_coverage_feasibility_authority,
-)
 
-from .target_coverage_exact_neighborhood import (
-    TARGET_COVERAGE_EXACT_NEIGHBORHOOD_FAMILY_SCHEMA,
-    TARGET_COVERAGE_EXACT_NEIGHBORHOOD_DOMAIN_SCHEMA,
-    TARGET_COVERAGE_EXACT_NEIGHBORHOOD_STORE_SCHEMA,
-    TARGET_COVERAGE_EXACT_NEIGHBORHOOD_VERSION,
-    TARGET_COVERAGE_EXACT_NEIGHBORHOOD_PERSISTENCE_VERSION,
-    EXACT_NEIGHBORHOOD_METRIC_TOLERANCE,
-    EXACT_NEIGHBORHOOD_DISTANCE_SEMANTICS,
-    TargetCoverageExactNeighborhoodFamily,
-    TargetCoverageExactNeighborhoodDomain,
-    TargetCoverageExactNeighborhoodStore,
-    ExactNeighborhoodEngine,
-    ExactNeighborhoodBuildTelemetry,
-    build_target_coverage_exact_neighborhood_store,
-    validate_target_coverage_exact_neighborhood_store,
-)
 
-from .target_coverage_exact_neighborhood_store import (
-    TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_MANIFEST_SCHEMA,
-    TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA,
-    TargetCoverageExactNeighborhoodNativeStoreError,
-    write_target_coverage_exact_neighborhood_native_record,
-    read_target_coverage_exact_neighborhood_native_record,
-)
 
-from .target_coverage_store import (
-    TARGET_COVERAGE_NATIVE_MANIFEST_SCHEMA,
-    TARGET_COVERAGE_NATIVE_POINTER_SCHEMA,
-    TARGET_COVERAGE_NATIVE_WEIGHT_PROFILE_SCHEMA,
-    TargetCoverageNativeStoreError,
-    write_target_coverage_native_record,
-    read_target_coverage_native_record,
-)
 
-from .target_coverage_sparse_index import (
-    TARGET_COVERAGE_SPARSE_INDEX_POLICY_SCHEMA,
-    TARGET_COVERAGE_SPARSE_FAMILY_SCHEMA,
-    TARGET_COVERAGE_HARD_OBLIGATION_SCHEMA,
-    TARGET_COVERAGE_SPARSE_DOMAIN_SCHEMA,
-    TARGET_COVERAGE_SPARSE_INDEX_SCHEMA,
-    TARGET_COVERAGE_SPARSE_INDEX_VERSION,
-    TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION,
-    TargetCoverageSparseIndexPolicy,
-    TargetCoverageSparseFamilyIndex,
-    TargetCoverageHardObligation,
-    TargetCoverageSparseDomainIndex,
-    TargetCoverageSparseIndex,
-    build_target_coverage_sparse_index,
-    validate_target_coverage_sparse_index_authority,
-    indexed_family_covered_mask,
-    indexed_family_covered_mass,
-    indexed_family_marginal_gain,
-    indexed_obligation_selected_counts,
-)
 
-from .target_coverage_sparse_forward_view import (
-    TargetCoverageSparseForwardFamilyView,
-    TargetCoverageSparseForwardDomainView,
-    TargetCoverageSparseForwardIndexView,
-    target_coverage_sparse_forward_view,
-)
 
-from .target_multi_view_selection_state import (
-    TARGET_MULTI_VIEW_SELECTION_STATE_FAMILY_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_STATE_CHECKPOINT_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_STATE_DOMAIN_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_VERSION,
-    TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION,
-    TARGET_MULTI_VIEW_SELECTION_STATE_KERNEL_SCHEMA,
-    TargetMultiViewSelectionFamilyStateCheckpoint,
-    TargetMultiViewSelectionStateCheckpoint,
-    TargetMultiViewSelectionDomainStateCache,
-    TargetMultiViewSelectionStateCache,
-    selected_prefix_digest,
-    restore_domain_state,
-    validate_target_multi_view_selection_state_cache,
-)
 
-from .target_multi_view_selection_state_store import (
-    TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_MANIFEST_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
-    TargetMultiViewSelectionStateNativeStoreError,
-    write_target_multi_view_selection_state_native_record,
-    read_target_multi_view_selection_state_native_record,
-)
 
-from .target_multi_view_selector_v2 import (
-    TARGET_MULTI_VIEW_SELECTOR_V2_VERSION,
-    TARGET_MULTI_VIEW_SELECTION_PLAN_V2_SCHEMA,
-    TargetMultiViewSelectorPolicyV2,
-    TargetMultiViewSelectionDomainPlanV2,
-    TargetMultiViewSelectionPlanV2,
-    TargetMultiViewCandidateScoreV2,
-    TargetMultiViewPhaseATelemetryV2,
-    TargetMultiViewPhaseAChoiceV2,
-    TargetMultiViewPhaseBTelemetryV2,
-    TargetMultiViewPhaseBChoiceV2,
-    TargetMultiViewLazyFrontierV2,
-    TargetMultiViewForwardFamilyStateV2,
-    TargetMultiViewForwardStateV2,
-    build_target_multi_view_forward_state_v2,
-    score_target_multi_view_candidate_v2,
-    score_target_multi_view_candidates_v2,
-    choose_target_multi_view_phase_a_candidate_v2,
-    build_target_multi_view_lazy_frontier_v2,
-    choose_target_multi_view_phase_b_full_forward_v2,
-    choose_target_multi_view_phase_b_candidate_v2,
-    select_target_multi_view_candidate_v2,
-    deselect_target_multi_view_candidate_v2,
-    release_target_multi_view_forward_pages_v2,
-    build_target_multi_view_selection_plan_v2,
-    validate_target_multi_view_selection_authority_v2,
-)
 
-from .target_multi_view_selection_state_v2 import (
-    MVSTATE2_SCHEMA,
-    MVSTATE2_POINTER_SCHEMA,
-    MVSTATE2_PERSISTENCE_VERSION,
-    TargetMultiViewSelectionStateV2StoreError,
-    TargetMultiViewSelectionIdentityV2,
-    TargetMultiViewSelectionCheckpointV2,
-    build_target_multi_view_selection_identity_v2,
-    checkpoint_target_multi_view_forward_state_v2,
-    restore_target_multi_view_forward_state_v2,
-    write_target_multi_view_selection_checkpoint_v2,
-    read_target_multi_view_selection_checkpoint_v2,
-)
 
-from .target_multi_view_repair_v2 import (
-    TARGET_MULTI_VIEW_REPAIR_V2_VERSION,
-    TARGET_MULTI_VIEW_REPAIR_PLAN_V2_SCHEMA,
-    TargetMultiViewRepairPolicyV2,
-    TargetMultiViewRepairDomainPlanV2,
-    TargetMultiViewRepairPlanV2,
-    build_target_multi_view_repair_plan_v2,
-    validate_target_multi_view_repair_authority_v2,
-)
 
-from .target_coverage_sparse_index_store import (
-    TARGET_COVERAGE_SPARSE_INDEX_NATIVE_MANIFEST_SCHEMA,
-    TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA,
-    TargetCoverageSparseIndexNativeStoreError,
-    write_target_coverage_sparse_index_native_record,
-    read_target_coverage_sparse_index_native_record,
-    read_target_coverage_sparse_index_forward_view_native_record,
-)
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]
 
 
-from .size_fidelity import (
-    SIZE_FIDELITY_POLICY_SCHEMA,
-    SIZE_FIDELITY_EXECUTION_PLAN_SCHEMA,
-    SIZE_FIDELITY_METRIC_SCHEMA,
-    SIZE_FIDELITY_CANDIDATE_SCHEMA,
-    SIZE_FIDELITY_REPORT_SCHEMA,
-    SIZE_FIDELITY_VERSION,
-    SizeFidelityCalibrationPolicy,
-    SizeFidelityExecutionPlan,
-    SizeFidelityMetric,
-    SizeFidelityCandidateAssessment,
-    SizeFidelityQualificationReport,
-    build_size_fidelity_execution_plan,
-    build_size_fidelity_qualification,
-    validate_size_fidelity_qualification,
-)
 
 from .profile_extensions import (
     PROFILE_FEATURE_CATALOG_SCHEMA,
@@ -772,11 +533,6 @@ from .selection import (
     TrainingSelectionPlan,
     build_selection_coverage_report,
     build_training_selection_plan,
-)
-from .data7_bundle import (
-    DATA7_PREPARATION_BUNDLE_SCHEMA,
-    Data7PreparationBundle,
-    build_data7_preparation_bundle,
 )
 
 __all__ = [name for name in globals() if not name.startswith("_")]
@@ -958,7 +714,6 @@ from .data8_bundle import (
     DATA8_PREPARATION_BUNDLE_SCHEMA,
     MLFF_DATA8_PARSER_VERSION,
     Data8PreparationBundle,
-    build_data8_preparation_bundle,
 )
 
 __all__ = [name for name in globals() if not name.startswith("_")]
@@ -1288,26 +1043,6 @@ from .production_model_sweep import (
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .production_materialization import (
-    PRODUCTION_MATERIALIZATION_POLICY_SCHEMA,
-    PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
-    PRODUCTION_DATA7_ARTIFACT_SCHEMA,
-    PRODUCTION_DATA8_ARTIFACT_SCHEMA,
-    PRODUCTION_MATERIALIZATION_CHECKPOINT_SCHEMA,
-    PRODUCTION_MATERIALIZATION_RECORD_SCHEMA,
-    MLFF_DATA9A9B_VERSION,
-    ProductionMaterializationStatus,
-    ProductionMaterializationExecutionPolicy,
-    ProductionMaterializationPlan,
-    ProductionData7ArtifactRecord,
-    ProductionData8ArtifactRecord,
-    ProductionMaterializationCheckpoint,
-    ProductionMaterializationRecord,
-    build_production_materialization_plan,
-    run_restartable_production_materialization,
-    register_reusable_data7_artifacts,
-    load_production_materialization,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
@@ -1322,9 +1057,6 @@ from .campaign_control import (
     CHECKPOINT_SELECTION_RECORD_SCHEMA,
     MLFF_DATA9B1_VERSION,
     CheckpointAdmissibilityOutcome,
-    TrainingCampaignPolicy,
-    TrainingCampaignRunPlan,
-    TrainingCampaignPlan,
     CheckpointFileRecord,
     CandidateCheckpointCatalog,
     CheckpointMetricRecord,
@@ -1332,7 +1064,6 @@ from .campaign_control import (
     CheckpointSelectionRecord,
     protocol_family_digest,
     protocol_variant_digest,
-    build_training_campaign_plan,
     inventory_mace_checkpoints,
     assess_checkpoint_admissibility,
     select_checkpoint,
@@ -1340,74 +1071,6 @@ from .campaign_control import (
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .campaign_execution import (
-    TRAINING_EXECUTION_POLICY_SCHEMA,
-    TRAINING_RUN_ATTEMPT_SCHEMA,
-    TRAINING_RUN_EXECUTION_SCHEMA,
-    CHECKPOINT_EVALUATION_POLICY_SCHEMA,
-    INFERENCE_EXECUTION_PLAN_SCHEMA,
-    CHECKPOINT_EVALUATION_RECORD_SCHEMA,
-    MODEL_DATASET_METRIC_RECORD_SCHEMA,
-    PROTOCOL_VARIANT_AGGREGATE_SCHEMA,
-    PROTOCOL_FAMILY_AGGREGATE_SCHEMA,
-    LEARNING_CURVE_RECORD_SCHEMA,
-    PROTOCOL_COMPARISON_RECORD_SCHEMA,
-    COMMITTEE_EXPORT_POLICY_SCHEMA,
-    COMMITTEE_MEMBER_RECORD_SCHEMA,
-    COMMITTEE_IDENTITY_SCHEMA,
-    PROTOCOL_FREEZE_RECORD_SCHEMA,
-    EVALUATION_ACTIVATION_DECISION_SCHEMA,
-    VERIFICATION_MODEL_RECORD_SCHEMA,
-    AVAILABLE_MODEL_VERIFICATION_SET_SCHEMA,
-    MLFF_DATA9B2_VERSION,
-    MACE_CHECKPOINT_MODEL_CACHE_SCHEMA,
-    MACE_CHECKPOINT_MODEL_EXPORT_CONTRACT,
-    TrainingRunState,
-    EvaluationActivationOutcome,
-    VerificationEvidenceLevel,
-    TrainingExecutionPolicy,
-    TrainingRunAttemptRecord,
-    TrainingRunExecutionRecord,
-    CheckpointEvaluationPolicy,
-    InferenceExecutionPlan,
-    CheckpointEvaluationRecord,
-    PreparedCheckpointEvaluation,
-    CheckpointEvaluationPredictionBundle,
-    SharedTargetEvaluationContext,
-    ModelDatasetMetricRecord,
-    ProtocolVariantAggregate,
-    ProtocolFamilyAggregate,
-    LearningCurveRecord,
-    ProtocolComparisonRecord,
-    CommitteeExportPolicy,
-    CommitteeMemberRecord,
-    VerificationModelRecord,
-    AvailableModelVerificationSet,
-    CommitteeIdentity,
-    ProtocolFreezeRecord,
-    EvaluationActivationDecision,
-    execute_training_run,
-    prepare_mace_checkpoint_evaluation,
-    prepare_shared_target_evaluation_context,
-    run_prepared_mace_checkpoint_inference,
-    finalize_prepared_mace_checkpoint_evaluation,
-    evaluate_mace_checkpoint,
-    checkpoint_prediction_cache_complete,
-    bind_checkpoint_evaluation_replay_provenance,
-    materialize_mace_checkpoint_model,
-    create_mace_evaluation_state_capsule,
-    remove_materialized_mace_checkpoint_model,
-    aggregate_protocol_variant,
-    aggregate_protocol_family,
-    build_learning_curve,
-    compare_protocol_families,
-    export_target_head_member,
-    export_target_head_model_artifact,
-    export_target_head_verification_model,
-    build_committee_identity,
-    freeze_training_protocol,
-    activate_sealed_evaluation,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
@@ -1437,16 +1100,6 @@ from .resources import (
     stage_resource_scope,
 )
 
-from .work_queue import (
-    DeterministicWorkQueueError,
-    DeterministicWorkQueueTaskError,
-    DeterministicWorkQueueMemoryError,
-    DeterministicWorkItem,
-    DeterministicWorkCompletion,
-    DeterministicWorkQueueSnapshot,
-    DeterministicOrderedReducer,
-    DeterministicWorkQueue,
-)
 
 from .evaluation_predictions import (
     EVALUATION_PREDICTION_KEY_SCHEMA,
@@ -1476,24 +1129,6 @@ from .evaluation_views import (
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .multi_fidelity_evaluation import (
-    MULTI_FIDELITY_EVALUATION_POLICY_SCHEMA,
-    MULTI_FIDELITY_MONITOR_LADDER_SCHEMA,
-    MULTI_FIDELITY_ROUND_RECORD_SCHEMA,
-    MULTI_FIDELITY_SURVIVOR_DECISION_SCHEMA,
-    MultiFidelityEvaluationPolicy,
-    MultiFidelityMonitorLadder,
-    MultiFidelityCheckpointRoundRecord,
-    MultiFidelitySurvivorDecision,
-    deterministic_balanced_order,
-    deterministic_block_labels,
-    build_monitor_ladder,
-    target_primary_block_values,
-    replay_degradation_block_values,
-    provisional_ranking_key,
-    survivor_count,
-    conservative_survivor_decision,
-)
 
 from .precision_schedule import (
     PRECISION_STAGE_SCHEMA,
@@ -1587,134 +1222,29 @@ from .adaptive_stop import (
     adaptive_training_stop_requested,
 )
 
-from .lightweight_rank import (
-    LIGHTWEIGHT_CHECKPOINT_SCORE_SCHEMA,
-    LIGHTWEIGHT_RUN_CHAMPION_SCHEMA,
-    DEFAULT_LIGHTWEIGHT_TOPK_CANDIDATES,
-    LightweightCheckpointScore,
-    LightweightRunChampionRecord,
-    rank_lightweight_run_champion,
-    rank_lightweight_run_topk,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
 
-from .mlcv_select import (
-    MLCV_RUN_SELECTION_POLICY_SCHEMA,
-    MLCV_FULL_SELECTION_CANDIDATE_SCHEMA,
-    MLCV_RUN_SELECTION_RECORD_SCHEMA,
-    MlcvRunSelectionPolicy,
-    MlcvFullSelectionCandidateRecord,
-    MlcvRunSelectionRecord,
-    assess_mlcv_full_selection_candidate,
-    select_mlcv_run_representative,
-)
-
-__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
-
-from .mlcv_aggregate import (
-    MLCV_CV_POLICY_SCHEMA,
-    MLCV_OUTER_FOLD_EVALUATION_SCHEMA,
-    MLCV_METRIC_SUMMARY_SCHEMA,
-    MLCV_SEED_CV_AGGREGATE_SCHEMA,
-    MLCV_CAMPAIGN_CV_AGGREGATE_SCHEMA,
-    MlcvCrossValidationPolicy,
-    MlcvOuterFoldEvaluationRecord,
-    MlcvMetricSummary,
-    MlcvSeedCvAggregateRecord,
-    MlcvCampaignCvAggregateRecord,
-    build_mlcv_outer_fold_record,
-    summarize_mlcv_fold_metric,
-    aggregate_mlcv_seed_cv,
-    aggregate_mlcv_campaign_cv,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
 
-from .mlcv_final import (
-    MLCV_FINAL_SELECTION_POLICY_SCHEMA,
-    MLCV_FINAL_SEED_CANDIDATE_SCHEMA,
-    MLCV_FINAL_SELECTION_RECORD_SCHEMA,
-    MLCV_FINAL_COMMITTEE_MEMBER_SCHEMA,
-    MLCV_FINAL_COMMITTEE_SCHEMA,
-    MlcvFinalSelectionPolicy,
-    MlcvFinalSeedCandidateRecord,
-    MlcvFinalSelectionRecord,
-    MlcvFinalCommitteeMemberRecord,
-    MlcvFinalCommitteeRecord,
-    build_mlcv_final_selection,
-)
+__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+
+
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .adaptive_full_evaluation import (
-    ADAPTIVE_FULL_EVALUATION_POLICY_SCHEMA,
-    CAMPAIGN_FINALIST_QUEUE_SCHEMA,
-    FULL_EVALUATION_CANDIDATE_SCHEMA,
-    ADAPTIVE_FULL_EVALUATION_RECORD_SCHEMA,
-    AdaptiveFullEvaluationPolicy,
-    CampaignFinalistCandidate,
-    CampaignFinalistQueueRecord,
-    FullEvaluationCandidateRecord,
-    AdaptiveFullEvaluationRecord,
-    build_campaign_finalist_queue,
-    assess_full_evaluation_candidate,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .adaptive_verification import (
-    ADAPTIVE_VERIFICATION_POLICY_SCHEMA,
-    ADAPTIVE_VERIFICATION_CANDIDATE_SCHEMA,
-    ADAPTIVE_VERIFICATION_RECORD_SCHEMA,
-    ADAPTIVE_DEPLOYMENT_MODEL_SCHEMA,
-    ADAPTIVE_PROTOCOL_FREEZE_SCHEMA,
-    AdaptiveVerificationPolicy,
-    AdaptiveVerificationCandidateRecord,
-    AdaptiveVerificationRecord,
-    AdaptiveDeploymentModelRecord,
-    AdaptiveProtocolFreezeRecord,
-    ordered_admissible_candidates,
-    verification_rejection_reasons,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .adaptive_migration import (
-    PROTOCOL_FREEZE_AUTHORITY_SCHEMA,
-    ADAPTIVE_MIGRATION_RECORD_SCHEMA,
-    ADAPT_MIGRATE1_VERSION,
-    ProtocolFreezeAuthorityRecord,
-    AdaptiveMigrationRecord,
-    protocol_freeze_authority_from_historical,
-    protocol_freeze_authority_from_adaptive,
-    protocol_freeze_authority_from_mlcv,
-    protocol_freeze_authority_from_payload,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .mlcv_roles import (
-    MLCV_FOLD_ROLE_RECORD_SCHEMA,
-    MLCV_REPLAY_ROLE_LINEAGE_SCHEMA,
-    MLCV_ROLE_AUTHORITY_VERSION,
-    MLCV_ROLE_CATALOG_SCHEMA,
-    MlcvDataRole,
-    MlcvEvidenceOperation,
-    MlcvFoldRoleRecord,
-    MlcvReplayRoleLineage,
-    MlcvRoleCatalog,
-    build_mlcv_replay_role_lineage,
-    build_mlcv_role_catalog,
-    mlcv_role_allows,
-    require_mlcv_checkpoint_ranking_role,
-    require_mlcv_checkpoint_stopping_role,
-    require_mlcv_role,
-    require_mlcv_topk_selection_role,
-    require_mlcv_outer_cv_evaluation_role,
-)
 
 __all__ = [name for name in globals() if not name.startswith("_")]
 
@@ -1737,39 +1267,9 @@ from .mlcv_monitors import (
 
 __all__ = [name for name in globals() if not name.startswith("_")]
 
-from .mlcv_verification import (
-    MLCV_VERIFICATION_POLICY_SCHEMA,
-    MLCV_PHYSICAL_ATTEMPT_SCHEMA,
-    MLCV_VERIFICATION_RECORD_SCHEMA,
-    MLCV_LOCKED_TEST_RECORD_SCHEMA,
-    MLCV_PRODUCTION_MODEL_SCHEMA,
-    MlcvVerificationPolicy,
-    MlcvPhysicalVerificationAttemptRecord,
-    MlcvVerificationRecord,
-    MlcvLockedTestRecord,
-    MlcvProductionModelRecord,
-    ordered_mlcv_physical_candidates,
-    build_mlcv_verification_record,
-    build_mlcv_locked_test_record,
-    build_mlcv_production_model_record,
-)
 
 __all__ = [name for name in globals() if not name.startswith("_")]
 
-from .mlcv_migration import (
-    MLCV_LIFECYCLE_AUTHORITY_SCHEMA, MLCV_LIFECYCLE_AUTHORITY_LEGACY_SCHEMA,
-    MLCV_LIFECYCLE_AUTHORITY_VERSION, MLCV_LIFECYCLE_AUTHORITY_LEGACY_VERSION,
-    MLCV_PROTOCOL_FREEZE_SCHEMA, MLCV_PROTOCOL_FREEZE_LEGACY_SCHEMA,
-    MLCV_MIGRATION_RECORD_SCHEMA, MLCV_MIGRATION_RECORD_LEGACY_SCHEMA,
-    MLCV_MIGRATE1_VERSION, MLCV_MIGRATE1_LEGACY_VERSION,
-    MLCV_CHECKPOINT_STRATEGY,
-    MLCV_TRANSITIONAL_STRATEGY_ALIAS,
-    MlcvLifecycleAuthorityRecord,
-    MlcvProtocolFreezeRecord,
-    MlcvMigrationRecord,
-    build_mlcv_lifecycle_authority,
-    mlcv_replay_semantics_stale_boundary,
-)
 
 __all__ = [name for name in globals() if not name.startswith("_")]
 
@@ -1823,11 +1323,9 @@ from .eval2 import (
     EVAL2_BOOTSTRAP_COMPARISON_SCHEMA,
     EVAL2_RUN_RECORD_SCHEMA,
     EVAL2_EVALUATION_PLAN_SCHEMA,
-    EVAL2_TARGET_ROLE_SCHEMA,
     EVAL2_NUMERICAL_FAILURE_SCHEMA,
     EVAL2_NUMERICAL_FAILURE_CODES,
     Eval2NumericalEvaluationError,
-    Eval2TargetRole,
     Eval2TrajectoryPoint,
     Eval2TargetBlockMetric,
     Eval2TargetMetricRecord,
@@ -1835,9 +1333,6 @@ from .eval2 import (
     Eval2BootstrapComparison,
     Eval2EvaluationPlan,
     Eval2RunRecord,
-    build_eval2_size_study_target_role,
-    build_eval2_coarse_size_study_target_role,
-    build_eval2_cv_target_role,
     build_eval2_shortlist,
     eval2_target_metrics_from_prediction_view,
     assess_eval2_checkpoint,
@@ -1850,118 +1345,21 @@ from .eval2 import (
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .deploy_verify import (
-    DEPLOY_VERIFY_IMPLEMENTATION_VERSION,
-    DeployVerifyPolicy,
-    DeployVerifyProbeSet,
-    DeployVerifyComparison,
-    LammpsRun0Record,
-    TargetHeadDeploymentIdentity,
-    MliapExportRuntimeCapability,
-    probe_mliap_export_runtime,
-    DeployVerifyRunRecord,
-    DeployVerifyCampaignRecord,
-    build_deploy_verify_probe_set,
-    target_head_export_digest,
-    compare_prediction_channels,
-    predict_mace_model_on_probe,
-    export_mliap_lammps_artifact,
-    run_lammps_mliap_run0,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .pes_verify import (
-    PES_VERIFY_IMPLEMENTATION_VERSION,
-    PESVerifyPolicy,
-    PESProbeMode,
-    PESProbeGeometry,
-    PESProbeSet,
-    PESProbeRequestArtifact,
-    PESReferenceArtifact,
-    PESModeMetric,
-    PESModelQualification,
-    PESVerifyRunRecord,
-    PESVerifyCampaignRecord,
-    discover_pes_probe_modes,
-    build_pes_probe_set,
-    write_pes_probe_request,
-    load_pes_reference_extxyz,
-    collect_pes_reference_from_vasp,
-    prediction_payload_from_mace_view,
-    assess_pes_model,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .relax_verify import (
-    RELAX_VERIFY_IMPLEMENTATION_VERSION,
-    RelaxVerifyPolicy,
-    RelaxBaseSet,
-    RelaxRequestArtifact,
-    RelaxReferenceArtifact,
-    RelaxBaseMetric,
-    RelaxModelQualification,
-    RelaxVerifyRunRecord,
-    RelaxVerifyCampaignRecord,
-    build_relax_base_set,
-    write_relax_reference_request,
-    load_relax_reference_extxyz,
-    collect_relax_reference_from_vasp,
-    assess_relaxed_geometry,
-    create_mace_relax_calculator,
-    relax_atoms_with_calculator,
-    relax_mace_model,
-    write_relaxed_model_artifact,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .dyn_verify import (
-    DYN_VERIFY_IMPLEMENTATION_VERSION,
-    DynVerifyPolicy,
-    DynVerifyPlan,
-    DynCaseMetric,
-    DynCaseCompletionReceipt,
-    DynCaseSimulationArtifacts,
-    DynVerifyRunRecord,
-    DynVerifyCampaignRecord,
-    build_dyn_verify_plan,
-    assess_dyn_trajectory,
-    write_dyn_case_completion_receipt,
-    reusable_dyn_case_metric,
-    run_lammps_mliap_dynamics_case,
-    simulate_lammps_mliap_dynamics_case,
-    reduce_lammps_mliap_dynamics_case,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .select2 import (
-    SELECT2_VERSION,
-    SELECT2_CANDIDATE_SCHEMA,
-    SELECT2_SELECTION_SCHEMA,
-    SELECT2_FROZEN_CANDIDATE_SCHEMA,
-    Select2CandidateRecord,
-    Select2SelectionRecord,
-    Select2FrozenCandidateRecord,
-    build_select2_selection,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .locked_test2 import (
-    LOCKED_TEST2_VERSION,
-    LOCKED_TEST2_POLICY_SCHEMA,
-    LOCKED_TEST2_ACTIVATION_SCHEMA,
-    LOCKED_TEST2_RESULT_SCHEMA,
-    LOCKED_TEST2_PRODUCTION_SCHEMA,
-    LockedTest2Policy,
-    LockedTest2ActivationRecord,
-    LockedTest2ResultRecord,
-    LockedTest2ProductionModelRecord,
-    build_locked_test2_result,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
@@ -2010,16 +1408,6 @@ from .perfbase1 import (
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .perf_p2r import (
-    PERF_P2R_PARAMETER_GRID_SCHEMA,
-    PERF_P2R_STAGE_PLAN_SCHEMA,
-    PERF_P2R_EXPOSURE_SCHEMA,
-    PerfP2RParameterGrid,
-    PerfP2RStagePlan,
-    PerfP2RExposure,
-    build_perf_p2r_stage_plan,
-    build_perf_p2r_exposure,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
@@ -2088,66 +1476,44 @@ from .replay_invalidation import (
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-# TARGET-DATA2C-MVQUAL2 direct fixed-universe authority for target-size v5.
-from .target_multi_view_qualification_v2 import (
-    TARGET_MULTI_VIEW_QUALIFICATION_V2_VERSION,
-    TARGET_MULTI_VIEW_QUALIFICATION_V2_POLICY_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_V2_RUNG_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_V2_DOMAIN_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_V2_PLAN_SCHEMA,
-    TargetMultiViewQualificationPolicyV2,
-    TargetMultiViewQualificationRungV2,
-    TargetMultiViewQualificationDomainPlanV2,
-    TargetMultiViewQualificationPlanV2,
-    build_target_multi_view_qualification_plan_v2,
-    validate_target_multi_view_qualification_authority_v2,
-)
-from .target_size_study import (
-    TARGET_SIZE_STUDY_VERSION,
-    TARGET_SIZE_STUDY_POLICY_SCHEMA,
-    TARGET_SIZE_STUDY_CANDIDATE_SCHEMA,
-    TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA,
-    TARGET_SIZE_TRAJECTORY_FAILURE_EVIDENCE_SCHEMA,
-    TARGET_SIZE_STAGE_OUTCOME_SCHEMA,
-    TARGET_SIZE_STUDY_PLAN_SCHEMA,
-    TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA,
-    TARGET_SIZE_CANDIDATE_AUTHORITY_GENERATION,
-    LEGACY_FIXED_CANDIDATE_AUTHORITY_SCHEMA,
-    LEGACY_FIXED_CANDIDATE_AUTHORITY_GENERATION,
-    FIXED_TARGET_SIZES,
-    FIXED_TARGET_SIZE_CEILING,
-    OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
-    OUTCOME_AWAITING_COARSE_SCREEN,
-    OUTCOME_AWAITING_SHORT_SCREEN,
-    OUTCOME_AWAITING_FINAL_SCREEN,
-    OUTCOME_SELECTED,
-    OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
-    OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
-    STAGE_COARSE,
-    STAGE_SHORT,
-    STAGE_FINAL_SCREEN,
-    FAILURE_PHASE_TRAIN,
-    FAILURE_PHASE_TARGET_EVALUATION,
-    TARGET_SIZE_SCIENTIFIC_FAILURE_CODES,
-    TargetSizeStudyPolicy,
-    TargetSizeStudyCandidate,
-    TargetSizeTrainingEvidence as TargetSizeStudyTrainingEvidence,
-    TargetSizeTrajectoryFailureEvidence,
-    TargetSizeStageOutcome,
-    TargetSizeStudyPlan,
-    build_target_size_study,
-    validate_target_size_study_authority,
-    authenticated_fixed_predecessor_candidate_authority,
-    HISTORICAL_FIXED_CANDIDATE_AUTHORITY_RECEIPT_SCHEMA,
-    materialize_candidate_prefix,
-    materialize_candidate_prefix_matrix,
-    materialize_selected_prefix,
-    attach_coarse_outcomes,
-    attach_short_outcomes,
-    attach_final_screen_outcomes,
-    attach_coarse_evidence,
-    attach_short_evidence,
-    attach_final_screen_evidence,
+
+# Current-generation target-size statistical experiment authority.
+from .target_size_experiment import (
+    HARD_SUPPORT_CONDITION_ATTRIBUTES,
+    HARD_SUPPORT_USER_LABEL_PREFIX,
+    REQUIRED_QUALIFIED_CANDIDATE_COUNT,
+    BoundaryOutcome,
+    NumericalFailureKind,
+    ReducerStatus,
+    ResolvedTargetSizePolicy,
+    TARGET_SIZE_FUNNEL_POLICY_SCHEMA,
+    TARGET_SIZE_FUNNEL_TRANSITION,
+    TargetEvaluationOrder,
+    TargetSizeBoundaryMetric,
+    TargetSizeCandidateQualification,
+    TargetSizeExperimentDefinition,
+    TargetSizeHardSupportObligation,
+    TargetSizeNumericalFailure,
+    TargetSizePopulation,
+    TargetSizePopulationFrame,
+    TargetSizePopulationSplit,
+    TargetSizeReducerState,
+    TargetSizeStatisticalAggregate,
+    TargetTrainingOrder,
+    advance_target_size_reducer,
+    bind_target_size_execution_context,
+    build_target_evaluation_order,
+    build_target_size_experiment_definition,
+    build_target_size_population,
+    build_target_size_statistical_aggregate,
+    build_target_training_order,
+    initial_target_size_reducer,
+    qualify_target_size_candidates,
+    reference_exact_split_feasible,
+    resolve_target_size_policy,
+    resolve_target_size_policy_from_config,
+    split_target_size_population,
+    validate_target_size_reducer_state,
 )
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))

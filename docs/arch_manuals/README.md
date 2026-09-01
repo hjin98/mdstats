@@ -31,7 +31,7 @@ The canonical editable current MLFF architecture is the ordered chapter set unde
 20_data_contracts.md
 30_statistical_design.md
 40_training_evaluation.md
-50_target_multiview.md
+50_target_size_selection.md
 60_execution_performance.md
 80_ownership_and_decisions.md
 90_references.md
@@ -42,7 +42,7 @@ The canonical editable current MLFF architecture is the ordered chapter set unde
 - `mlff_training_data_architecture.pdf`: **derived publication PDF** rendered from the assembled Markdown under the repository PDF publication policy.
 - `mlff_training_data_architecture.pdf.manifest.json`: renderer/source provenance for the generated PDF.
 - `mlff_training_data_dependency_graph.json`: machine-readable current dependency/ownership architecture synchronized with the canonical chapters.
-- `mlff_checkpoint_model_reconstruction.md`, `mlff_bounded_evaluation_verification.md`, and `mlff_constraint_aware_evaluation.md`: narrow current explanatory notes whose exact behavior remains owned by the indexed MLFF specifications.
+- `mlff_checkpoint_model_reconstruction.md`, `mlff_bounded_evaluation_verification.md`, and `mlff_constraint_aware_evaluation.md`: narrow current explanatory notes for selected-only checkpoint evaluation; downstream deployment/physical verification remains a separate consumer owned by later product work.
 
 Exact current MLFF contracts are indexed by `../specs/training_data/README.md`. Historical MLFF revision, patch, compatibility, and pre-reset snapshots live under `../history/mlff/`. Active developer transitions live under `../../workplans/active/`.
 

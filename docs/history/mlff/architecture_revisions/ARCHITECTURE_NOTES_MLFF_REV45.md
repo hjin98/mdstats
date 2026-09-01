@@ -154,7 +154,7 @@ The migration report contains no difference paths and has digest
 
 Normative and measured evidence is stored in:
 
-- `docs/specs/training_data/mlff_perf_p0_native_target_coverage_spec.{md,pdf}`;
+- `docs/history/mlff/retired_specs/mlff_perf_p0_native_target_coverage_spec.{md,pdf}`;
 - `audits/analysis/mlff_perf_p0_lta_cloud_cpu_2026-08-15.{json,md,pdf}`; and
 - `release/MLFF_PERF_P0_QUALIFICATION_0.20.179a0.json`.
 

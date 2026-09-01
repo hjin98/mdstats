@@ -212,6 +212,67 @@ class FrameEligibilityCatalog:
         return result
 
 
+@dataclass(frozen=True, slots=True)
+class RequiredLabelContractResult:
+    is_satisfied: bool
+    reason_codes: tuple[str, ...] = ()
+    warning_codes: tuple[str, ...] = ()
+
+
+def evaluate_required_label_contract(
+    *,
+    atom_count: int,
+    energy_ev: float | None,
+    forces_ev_per_angstrom: ArrayLike | None,
+    stress_ev_per_angstrom3: ArrayLike | None,
+    policy: FrameEligibilityPolicy | None = None,
+) -> RequiredLabelContractResult:
+    """Pure version-agnostic evaluator for required-label numerical validity."""
+    active = FrameEligibilityPolicy() if policy is None else policy
+    hard: list[str] = []
+    warnings: list[str] = []
+
+    if energy_ev is None:
+        if active.require_energy:
+            hard.append("missing_energy")
+    elif not np.isfinite(float(energy_ev)):
+        hard.append("nonfinite_energy")
+
+    if forces_ev_per_angstrom is None:
+        if active.require_forces:
+            hard.append("missing_forces")
+    else:
+        forces = np.asarray(forces_ev_per_angstrom, dtype=np.float64)
+        if forces.shape != (atom_count, 3):
+            hard.append("force_shape_mismatch")
+        elif np.any(~np.isfinite(forces)):
+            hard.append("nonfinite_forces")
+
+    if stress_ev_per_angstrom3 is None:
+        if active.stress_requirement is StressRequirement.REQUIRED:
+            hard.append("missing_stress")
+        elif active.stress_requirement is StressRequirement.OPTIONAL:
+            warnings.append("stress_absent_optional")
+    else:
+        stress = np.asarray(stress_ev_per_angstrom3, dtype=np.float64)
+        if active.stress_requirement is StressRequirement.FORBIDDEN:
+            hard.append("stress_present_but_forbidden")
+        elif stress.shape != (3, 3):
+            hard.append("stress_shape_mismatch")
+        elif np.any(~np.isfinite(stress)):
+            hard.append("nonfinite_stress")
+        elif not np.allclose(
+            stress, stress.T, rtol=0.0, atol=active.stress_symmetry_tolerance
+        ):
+            hard.append("nonsymmetric_stress")
+
+    return RequiredLabelContractResult(
+        is_satisfied=len(hard) == 0,
+        reason_codes=tuple(hard),
+        warning_codes=tuple(warnings),
+    )
+
+
 def assess_frame_eligibility(
     *,
     frame_record: Any,
@@ -244,37 +305,15 @@ def assess_frame_eligibility(
         if not np.isfinite(volume) or volume <= active.minimum_cell_volume_angstrom3:
             hard.append("nonpositive_or_singular_cell")
 
-    if energy_ev is None:
-        if active.require_energy:
-            hard.append("missing_energy")
-    elif not np.isfinite(float(energy_ev)):
-        hard.append("nonfinite_energy")
-
-    if forces_ev_per_angstrom is None:
-        if active.require_forces:
-            hard.append("missing_forces")
-    else:
-        forces = np.asarray(forces_ev_per_angstrom, dtype=np.float64)
-        if forces.shape != (frame_record.atom_count, 3):
-            hard.append("force_shape_mismatch")
-        elif np.any(~np.isfinite(forces)):
-            hard.append("nonfinite_forces")
-
-    if stress_ev_per_angstrom3 is None:
-        if active.stress_requirement is StressRequirement.REQUIRED:
-            hard.append("missing_stress")
-        elif active.stress_requirement is StressRequirement.OPTIONAL:
-            warnings.append("stress_absent_optional")
-    else:
-        stress = np.asarray(stress_ev_per_angstrom3, dtype=np.float64)
-        if active.stress_requirement is StressRequirement.FORBIDDEN:
-            hard.append("stress_present_but_forbidden")
-        elif stress.shape != (3, 3):
-            hard.append("stress_shape_mismatch")
-        elif np.any(~np.isfinite(stress)):
-            hard.append("nonfinite_stress")
-        elif not np.allclose(stress, stress.T, rtol=0.0, atol=active.stress_symmetry_tolerance):
-            hard.append("nonsymmetric_stress")
+    label_eval = evaluate_required_label_contract(
+        atom_count=frame_record.atom_count,
+        energy_ev=energy_ev,
+        forces_ev_per_angstrom=forces_ev_per_angstrom,
+        stress_ev_per_angstrom3=stress_ev_per_angstrom3,
+        policy=active,
+    )
+    hard.extend(label_eval.reason_codes)
+    warnings.extend(label_eval.warning_codes)
 
     if scf_iteration_limit_reached is True:
         if active.reject_scf_iteration_limit:

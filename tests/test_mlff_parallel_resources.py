@@ -170,22 +170,6 @@ def test_stage_scope_rejects_native_openmp_oversubscription() -> None:
         )
 
 
-def test_campaign_parallel_resolvers_use_full_runtime_budget(monkeypatch) -> None:
-    from mdstats.training_data import campaign_cli
-
-    resources = _resources(cpu=32, ram=8 * 1024**3)
-    monkeypatch.setattr(
-        campaign_cli._core,
-        "detect_system_resources",
-        lambda **kwargs: resources,
-    )
-    cfg = {"performance": {"cpu_fraction": 0.90, "ram_fraction": 0.80}}
-    query_workers, _ = campaign_cli._target_coverage_query_workers(cfg)
-    repair_workers, _ = campaign_cli._target_multi_view_repair_parallelism(cfg)
-    qualification_workers, _ = campaign_cli._target_multi_view_qualification_parallelism(cfg)
-    assert query_workers == resources.cpu_threads_budget == 28
-    assert repair_workers == 28
-    assert qualification_workers == 28
 
 
 def test_structural_autotune_capacity_uses_supplied_runtime_budget() -> None:

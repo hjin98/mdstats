@@ -1,45 +1,28 @@
 """User-facing MLFF campaign orchestration facade.
 
-The historical implementation lives in ``_campaign_cli_core`` unchanged. The
-facade installs the Protocol-5 single-owner MVSEL2 selection runtime and the
-single-owner REPAIR2 orchestration seam before exposing the same module surface.
+The implementation lives in :mod:`_campaign_cli_core`.  The facade re-exports
+that module surface so ``mdstats.training_data.campaign_cli`` remains the stable
+public entry point for the campaign commands.
+
+The retired MVSEL2/REPAIR2/MVQUAL2/MVIDX1 selection runtimes that this facade
+used to install into the core module were removed with the destructive
+target-size generation cutover: the current runtime has exactly one target-size
+architecture and no installable alternative selection engine.
 """
 from __future__ import annotations
 
-import mdstats as _mdstats
-
 from . import _campaign_cli_core as _core
-from . import mvidx1_forward_receipt_runtime as _mvidx1_forward_receipt
-from . import mvqual_p2_runtime as _mvqual_p2
-from . import mvsel2_hardening_runtime as _hardening
-from . import mvsel2_v5_runtime as _v5_runtime
 
-# O0 showed that the authenticated forward-only MVIDX1 reopen was rescanning
-# product-scale candidate-to-witness rows after the exact compound validation
-# receipt had already hit. Install the cache-hit-only forward projection before
-# either MVSEL2 or REPAIR2 uses the shared hardening runtime seam. Receipt misses
-# continue to delegate to the canonical native-store reader unchanged.
-_mvidx1_forward_receipt.install_forward_receipt_runtime(_hardening)
-
-# G3 leaves runtime code responsible only for REPAIR2 orchestration.  The
-# scientific repair loop lives exclusively in target_multi_view_repair_v2.
-_hardening.install_campaign_hardening(_core)
-_v5_runtime.install_campaign_v5_selection(_core)
-
-# PERF1/P1 was scientifically exact but failed its product wall-time acceptance:
-# its two-selector direct-score prepass lost the four-way per-rung overlap.  P2
-# instead targets the measured dominant sparse MVIDX rescans.  The canonical
-# MVQUAL builder remains the sole scientific authority; this seam is execution
-# only and direct imports of that owner remain unchanged.
-_mvqual_p2.install_mvqual_p2_runtime(_mdstats)
-
-# Preserve the historical campaign module surface, including internal helper
-# names used by focused regression tests. Function globals continue to resolve
-# in _campaign_cli_core, where production overrides are installed before any
-# command is executed.
+# Preserve the campaign module surface, including internal helper names used by
+# focused regression tests.
 for _name in dir(_core):
     if not _name.startswith("__"):
         globals()[_name] = getattr(_core, _name)
+
+# Star imports expose only the intentionally small current command surface.
+# Focused owner tests may still access private helpers directly, but historical
+# compatibility names are never promoted through the facade's public API.
+__all__ = list(_core.__all__)
 
 
 def main(*args, **kwargs):

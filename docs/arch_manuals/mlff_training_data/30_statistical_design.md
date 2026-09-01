@@ -2,163 +2,200 @@
 
 ## Purpose and ownership
 
-This chapter defines the statistical evidence roles that make later model comparisons interpretable and the fitted-preparation boundary immediately upstream of multi-view target-subset construction.
+This chapter defines the evidence roles and fitted-preparation boundary that
+make target-size comparisons and later method validation interpretable. It
+owns independence, protected relations, leakage boundaries, fitted products,
+objective/weighting inputs, and the distinction between development evidence
+and later validation roles.
 
-It owns the architectural separation among training, monitoring, cross-validation, calibration, and locked-test evidence. It also defines what fold/final-domain fitted preparation may consume and emit.
-
-It does **not** own target membership or target size. DATA7 prepares fitted inputs; MVSEL2/REPAIR2 determine target membership inside each authorized training domain; `TargetSizeStudyPolicy` chooses the protocol-global target size.
+It does **not** own target membership or target size. The Part V owners derive
+one `P_train`/`M3` split, one canonical `pi_train`, and one target-size result.
+After selection, the Part V/P5 owners may partition the already frozen
+`T_selected` for cross-validation; that operation cannot choose a new size or
+membership.
 
 ## Independence and evidence roles
-
-### Independence hierarchy
 
 Evidence uses the strongest available independence level, for example:
 
 1. independent replica/velocity seed or independently prepared realization;
-2. independent structural/chemical ordering;
+2. independent structural or chemical ordering;
 3. independent thermodynamic run;
-4. purged temporal block within one run.
+4. a purged temporal block within one run.
 
-Temporal separation does not create an independent metastable state when the relevant slow variable never decorrelates. Every cohort carries machine-readable independence evidence and known limitations.
+Temporal separation does not create an independent metastable state when the
+relevant slow variable has not decorrelated. Every cohort carries machine-
+readable independence evidence and known limitations.
 
-### Partition feasibility
+Before roles are assigned, the partition policy declares requested cohorts,
+minimum independent blocks, purge requirements, protected relations, and
+allowed reductions. A feasibility report may therefore record full support,
+temporal-block-only support, deferred calibration, external-only challenge
+evidence, a reduced fold count, or insufficient support. The workflow never
+fabricates a role from a short or correlated trajectory to satisfy a percentage
+target.
 
-Before assigning roles, the partition policy declares requested cohorts, cross-validation support, minimum independent blocks/grades, purge requirements, and allowed reductions. A feasibility report states what the available evidence can support.
-
-Valid outcomes include full support, temporal-block-only support, deferred calibration, external-only challenge evidence, reduced fold count, or insufficient support. The workflow never fabricates every desired role from a short or correlated trajectory to satisfy a percentage target.
-
-### Outer evidence roles
-
-A feasible target label domain may contain:
+The current development evidence roles are:
 
 ```text
 development_pool
-outer_monitor_validation
-uncertainty_calibration
-locked_interpolation_test
-zero or more locked_challenge_tests
+common_target_monitor
+post_selection_cv_folds
 ```
 
-Only the development pool supplies gradient-training candidates. The common target monitor is development/model-selection evidence: it may control the current authorized monitoring/checkpoint and target-size-screen policies but supplies no gradients and is not a held-out CV fold or locked test.
+The broader product architecture reserves separate calibration and locked-test
+roles for downstream qualification. Those consumers are not part of the P6
+campaign lifecycle and their absence is not converted into current selection
+or production evidence.
 
-Calibration is reserved for predictions from the actual final committee. Locked interpolation/challenge evidence cannot affect fitting, subset construction, target-size selection, training protocol, checkpoint selection, calibration-policy choice, acquisition policy, or protocol design.
+Only the development pool supplies gradient-training candidates. The common
+target monitor is development/model-selection evidence: it may control the
+authorized target-size screen and post-selection checkpoint policy, but it
+supplies no gradients and is not a held-out CV fold.
 
-When a requested role is unsupported, it is absent/deferred explicitly rather than synthesized from correlated evidence.
+## One global selection universe
+
+The neutral statistical substrate supplies duplicate groups, correlation
+families, provenance relations, and split exclusions before target-size
+selection exists. It produces exactly one development split:
+
+```text
+eligible labelled frames -> P_train (target-training pool) + M3 (development monitor)
+```
+
+`P_train` is ordered once as `pi_train`; the target-size owner defines every
+candidate as an exact prefix. `M3` is ordered once as `pi_eval`; `M1`, `M2`,
+and `M3` are direct nested evaluation populations. No complement, per-domain
+membership map, or alternate ordering may change the universe.
+
+Protected relations remain intact wherever the current owner assigns roles.
+An inseparable duplicate/correlation component cannot be split merely to
+obtain a requested fold count. A frame outside `T_selected` cannot enter
+post-selection CV because it is convenient or because it belongs to a related
+source cohort.
 
 ## Cross-validation validates a frozen protocol
 
-A frame that supplied a gradient is not independent validation evidence for that model. Likewise, a held-out evaluation fold cannot control stopping, checkpoint choice, or target-size choice for the protocol it is intended to evaluate.
-
-For cross-validation fold \(k\), keep distinct:
+Target size is frozen before protocol-matched cross-validation is interpreted.
+For each required post-selection fold (k), the owner keeps distinct:
 
 ```text
-fold_training_domain_k
+fold_training_partition_k within T_selected
 fold_checkpoint_monitor_k
-held_out_evaluation_fold_k
+held_out_evaluation_partition_k within T_selected
 ```
 
-The fold model has fresh model/optimizer/checkpoint lineage. Fitted transforms, feature metrics, E0 fits, difficulty evidence, and target membership are constructed only from `fold_training_domain_k`. Checkpoint selection uses its authorized monitor, not the held-out evaluation fold.
+The selected cardinality and the exact global membership remain unchanged for
+every fold. Fold assignment may be local to `T_selected`, and fold-local
+fitted preparation may use only that fold's training partition and authorized
+monitor. It may not inspect the held-out partition, outer protected evidence,
+or locked evidence before checkpoint choice. The final fold evaluation occurs
+only after the fold representative is frozen.
 
-Target size is frozen **before** protocol-matched held-out CV evaluation. The same selected cardinality is used as a protocol hyperparameter across required folds/final development, while each domain has its own leakage-safe target membership. Only after checkpoint choice freezes is a fold model evaluated on `held_out_evaluation_fold_k`.
+This gives the required distinction:
 
-Cross-validation is therefore a family of independent jobs evaluating one frozen protocol, not a rotating epoch schedule and not an inner loop for choosing target size.
+```text
+global target-size choice -> one N_selected and one T_selected
+post-selection CV        -> method validation on partitions of T_selected
+```
 
-## Fitted preparation inside each training domain
+Held-out CV error, calibration evidence, and locked-test evidence therefore
+cannot select `N_selected`, alter `T_selected`, or tune the target-size policy.
 
-For each fold/final training domain, DATA6/DATA7 may construct products whose statistical meaning depends on that domain. These include, as applicable:
+## Fitted preparation
 
-- descriptor transforms and heterogeneous fitted feature metrics;
-- training-domain foundation-model predictions/residual difficulty evidence;
+The current common preparation is built once from the neutral substrate and
+the frozen foundation/training protocol. It may emit:
+
+- descriptor coordinates and fitted feature metrics;
+- foundation predictions and training-domain residual/difficulty evidence;
 - atomic-reference/E0 fits;
 - objective, configuration-weight, and property-weight records;
-- condition/provenance/event/environment/diversity inputs needed by target-subset construction;
-- deterministic identities binding those products to the training domain and complete protocol.
+- condition, provenance, event, environment, and diversity inputs;
+- deterministic identities binding each product to its authorized inputs.
 
-No fitted product may inspect held-out CV evaluation, calibration, or locked-test evidence unless an owning specification explicitly gives it a non-training role that preserves the relevant independence boundary.
+These products are inputs to the one canonical training order. They are not a
+second selector. A fitted transform, metric, residual, or E0 correction must
+be bound to the evidence that fitted it and may not be inferred from a
+downstream held-out result.
 
-### Raw versus fitted information
-
-Partition-independent physical facts and raw feature/event providers belong upstream. A fitted normalization, metric, model residual, E0 correction, or difficulty transform belongs to the training domain that fitted it.
-
-This distinction prevents an apparently innocuous global normalization or residual calculation from leaking held-out evidence into subset construction.
+For post-selection CV, a fold-local transform or metric is valid only when the
+CV owner explicitly records the fold training partition, protected relations,
+and protocol identity. A fold-local product can change the fold's evaluation
+realization; it cannot change the global target membership or target-size
+decision. Final production uses the accepted method and complete `T_selected`.
 
 ## Selection inputs are not a second selector
 
-Representative density, diversity/FPS, environment coverage, condition balance, protected events, difficulty, provenance/correlation structure, and mandatory anchors remain useful scientific information. They do not define an independent DATA7 target order.
-
-DATA7 expresses them as one or more of:
+Representative density, diversity, environment coverage, protected events,
+difficulty, condition balance, and provenance/correlation structure remain
+useful scientific information. The current owner represents them as:
 
 ```text
 fitted feature coordinates/metrics
 hard obligations or applicability masks
-representative-density / utility evidence
-diversity evidence
+representative-density and diversity evidence
 event/environment/condition evidence
-difficulty evidence
-correlation/provenance identities
-policy inputs with deterministic identities
+difficulty and correlation identities
 ```
 
-The one current membership authority consumes these inputs in the multi-view chain described in Part V. There is no competing quota/FPS `TrainingSelectionPlan` whose prefixes can disagree with MVSEL2/REPAIR2.
+The target-size policy combines these inputs into the one deterministic
+`pi_train`. There is no competing quota/FPS plan whose prefixes can disagree
+with that order. A materialization or export record may describe a consumer
+view of `T_selected`, but it is not an independent membership authority.
 
-### Material/profile specialization
+## Objective, weighting, and exposure
 
-Condition axes and focus groups are declared by the applicable material/profile contract. They may include composition, temperature, pressure, strain, phase, defect, surface/interface state, molecular conformer, preparation history, or other scientifically justified axes.
+Target membership, target size, loss weighting, and runtime exposure are
+separate decisions. `TrainingObjectivePolicy` binds the loss family,
+energy/force/stress weights, head weights, normalization, robust-loss choices,
+and missing-label behavior. Configuration/property weighting binds applicable
+condition, regime, event, quality, and property weights. Exposure binds the
+head, actual gradient exposures, batching/duplication behavior, seed, and
+runtime lineage.
 
-A profile may define hierarchical applicability rather than a global Cartesian product. Empty or physically inapplicable combinations are not treated as missing observations merely because all axis names exist.
+A frame can be selected once, weighted non-uniformly, and exposed through a
+qualified loader without those decisions becoming one authority. A custom
+atomwise or auxiliary loss changes `TrainingProtocolIdentity` and requires its
+own accepted method identity; it cannot be smuggled into the current protocol
+through a loader option.
 
-Material-specific semantics remain explicit extensions. Li/Na/K focus groups, ring/cage/site concepts, or LTA-specific condition hierarchies are not generic defaults.
+## Material and profile specialization
 
-## Training objective, weighting, and exposure
+Condition axes and focus groups are declared by the applicable material/profile
+contract. They may include composition, temperature, pressure, strain, phase,
+defect, surface/interface state, conformer, preparation history, or another
+scientifically justified axis. A profile may define hierarchical applicability
+rather than a Cartesian product. Empty or physically inapplicable combinations
+are not missing observations merely because their names exist.
 
-Target membership, target size, loss weighting, and runtime exposure are separate decisions.
+Material-specific concepts remain explicit extensions. LTA ring/cage/site
+groups or Li/Na/K focus groups are not generic defaults and cannot silently
+change the global target order.
 
-`TrainingObjectivePolicy` binds the loss family, energy/force/stress weights, head weights, normalization, robust-loss choices, and missing-label behavior. Configuration/property weighting policies bind condition/regime/event/quality and property-specific weights.
-
-Exposure realization binds the head, eligible use, actual gradient exposures, configuration/property weights, sampling/duplication behavior, seed, and runtime lineage as applicable.
-
-A frame can therefore be selected once, weighted non-uniformly, and exposed according to a qualified loader policy without those three decisions becoming the same authority.
-
-### Atom-group force imbalance
-
-A configuration can contain many more host force components than scientifically critical minority-group components. Subset diversity alone does not eliminate that loss imbalance.
-
-The standard MACE configuration/property-weight path does not claim a generic atomwise group-weighted loss. Evaluation/checkpoint policy therefore reports declared group-resolved metrics and imposes applicable group constraints. A custom atomwise or auxiliary loss defines a different `TrainingProtocolIdentity` and requires separate qualification.
-
-### Exposure backends
-
-The qualified fixed-file MACE path materializes selected target/replay frames in fixed artifacts and binds the realized upstream loader shuffle/batching behavior into the protocol.
-
-Dynamic epoch resampling, multi-job resampling, or alternate final-refit exposure semantics are valid only when a current adapter/specification supports them and records optimizer/checkpoint/exposure lineage. Static files alone cannot claim dynamic resampling.
-
-### Realized exposure audit
-
-Exposure evidence compares intended artifacts and weights with observed loader behavior, including target/replay counts, implicit duplication, expected/observed batches, and configuration/property exposures.
-
-Upstream target/replay duplication behavior is version-dependent. The adapter either disables unintended duplication when supported or binds the realized behavior into the protocol and verifies it. Silent changes in effective target/replay exposure fail closed.
-
-## Statistical dependency boundary
+## Dependency boundary and failure semantics
 
 The allowed dependency direction is:
 
 ```text
-raw source / feature / event evidence
-    -> role assignment
-    -> training domain
-    -> fitted preparation
-    -> MVSEL2 / REPAIR2 target membership
-    -> target-size study using authorized development/model-selection evidence
-    -> frozen target size and training protocol
-    -> checkpoint selection
-    -> held-out protocol validation
-    -> calibration / locked-test activation
+raw source / label / feature / event evidence
+    -> neutral statistical substrate and protected relations
+    -> P_train/M3 split and canonical orders
+    -> common fitted preparation
+    -> one target-size screen and reducer
+    -> frozen N_selected/T_selected
+    -> post-selection fold partitions and method acceptance
+    -> fresh final production
+    -> downstream qualification roles when separately implemented and activated
 ```
 
-Forbidden reverse dependencies include:
+Forbidden reverse dependencies include held-out CV error choosing target size,
+locked evidence tuning preparation or checkpoint policy, calibration fitting
+the protocol it evaluates, and executor/cache behavior changing membership or
+evidence roles.
 
-- held-out CV error choosing target size;
-- locked-test evidence tuning subset policy or checkpoint policy;
-- calibration evidence fitting the training protocol it calibrates;
-- execution worker/cache/scheduler behavior changing partition membership, fitted domains, target order, or evidence roles.
-
-This dependency boundary is the statistical contract that makes the later model-quality evidence interpretable.
+The workflow fails closed when labels or protected relations are unresolved,
+requested roles are infeasible, a fitted product has the wrong lineage, a
+fold would split an inseparable relation, or a downstream result is offered as
+selection authority. Explicit absence or deferral is evidence; it is not a
+synthetic pass.

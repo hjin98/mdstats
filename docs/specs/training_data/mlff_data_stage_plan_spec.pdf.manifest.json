@@ -1,31 +1,27 @@
 {
   "pdf": {
     "name": "mlff_data_stage_plan_spec.pdf",
-    "sha256": "4b72eacd4b9871212b5c7e8637d8eb62b9f4d34c57b6e1aab9e5eea34ba8320f"
+    "sha256": "4a814bf0d45354bcad1a777c7c69a945d80bda7e3082075ad652ff13cdf1513f"
   },
   "renderer": {
     "config": {
-      "absolute_images": "reject",
-      "fontsize": "10.5pt",
-      "from": "markdown",
-      "lang": "en-US",
+      "from": "markdown+tex_math_single_backslash+tex_math_dollars",
       "margin": "0.75in",
       "papersize": "us-letter",
       "pdf_engine": "typst",
-      "remote_images": "reject",
-      "resource_path": "source-parent",
-      "resource_provenance": "pandoc-image-ast-local-files-v1"
+      "source_date_epoch": "0",
+      "typst_binary": "mace-dependencies/typst-x86_64-unknown-linux-musl.tar.xz"
     },
-    "config_sha256": "480609a386b69191ee8f6ad1a774033537daf2800286f4d79b40bf8b23a0766a",
-    "driver": "DOC-GOV1 GitHub Actions equivalent of render_markdown_pdfs.py",
+    "config_sha256": "2b07f049e8f47e9316c38c2d91cefe5ada3a4b6425527aeb6b3a390657676234",
+    "driver": "pandoc-local",
     "pandoc_version": "pandoc 3.10.2",
-    "policy_version": "pandoc-typst-v2",
+    "policy_version": "pandoc-typst-local-v2",
     "typst_version": "typst 0.15.1 (9dfd3a08)"
   },
   "resources": [],
   "schema_version": 1,
   "source": {
     "name": "mlff_data_stage_plan_spec.md",
-    "sha256": "bc6b5406374f18ec27d8e9bae8172d48c823055f6f1cf74e701e14c02869d429"
+    "sha256": "702b6cf389f35a9e4419078f67529262d38ec79131112736131778f2a1b8825c"
   }
 }

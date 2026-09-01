@@ -1,15 +1,15 @@
 ---
 geometry: "margin=0.75in"
-architecture_revision: 106
+architecture_revision: 107
 status: "current normative architecture"
-last_updated: "2026-08-25"
+last_updated: "2026-08-30"
 ---
 
 # MLFF Training-Data and Fine-Tuning Architecture
 
 ## Purpose and authority
 
-This manual defines the accepted current scientific, statistical, execution, and evidence architecture for the mdstats MLFF workflow: source-certified atomistic data preparation, leakage-safe evidence roles, fitted preparation, multi-view target-subset construction, target-size selection, MACE fine-tuning, protocol validation, deployment, calibration, and bounded campaign execution.
+This manual defines the accepted current scientific, statistical, execution, and evidence architecture for the mdstats MLFF workflow: source-certified atomistic data preparation, leakage-safe evidence roles, neutral statistical preparation, one target-size screen, MACE fine-tuning, selected-only method validation, fresh final production, and bounded campaign execution. Downstream deployment, physical, calibration, and locked-test capabilities remain separately owned product obligations.
 
 It is intentionally present-tense and single-generation. A reader does not need release chronology, migration history, or obsolete stage semantics to determine current behavior.
 
@@ -32,27 +32,26 @@ source evidence and labels
   -> eligibility / physical conditions
   -> raw feature and event evidence
   -> evidence-role partitioning
-  -> fold/final training domains
+  -> neutral statistical substrate and protected relations
   -> fitted descriptors, metrics, E0/objective/weight inputs
-  -> multi-view feasibility and exact sparse neighborhood authority
-  -> MVSEL2 target order
-  -> REPAIR2 repaired master order + MVSTATE2 continuation state
-  -> independent MVQUAL prefix qualification
-  -> configurable target-size study
-  -> one protocol-global selected target size
-  -> domain-local target prefixes
-  -> training / checkpoint selection
-  -> held-out protocol validation
-  -> final committee / deployment
-  -> calibration and activated locked-test / observable validation
+  -> one P_train / M3 target-size development split
+  -> one canonical training order pi_train and evaluation ladder M1 subset M2 subset M3
+  -> one common deterministic target-size preparation
+  -> paired optimizer-seed screen over candidate sizes
+  -> one target-size reducer
+  -> N_selected and T_selected = pi_train[:N_selected]
+  -> post-selection cross-validation on exactly T_selected
+  -> fresh final production on the complete T_selected
+  -> currentness-fenced final-production publication
 ```
 
-The current graph has no alternate MVSEL1/REPAIR1 path. Superseded campaign
-generations are not generally compatible; the sole supported restart boundary
-is the immediately preceding fixed-fidelity campaign, which is re-authenticated
-against unchanged upstream preparation inputs before a fresh configurable
-target-size study is created. Ambiguous or older historical state fails closed
-at the narrowest required re-preparation boundary.
+The current graph has exactly one target-size architecture. The retired
+per-domain multi-view selection generation is not an alternate current path: it
+is neither migrated nor semantically read forward, and a workspace still holding
+its derived state is rejected with an actionable destructive reset/reprepare
+requirement before any candidate, checkpoint, or descendant is reused. Raw
+scientific inputs and independently valid low-level content caches remain
+reusable when their recipes do not depend on retired target-size semantics.
 
 ## Reading index
 
@@ -62,7 +61,7 @@ at the narrowest required re-preparation boundary.
 | Source identity, labels, strain/stress, eligibility, raw features/events | Part II - Data and evidence contracts |
 | Evidence roles, leakage-safe CV, fitted preparation, objective/weighting/exposure boundaries | Part III - Statistical design and fitted preparation |
 | Replay, MACE protocol, checkpointing, validation, deployment, calibration, active learning | Part IV - Training, evaluation, and deployment |
-| FEAS1/MVIDX1/MVSEL2/REPAIR2/MVSTATE2/MVQUAL and target-size study | Part V - Multi-view target subset and size architecture |
+| Target-size split/orders, paired-seed screen, reducer, post-selection CV, fresh final production | Part V - Target-size selection and post-selection validation |
 | Exact execution, bounded resource/materialization, cache/restart/storage/progress | Part VI - Performance and execution architecture |
 | Sole-owner matrix and accepted extension boundaries | Part VII - Ownership and extension boundaries |
 | External scientific/algorithmic sources | References |
@@ -76,7 +75,7 @@ For targeted human or AI loading, use the smallest current source containing the
 | source/label identity, eligibility, strain/stress, raw features/events | `20_data_contracts.md` |
 | evidence roles, leakage, CV, fitted metrics, E0, objective, weighting, exposure | `30_statistical_design.md` |
 | replay, MACE, checkpoint, evaluation, deployment, calibration, active learning | `40_training_evaluation.md` |
-| FEAS1, MVIDX1, MVSEL2, REPAIR2, MVSTATE2, MVQUAL, target size, `n1/n2/n3` | `50_target_multiview.md` |
+| target size, `pi_train`, `T_selected`, `M1/M2/M3`, `n1/n2/n3`, post-selection CV, final production | `50_target_size_selection.md` |
 | scheduler, sparse execution, out-of-core, memory, persistence, progress | `60_execution_performance.md` |
 | owner, dependency direction, unsupported generation, extension boundary | `80_ownership_and_decisions.md` |
 | scientific/algorithmic provenance | `90_references.md` |
@@ -85,13 +84,13 @@ For targeted human or AI loading, use the smallest current source containing the
 
 ## Stable terminology
 
-- **training domain** — the DATA5-authorized fold/final gradient-training evidence available to fitted preparation and subset construction.
-- **target membership** — frame membership in a target-training subset; owned by MVSEL2/REPAIR2 within a training domain.
-- **target size** — the protocol-level scientific target-training cardinality chosen by `TargetSizeStudyPolicy`.
+- **training domain** — an authorized gradient-training evidence partition. The current target-size choice is global; post-selection CV may derive fold-local partitions only inside `T_selected`.
+- **target membership** — frame membership in a target-training subset; an exact prefix of the one canonical training order `pi_train`.
+- **target size** — the protocol-level scientific target-training cardinality chosen by the one target-size reducer.
 - **monitor size** — the cardinality of a monitoring/evaluation evidence set; never target-size authority.
-- **master order** — the one repaired REPAIR2 ordering per training domain whose prefixes define candidate target subsets.
-- **qualified size** — a materializable nominal size whose prefix passes independent MVQUAL hard requirements in every required training domain.
-- **selected size** — the one protocol-global target size selected from the qualified population.
+- **training order** — the one canonical deterministic ordering `pi_train` of the target-training pool whose prefixes define candidate target subsets.
+- **qualified size** — a candidate size admitted by the configured target-size policy for the current experiment definition.
+- **selected size** — the one target size `N_selected` frozen by the reducer together with the exact membership `T_selected`.
 - **authoritative evidence** — persisted information that defines or independently proves a scientific decision.
 - **reconstructible execution cache** — discardable state derivable exactly from authoritative inputs.
 - **unsupported generation** — an old campaign/artifact generation that current architecture does not interpret or migrate; it requires re-preparation.

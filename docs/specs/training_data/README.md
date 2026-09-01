@@ -18,45 +18,42 @@ The cross-cutting architecture is defined by the canonical chapters under `docs/
 - `mlff_data4_raw_features_events_spec.md` — partition-independent raw features and protected-event evidence.
 - `mlff_data5_partition_roles_spec.md` — statistical roles, independence, purge, fold/final training-domain construction.
 - `mlff_data6_selection_descriptors_spec.md` — current selection-descriptor and foundation-prediction evidence.
-- `mlff_data7_fitted_metrics_selection_spec.md` — domain-local fitted metrics, E0/objective/weights, difficulty, and `TargetSubsetInputBundle`; **no target membership or target-size authority**.
 
-## Multi-view target subset and target size
+## Target-size and selected-data authority
 
-- `mlff_target_data2b_feas1_support_capacity_spec.md` — FEAS1 full-pool feasibility/support evidence.
-- `mlff_neighbor1_exact_neighborhood_spec.md` — exact neighborhood producer semantics shared by current multi-view consumers.
-- `mlff_target_data2c_mvidx1_sparse_coverage_index_spec.md` — MVIDX1 authenticated exact sparse coverage index.
-- `mlff_mvidx_out_of_core_scaling_spec.md` — exact bounded/file-backed MVIDX realization.
-- `mlff_mvidx_queue_backpressure_spec.md` — bounded MVIDX queue/admission behavior.
-- `mlff_target_data2c_mvsel2_forward_lazy_chain_spec.md` — current integrated FEAS1/MVIDX1/MVSEL2/REPAIR2/MVSTATE2/MVQUAL target-subset chain and exact forward/lazy semantics.
-- `mlff_target_data2c_mvqual1_same_n_qualification_spec.md` — narrow independent MVQUAL predicate/result details where not superseded by the integrated current contract.
-- `mlff_target_subset_size_study_spec.md` — sole exact `TargetSizeStudyPolicy` owner: fixed nominal sizes, materializable/qualified/selected semantics, configurable screen `(n1,n2,n3)` with independent production `n`, paired seeds, funnel, hard admissibility, typed non-convergence/failure.
-- `mlff_size_fidelity1_calibration_spec.md` — current target-size-v5 SIZE-FIDELITY1 v2 calibration authority: exhaustive configured-full-horizon trajectories, 3/4/5 coarse hypotheses, monitor/equivalence grid, hard eventual-finalist recall, and deferred FINAL-GPU1 accelerator/scientific qualification.
+The current target-size authority is the single `pi_train`/prefix and reducer
+chain described by Architecture Part V and the cross-cutting contract. It
+derives one global `N_selected`/`T_selected` binding from the configured
+ladder. Retired multi-view, migration, generated-rescue, and pre-target
+per-domain authorities are historical/reject-only and do not create a current
+specification.
 
-The following are **not** current target-subset authorities: MVSEL1, REPAIR1, MVSTATE-REUSE1, MVMIGRATE, generated/rescue ladders, or older size-halving/fidelity gate documents. A4 consolidates their useful rationale into history.
+- `mlff_data_stage_plan_spec.md` — cross-cutting evidence-role, fitted-partition, target-size, protocol, currentness, and downstream-boundary invariants.
+- `mlff_data5_partition_roles_spec.md` — source/evidence roles and protected relations used by the neutral substrate.
+- `mlff_data6_selection_descriptors_spec.md` — authorized descriptor/foundation evidence that feeds common preparation without owning membership.
 
 ## Monitoring, replay, training, checkpointing, and evaluation
 
 - `mlff_online_monitor_spec.md` — `OnlineTargetMonitorPolicy` and `ReplayMonitorPolicy`; monitor cardinalities are not target sizes.
 - `mlff_data8_mace_artifacts_spec.md` — current MACE target/replay artifact realization.
-- `mlff_adaptive_training_stop_spec.md` — ordinary post-size-freeze training stopping/LR control where current; target-size-study stopping override is owned by `mlff_target_subset_size_study_spec.md`.
 - `mlff_data9b1_campaign_checkpoint_control_spec.md` — checkpoint control and candidate retention/evaluation orchestration.
-- `mlff_adaptive_full_evaluation_spec.md` — current full candidate evaluation/admissibility behavior where applicable.
-- `mlff_adaptive_verification_spec.md` — current deployment/model verification behavior where applicable.
 - `mlff_binary_model_precision_spec.md` — model precision policy.
 - `mlff_true_label_restart_lineage_spec.md` — true-label restart/source lineage.
 - `mlff_mace_torchscript_warning_compatibility_spec.md` — current warning handling where the locked runtime still emits the relevant warnings.
 
-## Cross-validation, final selection, deployment, and campaign realization
+## Post-selection validation and campaign realization
 
-- `mlff_mlcv_cross_validation_spec.md` — protocol-matched held-out cross-validation; held-out folds do not choose target size or checkpoint.
-- `mlff_mlcv_run_selection_spec.md` — current run/checkpoint aggregation behavior.
-- `mlff_mlcv_final_selection_spec.md` — final constrained selection/committee behavior.
-- `mlff_mlcv_verification_spec.md` — final protocol/committee verification.
-- `mlff_data9a5_deployment_artifact_spec.md` — deployment artifact contract.
-- `mlff_data9b2_execution_aggregation_freeze_spec.md` — current aggregation/freeze identity.
 - `mlff_data9b3_campaign_cli_spec.md` — current campaign CLI contract.
 - `mlff_data9b4_storage_restart_spec.md` — campaign storage/restart behavior.
 - `mlff_storage_management_spec.md` — bounded storage/scratch retention policy.
+
+The CLI's current implementation ends at selected-only method validation and
+fresh final production. Deployment parity, physical validation, uncertainty
+calibration, and locked testing remain separate downstream product contracts;
+they may consume a frozen final publication but do not feed back into target
+size or method authority.
+
+- `mlff_data9a5_deployment_artifact_spec.md` — downstream model-artifact boundary; it does not add a current campaign lifecycle stage.
 
 Migration-only specifications are non-current and intentionally omitted.
 
@@ -75,12 +72,8 @@ Profile-migration documents are historical rather than current extension contrac
 ## Deterministic and bounded execution
 
 - `mlff_cpu_resource_budget_spec.md` — sole campaign-wide CPU-capacity authority: affinity/cgroup-aware runtime availability, production `cpu_fraction = 0.90`, stage/native/OpenMP ownership, and nested/concurrent admission inside one budget.
-- `mlff_parcore1_deterministic_work_queue_spec.md` — shared bounded deterministic CPU work queue.
-- `mlff_mvkernel1_sparse_vector_kernels_spec.md` — exact sparse/vector kernel equivalence contract.
-- `mlff_repair_par1_deterministic_parallel_proposals_spec.md` — exact deterministic parallel REPAIR2 proposal scoring where current.
-- `mlff_mvqual_par1_global_scoring_queue_spec.md` — bounded independent MVQUAL job execution.
 - `mlff_replay_perf1_index_cache_spec.md` — authenticated replay-source index/cache.
-- `mlff_parallel_evaluation_verification_spec.md` — bounded parallel checkpoint evaluation/deployment verification.
+- `mlff_parallel_evaluation_verification_spec.md` — bounded staged checkpoint evaluation and resource/provider admission; downstream verification is a separate consumer.
 - `mlff_vram1_perf_p4_memory_pipeline_spec.md` — GPU/VRAM bounded execution where current runtime qualification supports it.
 - `mlff_progress_reporting_format_spec.md` — shared MLFF progress grammar, including fixed-width `HH:MM:SS` elapsed/ETA.
 
@@ -109,3 +102,5 @@ Backend qualification reports, hotfix notes, parity diagnostics, and obsolete mi
 ## Publication rule
 
 Markdown is the editable semantic source for these specifications. Generated PDFs, when maintained for a current specification, must be regenerated from the current Markdown and visually/semantically checked under the repository documentation publication process. Superseded PDFs do not remain current merely because a file exists.
+
+Retired pre-V7 target-size and lifecycle specifications were archived to `docs/history/mlff/retired_specs/` by the destructive target-size generation cutover. They are historical and are not current authority.

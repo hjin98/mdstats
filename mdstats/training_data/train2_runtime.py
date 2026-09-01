@@ -55,19 +55,22 @@ def _sha256(path: Path) -> str:
 
 
 def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    # Keep mutable TRAIN2 summaries under the same crash-safe persistence
+    # owner as target-size snapshots and heads.  The import is lazy because
+    # the target-size package imports this runtime module while initializing.
+    from .target_size_execution.persistence import publish_mutable_json_atomic
+
+    publish_mutable_json_atomic(path, payload)
 
 
 def _atomic_torch_save(path: Path, payload: Mapping[str, Any]) -> None:
     import torch
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    torch.save(dict(payload), tmp)
-    os.replace(tmp, path)
+    from .target_size_execution.persistence import publish_mutable_bytes_atomic
+
+    buffer = io.BytesIO()
+    torch.save(dict(payload), buffer)
+    publish_mutable_bytes_atomic(path, buffer.getvalue())
 
 
 class Train2NumericalFailure(RuntimeError):
@@ -277,6 +280,126 @@ def _verify_train2_continuation_content_digests(
             "TRAIN2 continuation companion RNG content does not match its "
             "authenticated summary digest."
         )
+    architecture_digest = payload.get("model_architecture_digest")
+    if summary.model_architecture_digest is None:
+        if architecture_digest is not None:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion carries a model architecture identity "
+                "but its authenticated summary records none."
+            )
+    elif architecture_digest != summary.model_architecture_digest:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion model architecture identity does not match "
+            "its authenticated summary."
+        )
+
+
+def verify_train2_checkpoint_model_parameters(
+    raw_parameters: Sequence[Any] | Mapping[str, Any],
+    *,
+    companion: Mapping[str, Any],
+    summary: Any,
+) -> None:
+    """Authenticate raw MACE checkpoint model parameter values against TRAIN2 provenance.
+
+    When EMA is enabled, MACE 0.3.16 saves checkpoints inside
+    ``with ema.average_parameters():``, replacing model parameters with EMA
+    shadow values. Therefore, raw checkpoint parameters must match the
+    authenticated EMA shadow state. When EMA is disabled, raw checkpoint
+    parameters match the authenticated live continuation state.
+
+    This rule is derived strictly from authenticated TRAIN2 EMA presence in
+    the runtime summary/companion, independent of downstream EVAL2 evaluation choice.
+    """
+    import torch
+
+    if isinstance(raw_parameters, Mapping):
+        raw_list = list(raw_parameters.values())
+    else:
+        raw_list = list(raw_parameters)
+
+    ema_state_digest = getattr(summary, "ema_state_digest", None)
+    if isinstance(summary, Mapping) and ema_state_digest is None:
+        ema_state_digest = summary.get("ema_state_digest")
+
+    if ema_state_digest is not None:
+        ema_state = companion.get("ema_state")
+        if not isinstance(ema_state, Mapping):
+            raise TrainingDataInputError(
+                "TRAIN2 continuation companion EMA state is missing."
+            )
+        shadow_params = ema_state.get("shadow_params")
+        if not isinstance(shadow_params, list) or not shadow_params:
+            raise TrainingDataInputError(
+                "TRAIN2 continuation companion EMA shadow parameters are missing."
+            )
+        if len(raw_list) != len(shadow_params):
+            raise TrainingDataInputError(
+                f"TRAIN2 checkpoint parameter cardinality ({len(raw_list)}) "
+                f"differs from EMA shadow cardinality ({len(shadow_params)})."
+            )
+        for index, (raw_val, shadow_val) in enumerate(
+            zip(raw_list, shadow_params, strict=True)
+        ):
+            if not torch.is_tensor(raw_val) or not torch.is_tensor(shadow_val):
+                raise TrainingDataInputError(
+                    f"TRAIN2 checkpoint parameter at index {index} is not a tensor."
+                )
+            if (
+                tuple(raw_val.shape) != tuple(shadow_val.shape)
+                or raw_val.dtype != shadow_val.dtype
+            ):
+                raise TrainingDataInputError(
+                    f"TRAIN2 checkpoint parameter at index {index} shape/dtype "
+                    "differs from EMA shadow."
+                )
+            if not bool(torch.equal(raw_val.detach().cpu(), shadow_val.detach().cpu())):
+                raise TrainingDataInputError(
+                    "TRAIN2 checkpoint model parameters do not match the "
+                    "authenticated EMA shadow state."
+                )
+    else:
+        live = companion.get("live_parameters")
+        if not isinstance(live, list) or not live:
+            raise TrainingDataInputError(
+                "TRAIN2 continuation companion live parameters are missing."
+            )
+        if len(raw_list) != len(live):
+            raise TrainingDataInputError(
+                f"TRAIN2 checkpoint parameter cardinality ({len(raw_list)}) "
+                f"differs from live parameter cardinality ({len(live)})."
+            )
+        live_digest = getattr(summary, "live_parameter_digest", None)
+        if isinstance(summary, Mapping) and live_digest is None:
+            live_digest = summary.get("live_parameter_digest")
+        raw_digest = _tensor_state_digest(
+            raw_list, schema="mdstats.train2-live-parameters.v1"
+        )
+        if live_digest is not None and raw_digest != live_digest:
+            raise TrainingDataInputError(
+                "TRAIN2 checkpoint model parameters do not match the "
+                "authenticated live continuation state."
+            )
+        for index, (raw_val, live_val) in enumerate(
+            zip(raw_list, live, strict=True)
+        ):
+            if not torch.is_tensor(raw_val) or not torch.is_tensor(live_val):
+                raise TrainingDataInputError(
+                    f"TRAIN2 checkpoint parameter at index {index} is not a tensor."
+                )
+            if (
+                tuple(raw_val.shape) != tuple(live_val.shape)
+                or raw_val.dtype != live_val.dtype
+            ):
+                raise TrainingDataInputError(
+                    f"TRAIN2 checkpoint parameter at index {index} shape/dtype "
+                    "differs from live state."
+                )
+            if not bool(torch.equal(raw_val.detach().cpu(), live_val.detach().cpu())):
+                raise TrainingDataInputError(
+                    "TRAIN2 checkpoint model parameters do not match the "
+                    "authenticated live continuation state."
+                )
 
 
 def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
@@ -475,13 +598,14 @@ class Train2RuntimeSummary:
     rng_state_digest: str
     group_base_learning_rates: tuple[float, ...]
     complete_budget: bool
+    model_architecture_digest: str | None = None
 
     @property
     def content_digest(self) -> str:
         return digest(self._payload())
 
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": TRAIN2_RUNTIME_SUMMARY_SCHEMA,
             "plan_digest": self.plan_digest,
             "training_protocol_digest": self.training_protocol_digest,
@@ -510,6 +634,11 @@ class Train2RuntimeSummary:
             "group_base_learning_rates": list(self.group_base_learning_rates),
             "complete_budget": self.complete_budget,
         }
+        if self.model_architecture_digest is not None:
+            payload["model_architecture_digest"] = validate_digest(
+                self.model_architecture_digest, name="model_architecture_digest"
+            )
+        return payload
 
     def to_dict(self) -> dict[str, Any]:
         return {**self._payload(), "content_digest": self.content_digest}
@@ -545,11 +674,21 @@ class Train2RuntimeSummary:
             rng_state_digest=str(payload["rng_state_digest"]),
             group_base_learning_rates=tuple(float(v) for v in payload["group_base_learning_rates"]),
             complete_budget=bool(payload["complete_budget"]),
+            model_architecture_digest=(
+                None
+                if payload.get("model_architecture_digest") is None
+                else str(payload["model_architecture_digest"])
+            ),
         )
         for name in ("plan_digest", "training_protocol_digest", "optimizer_policy_digest", "budget_policy_digest", "lr_policy_digest", "raw_checkpoint_sha256", "optimizer_state_digest", "live_parameter_digest", "rng_state_digest"):
             validate_digest(getattr(result, name), name=name)
         if result.ema_state_digest is not None:
             validate_digest(result.ema_state_digest, name="ema_state_digest")
+        if result.model_architecture_digest is not None:
+            validate_digest(
+                result.model_architecture_digest,
+                name="model_architecture_digest",
+            )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("TRAIN2 runtime-summary digest mismatch.")
         return result
@@ -709,6 +848,21 @@ class _Train2Runtime:
         # and compare canonical content digests before any restart state is
         # applied to the resumed model/process.
         _verify_train2_continuation_content_digests(payload, summary)
+        if summary.model_architecture_digest is not None:
+            from .model_features import mace_model_execution_architecture_digest
+
+            try:
+                observed_architecture_digest = mace_model_execution_architecture_digest(
+                    self.model
+                )
+            except (TrainingDataInputError, RuntimeError, TypeError, ValueError) as exc:
+                raise TrainingDataSerializationError(
+                    "TRAIN2 continuation requires a reconstructible MACE model architecture."
+                ) from exc
+            if observed_architecture_digest != summary.model_architecture_digest:
+                raise TrainingDataSerializationError(
+                    "TRAIN2 continuation model architecture differs from its authenticated summary."
+                )
         live = payload.get("live_parameters")
         parameters = list(self.model.parameters())
         if not isinstance(live, list) or len(live) != len(parameters):
@@ -786,7 +940,15 @@ class _Train2Runtime:
             raise TrainingDataInputError(
                 "TRAIN2 numerical-failure sidecar already records different scientific evidence."
             )
-        _atomic_json(self.numerical_failure_path, record.to_dict())
+        from .target_size_execution.persistence import (
+            publish_immutable_json_create_or_verify,
+        )
+
+        publish_immutable_json_create_or_verify(
+            self.numerical_failure_path,
+            record.to_dict(),
+            deserializer=Train2NumericalFailureRecord.from_dict,
+        )
         raise Train2NumericalFailure(code, reason)
 
     def persist_epoch(self, *, epoch: int) -> Train2RuntimeSummary | None:
@@ -851,6 +1013,22 @@ class _Train2Runtime:
         checkpoint_sha = _sha256(raw)
         checkpoint_hash_seconds = time.perf_counter() - checkpoint_hash_started
         live_digest = _tensor_state_digest(live_parameters, schema="mdstats.train2-live-parameters.v1")
+        model_architecture_digest = None
+        if all(
+            hasattr(self.model, name)
+            for name in ("r_max", "atomic_numbers", "interactions", "products")
+        ):
+            from .model_features import mace_model_execution_architecture_digest
+
+            try:
+                model_architecture_digest = mace_model_execution_architecture_digest(
+                    self.model
+                )
+            except (TrainingDataInputError, RuntimeError, TypeError, ValueError) as exc:
+                raise TrainingDataInputError(
+                    "TRAIN2 could not authenticate the real MACE execution architecture "
+                    f"at durable epoch {completed_epochs}: {exc}"
+                ) from exc
         state_hash_seconds = time.perf_counter() - state_hash_started - checkpoint_hash_seconds
         optimizer_state_digest = digest({
             "schema": "mdstats.train2-optimizer-state-reference.v1",
@@ -880,6 +1058,8 @@ class _Train2Runtime:
             "rng_state": rng_state,
             "group_base_learning_rates": list(self.group_base_lrs),
         }
+        if model_architecture_digest is not None:
+            companion["model_architecture_digest"] = model_architecture_digest
         companion_write_started = time.perf_counter()
         _atomic_torch_save(self.companion_path, companion)
         companion_write_seconds = time.perf_counter() - companion_write_started
@@ -910,6 +1090,7 @@ class _Train2Runtime:
             rng_state_digest=rng_digest,
             group_base_learning_rates=self.group_base_lrs,
             complete_budget=(completed_epochs == self.plan.budget_policy.planned_epochs),
+            model_architecture_digest=model_architecture_digest,
         )
         summary_write_started = time.perf_counter()
         _atomic_json(self.summary_path, summary.to_dict())
@@ -1174,4 +1355,5 @@ __all__ = [
     "train2_runtime_should_pause_after_epoch",
     "validate_train2_runtime_continuation_artifacts",
     "load_train2_runtime_summary",
+    "verify_train2_checkpoint_model_parameters",
 ]

@@ -1283,3 +1283,41 @@ def build_lta_partition_feature_catalog(
         frame_records=tuple(frame_records),
         mobile_states=tuple(mobile_states),
     )
+
+
+def rebind_lta_partition_features(
+    catalog: Any,
+    frame_authority: Any,
+) -> Any:
+    """Rebind an LtaPartitionFeatureCatalog or its ProfileFeatureCatalog wrapper against CanonicalFrameAuthority."""
+    from dataclasses import replace
+    from .profile_extensions import ProfileFeatureCatalog, wrap_lta_partition_features
+
+    if isinstance(catalog, ProfileFeatureCatalog):
+        typed_lta = catalog.as_lta_partition()
+    elif isinstance(catalog, LtaPartitionFeatureCatalog):
+        typed_lta = catalog
+    else:
+        raise TrainingDataInputError(f"Unexpected catalog type for LTA rebinding: {type(catalog)!r}")
+
+    rebound_records = tuple(
+        replace(
+            r,
+            frame_record_digest=frame_authority.frame(r.frame_uid).content_digest,
+        )
+        for r in typed_lta.frame_records
+    )
+    rebound_lta = LtaPartitionFeatureCatalog(
+        dataset_id=typed_lta.dataset_id,
+        frame_catalog_digest=frame_authority.content_digest,
+        policy=typed_lta.policy,
+        frame_records=rebound_records,
+        mobile_states=typed_lta.mobile_states,
+    )
+    return wrap_lta_partition_features(rebound_lta, embed_payload=True)
+
+
+from .profile_extensions import register_partition_profile_rebind_provider
+
+register_partition_profile_rebind_provider("lta", rebind_lta_partition_features)
+

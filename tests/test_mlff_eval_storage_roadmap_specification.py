@@ -40,18 +40,6 @@ def test_eval_precision_storage_roadmap_is_recorded_in_binding_order() -> None:
     assert "STOR2 - lossless completed-checkpoint compaction - implemented in 0.20.113a0" in text
 
 
-def test_multifidelity_plan_preserves_equal_target_replay_fidelity_and_full_final() -> None:
-    text = EVAL_SPEC.read_text(encoding="utf-8")
-    for token in (
-        "same nominal fraction",
-        "Subsets are deterministic, label-independent, stratified, and nested",
-        "Later rounds infer only the delta",
-        "Partial-round metrics are screening evidence only",
-        "complete target data",
-        "complete true-label replay data",
-        "all saved epochs in round 1",
-    ):
-        assert token in text
 
 
 def test_staged_precision_plan_records_profiles_and_refine_defaults() -> None:

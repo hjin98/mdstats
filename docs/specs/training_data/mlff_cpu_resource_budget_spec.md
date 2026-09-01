@@ -49,10 +49,9 @@ Runtime meters/autotuners may probe smaller widths and the budget endpoint, then
 
 Changing CPU admission or effective execution width MUST NOT change current scientific authorities. In particular:
 
-- MVSEL2 preserves the authoritative rank/master order and the required exact FP64 parity contract;
-- REPAIR2 preserves shortlist/proposal metrics, accepted swap trace, repaired master order, rung coverage, and digest;
+- the canonical training order and the target-size common preparation preserve their exact FP64 identity contract;
 - MVIDX preserves authoritative sparse content and digest;
-- target coverage, MVQUAL, and structural selection preserve their current scientific authorities and digests.
+- structural selection and the target-size owners preserve their current scientific authorities and digests.
 
 Where an algorithm contains a serial authoritative mutation/reduction boundary, parallel work may prepare or evaluate immutable candidates, but the authoritative commit remains in the current canonical order.
 

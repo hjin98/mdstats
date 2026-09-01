@@ -10,18 +10,51 @@ The single-source replay migration is complete. The executable invalidation plan
 
 ## MLFF replay-evaluation semantics
 
-Checkpoint accuracy is judged against independent DFT labels. Foundation-generated replay pseudolabels remain the default replay training targets and an absolute behavioral-drift diagnostic. Set `[paths].replay_true_labels` to the original true-label replay directory so mdstats can evaluate both the foundation and fine-tuned checkpoint on the same target and replay geometries without changing training inputs.
+Checkpoint accuracy is judged against the current target-side development
+policy. Foundation-generated replay pseudolabels remain an optional replay
+training realization and a separate retention diagnostic. Set
+`[paths].replay_true_labels` when the replay contract requires an independent
+true-label monitor; replay evidence never becomes target-size authority.
 
-Current development release: **0.20.242a0**. New MLFF campaigns use one target-size authority: `FEAS1 -> MVIDX1 -> MVSEL2 -> REPAIR2/MVSTATE2 -> MVQUAL2 -> Q -> configurable (n1,n2,n3) screen -> selected REPAIR2 prefix -> fresh selected-size production -> held-out CV/EVAL/VERIFY`. The generated default is screen `(1,3,10)` with production horizon `30`; all four values are authenticated configuration, and screen `n3` must be strictly less than production `n`. The only candidate sizes are `128, 256, 512, 1024, 2048, 4096, 8192, 16384`; MVQUAL2 is the sole hard size-eligibility authority; `q < 3` terminates without rescue; and the selected size is immutable before held-out validation. Legacy target ladders, SIZE-HALVE2, SIZE-FIDELITY2, MVMIGRATE1, migration activation, generated rescue sizes, and downstream Stage-B/Stage-C size advancement are historical only and are not current campaign prerequisites. GPU qualification remains deferred to the final release package and does not gate this architecture.
+Current development release: **0.20.242a0**. MLFF campaigns use exactly one target-size architecture:
 
-## Target-size v5 redesign
+```text
+canonical frames -> neutral statistical substrate
+  -> one P_train / M3 development split
+  -> one canonical training order pi_train and evaluation ladder M1 subset M2 subset M3
+  -> one common target-size preparation
+  -> paired optimizer-seed screen over the configured candidate ladder
+  -> one reducer -> N_selected and T_selected = pi_train[:N_selected]
+  -> post-selection cross-validation on exactly T_selected
+  -> fresh final production on the complete T_selected
+```
 
-Target-size candidate membership is always the exact REPAIR2 prefix `R[:N]`. Qualified candidates continue along the same authenticated screen trajectory through the configured coarse, short, and final-screen boundaries on a scheduler horizon of `n3`, preserving checkpoint, optimizer, RNG, schedule, and candidate-data lineage. After selection, fresh production for the selected prefix owns the independent horizon `n`. The generated default is screen `1 -> 3 -> 10` with production `0 -> 30`; the funnel is `q -> min(q,4) -> 2 -> 1`, including the required `q=3 -> 3 -> 2 -> 1` case. If 16384 remains materially superior at the final boundary, the study terminates as `nonconverged_at_fixed_ceiling`; it never synthesizes a larger or intermediate rescue size. Production target-corpus materialization promotes only the selected prefix.
+The candidate ladder and its ceiling are configuration (`[target_data.size_convergence]`), not a frozen constant. The generated default screen is `(n1, n2, n3) = (1, 3, 10)` with an independent production horizon `[training].max_num_epochs = 30`; screen `n3` must be strictly less than the production horizon. Fewer than three qualified sizes terminates without a rescue size, and a configured-ceiling nonconvergence is a typed outcome rather than a synthesized larger size. The selected size is immutable before post-selection validation, and post-selection cross-validation accepts or rejects the *training method* without ever re-choosing the size.
 
+The public campaign lifecycle is `init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production`.
+Post-production qualification of the finished product is a separate downstream
+family: `qualification status | qualification run | qualification activate-locked`.
+
+The public campaign lifecycle is current-generation only. Obsolete derived
+target-size state is rejected before candidate/checkpoint reuse and is
+quarantined rather than translated; lower-level source/content caches remain
+reusable only after current-owner validation. The training lifecycle ends at
+current functional/restart closure and fresh final production.
+
+Qualification consumes that already frozen publication. It validates deployment
+parity through the supported ML-IAP/LAMMPS runtime, local PES response against
+matched external references, relaxation topology and geometry fidelity,
+finite-temperature dynamics stability, uncertainty calibration, and - only after
+an explicit one-shot activation - the reserved locked interpolation test. It has
+pass, reject, and waiting authority for that exact product and no selection
+authority whatsoever: a failure never changes the selected target size, the
+accepted method, a production member, or publication membership. Long
+target-machine GPU/real-production qualification remains a separate release
+activity and is not claimed by CPU or proxy evidence.
 
 ## Historical MLFF release notes
 
-The sections below describe earlier releases and are retained for change lineage; they do not override the current target-size-v5 architecture above.
+The sections below describe earlier releases and are retained for change lineage; they do not override the current target-size architecture above.
 
 ## REPLAY-UNIFY1C in 0.20.212a0
 
@@ -2374,14 +2407,17 @@ overrides are available for controlled studies.
 ## MLFF training-data branch
 
 The canonical MLFF architecture and implementation history are documented in
-`docs/arch_manuals/mlff_training_data_architecture.{md,pdf}`. The production
-branch now covers source/label identity, leakage-safe partitioning, checkpoint-
-bound DATA6 features, exact target/replay selection, restartable MACE training,
-target-first evaluation, deployment/PES/relaxation/dynamics verification, final
-selection, locked-test activation, generalized multi-head MACE foundations, and
-reference-backend certification through MH1-CERT1. MACE-MH-1 / `omat_pbe` /
-e3nn remains the current generated/reference authority; accelerated CuEq work
-remains explicit and phase separated after failed six-head parity qualification.
+`docs/arch_manuals/mlff_training_data_architecture.{md,pdf}`. The current P6
+campaign covers source/label identity, leakage-safe partitioning, neutral
+statistical preparation, one configurable target-size screen, restartable MACE
+training, selected-only method validation, and fresh final production.
+MACE-MH-1 / `omat_pbe` / e3nn remains the current generated/reference
+authority; accelerated backend work is explicit and phase separated. Downstream
+deployment, physical-observable, calibration, and locked-test consumers are
+documented as later product boundaries rather than current campaign stages.
+
+The remaining MLFF paragraphs in this section are historical release notes and
+do not override the current lifecycle above.
 
 `mdstats 0.20.178a0` freezes bounded **PERF-BASE0** as the exact
 post-MH1 numerical/performance oracle. `mdstats 0.20.179a0` completes bounded
@@ -2454,7 +2490,7 @@ assert compare_target_coverage_references_exact(reference, restored).exact_match
 ```
 
 The normative contract is
-`docs/specs/training_data/mlff_perf_p0_native_target_coverage_spec.{md,pdf}`;
+`docs/history/mlff/retired_specs/mlff_perf_p0_native_target_coverage_spec.{md,pdf}`;
 matched CPU evidence is
 `audits/analysis/mlff_perf_p0_lta_cloud_cpu_2026-08-15.{json,md,pdf}`.
 

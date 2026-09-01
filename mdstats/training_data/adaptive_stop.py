@@ -22,7 +22,6 @@ from ._common import (
     sha256_file_cached,
     validate_digest,
 )
-from .mlcv_roles import MlcvDataRole, require_mlcv_checkpoint_stopping_role
 
 ADAPTIVE_STOP_POLICY_SCHEMA = "mdstats.adaptive-training-stop-policy.v3"
 ADAPTIVE_STOP_POLICY_LEGACY_SCHEMAS = frozenset({
@@ -927,10 +926,8 @@ def adaptive_training_stop_already_terminal(logger_path: str | Path) -> bool:
     return state.stop_reason is not None and state.stop_epoch is not None
 
 
-def adaptive_training_stop_requested(logger_path: str | Path, epoch: int, *, target_data_role: MlcvDataRole | str | None = None) -> bool:
+def adaptive_training_stop_requested(logger_path: str | Path, epoch: int) -> bool:
     """Record one completed epoch and return whether MACE should stop cleanly."""
-    if target_data_role is not None:
-        require_mlcv_checkpoint_stopping_role(target_data_role)
     policy = adaptive_stop_policy_from_environment()
     if policy is None:
         return False

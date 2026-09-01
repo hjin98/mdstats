@@ -20,13 +20,13 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 1. Source facts, eligibility, evidence roles, fitted preparation, target membership, target size, weighting, exposure, checkpoint selection, validation, calibration, and acquisition are distinct record/decision families.
 2. A frame that supplied a gradient is not independent validation evidence for that model.
 3. Held-out cross-validation evaluates a frozen protocol and cannot control target size, stopping, or checkpoint choice for that protocol.
-4. Every fold has a gradient-training domain, an authorized checkpoint monitor, and a held-out evaluation fold with explicit independence/purge evidence.
+4. After target selection, every post-selection fold has a gradient-training partition, an authorized checkpoint monitor, and a held-out evaluation fold with explicit independence/purge evidence.
 5. Cross-validation trains a fresh model/optimizer lineage for each held-out fold and validates the complete `TrainingProtocolIdentity` actually used by final training.
-6. Feature fitting, E0 fitting, label-derived difficulty evidence, and target-subset inputs inspect only the applicable fold/final gradient-training domain.
-7. DATA7 prepares fitted target-subset inputs and SHALL NOT publish target membership or target size.
-8. MVSEL2/REPAIR2 are the sole current target-membership ordering/repair authorities; MVSTATE2 is current continuation state; MVQUAL independently verifies hard prefix requirements.
-9. `TargetSizeStudyPolicy` is the sole scientific target-size authority. Monitor/replay/batch/pool cardinalities are different semantic types.
-10. Target membership is domain-local; the selected target size is protocol-global across required domains.
+6. Feature fitting, E0 fitting, label-derived difficulty evidence, and target-subset inputs inspect only the applicable authorized training partition; post-selection fold-local fits never inspect that fold's held-out partition.
+7. Current DATA6/DATA7 preparation publishes fitted inputs and evidence for the common target-size owner and SHALL NOT publish target membership or target size.
+8. One canonical training order `pi_train` is the sole current target-membership authority; every candidate is the exact prefix `T_N = pi_train[:N]`.
+9. The one target-size reducer is the sole scientific target-size authority. Monitor/replay/batch/pool cardinalities are different semantic types.
+10. Target membership and the selected target size are both protocol-global and are frozen together as `N_selected` and `T_selected`.
 11. Target-size screening uses only authorized development/model-selection evidence. Held-out CV, calibration, and locked tests are forbidden inputs.
 12. Locked tests cannot affect fitting, membership, size, protocol choice, stopping, checkpointing, calibration-policy choice, or acquisition and are activated only after protocol/committee freeze.
 13. Replay training, replay monitoring, target monitoring, and target training preserve separate source/role identities.
@@ -34,7 +34,7 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 15. Dynamic resampling/exposure semantics require an explicit current adapter/protocol; static files alone cannot claim them.
 16. Calibration is bound to predictions from the actual frozen final committee and an explicit applicability domain.
 17. Active-learning child generations inherit prior evidence roles unless a new evaluation lineage explicitly reassigns them.
-18. Unsupported old campaign generations are rejected/re-prepared rather than migrated into current semantics. The immediately preceding fixed-fidelity generation is the sole narrow exception: only authenticated unchanged preparation may be reused, and its target-size study/evidence is rebuilt under current configurable-fidelity authority.
+18. Retired campaign generations are rejected and re-prepared rather than migrated into current semantics. Retired derived target-size state is detected before any semantic deserialization, candidate or checkpoint reuse, or descendant publication, and is quarantined rather than translated. Only raw scientific inputs and independently valid low-level content caches whose recipes do not depend on retired target-size semantics may be reused, and each is re-validated by the current owner that consumes it.
 19. Execution caches, worker scheduling, out-of-core layout, and other realization choices cannot change scientific identity or authoritative decisions.
 20. Publication fails closed when required current-generation identities, upstream evidence, or schema/content validation are missing/incompatible.
 
@@ -48,12 +48,13 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 | `PartitionAssignment` | one statistical role under DATA5 policy | fitted quantities or target order |
 | `PartitionFeasibilityReport` | whether requested evidence roles are supportable | fabricated independent evidence |
 | `PartitionIndependenceReport` | actual independence/purge/duplicate limitations | stronger independence than observed |
-| DATA6/7 fitted records | training-domain descriptors/transforms/E0/difficulty/objective/weights/subset inputs | held-out labels, target membership, target size |
-| MVSEL2 result | deterministic target order within one training domain | independent qualification or selected target size |
-| REPAIR2 result | one repaired master order per domain | independently repaired rung copies |
-| MVSTATE2 | authenticated reconstructible selector/repair continuation state | migration semantics for obsolete state |
-| MVQUAL result | independent hard coverage/obligation evidence for a prefix | selector score/ranking or target-size choice by itself |
-| `TargetSizeStudyPolicy` / `TargetSizeDecision` | nominal/materializable/qualified population, fidelity funnel, selected target size or typed failure | monitor construction or held-out CV evaluation |
+| DATA6/7 fitted records | authorized training-partition descriptors/transforms/E0/difficulty/objective/weights/subset inputs | held-out labels, target membership, target size |
+| target-size development split | one `P_train`/`M3` split derived from the neutral substrate | training order or size choice |
+| canonical training order `pi_train` | one deterministic order whose prefixes are the candidate subsets | evaluation populations or size choice |
+| canonical evaluation ladder `pi_eval` | nested direct populations `M1 subset M2 subset M3` | training membership or size choice |
+| common target-size preparation | one preparation identity shared by every candidate size and optimizer seed | any per-size or per-seed variation |
+| target-size policy / reducer decision | configured candidate ladder, fidelity funnel, selected target size or typed failure | monitor construction or post-selection cross-validation |
+| `CampaignStore` terminal projection | `N_selected` bound to the exact `T_selected` membership digest | re-deciding the size or accepting the method |
 | `OnlineTargetMonitorPolicy` | common target-monitor evidence set | target-training size |
 | `ReplayMonitorPolicy` | replay-monitor evidence set | target-training size or replay-training membership |
 | `TrainingProtocolIdentity` | complete frozen model/data/replay/membership/size/objective/exposure/checkpoint/runtime protocol | mutable runtime observations or test results |
@@ -83,15 +84,20 @@ One target MACE bundle contains one compatible target label domain plus a separa
 
 Raw physical/structural/event facts may be constructed before partitioning when the owning provider is partition-independent. Any learned/fitted transform—including scaling, PCA/whitening, fitted metrics, E0 corrections, or label-derived residual difficulty—is bound to a specific authorized gradient-training domain.
 
-For fold `k`, the allowed direction is:
+Before selection, the common preparation is global. After selection, a
+post-selection fold `k` may have a fold-local fitted view. The allowed
+directions are:
 
 ```text
-DATA5 fold_training_domain_k
-  -> DATA6/7 fitted products
-  -> MVSEL2/REPAIR2 membership inside that domain
-  -> selected-size prefix after target-size freeze
-  -> training/checkpoint choice using authorized monitor
+P_train / common target-size preparation
+  -> one pi_train and exact T_selected membership after the target-size freeze
+  -> post-selection fold_training_partition_k
+  -> fold-local fitted products and checkpoint choice using its authorized monitor
   -> held_out_evaluation_fold_k only after checkpoint freeze
+
+final T_selected
+  -> final-training fitted products
+  -> fresh final production
 ```
 
 A reverse dependency from held-out evaluation into fitted products, target size, or checkpoint selection is prohibited.
@@ -101,24 +107,44 @@ A reverse dependency from held-out evaluation into fitted products, target size,
 The current target-subset construction chain is:
 
 ```text
-DATA7 TargetSubsetInputBundle
-  -> FEAS1
-  -> MVIDX1
-  -> MVSEL2
-  -> REPAIR2 / MVSTATE2
-  -> MVQUAL
-  -> TargetSizeStudyPolicy
+neutral statistical substrate
+  -> one P_train / M3 development split
+  -> one canonical training order pi_train
+  -> one canonical evaluation ladder M1 subset M2 subset M3
+  -> one common target-size preparation
+  -> paired optimizer-seed screen over the configured candidate ladder
+  -> one target-size reducer
+  -> N_selected and T_selected = pi_train[:N_selected]
 ```
 
-No current alternate v1/migration/rescue branch exists.
+No current alternate, migration, or rescue branch exists. Retired derived
+target-size state is rejected before reuse rather than translated.
 
-The exact fixed nominal target-size population and configurable screen
-`(n1,n2,n3)` plus independent production-horizon policy are owned by
-`mlff_target_subset_size_study_spec.md` and are not duplicated here.
+The configured candidate ladder, the screen `(n1,n2,n3)`, and the independent
+production-horizon policy are owned by the architecture manual's Part V and the
+campaign configuration; they are not duplicated here.
 
-For each required training domain `d`, candidate membership at size `N` is the prefix of that domain's one repaired master order. One selected `N` is frozen into the complete training protocol across required fold/final domains.
+Candidate membership at size `N` is the exact prefix `pi_train[:N]`. The selected
+`N` and its exact membership `T_selected` are frozen together into the complete
+training protocol.
 
-Hard prefix qualification is independently owned by MVQUAL. Non-monotone hard qualification over nested increasing prefixes is an invariant failure.
+Because every candidate is a prefix of one order, increasing `N` only adds
+frames; a non-monotone qualification result over nested increasing prefixes is an
+invariant failure.
+
+# Current campaign lifecycle
+
+The public campaign lifecycle, including configuration initialization, is:
+
+```text
+init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
+```
+
+`storage` is an orthogonal artifact-management command. `status` and `advance`
+project the same current owners. The P6 campaign ends at fresh final-production
+closure; deployment, physical-observable, calibration, and locked-test
+qualification remain downstream contracts; downstream qualification cannot feed
+back into target-size or method selection.
 
 # Training-protocol and checkpoint contract
 
@@ -126,7 +152,8 @@ Hard prefix qualification is independently owned by MVQUAL. Non-monotone hard qu
 
 ```text
 foundation/model/head identity
-selected target size and domain-local membership identity
+selected target size and exact global membership identity
+post-selection fold partition identity where the protocol is a CV fold
 replay source/training/monitor identities
 common target-monitor identity
 objective and configuration/property weights
@@ -162,7 +189,7 @@ Active-learning labels create a new development generation. Existing role assign
 
 # Bounded execution and persistence
 
-Scientific policy must be realizable without duplicating product-scale state per target-size rung. The current architectural materialization is one fitted-input authority, one exact sparse neighborhood/MVIDX authority, one repaired master order per training domain, prefix metadata, required MVQUAL evidence, and only currently authorized training artifacts.
+Scientific policy must be realizable without duplicating product-scale state per target-size rung. The current architectural materialization is one fitted-input authority, one canonical training order, one common target-size preparation, prefix metadata for candidate rungs, and only currently authorized training artifacts.
 
 Persistent execution caches are reconstructible unless another current specification explicitly makes them scientific evidence. Every cache validates semantic inputs and payload integrity. Corrupt/stale state is rebuilt or fails cleanly; it never changes policy to rescue a run.
 
@@ -170,7 +197,7 @@ Worker count, queue ordering, chunking, file-backed versus in-memory layout, and
 
 # Current-generation publication and failure rules
 
-Current products SHALL fail closed when required source/label identity, evidence roles, fitted-domain lineage, selector/repair/qualification identity, target-size decision, replay/monitor lineage, training protocol, runtime behavior, or publication payload validation is missing/incompatible.
+Current products SHALL fail closed when required source/label identity, evidence roles, fitted-partition lineage, target-size decision, replay/monitor lineage, post-selection acceptance, training protocol, runtime behavior, or publication payload validation is missing/incompatible.
 
 Unsupported historical campaign schemas are not current compatibility obligations. Current code may retain low-level readers for forensic purposes, but those readers cannot create a second product-semantic path and are not normative documentation authority. The immediate fixed-fidelity predecessor is handled only by the explicit fail-closed re-authentication boundary above; it is not blanket historical compatibility.
 

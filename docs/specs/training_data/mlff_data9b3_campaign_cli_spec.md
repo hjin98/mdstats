@@ -1,265 +1,260 @@
-# MLFF-DATA9B3 specification: unified campaign CLI and bounded production verification
+# Current-generation MLFF campaign CLI specification
 
-Version: 0.20.58a0  
-Status: implemented
+Version: `mdstats 0.20.242a0` current contract
+Status: implemented for the P1-P5 functional campaign lifecycle
 
-## Purpose
+## Purpose and authority
 
-DATA9B3 turns the DATA2-DATA9B2 record families into one deliberate user workflow.
-It does not replace their scientific ownership. It supplies a small UNIX-style
-interface that exposes the safe stage boundaries, resumes expensive work, explains
-why a gate failed, and keeps implementation records out of the user's ordinary
-working surface.
+The campaign CLI projects the current source, statistical, target-size,
+post-selection, and production owners into one restartable user workflow. It
+does not replace those owners or create a second scientific state machine.
+Architecture defines ownership and data flow; this specification defines the
+public command, configuration, persistence, currentness, and failure contract.
 
-The canonical source-checkout entry point is:
+The source-checkout entry point is:
 
 ```bash
 python tools/mdstats-mlff-campaign.py --config campaign.toml <command>
 ```
 
-## User-visible contract
+## Public command surface
 
-The ordinary campaign contains only:
+The parser exposes exactly these commands:
 
 ```text
-campaign.toml
-<workspace>/campaign-manifest.json
-<workspace>/data/                 # MACE data/configuration generations
-<workspace>/runs/                 # logs and checkpoints
-<workspace>/models/               # selected target-head committee
-<workspace>/results/
-  campaign-benchmark.json
-  fine-tuning-result.json
-  production-verification.json
+init
+doctor
+prepare
+select-target-size
+cross-validate
+train-production
+status
+advance
+guide
+storage
 ```
 
-Internal immutable records and resumable caches live below
-`<workspace>/.mdstats/`. The orchestration state is one SQLite database rather
-than a collection of top-level stage JSON files. DATA8 sidecars and content-
-addressed generations remain because MACE reproducibility requires them, but they
-are implementation artifacts inside `data/`, not separate user decisions.
+The scientific lifecycle is:
 
-## Command surface
+```text
+init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
+```
 
-The CLI shall expose only these workflow commands:
+`storage` is orthogonal artifact management. `status` and `advance` derive
+their projection from the same current owners. The current campaign has no
+separate pre-screen gate or downstream physical-test command; downstream
+qualification is a later product boundary and is not dispatched by P6.
 
-- `init`: write one documented TOML configuration;
-- `doctor`: check inputs, checkpoint-bound replay qualification, package
-  imports, precision wrappers, and CUDA availability;
-- `prepare`: discover and approve one manifest, build DATA2-DATA5, run or resume
-  the checkpoint-bound DATA6 sweep, materialize all requested DATA7/DATA8
-  variants, and require a passed DATA9A production gate;
-- `preflight`: verify every DATA8 job and run one required real one-epoch MACE
-  smoke; `--check-only` verifies bytes but cannot authorize training;
-- `train`: print, execute, or resume the frozen fold/final campaign;
-- `evaluate`: evaluate every saved checkpoint, enforce the frozen metric policy,
-  aggregate folds and seeds, compare naive/replay protocols, export the target-
-  head committee, and emit `ProtocolFreezeRecord`;
-- `verify`: run bounded NVE deployment checks on every frozen committee member;
-- `status`: display all gates and the next safe command;
-- `advance`: execute only the next incomplete gate;
-- `guide`: print the short scientific workflow.
+No command may silently skip a failed, stale, waiting, or incompatible current
+authority. A terminal scientific target-size failure is reported as a result
+and exposes no production next action.
 
-No command may silently skip a failed or waiting gate.
+## User-visible layout
+
+The operator supplies `campaign.toml`. The workspace contains:
+
+```text
+<workspace>/campaign-manifest.json
+<workspace>/.mdstats/campaign.sqlite3
+<workspace>/.mdstats/                 # current records and reconstructible caches
+<workspace>/data/                      # current MACE materializations
+<workspace>/runs/                      # authorized checkpoints and logs
+<workspace>/models/                    # current production publication
+<workspace>/results/                   # bounded summaries and cleanup reports
+```
+
+SQLite rows and content-addressed files are authoritative only through their
+own current owners. File existence, a caller-held object, or a cache path is
+not evidence of currentness.
 
 ## Configuration contract
 
-`campaign.toml` owns user choices rather than runtime observations. It includes:
+`campaign.toml` owns requested policy and source locations. Runtime observations
+and durable scientific outcomes are persisted separately. Paths are resolved
+relative to the configuration file, and a non-positive execution timeout means
+no campaign wall-clock timeout.
 
-- source, foundation checkpoint, replay train, and replay monitor locations;
-- material profile and atom groups;
-- correlation-aware partition policy;
-- foundation inference device/dtype;
-- selection sizes;
-- naive/replay modes and seeds;
-- objective, optimizer, execution, and checkpoint thresholds;
-- bounded NVE verification structures and limits.
+The generated current configuration exposes:
 
-Paths are resolved relative to the configuration file. A non-positive execution
-timeout means no campaign wall-clock timeout. The critical-FP64 wrappers are
-mandatory even when the model body uses FP32.
+```toml
+[target_data.size_convergence]
+target_size_power_min = 7
+target_size_power_max = 14
+evaluation_size_powers = [8, 9, 10]
+fidelity_epochs = [1, 3, 10]
 
-## State and restart contract
+[post_selection.cv]
+fold_count = 2
+partition_seed = 7
+seeds = [11]
+max_num_epochs = 2
+acceptance_maximum = 0.5
+
+[post_selection.production]
+seeds = [5]
+```
+
+The configured power ceiling is not a fixed scientific constant. Candidates
+are additionally bounded by the available `P_train` population and the
+current policy. Optimizer seeds are authored by the sole enabled training
+method; there is no separate target-size seed namespace. Pre-target fold-count
+and partition-seed fields are not current target-size/CV authoring controls.
+
+The learned model precision is `single` (FP32) or `double` (FP64). Critical
+mdstats reductions, geometry/statistical arithmetic, and persistent bookkeeping
+remain FP64. The acceleration backend, MACE interface, and runtime identity
+are bound by the doctor/current protocol record.
+
+## Command behavior
+
+### `init`
+
+`init` writes an annotated configuration with current target-size and
+post-selection sections. It must not generate retired lifecycle sections or
+imply an unconfigured target-size ceiling. Existing configuration files are
+not overwritten without the explicit force behavior defined by the parser.
+
+### `doctor`
+
+`doctor` checks source paths, manifest inputs, foundation/replay identity,
+package/runtime imports, precision wrappers, requested backend, and available
+resources. A successful result records the exact runtime realization used by
+later owners. Unsupported hardware or unavailable long-production resources
+remain an explicit unavailable/deferred condition, never a fabricated pass.
+
+### `prepare`
+
+`prepare` authenticates the manifest and constructs/reuses the current neutral
+substrate:
+
+```text
+source/frame/label authority
+  -> protected statistical relations
+  -> one P_train/M3 split and pi_train/pi_eval
+  -> one common target-size preparation
+```
+
+It selects no target size, trains no candidate, ranks no checkpoint, and
+publishes no final model. It is restartable and idempotent when all current
+inputs and identities match. `--approve-manifest` records the reviewed digest;
+`--refresh-inferences` refreshes proposed source metadata before approval;
+`--rebuild-catalog` is an explicit upstream reconstruction request.
+
+At the destructive generation boundary, obsolete derived target-size records
+are detected before semantic decoding, quarantined under a namespace no
+current loader reads, and rejected rather than migrated. Lower-level source or
+content caches are reusable only after current-owner revalidation.
+
+### `select-target-size`
+
+This command is the sole target-size owner. It runs the configurable ladder and
+direct evaluation populations through the authenticated continuation
+
+```text
+n1 / M1 -> n2 / M2 -> n3 / M3
+```
+
+with paired optimizer seeds from the sole enabled method. Each candidate is an
+exact prefix of the one `pi_train` order. The reducer publishes either one
+`N_selected` with exact `T_selected = pi_train[:N_selected]` or a typed
+scientific failure. Replay and later validation evidence cannot affect the
+decision. A configured-ceiling nonconvergence is terminal evidence, not a
+request to synthesize an intermediate size.
+
+### `cross-validate`
+
+This command requires a current terminal selection and constructs the
+configured `K >= 2` post-selection folds inside exactly `T_selected`. It binds
+protected relations, fold/seed identities, target-only checkpoint choice, and
+the all-required-fold/all-required-seed acceptance predicate. It cannot alter
+the selected size or membership. Missing, stale, or failed fold evidence blocks
+final production while leaving the selected authority unchanged.
+
+### `train-production`
+
+This command requires accepted current post-selection method evidence. It
+starts fresh from the accepted foundation and trains the complete exact
+`T_selected` under `[training].max_num_epochs` and the production policy. A
+screen or CV checkpoint is never a production parent. Publication rechecks
+currentness at commit time and cannot promote work from a superseded
+generation.
+
+### `status`, `advance`, and `guide`
+
+`status` projects the current owner states and reports the next safe action.
+`advance` dispatches only the next current lifecycle owner. `guide` prints the
+same six-command scientific lifecycle and current configuration/restart
+semantics. Neither command writes a second scientific authority.
+
+### `storage`
+
+Storage reports and manages only campaign-owned artifacts. Read-only inventory
+is available through `storage report`. Cleanup tiers require their documented
+dry-run/apply behavior; archive create, integrity check, and restore are
+reversible and independently content-checked. External inputs, current
+scientific records, selected checkpoints, restart state, and diagnostic
+evidence remain protected.
+
+## Persistence and restart
 
 `CampaignStore` shall:
 
-1. use one SQLite database;
-2. store canonical `to_dict()` payloads and content digests;
-3. record stage state as `not_started`, `waiting`, `running`, `complete`, or
-   `failed`;
-4. atomically preserve the latest successful evidence before a process exits;
-5. retain a compact event log;
-6. never use the database location as scientific identity.
+1. use one SQLite database for durable campaign state;
+2. serialize canonical payloads with content identities under their owners;
+3. record operational stage state without treating it as scientific authority;
+4. preserve the latest successful evidence before process exit;
+5. retain bounded event history;
+6. never use the database location itself as scientific identity.
 
-The expensive DATA6 sweep, DATA7/DATA8 materialization, and DATA9B training jobs
-remain restartable through their native records. CLI state summarizes those
-records rather than weakening their verification.
+Current preparation and post-selection owners rederive their input identities
+on every reopen. A matching completed record is reused only after source,
+policy, parent, payload, and currentness authentication. A missing, corrupt,
+stale, or incompatible derived cache is rebuilt by its owner; it is not
+silently accepted or translated.
 
-After a passed production DATA9A gate, `prepare` shall persist a compact restart
-receipt that binds the current configuration bytes, input file-stat identities,
-scientific record digests, DATA6 sweep checkpoint/plan identity, and the complete
-DATA8 variant/plan/bundle/tree matrix. An unchanged plain `prepare` shall verify
-that receipt and return as a no-op; it shall not construct a MACE calculator,
-rerun inference, rebuild finalized DATA6, reconstruct foundation energies, or
-rehash/rematerialize DATA7/DATA8 trees.
+Each current write uses a generation-neutral prepare/restart identity. A
+historical generation marker may be inspected only by the reject-only cutover
+detector and may not authorize semantic reconstruction. The exact accepted
+current-generation P5A6 workspace must remain reopenable without a pre-load
+rewrite; P6 compatibility evidence is separate from fresh P6 restart evidence.
 
-When only downstream protocol identity changes, restart shall be selective. Normalized frame arrays shall remain unloaded until DATA6 recomputation or changed DATA7/DATA8 materialization requires them. A
-matching complete DATA6 sweep may be restored from its compact checkpoint with
-sidecar authentication deferred to first scientific use. Finalized DATA6 may be
-reused only when source, frame, DATA4, DATA5, policy, checkpoint, sweep-plan,
-sweep-checkpoint, descriptor-manifest, and prediction-manifest identities all
-match. Each unchanged DATA7/DATA8 variant shall retain its existing promoted
-content-addressed tree; only changed, missing, or invalid variants may be rebuilt.
-Explicit `prepare --rebuild-catalog` remains the user-controlled full upstream
-reconstruction path.
-
-Every completed CLI stage is bound to the SHA-256 of the current `campaign.toml`.
-Editing the configuration makes earlier completions visibly stale until the
-corresponding stage is rerun. Direct commands require the preceding stage to be
-complete for the current configuration; `train` additionally requires a passed
-real one-epoch preflight record.
-
-## Manifest review gate
-
-The first `prepare` call may discover files, but it shall stop after writing
-`campaign-manifest.json`. The user must inspect reference groups, independent
-replicas/structural realizations, initial/equilibrium regime declarations, and
-strain metadata. `prepare --approve-manifest` binds the exact reviewed digest.
-Any later edit invalidates approval and requires explicit reapproval. Full source
-quality and production-regime assessment is mandatory. When VASP controls leave
-the ensemble unresolved, production evidence may use only an explicit reviewed
-`ensemble` assertion paired with a nonempty `ensemble_assertion_basis`; the CLI
-shall never silently promote an unresolved ensemble or fabricate qualified
-quality/production outcomes.
-
-## Campaign matrix contract
-
-Every enabled method declares its own explicit matrix:
+Configuration changes have selective invalidation:
 
 ```text
-selection.sizes x training.<method>.seeds x
-(training.<method>.cross_validation_folds + one final-development job)
+target/frame/label/order/ladder/fidelity/common-preparation change
+    -> new target-size generation and descendants
+post-selection CV-only change
+    -> CV and final-production descendants only
+production-only horizon/runtime change
+    -> final-production descendants only
 ```
 
-`training.<method>.fold_partition_seed` freezes the platform-independent fold
-assignment. `cross_validation_folds = 0` is final-only; `1` is invalid; `K >= 2`
-materializes exactly K folds. Each configured variant receives independent DATA8
-protocol identity. The CLI shall reject unknown methods, duplicate/negative seeds,
-missing variants, a failed DATA9A gate, or raw `mace_run_train` execution. Legacy
-`training.modes`/`training.seeds` files remain readable for restart compatibility.
+Provenance-only presentation changes do not change scientific arithmetic.
 
-## Seed and restart determinism amendment
+## Failure contract
 
-The initial TOML shall expose every campaign pseudo-random seed: per-method MACE
-seeds, per-method fold-partition seeds, replay selection, randomized feature
-projection, and verification velocity initialization. MACE child interpreters
-shall receive `PYTHONHASHSEED` equal to the run seed. A resumed MACE 0.3.16 loop
-shall start at the epoch after the verified checkpoint epoch. Progress accounting
-shall count one committed realization per epoch and only post-checkpoint rows from
-the active attempt; epoch display is monotonic.
+The CLI fails closed for unapproved or changed manifests, missing or
+incompatible source/foundation/replay inputs, invalid labels, unresolved
+protected relations, unsupported policy generation, stale current pointers,
+missing required folds/seeds, corrupt checkpoint/companion state, no admissible
+checkpoint, target-size lineage mismatch, incompatible persisted state, or a
+currentness race at publication.
 
-## Checkpoint and replay evaluation amendment
+Keyboard interruption returns the parser's documented interruption status and
+states that authenticated records remain resumable. Errors identify the owning
+command and the safe corrective action; they do not fall back to a different
+scientific selector or downstream model.
 
-Candidate replay evaluation uses `pt_head`. A replay baseline may be:
+## Acceptance boundary
 
-- a matching multi-head initialization, using `pt_head`; or
-- a single-head foundation checkpoint, with no explicit head selector.
+The current CLI contract is established through the real parser/facade,
+generated-config parsing, current prepare/selection/CV/production owners,
+CampaignStore close/reopen, currentness reauthentication, storage cleanup
+owners, and exact-generation reject-before-reuse tests. The mandatory
+P5A6-to-P6 qualification additionally authenticates the baseline worktree and
+import roots before producing state, then opens the unchanged workspace in a
+separate P6 process.
 
-`CheckpointEvaluationPolicy.replay_baseline_head_name` is therefore independent
-of `replay_head_name`. Legacy records default to `pt_head`; new single-head
-foundation workflows may serialize `null`. This prevents a production CLI from
-requiring a fictitious `pt_head` on the foundation checkpoint.
-
-Before DATA6-DATA8 materialization, the CLI shall also qualify the replay input
-itself. For multi-head campaigns it requires:
-
-- local train and monitor files with no geometry overlap;
-- finite energy/force labels and valid optional stress;
-- an explicit label mode (`external_pseudolabel` or `external_true_label`);
-- for pseudo-labels, the SHA-256 identity of the exact configured foundation
-  checkpoint on both files;
-- coverage of the configured target elements;
-- configured minimum train and monitor counts.
-
-Undersized replay is a blocking production error by default. An explicit
-`allow_small_corpus = true` override is available only for bounded exploratory
-or software-smoke work and shall be recorded as a warning.
-
-## Bounded production verification
-
-`verify` is a deployment precheck, not a substitute for system-specific physical
-validation. For each frozen committee member, verification structures, and
-configured temperatures, it records:
-
-- finiteness of energy and force;
-- linear NVE total-energy drift in eV/atom/ps;
-- minimum periodic pair distance;
-- maximum atomic force;
-- exact model, structure, timestep, temperature, and step count.
-
-Default hard drift is 0.026 eV/atom/ps. A production candidate should be
-comfortably below that limit. Atomic collapse, non-finite values, excessive
-forces, or hard drift rejection fail the stage and produce corrective guidance.
-
-RDF, coordination, site occupancy, VDOS, and diffusion remain owned by the
-analysis modules and are still required before scientific deployment.
-The consolidated verification record shall therefore identify its level as
-`bounded_predeployment` and its scientific-acceptance status as
-`required_separately`.
-
-## Output and guidance contract
-
-The CLI shall make success and failure legible without reading internal records.
-It must report:
-
-- source/frame counts and leakage status;
-- sweep and materialization progress;
-- production gate blockers;
-- exact run IDs and commands in dry-run mode;
-- selected epoch and target force metric per run;
-- selected protocol mode and committee paths;
-- bounded verification drift and minimum distance;
-- actionable corrective guidance.
-
-The consolidated result files are reporting products; immutable native records
-remain authoritative.
-
-## Failure behavior
-
-The CLI shall fail closed for:
-
-- unapproved or changed manifests;
-- missing foundation/replay inputs;
-- replay train/monitor overlap or malformed labels;
-- missing replay-label provenance, checkpoint mismatch, absent target elements,
-  or an undersized production replay corpus;
-- unavailable critical-precision wrappers;
-- requested CUDA with unavailable CUDA;
-- failed DATA5 leakage audit;
-- incomplete DATA6/DATA8 evidence;
-- non-passed production qualification;
-- incomplete campaign matrix;
-- changed checkpoint or monitor bytes;
-- no admissible checkpoint;
-- incomplete seed coverage for the committee;
-- bounded deployment instability.
-
-Keyboard interruption returns code 130 and explicitly states that verified
-records remain resumable.
-
-## Acceptance tests
-
-DATA9B3 is accepted when focused tests establish:
-
-- command/help surface and configuration generation;
-- one-database state persistence;
-- digest-bound manifest approval;
-- source-checkout precision wrapper shims;
-- deterministic variant expansion;
-- replay baseline-head compatibility;
-- actionable stability guidance;
-- status/next-command behavior;
-- discovery of the supplied 27-file flat LTA archive;
-- existing DATA9B1/DATA9B2 real-MACE regression compatibility;
-- acyclic architecture dependencies;
-- wheel/source execution parity.
+P6 acceptance is current functional/restart/public-surface closure. It is not
+GPU, long real-data, M-ladder decision-preservation, deployment, physical,
+calibration, locked-test, or final-release qualification.

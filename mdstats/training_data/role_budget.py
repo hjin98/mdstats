@@ -11,7 +11,8 @@ from ._common import (
     digest,
 )
 
-PARTITION_ROLE_BUDGET_POLICY_SCHEMA = "mdstats.partition-role-budget-policy.v1"
+PARTITION_ROLE_BUDGET_POLICY_SCHEMA = "mdstats.partition-role-budget-policy.v2"
+LEGACY_PARTITION_ROLE_BUDGET_POLICY_SCHEMA = "mdstats.partition-role-budget-policy.v1"
 PARTITION_ROLE_BUDGET_POLICY_VERSION = "mdstats.mlff-data4.partition-role-budget.2026-07.v1"
 
 
@@ -33,6 +34,7 @@ class PartitionRoleBudgetPolicy:
         "regime",
     )
     policy_version: str = PARTITION_ROLE_BUDGET_POLICY_VERSION
+    schema: str = PARTITION_ROLE_BUDGET_POLICY_SCHEMA
 
     def __post_init__(self) -> None:
         for name in (
@@ -57,22 +59,26 @@ class PartitionRoleBudgetPolicy:
         object.__setattr__(self, "required_condition_axes", axes)
         if not self.policy_version.strip():
             raise TrainingDataInputError("policy_version must be non-empty.")
+        if self.schema not in (PARTITION_ROLE_BUDGET_POLICY_SCHEMA, LEGACY_PARTITION_ROLE_BUDGET_POLICY_SCHEMA):
+            raise TrainingDataInputError("Unsupported partition-role-budget schema.")
 
     def _payload(self) -> dict[str, Any]:
-        return {
-            "schema": PARTITION_ROLE_BUDGET_POLICY_SCHEMA,
+        payload: dict[str, Any] = {
+            "schema": self.schema,
             "policy_version": self.policy_version,
             "development_minimum_independent_units": self.development_minimum_independent_units,
             "outer_monitor_minimum_independent_units": self.outer_monitor_minimum_independent_units,
             "calibration_minimum_independent_units": self.calibration_minimum_independent_units,
             "locked_interpolation_test_minimum_independent_units": self.locked_interpolation_test_minimum_independent_units,
-            "cross_validation_folds": self.cross_validation_folds,
-            "checkpoint_monitor_minimum_units_per_fold": self.checkpoint_monitor_minimum_units_per_fold,
             "purge_units_between_roles": self.purge_units_between_roles,
             "allow_calibration_deferral": self.allow_calibration_deferral,
             "allow_external_challenge_tests": self.allow_external_challenge_tests,
             "required_condition_axes": list(self.required_condition_axes),
         }
+        if self.schema == LEGACY_PARTITION_ROLE_BUDGET_POLICY_SCHEMA:
+            payload["cross_validation_folds"] = self.cross_validation_folds
+            payload["checkpoint_monitor_minimum_units_per_fold"] = self.checkpoint_monitor_minimum_units_per_fold
+        return payload
 
     @property
     def policy_digest(self) -> str:
@@ -83,21 +89,28 @@ class PartitionRoleBudgetPolicy:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PartitionRoleBudgetPolicy":
-        if payload.get("schema") != PARTITION_ROLE_BUDGET_POLICY_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in (PARTITION_ROLE_BUDGET_POLICY_SCHEMA, LEGACY_PARTITION_ROLE_BUDGET_POLICY_SCHEMA):
             raise TrainingDataSerializationError("Unsupported partition-role-budget policy schema.")
+        folds = int(payload.get("cross_validation_folds", 3))
+        monitor_units = int(payload.get("checkpoint_monitor_minimum_units_per_fold", 1))
         result = cls(
             development_minimum_independent_units=int(payload["development_minimum_independent_units"]),
             outer_monitor_minimum_independent_units=int(payload["outer_monitor_minimum_independent_units"]),
             calibration_minimum_independent_units=int(payload["calibration_minimum_independent_units"]),
             locked_interpolation_test_minimum_independent_units=int(payload["locked_interpolation_test_minimum_independent_units"]),
-            cross_validation_folds=int(payload["cross_validation_folds"]),
-            checkpoint_monitor_minimum_units_per_fold=int(payload["checkpoint_monitor_minimum_units_per_fold"]),
+            cross_validation_folds=folds,
+            checkpoint_monitor_minimum_units_per_fold=monitor_units,
             purge_units_between_roles=int(payload["purge_units_between_roles"]),
             allow_calibration_deferral=bool(payload["allow_calibration_deferral"]),
             allow_external_challenge_tests=bool(payload["allow_external_challenge_tests"]),
             required_condition_axes=tuple(str(v) for v in payload["required_condition_axes"]),
             policy_version=str(payload["policy_version"]),
+            schema=schema,
         )
+        if payload.get("policy_digest") not in (None, result.policy_digest):
+            raise TrainingDataSerializationError("Partition-role-budget policy digest mismatch.")
+        return result
         if payload.get("policy_digest") not in (None, result.policy_digest):
             raise TrainingDataSerializationError("Partition-role-budget policy digest mismatch.")
         return result

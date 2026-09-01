@@ -19,7 +19,7 @@
         "docs/arch_manuals/mlff_training_data/20_data_contracts.md",
         "docs/arch_manuals/mlff_training_data/30_statistical_design.md",
         "docs/arch_manuals/mlff_training_data/40_training_evaluation.md",
-        "docs/arch_manuals/mlff_training_data/50_target_multiview.md",
+        "docs/arch_manuals/mlff_training_data/50_target_size_selection.md",
         "docs/arch_manuals/mlff_training_data/60_execution_performance.md",
         "docs/arch_manuals/mlff_training_data/80_ownership_and_decisions.md",
         "docs/arch_manuals/mlff_training_data/90_references.md"

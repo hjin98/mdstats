@@ -4,11 +4,45 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 
 
 CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG_SCHEMA = "mdstats.mlff-campaign-artifact-ownership-catalog.v1"
 CAMPAIGN_STORAGE_REPORT_SCHEMA = "mdstats.mlff-campaign-storage-report.v1"
+
+
+class RetentionFence(Protocol):
+    """Lifecycle-owned reduction of deletion authority.
+
+    A retention fence answers whether one campaign-owned path is still needed
+    by an active, restartable, or not-yet-classified lifecycle.  It is a
+    reduction only: :class:`CampaignOwnershipBoundary` consults it after its own
+    ownership and containment checks, so a fence can never widen deletion
+    authority.
+    """
+
+    def protects(self, path: Path) -> tuple[bool, str]:
+        ...
+
+
+class CompositeRetentionFence:
+    """Several independent lifecycle fences, consulted as one reduction.
+
+    Different lifecycles protect artifacts for different reasons - a resumable
+    target-size screen and an in-flight release qualification have nothing in
+    common - so they stay separate owners.  Deletion authority is the
+    intersection: a path is retained if *any* fence still needs it.
+    """
+
+    def __init__(self, fences: "Sequence[RetentionFence]") -> None:
+        self.fences = tuple(fences)
+
+    def protects(self, path: Path) -> tuple[bool, str]:
+        for fence in self.fences:
+            protected, reason = fence.protects(path)
+            if protected:
+                return True, reason
+        return False, ""
 
 
 class ArtifactOwnershipClass(str, Enum):
@@ -55,6 +89,12 @@ class ProtectedInputPath:
 
 @dataclass(frozen=True, slots=True)
 class StorageFamilyRecord:
+    """Read-only advisory storage family accounting record.
+
+    Advisory accounting only: this classification never grants deletion
+    authority. Physical deletion requires current owner authorization,
+    containment, and retention/liveness validation.
+    """
     family: str
     ownership: str
     retention_class: str
@@ -151,7 +191,7 @@ class CampaignStorageReport:
     def to_dict(self) -> dict[str, object]:
         return {
             "schema": CAMPAIGN_STORAGE_REPORT_SCHEMA,
-            "read_only_gate": "STOR1",
+            "read_only_gate": "advisory_read_only",
             "destructive_actions_performed": False,
             "ownership_catalog": self.ownership_catalog.to_dict(),
             "totals": {
@@ -267,12 +307,14 @@ class CampaignOwnershipBoundary:
         workspace: Path,
         *,
         protected_inputs: Sequence[ProtectedInputPath] = (),
+        retention_fence: "RetentionFence | None" = None,
     ) -> None:
         self.workspace = Path(os.path.abspath(os.fspath(workspace)))
         self.workspace_real = _resolved(self.workspace)
         self.protected_inputs = tuple(protected_inputs)
         self._protected_real = tuple(Path(item.real_path) for item in protected_inputs)
         self._protected_lexical = tuple(Path(item.path) for item in protected_inputs)
+        self.retention_fence = retention_fence
 
     def lexical_inside_workspace(self, path: Path) -> bool:
         absolute = Path(os.path.abspath(os.fspath(path)))
@@ -329,13 +371,203 @@ class CampaignOwnershipBoundary:
             parent_real = _resolved(absolute.parent)
             if not _is_within(parent_real, self.workspace_real):
                 return False, "symlink parent escapes the campaign workspace"
+            denied, detail = self._retention_denial(absolute)
+            if denied:
+                return False, detail
             return True, "campaign-owned symlink object"
         resolved = _resolved(absolute)
         if not _is_within(resolved, self.workspace_real):
             return False, "real path escapes the campaign workspace"
         if self.overlaps_protected_input(resolved, resolve=True):
             return False, "real path overlaps a configured user/reference input"
+        denied, detail = self._retention_denial(absolute)
+        if denied:
+            return False, detail
         return True, "campaign-owned contained path"
+
+    def _retention_denial(self, absolute: Path) -> tuple[bool, str]:
+        """Consult a lifecycle retention fence, which may only reduce authority.
+
+        A fence answers whether a campaign-owned path is still required by an
+        active, restartable, or not-yet-classified lifecycle.  It can never
+        grant deletion authority: it is consulted only after every ownership,
+        containment, and protected-input check has already passed.
+        """
+
+        fence = self.retention_fence
+        if fence is None:
+            return False, ""
+        protected, reason = fence.protects(absolute)
+        if not protected:
+            return False, ""
+        return True, (reason or "path is retained by an active lifecycle retention fence")
+
+
+_TARGET_SIZE_RESTART_CAPABILITIES = (
+    "target_size_screen_restart",
+    "deterministic_scientific_replay",
+)
+
+
+def _target_size_family(
+    parts: tuple[str, ...],
+) -> tuple[str, ArtifactRetentionClass, str, str, tuple[str, ...]]:
+    """Classify promoted target-size execution evidence.
+
+    This evidence is the scientific execution authority for the current
+    target-size generation: heads, batches, and completions define the replay
+    graph, and the checkpoint/materialization/evaluation ancestry is what makes
+    that graph re-verifiable.  Reclamation of any of it is decided by the
+    retention fence plus reconciliation, never by a storage tier, so nothing
+    here is automatically or manually eligible.
+    """
+
+    # parts[0] == ".mdstats", parts[1] == "target-size", parts[2] == generation
+    tail = parts[3:]
+    section = tail[0] if tail else ""
+    if section == "bulk":
+        bulk = tail[1] if len(tail) > 1 else ""
+        if bulk == "snapshots":
+            return (
+                "target_size_boundary_snapshots",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_boundary_continuation", "exact_checkpoint_reevaluation"),
+            )
+        if bulk == "train2":
+            return (
+                "target_size_training_runtime",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_completed_epoch_continuation",),
+            )
+        if bulk == "materializations":
+            return (
+                "target_size_candidate_materializations",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_candidate_membership", "candidate_reexecution"),
+            )
+        if bulk == "evaluations":
+            return (
+                "target_size_evaluation_evidence",
+                ArtifactRetentionClass.EVALUATION_CAPSULE,
+                "prohibited",
+                "prohibited",
+                ("exact_m_ladder_reevaluation",),
+            )
+        return (
+            "target_size_execution_bulk",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            _TARGET_SIZE_RESTART_CAPABILITIES,
+        )
+    if section in {"evaluation_artifacts", "roles", "predictions", "metrics"}:
+        return (
+            "target_size_evaluation_evidence",
+            ArtifactRetentionClass.EVALUATION_CAPSULE,
+            "prohibited",
+            "prohibited",
+            ("exact_m_ladder_reevaluation", "metric_reanalysis"),
+        )
+    if section == "failures":
+        return (
+            "target_size_failure_evidence",
+            ArtifactRetentionClass.PROTECTED_DIAGNOSTIC,
+            "prohibited",
+            "prohibited",
+            ("scientific_failure_provenance",),
+        )
+    if section == "snapshots":
+        return (
+            "target_size_boundary_snapshots",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            ("exact_boundary_continuation", "exact_checkpoint_reevaluation"),
+        )
+    if section == "materializations":
+        return (
+            "target_size_candidate_materializations",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            ("exact_candidate_membership", "candidate_reexecution"),
+        )
+    return (
+        "target_size_execution_graph",
+        ArtifactRetentionClass.RESTART_CRITICAL,
+        "prohibited",
+        "prohibited",
+        _TARGET_SIZE_RESTART_CAPABILITIES,
+    )
+
+
+def _post_selection_family(
+    parts: tuple[str, ...],
+) -> tuple[str, ArtifactRetentionClass, str, str, tuple[str, ...]]:
+    """Classify post-selection cross-validation and final-production evidence.
+
+    This is the scientific authority for whether the frozen training method was
+    cross-validation accepted and what the fresh production runs actually did.
+    Its immutable object store carries the plans and acceptance records that a
+    later reader needs to prove production was authorized, and its run trees
+    carry the exact materialization and checkpoint ancestry that makes those
+    claims re-verifiable.  Reclaiming any of it is a scientific decision about a
+    campaign generation, never a storage tier's, so nothing here is
+    automatically or manually eligible.
+    """
+
+    # parts[0] == ".mdstats", parts[1] == "post-selection", parts[2] == generation
+    tail = parts[3:]
+    section = tail[0] if tail else ""
+    if section == "objects":
+        return (
+            "post_selection_evidence_graph",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            (
+                "cross_validation_authorization",
+                "final_production_authorization",
+                "deterministic_scientific_replay",
+            ),
+        )
+    if section == "runs":
+        if "checkpoints" in tail:
+            return (
+                "post_selection_training_runtime",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_completed_epoch_continuation", "exact_checkpoint_reevaluation"),
+            )
+        if "materialization" in tail:
+            return (
+                "post_selection_materializations",
+                ArtifactRetentionClass.RESTART_CRITICAL,
+                "prohibited",
+                "prohibited",
+                ("exact_fold_membership", "exact_production_membership"),
+            )
+        return (
+            "post_selection_run_evidence",
+            ArtifactRetentionClass.RESTART_CRITICAL,
+            "prohibited",
+            "prohibited",
+            ("post_selection_run_restart", "deterministic_scientific_replay"),
+        )
+    return (
+        "post_selection_evidence_graph",
+        ArtifactRetentionClass.RESTART_CRITICAL,
+        "prohibited",
+        "prohibited",
+        ("cross_validation_authorization", "final_production_authorization"),
+    )
 
 
 def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, tuple[str, ...]]:
@@ -350,26 +582,32 @@ def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, 
     if parts[0] == "models":
         return ("production_models", ArtifactRetentionClass.PROTECTED_PRODUCTION, "prohibited", "prohibited", ("production_inference",))
     if parts[0] == "data":
-        return ("data7_data8_materializations", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "compact_after_protocol_freeze", ("data8_hot_materialization", "training_input_materialization"))
+        return ("data7_data8_materializations", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "deferred_to_storage_reset", ("data8_hot_materialization", "training_input_materialization"))
     if parts[0] == "runs":
         if "evaluation-capsules" in parts or name.endswith(".eval-state.pt"):
-            return ("evaluation_state_capsules", ArtifactRetentionClass.EVALUATION_CAPSULE, "prohibited", "compact_nonselected_after_protocol_freeze", ("nonselected_checkpoint_reevaluation", "target_head_reexport"))
+            return ("evaluation_state_capsules", ArtifactRetentionClass.EVALUATION_CAPSULE, "prohibited", "deferred_to_storage_reset", ("nonselected_checkpoint_reevaluation", "target_head_reexport"))
         if "checkpoints" in parts or name.endswith(".pt"):
-            return ("training_checkpoints", ArtifactRetentionClass.RESTART_CRITICAL, "prohibited", "stor2_nonselected_only_selected_prohibited", ("training_restart", "exact_checkpoint_reevaluation"))
+            return ("training_checkpoints", ArtifactRetentionClass.RESTART_CRITICAL, "prohibited", "prohibited", ("training_restart", "exact_checkpoint_reevaluation"))
         if "checkpoint-model-cache" in parts:
-            return ("checkpoint_model_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "stor3_automatic_safe", "cache", ("faster_checkpoint_reevaluation",))
+            return ("checkpoint_model_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "deferred_to_storage_reset", ("faster_checkpoint_reevaluation",))
         if "logs" in parts or name.endswith(".log") or name.endswith("stdout") or name.endswith("stderr"):
             return ("training_logs", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("training_diagnostics",))
         if "models" in parts or name.endswith(".model"):
-            return ("run_models", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "compact_after_production_export", ("cheap_alternative_model_recovery",))
-        return ("training_run_runtime", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "manual_review_only", ("training_restart_or_diagnostics",))
+            return ("run_models", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "prohibited", ("cheap_alternative_model_recovery",))
+        return ("training_run_runtime", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "prohibited", ("training_restart_or_diagnostics",))
     if parts[0] == ".mdstats":
+        if len(parts) >= 2 and parts[1] == "target-size":
+            return _target_size_family(parts)
+        if len(parts) >= 2 and parts[1] == "post-selection":
+            return _post_selection_family(parts)
         if len(parts) >= 2 and parts[1] in {"campaign.sqlite3", "records", "hash-receipts.sqlite3"}:
             return ("campaign_state_and_provenance", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("campaign_state", "scientific_provenance"))
-        if len(parts) >= 2 and parts[1] in {"frame-cache", "data7-cache", "data8-fixed-cache", "evaluation-graphs"}:
-            return (parts[1], ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "stor3_automatic_safe", "cache", ("faster_recomputation",))
+        if len(parts) >= 2 and parts[1] == "frame-cache":
+            return ("frame-cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "deferred_to_storage_reset", ("faster_frame_access",))
+        if len(parts) >= 2 and parts[1] in {"data7-cache", "data8-fixed-cache", "evaluation-graphs"}:
+            return (parts[1], ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "prohibited", "deferred_to_storage_reset", ("historical_cache",))
         if len(parts) >= 2 and parts[1] in {"model-sweep", "evaluation-predictions", "true-label-replay"}:
-            return (parts[1], ArtifactRetentionClass.SCIENTIFIC_CACHE, "prohibited", "recompute", ("metric_only_or_reanalysis_without_inference",))
+            return (parts[1], ArtifactRetentionClass.SCIENTIFIC_CACHE, "prohibited", "deferred_to_storage_reset", ("historical_predictions_or_sweep",))
         if len(parts) >= 2 and parts[1] == "foundation-selected-head":
             return (
                 "selected_head_training_foundation",
@@ -382,17 +620,17 @@ def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, 
                 ),
             )
         if len(parts) >= 2 and parts[1] == "content-store":
-            return ("immutable_content_store", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "stor5_managed", ("physical_deduplication_backing",))
+            return ("immutable_content_store", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "deferred_to_storage_reset", ("physical_deduplication_backing",))
         if len(parts) >= 2 and parts[1] == "cold-archive":
-            return ("cold_archive", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "stor5_managed", ("archived_hot_representation_restore",))
+            return ("cold_archive", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "deferred_to_storage_reset", ("archived_hot_representation_restore",))
         if len(parts) >= 2 and parts[1] == "preflight-smoke":
-            return ("preflight_artifacts", ArtifactRetentionClass.INTERMEDIATE, "stor3_automatic_safe_after_success", "cache", ("preflight_reexecution",))
-        return ("internal_campaign_artifacts", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "manual_review_only", ("campaign_reanalysis",))
+            return ("preflight_artifacts", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "deferred_to_storage_reset", ("preflight_reexecution",))
+        return ("internal_campaign_artifacts", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "prohibited", ("campaign_reanalysis",))
     if name.endswith(".json") or name.endswith(".csv") or name.endswith(".log"):
         return ("workspace_diagnostics", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("scientific_provenance",))
     if name.endswith(".toml") or "manifest" in name:
         return ("workspace_configuration", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("campaign_reproducibility",))
-    return ("other_campaign_owned", ArtifactRetentionClass.UNKNOWN, "not_yet_qualified", "manual_review_only", ("unknown_campaign_capability",))
+    return ("other_campaign_owned", ArtifactRetentionClass.UNKNOWN, "prohibited", "prohibited", ("unknown_campaign_capability",))
 
 
 @dataclass

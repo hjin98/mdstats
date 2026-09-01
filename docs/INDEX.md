@@ -11,7 +11,8 @@ Use this index to locate current authority before consulting historical material
 | Active developer transition/workplan | `../workplans/active/` |
 | Graphics3D CLI contract | `specs/graphics3d/` |
 | MLFF campaign usage | `guides/mlff_campaign_cli_user_guide.{md,pdf}` |
-| Final-GPU workstation runbook | `guides/mlff_final_gpu1_workstation_runbook.{md,pdf}` |
+| MLFF post-production qualification behavior | `specs/training_data/mlff_p7_post_production_qualification_spec.md` |
+| Downstream final-GPU workstation handoff | `guides/mlff_final_gpu1_workstation_runbook.{md,pdf}` (release-pinned; separate from P6 campaign lifecycle) |
 | MLFF architecture/release lineage | `history/mlff/LINEAGE.md` |
 | Architecture revision notes | `history/mlff/architecture_revisions/INDEX.md` |
 | Release/patch notes | `history/mlff/release_notes/INDEX.md` |

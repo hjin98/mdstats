@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+from mdstats.training_data import _campaign_cli_core as campaign_cli_core
 from mdstats.training_data import campaign_cli
 from mdstats.training_data.storage_accounting import (
     ArtifactOwnershipClass,
@@ -159,45 +160,11 @@ def test_storage_cli_writes_read_only_report(tmp_path: Path) -> None:
     assert rc == 0
     destination = paths.results / "storage-report.json"
     payload = json.loads(destination.read_text(encoding="utf-8"))
-    assert payload["read_only_gate"] == "STOR1"
+    assert payload["read_only_gate"] == "advisory_read_only"
     assert payload["destructive_actions_performed"] is False
     assert len(payload["largest_artifacts"]) <= 5
 
 
-def test_materialization_record_path_does_not_confer_external_cleanup_authority(tmp_path: Path, monkeypatch) -> None:
-    config = _write_config(tmp_path)
-    cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    external_root = tmp_path / "external-materialization"
-    stale = external_root / ".data8-staging-old"
-    stale.mkdir(parents=True)
-    payload = stale / "user-owned.bin"
-    payload.write_bytes(b"do-not-delete")
-    old = __import__("time").time() - 24 * 3600
-    os.utime(stale, (old, old))
-
-    monkeypatch.setattr(
-        campaign_cli,
-        "_current_materialization_roots",
-        lambda _store: {external_root.resolve()},
-    )
-    report = campaign_cli._CampaignCleanupReport(
-        phase="stor1-test",
-        dry_run=False,
-        ownership_boundary=CampaignOwnershipBoundary(
-            paths.workspace,
-            protected_inputs=configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config),
-        ),
-    )
-    campaign_cli._cleanup_materialization_storage(
-        report,
-        paths,
-        store,
-        stale_before=__import__("time").time() - 6 * 3600,
-    )
-    assert payload.read_bytes() == b"do-not-delete"
-    assert report.actions == []
-    assert any("failed ownership checks" in item or "cleanup authority denied" in item for item in report.skipped)
 
 
 def test_stor1_largest_artifacts_include_directory_aggregate(tmp_path: Path) -> None:
@@ -235,16 +202,16 @@ def test_storage_cli_refuses_report_write_through_results_symlink(tmp_path: Path
     assert not (external / "storage-report.json").exists()
 
 
-def test_cleanup_does_not_traverse_external_runs_symlink(tmp_path: Path) -> None:
+def test_cleanup_does_not_traverse_external_records_symlink(tmp_path: Path) -> None:
     config = _write_config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
-    external = tmp_path / "external-runs"
-    victim = external / "run-a" / "checkpoint-model-cache" / "important.bin"
-    victim.parent.mkdir(parents=True)
+    external = tmp_path / "external-records"
+    external.mkdir()
+    victim = external / "orphan-payload.bin"
     victim.write_bytes(b"keep")
-    paths.runs.rmdir()
-    paths.runs.symlink_to(external, target_is_directory=True)
     store = campaign_cli.CampaignStore(paths.state_db)
+    paths.internal.mkdir(parents=True, exist_ok=True)
+    (paths.internal / "records").symlink_to(external, target_is_directory=True)
 
     report = campaign_cli._campaign_cleanup(
         cfg,
@@ -255,19 +222,18 @@ def test_cleanup_does_not_traverse_external_runs_symlink(tmp_path: Path) -> None
         include_preparation_caches=False,
     )
     assert victim.read_bytes() == b"keep"
-    assert any("run-tree cleanup skipped" in item for item in report.skipped)
+    assert any("external-record cleanup skipped" in item for item in report.skipped)
 
 
-def test_preflight_cleanup_refuses_external_symlink_root(tmp_path: Path) -> None:
+def test_cleanup_remove_unlinks_campaign_symlink_without_touching_external_target(tmp_path: Path) -> None:
     config = _write_config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
-    store = campaign_cli.CampaignStore(paths.state_db)
-    store.put_record("preflight_smoke", {"passed": True})
-    external = tmp_path / "external-preflight"
+    external = tmp_path / "external-cache"
     external.mkdir()
     victim = external / "heavy.bin"
     victim.write_bytes(b"keep")
-    link = paths.internal / "preflight-smoke"
+    link = paths.internal / "temporary-symlink"
+    link.parent.mkdir(parents=True, exist_ok=True)
     link.symlink_to(external, target_is_directory=True)
     report = campaign_cli._CampaignCleanupReport(
         phase="stor1-test",
@@ -279,10 +245,9 @@ def test_preflight_cleanup_refuses_external_symlink_root(tmp_path: Path) -> None
             ),
         ),
     )
-    campaign_cli._cleanup_preflight_heavy_artifacts(report, paths, store)
+    campaign_cli._cleanup_remove(report, link, reason="test remove symlink")
     assert victim.read_bytes() == b"keep"
-    assert not (external / "retained-diagnostic.json").exists()
-    assert any("failed traversal ownership checks" in item for item in report.skipped)
+    assert not link.exists() and not link.is_symlink()
 
 
 def test_manual_cleanup_refuses_external_campaign_state_symlink(tmp_path: Path) -> None:
