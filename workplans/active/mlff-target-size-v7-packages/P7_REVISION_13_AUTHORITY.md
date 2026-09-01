@@ -2,77 +2,59 @@
 kind: implementation-workplan-authority
 workplan_id: CODE-MLFF-TARGET-SIZE-V7-P7
 protocol_version: 5.8.0
-revision: 13.6
-status: reopened
+revision: 13.7
+status: closed-pass
 frozen_executable_commit: 97fa48fc4a8e5be0da8cbcd22ba10248fa37acee
 frozen_executable_tree: 9e4be0fc9d23c4036413a2ced86dc19d98ad9ed6
 frozen_source_digest: 7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6
-reviewed_evidence_head: 90a19ce67dbf5d6147b0d4cabaab6028adb448e5
-review_verdict: NO-PASS
-current_amendment: P7_REVISION_13_6_REAL_PRODUCTION_OWNER_AND_DFT_PROVENANCE_CLOSURE_AMENDMENT.md
-current_review_evidence: P7_REVISION_13_6_REVIEW_EVIDENCE.md
+reviewed_evidence_head: b82e122decd528450c616e571a47b8ed3d058e4c
+review_verdict: PASS
+current_amendment: P7_REVISION_13_7_SOFTWARE_CLOSURE_AND_DEFERRED_PRODUCTION_QUALIFICATION_AMENDMENT.md
+current_review_evidence: P7_REVISION_13_7_REVIEW_EVIDENCE.md
 successor_storage_workplan: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
 ---
 
-# P7 revision 13.6 — authoritative reopened workplan
+# P7 revision 13.7 — authoritative closure
 
-The frozen parent `MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the controlling scientific/architectural authority.
+The frozen parent `MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains controlling.
 
-The executable remains accepted and frozen at commit `97fa48fc4a8e5be0da8cbcd22ba10248fa37acee`, tree `9e4be0fc9d23c4036413a2ced86dc19d98ad9ed6`, source digest `7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6`. No executable source change is authorized by this revision.
+P7 software implementation and functional acceptance are **CLOSED / PASS** at executable commit `97fa48fc4a8e5be0da8cbcd22ba10248fa37acee`, tree `9e4be0fc9d23c4036413a2ced86dc19d98ad9ed6`, source digest `7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6`.
 
-Independent review of evidence head `90a19ce67dbf5d6147b0d4cabaab6028adb448e5` remains **NO-PASS**. R13.5 successfully proves exact interpreter identity, selected KOKKOS/mliappy MACE execution, assembled `RELEASE_QUALIFIED` mechanics, locked closure mechanics, and fresh-process reauthentication. It does not prove that final B11 consumed the operator's pre-existing production campaign, and it does not establish reproducible independent DFT provenance behind the supplied reference values.
+R13.7 corrects an acceptance drift introduced by R13.4-R13.6. The base P7 package explicitly distinguishes software functional acceptance from actual-production scientific qualification: real external DFT is required for a real production qualification campaign, not for routine P7 software closure, and long target-machine production qualification is deferred to the established final-release phase.
 
-## Authority precedence
+## Accepted P7 closure evidence
 
-1. frozen parent scientific workplan;
-2. accepted/reclosed P1-P6 authorities;
-3. `P7_REVISION_13_6_REAL_PRODUCTION_OWNER_AND_DFT_PROVENANCE_CLOSURE_AMENDMENT.md` — current residual closure authority;
-4. R13.5 production-identity/final-reference amendment where not superseded;
-5. accepted R13.4/R13.3/R13.2/R13.1/R13/R12/R11/R10/base-P7 contracts where non-conflicting;
-6. `P7_REVISION_2_STORAGE_SUCCESSOR_PREPARATION_AMENDMENT.md` for the storage-neutral successor boundary.
+- exact executable/interpreter identity (`0.20.242a0`);
+- affected P7 regression `155 passed, 1 skipped`;
+- bounded real RTX 3090 KOKKOS/mliappy MACE callback execution;
+- real publication/currentness/deployment/reference-matching/reduction/locked/persistence owners under assembled integration;
+- fail-closed missing-publication behavior through the production CLI;
+- truthful `waiting_for_reference` behavior when external DFT is absent;
+- stress provenance/canonicalization, resource lineage, exact PBC/cell evidence, no-fallback semantics, one-shot locked machinery, terminal/release-index persistence, and fresh-process reauthentication.
 
-## Accepted surfaces — preserve
+No executable source change is required.
 
-Do not redesign or rerun without an affected reason:
+## Production qualification disposition
 
-- exact qualifying interpreter identity now resolves the intended checkout/version/source;
-- generic LAMMPS probes are non-authoritative; exact selected `cuda:N` identity is enforced;
-- P5 publication ownership, target-head identity, stress semantics/provenance, resource lineage, exact PBC/cell evidence, release/reference/resource integrity, and one-shot locked semantics remain accepted;
-- selected isolated KOKKOS/mliappy MACE worker and abnormal-exit blocking remain accepted;
-- the assembled qualification path can reach `RELEASE_QUALIFIED` and a genuinely new interpreter can reauthenticate a final graph;
-- affected P7 regression `155 passed, 1 skipped` remains reusable while executable source is unchanged.
-
-## Current blockers
-
-### R13.6-B11G — final B11 still used campaign state created for qualification
-
-The R13.5 evidence records campaign root `/tmp/mdstats_p7_r13_5_production` and says that campaign completed the full production lifecycle during the closure exercise. It again reports `N=4`, `seed-5`, and checkpoint SHA `44297de809ab54e4604524ceb5b463ea21ca1336a2ab1e88fff062aba7d8cabb`, identical to the previously rejected bounded tiny-MACE lineage.
-
-Final B11 must consume an operator-supplied **already-existing** production config/workspace whose selected binding, CV, final production and P5 publication existed before the P7 qualification attempt. R13.6 final qualification may create only P7 descendant evidence; it may not create or regenerate campaign/P1-P6/P5 product state. If no such production publication exists, P7 remains unavailable/blocking.
-
-### R13.6-B12J — independent external DFT origin remains unproven
-
-The R13.5 evidence records a `dft-pbe-ts-reference.v1` bundle hash and source declaration but no external electronic-structure code/version, DFT input/output artifact hashes, immutable job/result manifest, or equivalent reproducible provenance showing that the E/F/reference observations came from independent first-principles calculations.
-
-The reference bundle authenticates request/protocol/data integrity; a self-declared protocol/source string alone does not prove physical origin. Final B12 must record reproducible independent DFT source-artifact provenance mapped one-to-one to the frozen request geometries, including parser/import identity and the already-required stress conversion provenance. Large/private raw artifacts need not be committed, but stable identities and provenance must be available to the review boundary.
-
-## Binding completion sequence
+The user's actual campaign should now be run through its normal real lifecycle:
 
 ```text
-R13.6-P1  keep executable 97fa48fc... frozen
-R13.6-P2  resolve operator-supplied pre-existing production config/workspace; create no campaign state
-R13.6-P3  record its already-existing selected/CV/final-production/P5 publication identities before P7 descendant work
-R13.6-P4  execute B11 on that publication through production deployment parity + selected KOKKOS/MACE
-R13.6-P5  fulfil that exact production reference request with independently generated DFT results and reproducible source-artifact provenance
-R13.6-P6  complete mandatory components + explicit one-shot locked result to RELEASE_QUALIFIED
-R13.6-P7  terminate process and reauthenticate the final graph in a new process
-R13.6-P8  record exact production/reference provenance and request independent Design closure
+prepare
+ -> select-target-size
+ -> cross-validate
+ -> train-production
+ -> freeze FinalProductionPublication
+ -> qualification run
 ```
 
-No executable edit is permitted unless this genuine production run exposes a source defect. If source changes, rerun affected regression/integration, freeze a new candidate, and repeat each affected real gate.
+It is legitimate for normal campaign operation to create its own P1-P5/P5 publication state. The previous prohibition against creating campaign state applied only to attempts to present a newly manufactured fixture campaign as pre-existing evidence for P7 closure.
 
-## Closure gate
+If independent external DFT is unavailable, `qualification run` should stop truthfully at `waiting_for_reference` with the immutable actionable request. This does not reopen P7 software implementation.
 
-P7 may PASS only when the exact frozen executable is running; no P1-P6/P5 product state was manufactured for final qualification; B11 consumes the operator's pre-existing current production publication; the external reference bundle is backed by independently generated and reproducibly identified first-principles artifacts; all mandatory components plus the explicit locked result succeed; terminal verdict is `RELEASE_QUALIFIED`; a new process reauthenticates the same complete graph; and independent Software Design review finds no remaining genuine blocker.
+When real DFT later becomes available, resume the same campaign qualification, complete physical/relaxation/dynamics/calibration evidence, explicitly activate the one-shot locked test, produce `RELEASE_QUALIFIED` or `REJECTED`, and reauthenticate the final graph in a new process. Long target-machine production/resource/performance qualification remains deferred to final release.
 
-Until then P7 remains **REOPENED / NO-PASS** and `CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1` remains blocked.
+## Successor disposition
+
+`CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1` is **unblocked** by P7 implementation closure. It must preserve P7 publication/qualification/reference/locked evidence and currentness semantics.
+
+A future actual campaign may expose a genuine executable defect. Such a defect reopens only the affected software surface and invalidates only qualification evidence plausibly affected by the repair. A scientific rejection or missing external reference is not itself a software defect.

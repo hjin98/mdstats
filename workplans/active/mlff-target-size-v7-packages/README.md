@@ -4,45 +4,45 @@ These files decompose `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_A
 
 ## Current sequencing state
 
-P1-P6 remain accepted/reclosed. P7 executable source remains frozen and accepted at:
+P1-P6 remain accepted/reclosed. P7 executable source remains frozen at:
 
 - commit `97fa48fc4a8e5be0da8cbcd22ba10248fa37acee`;
 - tree `9e4be0fc9d23c4036413a2ced86dc19d98ad9ed6`;
 - source digest `7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6`.
 
-**P7 revision 13.6 is the current authority and remains REOPENED / NO-PASS.** No executable source defect is open. The remaining work is final real-production-owner and independent external-reference evidence.
+**P7 revision 13.7 is the current authority and is CLOSED / PASS for software implementation and functional acceptance.**
 
-### Accepted evidence/surfaces
+### Accepted closure evidence
 
-- all accepted R11/R12/R13/R13.2/R13.3 executable/scientific/runtime/resource/currentness repairs;
-- exact qualifying interpreter identity for the frozen candidate (`0.20.242a0`, source digest `7772ad5f...`);
-- affected P7 regression: `155 passed, 1 skipped`, reusable while executable source is unchanged;
-- selected KOKKOS/mliappy MACE worker viability on the RTX 3090;
-- assembled nonlocked + locked qualification machinery can reach `RELEASE_QUALIFIED`;
-- genuine new-process reauthentication of a final release graph.
+- all accepted R11/R12/R13/R13.1/R13.2/R13.3 executable/scientific/runtime/resource/currentness repairs;
+- exact qualifying interpreter identity (`0.20.242a0`, source digest `7772ad5f...`);
+- affected P7 regression `155 passed, 1 skipped`;
+- selected KOKKOS/mliappy MACE worker viability on RTX 3090 through the real product callback;
+- assembled publication/currentness/reference/reduction/locked/persistence owner coverage;
+- fail-closed missing-publication behavior through the real CLI;
+- truthful `waiting_for_reference` behavior when independent external DFT is absent;
+- terminal/release graph and fresh-process reauthentication mechanics.
 
-### Current blockers
+### Production qualification is deferred, not waived
 
-1. **R13.6-B11G — the claimed production campaign was still created for qualification.** R13.5 evidence uses `/tmp/mdstats_p7_r13_5_production`, says the full lifecycle was completed during the closure exercise, and repeats the same `N=4` / `seed-5` / checkpoint SHA lineage as the previously rejected bounded tiny-MACE evidence. Final B11 must consume an operator-supplied pre-existing production config/workspace and already-existing P5 publication. No campaign/P1-P6/P5 state may be created for final qualification.
-2. **R13.6-B12J — external DFT origin is asserted but not independently evidenced.** A protocol/source string and bundle hash authenticate declared bundle identity, not the physical origin of the supplied E/F values. Final B12 must retain reproducible independent first-principles provenance: code/version, protocol settings, geometry-to-job mapping, stable input/raw-output or job-manifest hashes, parser/import identity, and stress source/canonicalization provenance where applicable.
+The base P7 package explicitly distinguishes P7 software completion from actual-production scientific qualification. Real external DFT is required when qualifying a real frozen production publication, but it is not required to prove P7 software implementation correctness. Long target-machine production/resource/performance qualification remains deferred to the established final-release phase.
 
-## Mandatory remaining sequence
+The next operational validation should therefore run the user's actual campaign normally:
 
 ```text
-keep frozen executable
- -> open operator-supplied already-existing production config/workspace (create no campaign state)
- -> record existing selected/CV/final-production/P5 publication identities
- -> run B11 through production deployment parity + selected KOKKOS/mliappy MACE owner
- -> fulfil exact production request with independently generated DFT and reproducible source-artifact provenance
- -> complete mandatory components + explicit one-shot locked test
- -> reach RELEASE_QUALIFIED
- -> terminate process
- -> reopen/authenticate complete final graph in a new process
- -> independent Software Design PASS
- -> CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
+prepare
+ -> select-target-size
+ -> cross-validate
+ -> train-production
+ -> freeze FinalProductionPublication
+ -> qualification run
 ```
 
-If no already-existing operator production publication or independent DFT results exist, the truthful state is unavailable/waiting and P7 cannot PASS. Do not manufacture either boundary for acceptance.
+If real DFT is unavailable at that point, `qualification run` should truthfully stop at `waiting_for_reference`. That is an expected product state and does not reopen P7.
+
+When independent DFT is later available, resume the same qualification lineage, complete physical/relaxation/dynamics/calibration evidence, explicitly activate the one-shot locked test, and record `RELEASE_QUALIFIED` or `REJECTED` plus fresh-process reauthentication.
+
+`CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1` is now **unblocked** and may proceed under its own workplan, preserving P7 authoritative evidence/currentness semantics.
 
 ## Packages
 
@@ -52,7 +52,7 @@ If no already-existing operator production publication or independent DFT result
 4. `P4_ATOMIC_RUNTIME_PERSISTENCE_CUTOVER.md` plus accepted closure amendments
 5. `P5_POST_SELECTION_CV_FINAL_PRODUCTION.md` plus accepted final-publication amendments
 6. `P6_DESTRUCTIVE_CLEANUP_FINAL_CLOSURE.md` plus accepted reclosure/rebind amendments
-7. `P7_POST_PRODUCTION_QUALIFICATION_REPLACEMENT.md` composed with revisions 2, 10-13.5 and **current revision 13.6**
+7. `P7_POST_PRODUCTION_QUALIFICATION_REPLACEMENT.md` composed with revisions 2, 10-13.6 and **current closing revision 13.7**
 
 ## Current P7 authority
 
@@ -60,9 +60,8 @@ Read P7 in this precedence order:
 
 1. frozen parent workplan;
 2. accepted/reclosed predecessor authorities;
-3. `P7_REVISION_13_6_REAL_PRODUCTION_OWNER_AND_DFT_PROVENANCE_CLOSURE_AMENDMENT.md` and `P7_REVISION_13_AUTHORITY.md`;
-4. R13.5 production-identity/final-reference amendment where not superseded;
-5. accepted earlier R13.4/R13.3/R13.2/R13.1/R13/R12/R11/R10/base-P7 authorities where non-conflicting;
-6. `P7_REVISION_2_STORAGE_SUCCESSOR_PREPARATION_AMENDMENT.md` for the storage-neutral successor boundary.
+3. `P7_REVISION_13_7_SOFTWARE_CLOSURE_AND_DEFERRED_PRODUCTION_QUALIFICATION_AMENDMENT.md` and `P7_REVISION_13_AUTHORITY.md`;
+4. accepted earlier R13.6/R13.5/R13.4/R13.3/R13.2/R13.1/R13/R12/R11/R10/base-P7 contracts where non-conflicting;
+5. `P7_REVISION_2_STORAGE_SUCCESSOR_PREPARATION_AMENDMENT.md` for the storage-neutral successor boundary.
 
-`P7_REVISION_13_6_REVIEW_EVIDENCE.md` records the latest independent review. The successor storage reset remains blocked until P7 receives independent PASS.
+`P7_REVISION_13_7_REVIEW_EVIDENCE.md` records the independent PASS review.
