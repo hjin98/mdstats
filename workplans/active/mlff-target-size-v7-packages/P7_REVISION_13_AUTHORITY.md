@@ -2,26 +2,25 @@
 kind: implementation-workplan-authority
 workplan_id: CODE-MLFF-TARGET-SIZE-V7-P7
 protocol_version: 5.8.0
-revision: 13.1
+revision: 13.2
 status: reopened
-reviewed_implementation_commit: 89c6d9bf5c21236436342043e5afca194b3da4e7
-reviewed_implementation_tree: 7d6ebd9ecf6423de0a6dc01448b932a760eda383
-post_implementation_documentation_head: d10c643349a646b361357fc3a09372b4fb3306c6
+reviewed_implementation_commit: cc098c18b39bbfdc65be6d5266fc2582d9bc9e01
+reviewed_implementation_tree: 918d7670a6441a5431c95313c452499387b5ec60
 review_verdict: NO-PASS
+current_amendment: P7_REVISION_13_2_IMPLEMENTATION_REVIEW_RUNTIME_GATE_REOPEN_AMENDMENT.md
+current_review_evidence: P7_REVISION_13_2_REVIEW_EVIDENCE.md
 successor_storage_workplan: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
 ---
 
-# P7 revision 13.1 — authoritative reopened workplan
+# P7 revision 13.2 — authoritative reopened workplan
 
 The frozen parent `MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` remains the controlling scientific and architectural verdict.
 
-Independent review of the revision-12 repair implementation at executable commit `89c6d9bf5c21236436342043e5afca194b3da4e7`, tree `7d6ebd9ecf6423de0a6dc01448b932a760eda383`, remains **NO-PASS**. The later branch head `d10c643349a646b361357fc3a09372b4fb3306c6` is generated-documentation-only and does not alter that executable verdict.
+Independent Software Design review of P7A3 at executable commit
+`cc098c18b39bbfdc65be6d5266fc2582d9bc9e01`, tree
+`918d7670a6441a5431c95313c452499387b5ec60`, is **NO-PASS**.
 
-Revision 13.1 does not reopen the frozen science. It corrects the R12-B11 runtime premise after target-machine diagnostics demonstrated that the intended LAMMPS Python runtime is LAMMPS 10Sep2025 with ML-IAP and KOKKOS available, can start its CUDA KOKKOS backend with effective arguments equivalent to `-k on g 1 -sf kk`, can activate `lammps.mliap.activate_mliappy()` successfully, and can close the LAMMPS instance plus process-owned KOKKOS/MPI native state cleanly. Therefore static `forward_exchange` class introspection is not authoritative runtime-unavailability evidence. Actual frozen-product execution is the semantic owner of B11 capability.
-
-The same diagnostics also showed that `lammps.finalize()` is not an acceptable shutdown owner for this externally owned Python path because it invokes Python finalization; the observed diagnostic reached `Py_FinalizeEx` and segfaulted. The repaired worker must not finalize its owning Python interpreter.
-
-These operator diagnostics refine the implementation contract only. They do **not** close B11; real current-publication MACE execution remains mandatory.
+P7A3 materially closes the broad revision-13 source repair set. The current reopen is intentionally narrow: preserve the accepted stress/provenance, resource-lineage, static-PBC, release-graph, and selected-worker repairs; remove the remaining generic runtime-preflight authority that can suppress the selected semantic KOKKOS/MACE worker; then execute the mandatory real B11 and B12 target-machine release gates on one newly frozen executable candidate.
 
 ## Current authority precedence
 
@@ -29,74 +28,89 @@ Read P7 as one composed authority in this order:
 
 1. frozen parent scientific workplan — controlling verdict;
 2. accepted/reclosed predecessor P1-P6 authorities, including the revision-11 P5 publication-decision repair and affected P6 rebind;
-3. `P7_REVISION_13_B11_KOKKOS_MACE_RUNTIME_CORRECTION_AMENDMENT.md` — current B11 runtime owner, lifecycle, acceptance, and revised implementation-order authority;
-4. `P7_REVISION_13_IMPLEMENTATION_REVIEW_REOPEN_AMENDMENT.md` — current residual repair and closure authority where revision 13.1 does not supersede it;
-5. `P7_REVISION_12_FINAL_IMPLEMENTATION_REVIEW_REOPEN_AMENDMENT.md` — binding where revisions 13/13.1 do not preserve/clarify/supersede it;
-6. `P7_REVISION_11_IMPLEMENTATION_REVIEW_REOPEN_AMENDMENT.md` — binding where later revisions do not supersede it;
-7. `P7_REVISION_10_IMPLEMENTATION_REALIGNMENT_AMENDMENT.md` — implementation-state architecture except where later revisions supersede it;
-8. `P7_POST_PRODUCTION_QUALIFICATION_REPLACEMENT.md` — base qualification science and no-fallback contract except stale predecessor assumptions already superseded;
-9. `P7_REVISION_2_STORAGE_SUCCESSOR_PREPARATION_AMENDMENT.md` — storage-neutral successor handoff;
-10. revisions 3-9 — historical predecessor-entry alignment records.
+3. `P7_REVISION_13_2_IMPLEMENTATION_REVIEW_RUNTIME_GATE_REOPEN_AMENDMENT.md` — current residual implementation and closure authority;
+4. `P7_REVISION_13_B11_KOKKOS_MACE_RUNTIME_CORRECTION_AMENDMENT.md` — binding B11 semantic runtime owner/lifecycle contract where revision 13.2 does not narrow or clarify it;
+5. `P7_REVISION_13_IMPLEMENTATION_REVIEW_REOPEN_AMENDMENT.md` — binding where accepted/unsuperseded;
+6. `P7_REVISION_12_FINAL_IMPLEMENTATION_REVIEW_REOPEN_AMENDMENT.md` — binding where later revisions do not preserve/clarify/supersede it;
+7. `P7_REVISION_11_IMPLEMENTATION_REVIEW_REOPEN_AMENDMENT.md` — binding where later revisions do not supersede it;
+8. `P7_REVISION_10_IMPLEMENTATION_REALIGNMENT_AMENDMENT.md` — implementation-state architecture except where later revisions supersede it;
+9. `P7_POST_PRODUCTION_QUALIFICATION_REPLACEMENT.md` — base qualification science/no-fallback contract except stale predecessor assumptions already superseded;
+10. `P7_REVISION_2_STORAGE_SUCCESSOR_PREPARATION_AMENDMENT.md` — storage-neutral successor handoff;
+11. revisions 3-9 — historical predecessor-entry alignment records.
 
-Historical implementation/review evidence is preserved. `P7_REVISION_12_IMPLEMENTATION_EVIDENCE.md` is evidence for the reviewed revision-12 candidate; it is not revision-13.1 closure evidence. The target-machine KOKKOS/mliappy startup diagnostics recorded in revision 13.1 are implementation-direction evidence, not B11 product-execution closure evidence.
+`P7_REVISION_13_2_REVIEW_EVIDENCE.md` records the independent review of P7A3. Earlier implementation/review evidence remains historical and does not establish closure for this candidate.
 
-## Residual blocking surfaces
+## Accepted P7A3 source surfaces — preserve
 
-P7 remains reopened until all of the following close on one final frozen candidate:
+These previously reopened source surfaces are now accepted and MUST NOT be redesigned absent contradictory evidence:
 
-- **R13-B9A:** stress capability must be exact per component/member/geometry claim, not a singleton derived from publication member 0 and deployment policy;
-- **R13-B9B:** applicable trained stress may not pass when deployment/reference stress evidence is unavailable, and external-reference stress source units/sign/order/canonicalization must be authenticated;
-- **R13-B7:** resource evidence must cover the complete resumable attempt, include locked timing and stable scope material/selected device, and preserve disk reserve with required incremental headroom;
-- **R13-B13:** static deployed observations must preserve and verify the exact executed PBC/cell, not only the request;
-- **R13-B14:** public terminal/release resolution must authenticate the resource observation and release-index -> terminal-record graph;
-- **R12-B11 / R13.1 runtime correction:** the static `forward_exchange` availability oracle must be removed/demoted; an actual frozen P5 publication member must execute through the real target-head mdstats exporter -> `LAMMPS_MLIAP_MACE` -> selected KOKKOS-enabled LAMMPS Python runtime -> mliappy -> actual MACE callback, producing required E/F/stress parity and clean worker completion;
-- **R12-B12:** final target-machine qualification with real authenticated reference evidence, then explicit one-shot locked activation and immutable terminal close/reopen, must run through the same corrected runtime owner.
+- **R13-B9A:** stress capability is component/member/claim/geometry scoped; committee order/member-0 no longer owns the decision; exact capability sets participate in relevant component input identity before reuse.
+- **R13-B9B:** applicable trained stress fails closed when required runtime/reference evidence is missing; external-reference stress authenticates raw source representation, units, sign, order, virial-volume semantics where applicable, canonicalization provenance, and canonical tensor.
+- **R13-B7:** resource observations form an immutable resumable predecessor chain with cumulative timings/samples, explicit locked timing, stable resource-scope material, selected-device telemetry, and reserve-plus-bounded-write-headroom admission.
+- **R13-B13:** static and dynamics runtime evidence preserve exact three-axis PBC; static execution additionally returns and verifies post-build cell against the authenticated request.
+- **R13-B14:** public terminal/release exposure authenticates resource-observation lineage and release-index -> single terminal-record referential integrity.
+- **R13.1 worker mechanics:** selected KOKKOS arguments reach the child LAMMPS instance, mliappy is activated on that exact instance, actual MACE callback execution returns structured evidence, abnormal child failure cannot publish success, and external Python finalization is not invoked.
 
-## B11 implementation authority
+The fixed R12 LAMMPS bar/pressure-sign source adapter, accepted R11 publication/currentness/reference/locked owners, exact target-head identity, no committee shrinkage/fallback, and P1-P6 science remain binding.
 
-`P7_REVISION_13_B11_KOKKOS_MACE_RUNTIME_CORRECTION_AMENDMENT.md` is binding. In particular:
+## Residual blockers
 
-- static direct imports or `hasattr(..., "forward_exchange")` checks may be diagnostics but cannot own PASS/UNAVAILABLE for the product path;
-- the actual ML-IAP data object presented to the executing MACE callback is the relevant `forward_exchange` owner;
-- the worker must activate the selected KOKKOS resource mode; the verified one-GPU target resolves to effective launch arguments equivalent to `-k on g 1 -sf kk`;
-- `activate_mliappy()` must run on the exact live LAMMPS instance before Python-backed ML-IAP MACE execution;
-- use the existing LAMMPS worker/process boundary where practical and isolate native crashes from the main qualification/store process;
-- do not call `lammps.finalize()` or `lammps_python_finalize()` from the externally owned Python lifecycle;
-- abnormal worker exit/native crash is blocking runtime evidence and cannot publish successful component/B11 evidence;
-- actual current-publication product execution, not construction-only evidence, closes B11.
+P7 remains reopened for exactly these current blockers:
 
-## Revised binding implementation sequence
+### R13.2-B11A — generic runtime preflight still owns a semantic veto
 
-The B11 runtime repair is executable source work and must be completed **before** candidate freeze:
+P7A3 demotes static `forward_exchange` introspection, but the runtime still performs a separate generic/default LAMMPS probe and uses `supports_deployed_execution` through `_require_supported_runtime()`, `execute_lammps_request()`, deployment-parity pre-gating, and deployment stress/currentness logic before the selected KOKKOS/MACE worker has executed.
+
+A generic preflight may remain diagnostic, but it may not suppress, reinterpret, or stale the selected product execution. The exact selected worker is authoritative for product runtime availability/evidence. Scientific stress applicability remains training/member/geometry owned; when applicable, the selected worker must be asked for stress and missing/invalid stress fails closed.
+
+The precise source end state and mandatory tests are specified by the revision-13.2 amendment.
+
+### R13.2-B11B — real current-publication product execution is not closed
+
+After B11A repair and fresh affected regression/integration, freeze a new executable candidate. Then execute the **actual current durable P5 publication member bytes** through the production P7 owner:
 
 ```text
-R13-P1   claim-scoped/member-scoped stress capability + fail-closed reducer semantics
-R13-P2   authenticated external-reference stress import/provenance + stress-required request coverage
-R13-P3   attempt-wide resource-observation lineage + selected-device/scope material + bounded disk headroom
-R13-P4   static deployed PBC/cell observation and parity verification
-R13-P5   terminal/release/resource referential-integrity currentness closure
-R13-P6   B11 KOKKOS/MACE runtime-owner correction: semantic capability, selected GPU activation, mliappy activation, process lifecycle/crash isolation
-R13-P7   fresh focused + affected regression/integration, including preserved R11/R12 surfaces and B11 worker-owner tests
-R13-P8   freeze new executable candidate/tree
-R13-P9   actual current-publication MACE target-head execution on the supported target runtime using the frozen candidate
-R13-P10  final target-machine real-reference qualification + explicit one-shot locked closure using the same corrected runtime owner
-R13-P11  independent Software Design closure review
+current P5 publication/member bytes
+ -> real mdstats target-head exporter
+ -> real canonical-head LAMMPS_MLIAP_MACE artifact
+ -> exact selected qualification resource scope
+ -> selected KOKKOS LAMMPS child + mliappy
+ -> actual MACE callback/message passing
+ -> E/F + applicable stress + exact PBC/cell
+ -> frozen deployment-parity comparison
+ -> clean structured worker completion
 ```
 
-No executable edit is permitted between R13-P8 freeze and accepted R13-P9/P10 evidence. If real B11 execution exposes a source defect, repair it, rerun affected acceptance, and freeze a new candidate before qualification continues.
+A synthetic fixture, construction-only check, direct helper bypass, or hardware skip does not close B11.
 
-## Preserved repaired surfaces
+### R13.2-B12 — final target-machine release qualification is not closed
 
-Do not redesign unless a residual repair produces concrete contradictory evidence:
+On the exact same frozen candidate that passes B11B, execute the final real-reference target qualification, all mandatory nonlocked components, cumulative target-machine resource evidence, explicit one-shot locked activation/result, immutable terminal record/release index, and process-restart close/reopen authentication of the complete publication/product/component/resource/reference graph.
 
-- P5 owns both supported pre-qualification publication policies; P7 does not rank members;
-- target-head identity remains mandatory through publication/export/ML-IAP construction;
-- LAMMPS thermo pressure remains converted only by the fixed bar/compression source adapter to canonical tensile-positive eV/A^3 stress;
-- deployed requests and dynamics execution retain exact three-axis PBC and axis-selective minimum-image behavior;
-- public P7 binding currentness, reference-bundle descendant identity, reference-relaxed dynamics, one-shot locked disclosure/restart, explicit reference protocol, canonical analysis ownership, and no downstream fallback remain binding;
-- resource measurements remain observational release evidence and cannot change science;
-- the successor storage architecture must not be pulled into P7.
+No executable source change is permitted between freeze and accepted B11B/B12 evidence. A source defect found during the real run requires repair, fresh affected regression/integration, and a new freeze.
 
-## Sequence consequence
+## Binding implementation sequence
 
-`CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1` remains blocked. The post-P7 storage workplan may adopt a P7 baseline only after revision-13.1 source repair, fresh affected regression/integration, real current-publication MACE target-head execution through the corrected KOKKOS/mliappy runtime owner, final target-machine real-reference qualification, one-shot locked closure, full terminal/resource/reference evidence graph close-reopen, and independent Software Design PASS.
+```text
+R13.2-P1  remove/demote generic runtime preflight veto and generic-probe stress/currentness coupling
+R13.2-P2  fresh focused + complete affected R11/R12/R13 regression/integration
+R13.2-P3  freeze a new executable candidate commit/tree
+R13.2-P4  actual current-publication selected-KOKKOS MACE E/F/applicable-stress parity
+R13.2-P5  final target-machine real-reference qualification + one-shot locked closure on the same candidate
+R13.2-P6  close/reopen terminal/release/resource/reference graph and record exact evidence identities
+R13.2-P7  independent Software Design closure review
+```
+
+## Closure gate
+
+P7 may receive PASS only when all of the following are true on one final executable candidate:
+
+1. R13.2-B11A is source- and test-closed and no generic preflight owns selected product availability, stress applicability, or component currentness.
+2. Accepted P7A3 R13-B9A/B9B/B7/B13/B14 and all preserved R11/R12 surfaces remain green under fresh affected regression/integration.
+3. Exact current durable P5 publication member execution succeeds through the selected KOKKOS/mliappy MACE owner with E/F/applicable-stress parity and clean worker completion.
+4. Final target-machine real-reference qualification succeeds on that same candidate.
+5. One-shot locked activation/result succeeds and is crash/reopen safe.
+6. Terminal record, release index, cumulative resource observations, component evidence, publication/product identities, and external-reference descendants all reauthenticate current after process restart.
+7. Independent Software Design review finds no remaining genuine blocker.
+
+Until then P7 remains **REOPENED / NO-PASS** and `CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1` remains blocked.
