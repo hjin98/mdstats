@@ -2,9 +2,9 @@
 kind: implementation-workplan-authority-entrypoint
 workplan_id: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
 protocol_version: 5.10.0
-revision: 26
+revision: 27
 status: reopened
-current_authority_pointer: AUTHORITY_REVISION_26.md
+current_authority_pointer: AUTHORITY_REVISION_27.md
 review_verdict: NO-PASS
 ---
 
@@ -12,90 +12,56 @@ review_verdict: NO-PASS
 
 This is the **sole canonical navigation entrypoint** for the active storage/I-O reset package.
 
-The **Revision-19 storage architecture and Revision-21 final repair design remain accepted**. Revision 24 remains the accepted descriptor/root-identity repair design. Revision 25 remains the bounded implementation-review finding set except where Revision 26 explicitly corrects its over-constrained final-mutation wording and refines final acceptance. Revision 26 also adds the requested current-authority cleanup of historical executable tests, fixtures, helpers, and dead benchmark drivers. None of this reopens P1-P7 science or the owner-driven storage architecture.
+Revision 19 storage architecture, Revision 21 final repair design, Revision 24 descriptor/root-identity repair design, and Revision 26 final realizable descriptor-pinned mutation/test-retirement design remain accepted. Revision 27 is a bounded implementation-review reopen of the Revision-26 implementation; it does not reopen P1-P7 science or the owner-driven storage architecture.
 
-The reviewed executable remains:
+Reviewed executable:
 
 ```text
-commit 8e87bc863be2470fb602a9cbb2ac411b7bc83bc4
-tree   7becdd8918f4125ed69442fa07e95ed412560566
+commit f8bd22fcb5d1b5b62246b0ca17653e6b31191a51
+tree   928e9507ecac84040e1604ed5949f03440044740
 ```
 
-The Revision-25/26 commits after that executable are workplan/authority artifacts only.
+Branch head `60b29f6992f088dd42f78b01424a9054c14e46a0` is a generated-PDF-only successor. Revision-27 commits after it are authority/workplan artifacts only.
 
 ## Current supplied contract
 
-Read the still-binding supplied storage authority set through Revision 25 together with:
+Read the still-binding supplied storage authority through Revision 26 together with:
 
-- `STORAGE_IO_MANAGEMENT_RESET_REPAIR_PLAN_CLOSURE_REVISION_26.md`;
-- `AUTHORITY_REVISION_26.md`.
+- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_8.md`;
+- `AUTHORITY_REVISION_27.md`.
 
-Earlier `current_authority_pointer` fields inside superseded artifacts are historical metadata only; this `AUTHORITY.md` entrypoint controls navigation.
+Earlier `current_authority_pointer` fields are historical metadata only; this entrypoint controls navigation.
 
-The frozen parent target-size V7 workplan remains the scientific/architectural verdict. Storage repair must not reopen target-size, CV, publication, qualification, calibration, locked-test, reference, or release science for convenience.
+## Review result
 
-## Revision-26 closure
+Substantial Revision-26 implementation is conforming and frozen for preservation:
 
-### 1. Single descriptor-bound P7 authority remains mandatory
+- historical-only pytest/benchmark retirement and restored current fixtures;
+- one descriptor-relative no-follow P7 namespace/state/proof/topology observation consumed by `qualification_views()`;
+- descriptor-relative exact proof/topology certification and generation-scoped root binding;
+- P7-specific fd-relative file/directory mutation primitives compatible with Python >=3.10;
+- corrected wrong-root, basename-only-proof, nested-mount, and public-path-swap counterfactuals;
+- updated current storage specification.
 
-Revision-25 §1 remains binding: storage-facing P7 view/proof/member certification must consume one descriptor-bound no-follow namespace authority. `qualification_views()` may not re-enumerate `qualification/gN/attempts/<attempt>` through a parallel `Path.is_dir()` / `iterdir()` / `glob()` path after the strict census.
+The executable remains **NO-PASS** for three bounded groups:
 
-### 2. Final mutation is descriptor-pinned and fd-relative
+1. the apply resnapshot certifies P7 state/proof/topology on an attempt descriptor which is closed before mutation; the final remover then reacquires a new descriptor, checks root inode identity, and consumes the earlier snapshot's certified nodes. Revision 26 requires fresh final certification and mutation on the same retained attempt descriptor;
+2. `remove_released_attempt_member(...)->False` is appended to `completed_actions`, so `StorageExecutor._settle()` can report `complete` for a mutation the P7 owner actually refused. Refused no-op outcomes must enter `refused_actions`, yielding `refused` or `partial` as appropriate;
+3. current tests do not prove those exact seams, and exact executable candidate functional evidence remains absent. GitHub exposes only the successful `docs` check for `f8bd22f...`.
 
-Revision-25's concern was valid but its inode-CAS-like wording is superseded.
-
-Under the accepted storage/P5/P7 owner locks, consequential P7 cleanup must freshly reacquire the strict namespace and keep the authenticated attempt-directory descriptor alive through exact proof/member certification and mutation. Released top-level files and recursive directories are mutated relative to authenticated descriptors with no-follow semantics. Python `>=3.10` remains supported; where later `shutil.rmtree(dir_fd=...)` support is unavailable, use a bounded owner-specific descriptor-relative recursion from supported `os` dir-fd operations. If a platform cannot preserve the no-follow/dir-fd boundary, refuse rather than fall back to unauthenticated path traversal.
-
-The product guarantee is descriptor-pinned owner ancestry and fd-relative mutation under supported-owner synchronization, not an impossible kernel inode compare-and-delete promise against an arbitrary external same-UID process racing the final syscall.
-
-### 3. Historical test/tool debt is now explicit implementation work
-
-Classify the executable suite against current architecture/specification owners and explicitly supported compatibility code, not against historical gate chronology.
-
-Confirmed historical-only retirement includes the Revision-26 list of:
-
-- adaptive/conventional-CV revision-plan chronology tests;
-- MVSTATE-REUSE1 and FEAS1 PERF1/2/3 historical specification tests;
-- retired MLCV AGG1/FINAL1/MIGRATE1/VERIFY1 specification tests;
-- the historical DATA9A7d migration-spec snapshot while retaining current profile-runtime tests;
-- retired multi-view legacy/oracle helpers and the dead MVQUAL benchmark wrapper;
-- executable MVQUAL/MVSEL2/MVKERNEL benchmark drivers importing P6-deleted owners;
-- orphan pre-V7 fixtures after confirming no retained current consumer.
-
-The implementation must also exhaustively audit `tests/` and executable `benchmarks/**/*.py` for P6-retired imports/symbols, stale historical current-package pins, non-current spec/history-only assertions, missing-fixture references, dead benchmark tooling, and orphan support files.
-
-Do **not** bulk-delete by filename. Preserve/consolidate current precision, DATA1 sampling, online-monitor, DATA8 MLCV-monitor, adaptive-stop, current profile-extension, campaign-CLI/current-architecture, and P6 destructive-closure behavior. Explicit adaptive-stop v1/v2 schema support is a live compatibility contract and remains tested.
-
-The cleanup stage closes with clean `pytest --collect-only -q`, retained current-owner regression, and the P6 destructive-closure guard—not by converting old failures into blanket skips.
-
-### 4. Final acceptance is affected-surface based
-
-Mandatory final candidate evidence is:
-
-1. all focused Revision-22 through Revision-26 P7 counterfactuals;
-2. full `tests/test_mlff_storage_reset_core.py`;
-3. full `tests/test_mlff_storage_reset_integration.py`;
-4. affected current-owner P1/P3/P4/P5/P7 regressions plus P6 destructive/current-lifecycle consumers implicated by the common storage path;
-5. clean default-suite collection after historical cleanup;
-6. final affected-surface re-derivation and fresh affected regression/integration on the assembled candidate;
-7. repository static and affected current-spec/document validation.
-
-Whole-repository behavioral pytest is mandatory only when the final affected surface cannot be bounded confidently or an independent repository/release policy requires it. It remains useful broad evidence but is not a ceremonial storage gate and cannot substitute for focused/current-owner acceptance.
-
-Full external-DFT, long GPU production, and environment-specific HPC/storage qualification remain deferred and are not functional-acceptance blockers.
-
-## Rework route
+## Bounded rework route
 
 ```text
-R26-T1  current-authority test/tool retirement + clean collection
-   -> R25-P7 single descriptor-bound P7 view/proof/certification
-   -> R26-M fd-relative released-file/directory mutation
-   -> corrected proxy-proof counterfactuals
-   -> R21-E5/F exact-candidate affected regression/integration
+IR27-1  final same-descriptor P7 reacquisition + state/proof/topology certification + mutation
+   -> IR27-2 truthful refused/completed action accounting
+   -> IR27-3 proxy-proof final seams
+   -> R21-E5/F exact-candidate affected regression/integration evidence
 ```
 
-Do not redesign conforming CampaignStore, P5 typed proof, archive/dedup/restore/control-plane architecture, or P1-P7 scientific/currentness semantics.
+Do not redesign or rework conforming R26-T1 cleanup, single P7 observation, fd-relative mutation primitives, CampaignStore, P5 typed proof, archive/dedup/restore/control-plane machinery, or P1-P7 scientific/currentness semantics.
+
+Whole-repository behavioral pytest remains conditional as frozen by Revision 26. Full external-DFT, long GPU production, and environment-specific HPC/storage qualification remain deferred and nonblocking.
 
 **Design/workplan disposition:** **CLOSED / implementation-ready under Revision 26.**
 
-**Executable disposition:** **NO-PASS / reopened under Revision 26** until the Revision-25/26 implementation and exact-candidate evidence close.
+**Executable disposition:** **NO-PASS / reopened under Revision 27.**
