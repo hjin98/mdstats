@@ -40,11 +40,12 @@ Preserve the conforming Revision-28 implementation: exact released-authority pla
 
 Close only these remaining surfaces:
 
-1. after a mutation-time P7 refusal/partial contradiction, record that action truthfully, close/invalidate the live session for that attempt, and refuse later same-attempt destructive actions rather than continuing to spend stale certification; successful `removed`/`already_absent` may continue;
-2. materialize the authenticated `{path: kind}` proof lookup once per ephemeral attempt session and reuse it, rather than rebuilding the whole mapping for every member;
-3. propagate exact measured bytes from successful nested recursive removals so a later `partial_change_refused` includes every byte already removed under the existing storage metric;
-4. add real-executor/real-P7-owner counterfactuals for resealed release authority, final state/proof/topology damage, mixed success/refusal, partial recursive mutation, same-attempt invalidation, returned execution status/collections/bytes, and durable audit truth;
-5. after the final executable edit, record exact-candidate focused R22-R29, full storage core/integration, affected P1/P3/P4/P5/P7 + P6 current-lifecycle regressions, clean collection, final re-derived affected regression/integration, and static/current-doc validation.
+1. a mutation-time P7 refusal/partial contradiction invalidates that attempt's live capability for the remainder of the execution; later same-attempt actions are refused without mutation, while `removed`/`already_absent` may continue;
+2. materialize the authenticated `{path: kind}` proof lookup once per ephemeral attempt session instead of rebuilding the whole mapping per member;
+3. propagate exact measured nested-removal bytes under the existing storage/inode metric so later partial outcomes neither drop removed subtrees nor claim full planned size;
+4. once a destructive transition has occurred, any later exception/durability failure must expose structured partial-mutation truth and substantiated bytes to the executor/audit before error propagation can discard them; pre-mutation failures must fabricate nothing;
+5. add real-executor/real-P7-owner counterfactuals for resealed release authority, final state/proof/topology damage, mixed success/refusal, partial recursive mutation, same-attempt invalidation, post-mutation versus pre-mutation exception behavior, returned execution status/collections/bytes, and durable audit truth;
+6. after the final executable edit, record exact-candidate focused R22-R29, full storage core/integration, affected P1/P3/P4/P5/P7 + P6 current-lifecycle regressions, clean collection, final re-derived affected regression/integration, and static/current-doc validation.
 
 Whole-repository behavioral pytest remains conditional on inability to bound the final affected surface or independent repository policy. External-DFT, long GPU, and environment-specific HPC/storage production qualification remain deferred and nonblocking.
 
@@ -54,6 +55,7 @@ Whole-repository behavioral pytest remains conditional on inability to bound the
 same-attempt contradiction invalidation
  + one proof lookup per session
  + exact nested partial-byte propagation
+ + post-mutation exception truth
  -> real-owner proxy-proof tests
  -> affected regression
  -> final affected-surface re-derivation
