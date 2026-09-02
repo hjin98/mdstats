@@ -98,6 +98,42 @@ def set_mount_resolver(resolver: MountIdentityResolver | None) -> None:
     _RESOLVER = resolver
 
 
+def crosses_mount_boundary_at(
+    parent_fd: int, name: str, display: Path
+) -> tuple[bool, str]:
+    """Whether entering ``name`` from ``parent_fd`` leaves the parent's filesystem.
+
+    The descriptor-relative counterpart of :func:`crosses_mount_boundary`. The
+    ancestry above ``parent_fd`` was already authenticated by the descent that
+    produced it, so the only open question is this one hop - answered by
+    comparing the child's device to the parent's and by asking the mount table
+    about the child itself.
+
+    A descriptor-safe descent does not make a nested mount ours: the ownership
+    boundary is exactly the one R13 froze, and an unreadable or unavailable
+    mount identity retains rather than traverses.
+    """
+
+    try:
+        parent_device = int(os.fstat(parent_fd).st_dev)
+        child = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except OSError as exc:
+        return True, f"the filesystem identity of {display} is unreadable ({exc})"
+    if int(child.st_dev) != parent_device:
+        return True, f"{display} is on a different filesystem than its parent"
+    resolver = mount_resolver()
+    if resolver.is_mount_point(display):
+        return True, f"{display} is a mount point beneath its authorized root"
+    if not resolver.available:
+        # Same device and no mount table: a same-device bind mount cannot be
+        # ruled out, so retain rather than traverse.
+        return True, (
+            "mount discovery is unavailable on this platform, so a same-device "
+            f"nested mount at {display} cannot be ruled out"
+        )
+    return False, ""
+
+
 def crosses_mount_boundary(root: Path, candidate: Path) -> tuple[bool, str]:
     """Whether reaching ``candidate`` from ``root`` leaves ``root``'s filesystem.
 

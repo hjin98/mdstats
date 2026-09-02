@@ -71,6 +71,7 @@ from .maintenance import (
     campaign_state_maintenance_engine,
     plan_campaign_state_maintenance,
 )
+from .owners import P7_RELEASED_ATTEMPT_AUTHORIZER, SubtreeCoverage
 from .plan import (
     ACTION_EVICT_CACHE,
     ACTION_REMOVE,
@@ -433,6 +434,12 @@ def storage_cleanup(context: StorageCommandContext, args: Any) -> dict[str, Any]
     return payload
 
 
+def _view_node_kind(view: Any) -> str:
+    """The typed kind the P7 owner recorded for the view's own top-level node."""
+
+    return "directory" if view.coverage is SubtreeCoverage.CLOSED else "file"
+
+
 def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
     """Cleanup removals plus the separately planned owner maintenance."""
 
@@ -453,6 +460,37 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                 result.refused.append({**action.to_dict(), "refusal": detail})
                 continue
             view = snapshot.view(action.artifact_id)
+            if view is not None and view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER:
+                # The P7 owner established this authority against an open attempt
+                # directory. Both a top-level regular file and a directory
+                # subtree go back through that owner so the removal happens
+                # relative to the descriptor the certification was performed on,
+                # rather than through an absolute pathname that would re-resolve
+                # the ancestry one last time.
+                from ..qualification.store import remove_released_attempt_member
+
+                removed, why = remove_released_attempt_member(
+                    snapshot.campaign_paths,
+                    view.path.parent,
+                    view.path.name,
+                    expected_root_identity=view.root_identity,
+                    certified_nodes=[
+                        {"path": view.path.name, "kind": _view_node_kind(view)},
+                        *(
+                            {
+                                "path": f"{view.path.name}/{item.path}",
+                                "kind": item.kind,
+                            }
+                            for item in view.certified_nodes
+                        ),
+                    ],
+                )
+                result.completed.append(
+                    {**action.to_dict(), "removed": removed, "detail": why}
+                )
+                if removed:
+                    result.reclaimed_bytes += int(action.size_bytes)
+                continue
             if view is not None and view.path == action.path and action.path.is_dir():
                 members, refusals = snapshot.authorized_members(view)
                 removed, why = remove_certified_subtree(

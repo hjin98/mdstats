@@ -151,6 +151,14 @@ class CertifiedNode:
         return {"path": self.path, "kind": self.kind}
 
 
+def crosses_mount_boundary_at(parent_fd: int, name: str, display: Path):
+    """Re-exported so the P7 owner has one mount-boundary authority, not two."""
+
+    from .trust import crosses_mount_boundary_at as _at
+
+    return _at(parent_fd, name, display)
+
+
 def observed_node_identity(path: Path) -> dict[str, int] | None:
     """The filesystem identity of ``path`` itself, never of a symlink target."""
 
@@ -1223,12 +1231,9 @@ def qualification_views(
     """
 
     from ..qualification.store import (
-        ATTEMPT_INFRASTRUCTURE_NAMES,
-        ATTEMPT_MEMBER_MANIFEST_FILENAME,
         LOCKED_REVEAL_DIRECTORY,
         QUALIFICATION_ROOT_NAME,
-        certified_attempt_nodes,
-        iter_attempt_state_authorities,
+        observe_qualification_namespace,
         qualification_root,
     )
 
@@ -1261,15 +1266,25 @@ def qualification_views(
     # classification all read the same authenticated result, so the owner graph
     # and the local classifier can never disagree about whether an attempt is
     # released.
+    # One descriptor-bound observation for every P7 decision below: generation
+    # facts, attempt state, released-scratch topology, and exact certification
+    # all come from the same authenticated descent. Re-listing the
+    # generation/attempts/attempt hierarchy by pathname afterwards would be a
+    # second namespace resolution, and it would happily enumerate whatever a
+    # substituted ancestor points at now.
     try:
-        authorities = iter_attempt_state_authorities(paths)
+        snapshot = observe_qualification_namespace(paths, certify=certify)
+        generations = snapshot.generations
+        authorities = snapshot.authorities
     except Exception as exc:
+        generations = ()
         authorities = (
             _UnresolvedAttemptAuthority(family_root, f"attempt census failed: {exc}"),
         )
-    resolved_states = {
-        str(item.attempt_root): item.state for item in authorities if item.resolved
-    }
+    attempts_by_generation: dict[int, list[Any]] = {}
+    for item in authorities:
+        if item.generation is not None:
+            attempts_by_generation.setdefault(int(item.generation), []).append(item)
     for item in authorities:
         if item.state is not None and item.state.is_active:
             active_reference_paths.update(item.state.referenced_paths)
@@ -1287,13 +1302,12 @@ def qualification_views(
         )
         active_reference_paths.add(str(family_root))
 
-    for root in _generation_roots(family_root):
-        generation = _generation_of(root)
-        if generation is None:
-            continue
+    for facts in generations:
+        generation = facts.generation
+        root = facts.root
         historical = generation != current_generation
         objects_id = f"p7:objects:g{generation}"
-        if (root / "objects").is_dir():
+        if facts.has_objects:
             views.append(
                 OwnerArtifactView(
                     owner=OWNER_P7,
@@ -1312,12 +1326,13 @@ def qualification_views(
                     coverage=SubtreeCoverage.CONTAINER,
                 )
             )
-        attempts_root = root / "attempts"
-        if not attempts_root.is_dir():
-            continue
-        for attempt in sorted(p for p in attempts_root.iterdir() if p.is_dir()):
+        for authority in sorted(
+            attempts_by_generation.get(generation, ()),
+            key=lambda item: item.attempt_root.name,
+        ):
+            attempt = authority.attempt_root
             released, why, state = _attempt_release_state(
-                resolved_states.get(str(attempt)), attempt, active_reference_paths
+                authority.state, attempt, active_reference_paths
             )
             views.append(
                 OwnerArtifactView(
@@ -1347,10 +1362,6 @@ def qualification_views(
                 # is reported as a retained container, so a report never scales
                 # with attempt bulk and never implies that deletion authority
                 # has already been established.
-                proof_present = (
-                    observed_node_kind(attempt / ATTEMPT_MEMBER_MANIFEST_FILENAME)
-                    == NODE_FILE
-                )
                 views.append(
                     OwnerArtifactView(
                         owner=OWNER_P7,
@@ -1363,7 +1374,7 @@ def qualification_views(
                             "mutation"
                             + (
                                 ""
-                                if proof_present
+                                if authority.proof_present
                                 else "; no released-attempt proof is present"
                             )
                         ),
@@ -1374,21 +1385,16 @@ def qualification_views(
                     )
                 )
                 continue
-            certified, member_why, nodes = certified_attempt_nodes(attempt, state)
+            # Certified during the same authenticated descent, against the same
+            # open attempt directory the state was read from.
+            certified = authority.certified
+            member_why = authority.certification_reason
+            nodes = authority.certified_nodes
             recorded = {path: kind for path, kind in nodes}
-            attempt_identity = next(
-                (
-                    item.root_identity
-                    for item in authorities
-                    if str(item.attempt_root) == str(attempt)
-                ),
-                None,
-            )
-            for member in sorted(attempt.iterdir()):
-                if member.name in ATTEMPT_INFRASTRUCTURE_NAMES:
-                    continue
-                kind = observed_node_kind(member)
-                if not certified or recorded.get(member.name) != kind:
+            attempt_identity = authority.root_identity
+            for member_name, kind in authority.top_level_nodes:
+                member = attempt / member_name
+                if not certified or recorded.get(member_name) != kind:
                     # Every top-level node has to be one the proof recorded, of
                     # the recorded kind, before it can be exposed as reclaimable
                     # at all. Otherwise it is reported and retained.
@@ -1397,7 +1403,7 @@ def qualification_views(
                             owner=OWNER_P7,
                             artifact_id=(
                                 f"p7:attempt_scratch:{generation}:{attempt.name}:"
-                                f"{member.name}"
+                                f"{member_name}"
                             ),
                             path=member,
                             artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
@@ -1416,7 +1422,7 @@ def qualification_views(
                         )
                     )
                     continue
-                prefix = f"{member.name}/"
+                prefix = f"{member_name}/"
                 inside = tuple(
                     CertifiedNode(path=path[len(prefix) :], kind=node_kind)
                     for path, node_kind in nodes
@@ -1426,7 +1432,7 @@ def qualification_views(
                     OwnerArtifactView(
                         owner=OWNER_P7,
                         artifact_id=(
-                            f"p7:attempt_scratch:{generation}:{attempt.name}:{member.name}"
+                            f"p7:attempt_scratch:{generation}:{attempt.name}:{member_name}"
                         ),
                         path=member,
                         artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
@@ -1448,7 +1454,8 @@ def qualification_views(
                         certified_nodes=inside,
                         # Typed names alone do not say which directory they were
                         # certified beneath, so this view carries the owner's own
-                        # authorizer and the root identity it observed.
+                        # authorizer, the authority root the owner certified
+                        # against, and this container's own identity.
                         exact_authorizer=P7_RELEASED_ATTEMPT_AUTHORIZER,
                         root_identity=attempt_identity,
                         path_identity=observed_node_identity(member),
@@ -2135,6 +2142,7 @@ __all__ = [
     "OwnerViewError",
     "CertifiedNode",
     "P7_RELEASED_ATTEMPT_AUTHORIZER",
+    "crosses_mount_boundary_at",
     "observed_node_identity",
     "NODE_ABSENT",
     "NODE_DIRECTORY",

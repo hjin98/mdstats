@@ -904,17 +904,32 @@ def test_interrupted_multi_action_cleanup_is_truthful_and_re_plans(tmp_path: Pat
         ]
         assert len(targets) >= 3, targets
 
+        # The failpoint has to sit on whichever removal owner the actions
+        # actually reach: generic storage removal, and the P7 released-attempt
+        # boundary that owns descriptor-relative reclamation.
+        from mdstats.training_data.qualification import store as qstore
+
         real_remove = executor_mod.remove_durably
+        real_released = qstore.remove_released_attempt_member
         removed: list[Path] = []
 
-        def failing_remove(path: Path) -> bool:
+        def _interrupt_after_two() -> None:
             if len(removed) >= 2:
                 raise RuntimeError("injected interruption after a strict subset")
+
+        def failing_remove(path: Path) -> bool:
+            _interrupt_after_two()
             removed.append(path)
             return real_remove(path)
 
+        def failing_released(paths_arg, attempt_root, member_name, **kwargs):
+            _interrupt_after_two()
+            removed.append(Path(attempt_root) / member_name)
+            return real_released(paths_arg, attempt_root, member_name, **kwargs)
+
         executor_mod.remove_durably = failing_remove
         storage_commands.remove_durably = failing_remove
+        qstore.remove_released_attempt_member = failing_released
         try:
             with pytest.raises(RuntimeError, match="injected interruption"):
                 context.executor(policy).run(
@@ -926,6 +941,7 @@ def test_interrupted_multi_action_cleanup_is_truthful_and_re_plans(tmp_path: Pat
         finally:
             executor_mod.remove_durably = real_remove
             storage_commands.remove_durably = real_remove
+            qstore.remove_released_attempt_member = real_released
 
         surviving = [item for item in targets if item.exists()]
         assert len(surviving) == len(targets) - 2
@@ -2381,17 +2397,28 @@ def test_unauthenticated_p7_attempt_state_blocks_everything(
     elif corruption == "wrong_root_state":
         # A digest-valid state, published for a different attempt, copied over
         # this one. Self-consistency is not identity.
-        other = attempts_root / ("c" * 64)
-        other.mkdir()
-        (other / "attempt-state.json").write_bytes(saved)
-        payload = json.loads(saved.decode("utf-8"))
-        payload["attempt_identity"] = "c" * 64
-        payload.pop("content_digest", None)
-        from mdstats.training_data.qualification.store import QualificationAttemptState
+        from mdstats.training_data.qualification.store import (
+            QualificationAttemptState,
+            _expected_attempt_identity,
+        )
 
+        # A record that is valid in every independent way: its self digest
+        # recomputes, and its attempt identity really is the canonical identity
+        # derived from the binding it names. The *only* thing wrong is that it
+        # was published for a different attempt than the root it sits in, so
+        # nothing but the state/root relation can refuse it.
+        payload = json.loads(saved.decode("utf-8"))
+        foreign_binding = "b" * 64
+        foreign_identity = _expected_attempt_identity(foreign_binding)
+        assert foreign_identity != payload["attempt_identity"]
+        payload["binding_digest"] = foreign_binding
+        payload["attempt_identity"] = foreign_identity
+        payload.pop("content_digest", None)
         payload["content_digest"] = QualificationAttemptState.from_dict(
             dict(payload)
         ).content_digest
+        other = attempts_root / foreign_identity
+        other.mkdir()
         (other / "attempt-state.json").write_text(json.dumps(payload), encoding="utf-8")
         state.write_text(json.dumps(payload), encoding="utf-8")
         restore.append(lambda: state.write_bytes(saved))
@@ -2515,7 +2542,8 @@ def test_unauthenticated_p7_attempt_state_blocks_everything(
             # found under.
             snapshot, _paths = _snapshot(config)
             assert any(
-                "identity" in item or "root" in item
+                "different attempt identity than the directory it was read from"
+                in item
                 for item in snapshot.integrity_failures
             ), snapshot.integrity_failures
     for undo in restore:
@@ -2534,7 +2562,6 @@ def test_the_strict_state_authority_is_the_only_storage_facing_reader() -> None:
     tree = ast.parse(store_source)
     for name in (
         "iter_attempt_state_census",
-        "iter_attempt_state_authorities",
         "read_attempt_state_at",
         "build_qualification_retention_fence",
     ):
@@ -2544,11 +2571,12 @@ def test_the_strict_state_authority_is_the_only_storage_facing_reader() -> None:
             if isinstance(item, ast.FunctionDef) and item.name == name
         )
         dumped = ast.dump(node)
-        assert "from_dict" not in dumped or name == "iter_attempt_state_authorities", name
+        assert "from_dict" not in dumped, name
         assert (
             "authenticate_attempt_state" in dumped
             or "iter_attempt_state_authorities" in dumped
             or "iter_attempt_state_census" in dumped
+            or "observe_qualification_namespace" in dumped
         ), name
 
     owners = (Path(cli.__file__).parent / "storage" / "owners.py").read_text(
@@ -2558,7 +2586,116 @@ def test_the_strict_state_authority_is_the_only_storage_facing_reader() -> None:
         "a storage owner view still parses attempt state for itself"
     )
     assert "read_attempt_state_at" not in owners
-    assert "iter_attempt_state_authorities" in owners
+
+
+def test_the_p7_owner_view_never_rediscovers_the_attempt_hierarchy() -> None:
+    """IR25-1: the forbidden mechanism itself, not a proxy for it.
+
+    The storage-facing P7 view must take its generation/attempt facts from the
+    one descriptor-bound namespace result. A followable rediscovery of
+    `qualification/gN/attempts/<attempt>` here would observe the target of an
+    ancestor substituted after the strict census, which is exactly the window
+    the descriptor descent closed. This asserts on the mechanisms that would
+    reopen it, so removing the consolidation fails the test.
+    """
+
+    import ast
+
+    from mdstats.training_data.qualification import store as qualification_store
+
+    owners_path = Path(cli.__file__).parent / "storage" / "owners.py"
+    source = owners_path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    node = next(
+        item
+        for item in ast.walk(tree)
+        if isinstance(item, ast.FunctionDef) and item.name == "qualification_views"
+    )
+    body = "".join(source.splitlines(keepends=True)[node.lineno - 1 : node.end_lineno])
+
+    assert "observe_qualification_namespace" in body, (
+        "the P7 view no longer consumes the strict namespace authority"
+    )
+    for forbidden in (
+        "_generation_roots",
+        ".iterdir()",
+        ".glob(",
+        "certified_attempt_nodes",
+        "validate_bound_attempt_proof",
+        "read_attempt_member_proof",
+    ):
+        assert forbidden not in body, (
+            f"the P7 owner view rediscovers the attempt hierarchy via {forbidden}"
+        )
+    # The path-taking storage certification helper is retired outright rather
+    # than kept for source compatibility: both its proof read and its descendant
+    # observation were pathname-based, so leaving it would leave the bypass.
+    assert not hasattr(qualification_store, "certified_attempt_nodes"), (
+        "a path-taking released-attempt certification helper is still reachable"
+    )
+    # `is_dir()` survives only for durable non-attempt evidence, never to reach
+    # attempt state or scratch.
+    for line in body.splitlines():
+        if ".is_dir()" in line:
+            assert "reveal_root" in line or "reference_root" in line, line
+
+    # Exact certification is descriptor-relative, and it recomputes the expected
+    # locator from the authenticated generation rather than looking the ancestry
+    # up again by name.
+    store_source = (
+        Path(cli.__file__).parent / "qualification" / "store.py"
+    ).read_text(encoding="utf-8")
+    store_tree = ast.parse(store_source)
+    certify = next(
+        item
+        for item in ast.walk(store_tree)
+        if isinstance(item, ast.FunctionDef)
+        and item.name == "_certify_attempt_from_descriptor"
+    )
+    certify_body = "".join(
+        store_source.splitlines(keepends=True)[certify.lineno - 1 : certify.end_lineno]
+    )
+    assert "dir_fd=attempt_fd" in certify_body
+    assert "_observe_attempt_nodes_from_descriptor" in certify_body
+    # The docstring may *discuss* the rejected name lookup; the code may not
+    # perform one, so the check is on executable nodes only.
+    certify_code = ast.dump(
+        ast.Module(
+            body=[
+                item
+                for item in certify.body
+                if not (
+                    isinstance(item, ast.Expr)
+                    and isinstance(item.value, ast.Constant)
+                    and isinstance(item.value.value, str)
+                )
+            ],
+            type_ignores=[],
+        )
+    )
+    assert "parent" not in certify_code, (
+        "exact certification still derives the generation from a name lookup"
+    )
+
+    # And every consequential P7 removal goes through the owner's own
+    # descriptor-relative boundary rather than a generic absolute-path delete.
+    commands = (Path(cli.__file__).parent / "storage" / "commands.py").read_text(
+        encoding="utf-8"
+    )
+    assert "remove_released_attempt_member" in commands
+    engine = next(
+        item
+        for item in ast.walk(ast.parse(commands))
+        if isinstance(item, ast.FunctionDef) and item.name == "_cleanup_engine"
+    )
+    engine_body = "".join(
+        commands.splitlines(keepends=True)[engine.lineno - 1 : engine.end_lineno]
+    )
+    released = engine_body.index("P7_RELEASED_ATTEMPT_AUTHORIZER")
+    generic = engine_body.index("remove_durably(action.path)")
+    assert released < generic, (
+        "a released P7 action can reach the generic path removal first"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2816,7 +2953,7 @@ def test_an_aborted_reopen_and_storage_cleanup_never_interleave(
 # ---------------------------------------------------------------------------
 
 
-def _released_scratch_view(config: Path):
+def _released_scratch_view(config: Path, *, member_name: str | None = None):
     """The exact reclaimable released-scratch view and its snapshot."""
 
     snapshot, paths = _snapshot(config)
@@ -2826,6 +2963,7 @@ def _released_scratch_view(config: Path):
         if view.artifact_id.startswith("p7:attempt_scratch:")
         and view.safe_reclaimable
         and view.path.is_dir()
+        and (member_name is None or view.path.name == member_name)
     ]
     assert views, "the fixture produced no reclaimable released scratch directory"
     return snapshot, paths, views[0]
@@ -2950,8 +3088,22 @@ def test_a_basename_only_proof_grants_no_authority(tmp_path: Path):
     payload = json.loads(proof.read_text(encoding="utf-8"))
     recorded = str(payload["attempt_root"])
     assert "/" in recorded, "the production proof is not generation-scoped"
+    from mdstats.training_data._common import digest as _digest
+
     payload["attempt_root"] = recorded.rsplit("/", 1)[-1]
+    body = {k: v for k, v in payload.items() if k != "content_digest"}
+    payload["content_digest"] = _digest(body)
     proof.write_text(json.dumps(payload), encoding="utf-8")
+
+    # The record still authenticates against its own identity; only the root
+    # locator is the incomplete development form.
+    from mdstats.training_data.qualification.store import (
+        validate_attempt_member_proof_bytes,
+    )
+
+    parsed, why = validate_attempt_member_proof_bytes(proof.read_bytes())
+    assert parsed is None, "the fixture is refused by something other than the root"
+    assert "bare attempt name" in why, why
 
     snapshot, _paths = _snapshot(config)
     assert not any(
@@ -3041,18 +3193,41 @@ def test_an_ancestor_replaced_between_enumeration_and_open_fails_closed(
 
 
 def test_a_nested_mount_under_released_scratch_is_never_traversed(tmp_path: Path):
-    """R24-1: a descriptor-safe descent does not make a nested mount ours."""
+    """R24-1/IR25-3.3: a descriptor-safe descent does not make a mount ours.
+
+    The mount directory is created *before* the attempt is released, so the
+    released proof records it as an ordinary certified directory. Exact
+    authorization therefore has no unexpected-node contradiction to fall over
+    on: the only thing that can stop the traversal is the mount boundary itself.
+    """
 
     from mdstats.training_data.storage.trust import (
         MountIdentityResolver,
         set_mount_resolver,
     )
 
-    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
-    snapshot, _paths, view = _released_scratch_view(config)
-    nested = view.path / "mounted"
+    harness = fx.QualificationHarness()
+    config, _workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
+    assert _qualify_nonlocked(config, harness) == 0
+
+    # Plant the directory while the attempt is still active, then release: the
+    # proof P7 publishes records it as one of its own certified nodes.
+    active, paths = _snapshot(config, certify=False)
+    attempt = next(
+        view.path
+        for view in active.views
+        if view.artifact_id.startswith("p7:attempt:")
+    )
+    member = next(item for item in sorted(attempt.iterdir()) if item.is_dir())
+    nested = member / "mounted"
     nested.mkdir()
     (nested / "foreign.bin").write_bytes(b"someone else's bytes")
+    _release_attempt(config, harness)
+
+    snapshot, _paths, view = _released_scratch_view(config, member_name=member.name)
+    recorded = {item.path for item in view.certified_nodes}
+    assert "mounted" in recorded, sorted(recorded)
+    assert "mounted/foreign.bin" in recorded, sorted(recorded)
 
     set_mount_resolver(
         MountIdentityResolver(mount_points=frozenset({str(nested)}), available=True)
@@ -3060,13 +3235,252 @@ def test_a_nested_mount_under_released_scratch_is_never_traversed(tmp_path: Path
     try:
         fresh, _paths2 = _snapshot(config)
         target = fresh.view(view.artifact_id)
-        if target is not None:
-            members, refusals = fresh.authorized_members(target)
-            assert all("mounted" not in str(item) for item in members), members
-            assert refusals, "a nested mount produced no refusal"
+        assert target is not None
+        # The mount is the *only* thing that changed, and it is enough: the
+        # descriptor descent classifies the mounted directory as unowned, so the
+        # exact certification contradicts and the container stops being
+        # reclaimable at all.
+        assert not target.safe_reclaimable, target.detail
+        assert "mount" in target.detail, target.detail
+        members, refusals = fresh.authorized_members(target)
+        assert all("mounted" not in str(item) for item in members), members
+        # And the real cleanup retains rather than emptying the mounted tree.
+        assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
     finally:
         set_mount_resolver(None)
     assert (nested / "foreign.bin").read_bytes() == b"someone else's bytes"
+
+def test_a_stale_handle_at_the_open_seam_is_unresolved_not_absent(tmp_path: Path):
+    """R24-1: `ESTALE` at the real open seam is ambiguity, never absence."""
+
+    import errno
+
+    config, _workspace, harness = _released_attempt_campaign(tmp_path)
+    checkpoints = _published_checkpoints(config, harness)
+    attempt = _released_attempt_root(config)
+
+    real_os_open = os.open
+
+    def stale_open(name, *args, **kwargs):
+        if isinstance(name, str) and name == attempt.name:
+            raise OSError(errno.ESTALE, "Stale file handle", name)
+        return real_os_open(name, *args, **kwargs)
+
+    os.open = stale_open
+    try:
+        _assert_p7_ambiguity_blocks_everything(config, checkpoints)
+        assert p4d._run(config, "storage", "report") == 0
+    finally:
+        os.open = real_os_open
+    _assert_p7_repair_restores_planning(config)
+
+
+def test_the_released_root_locator_survives_a_workspace_relocation(tmp_path: Path):
+    """R24-2: the durable locator is workspace-portable, not an absolute path."""
+
+    import shutil as _shutil
+
+    config, workspace, _harness = _released_attempt_campaign(tmp_path)
+    before, _paths = _snapshot(config)
+    reclaimable_before = {
+        view.artifact_id
+        for view in before.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    }
+    assert reclaimable_before
+
+    moved = tmp_path / "relocated-workspace"
+    _shutil.copytree(workspace, moved, symlinks=True)
+    relocated_config = tmp_path / "relocated.toml"
+    relocated_config.write_text(
+        config.read_text(encoding="utf-8").replace(str(workspace), str(moved)),
+        encoding="utf-8",
+    )
+
+    after, _paths2 = _snapshot(relocated_config)
+    reclaimable_after = {
+        view.artifact_id
+        for view in after.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    }
+    assert reclaimable_after == reclaimable_before, (
+        "relocating the workspace changed released-attempt authority"
+    )
+
+
+@pytest.mark.parametrize("swap", ["symlink", "same_shaped_directory"])
+def test_an_apply_time_root_swap_transfers_no_authority(tmp_path: Path, swap: str):
+    """R26-A: the race fires below the owner, just before the destructive call.
+
+    The real cleanup runs. For each released action the P7 owner re-acquires the
+    strict namespace, checks the attempt-root identity, and only then reaches
+    the fd-relative mutation - which is where the public attempt pathname is
+    replaced.
+
+    Two things must hold afterwards. The action that was already inside its
+    mutation completes against the descriptor it holds, which is the object the
+    certification was performed on. Every action after it re-acquires by name,
+    finds something that is not that object, and refuses. Authority is never
+    transferred to the replacement - which is the guarantee R26 freezes, rather
+    than an inode compare-and-delete the kernel does not offer.
+
+    Both a proof-certified directory and a proof-certified top-level regular
+    file are exercised: the released plan contains both.
+    """
+
+    import shutil as _shutil
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    released = [
+        view
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    assert any(view.path.is_dir() for view in released), released
+    assert any(view.path.is_file() for view in released), released
+    attempt = released[0].path.parent
+    parked = attempt.parent / "parked"
+    fired: list[str] = []
+
+    def perform_swap() -> None:
+        if fired:
+            return
+        fired.append(swap)
+        if swap == "symlink":
+            attempt.rename(parked)
+            attempt.symlink_to(parked)
+        else:
+            # A byte-for-byte twin with a different root inode: no symlink check
+            # could tell it from the certified original.
+            _shutil.copytree(attempt, parked, symlinks=True)
+            attempt.rename(attempt.parent / "original")
+            parked.rename(attempt)
+
+    # Below the semantic owner and above the syscall: the strict reacquisition
+    # and the attempt-root identity check have already run, the descriptor is
+    # open, and these are the two destructive transitions that remain.
+    outcomes: list[tuple[str, bool, str]] = []
+    real_member = qstore.remove_released_attempt_member
+    real_unlink = qstore._unlink_certified_file
+    real_remove_directory = qstore._remove_certified_directory
+
+    def observed_member(paths_arg, attempt_root, member_name, **kwargs):
+        result = real_member(paths_arg, attempt_root, member_name, **kwargs)
+        outcomes.append((member_name, result[0], result[1]))
+        return result
+
+    def raced_unlink(parent_fd, name):
+        perform_swap()
+        return real_unlink(parent_fd, name)
+
+    def raced_remove_directory(*args, **kwargs):
+        perform_swap()
+        return real_remove_directory(*args, **kwargs)
+
+    qstore.remove_released_attempt_member = observed_member
+    qstore._unlink_certified_file = raced_unlink
+    qstore._remove_certified_directory = raced_remove_directory
+    try:
+        assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+    finally:
+        qstore.remove_released_attempt_member = real_member
+        qstore._unlink_certified_file = real_unlink
+        qstore._remove_certified_directory = real_remove_directory
+
+    assert fired, "the race never fired"
+    assert outcomes, "no released action reached the P7 mutation boundary"
+    assert outcomes[0][1] is True, outcomes
+    later = outcomes[1:]
+    assert later, "the plan had only one released action, so nothing raced the swap"
+    for name, removed, why in later:
+        assert removed is False, (name, why)
+        assert (
+            "different filesystem object" in why or "namespace is unresolved" in why
+        ), (name, why)
+
+    # Nothing the replacement holds was touched under the original's authority.
+    if swap == "same_shaped_directory":
+        surviving = sorted(item.name for item in attempt.iterdir())
+        for name, _removed, _why in outcomes:
+            assert name in surviving, (name, surviving)
+    else:
+        # The symlink points back at the original directory, so the only member
+        # missing from it is the one whose own mutation legitimately completed.
+        surviving = sorted(item.name for item in parked.iterdir())
+        for name, _removed, _why in later:
+            assert name in surviving, (name, surviving)
+
+
+def test_a_released_action_refuses_when_the_root_identity_changed(tmp_path: Path):
+    """R26-A: a root replaced *before* the fd-relative mutation is refused.
+
+    The complement of the race above. Here the substitution happens before the
+    owner re-acquires the namespace, so the identity it observes does not match
+    the one the certification was performed against, and the action refuses
+    instead of acting on the replacement.
+    """
+
+    import shutil as _shutil
+
+    from mdstats.training_data.qualification.store import (
+        remove_released_attempt_member,
+    )
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, paths, view = _released_scratch_view(config)
+    attempt = view.path.parent
+    parked = attempt.parent / "parked"
+    _shutil.copytree(attempt, parked, symlinks=True)
+    attempt.rename(attempt.parent / "original")
+    parked.rename(attempt)
+
+    removed, why = remove_released_attempt_member(
+        paths,
+        attempt,
+        view.path.name,
+        expected_root_identity=view.root_identity,
+        certified_nodes=[
+            {"path": view.path.name, "kind": "directory"},
+            *(
+                {"path": f"{view.path.name}/{item.path}", "kind": item.kind}
+                for item in view.certified_nodes
+            ),
+        ],
+    )
+    assert removed is False
+    assert "different filesystem object" in why, why
+    assert list((attempt / view.path.name).rglob("*")), "the replacement was emptied"
+
+
+def test_released_mutation_refuses_without_the_directory_descriptor_primitives(
+    tmp_path: Path, monkeypatch
+):
+    """R26-A: an unsupported platform retains rather than falling back.
+
+    If the no-follow/dir-fd boundary is unavailable there is no way to carry the
+    authenticated attempt root through to the destructive syscall, and the
+    accepted answer is to refuse - never to reach for absolute-path traversal.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snapshot_before, paths, view = _released_scratch_view(config)
+    monkeypatch.setattr(qstore, "dir_fd_mutation_supported", lambda: False)
+
+    removed, why = qstore.remove_released_attempt_member(
+        paths,
+        view.path.parent,
+        view.path.name,
+        expected_root_identity=view.root_identity,
+        certified_nodes=[{"path": view.path.name, "kind": "directory"}],
+    )
+    assert removed is False
+    assert "retained rather than removed by pathname" in why, why
+    assert list(view.path.rglob("*")), "scratch was removed on an unsupported platform"
 
 
 def test_a_stale_handle_at_the_open_seam_is_unresolved_not_absent(tmp_path: Path):
@@ -3127,75 +3541,3 @@ def test_the_released_root_locator_survives_a_workspace_relocation(tmp_path: Pat
     )
 
 
-@pytest.mark.parametrize("seam", ["member_authorization", "final_removal"])
-@pytest.mark.parametrize("swap", ["symlink", "same_shaped_directory"])
-def test_an_apply_time_root_swap_is_refused_by_the_real_executor(
-    tmp_path: Path, seam: str, swap: str
-):
-    """R24-3: the real cleanup apply, raced at the last name-based transition.
-
-    The under-lock strict resnapshot and certification are allowed to complete;
-    the attempt root is then replaced, either just before the common member
-    authorization or immediately before the recursive removal. Neither may
-    transfer the earlier certification to the replacement tree.
-    """
-
-    import shutil as _shutil
-
-    from mdstats.training_data.storage import inventory as storage_inventory
-
-    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
-    _snap, _paths, view = _released_scratch_view(config)
-    attempt = view.path.parent
-    parked = attempt.parent / "parked"
-    fired: list[str] = []
-
-    def perform_swap() -> None:
-        if fired:
-            return
-        fired.append(swap)
-        if swap == "symlink":
-            attempt.rename(parked)
-            attempt.symlink_to(parked)
-        else:
-            _shutil.copytree(attempt, parked, symlinks=True)
-            attempt.rename(attempt.parent / "original")
-            parked.rename(attempt)
-
-    if seam == "member_authorization":
-        real = storage_inventory.StorageInventorySnapshot.authorized_members
-
-        def raced(self, candidate):
-            if candidate.artifact_id.startswith("p7:attempt_scratch:"):
-                perform_swap()
-            return real(self, candidate)
-
-        storage_inventory.StorageInventorySnapshot.authorized_members = raced
-        restore = lambda: setattr(  # noqa: E731
-            storage_inventory.StorageInventorySnapshot, "authorized_members", real
-        )
-    else:
-        real_remove = storage_commands.remove_certified_subtree
-
-        def raced_remove(path, **kwargs):
-            if "attempts" in str(path):
-                perform_swap()
-            return real_remove(path, **kwargs)
-
-        storage_commands.remove_certified_subtree = raced_remove
-        restore = lambda: setattr(  # noqa: E731
-            storage_commands, "remove_certified_subtree", real_remove
-        )
-
-    try:
-        assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
-    finally:
-        restore()
-    assert fired, "the race never fired"
-
-    # Whatever the replacement is, its bytes are untouched: the certification was
-    # performed on the original directory and is not transferable by name.
-    surviving = parked if swap == "symlink" else attempt
-    assert surviving.is_dir()
-    assert (surviving / view.path.name).is_dir(), sorted(surviving.iterdir())
-    assert list((surviving / view.path.name).rglob("*")), "the foreign tree was emptied"
