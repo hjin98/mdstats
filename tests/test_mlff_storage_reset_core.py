@@ -4173,3 +4173,197 @@ def test_no_p7_consumer_converts_root_bound_certification_into_path_authority() 
 
     # And an identity change - of either - stales an unapplied plan.
     assert "view.root_identity" in plan_source and "view.path_identity" in plan_source
+
+
+# ---------------------------------------------------------------------------
+# R28 - the final apply boundary and the terminal-outcome contract
+# ---------------------------------------------------------------------------
+
+
+def test_the_final_p7_apply_certifies_on_the_descriptor_it_mutates() -> None:
+    """Structural: the session, not a carried snapshot, is the authority.
+
+    A narrow guard on the actual mechanism. The released-member remover must
+    take a live session rather than a path plus a set of names produced
+    somewhere else, and the session opener must authenticate state and certify
+    topology on the descriptor it returns still open.
+    """
+
+    import ast
+
+    store_path = Path(cli.__file__).parent / "qualification" / "store.py"
+    source = store_path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    opener = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "open_released_attempt_session"
+    )
+    body = ast.dump(opener)
+    for required in (
+        "_authenticate_attempt_from_descriptor",
+        "_certify_attempt_from_descriptor",
+        "released_authority_identity",
+        "open_attempt_namespace",
+    ):
+        assert required in body, required
+
+    remover = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "remove_released_attempt_member"
+    )
+    # The first parameter is the live capability. A `paths`/`attempt_root` pair
+    # would mean the remover re-opens the namespace for itself, which is the
+    # closed-descriptor gap this replaced.
+    assert [arg.arg for arg in remover.args.args][:2] == ["session", "member_name"], (
+        [arg.arg for arg in remover.args.args]
+    )
+    remover_body = ast.dump(remover)
+    assert "open_attempt_namespace" not in remover_body, (
+        "the remover reacquires the namespace instead of using the session"
+    )
+    assert "certified_nodes" not in [arg.arg for arg in remover.args.kwonlyargs], (
+        "a snapshot's certified node set is still passed in as final authority"
+    )
+
+    # And the cleanup engine opens exactly one session per attempt.
+    commands = (Path(cli.__file__).parent / "storage" / "commands.py").read_text(
+        encoding="utf-8"
+    )
+    assert "open_released_attempt_session" in commands
+    assert "sessions[key]" in commands, (
+        "the engine no longer reuses one live capability per attempt"
+    )
+
+
+def test_every_cleanup_removal_owner_reports_a_terminal_outcome() -> None:
+    """Structural: no removal path still answers with a bare boolean.
+
+    Reason strings are diagnostics. If any owner returned prose plus a boolean,
+    the executor would have to guess whether a refusal had already changed the
+    filesystem, and the durable audit would inherit the guess.
+    """
+
+    import ast
+    import inspect as _inspect
+
+    from mdstats.training_data.qualification.store import (
+        remove_released_attempt_member,
+    )
+    from mdstats.training_data.storage.executor import (
+        record_removal,
+        remove_certified_subtree,
+        remove_durably_outcome,
+    )
+    from mdstats.training_data.storage.outcome import MutationOutcome
+
+    for owner in (
+        remove_released_attempt_member,
+        remove_certified_subtree,
+        remove_durably_outcome,
+    ):
+        annotation = _inspect.signature(owner).return_annotation
+        assert "MutationOutcome" in str(annotation), (owner.__name__, annotation)
+
+    # Settlement reads the outcome, never the detail text.
+    settle = next(
+        node
+        for node in ast.walk(
+            ast.parse(
+                (Path(cli.__file__).parent / "storage" / "executor.py").read_text(
+                    encoding="utf-8"
+                )
+            )
+        )
+        if isinstance(node, ast.FunctionDef) and node.name == "record_removal"
+    )
+    dumped = ast.dump(settle)
+    assert "succeeded" in dumped and "credited_bytes" in dumped and "mutated" in dumped
+    assert "detail" in dumped  # carried as evidence...
+    assert ".find(" not in dumped and ".startswith(" not in dumped, (
+        "the outcome is being inferred from the reason string"
+    )
+    assert isinstance(record_removal, type(record_removal))
+    assert set(MutationOutcome.__dataclass_fields__) >= {
+        "outcome",
+        "detail",
+        "removed_bytes",
+    }
+
+
+def test_a_partial_removal_never_credits_the_planned_size() -> None:
+    """The reclaim figure an operator reads is what actually went."""
+
+    from mdstats.training_data.storage.outcome import (
+        already_absent,
+        partial_change_refused,
+        refused_no_change,
+        removed,
+    )
+
+    assert removed("done").credited_bytes(4096) == 4096
+    assert removed("done", removed_bytes=100).credited_bytes(4096) == 100
+    assert already_absent("gone").credited_bytes(4096) == 0
+    assert refused_no_change("no").credited_bytes(4096) == 0
+    partial = partial_change_refused("stopped", removed_bytes=17)
+    assert partial.credited_bytes(4096) == 17
+    assert partial.mutated is True and partial.refused is True
+    assert partial.succeeded is False
+
+
+def test_the_common_certified_subtree_reports_partial_when_it_half_empties(
+    tmp_path: Path,
+) -> None:
+    """R28-D: the shared helper's partial branch is a partial, not a refusal.
+
+    `remove_certified_subtree` retains the container when some descendant was
+    not owner-certified, but it still unlinks the members that were. Reporting
+    that as `refused_no_change` would describe a directory that no longer holds
+    what it held; reporting it as `removed` would claim a container that is
+    still there.
+    """
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage.outcome import (
+        OUTCOME_PARTIAL_CHANGE_REFUSED,
+        OUTCOME_REFUSED_NO_CHANGE,
+    )
+
+    container = tmp_path / "container"
+    container.mkdir()
+    authorized = container / "authorized.bin"
+    authorized.write_bytes(b"x" * 64)
+    foreign = container / "foreign.bin"
+    foreign.write_bytes(b"not ours")
+
+    outcome = remove_certified_subtree(
+        container,
+        members=[authorized],
+        refusals=[(foreign, "this owner did not record it")],
+    )
+    assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
+    assert outcome.mutated is True and outcome.succeeded is False
+    assert outcome.removed_bytes == 64, outcome
+    # Never the planned size: only what this execution measured before deleting.
+    assert outcome.credited_bytes(1_000_000) == 64
+    assert not authorized.exists()
+    assert foreign.read_bytes() == b"not ours"
+    assert container.is_dir()
+
+    # And with nothing authorized to remove, the same contradiction is a clean
+    # no-change refusal rather than a partial.
+    only_foreign = tmp_path / "only-foreign"
+    only_foreign.mkdir()
+    (only_foreign / "foreign.bin").write_bytes(b"not ours")
+    outcome = remove_certified_subtree(
+        only_foreign,
+        members=[],
+        refusals=[(only_foreign / "foreign.bin", "this owner did not record it")],
+    )
+    assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, outcome
+    assert outcome.mutated is False
+    assert outcome.credited_bytes(1_000_000) == 0

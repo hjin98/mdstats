@@ -1459,6 +1459,12 @@ def qualification_views(
                         exact_authorizer=P7_RELEASED_ATTEMPT_AUTHORIZER,
                         root_identity=attempt_identity,
                         path_identity=observed_node_identity(member),
+                        # The exact released authority this action is planned
+                        # against, carried by the ordinary owner-state binding.
+                        # A state and proof resealed to a different but equally
+                        # valid release would expose the same names and kinds;
+                        # only this makes the old plan go stale.
+                        state_identity=authority.release_authority,
                         requires=(objects_id,),
                     )
                 )
@@ -1568,6 +1574,7 @@ class _UnresolvedAttemptAuthority:
     reason: str
     state: Any = None
     root_identity: Any = None
+    release_authority: str = ""
 
     @property
     def resolved(self) -> bool:

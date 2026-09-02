@@ -53,6 +53,12 @@ from mdstats.training_data.storage.control_plane import (
     open_storage_control_plane_readonly,
 )
 from mdstats.training_data.storage.executor import synchronization_for
+from mdstats.training_data.storage.outcome import (
+    OUTCOME_ALREADY_ABSENT,
+    OUTCOME_PARTIAL_CHANGE_REFUSED,
+    OUTCOME_REFUSED_NO_CHANGE,
+    OUTCOME_REMOVED,
+)
 from mdstats.training_data.storage.inventory import (
     archive_candidates,
     build_storage_inventory,
@@ -922,10 +928,10 @@ def test_interrupted_multi_action_cleanup_is_truthful_and_re_plans(tmp_path: Pat
             removed.append(path)
             return real_remove(path)
 
-        def failing_released(paths_arg, attempt_root, member_name, **kwargs):
+        def failing_released(session, member_name, **kwargs):
             _interrupt_after_two()
-            removed.append(Path(attempt_root) / member_name)
-            return real_released(paths_arg, attempt_root, member_name, **kwargs)
+            removed.append(Path(session.attempt_root) / member_name)
+            return real_released(session, member_name, **kwargs)
 
         executor_mod.remove_durably = failing_remove
         storage_commands.remove_durably = failing_remove
@@ -2692,7 +2698,7 @@ def test_the_p7_owner_view_never_rediscovers_the_attempt_hierarchy() -> None:
         commands.splitlines(keepends=True)[engine.lineno - 1 : engine.end_lineno]
     )
     released = engine_body.index("P7_RELEASED_ATTEMPT_AUTHORIZER")
-    generic = engine_body.index("remove_durably(action.path)")
+    generic = engine_body.index("remove_durably_outcome(action.path)")
     assert released < generic, (
         "a released P7 action can reach the generic path removal first"
     )
@@ -3036,14 +3042,18 @@ def test_a_root_swap_after_certification_transfers_no_authority(
     ), refusals_after
 
     # And the last seam refuses independently, with the originally authorized
-    # member list still in hand.
-    removed, why = remove_certified_subtree(
+    # member list still in hand - reporting a *no-change* refusal, not a
+    # boolean that could be mistaken for a completed action.
+    outcome = remove_certified_subtree(
         view.path,
         members=members,
         refusals=(),
         root_identity=view.root_identity,
     )
-    assert removed is False
+    assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, outcome
+    assert outcome.mutated is False
+    assert outcome.credited_bytes(1_000_000) == 0
+    why = outcome.detail
     assert "no longer the filesystem object" in why or "re-observed" in why, why
     assert (replacement / view.path.name).exists() or view.path.exists()
 
@@ -3367,9 +3377,9 @@ def test_an_apply_time_root_swap_transfers_no_authority(tmp_path: Path, swap: st
     real_unlink = qstore._unlink_certified_file
     real_remove_directory = qstore._remove_certified_directory
 
-    def observed_member(paths_arg, attempt_root, member_name, **kwargs):
-        result = real_member(paths_arg, attempt_root, member_name, **kwargs)
-        outcomes.append((member_name, result[0], result[1]))
+    def observed_member(session, member_name, **kwargs):
+        result = real_member(session, member_name, **kwargs)
+        outcomes.append((member_name, result.succeeded, result.detail))
         return result
 
     def raced_unlink(parent_fd, name):
@@ -3392,41 +3402,42 @@ def test_an_apply_time_root_swap_transfers_no_authority(tmp_path: Path, swap: st
 
     assert fired, "the race never fired"
     assert outcomes, "no released action reached the P7 mutation boundary"
-    assert outcomes[0][1] is True, outcomes
-    later = outcomes[1:]
-    assert later, "the plan had only one released action, so nothing raced the swap"
-    for name, removed, why in later:
-        assert removed is False, (name, why)
-        assert (
-            "different filesystem object" in why or "namespace is unresolved" in why
-        ), (name, why)
+    assert len(outcomes) > 1, "the plan had one action, so nothing raced the swap"
 
-    # Nothing the replacement holds was touched under the original's authority.
+    # Every action runs through the one live capability the session holds, so
+    # the swap changes nothing about what they act on: they finish against the
+    # object the session authenticated. That is the point of the retained
+    # descriptor - the name no longer decides anything after acquisition.
+    for name, succeeded, why in outcomes:
+        assert succeeded is True, (name, why)
+
     if swap == "same_shaped_directory":
+        # The genuinely foreign tree that took over the public name keeps every
+        # byte: the certification was never transferable to it.
         surviving = sorted(item.name for item in attempt.iterdir())
-        for name, _removed, _why in outcomes:
+        for name, _succeeded, _why in outcomes:
             assert name in surviving, (name, surviving)
+        assert (attempt / outcomes[0][0]).exists()
     else:
-        # The symlink points back at the original directory, so the only member
-        # missing from it is the one whose own mutation legitimately completed.
+        # The symlink points back at the original directory, so what the
+        # session removed there is legitimately gone and nothing else is.
         surviving = sorted(item.name for item in parked.iterdir())
-        for name, _removed, _why in later:
-            assert name in surviving, (name, surviving)
+        for name, _succeeded, _why in outcomes:
+            assert name not in surviving, (name, surviving)
 
 
 def test_a_released_action_refuses_when_the_root_identity_changed(tmp_path: Path):
-    """R26-A: a root replaced *before* the fd-relative mutation is refused.
+    """R26-A/R28-B: a root replaced before the session opens is refused.
 
-    The complement of the race above. Here the substitution happens before the
-    owner re-acquires the namespace, so the identity it observes does not match
-    the one the certification was performed against, and the action refuses
-    instead of acting on the replacement.
+    The session is the authority. If the object it acquires is not the one the
+    plan was made against, there is nothing to mutate under and the refusal is
+    a no-change one.
     """
 
     import shutil as _shutil
 
     from mdstats.training_data.qualification.store import (
-        remove_released_attempt_member,
+        open_released_attempt_session,
     )
 
     config, _workspace, _harness = _released_attempt_campaign(tmp_path)
@@ -3437,21 +3448,15 @@ def test_a_released_action_refuses_when_the_root_identity_changed(tmp_path: Path
     attempt.rename(attempt.parent / "original")
     parked.rename(attempt)
 
-    removed, why = remove_released_attempt_member(
+    session, outcome = open_released_attempt_session(
         paths,
         attempt,
-        view.path.name,
         expected_root_identity=view.root_identity,
-        certified_nodes=[
-            {"path": view.path.name, "kind": "directory"},
-            *(
-                {"path": f"{view.path.name}/{item.path}", "kind": item.kind}
-                for item in view.certified_nodes
-            ),
-        ],
+        expected_release_authority=view.state_identity,
     )
-    assert removed is False
-    assert "different filesystem object" in why, why
+    assert session is None
+    assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, outcome
+    assert "different filesystem object" in outcome.detail, outcome.detail
     assert list((attempt / view.path.name).rglob("*")), "the replacement was emptied"
 
 
@@ -3471,73 +3476,480 @@ def test_released_mutation_refuses_without_the_directory_descriptor_primitives(
     _snapshot_before, paths, view = _released_scratch_view(config)
     monkeypatch.setattr(qstore, "dir_fd_mutation_supported", lambda: False)
 
-    removed, why = qstore.remove_released_attempt_member(
+    session, outcome = qstore.open_released_attempt_session(
         paths,
         view.path.parent,
-        view.path.name,
         expected_root_identity=view.root_identity,
-        certified_nodes=[{"path": view.path.name, "kind": "directory"}],
+        expected_release_authority=view.state_identity,
     )
-    assert removed is False
-    assert "retained rather than removed by pathname" in why, why
+    assert session is None
+    assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, outcome
+    assert "retained rather than removed by pathname" in outcome.detail, outcome.detail
     assert list(view.path.rglob("*")), "scratch was removed on an unsupported platform"
 
 
-def test_a_stale_handle_at_the_open_seam_is_unresolved_not_absent(tmp_path: Path):
-    """R24-1: `ESTALE` at the real open seam is ambiguity, never absence."""
 
-    import errno
 
-    config, _workspace, harness = _released_attempt_campaign(tmp_path)
-    checkpoints = _published_checkpoints(config, harness)
-    attempt = _released_attempt_root(config)
 
-    real_os_open = os.open
 
-    def stale_open(name, *args, **kwargs):
-        if isinstance(name, str) and name == attempt.name:
-            raise OSError(errno.ESTALE, "Stale file handle", name)
-        return real_os_open(name, *args, **kwargs)
 
-    os.open = stale_open
+
+
+
+
+
+
+
+# ---------------------------------------------------------------------------
+# R28 - plan-bound released authority, one live capability, truthful outcomes
+# ---------------------------------------------------------------------------
+
+
+def _apply_cleanup(config: Path) -> dict:
+    """Run the real cleanup and return the execution payload, not an exit code.
+
+    A zero exit says the command did not crash. It says nothing about whether
+    anything was removed, refused, or half-done, and every assertion below is
+    about exactly that.
+    """
+
+    context, store = _context(config)
     try:
-        _assert_p7_ambiguity_blocks_everything(config, checkpoints)
-        assert p4d._run(config, "storage", "report") == 0
+        payload = storage_commands.storage_cleanup(
+            context, _args(tier="safe", apply=True)
+        )
     finally:
-        os.open = real_os_open
-    _assert_p7_repair_restores_planning(config)
+        store.close()
+    assert payload["execution"] is not None, "the cleanup did not execute"
+    return payload["execution"]
 
 
-def test_the_released_root_locator_survives_a_workspace_relocation(tmp_path: Path):
-    """R24-2: the durable locator is workspace-portable, not an absolute path."""
+def _reseal_released_authority(attempt: Path) -> str:
+    """Publish a different, equally valid released authority for one attempt.
+
+    The member names and kinds are untouched, and both records still
+    authenticate against themselves and against each other. Only the identity
+    the two of them jointly confer is new - which is precisely the case that a
+    path/kind/inode check cannot see.
+    """
+
+    from mdstats.training_data._common import digest as _digest
+    from mdstats.training_data.qualification.store import QualificationAttemptState
+
+    state_path = attempt / "attempt-state.json"
+    proof_path = attempt / "attempt-members.json"
+    state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+    state_payload["updated_at"] = "2030-01-01T00:00:00+00:00"
+    state_payload.pop("content_digest", None)
+    rebuilt = QualificationAttemptState.from_dict(dict(state_payload))
+    state_payload["content_digest"] = rebuilt.content_digest
+    state_path.write_text(json.dumps(state_payload), encoding="utf-8")
+
+    proof_payload = json.loads(proof_path.read_text(encoding="utf-8"))
+    proof_payload["state_digest"] = rebuilt.content_digest
+    body = {k: v for k, v in proof_payload.items() if k != "content_digest"}
+    proof_payload["content_digest"] = _digest(body)
+    proof_path.write_text(json.dumps(proof_payload), encoding="utf-8")
+    return rebuilt.content_digest
+
+
+def test_a_resealed_release_authority_stales_the_plan_it_did_not_authorize(
+    tmp_path: Path,
+):
+    """R28-A: the exact released authority is what a plan is bound to.
+
+    Root inode, generation locator, member names and kinds all stay identical.
+    Only the state and proof are resealed to a different, equally valid
+    release. Nothing else in the plan can notice that - so if the derived
+    release authority is not plan-bound, the old plan silently authorizes a
+    release it was never made against.
+    """
+
+    from mdstats.training_data.qualification.store import (
+        open_released_attempt_session,
+        released_authority_identity,
+    )
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, paths, view = _released_scratch_view(config)
+    attempt = view.path.parent
+    planned_authority = view.state_identity
+    assert planned_authority, "the released scratch view carries no release authority"
+
+    before = sorted(str(item) for item in view.path.rglob("*"))
+    new_state_digest = _reseal_released_authority(attempt)
+
+    # The owner now derives a different authority for the same attempt.
+    fresh, _paths = _snapshot(config)
+    resealed = fresh.view(view.artifact_id)
+    assert resealed is not None
+    assert resealed.state_identity != planned_authority
+    assert resealed.state_identity == released_authority_identity(
+        1,
+        attempt.name,
+        new_state_digest,
+        json.loads((attempt / "attempt-members.json").read_text())["content_digest"],
+    )
+
+    # A session opened against the *old* plan's authority refuses.
+    session, outcome = open_released_attempt_session(
+        paths,
+        attempt,
+        expected_root_identity=view.root_identity,
+        expected_release_authority=planned_authority,
+    )
+    assert session is None
+    assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, outcome
+    assert "different release" in outcome.detail, outcome.detail
+    assert sorted(str(item) for item in view.path.rglob("*")) == before
+
+
+@pytest.mark.parametrize("damage", ["state", "proof", "topology"])
+def test_final_certification_refuses_corrupted_authority_before_mutation(
+    tmp_path: Path, damage: str
+):
+    """R28-B: the session authenticates before it is allowed to mutate."""
+
+    from mdstats.training_data.qualification.store import (
+        open_released_attempt_session,
+    )
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, paths, view = _released_scratch_view(config)
+    attempt = view.path.parent
+    before = sorted(str(item) for item in view.path.rglob("*"))
+
+    if damage == "state":
+        (attempt / "attempt-state.json").write_text("{ not json", encoding="utf-8")
+    elif damage == "proof":
+        payload = json.loads((attempt / "attempt-members.json").read_text())
+        payload["content_digest"] = "0" * 64
+        (attempt / "attempt-members.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+    else:
+        (view.path / "someone-elses.bin").write_bytes(b"not P7's")
+
+    session, outcome = open_released_attempt_session(
+        paths,
+        attempt,
+        expected_root_identity=view.root_identity,
+        expected_release_authority=view.state_identity,
+    )
+    assert session is None
+    assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, outcome
+    assert outcome.mutated is False
+    assert sorted(str(item) for item in view.path.rglob("*")) == before or damage == (
+        "topology"
+    )
+
+
+def test_certification_and_mutation_hold_one_live_capability(tmp_path: Path):
+    """R28-B: the certifying capability is still open at the destructive call.
+
+    Integer file-descriptor equality would prove nothing - the OS reuses those
+    numbers freely after a close. So this records the *lifetime* of the session
+    object itself: when it was certified, when it was closed, and when the
+    first destructive transition happened. The certification must not be
+    separated from the mutation by a close.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+
+    events: list[tuple[str, int]] = []
+    real_open = qstore.open_released_attempt_session
+    real_close = qstore.ReleasedAttemptSession.close
+    real_unlink = qstore._unlink_certified_file
+    real_directory = qstore._remove_certified_directory
+    live: dict[str, object] = {}
+
+    def observed_open(*args, **kwargs):
+        session, outcome = real_open(*args, **kwargs)
+        if session is not None:
+            live["session"] = session
+            events.append(("certified", id(session)))
+        return session, outcome
+
+    def observed_close(self):
+        events.append(("closed", id(self)))
+        return real_close(self)
+
+    def observed_unlink(parent_fd, name):
+        session = live.get("session")
+        events.append(("mutate", id(session)))
+        assert session is not None and session.closed is False, (
+            "the certifying capability was closed before the destructive call"
+        )
+        return real_unlink(parent_fd, name)
+
+    def observed_directory(*args, **kwargs):
+        session = live.get("session")
+        events.append(("mutate", id(session)))
+        assert session is not None and session.closed is False
+        return real_directory(*args, **kwargs)
+
+    qstore.open_released_attempt_session = observed_open
+    qstore.ReleasedAttemptSession.close = observed_close
+    qstore._unlink_certified_file = observed_unlink
+    qstore._remove_certified_directory = observed_directory
+    try:
+        execution = _apply_cleanup(config)
+    finally:
+        qstore.open_released_attempt_session = real_open
+        qstore.ReleasedAttemptSession.close = real_close
+        qstore._unlink_certified_file = real_unlink
+        qstore._remove_certified_directory = real_directory
+
+    assert execution["status"] == "complete", execution
+    kinds = [kind for kind, _ident in events]
+    assert "certified" in kinds and "mutate" in kinds, events
+    first_certified = kinds.index("certified")
+    first_mutate = kinds.index("mutate")
+    assert first_certified < first_mutate, events
+
+    # No close of that capability separates its certification from its use.
+    session_id = events[first_certified][1]
+    between = [
+        item
+        for item in events[first_certified + 1 : first_mutate]
+        if item == ("closed", session_id)
+    ]
+    assert between == [], events
+    assert events[-1][0] == "closed", events
+    assert all(
+        ident == session_id for kind, ident in events if kind == "mutate"
+    ), events
+
+
+def test_multi_action_cleanup_tolerates_its_own_monotonic_shrink(tmp_path: Path):
+    """R28-C: the proof is an upper bound, not a required census.
+
+    Removing one certified member necessarily makes the live tree smaller than
+    the proof records. Treating that as drift would make correct multi-action
+    cleanup invalidate itself after its own first success.
+    """
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    released = [
+        view
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    assert len(released) > 1, "the fixture produced a single-member released attempt"
+
+    execution = _apply_cleanup(config)
+    assert execution["status"] == "complete", execution
+    assert execution["refused_actions"] == [], execution["refused_actions"]
+    assert len(execution["completed_actions"]) >= len(released)
+    for view in released:
+        assert not view.path.exists(), view.path
+
+    # A second cleanup over the same unchanged proof is terminally satisfied and
+    # reclaims nothing, rather than refusing because the tree shrank.
+    again = _apply_cleanup(config)
+    assert again["reclaimed_bytes"] == 0, again
+    assert again["status"] in ("complete", "refused"), again
+
+
+def test_an_interrupted_cleanup_retry_reclaims_the_surviving_members(tmp_path: Path):
+    """R28-C: an interrupted cleanup stays resumable from the same proof."""
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    released = [
+        view.path
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    assert len(released) > 1
+
+    real_member = qstore.remove_released_attempt_member
+    done: list[str] = []
+
+    def interrupt_after_one(session, member_name, **kwargs):
+        if done:
+            raise RuntimeError("injected interruption after the first member")
+        done.append(member_name)
+        return real_member(session, member_name, **kwargs)
+
+    qstore.remove_released_attempt_member = interrupt_after_one
+    try:
+        with pytest.raises(RuntimeError, match="injected interruption"):
+            _apply_cleanup(config)
+    finally:
+        qstore.remove_released_attempt_member = real_member
+
+    surviving = [path for path in released if path.exists()]
+    assert surviving and len(surviving) < len(released), released
+
+    # The proof is unchanged, so the retry authorizes exactly what is left.
+    execution = _apply_cleanup(config)
+    assert execution["refused_actions"] == [], execution["refused_actions"]
+    for path in released:
+        assert not path.exists(), path
+
+
+def test_an_unsupported_platform_refuses_the_whole_cleanup_truthfully(
+    tmp_path: Path, monkeypatch
+):
+    """R28-D: no mutation, no completed actions, and the status says refused."""
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    released = [
+        view.path
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    before = {path: sorted(str(item) for item in path.rglob("*")) for path in released}
+    monkeypatch.setattr(qstore, "dir_fd_mutation_supported", lambda: False)
+
+    execution = _apply_cleanup(config)
+    assert execution["status"] == "refused", execution
+    assert execution["reclaimed_bytes"] == 0, execution
+    assert execution["mutated"] is False, execution
+    refused_paths = {item["path"] for item in execution["refused_actions"]}
+    for path in released:
+        assert str(path) in refused_paths, (path, refused_paths)
+        assert sorted(str(item) for item in path.rglob("*")) == before[path]
+    assert all(
+        item["outcome"] == OUTCOME_REFUSED_NO_CHANGE
+        for item in execution["refused_actions"]
+        if "outcome" in item
+    ), execution["refused_actions"]
+
+
+def test_an_already_absent_target_is_terminal_success_worth_zero_bytes(
+    tmp_path: Path,
+):
+    """R28-D: absence this execution did not create reclaims nothing.
+
+    The target is removed after the session certified it and before the member
+    remover reaches it - exactly the state an interrupted earlier cleanup
+    leaves behind. That is terminally satisfied, not work this run performed,
+    so it completes without crediting a single planned byte.
+    """
 
     import shutil as _shutil
 
-    config, workspace, _harness = _released_attempt_campaign(tmp_path)
-    before, _paths = _snapshot(config)
-    reclaimable_before = {
-        view.artifact_id
-        for view in before.views
-        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
-    }
-    assert reclaimable_before
+    from mdstats.training_data.qualification import store as qstore
 
-    moved = tmp_path / "relocated-workspace"
-    _shutil.copytree(workspace, moved, symlinks=True)
-    relocated_config = tmp_path / "relocated.toml"
-    relocated_config.write_text(
-        config.read_text(encoding="utf-8").replace(str(workspace), str(moved)),
-        encoding="utf-8",
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, _paths, view = _released_scratch_view(config)
+    victim = view.path
+
+    real_open = qstore.open_released_attempt_session
+
+    def vanish_after_certification(*args, **kwargs):
+        session, outcome = real_open(*args, **kwargs)
+        if session is not None and victim.exists():
+            _shutil.rmtree(victim)
+        return session, outcome
+
+    planned_total = sum(
+        int(action.size_bytes) for action in _cleanup_plan_actions(config)
+    )
+    assert planned_total > 0
+
+    qstore.open_released_attempt_session = vanish_after_certification
+    try:
+        execution = _apply_cleanup(config)
+    finally:
+        qstore.open_released_attempt_session = real_open
+
+    entries = {item["path"]: item for item in execution["completed_actions"]}
+    assert str(victim) in entries, execution
+    entry = entries[str(victim)]
+    assert entry["outcome"] == OUTCOME_ALREADY_ABSENT, entry
+    assert entry["mutated"] is False, entry
+    assert entry["removed"] is False, entry
+
+    # The vanished target contributed nothing, so the execution cannot have
+    # claimed the whole plan.
+    assert execution["reclaimed_bytes"] < planned_total, (
+        execution["reclaimed_bytes"],
+        planned_total,
     )
 
-    after, _paths2 = _snapshot(relocated_config)
-    reclaimable_after = {
-        view.artifact_id
-        for view in after.views
-        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
-    }
-    assert reclaimable_after == reclaimable_before, (
-        "relocating the workspace changed released-attempt authority"
+
+def _cleanup_plan_actions(config: Path):
+    """The planned cleanup actions, without applying anything."""
+
+    context, store = _context(config)
+    try:
+        policy = resolve_storage_policy(
+            {}, action=ACTION_CLEANUP, tier="safe", apply=False
+        )
+        plan, _snapshot = storage_commands.build_cleanup_plan(context, policy)
+        return list(plan.actions)
+    finally:
+        store.close()
+
+
+def test_the_certified_recursion_reports_partial_change_with_measured_bytes(
+    tmp_path: Path,
+):
+    """R28-D at the owning layer: the recursion itself must say `partial`.
+
+    Driven through the real session and the real production recursion, with the
+    only injection being an unrecorded file planted between certification and
+    descent.
+    """
+
+    from mdstats.training_data.qualification.store import (
+        _remove_certified_directory,
+        open_released_attempt_session,
     )
 
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, paths, view = _released_scratch_view(config)
+    attempt = view.path.parent
 
+    session, _outcome = open_released_attempt_session(
+        paths,
+        attempt,
+        expected_root_identity=view.root_identity,
+        expected_release_authority=view.state_identity,
+    )
+    assert session is not None
+    try:
+        deepest = max(
+            (item for item in view.path.rglob("*") if item.is_dir()),
+            key=lambda item: len(item.parts),
+            default=view.path,
+        )
+        certified_files = [
+            item for item in view.path.rglob("*") if item.is_file()
+        ]
+        assert certified_files, "the released member holds no files"
+        expected_freed = sum(item.stat().st_size for item in certified_files)
+        (deepest / "zz-someone-elses.bin").write_bytes(b"not P7's")
+
+        outcome = _remove_certified_directory(
+            session.attempt_fd,
+            view.path.name,
+            view.path,
+            session.recorded_kinds(),
+            f"{view.path.name}/",
+        )
+    finally:
+        session.close()
+
+    assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
+    assert outcome.mutated is True and outcome.refused is True
+    assert outcome.succeeded is False
+    assert outcome.removed_bytes is not None
+    assert 0 < outcome.removed_bytes <= expected_freed, (
+        outcome.removed_bytes,
+        expected_freed,
+    )
+    # Never the planned size by default: the credit is what was measured.
+    assert outcome.credited_bytes(10_000_000) == outcome.removed_bytes
+    assert (deepest / "zz-someone-elses.bin").exists(), "the foreign node was removed"

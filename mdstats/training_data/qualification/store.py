@@ -18,7 +18,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence
 import json
 import errno
 import stat
@@ -1247,23 +1247,144 @@ def dir_fd_mutation_supported() -> bool:
     )
 
 
-def remove_released_attempt_member(
+@dataclass
+class ReleasedAttemptSession:
+    """A live, descriptor-bound capability over one released P7 attempt.
+
+    Everything that authorizes a destructive action on this attempt - the
+    authenticated state, the validated released proof, the generation-scoped
+    root binding, and the exact typed topology - was established *on the open
+    descriptor this object holds*, and the mutation happens through that same
+    descriptor. A certification made on a descriptor that was then closed is a
+    memory of authority, not authority: between the close and the next open the
+    name can mean something else, and only the identity check would notice.
+
+    The capability is ephemeral. It lives for one apply invocation under the
+    already-held storage/P5/P7 locks, and it is closed on every terminal
+    disposition.
+    """
+
+    attempt_fd: int
+    attempt_root: Path
+    generation: int
+    state: "QualificationAttemptState"
+    proof: Mapping[str, Any]
+    certified_nodes: tuple[tuple[str, str], ...]
+    root_identity: Mapping[str, int]
+    release_authority: str
+    closed: bool = False
+
+    def recorded_kinds(self) -> dict[str, str]:
+        return {path: kind for path, kind in self.certified_nodes}
+
+    def close(self) -> None:
+        if not self.closed:
+            self.closed = True
+            os.close(self.attempt_fd)
+
+    def __enter__(self) -> "ReleasedAttemptSession":
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        self.close()
+
+
+def open_released_attempt_session(
     paths: Any,
     attempt_root: str | os.PathLike[str],
-    member_name: str,
     *,
     expected_root_identity: Mapping[str, int] | None,
-    certified_nodes: Sequence[Mapping[str, str]],
-) -> tuple[bool, str]:
-    """Remove one proof-certified released member, relative to descriptors only.
+    expected_release_authority: str = "",
+) -> tuple["ReleasedAttemptSession | None", "MutationOutcomeT"]:
+    """Acquire the live authority a released-attempt mutation must hold.
 
-    The authority for this removal was established against an *open directory*.
-    Handing an absolute pathname to `unlink`/`rmtree` at the end would throw
-    that away and re-resolve the generation/attempts/attempt ancestry one more
-    time, so this re-acquires the attempt through the strict descent, requires
-    the identity the certification observed, and then never names an ancestor
-    again: the member and everything beneath it are opened, unlinked, and
-    removed relative to descriptors.
+    Strict reacquisition, then state, proof, root binding and typed topology are
+    all established on the descriptor that is returned still open - so the
+    authority the caller mutates under is the authority it just verified, not a
+    snapshot of one taken earlier somewhere else.
+
+    ``expected_root_identity`` and ``expected_release_authority`` are the plan's
+    constraints. They narrow what this session may be used for; they never
+    supply the authority themselves.
+    """
+
+    from ..storage.outcome import refused_no_change
+
+    if not dir_fd_mutation_supported():
+        return None, refused_no_change(
+            "this platform does not provide the no-follow directory-descriptor "
+            "primitives this owner's authority boundary is built on, so released "
+            "scratch is retained rather than removed by pathname"
+        )
+    root = Path(attempt_root)
+    generation = parse_canonical_generation(root.parent.parent.name)
+    attempt_fd, why = open_attempt_namespace(paths, root)
+    if attempt_fd is None or generation is None:
+        if attempt_fd is not None:
+            os.close(attempt_fd)
+        return None, refused_no_change(f"the attempt namespace is unresolved: {why}")
+    session: ReleasedAttemptSession | None = None
+    try:
+        identity = _descriptor_identity(attempt_fd)
+        if expected_root_identity is not None and (
+            int(identity["device"]) != int(expected_root_identity["device"])
+            or int(identity["inode"]) != int(expected_root_identity["inode"])
+        ):
+            return None, refused_no_change(
+                "the attempt root is a different filesystem object than the one this "
+                "action was authorized against; nothing was removed"
+            )
+        authority = _authenticate_attempt_from_descriptor(root, attempt_fd, generation)
+        if authority.state is None:
+            return None, refused_no_change(
+                f"the released attempt state is no longer authentic: {authority.reason}"
+            )
+        certified, certify_why, nodes, proof = _certify_attempt_from_descriptor(
+            attempt_fd, root, generation, authority.state
+        )
+        if not certified or proof is None:
+            return None, refused_no_change(
+                f"the released attempt is no longer certified: {certify_why}"
+            )
+        release_authority = released_authority_identity(
+            generation,
+            authority.state.attempt_identity,
+            authority.state.content_digest,
+            str(proof["content_digest"]),
+        )
+        if expected_release_authority and release_authority != expected_release_authority:
+            return None, refused_no_change(
+                "the released authority behind this attempt changed after planning; "
+                "the state and proof now confer a different release, so the plan no "
+                "longer authorizes it"
+            )
+        session = ReleasedAttemptSession(
+            attempt_fd=attempt_fd,
+            attempt_root=root,
+            generation=generation,
+            state=authority.state,
+            proof=proof,
+            certified_nodes=nodes,
+            root_identity=identity,
+            release_authority=release_authority,
+        )
+        return session, refused_no_change("authenticated")
+    finally:
+        if session is None:
+            os.close(attempt_fd)
+
+
+def remove_released_attempt_member(
+    session: "ReleasedAttemptSession",
+    member_name: str,
+    *,
+    expected_kind: str = "",
+) -> "MutationOutcomeT":
+    """Remove one proof-certified released member through a live session.
+
+    The member and everything beneath it are opened, unlinked, and removed
+    relative to the session's descriptor. No ancestor is ever named again after
+    the session authenticated it.
 
     The guarantee is descriptor-pinned owner ancestry plus no-follow fd-relative
     mutation under the supported-owner locks. It is deliberately *not* a claim
@@ -1272,55 +1393,47 @@ def remove_released_attempt_member(
     otherwise would misdescribe the boundary.
     """
 
-    if not dir_fd_mutation_supported():
-        return False, (
-            "this platform does not provide the no-follow directory-descriptor "
-            "primitives this owner's authority boundary is built on, so released "
-            "scratch is retained rather than removed by pathname"
+    from ..storage.outcome import already_absent, refused_no_change, removed
+
+    attempt_fd = session.attempt_fd
+    recorded = session.recorded_kinds()
+    if expected_kind and recorded.get(member_name) != expected_kind:
+        return refused_no_change(
+            f"this owner now records {recorded.get(member_name)!r} at that name, not "
+            f"the {expected_kind!r} the plan targeted"
         )
-    root = Path(attempt_root)
-    attempt_fd, why = open_attempt_namespace(paths, root)
-    if attempt_fd is None:
-        return False, f"the attempt namespace is unresolved: {why}"
     try:
-        identity = _descriptor_identity(attempt_fd)
-        if expected_root_identity is not None and (
-            int(identity["device"]) != int(expected_root_identity["device"])
-            or int(identity["inode"]) != int(expected_root_identity["inode"])
-        ):
-            return False, (
-                "the attempt root is a different filesystem object than the one this "
-                "action was authorized against; nothing was removed"
-            )
-        recorded = {item["path"]: item["kind"] for item in certified_nodes}
-        try:
-            entry_stat = os.stat(member_name, dir_fd=attempt_fd, follow_symlinks=False)
-        except FileNotFoundError:
-            return True, "the certified member was already gone"
-        except OSError as exc:
-            return False, f"the certified member could not be observed: {exc}"
-        if stat.S_ISREG(entry_stat.st_mode):
-            if recorded.get(member_name) != "file":
-                return False, "this owner did not record a file at that name"
-            _unlink_certified_file(attempt_fd, member_name)
-            os.fsync(attempt_fd)
-            return True, "removed relative to the authenticated attempt directory"
-        if not stat.S_ISDIR(entry_stat.st_mode):
-            return False, (
-                "the certified member is neither a plain file nor a plain directory; "
-                "it is retained"
-            )
-        if recorded.get(member_name) != "directory":
-            return False, "this owner did not record a directory at that name"
-        removed, detail = _remove_certified_directory(
-            attempt_fd, member_name, root / member_name, recorded, f"{member_name}/"
-        )
-        if not removed:
-            return False, detail
+        entry_stat = os.stat(member_name, dir_fd=attempt_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        # Monotonic absence: an earlier action in this cleanup, or an interrupted
+        # prior one, already removed it. Terminally satisfied, but this execution
+        # reclaimed nothing and must not claim the planned bytes.
+        return already_absent("the certified member was already gone")
+    except OSError as exc:
+        return refused_no_change(f"the certified member could not be observed: {exc}")
+    if stat.S_ISREG(entry_stat.st_mode):
+        if recorded.get(member_name) != "file":
+            return refused_no_change("this owner did not record a file at that name")
+        _unlink_certified_file(attempt_fd, member_name)
         os.fsync(attempt_fd)
-        return True, "removed relative to the authenticated attempt directory"
-    finally:
-        os.close(attempt_fd)
+        return removed("removed relative to the authenticated attempt directory")
+    if not stat.S_ISDIR(entry_stat.st_mode):
+        return refused_no_change(
+            "the certified member is neither a plain file nor a plain directory; "
+            "it is retained"
+        )
+    if recorded.get(member_name) != "directory":
+        return refused_no_change("this owner did not record a directory at that name")
+    outcome = _remove_certified_directory(
+        attempt_fd,
+        member_name,
+        session.attempt_root / member_name,
+        recorded,
+        f"{member_name}/",
+    )
+    if outcome.mutated:
+        os.fsync(attempt_fd)
+    return outcome
 
 
 def _unlink_certified_file(parent_fd: int, name: str) -> None:
@@ -1341,7 +1454,7 @@ def _remove_certified_directory(
     display: Path,
     recorded: Mapping[str, str],
     prefix: str,
-) -> tuple[bool, str]:
+) -> "MutationOutcomeT":
     """Recursively remove one certified directory, descriptor-relative.
 
     Depth-first, entering each child through a no-follow open on the descriptor
@@ -1349,30 +1462,49 @@ def _remove_certified_directory(
     with this exact kind - and anything on the far side of a mount boundary -
     stops the removal instead of widening it, and the partially emptied
     container is retained rather than forced.
+
+    Stopping part-way is a real outcome, not a failure to report: by the time a
+    contradiction appears, earlier certified children of this container may
+    already be unlinked. The caller is told exactly that, with the bytes that
+    actually went - measured before each unlink, because afterwards there is
+    nothing left to measure.
     """
 
+    from ..storage.outcome import (
+        already_absent,
+        partial_change_refused,
+        refused_no_change,
+        removed as removed_outcome,
+    )
     from ..storage.trust import crosses_mount_boundary_at
+
+    freed = 0
+
+    def stop(detail: str) -> "MutationOutcomeT":
+        if freed:
+            return partial_change_refused(detail, removed_bytes=freed)
+        return refused_no_change(detail)
 
     try:
         handle = _open_directory_nofollow(name, dir_fd=parent_fd)
     except FileNotFoundError:
-        return True, "already gone"
+        return already_absent("already gone")
     except NamespaceAmbiguity as exc:
-        return False, f"{display}: {exc}"
+        return refused_no_change(f"{display}: {exc}")
     try:
         try:
             entries = sorted(os.scandir(handle), key=lambda item: item.name)
         except OSError as exc:
-            return False, f"{display} could not be enumerated: {exc}"
+            return stop(f"{display} could not be enumerated: {exc}")
         for entry in entries:
             child_relative = f"{prefix}{entry.name}"
             child_display = display / entry.name
             expected = recorded.get(child_relative)
             if entry.is_symlink():
-                return False, f"{child_display} is a symlink; the container is retained"
+                return stop(f"{child_display} is a symlink; the container is retained")
             if entry.is_dir(follow_symlinks=False):
                 if expected != "directory":
-                    return False, (
+                    return stop(
                         f"{child_display} is a directory this owner did not record"
                         if expected is None
                         else f"{child_display} was recorded as a {expected}"
@@ -1381,23 +1513,28 @@ def _remove_certified_directory(
                     handle, entry.name, child_display
                 )
                 if crossed:
-                    return False, detail
-                removed, why = _remove_certified_directory(
+                    return stop(detail)
+                nested = _remove_certified_directory(
                     handle, entry.name, child_display, recorded, f"{child_relative}/"
                 )
-                if not removed:
-                    return False, why
+                freed += int(nested.removed_bytes or 0)
+                if not nested.succeeded:
+                    return stop(nested.detail)
                 continue
             if not entry.is_file(follow_symlinks=False):
-                return False, (
+                return stop(
                     f"{child_display} is a special node; the container is retained"
                 )
             if expected != "file":
-                return False, (
+                return stop(
                     f"{child_display} is a file this owner did not record"
                     if expected is None
                     else f"{child_display} was recorded as a {expected}"
                 )
+            try:
+                freed += int(entry.stat(follow_symlinks=False).st_size)
+            except OSError:
+                pass
             _unlink_certified_file(handle, entry.name)
         os.fsync(handle)
     finally:
@@ -1405,8 +1542,8 @@ def _remove_certified_directory(
     try:
         os.rmdir(name, dir_fd=parent_fd)
     except OSError as exc:
-        return False, f"{display} could not be removed: {exc}"
-    return True, "removed"
+        return stop(f"{display} could not be removed: {exc}")
+    return removed_outcome("removed")
 
 
 def authorize_released_attempt_member(
@@ -1740,6 +1877,11 @@ _ABSENT_ERRNOS = frozenset({errno.ENOENT})
 #: The typed node vocabulary this owner shares with the storage owner.
 NODE_SYMLINK_NAME = "symlink"
 
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ..storage.outcome import MutationOutcome as MutationOutcomeT
+else:  # pragma: no cover - the alias is only a name for signatures
+    MutationOutcomeT = "MutationOutcome"
+
 
 def _open_directory_nofollow(name: str, *, dir_fd: int | None = None) -> int:
     """Open one directory as itself, never through a substituted entry.
@@ -1823,6 +1965,36 @@ def _read_regular_file_nofollow(name: str, *, dir_fd: int) -> bytes | None:
 def _descriptor_identity(handle: int) -> dict[str, int]:
     stats = os.fstat(handle)
     return {"device": int(stats.st_dev), "inode": int(stats.st_ino)}
+
+
+def released_authority_identity(
+    generation: int,
+    attempt_identity: str,
+    state_digest: str,
+    proof_digest: str,
+) -> str:
+    """The exact released authority a destructive action was planned against.
+
+    Root inode, generation-scoped locator, and typed topology already constrain
+    *where* an action may act and *what* it may touch. None of them notice a
+    state and proof that were both resealed to a different, equally valid
+    released authority while exposing the same member names and kinds - so a
+    plan made against the old authority would still authorize the new one.
+
+    This value closes that: it is derived from the two owner records that
+    actually confer the release, and it rides the existing owner-state binding
+    into the plan. It is computed on demand and never persisted.
+    """
+
+    return digest(
+        {
+            "schema": "mdstats.qualification-released-authority.v1",
+            "generation": int(generation),
+            "attempt_identity": str(attempt_identity),
+            "state_digest": str(state_digest),
+            "proof_digest": str(proof_digest),
+        }
+    )
 
 
 def canonical_generation_name(generation: int) -> str:
@@ -1917,6 +2089,11 @@ class AttemptStateAuthority:
     certified: bool = False
     certification_reason: str = ""
     certified_nodes: tuple[tuple[str, str], ...] = ()
+    #: The derived identity of the exact released authority - state digest plus
+    #: proof digest, bound to this generation and attempt. A plan carries it so
+    #: a resealed-but-still-valid authority cannot inherit the old plan's
+    #: permission to delete.
+    release_authority: str = ""
 
     @property
     def resolved(self) -> bool:
@@ -2108,7 +2285,7 @@ def _certify_attempt_from_descriptor(
     attempt_root: Path,
     generation: int,
     state: "QualificationAttemptState",
-) -> tuple[bool, str, tuple[tuple[str, str], ...]]:
+) -> tuple[bool, str, tuple[tuple[str, str], ...], Mapping[str, Any] | None]:
     """Exact released-attempt certification, entirely from the open attempt.
 
     The proof is read relative to ``attempt_fd`` and the generation-scoped root
@@ -2122,21 +2299,26 @@ def _certify_attempt_from_descriptor(
             ATTEMPT_MEMBER_MANIFEST_FILENAME, dir_fd=attempt_fd
         )
     except NamespaceAmbiguity as exc:
-        return False, f"the released-attempt proof could not be read: {exc}", ()
+        return False, f"the released-attempt proof could not be read: {exc}", (), None
     if raw is None:
-        return False, "the released-attempt proof is missing", ()
+        return False, "the released-attempt proof is missing", (), None
     proof, why = validate_attempt_member_proof_bytes(raw)
     if proof is None:
-        return False, why, ()
+        return False, why, (), None
     bound, why = _proof_binds_state(proof, state, generation, attempt_root.name)
     if not bound:
-        return False, why, ()
+        return False, why, (), None
 
     observed, observe_why = _observe_attempt_nodes_from_descriptor(
         attempt_fd, attempt_root
     )
     if observed is None:
-        return False, observe_why, ()
+        return False, observe_why, (), None
+    # The proof is an *upper bound* on what P7 authored, not a requirement that
+    # every recorded node still exists: an earlier action in this cleanup, or an
+    # interrupted prior one, legitimately shrinks the live tree. So every
+    # observed node must be recorded with the exact kind, and recorded nodes that
+    # are gone are simply gone.
     recorded = {item["path"]: item["kind"] for item in proof["nodes"]}
     contradictions: list[str] = []
     for item in observed:
@@ -2155,11 +2337,17 @@ def _certify_attempt_from_descriptor(
                 f"{contradictions[:5]}"
             ),
             (),
+            proof,
         )
-    return True, (
-        "released attempt whose nodes all belong to the typed set P7 recorded when "
-        f"it became {state.state}"
-    ), tuple(sorted((item["path"], item["kind"]) for item in proof["nodes"]))
+    return (
+        True,
+        (
+            "released attempt whose nodes all belong to the typed set P7 recorded "
+            f"when it became {state.state}"
+        ),
+        tuple(sorted((item["path"], item["kind"]) for item in proof["nodes"])),
+        proof,
+    )
 
 
 def _proof_binds_state(
@@ -2520,7 +2708,7 @@ def _observe_attempt(
     )
     if not certify or authority.state is None:
         return authority
-    certified, why, nodes = _certify_attempt_from_descriptor(
+    certified, why, nodes, proof = _certify_attempt_from_descriptor(
         attempt_fd, attempt_root, generation, authority.state
     )
     return replace(
@@ -2528,6 +2716,16 @@ def _observe_attempt(
         certified=certified,
         certification_reason=why,
         certified_nodes=nodes,
+        release_authority=(
+            released_authority_identity(
+                generation,
+                authority.state.attempt_identity,
+                authority.state.content_digest,
+                str(proof["content_digest"]),
+            )
+            if certified and proof is not None
+            else ""
+        ),
     )
 
 
@@ -2698,6 +2896,9 @@ __all__ = [
     "find_locked_activation_for_role",
     "AttemptStateAuthority",
     "authenticate_attempt_state",
+    "ReleasedAttemptSession",
+    "open_released_attempt_session",
+    "released_authority_identity",
     "remove_released_attempt_member",
     "dir_fd_mutation_supported",
     "authorize_released_attempt_member",

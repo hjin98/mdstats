@@ -42,6 +42,13 @@ from .control_plane import StorageControlPlane
 from .durability import durable_unlink
 from .inventory import StorageInventorySnapshot
 from .lease import OwnerSynchronization, owner_mutation_barrier, storage_operation_lease
+from .outcome import (
+    MutationOutcome,
+    already_absent,
+    partial_change_refused,
+    refused_no_change,
+    removed,
+)
 from .plan import (
     ACTION_EVICT_CACHE,
     MAINTENANCE_ACTIONS,
@@ -100,6 +107,10 @@ class StorageExecutionResult:
     restored_bytes: int = 0
     detail: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
+    #: Whether any action mutated the filesystem.  A refusal that happened
+    #: part-way through still changed bytes, and an execution that changed bytes
+    #: is never "refused; nothing happened".
+    mutated: bool = False
     #: Whether this operation's durable audit record was actually published.
     audit_published: bool = False
     #: Why publication failed, when it did.
@@ -123,6 +134,7 @@ class StorageExecutionResult:
             "created_bytes": int(self.created_bytes),
             "restored_bytes": int(self.restored_bytes),
             "detail": self.detail,
+            "mutated": bool(self.mutated),
             "audit_published": bool(self.audit_published),
             "audit_failure": self.audit_failure,
             "retention_failure": self.retention_failure,
@@ -253,7 +265,7 @@ class StorageExecutor:
         if not result.refused:
             result.status = STATUS_COMPLETE
             default_detail = "every planned action reached a verified terminal disposition"
-        elif not result.completed:
+        elif not result.completed and not result.mutated:
             # Nothing happened at all. Reporting that as "partial" would imply a
             # mutation this operation never made.
             result.status = STATUS_REFUSED
@@ -323,9 +335,7 @@ class StorageExecutor:
                     }
                 )
                 continue
-            removed = remove_durably(action.path)
-            result.completed.append({**action.to_dict(), "removed": removed})
-            result.reclaimed_bytes += int(action.size_bytes)
+            record_removal(result, action, remove_durably_outcome(action.path))
 
     def _audit(self, result: StorageExecutionResult, *, trigger: str) -> None:
         """Append this operation to the one durable storage audit stream.
@@ -394,6 +404,42 @@ def remove_durably(path: Path) -> bool:
     return False
 
 
+def remove_durably_outcome(path: Path) -> MutationOutcome:
+    """The generic removal, reported as a terminal disposition.
+
+    ``remove_durably`` answers "did I remove something", which conflates the
+    target being gone already with this execution having reclaimed it. Only the
+    second earns the planned bytes.
+    """
+
+    if remove_durably(path):
+        return removed("removed")
+    return already_absent("the planned target was already gone")
+
+
+def record_removal(
+    result: "StorageExecutionResult",
+    action: Any,
+    outcome: MutationOutcome,
+) -> None:
+    """File one removal into the collection its outcome actually earns.
+
+    A refused mutation recorded as a completed action is how an execution ends
+    up reporting ``complete`` while every byte it planned to reclaim is still on
+    disk. The collection, the byte credit, and the mutation flag all come from
+    the outcome; none of them is inferred from a reason string.
+    """
+
+    entry = {**action.to_dict(), **outcome.to_dict()}
+    if outcome.mutated:
+        result.mutated = True
+    if outcome.succeeded:
+        result.completed.append(entry)
+    else:
+        result.refused.append({**entry, "refusal": outcome.detail})
+    result.reclaimed_bytes += outcome.credited_bytes(int(action.size_bytes))
+
+
 def remove_certified_subtree(
     path: Path,
     *,
@@ -401,13 +447,15 @@ def remove_certified_subtree(
     refusals: Sequence[tuple[Path, str]],
     root_identity: Mapping[str, int] | None = None,
     authority_identity: Mapping[str, int] | None = None,
-) -> tuple[bool, str]:
+) -> MutationOutcome:
     """Remove a directory only when every disappearing descendant is certified.
 
     A recursive delete is authority over everything that vanishes with it.  If
     the owner could not certify some descendant - an unexpected file, a nested
     mount, a symlink - the container stays and only the individually authorized
-    members are removed.
+    members are removed.  That case is a *partial* mutation, not a refusal: the
+    authorized members really are gone, and reporting "nothing changed" would
+    leave the audit describing a tree that no longer exists.
     """
 
     # ``rmtree`` avoiding symlink attacks says nothing about the names *above*
@@ -426,28 +474,42 @@ def remove_certified_subtree(
         try:
             stats = os.lstat(target)
         except OSError as exc:
-            return False, f"the certified {label} could not be re-observed: {exc}"
+            return refused_no_change(
+                f"the certified {label} could not be re-observed: {exc}"
+            )
         if (
             not stat.S_ISDIR(stats.st_mode)
             or int(stats.st_dev) != int(expected["device"])
             or int(stats.st_ino) != int(expected["inode"])
         ):
-            return False, (
+            return refused_no_change(
                 f"the certified {label} is no longer the filesystem object this "
                 "action was authorized against; nothing was removed"
             )
     if refusals:
-        removed = 0
+        freed = 0
+        count = 0
         for member in members:
             if member.is_file() or member.is_symlink():
+                try:
+                    freed += int(member.lstat().st_size)
+                except OSError:
+                    pass
                 durable_unlink(member)
-                removed += 1
-        return False, (
-            f"retained the container and removed {removed} individually authorized "
+                count += 1
+        detail = (
+            f"retained the container and removed {count} individually authorized "
             f"member(s); {len(refusals)} descendant(s) were not owner-certified"
         )
+        if count:
+            return partial_change_refused(detail, removed_bytes=freed)
+        return refused_no_change(detail)
+    if not path.exists() and not path.is_symlink():
+        return already_absent("the certified container was already gone")
     remove_durably(path)
-    return True, "every descendant was covered by the owner's closed-subtree certification"
+    return removed(
+        "every descendant was covered by the owner's closed-subtree certification"
+    )
 
 
 def synchronization_for(

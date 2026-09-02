@@ -56,8 +56,9 @@ from .executor import (
     StorageAuthorizationError,
     StorageExecutionResult,
     StorageExecutor,
+    record_removal,
     remove_certified_subtree,
-    remove_durably,
+    remove_durably_outcome,
     synchronization_for,
 )
 from .inventory import (
@@ -450,65 +451,74 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
         snapshot: StorageInventorySnapshot,
         result: StorageExecutionResult,
     ) -> None:
-        executor = context.executor(policy)
-        for action in plan.actions:
-            if action.action not in (ACTION_REMOVE, ACTION_EVICT_CACHE):
-                maintenance(action, snapshot, result)
-                continue
-            authorized, detail = executor.authorize_path(action.path, snapshot)
-            if not authorized:
-                result.refused.append({**action.to_dict(), "refusal": detail})
-                continue
-            view = snapshot.view(action.artifact_id)
-            if view is not None and view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER:
-                # The P7 owner established this authority against an open attempt
-                # directory. Both a top-level regular file and a directory
-                # subtree go back through that owner so the removal happens
-                # relative to the descriptor the certification was performed on,
-                # rather than through an absolute pathname that would re-resolve
-                # the ancestry one last time.
-                from ..qualification.store import remove_released_attempt_member
+        from ..qualification.store import (
+            open_released_attempt_session,
+            remove_released_attempt_member,
+        )
 
-                removed, why = remove_released_attempt_member(
-                    snapshot.campaign_paths,
-                    view.path.parent,
-                    view.path.name,
-                    expected_root_identity=view.root_identity,
-                    certified_nodes=[
-                        {"path": view.path.name, "kind": _view_node_kind(view)},
-                        *(
-                            {
-                                "path": f"{view.path.name}/{item.path}",
-                                "kind": item.kind,
-                            }
-                            for item in view.certified_nodes
+        executor = context.executor(policy)
+        # One live authority per released attempt, not per member. The session
+        # certifies state, proof, root binding and typed topology on the open
+        # attempt descriptor and then every member of that attempt is mutated
+        # through it, so the authority is verified once and never lapses between
+        # verification and use.
+        sessions: dict[str, Any] = {}
+        try:
+            for action in plan.actions:
+                if action.action not in (ACTION_REMOVE, ACTION_EVICT_CACHE):
+                    maintenance(action, snapshot, result)
+                    continue
+                authorized, detail = executor.authorize_path(action.path, snapshot)
+                if not authorized:
+                    result.refused.append({**action.to_dict(), "refusal": detail})
+                    continue
+                view = snapshot.view(action.artifact_id)
+                if (
+                    view is not None
+                    and view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER
+                ):
+                    attempt_root = view.path.parent
+                    key = str(attempt_root)
+                    if key not in sessions:
+                        sessions[key] = open_released_attempt_session(
+                            snapshot.campaign_paths,
+                            attempt_root,
+                            expected_root_identity=view.root_identity,
+                            expected_release_authority=view.state_identity,
+                        )
+                    session, why = sessions[key]
+                    if session is None:
+                        record_removal(result, action, why)
+                        continue
+                    record_removal(
+                        result,
+                        action,
+                        remove_released_attempt_member(
+                            session,
+                            view.path.name,
+                            expected_kind=_view_node_kind(view),
                         ),
-                    ],
-                )
-                result.completed.append(
-                    {**action.to_dict(), "removed": removed, "detail": why}
-                )
-                if removed:
-                    result.reclaimed_bytes += int(action.size_bytes)
-                continue
-            if view is not None and view.path == action.path and action.path.is_dir():
-                members, refusals = snapshot.authorized_members(view)
-                removed, why = remove_certified_subtree(
-                    action.path,
-                    members=members,
-                    refusals=refusals,
-                    root_identity=view.path_identity,
-                    authority_identity=view.root_identity,
-                )
-                result.completed.append(
-                    {**action.to_dict(), "removed": removed, "detail": why}
-                )
-                if removed:
-                    result.reclaimed_bytes += int(action.size_bytes)
-                continue
-            removed = remove_durably(action.path)
-            result.completed.append({**action.to_dict(), "removed": removed})
-            result.reclaimed_bytes += int(action.size_bytes)
+                    )
+                    continue
+                if view is not None and view.path == action.path and action.path.is_dir():
+                    members, refusals = snapshot.authorized_members(view)
+                    record_removal(
+                        result,
+                        action,
+                        remove_certified_subtree(
+                            action.path,
+                            members=members,
+                            refusals=refusals,
+                            root_identity=view.path_identity,
+                            authority_identity=view.root_identity,
+                        ),
+                    )
+                    continue
+                record_removal(result, action, remove_durably_outcome(action.path))
+        finally:
+            for session, _why in sessions.values():
+                if session is not None:
+                    session.close()
 
     return _engine
 
