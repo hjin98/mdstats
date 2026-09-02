@@ -15,7 +15,6 @@ EXAMPLE = ROOT / "campaign.toml.example"
 
 
 def test_data2a_version_public_api_and_documented_contract() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
     assert callable(mdstats.infer_training_manifest_metadata)
     policy = mdstats.ManifestInferencePolicy()

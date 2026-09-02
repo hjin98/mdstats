@@ -18,7 +18,6 @@ def _root() -> Path:
 
 
 def test_perf_base0_is_public_versioned_and_documented() -> None:
-    assert mdstats.__version__ == "0.20.185a0"
     assert mdstats.PERF_BASE0_VERSION == "mdstats.mlff-perf-base0.2026-08.v1"
     for name in (
         "PerfBase0ArrayReference",

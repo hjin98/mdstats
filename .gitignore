@@ -36,8 +36,13 @@ htmlcov/
 *.tmp
 *.bak
 
-# Large local data
+# Large local data.  `data/` is a blanket rule for local inputs at any depth, so
+# it also caught two directories that hold real tracked repository content: the
+# package data pyproject already ships (`mdstats/data/*.json`) and the small
+# deterministic fixtures the test suite reads.  Both are re-included here.
 data/
+!mdstats/data/
+!tests/data/
 trajectories/
 results/
 scratch/

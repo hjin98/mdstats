@@ -19,6 +19,7 @@ from mdstats import (
     prepare_sparse_density_mesh,
 )
 from mdstats.plotting.atomic_density import PeriodicScalarField3D, density_mesh_arrays
+from mdstats.plotting.density_sparse_mesh import _require_sparse_mesh_face_limit
 from mdstats.plotting.graph_errors import GraphComplexityError
 
 
@@ -282,3 +283,29 @@ def test_sparse_mesh_json_round_trip_is_exact() -> None:
     assert restored.resources.to_json_dict() == mesh.resources.to_json_dict()
     assert restored.topology.to_json_dict() == mesh.topology.to_json_dict()
     assert restored.metadata == mesh.metadata
+
+
+def test_the_face_limit_says_whether_simplification_already_ran() -> None:
+    """A terminal shell overshoot has to be distinguishable from a pre-check.
+
+    An operator who sees the limit reported before simplification can still
+    lower the mesh resolution; the same number reported *after* simplification
+    means the geometry itself does not fit, and the message has to say which
+    one happened.
+    """
+
+    with pytest.raises(
+        GraphComplexityError,
+        match=(
+            r"Sparse density mesh contains 582375 faces after optional "
+            r"simplification, exceeding max_mesh_faces=250000"
+        ),
+    ):
+        _require_sparse_mesh_face_limit(582_375, 250_000, after_simplification=True)
+
+    with pytest.raises(GraphComplexityError) as before:
+        _require_sparse_mesh_face_limit(582_375, 250_000, after_simplification=False)
+    assert "after optional simplification" not in str(before.value)
+    assert "max_mesh_faces=250000" in str(before.value)
+
+    _require_sparse_mesh_face_limit(250_000, 250_000, after_simplification=True)

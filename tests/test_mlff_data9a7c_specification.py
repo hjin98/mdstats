@@ -47,7 +47,6 @@ def test_dependency_graph_contains_phase_geometry_contracts() -> None:
 
 
 def test_public_api_and_release_version() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"

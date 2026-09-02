@@ -12,7 +12,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_data6_recovery_hf1_release_graph_and_runtime_import() -> None:
-    assert mdstats.__version__ == "0.20.209a0"
     assert campaign_cli.np is np
     graph = json.loads(
         (ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text()

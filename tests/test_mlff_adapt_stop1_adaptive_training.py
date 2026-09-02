@@ -279,3 +279,31 @@ def test_legacy_v1_policy_round_trips_identity_and_behavior() -> None:
     assert restored.minimum_epochs_before_adaptive_stop == 1
     assert not restored.candidate_eligible(0.031, 0.020)
     assert not restored.candidate_eligible(0.020, 0.031)
+
+
+def test_the_active_stop_policy_schema_and_training_horizon_are_current() -> None:
+    """The stop policy's own defaults, and the horizon the template still sets.
+
+    Consolidated from the retired MLCV-STOP1 gate specification. The stop
+    fractions it asserted are no longer generated into `campaign.toml`; the
+    policy object owns them now, so that is where they are asserted. The
+    training horizon the template does still emit is kept.
+    """
+
+    from mdstats.training_data.campaign_cli import _config_template
+
+    config = _config_template(
+        workspace="./w",
+        training_root="./t",
+        foundation_model="./f.model",
+        replay_train="./r.extxyz",
+        replay_monitor="./rm.extxyz",
+    )
+    assert "max_num_epochs = 30" in config
+
+    assert mdstats.ADAPTIVE_STOP_POLICY_SCHEMA == "mdstats.adaptive-training-stop-policy.v3"
+    policy = mdstats.AdaptiveTrainingStopPolicy()
+    assert policy.serialization_schema == mdstats.ADAPTIVE_STOP_POLICY_SCHEMA
+    assert policy.minimum_epochs_before_adaptive_stop == 3
+    assert policy.target_stop_fraction == 0.80
+    assert policy.replay_stop_multiplier == 1.20

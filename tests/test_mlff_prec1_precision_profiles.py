@@ -196,3 +196,23 @@ def test_legacy_optimizer_serialization_remains_v4_and_maps_losslessly() -> None
 
 
 
+
+
+def test_the_precision_public_contract_stays_exported() -> None:
+    """The staged-precision names callers import from the package root.
+
+    Consolidated here from the retired PREC1 release-gate specification test:
+    the export surface is a current public contract, while the release/gate
+    chronology that surrounded it was not.
+    """
+
+    for name in (
+        "PrecisionProfile",
+        "PrecisionStage",
+        "PrecisionSchedulePolicy",
+        "ResolvedPrecisionStage",
+        "ResolvedPrecisionSchedule",
+        "canonical_precision_schedule_policy",
+        "legacy_one_stage_precision_policy",
+    ):
+        assert hasattr(mdstats, name), name

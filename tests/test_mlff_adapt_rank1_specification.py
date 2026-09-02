@@ -9,7 +9,6 @@ GUIDE = ROOT / "docs" / "guides" / "mlff_campaign_cli_user_guide.md"
 
 
 def test_adapt_rank1_release_and_spec_contract() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
     text = SPEC.read_text(encoding="utf-8")
     assert "Status: implemented in mdstats 0.20.125a0" in text
     assert "zero" in text.lower() and "inference" in text.lower()
