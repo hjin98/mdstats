@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 import json
+import errno
+import stat
 import os
 import tempfile
 import time
@@ -1065,10 +1067,12 @@ def read_attempt_member_proof(
             "the released-attempt proof does not authenticate against its own "
             "recorded identity"
         )
-    if str(payload.get("attempt_root", "")) != root.name:
+    recorded_root = str(payload.get("attempt_root", ""))
+    if "/" not in recorded_root:
         return None, (
-            "the released-attempt proof names a different attempt root, so it was "
-            "copied rather than published for this attempt"
+            "the released-attempt proof carries only a bare attempt name rather than "
+            "the generation-scoped root locator; it is diagnosable but grants no "
+            "destructive authority"
         )
     if str(payload.get("released_state", "")) not in (ATTEMPT_TERMINAL, ATTEMPT_ABORTED):
         return None, "the released-attempt proof names no released state"
@@ -1127,13 +1131,22 @@ def read_attempt_member_proof(
 
 
 def publish_attempt_member_proof(
-    attempt_directory: str | os.PathLike[str], state: "QualificationAttemptState"
+    attempt_directory: str | os.PathLike[str],
+    state: "QualificationAttemptState",
+    *,
+    campaign_generation: int,
 ) -> Path:
     """Freeze the typed node set this owner produced, bound to one released state.
 
     Published *before* the released state it binds, so the state remains the
     commit point: a crash in between leaves a proof whose bound state identity
     matches nothing current, which grants no authority at all.
+
+    The root it binds is the **generation-scoped** locator, taken from the
+    owner's authoritative ``PostSelectionBinding.campaign_generation`` rather
+    than from whatever parent pathname happens to contain the file. Scratch
+    belongs to one generation namespace, so a whole attempt copied under another
+    generation must not look like that generation's owned scratch.
     """
 
     root = Path(attempt_directory)
@@ -1141,7 +1154,9 @@ def publish_attempt_member_proof(
     payload = _sealed_attempt_proof(
         {
             "schema": ATTEMPT_MEMBER_MANIFEST_SCHEMA,
-            "attempt_root": root.name,
+            "attempt_root": released_attempt_root_locator(
+                campaign_generation, state.attempt_identity
+            ),
             "attempt_identity": state.attempt_identity,
             "binding_digest": state.binding_digest,
             "publication_digest": state.publication_digest,
@@ -1179,6 +1194,23 @@ def validate_bound_attempt_proof(
     proof, why = read_attempt_member_proof(root)
     if proof is None:
         return None, why
+    # The root binding is recomputed from the namespace this attempt actually
+    # lives in, not read back out of the record. A whole attempt copied under
+    # another generation stays internally consistent; what it is not is bound to
+    # the generation it now sits in.
+    generation = parse_canonical_generation(root.parent.parent.name)
+    if root.parent.name != "attempts" or generation is None:
+        return None, (
+            "the attempt does not live in a canonical generation-scoped "
+            "qualification namespace"
+        )
+    expected_locator = released_attempt_root_locator(generation, root.name)
+    if str(proof["attempt_root"]) != expected_locator:
+        return None, (
+            "the released-attempt proof binds root "
+            f"{proof['attempt_root']!r} but this scratch lives at "
+            f"{expected_locator!r}; it was copied rather than published here"
+        )
     if str(proof["state_digest"]) != state.content_digest:
         return None, (
             "the released-attempt proof binds a different attempt state than the one "
@@ -1201,6 +1233,138 @@ def validate_bound_attempt_proof(
             "it claims to certify"
         )
     return proof, "released-attempt proof authenticated against its bound state"
+
+
+def authorize_released_attempt_member(
+    paths: Any,
+    attempt_root: str | os.PathLike[str],
+    member_name: str,
+    *,
+    expected_root_identity: Mapping[str, int] | None,
+    certified_nodes: Sequence[Mapping[str, str]],
+) -> tuple[tuple[Path, ...], tuple[tuple[Path, str], ...]]:
+    """Authorize one released-attempt member through the continuous descent.
+
+    This exists because typed node *names* do not say which directory they were
+    certified beneath. Handing them to a generic pathname walk would re-enter
+    exactly the resolution the strict P7 acquisition just closed, one level
+    later: the certification would have been done on one directory and the
+    removal on whatever now answers to that name.
+
+    So the attempt namespace is re-acquired no-follow from the accepted campaign
+    parent, the attempt root's ``(device, inode)`` is required to be the one the
+    certification observed, and the member subtree is walked descriptor-relative
+    from there. Nested mounts, symlinks, special nodes, and unrecorded or
+    wrong-kind nodes reduce authority exactly as they do elsewhere.
+    """
+
+    from ..storage.trust import crosses_mount_boundary
+
+    root = Path(attempt_root)
+    member_path = root / member_name
+    refused: list[tuple[Path, str]] = []
+    attempt_fd, why = open_attempt_namespace(paths, root)
+    if attempt_fd is None:
+        return (), ((member_path, f"the attempt namespace is unresolved: {why}"),)
+    try:
+        identity = _descriptor_identity(attempt_fd)
+        if expected_root_identity is not None and (
+            int(identity["device"]) != int(expected_root_identity["device"])
+            or int(identity["inode"]) != int(expected_root_identity["inode"])
+        ):
+            return (), (
+                (
+                    root,
+                    "the attempt root is a different filesystem object than the one "
+                    "this certification was performed on",
+                ),
+            )
+        recorded = {item["path"]: item["kind"] for item in certified_nodes}
+        try:
+            member_fd = _open_directory_nofollow(member_name, dir_fd=attempt_fd)
+        except FileNotFoundError:
+            return (), ()
+        except NamespaceAmbiguity as exc:
+            return (), ((member_path, str(exc)),)
+        try:
+            members: list[Path] = []
+            stack: list[tuple[int, str]] = [(member_fd, "")]
+            owned: list[int] = []
+            try:
+                while stack:
+                    handle, relative = stack.pop()
+                    try:
+                        entries = sorted(
+                            os.scandir(handle), key=lambda item: item.name
+                        )
+                    except OSError as exc:
+                        refused.append(
+                            (
+                                member_path / relative if relative else member_path,
+                                f"could not be enumerated: {exc}",
+                            )
+                        )
+                        continue
+                    for entry in entries:
+                        child_relative = (
+                            f"{relative}/{entry.name}" if relative else entry.name
+                        )
+                        child_path = member_path / child_relative
+                        crossed, detail = crosses_mount_boundary(root, child_path)
+                        if crossed:
+                            refused.append((child_path, detail))
+                            continue
+                        expected_kind = recorded.get(child_relative)
+                        if entry.is_symlink():
+                            refused.append(
+                                (child_path, "symlink members are never collected")
+                            )
+                            continue
+                        if entry.is_dir(follow_symlinks=False):
+                            if expected_kind != "directory":
+                                refused.append(
+                                    (
+                                        child_path,
+                                        "a directory this owner did not record"
+                                        if expected_kind is None
+                                        else f"the owner recorded a {expected_kind} here",
+                                    )
+                                )
+                                continue
+                            try:
+                                child_fd = _open_directory_nofollow(
+                                    entry.name, dir_fd=handle
+                                )
+                            except (FileNotFoundError, NamespaceAmbiguity) as exc:
+                                refused.append((child_path, f"{exc}"))
+                                continue
+                            owned.append(child_fd)
+                            stack.append((child_fd, child_relative))
+                            continue
+                        if not entry.is_file(follow_symlinks=False):
+                            refused.append(
+                                (child_path, "a special node is never an owned member")
+                            )
+                            continue
+                        if expected_kind != "file":
+                            refused.append(
+                                (
+                                    child_path,
+                                    "a file this owner did not record"
+                                    if expected_kind is None
+                                    else f"the owner recorded a {expected_kind} here",
+                                )
+                            )
+                            continue
+                        members.append(child_path)
+            finally:
+                for handle in owned:
+                    os.close(handle)
+            return tuple(sorted(members)), tuple(refused)
+        finally:
+            os.close(member_fd)
+    finally:
+        os.close(attempt_fd)
 
 
 def certified_attempt_nodes(
@@ -1409,7 +1573,11 @@ def release_attempt_reference(
         # makes the state write the commit point: a crash in between leaves a
         # proof bound to a state that is not current, and therefore grants
         # nothing at all.
-        publish_attempt_member_proof(state_path.parent, state)
+        publish_attempt_member_proof(
+            state_path.parent,
+            state,
+            campaign_generation=int(binding.campaign_generation),
+        )
         _atomic_write_json(state_path, state.to_dict())
         return state
 
@@ -1419,6 +1587,135 @@ def iter_attempt_states(workspace_or_paths: Any) -> tuple[QualificationAttemptSt
 
     states, _unreadable = iter_attempt_state_census(workspace_or_paths)
     return states
+
+
+class NamespaceAmbiguity(RuntimeError):
+    """A P7 authority-bearing namespace component could not be authenticated."""
+
+
+#: Errors that mean "this name is simply not there".  Everything else - a
+#: symlink loop, a non-directory component, a permission or stale-handle
+#: failure, an I/O error - means the component exists or its status is unknown,
+#: which is unresolved authority rather than absence.  Collapsing the two is how
+#: a substituted qualification family would silently become "no attempts".
+_ABSENT_ERRNOS = frozenset({errno.ENOENT})
+
+
+def _open_directory_nofollow(name: str, *, dir_fd: int | None = None) -> int:
+    """Open one directory as itself, never through a substituted entry.
+
+    ``O_DIRECTORY|O_NOFOLLOW`` refuses a symlink or non-directory in the same
+    syscall that opens the name, and opening relative to an already
+    authenticated parent descriptor is what makes the descent *continuous*: a
+    check followed by a fresh path lookup is two different namespace
+    resolutions, and an ancestor swapped between them would be followed.
+    """
+
+    flags = (
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | os.O_NOFOLLOW
+        # A no-follow open still *opens* the name, and opening a FIFO for
+        # reading blocks until someone opens the write end - forever, for a
+        # planted node nobody writes to. An owner that can be made to hang by
+        # planting a special node has not failed closed, so every authority-
+        # bearing open is non-blocking and the kind is decided by ``fstat``.
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        handle = os.open(name, flags, dir_fd=dir_fd)
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise NamespaceAmbiguity(
+            f"{name!r} could not be opened as a plain directory ({exc.strerror})"
+        ) from exc
+    try:
+        if not stat.S_ISDIR(os.fstat(handle).st_mode):
+            os.close(handle)
+            raise NamespaceAmbiguity(f"{name!r} is not a directory")
+    except OSError as exc:
+        os.close(handle)
+        raise NamespaceAmbiguity(
+            f"{name!r} could not be identified after opening ({exc.strerror})"
+        ) from exc
+    return handle
+
+
+def _read_regular_file_nofollow(name: str, *, dir_fd: int) -> bytes | None:
+    """Read one regular file relative to an authenticated directory identity."""
+
+    flags = (
+        os.O_RDONLY
+        | os.O_NOFOLLOW
+        # Non-blocking for the same reason as the directory open: a planted
+        # FIFO must be refused, not waited on.
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        handle = os.open(name, flags, dir_fd=dir_fd)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise NamespaceAmbiguity(
+            f"{name!r} could not be opened as a plain regular file ({exc.strerror})"
+        ) from exc
+    try:
+        if not stat.S_ISREG(os.fstat(handle).st_mode):
+            raise NamespaceAmbiguity(f"{name!r} is not a plain regular file")
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(handle, 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks)
+    except OSError as exc:
+        raise NamespaceAmbiguity(
+            f"{name!r} could not be read ({exc.strerror})"
+        ) from exc
+    finally:
+        os.close(handle)
+
+
+def _descriptor_identity(handle: int) -> dict[str, int]:
+    stats = os.fstat(handle)
+    return {"device": int(stats.st_dev), "inode": int(stats.st_ino)}
+
+
+def canonical_generation_name(generation: int) -> str:
+    return f"g{int(generation)}"
+
+
+def parse_canonical_generation(name: str) -> int | None:
+    """The generation a reserved ``g*`` namespace names, or ``None``.
+
+    The spelling has to be the exact one the owner produces. ``g01`` is not an
+    alias for ``g1``; it is a malformed reserved entry, and treating it as a
+    second place to look for state would be one more namespace to attack.
+    """
+
+    if not name.startswith("g"):
+        return None
+    digits = name[1:]
+    if not digits.isdigit():
+        return None
+    value = int(digits)
+    return value if canonical_generation_name(value) == name else None
+
+
+def released_attempt_root_locator(generation: int, attempt_identity: str) -> str:
+    """The canonical, workspace-portable identity of one attempt's scratch root.
+
+    Scratch belongs to *one* generation namespace, not to every
+    ``qualification/g*/attempts/<same name>`` path, and an absolute path is not
+    durable identity because relocating or restoring a campaign must not change
+    what P7 owns.
+    """
+
+    return f"{canonical_generation_name(generation)}/attempts/{attempt_identity}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1432,27 +1729,40 @@ class AttemptStateAuthority:
     while the owner graph is simultaneously reporting it as unknown, and the two
     contradictory views would race to decide whether external P5 checkpoints
     stay protected.
+
+    ``root_identity`` is the attempt directory's ``(device, inode)`` as observed
+    through the authenticated descriptor. It is what lets a later consequential
+    step prove it is acting on the same directory that was certified, rather
+    than on whatever now answers to that name.
     """
 
     attempt_root: Path
     state: "QualificationAttemptState | None" = None
     reason: str = ""
+    generation: int | None = None
+    root_identity: Mapping[str, int] | None = None
 
     @property
     def resolved(self) -> bool:
         return self.state is not None
 
+    @property
+    def root_locator(self) -> str:
+        """The canonical generation-scoped locator of this attempt's scratch."""
 
-def authenticate_attempt_state(
-    attempt_root: str | os.PathLike[str],
+        if self.generation is None:
+            return ""
+        return released_attempt_root_locator(self.generation, self.attempt_root.name)
+
+
+def _authenticate_state_bytes(
+    attempt_root: Path, raw: bytes, *, generation: int | None, identity: Mapping[str, int] | None
 ) -> AttemptStateAuthority:
-    """Authenticate one attempt's state against the root it was read from.
+    """Authenticate one attempt's state payload against the root it came from.
 
     Four things must agree before this state may release anything, and each one
     closes a distinct hole:
 
-    * the attempt root is a plain directory and its state a plain regular file,
-      read no-follow, so a substituted object cannot supply the answer;
     * the persisted ``content_digest`` is present and recomputes exactly. The
       generic deserializer tolerates its absence for compatibility, but a record
       that can release external P5 protection may not be authenticated by a
@@ -1464,75 +1774,158 @@ def authenticate_attempt_state(
       authority: P7 derives attempt identity from the qualification binding, and
       a state whose binding says it belongs elsewhere is not this attempt's
       state no matter what it is filed under.
+
+    Reconstruction is **total over expected persisted-record corruption**. A
+    syntactically valid object missing a required field, or carrying a wrong
+    container type, is unresolved authority - never an exception escaping the
+    owner boundary, because the retention fence consults this while an
+    observational `storage report` is still being built and that report is
+    exactly what has to keep working.
     """
 
-    from ..storage.owners import (
-        NODE_DIRECTORY,
-        NODE_FILE,
-        observed_node_kind,
-        read_owner_record_bytes,
-    )
+    def _unresolved(reason: str) -> AttemptStateAuthority:
+        return AttemptStateAuthority(
+            attempt_root, None, reason, generation=generation, root_identity=identity
+        )
 
-    root = Path(attempt_root)
-    if observed_node_kind(root) != NODE_DIRECTORY:
-        return AttemptStateAuthority(
-            root, None, "attempt root is not a plain directory"
-        )
-    path = root / ATTEMPT_STATE_FILENAME
-    kind = observed_node_kind(path)
-    if kind != NODE_FILE:
-        return AttemptStateAuthority(
-            root,
-            None,
-            "attempt state is missing"
-            if kind == "absent"
-            else f"attempt state is a {kind}, not a plain regular file",
-        )
-    raw = read_owner_record_bytes(path)
-    if raw is None:
-        return AttemptStateAuthority(root, None, "attempt state could not be read")
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:
-        return AttemptStateAuthority(root, None, f"attempt state is unusable: {exc}")
+        return _unresolved(f"attempt state is unusable: {exc}")
     if not isinstance(payload, Mapping):
-        return AttemptStateAuthority(root, None, "attempt state is not an object")
+        return _unresolved("attempt state is not an object")
     recorded_digest = payload.get("content_digest")
     if not recorded_digest:
-        return AttemptStateAuthority(
-            root,
-            None,
+        return _unresolved(
             "attempt state carries no persisted content digest, so nothing "
-            "authenticates it",
+            "authenticates it"
         )
     try:
         state = QualificationAttemptState.from_dict(payload)
     except (
+        KeyError,
+        TypeError,
         ValueError,
         TrainingDataSerializationError,
         TrainingDataInputError,
     ) as exc:
-        return AttemptStateAuthority(root, None, f"attempt state is unusable: {exc}")
+        return _unresolved(f"attempt state is unusable: {exc!r}")
     if str(recorded_digest) != state.content_digest:
-        return AttemptStateAuthority(
-            root, None, "attempt state does not authenticate against its own digest"
+        return _unresolved(
+            "attempt state does not authenticate against its own digest"
         )
-    if state.attempt_identity != root.name:
-        return AttemptStateAuthority(
-            root,
-            None,
+    if state.attempt_identity != attempt_root.name:
+        return _unresolved(
             "attempt state belongs to a different attempt identity than the "
-            "directory it was read from",
+            "directory it was read from"
         )
     if state.attempt_identity != _expected_attempt_identity(state.binding_digest):
-        return AttemptStateAuthority(
-            root,
-            None,
+        return _unresolved(
             "attempt identity is not the canonical identity of the qualification "
             "binding this state names; the directory name is not independent "
-            "authority",
+            "authority"
         )
-    return AttemptStateAuthority(root, state, "attempt state authenticated")
+    return AttemptStateAuthority(
+        attempt_root,
+        state,
+        "attempt state authenticated",
+        generation=generation,
+        root_identity=identity,
+    )
+
+
+def _authenticate_attempt_from_descriptor(
+    attempt_root: Path, attempt_fd: int, generation: int
+) -> AttemptStateAuthority:
+    identity = _descriptor_identity(attempt_fd)
+    try:
+        raw = _read_regular_file_nofollow(ATTEMPT_STATE_FILENAME, dir_fd=attempt_fd)
+    except NamespaceAmbiguity as exc:
+        return AttemptStateAuthority(
+            attempt_root, None, str(exc), generation=generation, root_identity=identity
+        )
+    if raw is None:
+        return AttemptStateAuthority(
+            attempt_root,
+            None,
+            "attempt state is missing",
+            generation=generation,
+            root_identity=identity,
+        )
+    return _authenticate_state_bytes(
+        attempt_root, raw, generation=generation, identity=identity
+    )
+
+
+def open_attempt_namespace(
+    paths: Any, attempt_root: str | os.PathLike[str]
+) -> tuple[int | None, str]:
+    """Re-acquire one attempt directory through the continuous no-follow descent.
+
+    Returns an open descriptor for the authenticated attempt root, or ``None``
+    with a reason. The caller owns closing it. This is what a consequential step
+    uses to prove it is still acting on the directory that was certified, rather
+    than trusting a pathname a moment later.
+    """
+
+    root = Path(attempt_root)
+    generation = parse_canonical_generation(root.parent.parent.name)
+    if root.parent.name != "attempts" or generation is None:
+        return None, f"{root} is not a canonical P7 attempt namespace path"
+    internal = _internal_root(paths)
+    family_fd = None
+    generation_fd = None
+    attempts_fd = None
+    try:
+        internal_fd = _open_directory_nofollow(str(internal))
+    except (FileNotFoundError, NamespaceAmbiguity) as exc:
+        return None, f"campaign internal root is unavailable: {exc}"
+    try:
+        family_fd = _open_directory_nofollow(QUALIFICATION_ROOT_NAME, dir_fd=internal_fd)
+        generation_fd = _open_directory_nofollow(root.parent.parent.name, dir_fd=family_fd)
+        attempts_fd = _open_directory_nofollow("attempts", dir_fd=generation_fd)
+        return _open_directory_nofollow(root.name, dir_fd=attempts_fd), "authenticated"
+    except FileNotFoundError:
+        return None, "the attempt namespace no longer exists"
+    except NamespaceAmbiguity as exc:
+        return None, str(exc)
+    finally:
+        for handle in (attempts_fd, generation_fd, family_fd, internal_fd):
+            if handle is not None:
+                os.close(handle)
+
+
+def _internal_root(workspace_or_paths: Any) -> Path:
+    return (
+        Path(workspace_or_paths.internal)
+        if hasattr(workspace_or_paths, "internal")
+        else Path(workspace_or_paths) / ".mdstats"
+    )
+
+
+def authenticate_attempt_state(
+    attempt_root: str | os.PathLike[str],
+) -> AttemptStateAuthority:
+    """Authenticate the state at one attempt root, by path.
+
+    Kept for callers that already hold an attempt root and are not walking the
+    namespace. The descent below it is still no-follow, but a caller that needs
+    the *continuous* guarantee should use :func:`iter_attempt_state_authorities`
+    or :func:`open_attempt_namespace`.
+    """
+
+    root = Path(attempt_root)
+    generation = parse_canonical_generation(root.parent.parent.name)
+    try:
+        attempt_fd = _open_directory_nofollow(str(root))
+    except FileNotFoundError:
+        return AttemptStateAuthority(root, None, "attempt root is missing")
+    except NamespaceAmbiguity as exc:
+        return AttemptStateAuthority(root, None, str(exc))
+    try:
+        return _authenticate_attempt_from_descriptor(root, attempt_fd, generation)
+    finally:
+        os.close(attempt_fd)
 
 
 def iter_attempt_state_authorities(
@@ -1540,79 +1933,169 @@ def iter_attempt_state_authorities(
 ) -> tuple[AttemptStateAuthority, ...]:
     """Strictly authenticate every attempt in the P7 owner namespace.
 
-    Enumeration descends the namespace **no-follow at every authority-bearing
-    component**. ``O_NOFOLLOW`` on the state file only protects the final name;
-    a symlinked ``g<generation>`` or ``attempts`` directory would otherwise let
-    an entire foreign tree supply P7 state. Any substituted, special, or
-    unreadable component is an integrity failure rather than something to
-    traverse, and the enumeration itself never resolves a link to decide.
+    The descent is **continuous and descriptor-relative** from the accepted
+    campaign internal root: qualification family, canonical ``g<generation>``,
+    the literal ``attempts`` container, then each attempt directory. Every hop
+    is opened with ``O_DIRECTORY|O_NOFOLLOW`` relative to the descriptor of the
+    parent that was already authenticated, so an ancestor replaced between two
+    steps cannot be traversed. A pre-check followed by a fresh path lookup would
+    be two resolutions with a window in between; this is one.
 
     Enumeration is by actual attempt *directory*, not by state file: an attempt
     directory with no state at all is precisely the case whose external
     references are unknown, and a state-file glob would not see it.
+
+    Absence and ambiguity are different answers. A genuinely absent family or
+    ``attempts`` container is ordinary "nothing here"; a present component that
+    cannot be authenticated - substituted, wrong kind, unreadable, stale - is
+    unresolved authority.
     """
 
-    from ..storage.owners import NODE_DIRECTORY, observed_node_kind
-
-    internal = (
-        Path(workspace_or_paths.internal)
-        if hasattr(workspace_or_paths, "internal")
-        else Path(workspace_or_paths) / ".mdstats"
-    )
-    root = internal.resolve() / QUALIFICATION_ROOT_NAME
-    if observed_node_kind(root) != NODE_DIRECTORY:
+    internal = _internal_root(workspace_or_paths)
+    family = internal / QUALIFICATION_ROOT_NAME
+    try:
+        internal_fd = _open_directory_nofollow(str(internal))
+    except FileNotFoundError:
         return ()
+    except NamespaceAmbiguity as exc:
+        return (AttemptStateAuthority(internal, None, f"campaign internal root: {exc}"),)
     results: list[AttemptStateAuthority] = []
     try:
-        generations = sorted(os.scandir(root), key=lambda item: item.name)
-    except OSError as exc:
-        return (
-            AttemptStateAuthority(
-                root, None, f"qualification family root could not be enumerated: {exc}"
-            ),
-        )
-    for entry in generations:
-        if not entry.name.startswith("g"):
-            continue
-        generation_root = Path(entry.path)
-        if observed_node_kind(generation_root) != NODE_DIRECTORY:
-            results.append(
-                AttemptStateAuthority(
-                    generation_root,
-                    None,
-                    "qualification generation root is not a plain directory; its "
-                    "target is never traversed for attempt authority",
-                )
-            )
-            continue
-        attempts_root = generation_root / "attempts"
-        attempts_kind = observed_node_kind(attempts_root)
-        if attempts_kind == "absent":
-            continue
-        if attempts_kind != NODE_DIRECTORY:
-            results.append(
-                AttemptStateAuthority(
-                    attempts_root,
-                    None,
-                    "qualification attempts container is not a plain directory; its "
-                    "target is never traversed for attempt authority",
-                )
-            )
-            continue
         try:
-            attempts = sorted(os.scandir(attempts_root), key=lambda item: item.name)
-        except OSError as exc:
-            results.append(
-                AttemptStateAuthority(
-                    attempts_root,
-                    None,
-                    f"qualification attempts container could not be enumerated: {exc}",
-                )
+            family_fd = _open_directory_nofollow(
+                QUALIFICATION_ROOT_NAME, dir_fd=internal_fd
             )
-            continue
-        for attempt in attempts:
-            results.append(authenticate_attempt_state(Path(attempt.path)))
+        except FileNotFoundError:
+            return ()
+        except NamespaceAmbiguity as exc:
+            return (
+                AttemptStateAuthority(
+                    family, None, f"qualification family root: {exc}"
+                ),
+            )
+        try:
+            try:
+                generations = sorted(os.scandir(family_fd), key=lambda item: item.name)
+            except OSError as exc:
+                return (
+                    AttemptStateAuthority(
+                        family,
+                        None,
+                        f"qualification family root could not be enumerated: {exc}",
+                    ),
+                )
+            for entry in generations:
+                if not entry.name.startswith("g"):
+                    continue
+                generation_root = family / entry.name
+                generation = parse_canonical_generation(entry.name)
+                if generation is None:
+                    results.append(
+                        AttemptStateAuthority(
+                            generation_root,
+                            None,
+                            "reserved generation namespace does not use the owner's "
+                            "canonical spelling; it is an integrity problem, not "
+                            "another place to look for state",
+                        )
+                    )
+                    continue
+                results.extend(
+                    _authorities_for_generation(
+                        family_fd, family, entry.name, generation
+                    )
+                )
+        finally:
+            os.close(family_fd)
+    finally:
+        os.close(internal_fd)
     return tuple(results)
+
+
+def _authorities_for_generation(
+    family_fd: int, family: Path, name: str, generation: int
+) -> list[AttemptStateAuthority]:
+    generation_root = family / name
+    try:
+        generation_fd = _open_directory_nofollow(name, dir_fd=family_fd)
+    except FileNotFoundError:
+        # Enumerated a moment ago and gone now: the namespace changed while it
+        # was being observed, which is not the same as never having been there.
+        return [
+            AttemptStateAuthority(
+                generation_root,
+                None,
+                "generation namespace disappeared between enumeration and "
+                "authentication; the namespace changed during observation",
+            )
+        ]
+    except NamespaceAmbiguity as exc:
+        return [
+            AttemptStateAuthority(
+                generation_root, None, f"generation namespace: {exc}"
+            )
+        ]
+    results: list[AttemptStateAuthority] = []
+    attempts_root = generation_root / "attempts"
+    try:
+        try:
+            attempts_fd = _open_directory_nofollow("attempts", dir_fd=generation_fd)
+        except FileNotFoundError:
+            return []
+        except NamespaceAmbiguity as exc:
+            return [
+                AttemptStateAuthority(
+                    attempts_root, None, f"attempts container: {exc}"
+                )
+            ]
+        try:
+            try:
+                attempts = sorted(os.scandir(attempts_fd), key=lambda item: item.name)
+            except OSError as exc:
+                return [
+                    AttemptStateAuthority(
+                        attempts_root,
+                        None,
+                        f"attempts container could not be enumerated: {exc}",
+                    )
+                ]
+            for attempt in attempts:
+                attempt_root = attempts_root / attempt.name
+                try:
+                    attempt_fd = _open_directory_nofollow(
+                        attempt.name, dir_fd=attempts_fd
+                    )
+                except FileNotFoundError:
+                    results.append(
+                        AttemptStateAuthority(
+                            attempt_root,
+                            None,
+                            "attempt directory disappeared between enumeration and "
+                            "authentication; the namespace changed during observation",
+                            generation=generation,
+                        )
+                    )
+                    continue
+                except NamespaceAmbiguity as exc:
+                    results.append(
+                        AttemptStateAuthority(
+                            attempt_root, None, str(exc), generation=generation
+                        )
+                    )
+                    continue
+                try:
+                    results.append(
+                        _authenticate_attempt_from_descriptor(
+                            attempt_root, attempt_fd, generation
+                        )
+                    )
+                finally:
+                    os.close(attempt_fd)
+        finally:
+            os.close(attempts_fd)
+    finally:
+        os.close(generation_fd)
+    return results
 
 
 def iter_attempt_state_census(
@@ -1710,21 +2193,29 @@ def _is_within(root: Path, candidate: Path) -> bool:
 def build_qualification_retention_fence(workspace_or_paths: Any) -> QualificationRetentionFence:
     """Reconstruct the fence from durable owner state, never from filenames."""
 
-    internal = (
-        Path(workspace_or_paths.internal)
-        if hasattr(workspace_or_paths, "internal")
-        else Path(workspace_or_paths) / ".mdstats"
-    )
+    internal = _internal_root(workspace_or_paths)
     root = internal.resolve() / QUALIFICATION_ROOT_NAME
-    generation_roots = (
-        tuple(sorted(path for path in root.glob("g*") if path.is_dir()))
-        if root.is_dir()
-        else ()
-    )
-    reveal_root = root / LOCKED_REVEAL_DIRECTORY
-    roots = generation_roots + ((reveal_root,) if reveal_root.is_dir() else ())
+    # The fence is a *reduction*, so it has to survive a family root it cannot
+    # even look at. An unreadable or substituted root is exactly the case where
+    # nothing may be authorized, and a raised OSError here would instead take
+    # the whole observational path - including `storage report` - down with it.
+    unreadable: list[str] = []
+    try:
+        generation_roots = (
+            tuple(sorted(path for path in root.glob("g*") if path.is_dir()))
+            if root.is_dir()
+            else ()
+        )
+        reveal_root = root / LOCKED_REVEAL_DIRECTORY
+        roots = generation_roots + ((reveal_root,) if reveal_root.is_dir() else ())
+    except OSError as exc:
+        roots = (root,)
+        unreadable.append(f"{root}: qualification family root is unreadable ({exc})")
     referenced: set[str] = set()
     states, unresolved = iter_attempt_state_census(workspace_or_paths)
+    unresolved = tuple(unresolved) + tuple(
+        (str(root), reason.split(": ", 1)[-1]) for reason in unreadable
+    )
     for state in states:
         if state.is_active:
             referenced.update(state.referenced_paths)
@@ -1774,6 +2265,11 @@ __all__ = [
     "find_locked_activation_for_role",
     "AttemptStateAuthority",
     "authenticate_attempt_state",
+    "authorize_released_attempt_member",
+    "canonical_generation_name",
+    "open_attempt_namespace",
+    "parse_canonical_generation",
+    "released_attempt_root_locator",
     "certified_attempt_nodes",
     "iter_attempt_state_authorities",
     "iter_attempt_state_census",

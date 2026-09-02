@@ -129,6 +129,10 @@ class OwnerGraphError(RuntimeError):
     """The owner graph is not a valid basis for consequential planning."""
 
 
+#: Names the P7 owner's own released-attempt authorizer.  The common inventory
+#: delegates to it instead of re-deriving authority from a pathname walk.
+P7_RELEASED_ATTEMPT_AUTHORIZER = "p7:released_attempt"
+
 NODE_FILE = "file"
 NODE_DIRECTORY = "directory"
 NODE_SYMLINK = "symlink"
@@ -145,6 +149,16 @@ class CertifiedNode:
 
     def to_dict(self) -> dict[str, str]:
         return {"path": self.path, "kind": self.kind}
+
+
+def observed_node_identity(path: Path) -> dict[str, int] | None:
+    """The filesystem identity of ``path`` itself, never of a symlink target."""
+
+    try:
+        stats = os.lstat(path)
+    except OSError:
+        return None
+    return {"device": int(stats.st_dev), "inode": int(stats.st_ino)}
 
 
 def observed_node_kind(path: Path) -> str:
@@ -186,7 +200,15 @@ def read_owner_record_bytes(path: Path) -> bytes | None:
         # O_NOFOLLOW; anywhere else, an owner authority record simply cannot be
         # authenticated and grants nothing.
         return None
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | os.O_NOFOLLOW
+    # ``O_NONBLOCK`` because opening a planted FIFO for reading would otherwise
+    # block until a writer appeared. The kind is decided by ``fstat`` below; a
+    # special node must be refused, not waited on.
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | os.O_NOFOLLOW
+        | getattr(os, "O_NONBLOCK", 0)
+    )
     try:
         handle = os.open(path, flags)
     except OSError:
@@ -270,6 +292,21 @@ class OwnerArtifactView:
     #: and lock files.  They are neither members nor contradictions: archiving
     #: or removing them would destroy the certification itself.
     retained_members: tuple[str, ...] = ()
+    #: The owner-specific authorizer that must decide this view's recursive
+    #: members, when a generic pathname walk would lose the identity the
+    #: certification was performed against.  Empty means the common typed walk
+    #: is a faithful representation of the accepted authority.
+    exact_authorizer: str = ""
+    #: The ``(device, inode)`` of the *authority* root the owner certified
+    #: against - for a released P7 attempt member that is the attempt directory,
+    #: not this view's own path.  The owner-specific authorizer proves it is
+    #: still looking at the same directory it was granted authority over.
+    root_identity: Mapping[str, int] | None = None
+    #: The ``(device, inode)`` of ``path`` itself as observed while the view was
+    #: built.  The final recursive removal re-observes it immediately before
+    #: entry, so a container replaced after certification is refused rather than
+    #: entered under the authority granted to the original.
+    path_identity: Mapping[str, int] | None = None
     #: This owner is the exclusive writer of the whole subtree by construction,
     #: so every descendant is its own.  Reserved for a private scratch/control
     #: area no other component writes into - storage's own staging, for
@@ -1339,6 +1376,14 @@ def qualification_views(
                 continue
             certified, member_why, nodes = certified_attempt_nodes(attempt, state)
             recorded = {path: kind for path, kind in nodes}
+            attempt_identity = next(
+                (
+                    item.root_identity
+                    for item in authorities
+                    if str(item.attempt_root) == str(attempt)
+                ),
+                None,
+            )
             for member in sorted(attempt.iterdir()):
                 if member.name in ATTEMPT_INFRASTRUCTURE_NAMES:
                     continue
@@ -1401,6 +1446,12 @@ def qualification_views(
                             else SubtreeCoverage.NOT_APPLICABLE
                         ),
                         certified_nodes=inside,
+                        # Typed names alone do not say which directory they were
+                        # certified beneath, so this view carries the owner's own
+                        # authorizer and the root identity it observed.
+                        exact_authorizer=P7_RELEASED_ATTEMPT_AUTHORIZER,
+                        root_identity=attempt_identity,
+                        path_identity=observed_node_identity(member),
                         requires=(objects_id,),
                     )
                 )
@@ -1509,6 +1560,7 @@ class _UnresolvedAttemptAuthority:
     attempt_root: Path
     reason: str
     state: Any = None
+    root_identity: Any = None
 
     @property
     def resolved(self) -> bool:
@@ -2082,6 +2134,8 @@ __all__ = [
     "OwnerArtifactView",
     "OwnerViewError",
     "CertifiedNode",
+    "P7_RELEASED_ATTEMPT_AUTHORIZER",
+    "observed_node_identity",
     "NODE_ABSENT",
     "NODE_DIRECTORY",
     "NODE_FILE",

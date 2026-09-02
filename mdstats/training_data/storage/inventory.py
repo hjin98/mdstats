@@ -29,6 +29,7 @@ from ..storage_accounting import ProtectedInputPath
 from .control_plane import StorageControlPlane, open_storage_control_plane_readonly
 from .owners import (
     NODE_ABSENT,
+    P7_RELEASED_ATTEMPT_AUTHORIZER,
     NODE_DIRECTORY,
     NODE_FILE,
     observed_node_kind,
@@ -65,6 +66,9 @@ class StorageInventorySnapshot:
     control_plane: StorageControlPlane
     #: Paths a retained cold representation still needs; never reclaimable.
     retained_control_paths: frozenset[str]
+    #: The campaign paths this snapshot was built from.  The P7 owner needs them
+    #: to re-acquire its namespace from the accepted campaign parent.
+    campaign_paths: Any = None
     #: ``(root, reason, container_only)`` for every protected artifact, resolved
     #: once.  Protection is asked per candidate file during dedup and cleanup, so
     #: this stays a flat scan over a small tuple rather than a per-call lookup
@@ -213,6 +217,21 @@ class StorageInventorySnapshot:
 
         refused: list[tuple[Path, str]] = []
         root = view.path
+        if view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER:
+            # The P7 owner authenticated this subtree through a continuous
+            # no-follow descent. Re-deriving it here from `root` would throw that
+            # away and re-enter the pathname resolution the owner just closed, so
+            # the owner decides its own members and proves the root is still the
+            # same filesystem object it certified.
+            from ..qualification.store import authorize_released_attempt_member
+
+            return authorize_released_attempt_member(
+                self.campaign_paths,
+                root.parent,
+                root.name,
+                expected_root_identity=view.root_identity,
+                certified_nodes=[item.to_dict() for item in view.certified_nodes],
+            )
         root_kind = observed_node_kind(root)
         if root_kind == NODE_FILE:
             return (root,), ()
@@ -378,6 +397,7 @@ def build_storage_inventory(
             continue
         index.append((view.path, reason.detail, bool(view.container_only)))
     return StorageInventorySnapshot(
+        campaign_paths=paths,
         workspace=_absolute(paths.workspace),
         owner_views=owner_views,
         protected_ids=protected_ids,

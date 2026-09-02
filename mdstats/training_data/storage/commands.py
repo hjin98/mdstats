@@ -456,7 +456,11 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
             if view is not None and view.path == action.path and action.path.is_dir():
                 members, refusals = snapshot.authorized_members(view)
                 removed, why = remove_certified_subtree(
-                    action.path, members=members, refusals=refusals
+                    action.path,
+                    members=members,
+                    refusals=refusals,
+                    root_identity=view.path_identity,
+                    authority_identity=view.root_identity,
                 )
                 result.completed.append(
                     {**action.to_dict(), "removed": removed, "detail": why}

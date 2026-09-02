@@ -192,11 +192,6 @@ class OwnerSynchronization:
             (*self.attempt_roots, *other.attempt_roots),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "generations": list(self.generations),
-            "run_roots": [str(item) for item in self.run_roots],
-        }
 
 
 @contextmanager

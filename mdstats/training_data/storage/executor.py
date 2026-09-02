@@ -29,7 +29,9 @@ strict subset is recorded truthfully as partial before the exception propagates.
 
 from __future__ import annotations
 
+import os
 import shutil
+import stat
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -397,6 +399,8 @@ def remove_certified_subtree(
     *,
     members: Sequence[Path],
     refusals: Sequence[tuple[Path, str]],
+    root_identity: Mapping[str, int] | None = None,
+    authority_identity: Mapping[str, int] | None = None,
 ) -> tuple[bool, str]:
     """Remove a directory only when every disappearing descendant is certified.
 
@@ -406,6 +410,32 @@ def remove_certified_subtree(
     members are removed.
     """
 
+    # ``rmtree`` avoiding symlink attacks says nothing about the names *above*
+    # what it recurses into.  A container replaced between certification and this
+    # call - or an authority root above it swapped for a symlink that happens to
+    # lead back to the same bytes - would otherwise be entered as if it were the
+    # certified one.  Both are re-observed here, at the last moment before entry,
+    # with ``lstat`` so a substituted final component is seen as the symlink it
+    # is rather than as its target.
+    for label, target, expected in (
+        ("authority root", path.parent, authority_identity),
+        ("container", path, root_identity),
+    ):
+        if expected is None:
+            continue
+        try:
+            stats = os.lstat(target)
+        except OSError as exc:
+            return False, f"the certified {label} could not be re-observed: {exc}"
+        if (
+            not stat.S_ISDIR(stats.st_mode)
+            or int(stats.st_dev) != int(expected["device"])
+            or int(stats.st_ino) != int(expected["inode"])
+        ):
+            return False, (
+                f"the certified {label} is no longer the filesystem object this "
+                "action was authorized against; nothing was removed"
+            )
     if refusals:
         removed = 0
         for member in members:

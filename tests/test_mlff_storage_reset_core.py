@@ -15,6 +15,7 @@ The assembled real-owner P1-P7 acceptance lives in
 
 from __future__ import annotations
 
+import inspect
 import io
 import json
 import os
@@ -4044,15 +4045,13 @@ def test_an_observational_replacement_fails_before_externalizing_anything(
 
     assert _tree_signature(campaign.paths.workspace) == before
     assert not observational.writer_lock_path.exists()
-    assert not list((campaign.paths.internal / "records").glob("*")) or (
-        sorted(item.name for item in (campaign.paths.internal / "records").iterdir())
-        == sorted(
-            name
-            for name in before
-            if name.startswith("records/")
-        )
-        or True
-    )
+    # Exact, with no unconditional escape: the externalized record directory
+    # holds precisely the entries the pre-operation workspace signature named.
+    records_root = campaign.paths.internal / "records"
+    assert sorted(
+        str(item.relative_to(campaign.paths.workspace))
+        for item in records_root.rglob("*")
+    ) == sorted(name for name in before if name.startswith("internal/records/"))
 
 
 def test_the_replacement_guard_is_the_first_executable_statement() -> None:
@@ -4087,3 +4086,90 @@ def test_the_replacement_guard_is_the_first_executable_statement() -> None:
     dumped = ast.dump(put_records)
     assert dumped.count("_require_writable") == 1
     assert "replace campaign records" not in dumped
+
+
+# ---------------------------------------------------------------------------
+# IR23-2 / R24-3 - the synchronization contract and the P7 authority boundary
+# ---------------------------------------------------------------------------
+
+
+def test_the_synchronization_contract_serializes_the_attempt_seam() -> None:
+    """IR23-2: one serializer, and it tells the whole truth.
+
+    Runtime locking already used `attempt_roots`; a diagnostic that omitted it
+    made the acquired lock set look smaller than it is, at exactly the seam
+    under review.
+    """
+
+    from mdstats.training_data.storage.lease import OwnerSynchronization
+
+    source = inspect.getsource(OwnerSynchronization)
+    assert source.count("def to_dict(") == 1, "a duplicate serializer still shadows it"
+
+    synchronization = OwnerSynchronization.of(
+        (7,), (Path("/w/runs/run-a"),), (Path("/w/attempts/aa"), Path("/w/attempts/bb"))
+    )
+    payload = synchronization.to_dict()
+    assert payload["generations"] == [7]
+    assert payload["run_roots"] == ["/w/runs/run-a"]
+    assert payload["attempt_roots"] == ["/w/attempts/aa", "/w/attempts/bb"]
+
+
+def test_no_p7_consumer_converts_root_bound_certification_into_path_authority() -> None:
+    """R24-3 structural: the exact result is never reduced to names alone.
+
+    A released-attempt view carries both the owner's own authorizer and the
+    filesystem identity it was certified against. Every place that could spend
+    that authority - the common member resolver, the plan binding, and the final
+    recursive removal - has to consume them.
+    """
+
+    import ast
+
+    storage_root = Path(cli.__file__).parent / "storage"
+    inventory_source = (storage_root / "inventory.py").read_text(encoding="utf-8")
+    executor_source = (storage_root / "executor.py").read_text(encoding="utf-8")
+    commands_source = (storage_root / "commands.py").read_text(encoding="utf-8")
+    plan_source = (storage_root / "plan.py").read_text(encoding="utf-8")
+
+    # The common resolver delegates released P7 subtrees to the owner instead of
+    # re-walking them by pathname.
+    tree = ast.parse(inventory_source)
+    resolver = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "authorized_members"
+    )
+    delegated = [
+        node
+        for node in ast.walk(resolver)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "authorize_released_attempt_member"
+    ]
+    assert delegated, "the common resolver still resolves released P7 members itself"
+    assert "P7_RELEASED_ATTEMPT_AUTHORIZER" in inventory_source
+
+    # The last mutation seam re-observes the certified root.
+    assert "root_identity" in executor_source
+    removal = next(
+        node
+        for node in ast.walk(ast.parse(executor_source))
+        if isinstance(node, ast.FunctionDef) and node.name == "remove_certified_subtree"
+    )
+    accepted = {argument.arg for argument in removal.args.kwonlyargs}
+    assert {"root_identity", "authority_identity"} <= accepted, (
+        "the recursive removal cannot be told which objects it was authorized on"
+    )
+    # Both the container and the authority root above it: a symlinked ancestor
+    # that happens to lead back to the certified bytes is still an unauthenticated
+    # chain, so the leaf identity alone is not the proof.
+    assert "root_identity=view.path_identity" in commands_source, (
+        "the cleanup engine drops the certified container identity before removing"
+    )
+    assert "authority_identity=view.root_identity" in commands_source, (
+        "the cleanup engine drops the certified authority root before removing"
+    )
+
+    # And an identity change - of either - stales an unapplied plan.
+    assert "view.root_identity" in plan_source and "view.path_identity" in plan_source

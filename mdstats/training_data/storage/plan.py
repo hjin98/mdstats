@@ -187,6 +187,19 @@ def owner_binding_for(snapshot: StorageInventorySnapshot) -> dict[str, Any]:
                             ),
                             sorted(view.retained_members),
                             view.state_identity,
+                            # The filesystem identity the owner certified
+                            # against, so an exact root replaced between
+                            # planning and apply stales the plan rather than
+                            # transferring its authority to the replacement.
+                            [
+                                (
+                                    sorted(item.items())
+                                    if item is not None
+                                    else None
+                                )
+                                for item in (view.root_identity, view.path_identity)
+                            ],
+                            view.exact_authorizer,
                             sorted(view.requires),
                         ]
                         for view in snapshot.views

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import contextmanager
 import threading
 import time
 from pathlib import Path
@@ -2341,6 +2342,13 @@ def _assert_p7_repair_restores_planning(config: Path) -> None:
         "attempts_container_symlink",
         "state_fifo",
         "canonical_identity_mismatch",
+        "missing_required_field",
+        "null_referenced_paths",
+        "noncanonical_generation",
+        "family_root_symlink",
+        "family_root_wrong_kind",
+        "family_root_unreadable",
+        "scratch_fifo",
     ],
 )
 def test_unauthenticated_p7_attempt_state_blocks_everything(
@@ -2378,6 +2386,12 @@ def test_unauthenticated_p7_attempt_state_blocks_everything(
         (other / "attempt-state.json").write_bytes(saved)
         payload = json.loads(saved.decode("utf-8"))
         payload["attempt_identity"] = "c" * 64
+        payload.pop("content_digest", None)
+        from mdstats.training_data.qualification.store import QualificationAttemptState
+
+        payload["content_digest"] = QualificationAttemptState.from_dict(
+            dict(payload)
+        ).content_digest
         (other / "attempt-state.json").write_text(json.dumps(payload), encoding="utf-8")
         state.write_text(json.dumps(payload), encoding="utf-8")
         restore.append(lambda: state.write_bytes(saved))
@@ -2424,13 +2438,86 @@ def test_unauthenticated_p7_attempt_state_blocks_everything(
         generation_root.rename(moved)
         generation_root.symlink_to(moved)
         restore.append(lambda: (generation_root.unlink(), moved.rename(generation_root)))
+    elif corruption == "missing_required_field":
+        # IR23-1: syntactically valid JSON, digest field present, one required
+        # field gone. `from_dict` raises KeyError; the owner boundary must turn
+        # that into unresolved authority rather than let it escape.
+        payload = json.loads(saved.decode("utf-8"))
+        payload.pop("binding_digest", None)
+        state.write_text(json.dumps(payload), encoding="utf-8")
+        restore.append(lambda: state.write_bytes(saved))
+    elif corruption == "null_referenced_paths":
+        # IR23-1: a parseable object with an invalid container type.
+        payload = json.loads(saved.decode("utf-8"))
+        payload["referenced_paths"] = None
+        state.write_text(json.dumps(payload), encoding="utf-8")
+        restore.append(lambda: state.write_bytes(saved))
+    elif corruption == "noncanonical_generation":
+        # R24: the reserved generation namespace has exactly one spelling. A
+        # second, noncanonical one is an integrity problem, not another place
+        # for the owner to go looking for state.
+        planted = generation_root.parent / "g01"
+        planted.mkdir()
+        restore.append(lambda: planted.rmdir())
+    elif corruption == "family_root_symlink":
+        family = generation_root.parent
+        moved = family.parent / "moved-qualification"
+        family.rename(moved)
+        family.symlink_to(moved)
+        restore.append(lambda: (family.unlink(), moved.rename(family)))
+    elif corruption == "family_root_wrong_kind":
+        family = generation_root.parent
+        moved = family.parent / "moved-qualification"
+        family.rename(moved)
+        family.write_bytes(b"not a directory")
+        restore.append(lambda: (family.unlink(), moved.rename(family)))
+    elif corruption == "family_root_unreadable":
+        family = generation_root.parent
+        mode = family.stat().st_mode
+        os.chmod(family, 0o000)
+        restore.append(lambda: os.chmod(family, mode))
+    elif corruption == "scratch_fifo":
+        # R22-2.2: a special node inside the released *scratch*, distinct from
+        # the attempt-state special-node case. It cannot be certified, so the
+        # containing member keeps its bytes - and because the top-level node set
+        # no longer matches the proof, the whole released authority is withdrawn.
+        member = next(
+            item for item in sorted(attempt.iterdir()) if item.is_dir()
+        )
+        planted = member / "someone-elses.fifo"
+        os.mkfifo(planted)
+        restore.append(lambda: planted.unlink())
     else:  # attempts_container_symlink
         moved = generation_root / "moved-attempts"
         attempts_root.rename(moved)
         attempts_root.symlink_to(moved)
         restore.append(lambda: (attempts_root.unlink(), moved.rename(attempts_root)))
 
-    _assert_p7_ambiguity_blocks_everything(config, checkpoints)
+    if corruption == "scratch_fifo":
+        # A special node below a released attempt reduces that attempt's
+        # authority; it is not unknown cross-owner liveness, so ordinary
+        # planning stays available while the contaminated member is retained.
+        snapshot, _paths = _snapshot(config)
+        assert not any(
+            view.safe_reclaimable
+            for view in snapshot.views
+            if view.artifact_id.startswith("p7:attempt_scratch:")
+        ), "a released attempt containing a FIFO still authorized reclamation"
+        assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+        assert planted.is_fifo()
+        for checkpoint in checkpoints:
+            assert checkpoint.is_file()
+    else:
+        _assert_p7_ambiguity_blocks_everything(config, checkpoints)
+        if corruption == "wrong_root_state":
+            # R22-2.1: the state is self-digest-valid, so the only thing left to
+            # refuse it is the relation between the record and the root it was
+            # found under.
+            snapshot, _paths = _snapshot(config)
+            assert any(
+                "identity" in item or "root" in item
+                for item in snapshot.integrity_failures
+            ), snapshot.integrity_failures
     for undo in restore:
         undo()
     _assert_p7_repair_restores_planning(config)
@@ -2581,7 +2668,6 @@ def test_an_aborted_reopen_and_storage_cleanup_never_interleave(
     from mdstats.training_data.qualification.store import (
         ATTEMPT_ABORTED,
         acquire_attempt_reference,
-        attempt_state_lock_at,
         read_attempt_state_at,
         release_attempt_reference,
     )
@@ -2607,8 +2693,38 @@ def test_an_aborted_reopen_and_storage_cleanup_never_interleave(
 
     order: list[str] = []
     failures: list[BaseException] = []
-    holding = threading.Event()
+    first_inside = threading.Event()
     release = threading.Event()
+
+    # IR22-2.3: instrument the *production* seam rather than a stand-in. Both
+    # the P7 owner and the storage owner barrier reach the attempt lock through
+    # this one primitive, so the wrapper delegates to it and only signals after
+    # the real lock has been acquired. The designated first contender then holds
+    # it while the second one runs, which is what makes each ordering actually
+    # happen rather than merely being asked for.
+    from mdstats.training_data import target_size_execution as _tse
+
+    acquisitions: list[tuple[str, str]] = []
+    acquisition_lock = threading.Lock()
+    real_publication_lock = _tse.artifact_publication_lock
+
+    @contextmanager
+    def _instrumented_lock(target, *args, **kwargs):
+        watched = Path(target).name == "attempt-state.json"
+        who = threading.current_thread().name
+        with real_publication_lock(target, *args, **kwargs):
+            if watched:
+                with acquisition_lock:
+                    acquisitions.append((who, "enter"))
+                if who == "first":
+                    first_inside.set()
+                    release.wait(120.0)
+            try:
+                yield
+            finally:
+                if watched:
+                    with acquisition_lock:
+                        acquisitions.append((who, "exit"))
 
     def reopen() -> None:
         try:
@@ -2638,29 +2754,50 @@ def test_an_aborted_reopen_and_storage_cleanup_never_interleave(
             failures.append(exc)
 
     winner, loser = (reopen, cleanup) if owner_first else (cleanup, reopen)
+    winner_name = "reopen" if owner_first else "cleanup"
+    loser_name = "cleanup" if owner_first else "reopen"
 
-    def holder() -> None:
-        with attempt_state_lock_at(attempt_root):
-            holding.set()
-            release.wait(60.0)
-            order.append("seam")
+    _tse.artifact_publication_lock = _instrumented_lock
+    try:
+        first = threading.Thread(target=winner, name="first", daemon=True)
+        first.start()
+        assert first_inside.wait(180.0), f"{winner_name} never reached the attempt seam"
+        second = threading.Thread(target=loser, name="second", daemon=True)
+        second.start()
+        time.sleep(2.0)
 
-    gate = threading.Thread(target=holder, daemon=True)
-    gate.start()
-    assert holding.wait(60.0)
-    first = threading.Thread(target=winner, daemon=True)
-    first.start()
-    time.sleep(0.5)
-    second = threading.Thread(target=loser, daemon=True)
-    second.start()
-    time.sleep(1.0)
-    assert order == [], "an operation proceeded while the attempt seam was held"
-    release.set()
-    gate.join(60.0)
-    first.join(180.0)
-    second.join(180.0)
+        # The real seam is held by the first contender. The second one may be
+        # anywhere in its own prologue, but it has not acquired the attempt lock
+        # and it has certainly not completed.
+        with acquisition_lock:
+            observed = list(acquisitions)
+        assert observed == [("first", "enter")], observed
+        assert order == [], f"{loser_name} completed while the attempt seam was held"
+
+        release.set()
+        first.join(300.0)
+        second.join(300.0)
+    finally:
+        _tse.artifact_publication_lock = real_publication_lock
+        release.set()
     assert not failures, failures
-    assert order[0] == "seam", order
+    assert not first.is_alive() and not second.is_alive()
+
+    # Both orderings really happened: the designated winner acquired and left
+    # the production seam before the loser ever entered it, and finished first.
+    assert acquisitions[0] == ("first", "enter"), acquisitions
+    entries = [index for index, item in enumerate(acquisitions) if item[1] == "enter"]
+    depth = 0
+    for _who, event in acquisitions:
+        depth += 1 if event == "enter" else -1
+        assert depth in (0, 1), acquisitions
+    assert len(entries) >= 1
+    if any(who == "second" for who, _event in acquisitions):
+        second_enter = next(
+            index for index, item in enumerate(acquisitions) if item[0] == "second"
+        )
+        assert acquisitions.index(("first", "exit")) < second_enter, acquisitions
+    assert order and order[0] == winner_name, order
 
     # The reopened attempt is active again, and its scratch is not classified as
     # released regardless of which side won the race.
@@ -2672,3 +2809,393 @@ def test_an_aborted_reopen_and_storage_cleanup_never_interleave(
         for view in snapshot.views
         if view.artifact_id.startswith(f"p7:attempt_scratch:1:{identity}")
     )
+
+
+# ---------------------------------------------------------------------------
+# R24 - the authenticated root identity survives to the mutation seam
+# ---------------------------------------------------------------------------
+
+
+def _released_scratch_view(config: Path):
+    """The exact reclaimable released-scratch view and its snapshot."""
+
+    snapshot, paths = _snapshot(config)
+    views = [
+        view
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:")
+        and view.safe_reclaimable
+        and view.path.is_dir()
+    ]
+    assert views, "the fixture produced no reclaimable released scratch directory"
+    return snapshot, paths, views[0]
+
+
+def test_the_released_scratch_view_carries_its_authenticated_root_identity(
+    tmp_path: Path,
+):
+    """R24-3: the accepted authority is root-bound, not name-bound."""
+
+    from mdstats.training_data.storage.owners import P7_RELEASED_ATTEMPT_AUTHORIZER
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, _paths, view = _released_scratch_view(config)
+    assert view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER
+    assert view.root_identity is not None
+    observed = view.path.parent.stat()
+    assert int(view.root_identity["device"]) == int(observed.st_dev)
+    assert int(view.root_identity["inode"]) == int(observed.st_ino)
+
+
+@pytest.mark.parametrize("swap", ["symlink", "same_shaped_directory"])
+def test_a_root_swap_after_certification_transfers_no_authority(
+    tmp_path: Path, swap: str
+):
+    """R24-3: certification happens on a directory, not on a name.
+
+    Between the under-lock certification and the final common mutation, the
+    attempt root is replaced. `shutil.rmtree` avoiding symlink attacks says
+    nothing about the top-level name it was handed, so the replacement must be
+    refused by identity - including when it is a same-shaped plain directory
+    that no symlink check could distinguish.
+    """
+
+    import shutil as _shutil
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths, view = _released_scratch_view(config)
+    members, refusals = snapshot.authorized_members(view)
+    assert members and not refusals, (members, refusals)
+
+    attempt = view.path.parent
+    parked = attempt.parent / "parked"
+    if swap == "symlink":
+        attempt.rename(parked)
+        attempt.symlink_to(parked)
+        replacement = parked
+    else:
+        # A byte-for-byte twin: same names, same kinds, same self-valid state,
+        # different inode. Only the recorded identity separates them.
+        _shutil.copytree(attempt, parked, symlinks=True)
+        attempt.rename(attempt.parent / "original")
+        parked.rename(attempt)
+        replacement = attempt
+
+    after, _paths2 = _snapshot(config)
+    swapped = after.view(view.artifact_id)
+    if swapped is not None:
+        # The owner re-derives its own view honestly; what must not happen is
+        # the *old* accepted authority being spent on the new object.
+        pass
+    members_after, refusals_after = snapshot.authorized_members(view)
+    assert members_after == (), members_after
+    assert refusals_after, "a replaced root produced no refusal"
+    assert any(
+        "different filesystem object" in why or "unresolved" in why
+        for _path, why in refusals_after
+    ), refusals_after
+
+    # And the last seam refuses independently, with the originally authorized
+    # member list still in hand.
+    removed, why = remove_certified_subtree(
+        view.path,
+        members=members,
+        refusals=(),
+        root_identity=view.root_identity,
+    )
+    assert removed is False
+    assert "no longer the filesystem object" in why or "re-observed" in why, why
+    assert (replacement / view.path.name).exists() or view.path.exists()
+
+
+def test_a_released_attempt_copied_under_another_generation_grants_nothing(
+    tmp_path: Path,
+):
+    """R24-2: the released root is generation-scoped, not a basename."""
+
+    import shutil as _shutil
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    generation_root = attempt.parent.parent
+    family = generation_root.parent
+    # A complete, ordinary-looking foreign generation: the evidence store the
+    # attempt views depend on exists too, so the copied attempt is refused by
+    # its root binding rather than by an incidental hole in the owner graph.
+    _shutil.copytree(generation_root / "objects", family / "g99" / "objects")
+    other = family / "g99" / "attempts"
+    other.mkdir(parents=True)
+    copied = other / attempt.name
+    _shutil.copytree(attempt, copied, symlinks=True)
+
+    snapshot, _paths = _snapshot(config)
+    assert not any(
+        view.safe_reclaimable
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:99:")
+    ), "a whole attempt copied into another generation carried its authority along"
+    assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+    assert copied.is_dir()
+    assert sorted(item.name for item in copied.iterdir())
+
+
+def test_a_basename_only_proof_grants_no_authority(tmp_path: Path):
+    """R24-2: the incomplete development form is diagnostic, never authority."""
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    proof = attempt / "attempt-members.json"
+    payload = json.loads(proof.read_text(encoding="utf-8"))
+    recorded = str(payload["attempt_root"])
+    assert "/" in recorded, "the production proof is not generation-scoped"
+    payload["attempt_root"] = recorded.rsplit("/", 1)[-1]
+    proof.write_text(json.dumps(payload), encoding="utf-8")
+
+    snapshot, _paths = _snapshot(config)
+    assert not any(
+        view.safe_reclaimable
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:")
+    ), "a basename-only proof still authorized reclamation"
+    assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+    assert proof.is_file()
+
+
+@pytest.mark.parametrize(
+    "component", ["generation_root", "attempts_container", "attempt"]
+)
+@pytest.mark.parametrize("replacement", ["removed", "substituted"])
+def test_an_ancestor_replaced_between_enumeration_and_open_fails_closed(
+    tmp_path: Path, component: str, replacement: str
+):
+    """R22/R24-1: enumerate-then-replace is unresolved, never ordinary absence.
+
+    The race is injected at the real directory-open seam, for each
+    authority-bearing component of the descent, in both shapes: the entry
+    vanishing between enumeration and open, and a same-named symlink to a
+    foreign tree taking its place.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, harness = _released_attempt_campaign(tmp_path)
+    checkpoints = _published_checkpoints(config, harness)
+    attempt = _released_attempt_root(config)
+    attempts_root = attempt.parent
+    generation_root = attempts_root.parent
+    _snapshot_before, paths = _snapshot(config)
+    target = {
+        "generation_root": generation_root,
+        "attempts_container": attempts_root,
+        "attempt": attempt,
+    }[component]
+    parked = target.parent / f"parked-{target.name}"
+
+    real_open = qstore._open_directory_nofollow
+    swapped: list[str] = []
+
+    def racing_open(name: str, *, dir_fd=None):
+        if name == target.name and not swapped:
+            # The entry was enumerated a moment ago; by the time the owner tries
+            # to open it authoritatively it is gone, or it is something else.
+            swapped.append(name)
+            target.rename(parked)
+            if replacement == "substituted":
+                target.symlink_to(parked)
+        return real_open(name, dir_fd=dir_fd)
+
+    qstore._open_directory_nofollow = racing_open
+    try:
+        authorities = qstore.iter_attempt_state_authorities(paths)
+    finally:
+        qstore._open_directory_nofollow = real_open
+    assert swapped, "the race never fired"
+
+    unresolved = [item for item in authorities if not item.resolved]
+    assert not any(item.resolved for item in authorities), (
+        "the raced descent still produced released-attempt authority"
+    )
+    if component == "attempts_container" and replacement == "removed":
+        # This one child is reached by literal name rather than by enumeration,
+        # so its genuine absence at the authoritative lookup is ordinary "no
+        # attempts for this generation" - the contract's one absence case. What
+        # must not happen is authority being produced anyway.
+        assert authorities == () or unresolved, authorities
+    else:
+        assert unresolved, (
+            f"a {component} lost mid-observation was reported as simply absent"
+        )
+        assert any(
+            "namespace changed" in item.reason or "could not be opened" in item.reason
+            for item in unresolved
+        ), [item.reason for item in unresolved]
+
+    if replacement == "substituted":
+        target.unlink()
+    parked.rename(target)
+    _assert_p7_repair_restores_planning(config)
+    for checkpoint in checkpoints:
+        assert checkpoint.is_file()
+
+
+def test_a_nested_mount_under_released_scratch_is_never_traversed(tmp_path: Path):
+    """R24-1: a descriptor-safe descent does not make a nested mount ours."""
+
+    from mdstats.training_data.storage.trust import (
+        MountIdentityResolver,
+        set_mount_resolver,
+    )
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths, view = _released_scratch_view(config)
+    nested = view.path / "mounted"
+    nested.mkdir()
+    (nested / "foreign.bin").write_bytes(b"someone else's bytes")
+
+    set_mount_resolver(
+        MountIdentityResolver(mount_points=frozenset({str(nested)}), available=True)
+    )
+    try:
+        fresh, _paths2 = _snapshot(config)
+        target = fresh.view(view.artifact_id)
+        if target is not None:
+            members, refusals = fresh.authorized_members(target)
+            assert all("mounted" not in str(item) for item in members), members
+            assert refusals, "a nested mount produced no refusal"
+    finally:
+        set_mount_resolver(None)
+    assert (nested / "foreign.bin").read_bytes() == b"someone else's bytes"
+
+
+def test_a_stale_handle_at_the_open_seam_is_unresolved_not_absent(tmp_path: Path):
+    """R24-1: `ESTALE` at the real open seam is ambiguity, never absence."""
+
+    import errno
+
+    config, _workspace, harness = _released_attempt_campaign(tmp_path)
+    checkpoints = _published_checkpoints(config, harness)
+    attempt = _released_attempt_root(config)
+
+    real_os_open = os.open
+
+    def stale_open(name, *args, **kwargs):
+        if isinstance(name, str) and name == attempt.name:
+            raise OSError(errno.ESTALE, "Stale file handle", name)
+        return real_os_open(name, *args, **kwargs)
+
+    os.open = stale_open
+    try:
+        _assert_p7_ambiguity_blocks_everything(config, checkpoints)
+        assert p4d._run(config, "storage", "report") == 0
+    finally:
+        os.open = real_os_open
+    _assert_p7_repair_restores_planning(config)
+
+
+def test_the_released_root_locator_survives_a_workspace_relocation(tmp_path: Path):
+    """R24-2: the durable locator is workspace-portable, not an absolute path."""
+
+    import shutil as _shutil
+
+    config, workspace, _harness = _released_attempt_campaign(tmp_path)
+    before, _paths = _snapshot(config)
+    reclaimable_before = {
+        view.artifact_id
+        for view in before.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    }
+    assert reclaimable_before
+
+    moved = tmp_path / "relocated-workspace"
+    _shutil.copytree(workspace, moved, symlinks=True)
+    relocated_config = tmp_path / "relocated.toml"
+    relocated_config.write_text(
+        config.read_text(encoding="utf-8").replace(str(workspace), str(moved)),
+        encoding="utf-8",
+    )
+
+    after, _paths2 = _snapshot(relocated_config)
+    reclaimable_after = {
+        view.artifact_id
+        for view in after.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    }
+    assert reclaimable_after == reclaimable_before, (
+        "relocating the workspace changed released-attempt authority"
+    )
+
+
+@pytest.mark.parametrize("seam", ["member_authorization", "final_removal"])
+@pytest.mark.parametrize("swap", ["symlink", "same_shaped_directory"])
+def test_an_apply_time_root_swap_is_refused_by_the_real_executor(
+    tmp_path: Path, seam: str, swap: str
+):
+    """R24-3: the real cleanup apply, raced at the last name-based transition.
+
+    The under-lock strict resnapshot and certification are allowed to complete;
+    the attempt root is then replaced, either just before the common member
+    authorization or immediately before the recursive removal. Neither may
+    transfer the earlier certification to the replacement tree.
+    """
+
+    import shutil as _shutil
+
+    from mdstats.training_data.storage import inventory as storage_inventory
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, _paths, view = _released_scratch_view(config)
+    attempt = view.path.parent
+    parked = attempt.parent / "parked"
+    fired: list[str] = []
+
+    def perform_swap() -> None:
+        if fired:
+            return
+        fired.append(swap)
+        if swap == "symlink":
+            attempt.rename(parked)
+            attempt.symlink_to(parked)
+        else:
+            _shutil.copytree(attempt, parked, symlinks=True)
+            attempt.rename(attempt.parent / "original")
+            parked.rename(attempt)
+
+    if seam == "member_authorization":
+        real = storage_inventory.StorageInventorySnapshot.authorized_members
+
+        def raced(self, candidate):
+            if candidate.artifact_id.startswith("p7:attempt_scratch:"):
+                perform_swap()
+            return real(self, candidate)
+
+        storage_inventory.StorageInventorySnapshot.authorized_members = raced
+        restore = lambda: setattr(  # noqa: E731
+            storage_inventory.StorageInventorySnapshot, "authorized_members", real
+        )
+    else:
+        real_remove = storage_commands.remove_certified_subtree
+
+        def raced_remove(path, **kwargs):
+            if "attempts" in str(path):
+                perform_swap()
+            return real_remove(path, **kwargs)
+
+        storage_commands.remove_certified_subtree = raced_remove
+        restore = lambda: setattr(  # noqa: E731
+            storage_commands, "remove_certified_subtree", real_remove
+        )
+
+    try:
+        assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+    finally:
+        restore()
+    assert fired, "the race never fired"
+
+    # Whatever the replacement is, its bytes are untouched: the certification was
+    # performed on the original directory and is not transferable by name.
+    surviving = parked if swap == "symlink" else attempt
+    assert surviving.is_dir()
+    assert (surviving / view.path.name).is_dir(), sorted(surviving.iterdir())
+    assert list((surviving / view.path.name).rglob("*")), "the foreign tree was emptied"
