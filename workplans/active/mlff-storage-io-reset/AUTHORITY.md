@@ -2,9 +2,9 @@
 kind: implementation-workplan-authority-entrypoint
 workplan_id: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
 protocol_version: 5.10.0
-revision: 21
+revision: 22
 status: reopened
-current_authority_pointer: AUTHORITY_REVISION_21.md
+current_authority_pointer: AUTHORITY_REVISION_22.md
 review_verdict: NO-PASS
 ---
 
@@ -12,16 +12,16 @@ review_verdict: NO-PASS
 
 This is the **sole canonical navigation entrypoint** for the active storage/I/O reset package.
 
-The **Revision-19 storage architecture remains final-closure reviewed and accepted**. Revision 20 correctly reopened the executable implementation for bounded CampaignStore/P7/evidence defects. Revision 21 closes the remaining plan-level gaps found by a second independent design challenge and is now the implementation handoff authority.
+The **Revision-19 storage architecture and Revision-21 final repair design remain accepted**. Revision 22 is an implementation-review reopen of the Revision-21 implementation, not a scientific or storage-architecture redesign.
 
-The reviewed executable remains:
+The reviewed executable is:
 
 ```text
-commit 869ae1b6e9211faa1873d47e7850050cd85b5ff7
-tree   a5e6c8868bdec9e88a877e6ca84aa6ef6d609286
+commit 9da6525be75c328ffbbf6968cebe773e2dc8921e
+tree   7ff82374cbc966795e710f21ba3737d892af57f2
 ```
 
-No executable behavior is changed by Revision 21 itself.
+Current branch head `071387cb21c1a046f4ffa7b641bcdd3ad2da1699` changes generated documentation only and does not alter the functional review target.
 
 ## Current supplied contract
 
@@ -39,7 +39,9 @@ Read these artifacts together:
 10. `STORAGE_IO_MANAGEMENT_RESET_FINAL_REPAIR_PLAN_CLOSURE_REVISION_18.md`;
 11. `STORAGE_IO_MANAGEMENT_RESET_FINAL_REPAIR_PLAN_CLOSURE_REVISION_19.md`;
 12. `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_4.md` (Revision 20);
-13. `AUTHORITY_REVISION_21.md`.
+13. `AUTHORITY_REVISION_21.md`;
+14. `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_5.md` (Revision 22);
+15. `AUTHORITY_REVISION_22.md`.
 
 Earlier authority revisions other than explicitly included Revision 11 are provenance. Any `current_authority_pointer: true` field inside a superseded revision artifact is historical metadata only; this `AUTHORITY.md` entrypoint controls navigation.
 
@@ -47,21 +49,19 @@ The frozen parent target-size V7 workplan remains the scientific/architectural v
 
 ## Bounded remaining implementation work
 
-Preserve all conforming R12-R19 source work and all Revision-20 requirements. The remaining repair is limited to:
+Preserve the conforming Revision-20/21 implementation. Reopen only:
 
-- CampaignStore observational purity: put the writability guard before all `replace_records_atomically()` externalization/lock/SQLite side effects and prove it with a real externalization case;
-- P7 strict attempt-state authority: enumerate actual attempt namespaces no-follow, require a persisted exact current-state digest, and enforce the three-way identity invariant `attempt_root.name == state.attempt_identity == canonical_attempt_identity(state.binding_digest)`;
-- consolidate one root-bound strict P7 state result as the sole storage-facing source of liveness/release authority for census, owner views, proof certification, retention, reporting, and touched-attempt classification;
-- reject symlink/special/wrong-kind substitutions not only at the state/attempt root but also at authority-bearing generation and `attempts` namespace ancestors;
-- when any P7 attempt state is unresolved, keep the mandatory global owner-graph planning blocker and independently make the P7 retention fence deny destructive authorization across the campaign-managed workspace until exact state is repaired;
-- repeated terminal release must validate/reuse the retained v3 proof and validate proof/state binding/publication fields;
-- add the Revision-20/21 real-owner counterfactuals, including both lock-ordering races, namespace-symlink cases, canonical-identity mismatch, workspace-wide retention-fence bypass test, and special nodes;
-- supply exact final executable commit/tree functional regression and integration evidence after final affected-surface re-derivation.
+- the P7 storage-facing namespace walk: a present wrong-kind/unreadable qualification family root must become explicit unresolved authority, and generation/`attempts`/attempt descent must be identity-bearing/no-follow at the actual traversal/open boundary rather than `lstat` followed by a new path-based `scandir`/open;
+- storage-facing attempt enumeration/reporting must derive from the same strict namespace result instead of independently following `Path.is_dir()/iterdir()` through the P7 attempt hierarchy;
+- acceptance fixtures must truly isolate the required failure modes: self-digest-valid wrong-root state, released-attempt special node, actual deterministic owner-first and storage-first lock orderings, family-root substitution, and concurrent ancestor swap;
+- exact final executable commit/tree regression and integration evidence required by Revision 21 E5/F must be supplied after the repair and final affected-surface re-derivation.
 
-Resume at bounded R21-E2/R21-E3, achieve stage-local semantic plus functional closure, then complete R21-E5/F final acceptance.
+The exact repair and test instructions are in `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_5.md`.
+
+Resume at bounded **R21-E2**, then complete corrected counterfactuals and **R21-E5/F**. CampaignStore R21-E3 source is conforming and should remain untouched unless the repair actually affects it.
 
 Full external-DFT, long GPU production, and environment-specific HPC/storage qualification remain deferred and are not functional-acceptance blockers.
 
-**Design/workplan disposition:** closed and implementation-ready under Revision 21.
+**Design/workplan disposition:** Revision-21 design remains closed and accepted; Revision 22 supplies bounded implementation-review rework instructions.
 
-**Executable disposition:** NO-PASS / reopened until the bounded repair and candidate-bound acceptance evidence are complete.
+**Executable disposition:** **NO-PASS / reopened under Revision 22** until the P7 namespace race/root-classification defect, acceptance counterfactuals, and candidate-bound functional evidence are closed.
