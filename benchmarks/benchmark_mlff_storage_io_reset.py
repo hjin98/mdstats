@@ -110,6 +110,7 @@ def _pad_historical_bulk(
     """
 
     from mdstats.training_data.campaign_post_selection_runtime import (
+        RUN_MEMBER_MANIFEST_FILENAME,
         record_post_selection_run_members,
     )
 
@@ -122,6 +123,13 @@ def _pad_historical_bulk(
         payload = b"\0" * head + rng.randbytes(size_bytes - head)
         (destination / f"bench-{prefix}-{index}.pt").write_bytes(payload)
         total += len(payload)
+    # The owner's completion anchor is create-once, so a *harness* that inflates
+    # a finished run has to retract the old anchor and let the owner re-record
+    # the run as it now stands. Production code never does this; it is how this
+    # fixture stands in for a run that produced this much bulk in the first
+    # place, and the anchor that certifies the archive path under measurement is
+    # still written by the real owner.
+    (run_root / RUN_MEMBER_MANIFEST_FILENAME).unlink(missing_ok=True)
     record_post_selection_run_members(run_root)
     return total
 

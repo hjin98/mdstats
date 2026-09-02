@@ -927,9 +927,12 @@ def test_p6_r13_sha256_receipt_retention_through_storage_cleanup(tmp_path: Path)
     from mdstats.training_data.storage import executor as storage_executor
 
     cleanup_src = inspect.getsource(storage_executor)
-    compact_src = inspect.getsource(cli_core.CampaignStore.compact)
+    # `compact()` was split into the two separate maintenance authorities; both
+    # must stay clear of acceleration-cache eviction.
+    maintenance_src = inspect.getsource(cli_core.CampaignStore.prune_events)
+    maintenance_src += inspect.getsource(cli_core.CampaignStore.vacuum)
     assert "prune_sha256_receipts" not in cleanup_src
-    assert "prune_sha256_receipts" not in compact_src
+    assert "prune_sha256_receipts" not in maintenance_src
 
 
 def test_p6_r13_orphan_record_positive_reclamation_and_referenced_record_retention(tmp_path: Path):

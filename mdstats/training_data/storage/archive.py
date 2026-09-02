@@ -53,6 +53,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from .admission import AdmissionObservation, admit_storage_operation
 from .control_plane import (
+    IMMUTABLE_CATALOG_FIELDS,
     STORAGE_RESTORE_JOURNAL_SCHEMA,
     SUPPORTED_JOURNAL_SCHEMAS,
     StorageControlPlane,
@@ -841,6 +842,9 @@ def archive_create_engine(
             result.payload = {"archive_identity": identity, "reused_existing": True}
             manifest = existing
         else:
+            # Publishing a retained representation is a serialized storage
+            # mutation like any other change to retained archive authority.
+            control_plane.require_operation_lease("publish an archive blob/manifest")
             failpoint(BOUNDARY_BEFORE_BLOB)
             archive_sha, archive_size = _publish_archive_blob(
                 blob, workspace, members, policy
@@ -1004,6 +1008,83 @@ def _reclaim_planned_members(
 # ---------------------------------------------------------------------------
 
 
+def representation_authority(
+    entry: Mapping[str, Any], manifest: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The immutable identity of one retained cold representation.
+
+    This is what a reclaim or restore plan binds. The ordinary owner views for
+    ``storage:catalog`` and ``storage:archives`` describe the control plane as
+    directories; they cannot say *which exact bytes* a plan intends to consume,
+    so plan revalidation alone would not notice that the blob a reclaim is about
+    to trust has been replaced or truncated since planning.
+
+    Only create-once fields appear here. Operational catalog state - how much of
+    the hot reclamation has finished, when it was last updated - legitimately
+    changes between planning and apply and is not part of the identity.
+    """
+
+    return {
+        "archive_identity": str(manifest["archive_identity"]),
+        "representation_identity": str(manifest.get("representation_identity", "")),
+        "logical_identity": str(manifest.get("logical_identity", "")),
+        "archive_locator": str(manifest["archive_locator"]),
+        "archive_sha256": str(manifest["archive_sha256"]),
+        "archive_size_bytes": int(manifest["archive_size_bytes"]),
+        "manifest_content_digest": str(manifest.get("manifest_content_digest", "")),
+        "member_count": int(manifest.get("member_count", 0)),
+        "catalog_immutable": {
+            field: entry[field]
+            for field in IMMUTABLE_CATALOG_FIELDS
+            if field in entry
+        },
+    }
+
+
+def bind_representation_authority(
+    control_plane: StorageControlPlane, manifest: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Read the catalog entry beside a verified manifest and bind both."""
+
+    entry = control_plane.read_catalog_entry(str(manifest["archive_identity"]))
+    return representation_authority(entry, manifest)
+
+
+def reauthenticate_representation(
+    control_plane: StorageControlPlane,
+    policy: StoragePolicy,
+    bound: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Re-read and re-authenticate the exact representation the plan bound.
+
+    Called inside the protected consequential window - after the storage lease
+    and every owner seam are held - because that is the only point at which
+    "this archive authenticates" and "this archive is about to authorize a
+    deletion" are the same instant. Everything supported that could replace or
+    retire a retained representation takes the same lease, so nothing can slip
+    between this check and the mutation it authorizes.
+
+    Any failure raises. A reclaim that cannot re-authenticate deletes nothing,
+    and a restore that cannot re-authenticate installs nothing.
+    """
+
+    identity = str(bound["archive_identity"])
+    manifest = verify_cold_archive(control_plane, identity, policy)
+    observed = bind_representation_authority(control_plane, manifest)
+    if observed != dict(bound):
+        differing = sorted(
+            key
+            for key in set(observed) | set(dict(bound))
+            if observed.get(key) != dict(bound).get(key)
+        )
+        raise StorageArchiveError(
+            f"the retained cold representation {identity} is not the one this plan "
+            f"bound (differing: {differing}); nothing was reclaimed or installed. "
+            "Re-plan against current retained authority."
+        )
+    return manifest
+
+
 def build_reclaim_plan_actions(
     *,
     workspace: Path,
@@ -1021,6 +1102,7 @@ def build_reclaim_plan_actions(
     """
 
     manifest = verify_cold_archive(control_plane, archive_identity, policy)
+    authority = bind_representation_authority(control_plane, manifest)
     actions: list[PlannedAction] = []
     refusals: list[dict[str, Any]] = []
     for payload in manifest["members"]:
@@ -1065,7 +1147,7 @@ def build_reclaim_plan_actions(
                 binding={
                     "sha256": member.sha256,
                     "size_bytes": int(member.size_bytes),
-                    "archive_identity": str(manifest["archive_identity"]),
+                    "representation_authority": authority,
                 },
             )
         )
@@ -1076,8 +1158,10 @@ def archive_reclaim_engine(
     *,
     workspace: Path,
     control_plane: StorageControlPlane,
+    policy: StoragePolicy,
     boundary: Any,
     manifest: Mapping[str, Any],
+    authority: Mapping[str, Any],
     failpoint: Failpoint = _no_failpoint,
 ):
     def _engine(
@@ -1085,7 +1169,22 @@ def archive_reclaim_engine(
         snapshot: StorageInventorySnapshot,
         result: StorageExecutionResult,
     ) -> None:
-        identity = str(manifest["archive_identity"])
+        # Zero hot deletion happens until the retained representation this plan
+        # bound re-authenticates from its canonical location, right here, under
+        # the lease.
+        try:
+            manifest_now = reauthenticate_representation(
+                control_plane, policy, authority
+            )
+        except (StorageArchiveError, StorageControlPlaneError) as exc:
+            for action in plan.actions:
+                result.refused.append({**action.to_dict(), "refusal": str(exc)})
+            result.detail = (
+                "the retained cold representation failed protected reauthentication; "
+                f"no hot byte was removed: {exc}"
+            )
+            return
+        identity = str(manifest_now["archive_identity"])
         reclaimed, remaining = _reclaim_planned_members(
             workspace,
             plan,
@@ -1097,7 +1196,7 @@ def archive_reclaim_engine(
         still_hot = sorted(
             {
                 str(item["path"])
-                for item in manifest["members"]
+                for item in manifest_now["members"]
                 if item.get("kind") == "file" and (workspace / str(item["path"])).exists()
             }
         )
@@ -1125,6 +1224,76 @@ def archive_reclaim_engine(
 # ---------------------------------------------------------------------------
 
 
+def _filesystem_node_identity(path: Path) -> dict[str, Any] | None:
+    """``(device, inode, kind)`` of one existing path, or ``None`` if absent."""
+
+    try:
+        stats = path.lstat()
+    except OSError:
+        return None
+    if stat.S_ISLNK(stats.st_mode):
+        kind = "symlink"
+    elif stat.S_ISDIR(stats.st_mode):
+        kind = "directory"
+    elif stat.S_ISREG(stats.st_mode):
+        kind = "file"
+    else:
+        kind = "other"
+    return {
+        "path": str(path),
+        "device": int(stats.st_dev),
+        "inode": int(stats.st_ino),
+        "kind": kind,
+    }
+
+
+def parent_chain_identity(workspace: Path, destination: Path) -> list[dict[str, Any]]:
+    """The exact identity of every existing ancestor this restore will use.
+
+    A pathname is not a directory. Swapping a planned parent for a *different*
+    ordinary directory at the same path - same mode, same type, not a symlink,
+    same device - would otherwise pass every check and quietly redirect the
+    installation into a container nobody authorized. Binding ``(device, inode,
+    kind)`` for each existing ancestor makes that swap detectable.
+
+    Ancestors that do not exist yet are deliberately omitted: this restore
+    creates them itself and its own creation/postcondition chain validates them.
+    """
+
+    root = Path(os.path.abspath(os.fspath(workspace)))
+    chain: list[dict[str, Any]] = []
+    probe = Path(os.path.abspath(os.fspath(destination))).parent
+    while True:
+        identity = _filesystem_node_identity(probe)
+        if identity is not None:
+            chain.append(identity)
+        if probe == root or probe.parent == probe:
+            break
+        probe = probe.parent
+    return chain
+
+
+def verify_parent_chain(chain: Sequence[Mapping[str, Any]]) -> None:
+    """Refuse when any bound ancestor is no longer the same filesystem object."""
+
+    for expected in chain:
+        path = Path(str(expected["path"]))
+        observed = _filesystem_node_identity(path)
+        if observed is None:
+            raise StorageArchiveError(
+                f"a parent this restore planned through no longer exists: {path}"
+            )
+        if (
+            observed["device"] != int(expected["device"])
+            or observed["inode"] != int(expected["inode"])
+            or observed["kind"] != str(expected["kind"])
+        ):
+            raise StorageArchiveError(
+                f"the parent {path} is a different filesystem object than the one "
+                "this restore planned through; re-plan before installing."
+            )
+
+
 def build_restore_plan_actions(
     *,
     workspace: Path,
@@ -1144,6 +1313,7 @@ def build_restore_plan_actions(
     """
 
     manifest = verify_cold_archive(control_plane, archive_identity, policy)
+    authority = bind_representation_authority(control_plane, manifest)
     actions: list[PlannedAction] = []
     conflicts: list[dict[str, Any]] = []
 
@@ -1203,7 +1373,14 @@ def build_restore_plan_actions(
                             if preexisting
                             else None
                         ),
+                        "existing_identity": (
+                            _filesystem_node_identity(destination)
+                            if preexisting
+                            else None
+                        ),
                         "parent": str(destination.parent),
+                        "parent_chain": parent_chain_identity(workspace, destination),
+                        "representation_authority": authority,
                     },
                     size_bytes=0,
                 )
@@ -1244,7 +1421,8 @@ def build_restore_plan_actions(
                     "sha256": member.sha256,
                     "size_bytes": int(member.size_bytes),
                     "mode": int(member.mode),
-                    "archive_identity": str(manifest["archive_identity"]),
+                    "parent_chain": parent_chain_identity(workspace, destination),
+                    "representation_authority": authority,
                 },
                 size_bytes=int(member.size_bytes),
             )
@@ -1259,6 +1437,7 @@ def archive_restore_engine(
     policy: StoragePolicy,
     boundary: Any,
     manifest: Mapping[str, Any],
+    authority: Mapping[str, Any],
     failpoint: Failpoint = _no_failpoint,
 ):
     """Stage, install, authenticate, and only then publish a terminal receipt."""
@@ -1268,10 +1447,24 @@ def archive_restore_engine(
         snapshot: StorageInventorySnapshot,
         result: StorageExecutionResult,
     ) -> None:
+        # Nothing is staged, installed, or journalled until the retained
+        # representation this plan bound re-authenticates under the lease.
+        try:
+            manifest_now = reauthenticate_representation(
+                control_plane, policy, authority
+            )
+        except (StorageArchiveError, StorageControlPlaneError) as exc:
+            for action in plan.actions:
+                result.refused.append({**action.to_dict(), "refusal": str(exc)})
+            result.detail = (
+                "the retained cold representation failed protected reauthentication; "
+                f"nothing was staged, installed, or journalled: {exc}"
+            )
+            return
         control_plane.ensure()
-        identity = str(manifest["archive_identity"])
-        blob = control_plane.resolve_archive_blob(str(manifest["archive_locator"]))
-        expected = _expected_member_map(manifest)
+        identity = str(manifest_now["archive_identity"])
+        blob = control_plane.resolve_archive_blob(str(manifest_now["archive_locator"]))
+        expected = _expected_member_map(manifest_now)
         staging = control_plane.staging_root_for(identity)
         journal = control_plane.journal_path(identity)
 
@@ -1288,13 +1481,13 @@ def archive_restore_engine(
                 "archive_identity": identity,
                 "opened_utc": _utc_now(),
                 "state": "staging",
-                "member_count": int(manifest["member_count"]),
+                "member_count": int(manifest_now["member_count"]),
             },
         )
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True, exist_ok=True)
         try:
-            _stage_members(blob, manifest, expected, staging)
+            _stage_members(blob, manifest_now, expected, staging)
             failpoint(BOUNDARY_AFTER_STAGING)
 
             restored = 0
@@ -1357,11 +1550,15 @@ def _install_container(action: PlannedAction, result: StorageExecutionResult) ->
     """
 
     destination = action.path
+    verify_parent_chain(action.binding.get("parent_chain", ()))
     if bool(action.binding.get("preexisting")):
         if not destination.is_dir():
             raise StorageArchiveError(
                 f"pre-existing container disappeared before installation: {destination}"
             )
+        expected_identity = action.binding.get("existing_identity")
+        if expected_identity is not None:
+            verify_parent_chain((expected_identity,))
         observed = stat.S_IMODE(destination.lstat().st_mode)
         expected = action.binding.get("existing_mode")
         if expected is not None and observed != int(expected):
@@ -1395,6 +1592,7 @@ def _install_member(
     from ..target_size_execution.persistence import fsync_parent_directory
 
     destination = action.path
+    verify_parent_chain(action.binding.get("parent_chain", ()))
     relative = canonical_member_path(workspace, destination)
     if destination.exists():
         result.completed.append({**action.to_dict(), "already_present": True})
@@ -1540,6 +1738,11 @@ def restore_admission(
 
 
 __all__ = [
+    "bind_representation_authority",
+    "parent_chain_identity",
+    "reauthenticate_representation",
+    "representation_authority",
+    "verify_parent_chain",
     "BOUNDARY_AFTER_BLOB",
     "BOUNDARY_AFTER_CATALOG",
     "BOUNDARY_AFTER_MANIFEST",

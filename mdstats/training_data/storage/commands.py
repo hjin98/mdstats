@@ -36,6 +36,7 @@ from .archive import (
     archive_reclaim_engine,
     archive_restore_engine,
     build_archive_plan_actions,
+    bind_representation_authority,
     build_reclaim_plan_actions,
     build_restore_plan_actions,
     list_archives,
@@ -397,12 +398,9 @@ def build_cleanup_plan(
             actions.append(action)
 
     maintenance = plan_campaign_state_maintenance(context.store, context.paths, policy)
-    if maintenance.action is not None:
-        actions.append(maintenance.action)
-    else:
-        refusals.append(
-            {"path": str(context.paths.state_db), "reason": maintenance.reason}
-        )
+    actions.extend(maintenance.actions)
+    for reason in maintenance.reasons:
+        refusals.append({"path": str(context.paths.state_db), "reason": reason})
     plan = build_storage_plan(snapshot, policy, actions, refusals=refusals)
     return plan, snapshot
 
@@ -501,6 +499,29 @@ def print_cleanup(payload: Mapping[str, Any]) -> None:
     )
     if execution["status"] != "complete":
         print(f"  detail: {execution['detail']}", flush=True)
+    print_audit_outcome(execution)
+
+
+def print_audit_outcome(execution: Mapping[str, Any] | None) -> None:
+    """Say plainly when a mutation stands but its durable evidence does not.
+
+    The audit is diagnostic evidence, so its loss neither rolls back the
+    operation nor invalidates any science - but an operator must not read an
+    ordinary success line and conclude a durable record exists.
+    """
+
+    if not execution or execution.get("audit_published", True):
+        return
+    print(
+        "[WARN] the operation itself is truthful, but its durable storage audit "
+        f"record could not be published: {execution.get('audit_failure', 'unknown')}",
+        flush=True,
+    )
+    print(
+        "       this outcome is reported as "
+        f"{execution['status']!r} rather than as a fully audited success",
+        flush=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -641,8 +662,10 @@ def _storage_reclaim(context: StorageCommandContext, args: Any) -> dict[str, Any
         engine=archive_reclaim_engine(
             workspace=Path(context.paths.workspace),
             control_plane=control_plane,
+            policy=policy,
             boundary=context.boundary,
             manifest=manifest,
+            authority=bind_representation_authority(context.control_plane, manifest),
             failpoint=getattr(args, "failpoint", None) or (lambda _name: None),
         ),
     )
@@ -704,6 +727,7 @@ def _storage_restore(context: StorageCommandContext, args: Any) -> dict[str, Any
             policy=policy,
             boundary=context.boundary,
             manifest=manifest,
+            authority=bind_representation_authority(context.control_plane, manifest),
             failpoint=getattr(args, "failpoint", None) or (lambda _name: None),
         ),
     )
@@ -713,6 +737,7 @@ def _storage_restore(context: StorageCommandContext, args: Any) -> dict[str, Any
 
 
 def print_archive(payload: Mapping[str, Any]) -> None:
+    print_audit_outcome(payload.get("execution"))
     if "archives" in payload:
         entries = payload["archives"]
         print(f"Cold archive catalog: {len(entries)} retained representation(s)", flush=True)
@@ -826,7 +851,12 @@ def storage_deduplicate(context: StorageCommandContext, args: Any) -> dict[str, 
         plan,
         trigger="cli:deduplicate",
         synchronization=synchronization_for(plan, snapshot),
-        engine=dedup_engine(boundary=context.boundary, groups=groups, excluded=excluded),
+        engine=dedup_engine(
+            boundary=context.boundary,
+            groups=groups,
+            excluded=excluded,
+            failpoint=getattr(args, "failpoint", None) or (lambda _name: None),
+        ),
     )
     payload["execution"] = result.to_dict()
     if result.payload:
@@ -835,6 +865,7 @@ def storage_deduplicate(context: StorageCommandContext, args: Any) -> dict[str, 
 
 
 def print_dedup(payload: Mapping[str, Any]) -> None:
+    print_audit_outcome(payload.get("execution"))
     print(
         f"Immutable deduplication ({payload['realization']}, no persistent content "
         f"store): {payload['group_count']} group(s)",
@@ -858,6 +889,7 @@ __all__ = [
     "build_cleanup_plan",
     "invocation_apply",
     "print_archive",
+    "print_audit_outcome",
     "print_cleanup",
     "print_dedup",
     "print_storage_report",

@@ -23,6 +23,7 @@ import tempfile
 import threading
 import os
 import re
+import urllib.parse
 from pathlib import Path
 import shutil
 import signal
@@ -57,6 +58,7 @@ from .campaign_target_size_state import (
     TargetSizeLifecycle,
 )
 
+from . import _observation
 from ._common import (
     TrainingDataSerializationError,
     configure_sha256_receipt_store,
@@ -299,45 +301,39 @@ class _TrainingMethodSpec:
 
 
 
-#: Invocation-scoped observational mode.
-#:
-#: A read-only storage command must not change managed campaign state, and that
-#: is a property of the *invocation*, not of one call site.  Owner loaders reach
-#: campaign state through several independent helpers, some of which open their
-#: own :class:`CampaignStore` in order to read one record; each of those opens
-#: would otherwise bootstrap a schema row and turn on write-through SHA-256
-#: receipts, so merely describing a campaign would rewrite two managed databases.
-#:
-#: While this flag is set, every store opened anywhere below is observational
-#: and the durable receipt cache stays disconnected.  It is thread-local because
-#: the storage owner fans reads out across worker threads within one invocation.
-_OBSERVATIONAL_STATE = threading.local()
-
-
 def _observational_campaign_state_active() -> bool:
-    return bool(getattr(_OBSERVATIONAL_STATE, "active", False))
+    return _observation.observational()
 
 
 @contextmanager
 def observational_campaign_state() -> Iterable[None]:
     """Forbid this invocation from creating or writing managed campaign state.
 
+    The capability is carried by :mod:`._observation`, so it reaches every
+    nested owner helper and every worker thread this invocation spawns rather
+    than only the store the command opened itself.  Nothing process-global is
+    toggled: a concurrent consequential command keeps its own writable receipt
+    and store behavior while this block runs.
+
     Receipts are a pure acceleration cache - losing one only forces a fresh byte
     hash - but the cache is itself a managed artifact this package inventories,
-    so an observational command leaves it exactly as it found it.
+    so an observational command reads it without ever writing to it.
     """
 
-    from . import _common
-
-    previous_active = _observational_campaign_state_active()
-    previous_receipts = _common._SHA256_RECEIPT_PATH
-    _OBSERVATIONAL_STATE.active = True
-    configure_sha256_receipt_store(None)
-    try:
+    with _observation.observing():
         yield
-    finally:
-        _OBSERVATIONAL_STATE.active = previous_active
-        configure_sha256_receipt_store(previous_receipts)
+
+
+def _sqlite_readonly_uri(path: Path) -> str:
+    """A genuinely read-only SQLite URI for one existing database file.
+
+    Escaping matters: a campaign workspace path can contain characters that a
+    URI would otherwise reinterpret, and `?` in particular would silently split
+    the path from the query string and open the wrong database.
+    """
+
+    quoted = urllib.parse.quote(str(Path(path).resolve()))
+    return f"file:{quoted}?mode=ro"
 
 
 def _declared_relative_paths(payload: Any) -> set[str]:
@@ -371,7 +367,8 @@ class CampaignStore:
         self.path = Path(path)
         if _observational_campaign_state_active():
             # An observational invocation cannot be made consequential by a
-            # nested helper that happens to open the store for itself.
+            # nested helper that happens to open the store for itself, on this
+            # thread or on any worker it spawned.
             create = False
         self.read_only = not create
         if not create:
@@ -440,10 +437,36 @@ class CampaignStore:
 
         db = getattr(self._db_local, "connection", None)
         if db is None:
-            db = sqlite3.connect(self.path, timeout=30.0)
+            if self.read_only:
+                # An observational open is enforced by SQLite itself, not by the
+                # convention that no nested helper ever calls a write path. The
+                # connection cannot create the file, a journal, a schema row, or
+                # anything else, and `query_only` refuses a write even if some
+                # future caller reaches one.
+                db = sqlite3.connect(
+                    _sqlite_readonly_uri(self.path), uri=True, timeout=30.0
+                )
+                db.execute("PRAGMA query_only=ON")
+            else:
+                db = sqlite3.connect(self.path, timeout=30.0)
             db.execute("PRAGMA busy_timeout=30000")
             self._db_local.connection = db
         return db
+
+    def _require_writable(self, operation: str) -> None:
+        """Refuse a mutation on an observational store before it starts.
+
+        SQLite would refuse this too, but a clear owner error names the real
+        problem - an observational command reached a write path - instead of
+        surfacing a generic read-only database error from three helpers down.
+        """
+
+        if self.read_only:
+            raise CampaignCliError(
+                f"Refusing to {operation}: this campaign state database was opened "
+                "for observation only. A read-only storage command never changes "
+                "managed campaign state; run the consequential command explicitly."
+            )
 
     @contextmanager
     def exclusive_transaction(self) -> Iterable[sqlite3.Connection]:
@@ -457,6 +480,7 @@ class CampaignStore:
         logic; this method owns only transaction lifetime.
         """
 
+        self._require_writable("open a campaign write transaction")
         db = self._connect()
         if db.in_transaction:
             raise CampaignCliError(
@@ -614,6 +638,7 @@ class CampaignStore:
         return payload
 
     def set_meta(self, key: str, value: Any) -> None:
+        self._require_writable("write campaign metadata")
         encoded = json.dumps(value, sort_keys=True)
         with self._connect() as db:
             db.execute("INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)", (key, encoded))
@@ -665,6 +690,7 @@ class CampaignStore:
         return class_name, record_digest, encoded
 
     def put_record(self, key: str, record: Any) -> None:
+        self._require_writable("write a campaign record")
         class_name, record_digest, encoded = self._encode_record_for_storage(key, record)
         with self._connect() as db:
             db.execute(
@@ -680,6 +706,7 @@ class CampaignStore:
         lock. This method is for naturally atomic parent-side record groups.
         """
 
+        self._require_writable("write campaign records")
         if not records:
             return
         encoded_rows: list[tuple[str, str, str | None, str, str]] = []
@@ -833,10 +860,12 @@ class CampaignStore:
     def delete_records(self, prefix: str) -> None:
         """Delete compact orchestration pointers while leaving native artifacts intact."""
 
+        self._require_writable("delete campaign records")
         with self._connect() as db:
             db.execute("DELETE FROM records WHERE key LIKE ?", (prefix + "%",))
 
     def delete_record(self, key: str) -> None:
+        self._require_writable("delete a campaign record")
         with self._connect() as db:
             db.execute("DELETE FROM records WHERE key=?", (key,))
 
@@ -878,23 +907,53 @@ class CampaignStore:
                 references.add(candidate.parent)
         return tuple(sorted(references))
 
-    def compact(self, *, maximum_events: int = 10_000) -> None:
-        """Bound orchestration history and compact the SQLite file."""
+    def prune_events(self, *, maximum_events: int = 10_000) -> int:
+        """Bound diagnostic history to the newest ``maximum_events`` rows.
 
+        This is the cheap half of campaign-state maintenance and is deliberately
+        separate from :meth:`vacuum`. Deleting rows costs one small transaction;
+        rewriting the whole database file does not, and one excess diagnostic
+        event is not a reason to pay for the second.
+
+        The delete takes the write lock up front so it serializes against any
+        other campaign writer rather than assuming this process is the only one.
+        """
+
+        self._require_writable("prune campaign diagnostic events")
         maximum_events = max(100, int(maximum_events))
-        with self._connect() as db:
+        with self.exclusive_transaction() as db:
+            before = int(db.execute("SELECT COUNT(*) FROM events").fetchone()[0])
             db.execute(
                 "DELETE FROM events WHERE id NOT IN "
                 "(SELECT id FROM events ORDER BY id DESC LIMIT ?)",
                 (maximum_events,),
             )
-            db.execute("PRAGMA optimize")
-        # VACUUM cannot run inside a transaction. It is safe here because the
-        # campaign parent is the sole database writer.
-        with self._connect() as db:
-            db.execute("VACUUM")
+            after = int(db.execute("SELECT COUNT(*) FROM events").fetchone()[0])
+        return max(0, before - after)
+
+    def vacuum(self) -> None:
+        """Rewrite the database file to return free pages to the filesystem.
+
+        Expensive and independently decided: the caller establishes that the
+        rewrite is worth its cost and that there is room for the copy SQLite
+        makes beside the original. ``VACUUM`` cannot run inside a transaction,
+        so serialization comes from SQLite's own exclusive lock plus the
+        connection's busy timeout - not from assuming a single writer.
+        """
+
+        self._require_writable("rewrite the campaign state database")
+        db = self._connect()
+        if db.in_transaction:
+            raise CampaignCliError(
+                "Refusing to rewrite the campaign state database inside an open "
+                "transaction; VACUUM owns the whole file."
+            )
+        db.execute("PRAGMA optimize")
+        db.execute("VACUUM")
+        db.commit()
 
     def set_stage(self, name: str, state: StageState, message: str) -> None:
+        self._require_writable("record a campaign stage")
         timestamp = _utc_now()
         with self._connect() as db:
             db.execute(
@@ -914,6 +973,7 @@ class CampaignStore:
         return StageState(row[0]), row[1]
 
     def event(self, level: str, stage: str, message: str) -> None:
+        self._require_writable("record a campaign event")
         with self._connect() as db:
             db.execute(
                 "INSERT INTO events(timestamp_utc,level,stage,message) VALUES (?,?,?,?)",
@@ -6112,7 +6172,9 @@ enabled = true
 # race a reference that has not landed yet.
 stale_age_hours = 6.0
 # Bound on retained diagnostic campaign-store events; scientific records and the
-# SHA-256 receipt cache have separate retention.
+# SHA-256 receipt cache have separate retention. Exceeding this bound authorizes
+# pruning only: rewriting the state database is a separate, independently
+# benefit-gated storage action.
 maximum_event_records = 10000
 
 [replay]

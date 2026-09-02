@@ -33,13 +33,18 @@ ACTION_RECLAIM_MEMBER = "reclaim_member"
 ACTION_DEDUP_LINK = "dedup_link"
 ACTION_RESTORE_MEMBER = "restore_member"
 ACTION_RESTORE_CONTAINER = "restore_container"
-ACTION_MAINTAIN_STATE = "maintain_campaign_state"
+#: Bounding diagnostic history and rewriting the state file are two separate
+#: authorities: a plan that authorized the cheap one must never widen into the
+#: expensive one.
+ACTION_PRUNE_EVENTS = "prune_campaign_events"
+ACTION_VACUUM_STATE = "vacuum_campaign_state"
+MAINTENANCE_ACTIONS = (ACTION_PRUNE_EVENTS, ACTION_VACUUM_STATE)
 
 #: Actions the shared cleanup executor performs itself.  Everything else is
 #: realized by a specialized engine *beneath* the same authorization contract:
 #: owner-bound plan, fresh under-synchronization revalidation, physical
 #: boundary, admission, and truthful terminality.
-EXECUTOR_ACTIONS = (ACTION_REMOVE, ACTION_EVICT_CACHE, ACTION_MAINTAIN_STATE)
+EXECUTOR_ACTIONS = (ACTION_REMOVE, ACTION_EVICT_CACHE, *MAINTENANCE_ACTIONS)
 
 
 class StoragePlanStaleError(RuntimeError):
@@ -64,6 +69,14 @@ class PlannedAction:
     #: member, the canonical alias for a dedup link, the destination pre-state
     #: for a restore member.
     binding: Mapping[str, Any] = field(default_factory=dict)
+    #: Filesystem objects other than :attr:`path` whose owner must be fenced for
+    #: this action to be safe.  A dedup link makes the *canonical source's* inode
+    #: authoritative for a second name, so that source's owner has to be under
+    #: the same seams as the destination even though nothing writes to it.
+    synchronization_paths: tuple[str, ...] = ()
+    #: Owner artifacts other than :attr:`artifact_id` this action makes
+    #: authoritative, for the same reason.
+    synchronization_artifact_ids: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -76,6 +89,8 @@ class PlannedAction:
             "filesystem_identity": dict(self.filesystem_identity),
             "owner_state_identity": self.owner_state_identity,
             "binding": dict(self.binding),
+            "synchronization_paths": list(self.synchronization_paths),
+            "synchronization_artifact_ids": list(self.synchronization_artifact_ids),
         }
 
 
@@ -215,6 +230,8 @@ def planned_action(
     owner_state_identity: str = "",
     binding: Mapping[str, Any] | None = None,
     size_bytes: int | None = None,
+    synchronization_paths: Sequence[str | os.PathLike[str]] = (),
+    synchronization_artifact_ids: Sequence[str] = (),
 ) -> PlannedAction:
     """Bind one intended mutation to the filesystem identity it was planned on."""
 
@@ -236,6 +253,10 @@ def planned_action(
         capability_cost=capability_cost,
         filesystem_identity=identity,
         owner_state_identity=owner_state_identity,
+        synchronization_paths=tuple(
+            str(Path(os.path.abspath(os.fspath(item)))) for item in synchronization_paths
+        ),
+        synchronization_artifact_ids=tuple(str(item) for item in synchronization_artifact_ids),
         binding=dict(binding or {}),
     )
 
@@ -281,7 +302,7 @@ def revalidate_plan(
             "re-plan before applying."
         )
     for action in plan.actions:
-        if action.action != ACTION_MAINTAIN_STATE:
+        if action.action not in MAINTENANCE_ACTIONS:
             # Protection means "storage may not reclaim or re-represent this".
             # Owner maintenance is the owner acting on its own artifact, so the
             # closure protecting it is expected rather than disqualifying; the
@@ -345,7 +366,7 @@ def _revalidate_action_target(
     present = action.path.exists() or action.path.is_symlink()
     planned_kind = str(action.filesystem_identity.get("kind", ""))
 
-    if action.action in (ACTION_MAINTAIN_STATE,):
+    if action.action in MAINTENANCE_ACTIONS:
         return
     if action.action in (ACTION_RESTORE_MEMBER, ACTION_RESTORE_CONTAINER):
         # A restore destination is planned as absent or as exactly-identical
@@ -409,7 +430,9 @@ def _tree_bytes(root: Path) -> int:
 
 __all__ = [
     "ACTION_ARCHIVE_MEMBER",
-    "ACTION_MAINTAIN_STATE",
+    "ACTION_PRUNE_EVENTS",
+    "ACTION_VACUUM_STATE",
+    "MAINTENANCE_ACTIONS",
     "ACTION_RECLAIM_MEMBER",
     "ACTION_RESTORE_CONTAINER",
     "EXECUTOR_ACTIONS",

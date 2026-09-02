@@ -1133,11 +1133,21 @@ def _run_root_relative_files(root: Path) -> list[str]:
 
 
 def record_post_selection_run_members(run_root: str | os.PathLike[str]) -> Path:
-    """Freeze the exact member set this owner produced under one run root.
+    """Freeze this owner's terminal completion and exact member set, once.
 
-    Written once, when the run reaches its terminal record, so that a later
-    consumer can ask P5 - rather than guess from pathnames - whether a run tree
-    still contains exactly what P5 put there.
+    This is the run's **completion anchor**, not a convenience index. It is
+    written after the terminal fold-acceptance/run-evidence record is durable,
+    and from then on it - rather than the presence of that record on disk - is
+    what proves the run finished. That distinction is what makes an interrupted
+    cold reclamation recoverable: the terminal evidence is an ordinary archive
+    member and may legitimately have gone cold, while the anchor stays hot and
+    can still certify the run for the reclaim that has to finish.
+
+    It is create-once. A second terminal publication of the same run identity
+    verifies the anchor rather than rewriting it; a *different* claimed member
+    set under the same run is an owner-integrity conflict and fails closed,
+    because silently rewriting completion authority is exactly how a run could
+    be made to certify a member set it never produced.
     """
 
     from .target_size_execution import publish_mutable_json_atomic
@@ -1149,16 +1159,58 @@ def record_post_selection_run_members(run_root: str | os.PathLike[str]) -> Path:
         for name in _run_root_relative_files(root)
         if name != RUN_MEMBER_MANIFEST_FILENAME
     ]
+    terminal = sorted(
+        name
+        for name in (FOLD_ACCEPTANCE_FILENAME, RUN_EVIDENCE_FILENAME)
+        if (root / name).is_file()
+    )
+    if not terminal:
+        raise PostSelectionExecutionError(
+            f"Refusing to record post-selection run completion for {root.name}: no "
+            "terminal fold-acceptance or run-evidence record is durable yet. The "
+            "completion anchor is only ever written downstream of the evidence it "
+            "certifies."
+        )
+    existing = _read_run_member_manifest(root)
+    if existing is not None:
+        recorded = sorted(str(item) for item in existing.get("members", ()))
+        if recorded != members:
+            raise PostSelectionExecutionError(
+                f"Refusing to rewrite the completion anchor of post-selection run "
+                f"{root.name}: it already certifies {len(recorded)} member(s) and "
+                f"this publication claims {len(members)}. A completed run's member "
+                "set is create-once owner authority, so a disagreement is an "
+                "integrity conflict rather than an update."
+            )
+        return destination
     publish_mutable_json_atomic(
         destination,
         {
             "schema": RUN_MEMBER_MANIFEST_SCHEMA,
             "run_root": root.name,
+            "terminal_records": terminal,
             "members": members,
             "member_count": len(members),
         },
     )
     return destination
+
+
+def _read_run_member_manifest(root: Path) -> dict[str, Any] | None:
+    """The recorded completion anchor of one run root, or ``None``."""
+
+    path = root / RUN_MEMBER_MANIFEST_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    if payload.get("schema") != RUN_MEMBER_MANIFEST_SCHEMA:
+        return None
+    return dict(payload)
 
 
 def recorded_post_selection_run_members(
@@ -1188,21 +1240,17 @@ def certify_closed_post_selection_run_root(
     condition is what turns "beneath a P5 directory" into "produced by P5": a
     file dropped into ``checkpoints/`` by anything else is not in the recorded
     set and makes the whole run root uncertified.
+
+    Completion is proved by the retained anchor, deliberately *not* by finding
+    the terminal fold-acceptance/run-evidence file still hot. That file is an
+    ordinary archive member: an interrupted cold reclamation may already have
+    removed it while other represented members are still hot, and requiring it
+    here would leave that reclamation unable to finish on the next process.
     """
 
     root = Path(run_root)
     if not root.is_dir() or root.is_symlink():
         return False, f"{root} is not a plain directory"
-    try:
-        children = sorted(entry.name for entry in os.scandir(root))
-    except OSError as exc:
-        return False, f"{root} could not be enumerated: {exc}"
-    terminal = {FOLD_ACCEPTANCE_FILENAME, RUN_EVIDENCE_FILENAME} & set(children)
-    if not terminal:
-        return False, (
-            "run root carries no terminal fold-acceptance/run-evidence record, so the "
-            "owner cannot certify the run is finished"
-        )
     # There is deliberately no pathname allowlist here. The run directory is
     # delegated to the configured trainer, which writes its own layout inside it
     # (per-epoch metric logs, framework results/logs trees, and so on). Guessing
@@ -1211,15 +1259,17 @@ def certify_closed_post_selection_run_root(
     manifest_path = root / RUN_MEMBER_MANIFEST_FILENAME
     if not manifest_path.is_file():
         return False, (
-            "run root carries no recorded member manifest, so this owner cannot "
-            "certify which descendants it produced"
+            "run root carries no retained completion anchor, so this owner cannot "
+            "certify that it finished or which descendants it produced"
         )
-    try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return False, f"run member manifest is unreadable ({exc})"
-    if payload.get("schema") != RUN_MEMBER_MANIFEST_SCHEMA:
-        return False, "run member manifest carries an unsupported schema"
+    payload = _read_run_member_manifest(root)
+    if payload is None:
+        return False, "run completion anchor is unreadable or carries an unsupported schema"
+    if not payload.get("terminal_records"):
+        return False, (
+            "run completion anchor names no terminal record, so it does not certify "
+            "a finished run"
+        )
     recorded = set(payload.get("members", ()))
     observed = {
         name
@@ -1234,7 +1284,8 @@ def certify_closed_post_selection_run_root(
     # certification makes is that nothing foreign is present, not that nothing
     # has been removed.
     return True, (
-        "terminal run whose descendants all belong to the member set P5 recorded"
+        "terminal run whose descendants all belong to the member set P5 recorded "
+        f"when it published {', '.join(payload['terminal_records'])}"
     )
 
 

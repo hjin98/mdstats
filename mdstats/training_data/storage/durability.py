@@ -108,9 +108,14 @@ def parallel_digests(
     limit = max(1, int(workers))
     if limit == 1 or len(targets) < 2:
         return {item: digest_for(item) for item in targets}
-    from concurrent.futures import ThreadPoolExecutor
+    # The workers inherit this call's execution context, so a hash fan-out
+    # started by an observational report stays observational and cannot write an
+    # acceleration receipt from a worker thread.
+    from .._observation import ObservationalThreadPoolExecutor
 
-    with ThreadPoolExecutor(max_workers=min(limit, len(targets))) as pool:
+    with ObservationalThreadPoolExecutor(
+        max_workers=min(limit, len(targets))
+    ) as pool:
         return dict(zip(targets, pool.map(digest_for, targets)))
 
 

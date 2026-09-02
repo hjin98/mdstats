@@ -382,8 +382,12 @@ so a directory's total size is reported as unknown rather than guessed, and
 Both are read-only, and read-only here means the command changes nothing at all:
 it does not create the workspace or the campaign database, it writes no report
 file into `results/`, and it does not even warm the SHA-256 receipt cache. The
-report is printed, not deposited. Running it against a directory that was never
-prepared tells you the campaign is uninitialized instead of initializing it.
+campaign database is opened read-only at the SQLite level for the whole
+invocation - including from any worker thread it uses - so this is enforced, not
+just intended. The report is printed, not deposited. Running it against a
+directory that was never prepared tells you the campaign is uninitialized instead
+of initializing it. A read-only command running at the same time as real
+campaign work does not disturb it.
 
 Authority to change anything comes only from the invocation you are running.
 `--apply` on this command line authorizes the mutation and the subcommand you
@@ -412,10 +416,13 @@ receipt store is likewise accounted as a cache and retained. Anything no owner
 can certify is retained, so a `cache` run today is legitimately a no-op on most
 campaigns.
 
-Cleanup also plans campaign-state maintenance as its own action rather than as a
-side effect: bounding diagnostic events and rewriting the SQLite file happen only
-when SQLite's own free-space accounting says the rewrite is worth its cost, and
-only when there is room for the temporary copy it makes.
+Cleanup also plans campaign-state maintenance as its own actions rather than as a
+side effect, and pruning and rewriting are two of them. Too many diagnostic
+events authorize *pruning*; they never authorize a full database rewrite. The
+rewrite is planned only when SQLite's own free-space accounting already says it
+is worth its cost and there is room for the temporary copy it makes - so if
+pruning is what frees the space, the rewrite waits for your next `storage
+cleanup`. The result tells you which of the two actually happened.
 
 Cold archive turns owner-declared *historical* bulk into a reversible,
 authenticated, identity-keyed cold representation:
@@ -442,9 +449,15 @@ sweeps in siblings no owner released.
 
 Restoring an archive brings the bytes back as *historical* evidence; it never
 promotes anything to current, and it never changes the permissions or ownership
-of a directory that already existed. If a reclamation was interrupted,
-`storage archive reclaim <identity> --apply` resumes it against a freshly
-authenticated archive.
+of a directory that already existed.
+
+Both `restore` and `reclaim` re-authenticate the exact archive they planned
+against at the last possible moment, while holding the storage lock. If the blob,
+manifest, or catalog entry changed or vanished after you planned - a bad disk, an
+interrupted copy - nothing is deleted and nothing is installed; you re-plan
+instead. If a reclamation was interrupted, `storage archive reclaim <identity>
+--apply` resumes it against a freshly authenticated archive, including when the
+interruption already removed the run's own evidence file.
 
 Deduplication is a representation change only:
 
@@ -459,6 +472,12 @@ store, so deleting the last remaining name releases the bytes with nothing left
 to collect. Equal bytes alone are never enough; a file already hardlinked to
 something outside the campaign is never chosen as the shared inode, and a
 cross-device or unsupported filesystem simply keeps the duplicates.
+
+Every applied action normally leaves one durable record in the storage audit. If
+the audit itself cannot be written - a full disk, an I/O error - the command does
+not pretend otherwise and does not undo work that already succeeded: it reports
+the outcome as `..._unaudited` and prints the publication failure, so you know
+the change happened but the durable record of it did not.
 
 Every action protects external inputs, current scientific records, selected
 checkpoints, restart evidence, and diagnostics. The retired `recompute` and

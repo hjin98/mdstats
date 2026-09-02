@@ -288,6 +288,25 @@ class StorageControlPlane:
 
     # -- durable records --------------------------------------------------
 
+    def require_operation_lease(self, operation: str) -> None:
+        """Refuse to change retained archive state outside the storage lease.
+
+        Reclaim and restore reauthenticate the exact retained representation
+        immediately before consuming it. That is only race-closed if every
+        supported writer of that state is serialized against the reader, so the
+        control plane enforces the lease here rather than trusting each call
+        site to be reachable only from an executor.
+        """
+
+        from .lease import storage_operation_lease_is_held
+
+        if not storage_operation_lease_is_held():
+            raise StorageControlPlaneError(
+                f"Refusing to {operation} without the storage-operation lease: "
+                "retained archive authority is only changed by a serialized "
+                "consequential storage operation."
+            )
+
     def publish_catalog_entry(self, entry: Mapping[str, Any]) -> Path:
         """Durably publish one identity-keyed archive catalog entry.
 
@@ -298,6 +317,7 @@ class StorageControlPlane:
         different bytes; the old entry stays independently verifiable.
         """
 
+        self.require_operation_lease("publish an archive catalog entry")
         identity = _validated_identity(entry.get("archive_identity", ""))
         payload = dict(entry)
         payload["schema"] = STORAGE_CATALOG_ENTRY_SCHEMA

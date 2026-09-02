@@ -35,7 +35,7 @@ import os
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from .durability import parallel_digests, sha256_file
 from .executor import StorageExecutionResult
@@ -286,6 +286,12 @@ def _choose_canonical(
     )
 
 
+#: Failpoint identity for the directory-entry durability boundary, so an
+#: acceptance test can prove that an interruption there is never audited as a
+#: completed action.
+BOUNDARY_BEFORE_DIRECTORY_DURABILITY = "dedup.before_directory_durability"
+
+
 def build_dedup_plan(
     snapshot: StorageInventorySnapshot, policy: StoragePolicy
 ) -> tuple[list[PlannedAction], list[dict[str, Any]], list[str]]:
@@ -327,13 +333,26 @@ def build_dedup_plan(
                             group["canonical_owner_state_identity"]
                         ),
                     },
+                    # The canonical source is never written, but its inode
+                    # becomes the bytes behind this name. A dedup group can span
+                    # two historical P5 runs, and generation supersession is not
+                    # a no-writer proof, so the source's owner is fenced by the
+                    # same seams as the destination.
+                    synchronization_paths=(canonical,),
+                    synchronization_artifact_ids=(
+                        str(group["canonical_artifact_id"]),
+                    ),
                 )
             )
     return actions, groups, excluded
 
 
 def dedup_engine(
-    *, boundary: Any, groups: Sequence[Mapping[str, Any]], excluded: Sequence[str]
+    *,
+    boundary: Any,
+    groups: Sequence[Mapping[str, Any]],
+    excluded: Sequence[str],
+    failpoint: Callable[[str], None] = lambda _name: None,
 ):
     """Build the engine that applies an already-authorized dedup plan.
 
@@ -362,6 +381,47 @@ def dedup_engine(
             authorized, detail = boundary.destructive_authorization(member)
             if not authorized:
                 result.refused.append({**action.to_dict(), "refusal": detail})
+                continue
+            canonical_artifact_id = str(
+                action.binding.get("canonical_artifact_id", "")
+            )
+            canonical_view = (
+                snapshot.view(canonical_artifact_id) if canonical_artifact_id else None
+            )
+            if canonical_artifact_id and canonical_view is None:
+                result.refused.append(
+                    {
+                        **action.to_dict(),
+                        "refusal": (
+                            f"the canonical source owner {canonical_artifact_id} no "
+                            "longer reports this artifact; duplicates are retained"
+                        ),
+                    }
+                )
+                continue
+            if canonical_view is not None and canonical_view.state_identity != str(
+                action.binding.get("canonical_owner_state_identity", "")
+            ):
+                result.refused.append(
+                    {
+                        **action.to_dict(),
+                        "refusal": (
+                            "the canonical source owner advanced between planning and "
+                            "apply; duplicates are retained rather than relinked"
+                        ),
+                    }
+                )
+                continue
+            if canonical_view is not None and not canonical_view.dedup_eligible:
+                result.refused.append(
+                    {
+                        **action.to_dict(),
+                        "refusal": (
+                            "the canonical source owner no longer certifies this "
+                            "artifact as immutable and dedup-eligible"
+                        ),
+                    }
+                )
                 continue
             canonical_protected, canonical_why = snapshot.path_protection(canonical)
             if canonical_protected:
@@ -439,10 +499,25 @@ def dedup_engine(
                 )
                 continue
 
+            # The action is complete only once the *directory entry* is durable.
+            # An audit that claimed completion before the rename reached the
+            # filesystem publication boundary could survive a power loss that
+            # the rename did not, leaving durable evidence disagreeing with the
+            # recovered tree.
+            from ..target_size_execution.persistence import fsync_parent_directory
+
             temporary = member.parent / f".{member.name}.dedup-{os.getpid()}"
             temporary.unlink(missing_ok=True)
             os.link(canonical, temporary)
-            os.replace(temporary, member)
+            try:
+                os.replace(temporary, member)
+                failpoint(BOUNDARY_BEFORE_DIRECTORY_DURABILITY)
+                fsync_parent_directory(member)
+            except BaseException:
+                # Deterministic cleanup of this operation's own temporary link
+                # only; the canonical and every other alias are untouched.
+                temporary.unlink(missing_ok=True)
+                raise
             result.completed.append({**action.to_dict(), "aliased_to": str(canonical)})
             result.reclaimed_bytes += size
 

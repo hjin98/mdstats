@@ -21,6 +21,7 @@ and planning outside them and holds one only across revalidation and mutation.
 
 from __future__ import annotations
 
+import contextvars
 import errno
 import fcntl
 import os
@@ -99,13 +100,40 @@ class _NonBlockingLease:
             self._fd = None
 
 
+#: True while this execution context holds the storage-operation lease.
+#:
+#: Reauthenticating a retained archive immediately before consuming it is only
+#: race-closed if every *supported* writer of that retained state is serialized
+#: with the reader. This variable is how the control plane enforces that rather
+#: than trusting each call site to be reachable only from an executor: a
+#: mutation of retained catalog/archive state outside the lease is refused.
+#:
+#: It is not a security boundary. A process that deliberately ignores package
+#: ownership and rewrites campaign files is treated as corruption, detected at
+#: the next protected authentication point.
+_OPERATION_LEASE_HELD: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "mdstats_storage_operation_lease_held", default=False
+)
+
+
+def storage_operation_lease_is_held() -> bool:
+    return bool(_OPERATION_LEASE_HELD.get())
+
+
+@contextmanager
 def storage_operation_lease(control_plane: Any, *, timeout_seconds: float = 30.0):
     """Serialize consequential storage mutations with each other."""
 
-    return _NonBlockingLease(
+    lease = _NonBlockingLease(
         Path(control_plane.lock_root) / STORAGE_OPERATION_LOCK_NAME,
         timeout_seconds=timeout_seconds,
     )
+    with lease:
+        token = _OPERATION_LEASE_HELD.set(True)
+        try:
+            yield lease
+        finally:
+            _OPERATION_LEASE_HELD.reset(token)
 
 
 @dataclass(frozen=True, slots=True)

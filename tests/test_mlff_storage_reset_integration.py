@@ -822,24 +822,43 @@ def test_an_unexpected_descendant_of_a_real_historical_run_is_retained(
 # ---------------------------------------------------------------------------
 
 
-def test_dedup_frees_physical_bytes_when_the_last_alias_disappears(tmp_path: Path):
+def _publish_historical_run(paths, generation: int, name: str, members: dict) -> Path:
+    """One historical P5 run published in the real owner's own order.
+
+    The outputs land first, the terminal record becomes durable next, and only
+    then does the owner freeze its create-once completion anchor - which is the
+    order real execution uses and the only order the anchor accepts.
+    """
+
     from mdstats.training_data.campaign_post_selection_runtime import (
         record_post_selection_run_members,
     )
 
+    root = paths.internal / "post-selection" / f"g{generation}" / "runs" / name
+    (root / "checkpoints").mkdir(parents=True, exist_ok=True)
+    for relative, payload in members.items():
+        destination = root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        os.chmod(destination, 0o644)
+    (root / "run-evidence.json").write_text("{}\n", encoding="utf-8")
+    record_post_selection_run_members(root)
+    return root
+
+
+def test_dedup_frees_physical_bytes_when_the_last_alias_disappears(tmp_path: Path):
     config, _workspace, _harness = _historical_campaign(tmp_path)
-    snapshot, paths = _snapshot(config)
-    eligible = [item for item in archive_candidates(snapshot) if item.eligible]
-    assert eligible
-    run_root = Path(eligible[0].path)
+    _cfg, paths = cli._load_config(config)
 
     payload = b"duplicate" * 4096
+    run_root = _publish_historical_run(
+        paths,
+        1,
+        "dedup-run",
+        {"checkpoints/dup-a.bin": payload, "checkpoints/dup-b.bin": payload},
+    )
     first = run_root / "checkpoints" / "dup-a.bin"
     second = run_root / "checkpoints" / "dup-b.bin"
-    for path in (first, second):
-        path.write_bytes(payload)
-        os.chmod(path, 0o644)
-    record_post_selection_run_members(run_root)
 
     assert p4d._run(config, "storage", "deduplicate", "--apply") == 0
     assert first.stat().st_ino == second.stat().st_ino
@@ -849,7 +868,6 @@ def test_dedup_frees_physical_bytes_when_the_last_alias_disappears(tmp_path: Pat
     first.unlink()
     assert second.stat().st_nlink == 1
     second.unlink()
-    record_post_selection_run_members(run_root)
     assert not first.exists() and not second.exists()
 
 
@@ -1092,3 +1110,426 @@ def test_an_unexpected_descendant_of_a_released_attempt_is_retained(tmp_path: Pa
     stranger.unlink()
     assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
     assert not scratch[0].path.exists()
+
+
+# ---------------------------------------------------------------------------
+# IR15-2 - dedup fences the canonical source owner, not only the destination
+# ---------------------------------------------------------------------------
+
+
+def _dedup_plan_canonical(config) -> tuple[Path, Path]:
+    """The canonical source and one replacement the real planner chose."""
+
+    from mdstats.training_data.storage.dedup import build_dedup_plan
+
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db, create=False)
+    try:
+        with cli.observational_campaign_state():
+            boundary = cli._campaign_ownership_boundary(cfg, paths, store)
+            snapshot = build_storage_inventory(
+                cfg,
+                paths,
+                store,
+                protected_inputs=boundary.protected_inputs,
+                control_plane=open_storage_control_plane_readonly(paths),
+                certify=True,
+            )
+            actions, groups, _excluded = build_dedup_plan(
+                snapshot, resolve_storage_policy({}, action="deduplicate")
+            )
+    finally:
+        store.close()
+    assert actions, "the planner found no cross-run duplicate"
+    return Path(str(actions[0].binding["canonical"])), Path(actions[0].path)
+
+
+def test_dedup_waits_for_the_canonical_source_run_not_only_the_destination(
+    tmp_path: Path,
+):
+    """A dedup group can span two historical runs, and only one is written to.
+
+    The canonical source is never modified, yet its inode becomes the bytes
+    behind a second name. P5 lets a run that began under an older selected
+    binding keep executing, so historical status is not a no-writer proof: the
+    canonical's own run-activity lease has to be held too, or dedup can alias a
+    file some live writer is still producing.
+    """
+
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        post_selection_run_activity_lease,
+    )
+
+    config, _workspace, _harness = _historical_campaign(tmp_path)
+    _cfg, paths = cli._load_config(config)
+    payload = b"cross-run-duplicate" * 512
+    run_a = _publish_historical_run(paths, 1, "dedup-a", {"checkpoints/dup.bin": payload})
+    run_b = _publish_historical_run(paths, 1, "dedup-b", {"checkpoints/dup.bin": payload})
+
+    del run_a, run_b
+    canonical, replacement = _dedup_plan_canonical(config)
+    assert canonical.parent.parent != replacement.parent.parent, (
+        "the planner did not produce a cross-run dedup group"
+    )
+    canonical_run = canonical.parent.parent
+
+    finished = threading.Event()
+    done = threading.Event()
+    outcome: list[str] = []
+
+    def worker() -> None:
+        try:
+            assert p4d._run(config, "storage", "deduplicate", "--apply") == 0
+            outcome.append("after-owner" if finished.is_set() else "raced")
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=worker, daemon=True)
+    # Hold *only* the canonical source's lease. Before the repair, storage held
+    # the destination's lease and proceeded regardless.
+    with post_selection_run_activity_lease(canonical_run):
+        thread.start()
+        time.sleep(1.0)
+        assert replacement.stat().st_ino != canonical.stat().st_ino, (
+            "dedup relinked while the canonical source owner was still active"
+        )
+        finished.set()
+    done.wait(180.0)
+    thread.join(180.0)
+    assert outcome == ["after-owner"], outcome
+    assert replacement.stat().st_ino == canonical.stat().st_ino
+
+
+def test_dedup_acquires_every_source_and_destination_seam_without_deadlock(
+    tmp_path: Path,
+):
+    config, _workspace, _harness = _historical_campaign(tmp_path)
+    _cfg, paths = cli._load_config(config)
+    payload = b"many-alias" * 512
+    for name in ("dedup-x", "dedup-y", "dedup-z"):
+        _publish_historical_run(paths, 1, name, {"checkpoints/dup.bin": payload})
+
+    from mdstats.training_data.storage.dedup import build_dedup_plan
+    from mdstats.training_data.storage.executor import synchronization_for
+    from mdstats.training_data.storage.plan import build_storage_plan
+
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db, create=False)
+    try:
+        with cli.observational_campaign_state():
+            boundary = cli._campaign_ownership_boundary(cfg, paths, store)
+            snapshot = build_storage_inventory(
+                cfg,
+                paths,
+                store,
+                protected_inputs=boundary.protected_inputs,
+                control_plane=open_storage_control_plane_readonly(paths),
+                certify=True,
+            )
+            policy = resolve_storage_policy({}, action="deduplicate")
+            actions, _groups, _excluded = build_dedup_plan(snapshot, policy)
+            plan = build_storage_plan(snapshot, policy, actions)
+            synchronization = synchronization_for(plan, snapshot)
+    finally:
+        store.close()
+
+    fenced = {Path(item).name for item in synchronization.run_roots}
+    assert {"dedup-x", "dedup-y", "dedup-z"} <= fenced, sorted(fenced)
+    # One deterministic order, so two operations can never build a cycle.
+    assert list(synchronization.run_roots) == sorted(synchronization.run_roots)
+
+    assert p4d._run(config, "storage", "deduplicate", "--apply") == 0
+    inodes = {
+        (paths.internal / "post-selection" / "g1" / "runs" / name / "checkpoints" / "dup.bin")
+        .stat()
+        .st_ino
+        for name in ("dedup-x", "dedup-y", "dedup-z")
+    }
+    assert len(inodes) == 1
+
+
+def test_canonical_bindings_feed_synchronization_not_only_mutation() -> None:
+    """Structural: the canonical source is declared to the synchronization builder."""
+
+    import ast
+
+    dedup_source = (
+        Path(cli.__file__).parent.joinpath("storage", "dedup.py").read_text(encoding="utf-8")
+    )
+    assert "synchronization_paths=(canonical,)" in dedup_source
+    assert "synchronization_artifact_ids=(" in dedup_source
+
+    executor_source = (
+        Path(cli.__file__).parent.joinpath("storage", "executor.py").read_text(encoding="utf-8")
+    )
+    tree = ast.parse(executor_source)
+    builder = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "synchronization_for"
+    )
+    dumped = ast.dump(builder)
+    assert "synchronization_paths" in dumped
+    assert "synchronization_artifact_ids" in dumped
+
+
+# ---------------------------------------------------------------------------
+# IR15-4 / IR16-4 - partial reclaim survives losing the terminal evidence
+# ---------------------------------------------------------------------------
+
+
+def test_partial_reclaim_resumes_after_the_terminal_evidence_goes_cold(
+    tmp_path: Path,
+):
+    """The completion anchor, not the terminal record, is what certifies a run.
+
+    An interrupted hot reclamation can already have removed the fold/run
+    evidence while other represented members are still hot. If certification
+    needed that file, the next process could never finish the reclamation it
+    started.
+    """
+
+    from mdstats.training_data.storage.archive import BOUNDARY_DURING_RECLAMATION
+
+    config, _workspace, _harness = _historical_campaign(tmp_path)
+    _cfg, paths = cli._load_config(config)
+    run_root = _publish_historical_run(
+        paths,
+        1,
+        "reclaim-run",
+        {
+            "checkpoints/first.bin": b"first" * 512,
+            # Sorts after `run-evidence.json`, so the interruption below lands
+            # with the terminal record already cold and a member still hot.
+            "zz-late.bin": b"late" * 512,
+        },
+    )
+    evidence = run_root / "run-evidence.json"
+    anchor = run_root / "run-members.json"
+    late = run_root / "zz-late.bin"
+    relative_root = str(run_root.relative_to(paths.workspace))
+
+    context, store = _context(config)
+    try:
+        policy = resolve_storage_policy({}, action=ACTION_ARCHIVE, apply=True)
+        context.consequential_plane(policy)
+        payload = storage_commands.storage_archive(
+            context,
+            _args(
+                archive_command="create",
+                root=[relative_root],
+                apply=True,
+                keep_hot=True,
+            ),
+        )
+        identity = payload["archive"]["archive_identity"]
+    finally:
+        store.close()
+
+    def failpoint(name: str) -> None:
+        if name != BOUNDARY_DURING_RECLAMATION:
+            return
+        if not evidence.exists() and late.exists():
+            raise RuntimeError("injected interruption after the terminal record went cold")
+
+    context, store = _context(config)
+    try:
+        with pytest.raises(RuntimeError, match="injected interruption"):
+            storage_commands.storage_archive(
+                context,
+                _args(
+                    archive_command="reclaim",
+                    archive_identity=identity,
+                    apply=True,
+                    failpoint=failpoint,
+                ),
+            )
+    finally:
+        store.close()
+    assert not evidence.exists(), "the fixture never reached the intended interruption"
+    assert anchor.is_file(), "the completion anchor was reclaimed with the members"
+    assert late.is_file()
+
+    # Fresh process: the owner still certifies the run from its retained anchor.
+    snapshot, _paths = _snapshot(config)
+    view = snapshot.view(f"p5:run:g1:{run_root.name}")
+    assert view is not None and view.archive_eligible is True
+
+    assert p4d._run(config, "storage", "archive", "reclaim", identity, "--apply") == 0
+    assert not late.exists()
+    assert anchor.is_file()
+
+    # Explicit restore brings the historical evidence back without promoting it.
+    assert p4d._run(config, "storage", "archive", "restore", identity, "--apply") == 0
+    assert evidence.is_file()
+    reopened = CampaignStore(paths.state_db)
+    try:
+        assert load_target_size_campaign_revision(reopened).state.generation == 2
+    finally:
+        reopened.close()
+
+
+# ---------------------------------------------------------------------------
+# IR15-5 - maintenance serializes against a real CampaignStore writer
+# ---------------------------------------------------------------------------
+
+
+def test_state_maintenance_serializes_against_a_concurrent_campaign_writer(
+    tmp_path: Path,
+):
+    config, _workspace = p5.build_selected_campaign(tmp_path)
+    cfg, paths = cli._load_config(config)
+    writer = CampaignStore(paths.state_db)
+    try:
+        for _index in range(400):
+            writer.event("info", "fixture", "x" * 256)
+
+        holding = threading.Event()
+        release = threading.Event()
+        failures: list[BaseException] = []
+
+        def hold_the_write_lock() -> None:
+            store = CampaignStore(paths.state_db)
+            try:
+                with store.exclusive_transaction() as db:
+                    db.execute(
+                        "INSERT INTO events(timestamp_utc,level,stage,message) "
+                        "VALUES ('t','info','fixture','held')"
+                    )
+                    holding.set()
+                    release.wait(20.0)
+            except BaseException as exc:  # pragma: no cover - surfaced below
+                failures.append(exc)
+            finally:
+                store.close()
+
+        thread = threading.Thread(target=hold_the_write_lock, daemon=True)
+        thread.start()
+        assert holding.wait(30.0)
+
+        maintainer = threading.Thread(
+            target=lambda: p4d._run(
+                config, "storage", "cleanup", "--tier", "safe", "--apply"
+            ),
+            daemon=True,
+        )
+        maintainer.start()
+        time.sleep(1.0)
+        release.set()
+        thread.join(30.0)
+        maintainer.join(120.0)
+        assert not failures, failures
+    finally:
+        writer.close()
+
+    # The database is intact and its scientific authority is unchanged.
+    reopened = CampaignStore(paths.state_db)
+    try:
+        assert load_target_size_campaign_revision(reopened) is not None
+        with reopened._connect() as db:
+            assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    finally:
+        reopened.close()
+
+
+# ---------------------------------------------------------------------------
+# IR16-5 - supported storage writers cannot interleave with reauthentication
+# ---------------------------------------------------------------------------
+
+
+def test_a_second_storage_operation_cannot_interleave_with_reauthentication(
+    tmp_path: Path,
+):
+    """The lease is what makes protected reauthentication meaningful."""
+
+    from mdstats.training_data.storage import archive as archive_mod
+
+    config, _workspace, _harness = _historical_campaign(tmp_path)
+    _cfg, paths = cli._load_config(config)
+    _publish_historical_run(paths, 1, "race-run", {"checkpoints/one.bin": b"one" * 512})
+
+    context, store = _context(config)
+    try:
+        policy = resolve_storage_policy({}, action=ACTION_ARCHIVE, apply=True)
+        context.consequential_plane(policy)
+        payload = storage_commands.storage_archive(
+            context,
+            _args(archive_command="create", root=None, apply=True, keep_hot=True),
+        )
+        identity = payload["archive"]["archive_identity"]
+    finally:
+        store.close()
+
+    inside = threading.Event()
+    release = threading.Event()
+    order: list[str] = []
+    original = archive_mod.reauthenticate_representation
+    failures: list[BaseException] = []
+
+    def paused(control_plane, policy_, bound):
+        manifest = original(control_plane, policy_, bound)
+        inside.set()
+        release.wait(60.0)
+        order.append("reauthenticated")
+        return manifest
+
+    def first_operation() -> None:
+        try:
+            assert (
+                p4d._run(config, "storage", "archive", "reclaim", identity, "--apply")
+                == 0
+            )
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            failures.append(exc)
+
+    def second_operation() -> None:
+        try:
+            assert (
+                p4d._run(
+                    config, "storage", "archive", "create", "--apply", "--keep-hot"
+                )
+                == 0
+            )
+            order.append("second")
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            failures.append(exc)
+
+    archive_mod.reauthenticate_representation = paused
+    first = threading.Thread(target=first_operation, daemon=True)
+    second = threading.Thread(target=second_operation, daemon=True)
+    try:
+        first.start()
+        assert inside.wait(60.0), "the reclaim never reached protected reauthentication"
+        second.start()
+        time.sleep(1.5)
+        assert order == [], "a second storage operation interleaved with the lease"
+        release.set()
+        first.join(120.0)
+        second.join(120.0)
+    finally:
+        archive_mod.reauthenticate_representation = original
+    assert not failures, failures
+    assert order and order[0] == "reauthenticated", order
+
+
+# ---------------------------------------------------------------------------
+# IR16-2 - observation through the real public dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_the_public_report_opens_every_nested_store_read_only(tmp_path: Path):
+    config, _workspace = p5.build_selected_campaign(tmp_path)
+    opened: list[bool] = []
+    original = cli.CampaignStore.__init__
+
+    def recording(self, path, *, create: bool = True):
+        original(self, path, create=create)
+        opened.append(bool(self.read_only))
+
+    cli.CampaignStore.__init__ = recording
+    try:
+        assert p4d._run(config, "storage", "report") == 0
+    finally:
+        cli.CampaignStore.__init__ = original
+    assert opened, "the report opened no campaign store at all"
+    assert all(opened), "an observational report opened a writable campaign store"

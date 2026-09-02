@@ -55,6 +55,13 @@ from mdstats.training_data.storage.archive import (
     ArchiveMember,
     StorageArchiveError,
     archive_container_bytes,
+    archive_create_engine,
+    archive_reclaim_engine,
+    archive_restore_engine,
+    bind_representation_authority,
+    build_archive_plan_actions,
+    build_reclaim_plan_actions,
+    build_restore_plan_actions,
     list_archives,
     read_manifest,
     read_restore_journal,
@@ -68,6 +75,7 @@ from mdstats.training_data.storage.control_plane import (
     open_storage_control_plane_readonly,
 )
 from mdstats.training_data.storage.durability import sha256_file
+from mdstats.training_data.storage.executor import synchronization_for
 from mdstats.training_data.storage.inventory import (
     OwnerGraphError,
     archive_candidates,
@@ -210,37 +218,43 @@ class _Campaign:
             certify=certify,
         )
 
-    def historical_run(self, *, generation: int = 7, name: str = "run-a") -> Path:
-        """A superseded P5 run root the real P5 owner certifies as closed."""
+    def historical_run(
+        self, *, generation: int = 7, name: str = "run-a", finish: bool = True
+    ) -> Path:
+        """A superseded P5 run root the real P5 owner certifies as closed.
 
-        from mdstats.training_data.campaign_post_selection_runtime import (
-            record_post_selection_run_members,
-        )
+        ``finish=False`` leaves the run unpublished so a test can add the outputs
+        it needs *before* the owner freezes its completion anchor, which is the
+        order real execution uses and the only order a create-once anchor
+        allows.
+        """
 
         root = self.paths.internal / "post-selection" / f"g{generation}" / "runs" / name
         (root / "checkpoints").mkdir(parents=True, exist_ok=True)
         (root / "checkpoints" / "epoch-1.pt").write_bytes(b"historical" * 512)
-        (root / "run-evidence.json").write_text("{}\n", encoding="utf-8")
-        # The real P5 owner records its own member set when a run finishes.
-        record_post_selection_run_members(root)
         objects = self.paths.internal / "post-selection" / f"g{generation}" / "objects"
         objects.mkdir(parents=True, exist_ok=True)
         (objects / "keep.json").write_text("{}\n", encoding="utf-8")
+        if finish:
+            self.finish_run(root)
         return root
 
     @staticmethod
     def finish_run(run_root: Path) -> None:
-        """Re-record the owner's member set after a fixture adds run outputs.
+        """Publish the terminal record and freeze the owner's completion anchor.
 
-        A run root is certifiable only when what is on disk is exactly what P5
-        recorded, so a fixture that adds outputs must let the owner record them
-        - the same way real execution does.
+        This is the real P5 publication order: the terminal evidence becomes
+        durable first, and only then does the owner record the member set that
+        certifies the finished run.
         """
 
         from mdstats.training_data.campaign_post_selection_runtime import (
             record_post_selection_run_members,
         )
 
+        evidence = Path(run_root) / "run-evidence.json"
+        if not evidence.is_file():
+            evidence.write_text("{}\n", encoding="utf-8")
         record_post_selection_run_members(run_root)
 
 
@@ -665,7 +679,7 @@ def _dedup(campaign, *, apply: bool, cfg=None):
 def test_duplicates_become_direct_aliases_with_no_persistent_content_store(
     campaign,
 ) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     payload = b"identical" * 1024
     first = run_root / "checkpoints" / "a.bin"
     second = run_root / "checkpoints" / "b.bin"
@@ -681,7 +695,7 @@ def test_duplicates_become_direct_aliases_with_no_persistent_content_store(
 
 
 def test_removing_every_alias_releases_the_inode_naturally(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     payload = b"identical" * 1024
     first = run_root / "checkpoints" / "a.bin"
     second = run_root / "checkpoints" / "b.bin"
@@ -703,7 +717,7 @@ def test_removing_every_alias_releases_the_inode_naturally(campaign) -> None:
 def test_an_external_hardlink_is_never_the_shared_canonical_inode(
     campaign, tmp_path: Path
 ) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     payload = b"identical" * 1024
     first = run_root / "checkpoints" / "a.bin"
     second = run_root / "checkpoints" / "b.bin"
@@ -726,7 +740,7 @@ def test_an_external_hardlink_is_never_the_shared_canonical_inode(
 
 
 def test_replacing_one_alias_leaves_the_others_unchanged(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     payload = b"identical" * 1024
     first = run_root / "checkpoints" / "a.bin"
     second = run_root / "checkpoints" / "b.bin"
@@ -743,7 +757,7 @@ def test_replacing_one_alias_leaves_the_others_unchanged(campaign) -> None:
 
 
 def test_equal_bytes_with_incompatible_modes_do_not_share_an_inode(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     payload = b"identical" * 1024
     first = run_root / "checkpoints" / "a.bin"
     second = run_root / "checkpoints" / "b.bin"
@@ -758,7 +772,7 @@ def test_equal_bytes_with_incompatible_modes_do_not_share_an_inode(campaign) -> 
 
 
 def test_repeated_dedup_is_idempotent(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     payload = b"identical" * 1024
     for name in ("a.bin", "b.bin"):
         path = run_root / "checkpoints" / name
@@ -776,7 +790,7 @@ def test_repeated_dedup_is_idempotent(campaign) -> None:
 def test_cross_device_candidates_retain_duplicate_bytes(campaign, monkeypatch) -> None:
     from mdstats.training_data.storage import dedup as dedup_mod
 
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     payload = b"identical" * 1024
     for name in ("a.bin", "b.bin"):
         path = run_root / "checkpoints" / name
@@ -861,13 +875,80 @@ def test_a_closed_owner_certified_fixture_stays_eligible(campaign) -> None:
 
 
 def test_an_unfinished_run_root_is_never_certified(campaign) -> None:
-    run_root = campaign.historical_run()
-    (run_root / "run-evidence.json").unlink()
+    """A run that never published its completion anchor is not a closed subtree."""
+
+    campaign.historical_run(finish=False)
     snapshot = campaign.snapshot()
     view = snapshot.view("p5:run:g7:run-a")
     assert view.coverage is SubtreeCoverage.CONTAINER
     assert view.archive_eligible is False
-    assert "terminal" in view.detail
+    assert "anchor" in view.detail
+
+
+def test_a_run_stays_certified_after_its_terminal_evidence_goes_cold(campaign) -> None:
+    """The completion proof is the retained anchor, not the hot evidence file.
+
+    The terminal record is an ordinary archive member. An interrupted cold
+    reclamation may already have removed it while other represented members are
+    still hot; requiring it here would leave that reclamation unable to finish.
+    """
+
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        certify_closed_post_selection_run_root,
+    )
+
+    run_root = campaign.historical_run()
+    (run_root / "run-evidence.json").unlink()
+    certified, detail = certify_closed_post_selection_run_root(run_root)
+    assert certified, detail
+    snapshot = campaign.snapshot()
+    view = snapshot.view("p5:run:g7:run-a")
+    assert view.coverage is SubtreeCoverage.CLOSED
+    assert view.archive_eligible is True
+
+
+def test_a_second_terminal_publication_cannot_rewrite_the_anchor(campaign) -> None:
+    """A completed run's member set is create-once owner authority."""
+
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        record_post_selection_run_members,
+    )
+    from mdstats.training_data.post_selection_execution import (
+        PostSelectionExecutionError,
+    )
+
+    run_root = campaign.historical_run()
+    before = (run_root / "run-members.json").read_bytes()
+    # Republishing the identical member set verifies the anchor.
+    record_post_selection_run_members(run_root)
+    assert (run_root / "run-members.json").read_bytes() == before
+
+    (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"later")
+    with pytest.raises(PostSelectionExecutionError, match="create-once"):
+        record_post_selection_run_members(run_root)
+    assert (run_root / "run-members.json").read_bytes() == before
+
+
+def test_the_completion_anchor_is_never_an_archive_member(campaign) -> None:
+    """The proof a run needs in order to be reclaimed is not itself reclaimable."""
+
+    run_root = campaign.historical_run()
+    anchor = run_root / "run-members.json"
+    result = _create_archive(campaign)
+    manifest = read_manifest(campaign.context().control_plane, result["archive_identity"])
+    assert not any(
+        str(item["path"]).endswith("run-members.json") for item in manifest["members"]
+    )
+    assert anchor.is_file(), "hot reclamation removed the run's completion anchor"
+
+    # Ordinary cleanup must not collect it either while the archive is retained.
+    storage_commands.storage_cleanup(
+        campaign.context(), _args(tier="safe", apply=True)
+    )
+    storage_commands.storage_cleanup(
+        campaign.context(), _args(tier="cache", apply=True)
+    )
+    assert anchor.is_file()
 
 
 def test_a_descendant_added_after_planning_refuses_the_action(campaign) -> None:
@@ -914,7 +995,7 @@ def test_no_consequential_recursive_path_equates_containment_with_ownership() ->
 
 
 def test_a_nested_mount_below_an_eligible_root_is_not_traversed(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     nested = run_root / "checkpoints" / "mounted"
     nested.mkdir()
     (nested / "foreign.bin").write_bytes(b"someone else's bytes")
@@ -1161,17 +1242,45 @@ def test_a_conflicting_immutable_catalog_rewrite_is_rejected(campaign) -> None:
     entry = dict(campaign.control_plane.read_catalog_entry(identity))
     entry.pop("entry_digest", None)
     entry["archive_sha256"] = "0" * 64
-    with pytest.raises(StorageControlPlaneError, match="immutable field"):
-        campaign.control_plane.publish_catalog_entry(entry)
+    with storage_operation_lease(campaign.control_plane):
+        with pytest.raises(StorageControlPlaneError, match="immutable field"):
+            campaign.control_plane.publish_catalog_entry(entry)
+    verify_cold_archive(campaign.control_plane, identity, _policy(action=ACTION_REPORT))
+
+
+def test_retained_archive_authority_needs_the_storage_operation_lease(campaign) -> None:
+    """IR16-5: every supported writer of retained archive state is serialized.
+
+    Reauthenticating a representation immediately before consuming it only
+    closes the race if nothing supported can replace that representation while
+    the consumer holds the lease. The control plane enforces that itself rather
+    than trusting each call site to be reachable only from an executor.
+    """
+
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    with pytest.raises(StorageControlPlaneError, match="storage-operation lease"):
+        campaign.control_plane.publish_catalog_entry(
+            {"archive_identity": identity, "hot_reclamation_state": "complete"}
+        )
+    assert (
+        campaign.control_plane.read_catalog_entry(identity).get(
+            "hot_reclamation_state"
+        )
+        != "complete"
+    )
+    # Read-only list/verify need no lease at all.
+    assert list_archives(campaign.control_plane)
     verify_cold_archive(campaign.control_plane, identity, _policy(action=ACTION_REPORT))
 
 
 def test_only_operational_catalog_fields_may_be_refreshed(campaign) -> None:
     result = _create_archive(campaign, keep_hot=True)
     identity = result["archive_identity"]
-    campaign.control_plane.publish_catalog_entry(
-        {"archive_identity": identity, "hot_reclamation_state": "complete"}
-    )
+    with storage_operation_lease(campaign.control_plane):
+        campaign.control_plane.publish_catalog_entry(
+            {"archive_identity": identity, "hot_reclamation_state": "complete"}
+        )
     entry = campaign.control_plane.read_catalog_entry(identity)
     assert entry["hot_reclamation_state"] == "complete"
     assert entry["archive_sha256"] == result and True or entry["archive_sha256"]
@@ -1215,7 +1324,7 @@ def test_failure_before_blob_publication_leaves_no_terminal_catalog(campaign) ->
 
 
 def test_failure_after_blob_cannot_authorize_hot_deletion(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     with pytest.raises(_Injected):
         _create_archive(campaign, failpoint=_fail_at(BOUNDARY_AFTER_BLOB))
     assert list_archives(campaign.control_plane) == ()
@@ -1223,7 +1332,7 @@ def test_failure_after_blob_cannot_authorize_hot_deletion(campaign) -> None:
 
 
 def test_failure_during_reclamation_is_resumable_and_truthful(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"second" * 512)
     campaign.finish_run(run_root)
     with pytest.raises(_Injected):
@@ -1246,7 +1355,7 @@ def test_failure_during_reclamation_is_resumable_and_truthful(campaign) -> None:
 
 
 def test_failure_during_restore_produces_no_terminal_receipt(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"second" * 512)
     campaign.finish_run(run_root)
     result = _create_archive(campaign)
@@ -1689,7 +1798,7 @@ def test_a_supplied_digest_never_authorizes_reading_an_external_file(
 
 
 def test_every_applied_consequential_path_appends_one_audit(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     for name in ("a.bin", "b.bin"):
         path = run_root / "checkpoints" / name
         path.write_bytes(b"identical" * 1024)
@@ -1715,7 +1824,7 @@ def test_a_read_only_command_writes_no_audit(campaign) -> None:
 
 
 def test_an_interrupted_operation_is_never_audited_complete(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"second" * 512)
     campaign.finish_run(run_root)
     with pytest.raises(_Injected):
@@ -1743,7 +1852,7 @@ def test_audit_pruning_never_removes_catalog_or_journal_authority(campaign) -> N
 # ---------------------------------------------------------------------------
 
 
-def test_a_compact_database_is_not_vacuumed(campaign) -> None:
+def test_a_compact_database_needs_neither_prune_nor_rewrite(campaign) -> None:
     from mdstats.training_data.storage.maintenance import (
         plan_campaign_state_maintenance,
     )
@@ -1751,44 +1860,144 @@ def test_a_compact_database_is_not_vacuumed(campaign) -> None:
     decision = plan_campaign_state_maintenance(
         campaign.store, campaign.paths, _policy(action=ACTION_CLEANUP)
     )
-    assert decision.action is None
+    assert decision.actions == ()
+    assert decision.prune_action is None and decision.vacuum_action is None
     assert "not worthwhile" in decision.reason
+    assert "within its bound" in decision.reason
 
 
-def test_a_database_with_material_free_space_is_maintained(campaign) -> None:
+def _maintenance_cleanup(campaign, *, maximum_events: int):
+    cfg = {
+        **campaign.cfg,
+        "storage": {"sqlite_compaction_maximum_events": maximum_events},
+    }
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    return context, storage_commands.storage_cleanup(
+        context, _args(tier="safe", apply=True)
+    )
+
+
+def test_excess_events_authorize_pruning_but_never_a_rewrite(campaign) -> None:
+    """IR16-3: one excess diagnostic event is not a reason to rewrite the file.
+
+    Pruning frees pages, so a runtime `prune then decide` would rewrite the
+    database on the strength of the very free space it just created. The rewrite
+    belongs to the next fresh plan, measured on its own evidence.
+    """
+
     from mdstats.training_data.storage.maintenance import (
         measure_reclaimable,
         plan_campaign_state_maintenance,
     )
 
-    for index in range(4000):
-        campaign.store.event("info", "fixture", "x" * 256)
+    for _index in range(150):
+        campaign.store.event("info", "fixture", "x" * 32)
     policy = resolve_storage_policy(
-        {"storage": {"sqlite_compaction_maximum_events": 10}}, action=ACTION_CLEANUP
+        {
+            "storage": {
+                "sqlite_compaction_maximum_events": 100,
+                "sqlite_compaction_minimum_reclaimable_bytes": 1 << 30,
+                "sqlite_compaction_minimum_reclaimable_fraction": 0.99,
+            }
+        },
+        action=ACTION_CLEANUP,
     )
     decision = plan_campaign_state_maintenance(campaign.store, campaign.paths, policy)
-    assert decision.action is not None
+    assert decision.prune_action is not None
+    assert decision.vacuum_action is None, "pruning authorized a database rewrite"
     assert decision.excess_events > 0
 
-    payload = storage_commands.storage_cleanup(
-        storage_commands.StorageCommandContext(
-            {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}},
-            campaign.paths,
-            campaign.store,
-            campaign.boundary,
-        ),
-        _args(tier="safe", apply=True),
+    cfg = {
+        **campaign.cfg,
+        "storage": {
+            "sqlite_compaction_maximum_events": 100,
+            "sqlite_compaction_minimum_reclaimable_bytes": 1 << 30,
+            "sqlite_compaction_minimum_reclaimable_fraction": 0.99,
+        },
+    }
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
     )
-    maintained = [
+    payload = storage_commands.storage_cleanup(context, _args(tier="safe", apply=True))
+    completed = payload["execution"]["completed_actions"]
+    pruned = [item for item in completed if item["action"] == "prune_campaign_events"]
+    assert pruned and pruned[0]["events_pruned"] > 0
+    assert all(item.get("vacuum_performed") is not True for item in completed)
+    assert not any(item["action"] == "vacuum_campaign_state" for item in completed)
+
+    _reclaimable, _total, events = measure_reclaimable(campaign.store)
+    assert events <= 100
+
+
+def test_a_fresh_plan_may_authorize_the_rewrite_the_prune_made_worthwhile(
+    campaign,
+) -> None:
+    from mdstats.training_data.storage.maintenance import (
+        plan_campaign_state_maintenance,
+    )
+
+    for _index in range(4000):
+        campaign.store.event("info", "fixture", "x" * 256)
+    cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    storage_commands.storage_cleanup(context, _args(tier="safe", apply=True))
+
+    policy = resolve_storage_policy(cfg, action=ACTION_CLEANUP)
+    decision = plan_campaign_state_maintenance(campaign.store, campaign.paths, policy)
+    assert decision.vacuum_action is not None, decision.reason
+    before = campaign.paths.state_db.stat().st_size
+    payload = storage_commands.storage_cleanup(context, _args(tier="safe", apply=True))
+    rewritten = [
         item
         for item in payload["execution"]["completed_actions"]
-        if item["action"] == "maintain_campaign_state"
+        if item["action"] == "vacuum_campaign_state"
     ]
-    assert maintained
-    # CampaignStore.compact() bounds events at its own documented floor.
-    reclaimable, _total, events = measure_reclaimable(campaign.store)
-    assert events < 4000
-    del reclaimable
+    assert rewritten and rewritten[0]["vacuum_performed"] is True
+    assert campaign.paths.state_db.stat().st_size < before
+
+
+def test_no_prune_path_can_reach_an_unconditional_rewrite() -> None:
+    """Structural: pruning has no VACUUM tail to fall through into."""
+
+    import ast
+
+    source = Path(cli.__file__).parent.joinpath("storage", "maintenance.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    engine = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "campaign_state_maintenance_engine"
+    )
+    prune_branch = next(
+        node
+        for node in ast.walk(engine)
+        if isinstance(node, ast.If)
+        and "ACTION_PRUNE_EVENTS" in ast.dump(node.test)
+    )
+    called = {
+        node.func.attr
+        for node in ast.walk(prune_branch)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert "vacuum" not in called and "compact" not in called
+
+    store_source = Path(cli.__file__).read_text(encoding="utf-8")
+    assert "def compact(" not in store_source, (
+        "the combined prune+VACUUM helper must not survive as an alternate authority"
+    )
+    prune = next(
+        node
+        for node in ast.walk(ast.parse(store_source))
+        if isinstance(node, ast.FunctionDef) and node.name == "prune_events"
+    )
+    assert "VACUUM" not in ast.dump(prune)
 
 
 def test_a_refused_cleanup_does_not_maintain_the_database(campaign) -> None:
@@ -1803,7 +2012,7 @@ def test_a_refused_cleanup_does_not_maintain_the_database(campaign) -> None:
         cfg, action=ACTION_CLEANUP, apply=True
     )
     plan, snapshot = storage_commands.build_cleanup_plan(context, policy)
-    assert any(item.action == "maintain_campaign_state" for item in plan.actions)
+    assert any(item.action == "prune_campaign_events" for item in plan.actions)
     # A new owner artifact appears, so the plan is stale before it is applied.
     campaign.historical_run(name="run-late")
     before = campaign.paths.state_db.stat().st_size
@@ -1816,7 +2025,8 @@ def test_a_refused_cleanup_does_not_maintain_the_database(campaign) -> None:
     )
     assert result.status == "refused"
     assert not any(
-        item["action"] == "maintain_campaign_state" for item in result.completed
+        item["action"] in ("prune_campaign_events", "vacuum_campaign_state")
+        for item in result.completed
     )
     assert campaign.paths.state_db.stat().st_size == before
 
@@ -1858,7 +2068,7 @@ def test_an_unknown_workspace_tree_is_reported_ambiguous_and_retained(campaign) 
 
 
 def test_terminal_restore_journals_are_bounded(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     result = _create_archive(campaign)
     for _ in range(3):
         storage_commands.storage_archive(
@@ -1889,7 +2099,7 @@ def test_terminal_restore_journals_are_bounded(campaign) -> None:
 
 
 def test_a_nonterminal_journal_stays_protected(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"second" * 512)
     campaign.finish_run(run_root)
     result = _create_archive(campaign)
@@ -2111,7 +2321,7 @@ def test_the_report_labels_unknown_sizes_rather_than_guessing(campaign) -> None:
 
 
 def test_the_deep_audit_deduplicates_shared_inodes(campaign) -> None:
-    run_root = campaign.historical_run()
+    run_root = campaign.historical_run(finish=False)
     payload = b"identical" * 1024
     first = run_root / "checkpoints" / "a.bin"
     second = run_root / "checkpoints" / "b.bin"
@@ -2234,3 +2444,689 @@ def test_the_report_never_presents_additive_family_totals(campaign) -> None:
         if item["logical_attribution"] == "exclusive"
     ]
     assert exclusive and all(item["shares_path_with"] == [] for item in exclusive)
+
+
+# ---------------------------------------------------------------------------
+# IR15-1 / IR16-5 - the retained representation is reauthenticated under the lease
+# ---------------------------------------------------------------------------
+
+
+def _reclaim(campaign, identity, *, apply: bool = True):
+    return storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="reclaim", archive_identity=identity, apply=apply),
+    )
+
+
+def _restore(campaign, identity, *, apply: bool = True):
+    return storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="restore", archive_identity=identity, apply=apply),
+    )
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["blob_removed", "blob_corrupted", "manifest_removed", "catalog_corrupted"],
+)
+def test_reclaim_refuses_when_the_cold_representation_changed_after_planning(
+    campaign, damage: str
+) -> None:
+    """A plan authenticated an archive; apply must authenticate it again.
+
+    Between planning and apply the archive can disappear or rot. Deleting hot
+    bytes on the strength of the older reading would destroy the only remaining
+    copy, so the exact representation the plan bound is re-read and
+    re-authenticated inside the protected window, and a mismatch removes nothing.
+    """
+
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    original = checkpoint.read_bytes()
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    plane = campaign.control_plane
+
+    # The plan is built here, against a healthy representation.
+    context = campaign.context()
+    policy = resolve_storage_policy({}, action=ACTION_RESTORE, apply=True)
+    snapshot = context.snapshot(policy, certify=True)
+    actions, manifest, _refusals = build_reclaim_plan_actions(
+        workspace=Path(context.paths.workspace),
+        control_plane=plane,
+        snapshot=snapshot,
+        policy=policy,
+        archive_identity=identity,
+    )
+    assert actions, "nothing was planned for reclamation"
+    authority = bind_representation_authority(plane, manifest)
+    plan = build_storage_plan(snapshot, policy, actions)
+
+    entry = plane.read_catalog_entry(identity)
+    blob = plane.resolve_archive_blob(str(entry["archive_locator"]))
+    manifest_path = plane.manifest_path(identity)
+    catalog_path = plane.catalog_entry_path(identity)
+    if damage == "blob_removed":
+        blob.unlink()
+    elif damage == "blob_corrupted":
+        blob.write_bytes(b"corrupt" * 64)
+    elif damage == "manifest_removed":
+        manifest_path.unlink()
+    else:
+        payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+        payload["archive_sha256"] = "0" * 64
+        catalog_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    execution = context.executor(policy).run(
+        plan,
+        trigger="test:reclaim-corruption",
+        synchronization=synchronization_for(plan, snapshot),
+        engine=archive_reclaim_engine(
+            workspace=Path(context.paths.workspace),
+            control_plane=context.consequential_plane(policy),
+            policy=policy,
+            boundary=context.boundary,
+            manifest=manifest,
+            authority=authority,
+        ),
+    )
+    assert execution.status == "refused", execution.detail
+    assert not execution.completed
+    assert checkpoint.read_bytes() == original
+    if catalog_path.is_file():
+        refreshed = json.loads(catalog_path.read_text(encoding="utf-8"))
+        assert refreshed.get("hot_reclamation_state") != "complete"
+
+
+def test_restore_installs_nothing_when_the_representation_fails_reauthentication(
+    campaign,
+) -> None:
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    result = _create_archive(campaign)
+    identity = result["archive_identity"]
+    assert not checkpoint.exists()
+    plane = campaign.control_plane
+
+    context = campaign.context()
+    policy = resolve_storage_policy({}, action=ACTION_RESTORE, apply=True)
+    snapshot = context.snapshot(policy, certify=True)
+    actions, manifest, conflicts = build_restore_plan_actions(
+        workspace=Path(context.paths.workspace),
+        control_plane=plane,
+        snapshot=snapshot,
+        policy=policy,
+        archive_identity=identity,
+        boundary=context.boundary,
+    )
+    assert actions and not conflicts
+    authority = bind_representation_authority(plane, manifest)
+    plan = build_storage_plan(snapshot, policy, actions)
+
+    entry = plane.read_catalog_entry(identity)
+    plane.resolve_archive_blob(str(entry["archive_locator"])).write_bytes(b"rot")
+
+    execution = context.executor(policy).run(
+        plan,
+        trigger="test:restore-corruption",
+        synchronization=synchronization_for(plan, snapshot),
+        engine=archive_restore_engine(
+            workspace=Path(context.paths.workspace),
+            control_plane=context.consequential_plane(policy),
+            policy=policy,
+            boundary=context.boundary,
+            manifest=manifest,
+            authority=authority,
+        ),
+    )
+    assert execution.status == "refused", execution.detail
+    assert not checkpoint.exists(), "a failed reauthentication still installed bytes"
+    journal = read_restore_journal(plane, identity)
+    assert journal is None or journal.get("state") != "terminal"
+
+
+def test_a_repaired_representation_replans_and_reclaims_normally(campaign) -> None:
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    result = _create_archive(campaign, keep_hot=True)
+    identity = result["archive_identity"]
+    plane = campaign.control_plane
+    blob = plane.resolve_archive_blob(str(plane.read_catalog_entry(identity)["archive_locator"]))
+    saved = blob.read_bytes()
+    blob.write_bytes(b"rot")
+    with pytest.raises((StorageArchiveError, StorageControlPlaneError)):
+        _reclaim(campaign, identity)
+    assert checkpoint.is_file()
+
+    blob.write_bytes(saved)
+    payload = _reclaim(campaign, identity)
+    assert payload["execution"]["status"] == "complete", payload["execution"]["detail"]
+    assert not checkpoint.exists()
+
+
+# ---------------------------------------------------------------------------
+# IR15-3 - restore binds the exact parent-chain filesystem identity
+# ---------------------------------------------------------------------------
+
+
+def _restore_plan(campaign, identity, policy):
+    context = campaign.context()
+    snapshot = context.snapshot(policy, certify=True)
+    actions, manifest, conflicts = build_restore_plan_actions(
+        workspace=Path(context.paths.workspace),
+        control_plane=campaign.control_plane,
+        snapshot=snapshot,
+        policy=policy,
+        archive_identity=identity,
+        boundary=context.boundary,
+    )
+    return context, snapshot, actions, manifest, conflicts
+
+
+@pytest.mark.parametrize("depth", [0, 1])
+def test_a_same_type_parent_inode_swap_refuses_the_restore(campaign, depth: int) -> None:
+    """A pathname is not a directory.
+
+    Replacing a planned parent with a *different* ordinary directory at the same
+    path - same mode, same type, not a symlink, same device - would otherwise
+    pass every check and quietly redirect the installation into a container
+    nobody authorized.
+    """
+
+    import shutil as _shutil
+
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    result = _create_archive(campaign)
+    identity = result["archive_identity"]
+    assert not checkpoint.exists()
+
+    policy = resolve_storage_policy({}, action=ACTION_RESTORE, apply=True)
+    context, snapshot, actions, manifest, conflicts = _restore_plan(
+        campaign, identity, policy
+    )
+    assert actions and not conflicts
+    plan = build_storage_plan(snapshot, policy, actions)
+
+    victim = run_root if depth else checkpoint.parent
+    if not victim.is_dir():
+        victim.mkdir(parents=True)
+    mode = stat.S_IMODE(victim.lstat().st_mode)
+    before = victim.lstat().st_ino
+    # Move the original aside first so the replacement is forced onto a *new*
+    # inode; recreating a same-named directory often reuses the old one, which
+    # would make the fixture prove nothing.
+    displaced = victim.parent / f"{victim.name}.displaced"
+    victim.rename(displaced)
+    victim.mkdir()
+    os.chmod(victim, mode)
+    assert victim.lstat().st_ino != before, "the fixture failed to swap the inode"
+    _shutil.rmtree(displaced)
+
+    execution = context.executor(policy).run(
+        plan,
+        trigger="test:parent-swap",
+        synchronization=synchronization_for(plan, snapshot),
+        engine=archive_restore_engine(
+            workspace=Path(context.paths.workspace),
+            control_plane=context.consequential_plane(policy),
+            policy=policy,
+            boundary=context.boundary,
+            manifest=manifest,
+            authority=bind_representation_authority(campaign.control_plane, manifest),
+        ),
+    )
+    assert execution.status in ("refused", "partial"), execution.detail
+    assert not checkpoint.exists()
+    assert not any(victim.rglob("*")), "the replacement parent received installed bytes"
+
+
+def test_a_restore_created_parent_is_authenticated_by_its_own_chain(campaign) -> None:
+    import shutil as _shutil
+
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    original = checkpoint.read_bytes()
+    result = _create_archive(campaign)
+    _shutil.rmtree(run_root)
+
+    payload = _restore(campaign, result["archive_identity"])
+    assert payload["restore"]["status"] == "complete"
+    assert payload["restore"]["created_containers"] >= 1
+    assert checkpoint.read_bytes() == original
+
+
+# ---------------------------------------------------------------------------
+# IR15-6 / IR16-2 - observation is enforced, invocation-wide
+# ---------------------------------------------------------------------------
+
+
+def test_an_observational_store_refuses_every_write(campaign) -> None:
+    campaign.store.event("info", "fixture", "durable")
+    campaign.store.close()
+    before = campaign.paths.state_db.read_bytes()
+
+    observational = cli.CampaignStore(campaign.paths.state_db, create=False)
+    try:
+        assert observational.read_only is True
+        assert observational.stage("doctor") is not None
+        for call in (
+            lambda: observational.set_meta("k", "v"),
+            lambda: observational.event("info", "s", "m"),
+            lambda: observational.set_stage("doctor", cli.StageState.COMPLETE, "m"),
+            lambda: observational.delete_record("nothing"),
+        ):
+            with pytest.raises(cli.CampaignCliError, match="observation only"):
+                call()
+        with pytest.raises(cli.CampaignCliError, match="observation only"):
+            with observational.exclusive_transaction():
+                pass
+    finally:
+        observational.close()
+    assert campaign.paths.state_db.read_bytes() == before
+
+
+def test_a_read_only_store_cannot_write_even_through_raw_sql(campaign) -> None:
+    """SQLite itself refuses, not just the owner's own guards."""
+
+    import sqlite3
+
+    campaign.store.close()
+    observational = cli.CampaignStore(campaign.paths.state_db, create=False)
+    try:
+        connection = observational._connect()
+        with pytest.raises(sqlite3.OperationalError):
+            connection.execute(
+                "INSERT INTO events(timestamp_utc,level,stage,message) "
+                "VALUES ('t','info','s','m')"
+            )
+    finally:
+        observational.close()
+
+
+def test_observation_reaches_a_worker_thread_that_opens_its_own_store(
+    campaign,
+) -> None:
+    """IR16-2: a nested helper cannot escape observation by spawning a worker.
+
+    The capability is invocation-scoped, so a worker started inside an
+    observational command opens the campaign store read-only even when it calls
+    the ordinary default-creating constructor.
+    """
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    from mdstats.training_data._observation import ObservationalThreadPoolExecutor
+
+    campaign.store.close()
+
+    def _open_and_report() -> bool:
+        store = cli.CampaignStore(campaign.paths.state_db)
+        try:
+            return bool(store.read_only)
+        finally:
+            store.close()
+
+    with cli.observational_campaign_state():
+        assert _open_and_report() is True
+        with ObservationalThreadPoolExecutor(max_workers=2) as pool:
+            assert list(pool.map(lambda _index: _open_and_report(), range(2))) == [
+                True,
+                True,
+            ]
+        # A plain pool does *not* inherit the context, which is exactly why the
+        # storage fan-out uses the propagating one.
+        with ThreadPoolExecutor(max_workers=1) as plain:
+            assert plain.submit(_open_and_report).result() is False
+
+
+def test_an_observational_hash_writes_no_receipt_from_a_worker_thread(
+    campaign, tmp_path: Path
+) -> None:
+    from mdstats.training_data import _common
+    from mdstats.training_data.storage.durability import parallel_digests
+
+    receipts = campaign.paths.internal / "hash-receipts.sqlite3"
+    _common.configure_sha256_receipt_store(receipts)
+    from mdstats.training_data.storage.durability import (
+        RECEIPT_ACCELERATION_MINIMUM_BYTES,
+    )
+
+    targets = []
+    for index in range(2):
+        item = tmp_path / f"payload-{index}.bin"
+        item.write_bytes(bytes([index]) * (RECEIPT_ACCELERATION_MINIMUM_BYTES + 1))
+        targets.append(str(item))
+    _common._SHA256_HASHED_IN_PROCESS.clear()
+    before = receipts.read_bytes() if receipts.is_file() else b""
+
+    with cli.observational_campaign_state():
+        digests = parallel_digests(targets, workers=2, accelerated=True)
+    assert len(digests) == 2
+    after = receipts.read_bytes() if receipts.is_file() else b""
+    assert after == before, "an observational hash wrote an acceleration receipt"
+
+    # The very same call outside observation is free to accelerate.
+    _common._SHA256_HASHED_IN_PROCESS.clear()
+    parallel_digests(targets, workers=2, accelerated=True)
+    assert receipts.is_file()
+
+
+def test_an_observational_command_does_not_disable_a_concurrent_writer(
+    campaign, tmp_path: Path
+) -> None:
+    """IR16-2: observation is scoped to its own context, not to the process."""
+
+    import threading
+
+    from mdstats.training_data import _common
+    from mdstats.training_data.storage.durability import parallel_digests
+
+    receipts = campaign.paths.internal / "hash-receipts.sqlite3"
+    _common.configure_sha256_receipt_store(receipts)
+    from mdstats.training_data.storage.durability import (
+        RECEIPT_ACCELERATION_MINIMUM_BYTES,
+    )
+
+    payload = tmp_path / "writer.bin"
+    payload.write_bytes(b"w" * (RECEIPT_ACCELERATION_MINIMUM_BYTES + 1))
+    observing = threading.Event()
+    release = threading.Event()
+
+    def _observational_worker() -> None:
+        with cli.observational_campaign_state():
+            observing.set()
+            release.wait(30.0)
+
+    worker = threading.Thread(target=_observational_worker, daemon=True)
+    worker.start()
+    try:
+        assert observing.wait(30.0)
+        _common._SHA256_HASHED_IN_PROCESS.clear()
+        parallel_digests([str(payload)], workers=1, accelerated=True)
+        assert receipts.is_file(), (
+            "an observational command in another thread disabled this writer's cache"
+        )
+        assert _common._SHA256_RECEIPT_PATH is not None
+    finally:
+        release.set()
+        worker.join(30.0)
+
+
+# ---------------------------------------------------------------------------
+# IR15-7 - dedup replacement is directory-entry durable before completion
+# ---------------------------------------------------------------------------
+
+
+def _dedup_pair(campaign) -> tuple[Path, Path]:
+    run_root = campaign.historical_run(finish=False)
+    first = run_root / "checkpoints" / "dup-a.pt"
+    second = run_root / "checkpoints" / "dup-b.pt"
+    payload = b"identical" * 512
+    for item in (first, second):
+        item.write_bytes(payload)
+        os.chmod(item, 0o644)
+    campaign.finish_run(run_root)
+    return first, second
+
+
+def test_a_dedup_durability_failure_is_never_audited_complete(campaign) -> None:
+    from mdstats.training_data.storage.dedup import (
+        BOUNDARY_BEFORE_DIRECTORY_DURABILITY,
+    )
+
+    first, second = _dedup_pair(campaign)
+
+    def failpoint(name: str) -> None:
+        if name == BOUNDARY_BEFORE_DIRECTORY_DURABILITY:
+            raise RuntimeError("injected directory-entry durability failure")
+
+    with pytest.raises(RuntimeError, match="durability failure"):
+        storage_commands.storage_deduplicate(
+            campaign.context(), _args(apply=True, failpoint=failpoint)
+        )
+    audit = campaign.control_plane.read_audit()
+    assert audit
+    assert all(item.get("status") != "complete" for item in audit)
+    assert any(item.get("status") == "partial" for item in audit)
+    assert not any(
+        item.parent.name == "checkpoints" and item.name.startswith(".")
+        for item in (first.parent).iterdir()
+    ), "a temporary dedup link survived the failure"
+
+    # Retry from the observed filesystem state completes idempotently.
+    payload = storage_commands.storage_deduplicate(
+        campaign.context(), _args(apply=True)
+    )
+    assert payload["execution"]["status"] == "complete"
+    assert first.stat().st_ino == second.stat().st_ino
+
+
+def test_every_dedup_replacement_is_followed_by_directory_durability() -> None:
+    """Structural: no `os.replace` publication skips the durability boundary."""
+
+    import ast
+
+    source = Path(cli.__file__).parent.joinpath("storage", "dedup.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    replaces = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "replace"
+    ]
+    assert replaces, "the dedup publication path disappeared"
+    assert source.count("fsync_parent_directory(") >= len(replaces)
+
+
+# ---------------------------------------------------------------------------
+# IR16-6 - audit publication failure is explicit, never ordinary success
+# ---------------------------------------------------------------------------
+
+
+def _break_audit(campaign, monkeypatch) -> None:
+    def _failing_append(_payload):
+        raise OSError("injected audit publication failure")
+
+    monkeypatch.setattr(
+        type(campaign.control_plane), "append_audit", lambda self, payload: _failing_append(payload)
+    )
+
+
+def test_a_failed_audit_publication_is_reported_as_degraded_not_success(
+    campaign, monkeypatch
+) -> None:
+    """The mutation stands; the claim that it was audited does not."""
+
+    campaign.historical_run()
+    for _index in range(150):
+        campaign.store.event("info", "fixture", "x" * 32)
+    _break_audit(campaign, monkeypatch)
+
+    cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 100}}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    payload = storage_commands.storage_cleanup(context, _args(tier="safe", apply=True))
+    execution = payload["execution"]
+    assert execution["status"].endswith("_unaudited"), execution["status"]
+    assert execution["status"] != "complete"
+    assert execution["audit_published"] is False
+    assert "injected audit publication failure" in execution["audit_failure"]
+    # The mutation itself is not rolled back and not misreported.
+    assert any(
+        item["action"] == "prune_campaign_events" for item in execution["completed_actions"]
+    )
+    assert campaign.control_plane.read_audit() == ()
+
+
+@pytest.mark.parametrize("family", ["archive", "restore", "deduplicate"])
+def test_every_consequential_family_reports_its_audit_failure(
+    campaign, monkeypatch, family: str
+) -> None:
+    if family == "deduplicate":
+        first, second = _dedup_pair(campaign)
+        _break_audit(campaign, monkeypatch)
+        payload = storage_commands.storage_deduplicate(
+            campaign.context(), _args(apply=True)
+        )
+        assert first.stat().st_ino == second.stat().st_ino
+    elif family == "archive":
+        campaign.historical_run()
+        _break_audit(campaign, monkeypatch)
+        payload = storage_commands.storage_archive(
+            campaign.context(),
+            _args(archive_command="create", root=None, apply=True, keep_hot=True),
+        )
+    else:
+        run_root = campaign.historical_run()
+        checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+        result = _create_archive(campaign)
+        assert not checkpoint.exists()
+        _break_audit(campaign, monkeypatch)
+        payload = _restore(campaign, result["archive_identity"])
+        assert checkpoint.is_file()
+
+    execution = payload["execution"]
+    assert execution["audit_published"] is False
+    assert execution["status"].endswith("_unaudited")
+    assert "injected audit publication failure" in execution["audit_failure"]
+
+
+def test_a_successful_operation_publishes_exactly_one_audited_record(campaign) -> None:
+    campaign.historical_run()
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="create", root=None, apply=True, keep_hot=True),
+    )
+    execution = payload["execution"]
+    assert execution["status"] == "complete"
+    assert execution["audit_published"] is True
+    assert execution["audit_failure"] == ""
+    assert len(campaign.control_plane.read_audit()) == 1
+
+
+def test_every_retained_archive_writer_is_beneath_the_storage_lease() -> None:
+    """IR16-5: account for every product path that changes retained archive state.
+
+    Reauthenticating a representation immediately before consuming it is only
+    race-closed if nothing supported can replace that representation in the
+    meantime, so this enumerates the writers rather than asserting it once.
+    """
+
+    import ast
+
+    storage = Path(cli.__file__).parent / "storage"
+    control_plane_source = (storage / "control_plane.py").read_text(encoding="utf-8")
+    tree = ast.parse(control_plane_source)
+
+    def _writes_retained_state(node: ast.FunctionDef) -> bool:
+        dumped = ast.dump(node)
+        touches = "catalog_root" in dumped or "archive_root" in dumped
+        publishes = (
+            "durable_publish_json" in dumped
+            or "durable_publish_bytes" in dumped
+            or "unlink" in dumped
+            or "rmtree" in dumped
+        )
+        return touches and publishes
+
+    writers = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and _writes_retained_state(node)
+    ]
+    assert writers, "the control plane no longer has a retained-archive writer"
+    for node in writers:
+        assert "require_operation_lease" in ast.dump(node), node.name
+
+    # The archive engine publishes the blob and manifest itself.
+    archive_source = (storage / "archive.py").read_text(encoding="utf-8")
+    assert 'require_operation_lease("publish an archive blob/manifest")' in archive_source
+    publication = archive_source.index("require_operation_lease(\"publish an archive")
+    for marker in ("_publish_archive_blob(", "durable_publish_json(manifest_path"):
+        assert archive_source.index(marker) > publication, marker
+
+    # Read-only discovery deliberately needs no lease.
+    for name in ("iter_catalog_entries", "read_catalog_entry", "uncataloged_archive_residue"):
+        node = next(
+            item
+            for item in ast.walk(tree)
+            if isinstance(item, ast.FunctionDef) and item.name == name
+        )
+        assert "require_operation_lease" not in ast.dump(node), name
+
+
+def test_an_audit_failure_while_recording_a_partial_operation_fabricates_nothing(
+    campaign, monkeypatch
+) -> None:
+    """The worst case: an interruption whose own evidence cannot be written.
+
+    Nothing is rolled back and nothing is invented. The next fresh inventory has
+    to be able to re-plan from what is actually on disk, not from a record that
+    does not exist.
+    """
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.executor import synchronization_for
+
+    campaign.historical_run(generation=7, name="run-a")
+    campaign.historical_run(generation=7, name="run-b")
+    campaign.historical_run(generation=7, name="run-c")
+
+    context = campaign.context()
+    policy = resolve_storage_policy({}, action=ACTION_ARCHIVE, apply=True)
+    context.consequential_plane(policy)
+    snapshot = context.snapshot(policy, certify=True)
+    selected = [item for item in archive_candidates(snapshot) if item.eligible]
+    assert len(selected) >= 2
+    bundle = build_archive_plan_actions(
+        workspace=Path(context.paths.workspace),
+        snapshot=snapshot,
+        selected=selected,
+        boundary=context.boundary,
+        policy=policy,
+        reclaim_hot=True,
+    )
+    plan = build_storage_plan(snapshot, policy, bundle.actions)
+
+    _break_audit(campaign, monkeypatch)
+    from mdstats.training_data.storage import archive as archive_mod
+
+    calls = {"n": 0}
+    real_unlink = archive_mod.durable_unlink
+
+    def failing_unlink(path: Path) -> None:
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise RuntimeError("injected interruption")
+        real_unlink(path)
+
+    monkeypatch.setattr(archive_mod, "durable_unlink", failing_unlink)
+    del executor_mod
+
+    with pytest.raises(RuntimeError, match="injected interruption"):
+        context.executor(policy).run(
+            plan,
+            trigger="test:partial-unaudited",
+            synchronization=synchronization_for(plan, snapshot),
+            engine=archive_create_engine(
+                workspace=Path(context.paths.workspace),
+                control_plane=context.control_plane,
+                policy=policy,
+                boundary=context.boundary,
+                bundle=bundle,
+                reclaim_hot=True,
+            ),
+        )
+    assert campaign.control_plane.read_audit() == ()
+
+    # A fresh inventory re-plans from the actual filesystem, not from evidence.
+    monkeypatch.undo()
+    fresh = campaign.context().snapshot(policy, certify=True)
+    assert fresh is not None
+    payload = storage_commands.storage_report(campaign.context(), _args())
+    assert payload["destructive_actions_performed"] is False

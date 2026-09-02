@@ -214,6 +214,15 @@ complement is that every non-apply path is genuinely observational: it creates
 no workspace, no state database, no generation root, no control plane, no
 acceleration receipt, and no report artifact.
 
+Observation is an invocation-scoped capability carried by a context variable,
+not a flag on the first store a command opens. It reaches nested owner helpers
+and the worker threads the storage fan-out spawns, so no helper can escape it by
+calling an ordinary default-creating constructor; and it is enforced as well as
+declared, because an observational campaign-state open is a read-only SQLite
+connection whose write paths refuse before committing. Nothing process-global is
+toggled to achieve it, so a concurrent consequential operation keeps its own
+writable store and receipt behavior.
+
 Every consequential mutation follows one path:
 
 ```text
@@ -240,6 +249,17 @@ and that any storage mutation acquires across revalidation and mutation. The
 storage-operation lease serializes storage against storage only, and is never
 mistaken for serialization against the owners.
 
+**Completion is proved by a retained anchor.** When a post-selection run reaches
+its terminal record, P5 freezes a small create-once completion anchor recording
+that terminal publication and the exact member set. From then on the anchor -
+not the presence of the terminal evidence file - is what certifies the run. The
+distinction matters because the terminal evidence is an ordinary archive member:
+an interrupted cold reclamation may already have moved it, and a certification
+that needed it would leave that reclamation unable to finish. The anchor is owner
+infrastructure, never part of the reclaimable member set, and republishing a
+different member set for the same run is an integrity conflict rather than an
+update.
+
 **Containment is not ownership.** A directory owner view declares one of two
 coverage semantics. A *closed subtree* is one whose real owner certifies, from
 its own authenticated record or exclusive-writer contract, that every traversable
@@ -257,9 +277,16 @@ authorized root is a further ownership boundary and is never traversed.
 **Archive is representation, not resolution.** Hot bytes are replaceable only
 for owner-declared historical bulk with no current or restartable hot
 dependency; no P1-P7 loader is given an implicit cold-read fallback. Archive
-verification and restore bound member paths, member types, member count, total
-expansion, per-member size while streaming, and decompression amplification
-before writing anything, and a manifest carries an identity-owned relative
+A reclaim or restore additionally binds the exact retained representation it
+intends to consume and re-authenticates that catalog entry, manifest, and blob
+*inside* the protected consequential window, before removing a hot member or
+installing a restored one; every supported writer of retained archive control
+state takes the same storage-operation lease, which is what makes that check
+race-closed. A restore also binds the `(device, inode, type)` of every existing
+parent it installs through, so a same-path directory swap refuses rather than
+redirecting the installation. Archive verification and restore bound member
+paths, member types, member count, total expansion, per-member size while
+streaming, and decompression amplification before writing anything, and a manifest carries an identity-owned relative
 locator resolved only inside the storage-owned archive root. A requested root may
 narrow a selection into an eligible artifact but never widen it to an ancestor,
 an archive identity binds its representation (codec, level, serialization) and
@@ -283,10 +310,16 @@ labelled unknown rather than guessed and `--deep` is the explicit opt-in to exac
 recursive physical accounting. The census is complete: an unrecognized workspace
 tree is reported as ambiguous and retained rather than omitted or pooled.
 
-**Campaign-state maintenance is a planned action.** Bounding diagnostic events
-and rewriting the state database appear in the plan as their own action, gated on
-SQLite's own free-space accounting and admitted for the temporary copy `VACUUM`
-makes; a refused or empty cleanup can never carry one along.
+**Campaign-state maintenance is two planned actions.** Bounding diagnostic
+events and rewriting the state database are separate authorities. Excess events
+authorize pruning only - a small transaction that takes the write lock up front
+and so serializes against any other campaign writer - while a rewrite is planned
+only when a fresh measurement already satisfies the configured reclaimable
+threshold, and re-establishes that threshold and its temporary-space admission
+again at execution. Free pages that pruning created do not widen the prune into a
+rewrite; that belongs to the next fresh plan. A refused or empty cleanup can
+never carry either along, and results distinguish `events_pruned` from
+`vacuum_performed`.
 
 Storage owns durable state of its own - an identity-keyed archive catalog,
 manifests and blobs, restore journals, a bounded execution audit, and

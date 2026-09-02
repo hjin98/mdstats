@@ -345,7 +345,9 @@ enabled = true
 # race a reference that has not landed yet.
 stale_age_hours = 6.0
 # Bound on retained diagnostic campaign-store events; scientific records and the
-# SHA-256 receipt cache have separate retention.
+# SHA-256 receipt cache have separate retention. Exceeding this bound authorizes
+# pruning only: rewriting the state database is a separate, independently
+# benefit-gated storage action.
 maximum_event_records = 10000
 
 [replay]

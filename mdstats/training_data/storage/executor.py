@@ -42,7 +42,7 @@ from .inventory import StorageInventorySnapshot
 from .lease import OwnerSynchronization, owner_mutation_barrier, storage_operation_lease
 from .plan import (
     ACTION_EVICT_CACHE,
-    ACTION_MAINTAIN_STATE,
+    MAINTENANCE_ACTIONS,
     ACTION_REMOVE,
     EXECUTOR_ACTIONS,
     StoragePlan,
@@ -57,6 +57,21 @@ STATUS_PLANNED = "planned"
 STATUS_COMPLETE = "complete"
 STATUS_PARTIAL = "partial"
 STATUS_REFUSED = "refused"
+
+#: Suffix marking an outcome whose durable operational evidence could not be
+#: published.
+#:
+#: The audit is diagnostic evidence, not scientific authority, so a failed audit
+#: append never rolls back a mutation that already happened and never fails the
+#: science.  But it must not be reported as an ordinary fully audited success
+#: either: a caller that checks for ``complete`` would otherwise be told a
+#: durable record exists when none does.  The status itself carries the
+#: difference so no caller has to parse a detail string to find it.
+UNAUDITED_SUFFIX = "_unaudited"
+
+
+def unaudited_status(status: str) -> str:
+    return status if status.endswith(UNAUDITED_SUFFIX) else f"{status}{UNAUDITED_SUFFIX}"
 
 
 class StorageExecutionError(RuntimeError):
@@ -83,6 +98,10 @@ class StorageExecutionResult:
     restored_bytes: int = 0
     detail: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
+    #: Whether this operation's durable audit record was actually published.
+    audit_published: bool = False
+    #: Why publication failed, when it did.
+    audit_failure: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -98,6 +117,8 @@ class StorageExecutionResult:
             "created_bytes": int(self.created_bytes),
             "restored_bytes": int(self.restored_bytes),
             "detail": self.detail,
+            "audit_published": bool(self.audit_published),
+            "audit_failure": self.audit_failure,
             "grants_scientific_authority": False,
             **({"result": self.payload} if self.payload else {}),
         }
@@ -209,12 +230,22 @@ class StorageExecutor:
             self._audit(result, trigger=trigger)
             return result
 
-        result.status = STATUS_COMPLETE if not result.refused else STATUS_PARTIAL
-        result.detail = result.detail or (
-            "every planned action reached a verified terminal disposition"
-            if result.status == STATUS_COMPLETE
-            else "some actions were refused at mutation time; the execution is not complete"
-        )
+        if not result.refused:
+            result.status = STATUS_COMPLETE
+            default_detail = "every planned action reached a verified terminal disposition"
+        elif not result.completed:
+            # Nothing happened at all. Reporting that as "partial" would imply a
+            # mutation this operation never made.
+            result.status = STATUS_REFUSED
+            default_detail = (
+                "every planned action was refused at mutation time; nothing was changed"
+            )
+        else:
+            result.status = STATUS_PARTIAL
+            default_detail = (
+                "some actions were refused at mutation time; the execution is not complete"
+            )
+        result.detail = result.detail or default_detail
         self._audit(result, trigger=trigger)
         self.control_plane.prune_audit(keep=self.policy.audit_retention_records)
         return result
@@ -226,7 +257,7 @@ class StorageExecutor:
         result: StorageExecutionResult,
     ) -> None:
         for action in plan.actions:
-            if action.action == ACTION_MAINTAIN_STATE:
+            if action.action in MAINTENANCE_ACTIONS:
                 # Owner maintenance is realized by its own engine; a plan that
                 # reaches the default executor with one is a construction error.
                 result.refused.append(
@@ -274,10 +305,20 @@ class StorageExecutor:
                     **result.to_dict(),
                 }
             )
-        except Exception as exc:  # pragma: no cover - surfaced, never swallowed
+        except Exception as exc:
+            # Never rolled back, never fabricated, and never reported as an
+            # ordinary success: the status itself becomes an explicitly degraded
+            # one so a caller cannot mistake this for a fully audited operation.
+            result.audit_published = False
+            result.audit_failure = str(exc)
+            result.status = unaudited_status(result.status)
             result.detail = (
-                f"{result.detail} (durable audit write failed: {exc})".strip()
-            )
+                f"{result.detail} (the mutation stands, but its durable audit "
+                f"record could not be published: {exc})"
+            ).strip()
+            return
+        result.audit_published = True
+        result.audit_failure = ""
 
 
 def remove_durably(path: Path) -> bool:
@@ -340,22 +381,29 @@ def synchronization_for(
     if snapshot.current_generation is not None:
         generations.add(int(snapshot.current_generation))
 
-    by_path = {view.path: view for view in snapshot.views}
     for action in plan.actions:
-        view = snapshot.view(action.artifact_id)
-        if view is not None and view.generation is not None:
-            generations.add(int(view.generation))
-        for part in action.path.parts:
-            if part.startswith("g") and part[1:].isdigit():
-                generations.add(int(part[1:]))
-        run_root = _post_selection_run_root(action.path)
-        if run_root is not None:
-            run_roots.add(run_root)
-        if view is not None:
+        # An action's own target, plus every other object it makes authoritative:
+        # a dedup link's canonical source lives in some other owner's run and is
+        # never written by the action, yet its inode becomes the bytes behind a
+        # second name, so that owner has to be fenced too.
+        artifact_ids = (action.artifact_id, *action.synchronization_artifact_ids)
+        paths = (action.path, *(Path(item) for item in action.synchronization_paths))
+        for artifact_id in artifact_ids:
+            view = snapshot.view(artifact_id) if artifact_id else None
+            if view is None:
+                continue
+            if view.generation is not None:
+                generations.add(int(view.generation))
             candidate = _post_selection_run_root(view.path)
             if candidate is not None:
                 run_roots.add(candidate)
-    del by_path
+        for path in paths:
+            for part in path.parts:
+                if part.startswith("g") and part[1:].isdigit():
+                    generations.add(int(part[1:]))
+            run_root = _post_selection_run_root(path)
+            if run_root is not None:
+                run_roots.add(run_root)
     return OwnerSynchronization.of(generations, run_roots)
 
 
