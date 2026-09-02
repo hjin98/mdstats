@@ -93,6 +93,8 @@ from mdstats.training_data.storage.lease import (
     storage_operation_lease,
 )
 from mdstats.training_data.storage.owners import (
+    CertifiedNode,
+    observed_node_kind,
     OwnerArtifactView,
     SubtreeCoverage,
     validate_owner_graph,
@@ -1015,9 +1017,11 @@ def test_no_consequential_recursive_path_equates_containment_with_ownership() ->
     for module in ("archive.py", "dedup.py", "commands.py"):
         text = (root / module).read_text(encoding="utf-8")
         assert "authorized_members" in text, module
-    # The only rmtree in the consequential path is the certified-subtree helper.
+    # The only rmtree *call* in the consequential path is the certified-subtree
+    # helper, and it is guarded by the platform's own symlink-safety promise.
     executor = (root / "executor.py").read_text(encoding="utf-8")
-    assert executor.count("shutil.rmtree") == 1
+    assert executor.count("shutil.rmtree(") == 1
+    assert "shutil.rmtree.avoids_symlink_attacks" in executor
     assert "def remove_certified_subtree" in executor
 
 
@@ -3207,24 +3211,30 @@ def test_the_bounded_report_never_reads_the_full_member_manifest(campaign) -> No
 
     opened: list[str] = []
     real_open = Path.open
+    real_read_text = Path.read_text
+    real_os_open = os.open
 
     def recording_open(self, *args, **kwargs):
         opened.append(str(self))
         return real_open(self, *args, **kwargs)
 
-    real_read_text = Path.read_text
-
     def recording_read_text(self, *args, **kwargs):
         opened.append(str(self))
         return real_read_text(self, *args, **kwargs)
 
+    def recording_os_open(path, *args, **kwargs):
+        opened.append(str(path))
+        return real_os_open(path, *args, **kwargs)
+
     Path.open = recording_open
     Path.read_text = recording_read_text
+    os.open = recording_os_open
     try:
         payload = storage_commands.storage_report(campaign.context(), _args())
     finally:
         Path.open = real_open
         Path.read_text = real_read_text
+        os.open = real_os_open
     assert str(topology) not in opened, "the bounded report read the full manifest"
     assert str(anchor) in opened, "the bounded report skipped the completion anchor"
     assert payload["accounting_mode"] == "bounded_owner_metadata"
@@ -3715,3 +3725,281 @@ def test_cross_device_dedup_staging_refuses_instead_of_falling_back(
     assert not [item for item in run_root.rglob(".*dedup*")]
     certified, why = certify_closed_post_selection_run_root(run_root)
     assert certified, why
+
+
+# ---------------------------------------------------------------------------
+# R19-A - typed, no-follow closed-subtree authority
+# ---------------------------------------------------------------------------
+
+
+def _p5_view(campaign, *, certify: bool = True):
+    return campaign.snapshot(certify=certify).view("p5:run:g7:run-a")
+
+
+@pytest.mark.parametrize(
+    "substitution", ["file_to_directory", "directory_to_file", "symlink", "fifo"]
+)
+def test_a_same_name_node_substitution_is_never_the_node_the_owner_certified(
+    campaign, substitution: str
+) -> None:
+    """A path string is not a node. Kind is part of the owner's proof."""
+
+    run_root = campaign.historical_run(finish=False)
+    owned_dir = run_root / "checkpoints" / "owned-dir"
+    owned_dir.mkdir()
+    (owned_dir / "inner.pt").write_bytes(b"inner")
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    campaign.finish_run(run_root)
+    assert certify_closed_post_selection_run_root(run_root)[0]
+
+    if substitution == "file_to_directory":
+        checkpoint.unlink()
+        checkpoint.mkdir()
+        victim = checkpoint
+    elif substitution == "directory_to_file":
+        shutil.rmtree(owned_dir)
+        owned_dir.write_bytes(b"not a directory")
+        victim = owned_dir
+    elif substitution == "symlink":
+        checkpoint.unlink()
+        checkpoint.symlink_to(run_root / "run-evidence.json")
+        victim = checkpoint
+    else:
+        checkpoint.unlink()
+        os.mkfifo(checkpoint)
+        victim = checkpoint
+
+    certified, why = certify_closed_post_selection_run_root(run_root)
+    assert not certified, why
+    view = _p5_view(campaign)
+    assert view.archive_eligible is False
+    members, _refusals = campaign.snapshot().authorized_members(view)
+    assert all(str(item) != str(victim) for item in members)
+
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="create", root=None, apply=True, keep_hot=False),
+    )
+    assert payload["archive"] is None
+    assert observed_node_kind(victim) != "absent"
+
+
+def test_a_symlinked_completion_proof_grants_no_authority_and_is_not_followed(
+    campaign, tmp_path: Path
+) -> None:
+    """An owner proof that can be redirected is not a proof."""
+
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        RUN_COMPLETION_ANCHOR_FILENAME,
+        RUN_TOPOLOGY_MANIFEST_FILENAME,
+    )
+
+    run_root = campaign.historical_run()
+    for name in (RUN_COMPLETION_ANCHOR_FILENAME, RUN_TOPOLOGY_MANIFEST_FILENAME):
+        target = run_root / name
+        elsewhere = tmp_path / f"planted-{name}"
+        elsewhere.write_bytes(target.read_bytes())
+        saved = target.read_bytes()
+        target.unlink()
+        target.symlink_to(elsewhere)
+
+        certified, why = certify_closed_post_selection_run_root(run_root)
+        assert not certified, why
+        assert _p5_view(campaign).archive_eligible is False
+        assert _p5_view(campaign, certify=False).archive_eligible is False
+
+        target.unlink()
+        target.write_bytes(saved)
+    assert certify_closed_post_selection_run_root(run_root)[0]
+
+
+def test_recursive_deletion_is_symlink_attack_resistant() -> None:
+    """The platform's own guarantee, asserted rather than assumed."""
+
+    assert shutil.rmtree.avoids_symlink_attacks, (
+        "this platform cannot promise symlink-safe recursive deletion; the "
+        "storage executor must refuse recursive removal here"
+    )
+
+
+def test_every_consequential_engine_consumes_the_typed_owner_authority() -> None:
+    """Structural: no engine re-derives authority from bare path names."""
+
+    import ast
+
+    storage = Path(cli.__file__).parent / "storage"
+    inventory = (storage / "inventory.py").read_text(encoding="utf-8")
+    tree = ast.parse(inventory)
+    node = next(
+        item
+        for item in ast.walk(tree)
+        if isinstance(item, ast.FunctionDef) and item.name == "authorized_members"
+    )
+    dumped = ast.dump(node)
+    assert "certified_nodes" in dumped
+    assert "observed_node_kind" in dumped
+    assert "certified_members" not in dumped, (
+        "recursive authorization still reads the path-only display surface"
+    )
+    for name in ("archive.py", "dedup.py", "commands.py", "executor.py"):
+        source = (storage / name).read_text(encoding="utf-8")
+        assert "certified_members" not in source, name
+
+
+# ---------------------------------------------------------------------------
+# R19-C - the CampaignStore writer gate
+# ---------------------------------------------------------------------------
+
+
+def test_a_second_thread_blocks_on_the_writer_exclusion(campaign) -> None:
+    """Reentrancy belongs to the acquiring thread, never to the object."""
+
+    import threading
+
+    holding = threading.Event()
+    release = threading.Event()
+    order: list[str] = []
+
+    def holder() -> None:
+        with campaign.store.writer_exclusion():
+            holding.set()
+            release.wait(30.0)
+            order.append("holder")
+
+    def writer() -> None:
+        holding.wait(30.0)
+        campaign.store.event("info", "fixture", "second thread")
+        order.append("writer")
+
+    first = threading.Thread(target=holder, daemon=True)
+    second = threading.Thread(target=writer, daemon=True)
+    first.start()
+    assert holding.wait(30.0)
+    second.start()
+    time.sleep(0.5)
+    assert order == [], "a second thread wrote while the exclusion was held"
+    release.set()
+    first.join(30.0)
+    second.join(30.0)
+    assert order == ["holder", "writer"]
+
+
+def test_two_store_instances_for_one_database_share_the_gate(campaign) -> None:
+    import threading
+
+    other = cli.CampaignStore(campaign.paths.state_db)
+    try:
+        holding = threading.Event()
+        release = threading.Event()
+        order: list[str] = []
+
+        def writer() -> None:
+            holding.wait(30.0)
+            other.event("info", "fixture", "other instance")
+            order.append("writer")
+
+        thread = threading.Thread(target=writer, daemon=True)
+        with campaign.store.writer_exclusion():
+            holding.set()
+            thread.start()
+            time.sleep(0.5)
+            assert order == [], "a second store instance bypassed the shared gate"
+            release.set()
+        thread.join(30.0)
+        assert order == ["writer"]
+    finally:
+        other.close()
+
+
+def test_a_same_thread_nested_write_is_reentrant(campaign) -> None:
+    other = cli.CampaignStore(campaign.paths.state_db)
+    try:
+        with campaign.store.writer_exclusion():
+            campaign.store.event("info", "fixture", "nested through the same store")
+            other.event("info", "fixture", "nested through another instance")
+    finally:
+        other.close()
+    assert campaign.store.stage("doctor") is not None
+
+
+def test_an_observational_store_creates_no_writer_lock(campaign, tmp_path: Path) -> None:
+    """The read-only capability fails before *any* side effect, not after."""
+
+    import mdstats as _mdstats
+
+    campaign.store.close()
+    observational = cli.CampaignStore(campaign.paths.state_db, create=False)
+    lock_path = observational.writer_lock_path
+    lock_path.unlink(missing_ok=True)
+    before = _tree_signature(campaign.paths.workspace)
+    try:
+        with pytest.raises(cli.CampaignCliError, match="observation only"):
+            with observational.writer_exclusion():
+                pass
+        big = {"payload": "x" * (2 * 1024 * 1024)}
+        with pytest.raises(cli.CampaignCliError, match="observation only"):
+            observational.replace_records_atomically({"huge": big})
+    finally:
+        observational.close()
+    assert not lock_path.exists(), "an observational store created the writer lock"
+    assert _tree_signature(campaign.paths.workspace) == before
+    del _mdstats
+
+
+def test_every_campaign_store_write_site_joins_the_writer_boundary() -> None:
+    """Structural census, constructor included."""
+
+    import ast
+
+    source = Path(cli.__file__).read_text(encoding="utf-8")
+    store = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.ClassDef) and node.name == "CampaignStore"
+    )
+    mutating = ("INSERT", "UPDATE", "DELETE", "VACUUM", "CREATE TABLE", "executescript")
+    offenders: list[str] = []
+    for node in store.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        dumped = ast.dump(node)
+        if not any(marker in dumped for marker in mutating):
+            continue
+        if "writer_exclusion" in dumped or "exclusive_transaction" in dumped:
+            continue
+        offenders.append(node.name)
+    assert offenders == [], offenders
+    constructor = next(
+        node
+        for node in store.body
+        if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+    )
+    assert "writer_exclusion" in ast.dump(constructor)
+
+
+def test_the_writer_lock_is_campaign_store_owner_infrastructure(campaign) -> None:
+    campaign.store.event("info", "fixture", "materialize the lock")
+    snapshot = campaign.snapshot()
+    view = snapshot.view("campaign_store:writer_lock")
+    assert view is not None
+    assert view.path == campaign.store.writer_lock_path
+    assert view.safe_reclaimable is False
+    assert view.archive_eligible is False
+    assert view.hot_path_required is True
+
+    for candidates in (
+        safe_candidates(snapshot),
+        cache_candidates(snapshot),
+        archive_candidates(snapshot),
+    ):
+        assert all(
+            str(item.path) != str(view.path) or not item.eligible for item in candidates
+        )
+    payload = storage_commands.storage_report(campaign.context(), _args(top=500))
+    unknown = [
+        item
+        for item in payload["artifacts"]
+        if item["artifact_id"].startswith("unclassified:")
+        and "writer-lock" in item["path"]
+    ]
+    assert unknown == []

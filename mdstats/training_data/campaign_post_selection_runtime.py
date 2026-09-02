@@ -1179,29 +1179,55 @@ def _canonical_node_path(root: Path, path: Path) -> str | None:
     return relative.as_posix()
 
 
+def _observe_run_root_nodes(root: Path) -> list[dict[str, str]]:
+    """Every node present under one run root, classified without following links.
+
+    Symlinks and special objects are *observed*, not skipped. Dropping them here
+    would make a symlink substituted at a recorded member name simply vanish from
+    the comparison instead of contradicting the closed-subtree proof, which is
+    exactly the substitution this certification has to catch.
+    """
+
+    from .storage.owners import NODE_ABSENT, observed_node_kind
+
+    nodes: list[dict[str, str]] = []
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            entries = sorted(os.scandir(current), key=lambda item: item.name)
+        except OSError:
+            continue
+        for entry in entries:
+            path = Path(entry.path)
+            relative = _canonical_node_path(root, path)
+            if relative is None:
+                continue
+            kind = observed_node_kind(path)
+            if kind == NODE_ABSENT:
+                continue
+            nodes.append({"path": relative, "kind": kind})
+            if kind == "directory":
+                stack.append(path)
+    return sorted(nodes, key=lambda item: item["path"])
+
+
 def _run_root_nodes(root: Path) -> list[dict[str, str]]:
-    """Every node this owner produced under one run root, files and directories.
+    """The nodes this owner records as its own: plain files and directories.
 
     Directories are recorded deliberately.  A recursive delete removes directory
     nodes as well as files, so a manifest that named only files would leave an
     unexpected empty directory covered by nothing and free to disappear inside an
-    otherwise authorized ``rmtree``.
+    otherwise authorized ``rmtree``.  Symlinks and special objects are never
+    recorded: nothing this owner writes is one, so their presence is a
+    contradiction rather than a member.
     """
 
-    nodes: list[dict[str, str]] = []
-    for path in sorted(root.rglob("*")):
-        if path.is_symlink():
-            # Symlinks are governed by the stronger refusal rules elsewhere and
-            # are never absorbed into ownership by being listed here.
-            continue
-        relative = _canonical_node_path(root, path)
-        if relative is None:
-            continue
-        if path.is_dir():
-            nodes.append({"path": relative, "kind": "directory"})
-        elif path.is_file():
-            nodes.append({"path": relative, "kind": "file"})
-    return sorted(nodes, key=lambda item: item["path"])
+    return [
+        item
+        for item in _observe_run_root_nodes(root)
+        if item["kind"] in ("file", "directory")
+    ]
 
 
 def _sealed(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1225,10 +1251,23 @@ def _self_authenticated(payload: Any, schema: str) -> dict[str, Any] | None:
     return dict(payload)
 
 
-def _load_json(path: Path) -> Any | None:
+def _load_owner_record(path: Path) -> Any | None:
+    """Parse one owner authority file, refusing anything but a real regular file.
+
+    The read goes through the strict no-follow reader rather than
+    ``read_text()``: a symlink substituted at ``run-completion.json`` or
+    ``run-topology.json`` would otherwise let bytes from outside the owner's own
+    record participate in destructive certification.
+    """
+
+    from .storage.owners import read_owner_record_bytes
+
+    raw = read_owner_record_bytes(path)
+    if raw is None:
+        return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
         return None
 
 
@@ -1263,10 +1302,12 @@ def read_post_selection_run_completion(
     """
 
     root = Path(run_root)
+    from .storage.owners import NODE_FILE, observed_node_kind
+
     path = root / RUN_COMPLETION_ANCHOR_FILENAME
-    if not path.is_file():
+    if observed_node_kind(path) != NODE_FILE:
         legacy = root / RUN_MEMBER_MANIFEST_FILENAME
-        if legacy.is_file():
+        if observed_node_kind(legacy) == NODE_FILE:
             return None, (
                 "run root carries only the superseded single-file completion record, "
                 "which is diagnosable but grants no consequential authority"
@@ -1275,7 +1316,7 @@ def read_post_selection_run_completion(
             "run root carries no retained completion anchor, so this owner cannot "
             "certify that it finished or which descendants it produced"
         )
-    payload = _self_authenticated(_load_json(path), RUN_COMPLETION_ANCHOR_SCHEMA)
+    payload = _self_authenticated(_load_owner_record(path), RUN_COMPLETION_ANCHOR_SCHEMA)
     if payload is None:
         return None, (
             "run completion anchor is unreadable, carries an unsupported schema, or "
@@ -1303,7 +1344,7 @@ def read_post_selection_run_completion(
         return None, "run completion anchor carries an unusable node accounting"
     if node_count != file_count + directory_count or node_count < 0:
         return None, "run completion anchor node accounting is self-inconsistent"
-    if not (root / RUN_TOPOLOGY_MANIFEST_FILENAME).is_file():
+    if observed_node_kind(root / RUN_TOPOLOGY_MANIFEST_FILENAME) != NODE_FILE:
         return None, (
             "the topology manifest this completion anchor binds is missing, so exact "
             "ownership of the run tree cannot be established"
@@ -1334,7 +1375,7 @@ def read_post_selection_run_topology(
 
     root = Path(run_root)
     payload = _self_authenticated(
-        _load_json(root / RUN_TOPOLOGY_MANIFEST_FILENAME), RUN_TOPOLOGY_MANIFEST_SCHEMA
+        _load_owner_record(root / RUN_TOPOLOGY_MANIFEST_FILENAME), RUN_TOPOLOGY_MANIFEST_SCHEMA
     )
     if payload is None:
         return None, (
@@ -1512,6 +1553,20 @@ def record_post_selection_run_members(run_root: str | os.PathLike[str]) -> Path:
     return anchor_path
 
 
+def certified_post_selection_run_nodes(
+    run_root: str | os.PathLike[str],
+) -> tuple[tuple[str, str], ...]:
+    """Every ``(path, kind)`` this owner recorded for one run root, or empty."""
+
+    completion, _why = read_post_selection_run_completion(run_root)
+    if completion is None:
+        return ()
+    nodes, _detail = read_post_selection_run_topology(run_root, completion)
+    if nodes is None:
+        return ()
+    return tuple(sorted((item["path"], item["kind"]) for item in nodes))
+
+
 def certify_closed_post_selection_run_root(
     run_root: str | os.PathLike[str],
 ) -> tuple[bool, str]:
@@ -1531,8 +1586,10 @@ def certify_closed_post_selection_run_root(
     here would leave that reclamation unable to finish on the next process.
     """
 
+    from .storage.owners import NODE_DIRECTORY, observed_node_kind
+
     root = Path(run_root)
-    if not root.is_dir() or root.is_symlink():
+    if observed_node_kind(root) != NODE_DIRECTORY:
         return False, f"{root} is not a plain directory"
     # There is deliberately no pathname allowlist here. The run directory is
     # delegated to the configured trainer, which writes its own layout inside it
@@ -1545,11 +1602,21 @@ def certify_closed_post_selection_run_root(
     nodes, detail = read_post_selection_run_topology(root, completion)
     if nodes is None:
         return False, detail
-    recorded = {item["path"] for item in nodes}
-    observed = {item["path"] for item in _run_root_nodes(root)}
-    extra = sorted(observed - recorded)
-    if extra:
-        return False, f"run root contains descendant(s) P5 did not write: {extra[:5]}"
+    recorded = {item["path"]: item["kind"] for item in nodes}
+    contradictions: list[str] = []
+    for item in _observe_run_root_nodes(root):
+        expected = recorded.get(item["path"])
+        if expected is None:
+            contradictions.append(f"{item['path']} ({item['kind']} P5 did not write)")
+        elif expected != item["kind"]:
+            contradictions.append(
+                f"{item['path']} (recorded {expected}, found {item['kind']})"
+            )
+    if contradictions:
+        return False, (
+            "run root contains descendant(s) P5 did not write: "
+            f"{contradictions[:5]}"
+        )
     # A recorded node that is *absent* means content has legitimately left the
     # tree - reclaimed into a cold archive, for instance. The guarantee this
     # certification makes is that nothing foreign is present, not that nothing

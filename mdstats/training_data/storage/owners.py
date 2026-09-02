@@ -54,6 +54,7 @@ The census behind these adapters, against the bound intake baseline:
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -128,6 +129,77 @@ class OwnerGraphError(RuntimeError):
     """The owner graph is not a valid basis for consequential planning."""
 
 
+NODE_FILE = "file"
+NODE_DIRECTORY = "directory"
+NODE_SYMLINK = "symlink"
+NODE_OTHER = "other"
+NODE_ABSENT = "absent"
+
+
+@dataclass(frozen=True, slots=True)
+class CertifiedNode:
+    """One node an owner recorded as its own: a canonical path *and* a kind."""
+
+    path: str
+    kind: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"path": self.path, "kind": self.kind}
+
+
+def observed_node_kind(path: Path) -> str:
+    """Classify one path without ever following a symlink.
+
+    ``lstat`` is the whole point. Anything that resolves a link before
+    classifying would let a symlink substituted at a recorded member name
+    present its *target's* kind, and the comparison against the owner's proof
+    would then pass on bytes the owner never wrote.
+    """
+
+    try:
+        stats = os.lstat(path)
+    except OSError:
+        return NODE_ABSENT
+    if stat.S_ISLNK(stats.st_mode):
+        return NODE_SYMLINK
+    if stat.S_ISDIR(stats.st_mode):
+        return NODE_DIRECTORY
+    if stat.S_ISREG(stats.st_mode):
+        return NODE_FILE
+    return NODE_OTHER
+
+
+def read_owner_record_bytes(path: Path) -> bytes | None:
+    """Read one owner authority file, refusing anything but a real regular file.
+
+    An owner proof that can be redirected is not a proof. ``O_NOFOLLOW`` refuses
+    a symlink at the final component in the same syscall that opens it, and
+    ``fstat`` on the resulting descriptor - not a second ``lstat`` on the name -
+    is what proves the bytes being parsed came from the regular file that was
+    checked. An ``lstat`` followed by an ordinary read is a race, not a check.
+    """
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        handle = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(handle).st_mode):
+            return None
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(handle, 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks)
+    except OSError:
+        return None
+    finally:
+        os.close(handle)
+
+
 @dataclass(frozen=True, slots=True)
 class OwnerArtifactView:
     """One owner's own statement about one artifact it owns.
@@ -179,9 +251,13 @@ class OwnerArtifactView:
     #: How far the owner's certification reaches below a directory artifact.
     coverage: SubtreeCoverage = SubtreeCoverage.NOT_APPLICABLE
     #: Exactly the descendants the owner releases for action, relative to
-    #: ``path``.  For ``CLOSED`` coverage this is the owner's recorded member
-    #: set; for ``CONTAINER`` coverage it names the individually authorized
-    #: children.
+    #: ``path``, **with their recorded node kind**.  A path string alone is not
+    #: enough authority: a regular file replaced by a directory at the same
+    #: relative name - or the reverse - is an ownership contradiction, and a
+    #: comparison that had already discarded the kind could not see it.
+    certified_nodes: tuple[CertifiedNode, ...] = ()
+    #: The same set as bare relative paths.  Derived display/compatibility
+    #: surface only; recursive disappearance is never authorized from it.
     certified_members: tuple[str, ...] = ()
     #: Descendants the owner knows about and never releases - its own record
     #: and lock files.  They are neither members nor contradictions: archiving
@@ -198,6 +274,14 @@ class OwnerArtifactView:
     state_identity: str = ""
     requires: tuple[str, ...] = ()
     reconstruction: str = ""
+
+    def __post_init__(self) -> None:
+        if self.certified_nodes and not self.certified_members:
+            object.__setattr__(
+                self,
+                "certified_members",
+                tuple(item.path for item in self.certified_nodes),
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -219,6 +303,7 @@ class OwnerArtifactView:
             "safe_reclaimable": bool(self.safe_reclaimable),
             "container_only": bool(self.container_only),
             "coverage": self.coverage.value,
+            "certified_nodes": [item.to_dict() for item in self.certified_nodes],
             "certified_members": list(self.certified_members),
             "retained_members": list(self.retained_members),
             "state_identity": self.state_identity,
@@ -300,6 +385,12 @@ def _readonly_trainer() -> Any:
 # ---------------------------------------------------------------------------
 
 
+def _campaign_writer_lock_path(paths: Any) -> Path:
+    from .._campaign_cli_core import CAMPAIGN_WRITER_LOCK_SUFFIX
+
+    return Path(str(_absolute(paths.state_db)) + CAMPAIGN_WRITER_LOCK_SUFFIX)
+
+
 def campaign_store_views(
     cfg: Mapping[str, Any], paths: Any, store: Any
 ) -> list[OwnerArtifactView]:
@@ -355,6 +446,24 @@ def campaign_store_views(
             cache_reconstructible=True,
             cache_evictable=False,
             reconstruction="rehash on the next stat-identity miss",
+        ),
+        OwnerArtifactView(
+            owner=OWNER_CAMPAIGN_STORE,
+            artifact_id="campaign_store:writer_lock",
+            path=_campaign_writer_lock_path(paths),
+            artifact_class=ArtifactClass.STORAGE_CONTROL_PLANE,
+            detail=(
+                "the advisory lock every campaign-state writer takes before "
+                "mutating. Coordination infrastructure, never scientific "
+                "authority, cache, or reclaimable scratch: unlinking a held "
+                "advisory-lock pathname would split the serialization domain "
+                "between the old inode and a freshly created one, so it is never "
+                "a cleanup, archive, or dedup target"
+            ),
+            current=True,
+            restart_required=True,
+            hot_path_required=True,
+            requires=("campaign_store:state",),
         ),
     ]
     views.append(
@@ -540,7 +649,7 @@ def _orphan_external_record_views(
                 )
             )
             continue
-        certified, certification, members = store.certify_closed_external_record(child)
+        certified, certification, nodes = store.certify_closed_external_record(child)
         views.append(
             OwnerArtifactView(
                 owner=OWNER_CAMPAIGN_STORE,
@@ -563,7 +672,11 @@ def _orphan_external_record_views(
                     if child.is_dir()
                     else SubtreeCoverage.NOT_APPLICABLE
                 ),
-                certified_members=members if certified else (),
+                certified_nodes=tuple(
+                    CertifiedNode(path=path, kind=kind) for path, kind in nodes
+                )
+                if certified
+                else (),
                 container_only=child.is_dir() and not certified,
             )
         )
@@ -760,9 +873,9 @@ def post_selection_views(
     """
 
     from ..campaign_post_selection_runtime import (
+        certified_post_selection_run_nodes,
         certify_closed_post_selection_run_root,
         post_selection_run_is_complete,
-        recorded_post_selection_run_members,
     )
     from ..post_selection_store import POST_SELECTION_ROOT_NAME, post_selection_root
 
@@ -829,7 +942,10 @@ def post_selection_views(
                     closed, why = post_selection_run_is_complete(run_root)
                 eligible = bool(historical and closed)
                 recorded = (
-                    recorded_post_selection_run_members(run_root)
+                    tuple(
+                        CertifiedNode(path=path, kind=kind)
+                        for path, kind in certified_post_selection_run_nodes(run_root)
+                    )
                     if (closed and certify)
                     else ()
                 )
@@ -857,7 +973,7 @@ def post_selection_views(
                             if (closed and certify)
                             else SubtreeCoverage.CONTAINER
                         ),
-                        certified_members=recorded,
+                        certified_nodes=recorded,
                         retained_members=_run_infrastructure_members(run_root),
                         requires=(f"p5:objects:g{generation}",)
                         if (root / "objects").is_dir()
@@ -879,7 +995,10 @@ def post_selection_views(
                     restart_required=not historical,
                     container_only=True,
                     coverage=SubtreeCoverage.CONTAINER,
-                    certified_members=tuple(certified),
+                    certified_nodes=tuple(
+                        CertifiedNode(path=name, kind=NODE_DIRECTORY)
+                        for name in certified
+                    ),
                     requires=(f"p5:objects:g{generation}",)
                     if (root / "objects").is_dir()
                     else (),
@@ -1045,15 +1164,27 @@ def qualification_views(
     *,
     current_generation: int | None,
     publication_present: bool,
-) -> tuple[list[OwnerArtifactView], tuple[tuple[str, str], ...]]:
-    """P7 durable evidence, attempt scratch, and the P5 dependency it carries."""
+    certify: bool = True,
+) -> tuple[list[OwnerArtifactView], tuple[tuple[str, str], ...], tuple[str, ...]]:
+    """P7 durable evidence, attempt scratch, and the P5 dependency it carries.
+
+    ``certify`` is off for reporting and on for planning, exactly as it is for
+    P5: exact per-node certification of released scratch is what authorizes a
+    mutation, and it is also what would make a report scale with attempt bulk.
+
+    Returns the views, unresolved owners, and any attempt states that could not
+    be authenticated. The last is not a warning: an active attempt's references
+    can pin exact P5 checkpoints, so an unreadable state is an unknown
+    cross-owner retention edge and a consequential-planning blocker.
+    """
 
     from ..qualification.store import (
         ATTEMPT_INFRASTRUCTURE_NAMES,
+        ATTEMPT_MEMBER_MANIFEST_FILENAME,
         LOCKED_REVEAL_DIRECTORY,
         QUALIFICATION_ROOT_NAME,
-        certify_closed_attempt_member,
-        iter_attempt_states,
+        certified_attempt_nodes,
+        iter_attempt_state_census,
         qualification_root,
     )
 
@@ -1080,12 +1211,24 @@ def qualification_views(
         )
 
     active_reference_paths: set[str] = set()
+    integrity_failures: list[str] = []
     try:
-        for state in iter_attempt_states(paths):
-            if state.is_active:
-                active_reference_paths.update(state.referenced_paths)
+        states, unreadable = iter_attempt_state_census(paths)
     except Exception as exc:
-        unresolved.append((OWNER_P7, f"attempt states unreadable: {exc}"))
+        states, unreadable = (), ((str(family_root), f"attempt census failed: {exc}"),)
+    for state in states:
+        if state.is_active:
+            active_reference_paths.update(state.referenced_paths)
+    for state_path, reason in unreadable:
+        # Reported truthfully *and* propagated as an integrity failure: the
+        # references this attempt would have protected are unknowable, and
+        # guessing them is exactly what must not happen.
+        unresolved.append((OWNER_P7, f"{state_path}: {reason}"))
+        integrity_failures.append(
+            f"qualification attempt state cannot be authenticated ({state_path}: "
+            f"{reason}); its referenced artifacts are unknown, so consequential "
+            "storage planning is unavailable until it is repaired"
+        )
         active_reference_paths.add(str(family_root))
 
     for root in _generation_roots(family_root):
@@ -1117,7 +1260,9 @@ def qualification_views(
         if not attempts_root.is_dir():
             continue
         for attempt in sorted(p for p in attempts_root.iterdir() if p.is_dir()):
-            released, why = _attempt_release_state(paths, attempt, active_reference_paths)
+            released, why, state = _attempt_release_state(
+                paths, attempt, active_reference_paths
+            )
             views.append(
                 OwnerArtifactView(
                     owner=OWNER_P7,
@@ -1139,12 +1284,50 @@ def qualification_views(
             )
             if not released:
                 continue
+            if not certify:
+                # Bounded reporting: say the attempt is released and that exact
+                # reclaimability still has to be certified, without enumerating
+                # children or parsing the O(node-count) proof. Released scratch
+                # is reported as a retained container, so a report never scales
+                # with attempt bulk and never implies that deletion authority
+                # has already been established.
+                proof_present = (
+                    observed_node_kind(attempt / ATTEMPT_MEMBER_MANIFEST_FILENAME)
+                    == NODE_FILE
+                )
+                views.append(
+                    OwnerArtifactView(
+                        owner=OWNER_P7,
+                        artifact_id=f"p7:attempt_scratch:{generation}:{attempt.name}",
+                        path=attempt,
+                        artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
+                        detail=(
+                            f"{why}; released attempt-local bulk is potentially "
+                            "reclaimable and needs exact certification before any "
+                            "mutation"
+                            + (
+                                ""
+                                if proof_present
+                                else "; no released-attempt proof is present"
+                            )
+                        ),
+                        generation=generation,
+                        container_only=True,
+                        coverage=SubtreeCoverage.CONTAINER,
+                        requires=(objects_id,),
+                    )
+                )
+                continue
+            certified, member_why, nodes = certified_attempt_nodes(attempt, state)
+            recorded = {path: kind for path, kind in nodes}
             for member in sorted(attempt.iterdir()):
                 if member.name in ATTEMPT_INFRASTRUCTURE_NAMES:
                     continue
-                if member.is_file() and not member.is_symlink():
-                    # A single file is its own closed unit; there is no subtree
-                    # whose authorship could be in question.
+                kind = observed_node_kind(member)
+                if not certified or recorded.get(member.name) != kind:
+                    # Every top-level node has to be one the proof recorded, of
+                    # the recorded kind, before it can be exposed as reclaimable
+                    # at all. Otherwise it is reported and retained.
                     views.append(
                         OwnerArtifactView(
                             owner=OWNER_P7,
@@ -1155,19 +1338,25 @@ def qualification_views(
                             path=member,
                             artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
                             detail=(
-                                f"{why}; attempt-local bulk of a released attempt is "
-                                "disposable while the attempt record itself is retained"
+                                f"{why}; retained because the released-attempt proof "
+                                f"does not certify this node: {member_why}"
                             ),
                             generation=generation,
-                            safe_reclaimable=True,
+                            container_only=kind == NODE_DIRECTORY,
+                            coverage=(
+                                SubtreeCoverage.CONTAINER
+                                if kind == NODE_DIRECTORY
+                                else SubtreeCoverage.NOT_APPLICABLE
+                            ),
                             requires=(objects_id,),
                         )
                     )
                     continue
-                if not member.is_dir() or member.is_symlink():
-                    continue
-                certified, member_why, members = certify_closed_attempt_member(
-                    attempt, member.name
+                prefix = f"{member.name}/"
+                inside = tuple(
+                    CertifiedNode(path=path[len(prefix) :], kind=node_kind)
+                    for path, node_kind in nodes
+                    if path.startswith(prefix)
                 )
                 views.append(
                     OwnerArtifactView(
@@ -1186,20 +1375,19 @@ def qualification_views(
                         # Containment beneath a released attempt is not
                         # authorship: only what this owner recorded may be acted
                         # on, and an uncertified tree is reported and retained.
-                        safe_reclaimable=certified,
+                        safe_reclaimable=True,
                         coverage=(
                             SubtreeCoverage.CLOSED
-                            if certified
-                            else SubtreeCoverage.CONTAINER
+                            if kind == NODE_DIRECTORY
+                            else SubtreeCoverage.NOT_APPLICABLE
                         ),
-                        certified_members=members if certified else (),
-                        container_only=not certified,
+                        certified_nodes=inside,
                         requires=(objects_id,),
                     )
                 )
 
     if current_generation is None:
-        return views, tuple(unresolved)
+        return views, tuple(unresolved), tuple(integrity_failures)
 
     # The current P7 record - including a truthful `waiting_for_reference` -
     # keeps the whole predecessor lineage pinned after its attempt reference
@@ -1207,7 +1395,7 @@ def qualification_views(
     # dependency that per-owner classification would lose.
     record_state = _current_qualification_state(cfg, paths, store)
     if record_state is None:
-        return views, tuple(unresolved)
+        return views, tuple(unresolved), tuple(integrity_failures)
     verdict, detail, record_identity = record_state
     reported = {view.artifact_id for view in views}
     requires = [
@@ -1281,7 +1469,7 @@ def qualification_views(
                     coverage=SubtreeCoverage.CONTAINER,
                 )
             )
-    return views, tuple(unresolved)
+    return views, tuple(unresolved), tuple(integrity_failures)
 
 
 def _reference_request_root(cfg: Mapping[str, Any], paths: Any) -> Path | None:
@@ -1297,39 +1485,38 @@ def _reference_request_root(cfg: Mapping[str, Any], paths: Any) -> Path | None:
 
 def _attempt_release_state(
     paths: Any, attempt_root: Path, active_reference_paths: set[str]
-) -> tuple[bool, str]:
-    """Ask the P7 owner whether this attempt's scratch is genuinely released."""
+) -> tuple[bool, str, Any]:
+    """Ask the P7 owner whether this attempt's scratch is genuinely released.
 
-    from ..qualification.store import (
-        ATTEMPT_ACTIVE,
-        ATTEMPT_STATE_FILENAME,
-        QualificationAttemptState,
-    )
-    import json
+    Returns the authenticated state as well, because the released-attempt proof
+    binds it: an aborted attempt that legally reopened as active publishes a new
+    state, and the old release proof stops applying for free.
+    """
 
-    state_path = attempt_root / ATTEMPT_STATE_FILENAME
-    if not state_path.is_file():
+    from ..qualification.store import ATTEMPT_ACTIVE, read_attempt_state_at
+
+    state = read_attempt_state_at(attempt_root)
+    if state is None:
         return False, (
-            "attempt scratch without readable owner state is never proven disposable"
-        )
-    try:
-        state = QualificationAttemptState.from_dict(
-            json.loads(state_path.read_text(encoding="utf-8"))
-        )
-    except Exception as exc:
-        return False, f"attempt state is unreadable ({exc}); retained"
+            "attempt scratch without authenticated owner state is never proven "
+            "disposable"
+        ), None
     if state.state == ATTEMPT_ACTIVE:
-        return False, "an in-flight qualification attempt still references this scratch"
+        return False, (
+            "an in-flight qualification attempt still references this scratch"
+        ), state
     for value in active_reference_paths:
         referenced = Path(value)
         if referenced == attempt_root or _within(referenced, attempt_root) or _within(
             attempt_root, referenced
         ):
-            return False, "another active attempt still references this path"
+            return False, (
+                "another active attempt still references this path"
+            ), state
     return True, (
         f"attempt is {state.state}; the P7 owner released its retention references and "
         "no durable record requires this attempt-local scratch"
-    )
+    ), state
 
 
 def _current_qualification_state(
@@ -1690,11 +1877,20 @@ _RECOGNIZED_INTERNAL_NAMES = frozenset(
 
 
 def _is_recognized_internal(child: Path, internal: Path) -> bool:
+    from .._campaign_cli_core import CAMPAIGN_WRITER_LOCK_SUFFIX
+
     try:
         relative = _absolute(child).relative_to(internal)
     except ValueError:
         return False
-    return bool(relative.parts) and relative.parts[0] in _RECOGNIZED_INTERNAL_NAMES
+    if not relative.parts:
+        return False
+    head = relative.parts[0]
+    # The campaign-state writer lock is this owner's coordination
+    # infrastructure, not an unclassified stray internal file.
+    if head.endswith(CAMPAIGN_WRITER_LOCK_SUFFIX):
+        return True
+    return head in _RECOGNIZED_INTERNAL_NAMES
 
 
 def build_owner_views(
@@ -1762,18 +1958,26 @@ def build_owner_views(
     except Exception as exc:
         unresolved.append((OWNER_P5, f"post-selection owner state unreadable: {exc}"))
 
+    owner_integrity: list[str] = []
     try:
-        p7_views, p7_unresolved = qualification_views(
+        p7_views, p7_unresolved, p7_integrity = qualification_views(
             cfg,
             paths,
             store,
             current_generation=current_generation,
             publication_present=publication_present,
+            certify=certify,
         )
         views.extend(p7_views)
         unresolved.extend(p7_unresolved)
+        owner_integrity.extend(p7_integrity)
     except Exception as exc:
         unresolved.append((OWNER_P7, f"qualification owner state unreadable: {exc}"))
+        owner_integrity.append(
+            f"qualification owner state could not be censused ({exc}); the artifacts "
+            "an active attempt references are unknown, so consequential storage "
+            "planning is unavailable"
+        )
 
     views.extend(
         control_plane_views(plane, policy_journal_retention=journal_retention_records)
@@ -1783,7 +1987,7 @@ def build_owner_views(
         views=tuple(views),
         unresolved=tuple(unresolved),
         current_generation=current_generation,
-        integrity_failures=validate_owner_graph(views),
+        integrity_failures=(*validate_owner_graph(views), *owner_integrity),
     )
 
 
@@ -1845,8 +2049,16 @@ __all__ = [
     "OWNER_STORAGE",
     "OwnerArtifactView",
     "OwnerViewError",
+    "CertifiedNode",
+    "NODE_ABSENT",
+    "NODE_DIRECTORY",
+    "NODE_FILE",
+    "NODE_OTHER",
+    "NODE_SYMLINK",
     "OwnerViewSet",
     "build_owner_views",
+    "observed_node_kind",
+    "read_owner_record_bytes",
     "campaign_store_views",
     "control_plane_views",
     "frame_cache_view",

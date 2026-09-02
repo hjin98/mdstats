@@ -255,8 +255,13 @@ an immutable topology manifest naming every node the run produced, published
 first, and a compact self-authenticating anchor binding that manifest's identity,
 published last as the commit point. The split is what lets normal reporting
 validate completion in O(1) while exact closed-subtree certification still pays
-for the full topology. The topology covers directories as well as files, so an
-unexpected empty directory cannot vanish inside an authorized recursive delete.
+for the full topology. The topology is typed and covers directories as well as files, so neither an
+unexpected empty directory nor a same-name file/directory substitution can pass
+as the node the owner certified, and no symlink or special object becomes owned
+by appearing at a familiar name. Every observation on that path is no-follow, and
+the owner's own authority records are opened with `O_NOFOLLOW` and confirmed
+regular by `fstat` on the opened descriptor rather than by a separate `lstat` a
+rename could invalidate.
 From then on the anchor - not the presence of the terminal evidence file - is
 what certifies the run. The
 distinction matters because the terminal evidence is an ordinary archive member:
@@ -266,6 +271,16 @@ infrastructure, never part of the reclaimable member set. Republication verifies
 and reuses the existing proof rather than deriving a new one from a tree storage
 has legitimately depleted, and a tampered, copied, or self-inconsistent proof
 makes the run non-certifiable instead of appearing to own more.
+
+**A released P7 attempt proves its own scratch.** Releasing an attempt publishes
+a versioned typed topology proof bound to the exact released state, written
+before that state so the state stays the commit point; an aborted attempt that
+legally reopens as active invalidates its release proof for free, because the
+state it bound is no longer current. Every top-level node must be one the proof
+recorded, of the recorded kind, before storage exposes it as reclaimable. An
+attempt state that cannot be authenticated is not skipped: its references can pin
+exact P5 checkpoints, so it becomes an owner-graph integrity failure that blocks
+consequential planning until repaired.
 
 **Containment is not ownership.** A directory owner view declares one of two
 coverage semantics. A *closed subtree* is one whose real owner certifies, from
@@ -335,8 +350,12 @@ floor - a small transaction that takes the write lock up front and so serializes
 against any other campaign writer. A rewrite is planned only when a fresh
 measurement already satisfies the configured reclaimable threshold, and
 re-establishes that threshold and its temporary-space admission inside a
-cross-process exclusion that every campaign-state writer participates in and
-that it holds through the rewrite; a second process consuming the free pages
+cross-process exclusion that every campaign-state writer participates in -
+writable construction included, since schema bootstrap is a real write - and that
+it holds through the rewrite. The gate is one per database shared by every store
+instance in the process, its reentrancy belongs to the acquiring thread rather
+than to an object, and its advisory lock file is campaign-store infrastructure no
+storage action targets; a second process consuming the free pages
 while maintenance waits therefore refuses the rewrite instead of performing an
 unjustified one. Free pages that pruning created do not widen the prune into a
 rewrite; that belongs to the next fresh plan. A refused or empty cleanup can

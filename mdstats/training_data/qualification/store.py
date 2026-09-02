@@ -18,7 +18,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 import json
 import os
 import tempfile
@@ -920,17 +920,27 @@ def attempt_state_path(paths: Any, binding: PostSelectionBinding, attempt_identi
     return attempt_root(paths, binding, attempt_identity) / ATTEMPT_STATE_FILENAME
 
 
-#: Membership record for one finished attempt's own scratch tree.
+#: Released-attempt topology proof for one finished attempt's own scratch tree.
 #:
 #: Attempt-local bulk - the exported deployment, the per-component evidence - is
-#: disposable once the attempt is terminal, but "beneath the attempt directory"
+#: disposable once the attempt is released, but "beneath the attempt directory"
 #: is containment, not authorship.  A downstream consumer that wants to reclaim
-#: that bulk needs this owner to say which descendants it actually produced, so
-#: that anything else present withholds authority instead of being deleted with
-#: it.  The record is written exactly when the attempt reaches a terminal or
-#: aborted state, which is the moment P7 stops writing into the tree.
+#: that bulk needs this owner to say which nodes it actually produced, so that
+#: anything else present withholds authority instead of being deleted with it.
+#:
+#: The v3 proof is bound to the exact released state it was published for. It is
+#: written *before* that state, so the released state is the commit point: a
+#: crash after the proof grants nothing, because the current state's identity
+#: will not match the one the proof binds.  An aborted attempt that legally
+#: reopens as active invalidates its own release proof for free, for the same
+#: reason.
 ATTEMPT_MEMBER_MANIFEST_FILENAME = "attempt-members.json"
-ATTEMPT_MEMBER_MANIFEST_SCHEMA = "mdstats.qualification-attempt-members.v2"
+ATTEMPT_MEMBER_MANIFEST_SCHEMA = "mdstats.qualification-attempt-members.v3"
+
+#: The superseded development record.  It carries no self identity and no state
+#: binding, so it is diagnosable but grants no consequential authority; a tree
+#: holding only that record is conservatively retained.
+ATTEMPT_MEMBER_MANIFEST_SCHEMA_V2 = "mdstats.qualification-attempt-members.v2"
 
 #: Attempt-root infrastructure this owner writes beside its records.  These are
 #: never members and never make an attempt tree look uncertified.
@@ -944,118 +954,311 @@ ATTEMPT_INFRASTRUCTURE_NAMES: frozenset[str] = frozenset(
 )
 
 
-def _attempt_relative_nodes(root: Path) -> list[str]:
-    """Every node under one attempt root - files *and* directories.
+def attempt_state_lock_at(attempt_directory: str | os.PathLike[str]):
+    """The exact per-attempt state lock this owner mutates attempt state under.
 
-    Directories are recorded deliberately. A recursive delete makes directory
-    nodes disappear too, so a manifest naming only files would leave an
-    unexpected empty directory covered by nothing and free to vanish inside an
-    otherwise authorized removal.
+    Storage takes the same lock, so an aborted attempt cannot reopen as active
+    while a storage operation is removing what it treats as released scratch.
     """
 
-    members: list[str] = []
-    for path in sorted(root.rglob("*")):
-        if path.is_symlink():
-            continue
-        if not path.is_dir() and not path.is_file():
-            continue
-        relative = path.relative_to(root)
-        if relative.parts[0] in ATTEMPT_INFRASTRUCTURE_NAMES:
-            continue
-        if len(relative.parts) == 1 and relative.name.endswith(".lock"):
-            # Advisory locks this owner's publication primitive leaves beside
-            # its own top-level records.
-            continue
-        members.append(relative.as_posix())
-    return members
+    from ..target_size_execution import artifact_publication_lock
+
+    return artifact_publication_lock(Path(attempt_directory) / ATTEMPT_STATE_FILENAME)
 
 
-def record_attempt_members(attempt_directory: str | os.PathLike[str]) -> Path:
-    """Freeze the exact member set this owner produced under one attempt root."""
+def attempt_member_manifest_path(attempt_directory: str | os.PathLike[str]) -> Path:
+    return Path(attempt_directory) / ATTEMPT_MEMBER_MANIFEST_FILENAME
+
+
+def _observe_attempt_nodes(root: Path) -> list[dict[str, str]]:
+    """Every node present under one attempt root, classified with no-follow.
+
+    Symlinks and special objects are observed rather than skipped: dropping them
+    would let a symlink substituted at a recorded name vanish from the
+    comparison instead of contradicting the proof.
+    """
+
+    from ..storage.owners import NODE_ABSENT, NODE_DIRECTORY, observed_node_kind
+
+    nodes: list[dict[str, str]] = []
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            entries = sorted(os.scandir(current), key=lambda item: item.name)
+        except OSError:
+            continue
+        for entry in entries:
+            path = Path(entry.path)
+            relative = path.relative_to(root)
+            if relative.parts[0] in ATTEMPT_INFRASTRUCTURE_NAMES:
+                continue
+            if len(relative.parts) == 1 and relative.name.endswith(".lock"):
+                # Advisory locks this owner's publication primitive leaves beside
+                # its own top-level records.
+                continue
+            kind = observed_node_kind(path)
+            if kind == NODE_ABSENT:
+                continue
+            nodes.append({"path": relative.as_posix(), "kind": kind})
+            if kind == NODE_DIRECTORY:
+                stack.append(path)
+    return sorted(nodes, key=lambda item: item["path"])
+
+
+def _attempt_owned_nodes(root: Path) -> list[dict[str, str]]:
+    """The nodes this owner records as its own: plain files and directories."""
+
+    return [
+        item
+        for item in _observe_attempt_nodes(root)
+        if item["kind"] in ("file", "directory")
+    ]
+
+
+def _sealed_attempt_proof(payload: dict[str, Any]) -> dict[str, Any]:
+    body = {key: value for key, value in payload.items() if key != "content_digest"}
+    return {**body, "content_digest": digest(body)}
+
+
+def read_attempt_member_proof(
+    attempt_directory: str | os.PathLike[str],
+) -> tuple[dict[str, Any] | None, str]:
+    """Validate one released-attempt topology proof, or say why it grants nothing.
+
+    This is the single validating reader. It opens the record with the strict
+    no-follow reader, re-derives the record's own digest, and checks every field
+    that could otherwise be used to widen ownership: the attempt root it claims,
+    canonical unique node paths with supported kinds, self-consistent parent
+    topology, and the counts. A proof that fails any of it returns ``None``; it
+    never degrades into a guessed member set.
+    """
+
+    from ..storage.owners import NODE_FILE, observed_node_kind, read_owner_record_bytes
 
     root = Path(attempt_directory)
-    destination = root / ATTEMPT_MEMBER_MANIFEST_FILENAME
-    members = _attempt_relative_nodes(root)
-    _atomic_write_json(
-        destination,
+    path = attempt_member_manifest_path(root)
+    if observed_node_kind(path) != NODE_FILE:
+        return None, (
+            "the released-attempt proof is missing or is not a plain regular file"
+        )
+    raw = read_owner_record_bytes(path)
+    if raw is None:
+        return None, "the released-attempt proof could not be read as a regular file"
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None, "the released-attempt proof is not valid JSON"
+    if not isinstance(payload, Mapping):
+        return None, "the released-attempt proof is not an object"
+    schema = payload.get("schema")
+    if schema == ATTEMPT_MEMBER_MANIFEST_SCHEMA_V2:
+        return None, (
+            "the attempt carries only the superseded v2 development record, which is "
+            "diagnosable but grants no consequential authority"
+        )
+    if schema != ATTEMPT_MEMBER_MANIFEST_SCHEMA:
+        return None, "the released-attempt proof carries an unsupported schema"
+    body = {key: value for key, value in dict(payload).items() if key != "content_digest"}
+    if str(payload.get("content_digest", "")) != digest(body):
+        return None, (
+            "the released-attempt proof does not authenticate against its own "
+            "recorded identity"
+        )
+    if str(payload.get("attempt_root", "")) != root.name:
+        return None, (
+            "the released-attempt proof names a different attempt root, so it was "
+            "copied rather than published for this attempt"
+        )
+    if str(payload.get("released_state", "")) not in (ATTEMPT_TERMINAL, ATTEMPT_ABORTED):
+        return None, "the released-attempt proof names no released state"
+    for field in ("attempt_identity", "binding_digest", "publication_digest", "state_digest"):
+        if len(str(payload.get(field, ""))) != 64:
+            return None, f"the released-attempt proof carries no usable {field}"
+    raw_nodes = payload.get("nodes", ())
+    if not isinstance(raw_nodes, Sequence) or isinstance(raw_nodes, (str, bytes)):
+        return None, "the released-attempt proof records no usable node set"
+    nodes: list[dict[str, str]] = []
+    seen: set[str] = set()
+    directories: set[str] = set()
+    for item in raw_nodes:
+        if not isinstance(item, Mapping):
+            return None, "the released-attempt proof contains a malformed node entry"
+        relative = str(item.get("path", ""))
+        kind = str(item.get("kind", ""))
+        if kind not in ("file", "directory"):
+            return None, f"the released-attempt proof records an unsupported kind: {kind!r}"
+        parts = tuple(relative.split("/")) if relative else ()
+        if (
+            not parts
+            or relative.startswith("/")
+            or any(part in ("", ".", "..") for part in parts)
+            or parts[0] in ATTEMPT_INFRASTRUCTURE_NAMES
+        ):
+            return None, (
+                f"the released-attempt proof records a non-canonical path: {relative!r}"
+            )
+        if relative in seen:
+            return None, f"the released-attempt proof records a duplicate node: {relative!r}"
+        seen.add(relative)
+        if kind == "directory":
+            directories.add(relative)
+        nodes.append({"path": relative, "kind": kind})
+    for item in nodes:
+        parent = "/".join(item["path"].split("/")[:-1])
+        if parent and parent not in directories:
+            return None, (
+                f"the released-attempt proof records {item['path']!r} without its "
+                "parent directory; the topology is not self-consistent"
+            )
+    try:
+        node_count = int(payload["node_count"])
+        file_count = int(payload["file_count"])
+        directory_count = int(payload["directory_count"])
+    except (KeyError, TypeError, ValueError):
+        return None, "the released-attempt proof carries an unusable node accounting"
+    if (
+        node_count != len(nodes)
+        or file_count != sum(1 for item in nodes if item["kind"] == "file")
+        or directory_count != len(directories)
+    ):
+        return None, "the released-attempt proof node accounting is self-inconsistent"
+    return {**dict(payload), "nodes": nodes}, "released-attempt proof authenticated"
+
+
+def publish_attempt_member_proof(
+    attempt_directory: str | os.PathLike[str], state: "QualificationAttemptState"
+) -> Path:
+    """Freeze the typed node set this owner produced, bound to one released state.
+
+    Published *before* the released state it binds, so the state remains the
+    commit point: a crash in between leaves a proof whose bound state identity
+    matches nothing current, which grants no authority at all.
+    """
+
+    root = Path(attempt_directory)
+    nodes = _attempt_owned_nodes(root)
+    payload = _sealed_attempt_proof(
         {
             "schema": ATTEMPT_MEMBER_MANIFEST_SCHEMA,
             "attempt_root": root.name,
-            "members": members,
-            "member_count": len(members),
-        },
+            "attempt_identity": state.attempt_identity,
+            "binding_digest": state.binding_digest,
+            "publication_digest": state.publication_digest,
+            "released_state": state.state,
+            "state_digest": state.content_digest,
+            "nodes": nodes,
+            "node_count": len(nodes),
+            "file_count": sum(1 for item in nodes if item["kind"] == "file"),
+            "directory_count": sum(1 for item in nodes if item["kind"] == "directory"),
+        }
     )
+    destination = attempt_member_manifest_path(root)
+    _atomic_write_json(destination, payload)
     return destination
 
 
-def recorded_attempt_members(
+def certified_attempt_nodes(
     attempt_directory: str | os.PathLike[str],
-) -> tuple[str, ...]:
-    """The member set this owner recorded for one attempt root, or empty."""
+    state: "QualificationAttemptState",
+) -> tuple[bool, str, tuple[tuple[str, str], ...]]:
+    """The typed node set P7 certifies for one released attempt, if any.
 
-    path = Path(attempt_directory) / ATTEMPT_MEMBER_MANIFEST_FILENAME
-    if not path.is_file():
-        return ()
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return ()
-    if payload.get("schema") != ATTEMPT_MEMBER_MANIFEST_SCHEMA:
-        return ()
-    return tuple(sorted(str(item) for item in payload.get("members", ())))
-
-
-def certify_closed_attempt_member(
-    attempt_directory: str | os.PathLike[str], member_name: str
-) -> tuple[bool, str, tuple[str, ...]]:
-    """Whether P7 certifies every descendant of one attempt-local member.
-
-    Returns the certification, a truthful detail, and the recorded member paths
-    relative to ``member_name`` itself, which is what a consumer needs in order
-    to act on exactly those files and nothing else.
+    The proof must bind *this* attempt's current released state. That binding is
+    what makes an aborted attempt that legally reopened as active lose its
+    release authority automatically: the state it published against is no longer
+    the current one.
     """
 
+    from ..storage.owners import NODE_DIRECTORY, observed_node_kind
+
     root = Path(attempt_directory)
-    member = root / member_name
-    recorded = recorded_attempt_members(root)
-    if not recorded:
+    if observed_node_kind(root) != NODE_DIRECTORY:
+        return False, f"{root} is not a plain directory", ()
+    proof, why = read_attempt_member_proof(root)
+    if proof is None:
+        return False, why, ()
+    if str(proof["state_digest"]) != state.content_digest:
         return False, (
-            "the attempt recorded no member manifest, so this owner cannot certify "
-            "which descendants it produced"
+            "the released-attempt proof binds a different attempt state than the one "
+            "currently published; it grants no authority"
         ), ()
-    prefix = f"{member_name}/"
-    inside = tuple(
-        item[len(prefix) :] for item in recorded if item.startswith(prefix)
-    )
-    if not member.is_dir() or member.is_symlink():
-        return False, f"{member} is not a plain directory", ()
-    observed = {
-        path.relative_to(member).as_posix()
-        for path in member.rglob("*")
-        if not path.is_symlink() and (path.is_file() or path.is_dir())
-    }
-    extra = sorted(observed - set(inside))
-    if extra:
+    if str(proof["attempt_identity"]) != state.attempt_identity:
+        return False, "the released-attempt proof binds a different attempt", ()
+    if str(proof["released_state"]) != state.state:
         return False, (
-            f"attempt member contains descendant(s) P7 did not write: {extra[:5]}"
+            "the released-attempt proof was published for a different released state"
         ), ()
-    # A recorded member that is absent has legitimately left the tree; the
-    # guarantee is that nothing foreign is present, not that nothing is gone.
+    recorded = {item["path"]: item["kind"] for item in proof["nodes"]}
+    contradictions: list[str] = []
+    for item in _observe_attempt_nodes(root):
+        expected = recorded.get(item["path"])
+        if expected is None:
+            contradictions.append(f"{item['path']} ({item['kind']} P7 did not write)")
+        elif expected != item["kind"]:
+            contradictions.append(
+                f"{item['path']} (recorded {expected}, found {item['kind']})"
+            )
+    if contradictions:
+        return False, (
+            f"released attempt contains descendant(s) P7 did not write: "
+            f"{contradictions[:5]}"
+        ), ()
+    # A recorded node that is absent has legitimately left the tree after an
+    # earlier safe cleanup; the guarantee is that nothing foreign is present.
     return True, (
-        "released attempt-local member whose descendants all belong to the set P7 "
-        "recorded when the attempt became terminal"
-    ), inside
+        "released attempt whose nodes all belong to the typed set P7 recorded when "
+        f"it became {state.state}"
+    ), tuple(sorted((item["path"], item["kind"]) for item in proof["nodes"]))
+
+
+def read_attempt_state_at(
+    attempt_directory: str | os.PathLike[str],
+) -> "QualificationAttemptState | None":
+    """Authenticate the attempt state living at one attempt root.
+
+    The same strict no-follow reader every other consumer uses; there is
+    deliberately no second, permissive raw-JSON path beside it.
+    """
+
+    from ..storage.owners import NODE_FILE, observed_node_kind, read_owner_record_bytes
+
+    path = Path(attempt_directory) / ATTEMPT_STATE_FILENAME
+    if observed_node_kind(path) != NODE_FILE:
+        return None
+    raw = read_owner_record_bytes(path)
+    if raw is None:
+        return None
+    try:
+        return QualificationAttemptState.from_dict(json.loads(raw.decode("utf-8")))
+    except (UnicodeDecodeError, ValueError, TrainingDataSerializationError,
+            TrainingDataInputError):
+        return None
 
 
 def read_attempt_state(
     paths: Any, binding: PostSelectionBinding, attempt_identity: str
 ) -> QualificationAttemptState | None:
+    from ..storage.owners import NODE_FILE, observed_node_kind, read_owner_record_bytes
+
     path = attempt_state_path(paths, binding, attempt_identity)
-    if not path.is_file():
+    if observed_node_kind(path) != NODE_FILE:
+        if path.exists() or path.is_symlink():
+            raise QualificationLineageError(
+                f"Qualification attempt state at {path!s} is not a plain regular "
+                "file; a qualification attempt never resumes from a substituted "
+                "object."
+            )
         return None
+    raw = read_owner_record_bytes(path)
+    if raw is None:
+        raise QualificationLineageError(
+            f"Qualification attempt state at {path!s} could not be read as a plain "
+            "regular file."
+        )
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError as exc:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
         raise QualificationLineageError(
             f"Qualification attempt state at {path!s} is corrupt; a qualification "
             "attempt never resumes from unreadable state."
@@ -1168,16 +1371,37 @@ def release_attempt_reference(
             detail=detail or existing.detail,
         )
         # The attempt stops being written exactly here, so this is the one
-        # moment at which its membership can be recorded truthfully. Recording
-        # it before the state write keeps the manifest a precondition of the
-        # released state rather than a promise made after it.
-        record_attempt_members(state_path.parent)
+        # moment at which its topology can be recorded truthfully. The proof is
+        # published first and binds the state it is being published for, which
+        # makes the state write the commit point: a crash in between leaves a
+        # proof bound to a state that is not current, and therefore grants
+        # nothing at all.
+        publish_attempt_member_proof(state_path.parent, state)
         _atomic_write_json(state_path, state.to_dict())
         return state
 
 
 def iter_attempt_states(workspace_or_paths: Any) -> tuple[QualificationAttemptState, ...]:
-    """Every attempt state under every qualification generation root."""
+    """Every attempt state this owner can authenticate."""
+
+    states, _unreadable = iter_attempt_state_census(workspace_or_paths)
+    return states
+
+
+def iter_attempt_state_census(
+    workspace_or_paths: Any,
+) -> tuple[tuple[QualificationAttemptState, ...], tuple[tuple[str, str], ...]]:
+    """``(states, unreadable)`` for every attempt under every generation root.
+
+    Unreadable states are *named*, never silently dropped. An active attempt's
+    ``referenced_paths`` can pin exact P5 checkpoints far outside the P7 tree, so
+    an attempt whose state cannot be authenticated is an unknown cross-owner
+    retention edge. Reporting says so, and consequential planning treats it as an
+    owner-graph integrity failure rather than guessing which paths it would have
+    protected.
+    """
+
+    from ..storage.owners import NODE_FILE, observed_node_kind, read_owner_record_bytes
 
     internal = (
         Path(workspace_or_paths.internal)
@@ -1186,17 +1410,29 @@ def iter_attempt_states(workspace_or_paths: Any) -> tuple[QualificationAttemptSt
     )
     root = internal.resolve() / QUALIFICATION_ROOT_NAME
     if not root.is_dir():
-        return ()
+        return (), ()
     states: list[QualificationAttemptState] = []
+    unreadable: list[tuple[str, str]] = []
     for path in sorted(root.glob(f"g*/attempts/*/{ATTEMPT_STATE_FILENAME}")):
-        try:
-            states.append(QualificationAttemptState.from_dict(json.loads(path.read_text(encoding="utf-8"))))
-        except (OSError, ValueError, TrainingDataSerializationError, TrainingDataInputError):
-            # An unreadable attempt record is exactly when guessing is unsafe.
-            # The fence below treats the whole qualification root as protected,
-            # so an unclassifiable attempt cannot be reclaimed by accident.
+        if observed_node_kind(path) != NODE_FILE:
+            unreadable.append((str(path), "attempt state is not a plain regular file"))
             continue
-    return tuple(states)
+        raw = read_owner_record_bytes(path)
+        if raw is None:
+            unreadable.append((str(path), "attempt state could not be read"))
+            continue
+        try:
+            states.append(
+                QualificationAttemptState.from_dict(json.loads(raw.decode("utf-8")))
+            )
+        except (
+            UnicodeDecodeError,
+            ValueError,
+            TrainingDataSerializationError,
+            TrainingDataInputError,
+        ) as exc:
+            unreadable.append((str(path), f"attempt state is unusable: {exc}"))
+    return tuple(states), tuple(unreadable)
 
 
 @dataclass
@@ -1271,9 +1507,18 @@ def build_qualification_retention_fence(workspace_or_paths: Any) -> Qualificatio
     reveal_root = root / LOCKED_REVEAL_DIRECTORY
     roots = generation_roots + ((reveal_root,) if reveal_root.is_dir() else ())
     referenced: set[str] = set()
-    for state in iter_attempt_states(workspace_or_paths):
+    states, unreadable = iter_attempt_state_census(workspace_or_paths)
+    for state in states:
         if state.is_active:
             referenced.update(state.referenced_paths)
+    if unreadable:
+        # Defense in depth for the same ambiguity the owner graph reports. An
+        # attempt whose state cannot be authenticated may have been pinning
+        # exact P5 checkpoints, and the paths it would have named are exactly
+        # what cannot be recovered - so the fence widens to the whole
+        # qualification family rather than letting some other destructive path
+        # act on a possibly referenced managed artifact.
+        referenced.add(str(root))
     return QualificationRetentionFence(
         qualification_roots=roots, referenced_paths=frozenset(referenced)
     )
@@ -1285,6 +1530,7 @@ __all__ = [
     "ATTEMPT_INFRASTRUCTURE_NAMES",
     "ATTEMPT_MEMBER_MANIFEST_FILENAME",
     "ATTEMPT_MEMBER_MANIFEST_SCHEMA",
+    "ATTEMPT_MEMBER_MANIFEST_SCHEMA_V2",
     "ATTEMPT_STATE_FILENAME",
     "ATTEMPT_TERMINAL",
     "POINTER_KINDS",
@@ -1301,14 +1547,17 @@ __all__ = [
     "QualificationRetentionFence",
     "acquire_attempt_reference",
     "attempt_root",
-    "certify_closed_attempt_member",
-    "record_attempt_members",
-    "recorded_attempt_members",
+    "attempt_state_lock_at",
     "attempt_state_path",
     "build_qualification_retention_fence",
     "find_locked_activation",
     "find_locked_activation_for_role",
+    "certified_attempt_nodes",
+    "iter_attempt_state_census",
     "iter_attempt_states",
+    "publish_attempt_member_proof",
+    "read_attempt_member_proof",
+    "read_attempt_state_at",
     "open_qualification_store",
     "publish_current_qualification_pointer",
     "qualification_record_is_current",

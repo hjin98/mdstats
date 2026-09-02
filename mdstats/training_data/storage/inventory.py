@@ -28,6 +28,10 @@ from typing import Any, Mapping, Sequence
 from ..storage_accounting import ProtectedInputPath
 from .control_plane import StorageControlPlane, open_storage_control_plane_readonly
 from .owners import (
+    NODE_ABSENT,
+    NODE_DIRECTORY,
+    NODE_FILE,
+    observed_node_kind,
     ArtifactClass,
     OwnerArtifactView,
     OwnerGraphError,
@@ -195,43 +199,55 @@ class StorageInventorySnapshot:
         individually certified children participate, and everything else is
         refused and left alone.
 
-        Mount boundaries, symlinks, and the physical ownership boundary reduce
-        this further; they are applied by the caller, which knows whether it is
-        deleting, archiving, or relinking.
+        The comparison is **typed and no-follow** throughout. A recorded regular
+        file replaced by a directory at the same relative name - or the reverse -
+        is an ownership contradiction, not a match, and a symlink or special node
+        is never made owned by having a familiar name. Discarding the kind before
+        comparing, or resolving a link to classify it, would authorize a mutation
+        on something the owner never wrote.
+
+        Mount boundaries and the physical ownership boundary reduce this further;
+        they are applied by the caller, which knows whether it is deleting,
+        archiving, or relinking.
         """
 
         refused: list[tuple[Path, str]] = []
         root = view.path
-        if root.is_file() and not root.is_symlink():
+        root_kind = observed_node_kind(root)
+        if root_kind == NODE_FILE:
             return (root,), ()
-        if not root.is_dir():
+        if root_kind != NODE_DIRECTORY:
             return (), ()
 
         if view.coverage is SubtreeCoverage.CLOSED:
-            if view.owner_exclusive and not view.certified_members:
+            if view.owner_exclusive and not view.certified_nodes:
                 # A private scratch area whose only writer is the owner itself.
                 # Enumerating a member set here would be circular; exclusivity
-                # is the ownership statement, and it still refuses symlinks.
+                # is the ownership statement, and it still refuses anything that
+                # is not a plain file or directory.
                 members = []
                 for child in walk_contained(
                     root, on_refused=lambda path, why: refused.append((path, why))
                 ):
-                    if child.is_symlink():
-                        refused.append((child, "symlink members are never collected"))
+                    kind = observed_node_kind(child)
+                    if kind == NODE_DIRECTORY:
                         continue
-                    if child.is_dir():
+                    if kind != NODE_FILE:
+                        refused.append(
+                            (child, f"a {kind} is never collected as an owned member")
+                        )
                         continue
                     members.append(child)
                 return tuple(sorted(members)), tuple(refused)
-            if not view.certified_members:
+            if not view.certified_nodes:
                 return (), (
                     (
                         root,
-                        "the owner declares a closed subtree but recorded no member "
-                        "set, so no descendant is individually authorized",
+                        "the owner declares a closed subtree but recorded no typed "
+                        "node set, so no descendant is individually authorized",
                     ),
                 )
-            certified = {root / name for name in view.certified_members}
+            certified = {root / item.path: item.kind for item in view.certified_nodes}
             retained = {root / name for name in view.retained_members}
             members: list[Path] = []
             # Walk the real tree as well: the certification says these nodes are
@@ -240,45 +256,59 @@ class StorageInventorySnapshot:
             #
             # Directories are checked too, not skipped. A recursive delete makes
             # directory nodes disappear as well, so an unexpected *empty*
-            # directory that no recorded file path mentions would otherwise be
-            # swept away by an action nobody authorized to remove it.
+            # directory that no recorded node mentions would otherwise be swept
+            # away by an action nobody authorized to remove it.
             for child in walk_contained(
                 root, on_refused=lambda path, why: refused.append((path, why))
             ):
-                if child.is_symlink():
-                    refused.append((child, "symlink members are never collected"))
-                    continue
                 if child in retained:
                     # The owner's own certification records and locks: known,
                     # never released, and never a contradiction.
                     continue
-                if child not in certified:
+                kind = observed_node_kind(child)
+                recorded = certified.get(child)
+                if recorded is None:
+                    refused.append((child, f"a {kind} this owner did not record"))
+                    continue
+                if kind != recorded:
                     refused.append(
                         (
                             child,
-                            "not part of the node set this owner recorded"
-                            if not child.is_dir()
-                            else "a directory this owner did not record",
+                            f"the owner recorded a {recorded} here but this is a "
+                            f"{kind}; a same-name substitution is not the node it "
+                            "certified",
                         )
                     )
                     continue
-                if child.is_dir():
+                if kind == NODE_DIRECTORY:
                     # Covered by the certification, so it may disappear with the
                     # subtree; it is not an individually reclaimable member.
                     continue
                 members.append(child)
-            # A recorded member that is absent has legitimately left the tree
+            # A recorded node that is absent has legitimately left the tree
             # (reclaimed into an archive, for instance); it bounds what may be
             # acted on, and its absence is not a contradiction.
             return tuple(sorted(members)), tuple(refused)
 
-        if view.coverage is SubtreeCoverage.CONTAINER and view.certified_members:
+        if view.coverage is SubtreeCoverage.CONTAINER and view.certified_nodes:
             members = []
-            for name in view.certified_members:
-                child = root / name
+            for item in view.certified_nodes:
+                child = root / item.path
                 crossed, why = crosses_mount_boundary(root, child)
                 if crossed:
                     refused.append((child, why))
+                    continue
+                kind = observed_node_kind(child)
+                if kind == NODE_ABSENT:
+                    continue
+                if kind != item.kind:
+                    refused.append(
+                        (
+                            child,
+                            f"the owner certified a {item.kind} here but this is a "
+                            f"{kind}",
+                        )
+                    )
                     continue
                 members.append(child)
             return tuple(sorted(members)), tuple(refused)

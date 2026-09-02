@@ -442,9 +442,15 @@ Hot bytes are removed only after the archive is authenticated and cataloged, and
 only for artifacts no current or restartable owner needs hot - a checkpoint the
 current qualification publication still authenticates is never archived out from
 under it. Only descendants the owning component certifies as its own are
-collected: a file something else dropped inside an otherwise eligible run tree
-is left alone, and its presence withholds authority over that whole tree until
-you remove it.
+collected, and the check is by node *kind* as well as by name: a file something
+else dropped inside an otherwise eligible run tree, an empty directory nobody
+recorded, a symlink, or a file swapped for a directory at the same path all
+withhold authority over that whole tree until you clear them. The same applies to
+a released qualification attempt's leftover scratch.
+
+If a qualification attempt's own state file cannot be read, `storage report` says
+so and every consequential command refuses until you repair it. That attempt may
+have been pinning exact checkpoints, and the product will not guess which.
 
 `--root` may narrow the selection to one eligible artifact. It may not widen it:
 naming a parent directory is rejected rather than reinterpreted, because a parent

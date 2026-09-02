@@ -179,7 +179,12 @@ def owner_binding_for(snapshot: StorageInventorySnapshot) -> dict[str, Any]:
                             bool(view.archive_eligible),
                             bool(view.dedup_eligible),
                             view.coverage.value,
-                            sorted(view.certified_members),
+                            # The typed node set, not the path-only display
+                            # surface: a plan bound to names alone would not go
+                            # stale when a recorded file became a directory.
+                            sorted(
+                                (item.path, item.kind) for item in view.certified_nodes
+                            ),
                             sorted(view.retained_members),
                             view.state_identity,
                             sorted(view.requires),

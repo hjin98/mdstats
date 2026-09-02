@@ -1813,3 +1813,449 @@ def test_live_dedup_staging_is_never_reclaimed_by_a_concurrent_cleanup(
     # With no live operation, the same staging is ordinary storage-owned residue.
     assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
     assert not live.exists()
+
+
+# ---------------------------------------------------------------------------
+# R19-B - the P7 released-attempt proof
+# ---------------------------------------------------------------------------
+
+
+def _released_attempt_root(config: Path) -> Path:
+    snapshot, _paths = _snapshot(config)
+    scratch = [
+        view
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:")
+    ]
+    assert scratch, "the released attempt exposed no attempt-local scratch"
+    root = scratch[0].path
+    while root.parent.name != "attempts":
+        root = root.parent
+    return root
+
+
+def _released_attempt_campaign(tmp_path: Path):
+    harness = fx.QualificationHarness()
+    config, workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
+    assert _qualify_nonlocked(config, harness) == 0
+    _release_attempt(config, harness)
+    return config, workspace, harness
+
+
+@pytest.mark.parametrize(
+    "intrusion",
+    [
+        "top_level_file",
+        "top_level_empty_directory",
+        "nested_file",
+        "nested_empty_directory",
+        "nested_symlink",
+        "file_to_directory",
+    ],
+)
+def test_a_foreign_node_in_a_released_attempt_is_retained(tmp_path: Path, intrusion):
+    """Containment beneath a released attempt is not authorship."""
+
+    import shutil as _shutil
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    before = _snapshot(config)[0]
+    reclaimable_before = {
+        view.artifact_id
+        for view in before.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    }
+    assert reclaimable_before, "the fixture produced no reclaimable released scratch"
+    victim_owner = sorted(
+        view.path
+        for view in before.views
+        if view.artifact_id in reclaimable_before and view.path.is_dir()
+    )
+
+    if intrusion == "top_level_file":
+        planted = attempt / "someone-elses.bin"
+        planted.write_bytes(b"not mine")
+    elif intrusion == "top_level_empty_directory":
+        planted = attempt / "someone-elses-dir"
+        planted.mkdir()
+    elif intrusion == "file_to_directory":
+        assert victim_owner
+        existing = next(
+            item for item in sorted(victim_owner[0].rglob("*")) if item.is_file()
+        )
+        existing.unlink()
+        existing.mkdir()
+        planted = existing
+    else:
+        assert victim_owner
+        inside = victim_owner[0]
+        if intrusion == "nested_file":
+            planted = inside / "foreign.bin"
+            planted.write_bytes(b"not mine")
+        elif intrusion == "nested_empty_directory":
+            planted = inside / "foreign-dir"
+            planted.mkdir()
+        else:
+            planted = inside / "foreign-link"
+            planted.symlink_to(attempt / "attempt-state.json")
+
+    after = _snapshot(config)[0]
+    if intrusion in ("top_level_file", "top_level_empty_directory"):
+        exposed = [
+            view
+            for view in after.views
+            if view.artifact_id.endswith(f":{planted.name}") and view.safe_reclaimable
+        ]
+        assert exposed == [], "a foreign top-level node became reclaimable"
+    else:
+        assert not any(
+            view.safe_reclaimable
+            for view in after.views
+            if view.artifact_id.startswith("p7:attempt_scratch:")
+            and view.path == victim_owner[0]
+        ), "a contaminated attempt member stayed reclaimable"
+
+    assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+    assert planted.exists() or planted.is_symlink()
+    del _shutil
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "attempt_root",
+        "attempt_identity",
+        "binding_digest",
+        "publication_digest",
+        "state_digest",
+        "released_state",
+        "content_digest",
+        "schema",
+        "node_count",
+    ],
+)
+def test_a_tampered_released_attempt_proof_fails_closed(tmp_path: Path, field: str):
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    proof = attempt / "attempt-members.json"
+    payload = json.loads(proof.read_text(encoding="utf-8"))
+    payload[field] = (
+        "0" * 64
+        if field.endswith("digest") or field.endswith("identity")
+        else ("someone-else" if field != "node_count" else 99)
+    )
+    proof.write_text(json.dumps(payload), encoding="utf-8")
+
+    snapshot, _paths = _snapshot(config)
+    assert not any(
+        view.safe_reclaimable
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:")
+    ), f"a proof with a tampered {field} still authorized reclamation"
+    assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+    assert proof.is_file()
+
+
+def test_a_symlinked_attempt_state_or_proof_grants_no_authority(tmp_path: Path):
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    for name in ("attempt-members.json", "attempt-state.json"):
+        target = attempt / name
+        saved = target.read_bytes()
+        planted = attempt.parent / f"planted-{name}"
+        planted.write_bytes(saved)
+        target.unlink()
+        target.symlink_to(planted)
+        snapshot, _paths = _snapshot(config)
+        assert not any(
+            view.safe_reclaimable
+            for view in snapshot.views
+            if view.artifact_id.startswith("p7:attempt_scratch:")
+        ), f"a symlinked {name} still authorized reclamation"
+        target.unlink()
+        target.write_bytes(saved)
+        planted.unlink()
+
+
+def test_a_v2_development_manifest_authorizes_nothing(tmp_path: Path):
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    proof = attempt / "attempt-members.json"
+    proof.write_text(
+        json.dumps(
+            {
+                "schema": "mdstats.qualification-attempt-members.v2",
+                "attempt_root": attempt.name,
+                "members": ["components", "deployment"],
+                "member_count": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+    snapshot, _paths = _snapshot(config)
+    assert not any(
+        view.safe_reclaimable
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:")
+    )
+    assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+    assert (attempt / "components").exists() or (attempt / "deployment").exists()
+
+
+def test_an_unreadable_attempt_state_blocks_consequential_planning(tmp_path: Path):
+    """An active attempt's references can pin exact P5 checkpoints.
+
+    Silently dropping a state nobody can read would erase a cross-owner
+    retention edge, so the whole plan becomes unavailable until it is repaired.
+    """
+
+    from mdstats.training_data.storage.inventory import OwnerGraphError
+
+    config, _workspace, harness = _released_attempt_campaign(tmp_path)
+    checkpoints = _published_checkpoints(config, harness)
+    assert checkpoints
+    attempt = _released_attempt_root(config)
+    state = attempt / "attempt-state.json"
+    saved = state.read_bytes()
+    state.write_bytes(b"{ this is not json")
+
+    snapshot, _paths = _snapshot(config)
+    assert snapshot.integrity_failures
+    assert any("attempt state" in item for item in snapshot.integrity_failures)
+    with pytest.raises(OwnerGraphError):
+        snapshot.require_planable()
+    for argv in (
+        ["storage", "cleanup", "--tier", "safe", "--apply"],
+        ["storage", "deduplicate", "--apply"],
+        ["storage", "archive", "create", "--apply"],
+    ):
+        with pytest.raises(CampaignCliError, match="owner graph"):
+            p4d._run(config, *argv)
+    for checkpoint in checkpoints:
+        assert checkpoint.is_file()
+    # Reporting stays available and names the exact problem.
+    assert p4d._run(config, "storage", "report") == 0
+
+    state.write_bytes(saved)
+    repaired, _paths = _snapshot(config)
+    assert repaired.integrity_failures == ()
+    repaired.require_planable()
+
+
+def test_an_aborted_attempt_that_reopens_loses_its_release_authority(tmp_path: Path):
+    """The proof binds the released state, so a legal reopen invalidates it."""
+
+    from mdstats.training_data.qualification.store import (
+        acquire_attempt_reference,
+        read_attempt_state,
+    )
+
+    config, _workspace, harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    before = _snapshot(config)[0]
+    assert any(
+        view.safe_reclaimable
+        for view in before.views
+        if view.artifact_id.startswith("p7:attempt_scratch:")
+    )
+
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        # A terminal attempt is monotonic, so model the supported reopen through
+        # the real owner on a second, aborted attempt identity.
+        binding = session.context.selected.binding
+        identity = "b" * 64
+        acquire_attempt_reference(
+            paths,
+            binding,
+            attempt_identity=identity,
+            publication_digest=session.binding.publication_digest,
+            binding_digest=session.binding.content_digest,
+            referenced_paths=(),
+        )
+        from mdstats.training_data.qualification.store import release_attempt_reference
+
+        release_attempt_reference(
+            paths, binding, attempt_identity=identity, terminal=False
+        )
+        released = _snapshot(config)[0]
+        reopened_root = None
+        for view in released.views:
+            if view.artifact_id.endswith(identity) and view.path.name == identity:
+                reopened_root = view.path
+        assert reopened_root is not None
+
+        # Reopening publishes a new active state; the release proof now binds a
+        # state that is no longer current.
+        acquire_attempt_reference(
+            paths,
+            binding,
+            attempt_identity=identity,
+            publication_digest=session.binding.publication_digest,
+            binding_digest=session.binding.content_digest,
+            referenced_paths=(),
+        )
+        assert read_attempt_state(paths, binding, identity).is_active
+    finally:
+        store.close()
+
+    after = _snapshot(config)[0]
+    assert not any(
+        view.safe_reclaimable
+        for view in after.views
+        if view.artifact_id.startswith(f"p7:attempt_scratch:1:{identity}")
+    ), "a reopened attempt's scratch stayed reclaimable"
+
+
+# ---------------------------------------------------------------------------
+# R19-D - bounded P7 reporting
+# ---------------------------------------------------------------------------
+
+
+def test_normal_report_does_not_scale_with_released_attempt_bulk(tmp_path: Path):
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    proof = attempt / "attempt-members.json"
+
+    def _report_cost() -> tuple[int, bool]:
+        visits = {"n": 0}
+        touched: list[str] = []
+        real_lstat = os.lstat
+        real_scandir = os.scandir
+        real_open = os.open
+
+        def counting_lstat(path, *args, **kwargs):
+            visits["n"] += 1
+            return real_lstat(path, *args, **kwargs)
+
+        def counting_scandir(*args, **kwargs):
+            visits["n"] += 1
+            return real_scandir(*args, **kwargs)
+
+        def recording_open(path, *args, **kwargs):
+            touched.append(str(path))
+            return real_open(path, *args, **kwargs)
+
+        os.lstat = counting_lstat
+        os.scandir = counting_scandir
+        os.open = recording_open
+        try:
+            assert p4d._run(config, "storage", "report") == 0
+        finally:
+            os.lstat = real_lstat
+            os.scandir = real_scandir
+            os.open = real_open
+        return visits["n"], str(proof) in touched
+
+    baseline, read_proof = _report_cost()
+    assert not read_proof, "the bounded report parsed the full released-attempt proof"
+
+    grown = attempt / "components"
+    grown.mkdir(exist_ok=True)
+    for index in range(500):
+        (grown / f"bulk-{index}.bin").write_bytes(b"x" * 32)
+    after, read_proof_again = _report_cost()
+    assert not read_proof_again
+    assert after < baseline + 60, (baseline, after)
+
+    # Consequential planning does pay for the exact proof, and refuses the run
+    # that now contains 500 nodes nobody recorded.
+    snapshot, _paths = _snapshot(config)
+    assert not any(
+        view.safe_reclaimable
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:")
+    )
+
+
+def test_bounded_and_exact_p7_reporting_share_one_owner_truth(tmp_path: Path):
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    bounded, _paths = _snapshot(config, certify=False)
+    exact, _paths = _snapshot(config, certify=True)
+    bounded_scratch = [
+        view for view in bounded.views if view.artifact_id.startswith("p7:attempt_scratch:")
+    ]
+    exact_scratch = [
+        view for view in exact.views if view.artifact_id.startswith("p7:attempt_scratch:")
+    ]
+    assert bounded_scratch and exact_scratch
+    # Bounded reporting says "released, needs exact certification"; it never
+    # claims per-member deletion authority.
+    assert all(view.container_only for view in bounded_scratch)
+    assert all(not view.safe_reclaimable for view in bounded_scratch)
+    assert any("needs exact certification" in view.detail for view in bounded_scratch)
+    assert any(view.safe_reclaimable for view in exact_scratch)
+
+
+# ---------------------------------------------------------------------------
+# R19-C - constructor writes are part of the cross-process writer census
+# ---------------------------------------------------------------------------
+
+
+_CONSTRUCTING_CHILD = """
+import sys, time
+sys.path.insert(0, {repository!r})
+open({started!r}, "w").close()
+from mdstats.training_data._campaign_cli_core import CampaignStore
+
+store = CampaignStore({database!r})
+try:
+    open({finished!r}, "w").close()
+finally:
+    store.close()
+"""
+
+
+def test_a_second_process_cannot_bootstrap_schema_while_the_gate_is_held(
+    tmp_path: Path,
+):
+    """Writable construction writes; therefore it joins the writer census.
+
+    A constructor that bootstrapped its schema outside the exclusion would let a
+    second process mutate the database while maintenance believed every
+    supported writer was excluded - which is exactly the guarantee the VACUUM
+    benefit predicate rests on.
+    """
+
+    import subprocess
+    import sys
+
+    config, _workspace = p5.build_selected_campaign(tmp_path)
+    _cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    started = tmp_path / "child-started"
+    finished = tmp_path / "child-finished"
+    try:
+        with store.writer_exclusion():
+            child = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    _CONSTRUCTING_CHILD.format(
+                        repository=str(Path(cli.__file__).resolve().parents[2]),
+                        database=str(paths.state_db),
+                        started=str(started),
+                        finished=str(finished),
+                    ),
+                ]
+            )
+            deadline = time.time() + 60.0
+            while not started.exists() and time.time() < deadline:
+                time.sleep(0.05)
+            assert started.exists(), "the child never started"
+            time.sleep(1.5)
+            assert not finished.exists(), (
+                "a second process completed a writable construction while the "
+                "writer exclusion was held"
+            )
+        assert child.wait(120) == 0
+        assert finished.exists()
+    finally:
+        store.close()
+
+    fresh = CampaignStore(paths.state_db)
+    try:
+        fresh.event("info", "after", "the writer path is available again")
+    finally:
+        fresh.close()

@@ -376,6 +376,16 @@ def remove_durably(path: Path) -> bool:
         durable_unlink(path)
         return True
     if path.is_dir():
+        if not shutil.rmtree.avoids_symlink_attacks:
+            # The proof this removal rests on was established by a no-follow
+            # observation. A recursive delete that could be redirected by a
+            # directory entry swapped underneath it would not preserve that
+            # proof through to the mutation, so this platform gets a refusal
+            # rather than a traversal it cannot guarantee.
+            raise StorageExecutionError(
+                "this platform cannot perform a symlink-attack-resistant recursive "
+                f"removal, so {path} is retained rather than removed"
+            )
         shutil.rmtree(path, ignore_errors=False)
         fsync_parent_directory(path)
         return True
@@ -424,6 +434,7 @@ def synchronization_for(
 
     generations: set[int] = set()
     run_roots: set[Path] = set()
+    attempt_roots: set[Path] = set()
     if snapshot.current_generation is not None:
         generations.add(int(snapshot.current_generation))
 
@@ -450,7 +461,30 @@ def synchronization_for(
             run_root = _post_selection_run_root(path)
             if run_root is not None:
                 run_roots.add(run_root)
-    return OwnerSynchronization.of(generations, run_roots)
+            attempt_root = _qualification_attempt_root(path)
+            if attempt_root is not None:
+                attempt_roots.add(attempt_root)
+    return OwnerSynchronization.of(generations, run_roots, attempt_roots)
+
+
+def _qualification_attempt_root(path: Path) -> Path | None:
+    """The P7 attempt root a path belongs to, if any.
+
+    Attempt roots are ``.../qualification/g<N>/attempts/<attempt identity>/...``,
+    and the attempt identity component is exactly what P7's state lock is keyed
+    on. Only attempts a plan actually touches are fenced; taking every attempt's
+    lock would serialize unrelated qualification work for no reason.
+    """
+
+    parts = path.parts
+    for index in range(len(parts) - 1):
+        if (
+            parts[index] == "qualification"
+            and index + 3 < len(parts)
+            and parts[index + 2] == "attempts"
+        ):
+            return Path(*parts[: index + 4])
+    return None
 
 
 def _post_selection_run_root(path: Path) -> Path | None:

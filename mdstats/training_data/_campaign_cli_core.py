@@ -332,6 +332,42 @@ def observational_campaign_state() -> Iterable[None]:
 CAMPAIGN_WRITER_LOCK_SUFFIX = ".writer-lock"
 
 
+@dataclass
+class _CampaignWriterGate:
+    """The single writer gate for one campaign database, shared process-wide.
+
+    Two properties have to hold at once and neither is optional.
+
+    *Reentrancy belongs to a thread, not to an object.* An instance-level depth
+    counter would let thread B see thread A's nonzero depth, conclude it was
+    already inside, and mutate the database without ever taking the lock. The
+    ``RLock`` gives reentrancy to exactly the thread that owns it and blocks
+    every other one.
+
+    *The gate is per database, not per object.* Two ``CampaignStore`` instances
+    for the same file in one process are the same writer, so they share one
+    entry here; the ``flock`` beneath handles the second *process*.
+    """
+
+    lock: threading.RLock = field(default_factory=threading.RLock)
+    depth: int = 0
+    handle: int | None = None
+
+
+_CAMPAIGN_WRITER_GATES: dict[str, _CampaignWriterGate] = {}
+_CAMPAIGN_WRITER_GATES_LOCK = threading.Lock()
+
+
+def _campaign_writer_gate(lock_path: Path) -> _CampaignWriterGate:
+    key = str(Path(os.path.abspath(os.fspath(lock_path))))
+    with _CAMPAIGN_WRITER_GATES_LOCK:
+        gate = _CAMPAIGN_WRITER_GATES.get(key)
+        if gate is None:
+            gate = _CampaignWriterGate()
+            _CAMPAIGN_WRITER_GATES[key] = gate
+        return gate
+
+
 def _sqlite_readonly_uri(path: Path) -> str:
     """A genuinely read-only SQLite URI for one existing database file.
 
@@ -373,8 +409,6 @@ class CampaignStore:
         """
 
         self.path = Path(path)
-        self._writer_gate = threading.Lock()
-        self._writer_depth = 0
         if _observational_campaign_state_active():
             # An observational invocation cannot be made consequential by a
             # nested helper that happens to open the store for itself, on this
@@ -392,7 +426,11 @@ class CampaignStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._db_local = threading.local()
         configure_sha256_receipt_store(self.path.parent / "hash-receipts.sqlite3")
-        with self._connect() as db:
+        # Schema bootstrap is a real write. Leaving it outside the common
+        # exclusion would let a second process construct a store and mutate the
+        # database while maintenance believed every supported writer was
+        # excluded, so construction joins the writer census like anything else.
+        with self.writer_exclusion(), self._connect() as db:
             db.executescript(
                 """
                 PRAGMA journal_mode=DELETE;
@@ -463,6 +501,10 @@ class CampaignStore:
             self._db_local.connection = db
         return db
 
+    @property
+    def writer_lock_path(self) -> Path:
+        return Path(str(self.path) + CAMPAIGN_WRITER_LOCK_SUFFIX)
+
     @contextmanager
     def writer_exclusion(self) -> Iterable[None]:
         """Exclude every other campaign-state writer, in this process or another.
@@ -474,51 +516,51 @@ class CampaignStore:
         mutex cannot express that, because the competing writer is usually a
         second CLI invocation.
 
-        So every product write path takes this one advisory ``flock`` first, and
-        maintenance holds it across its final predicate, its admission recheck,
-        and the rewrite itself. The lock is per open file description, so it is
-        genuinely cross-process; it is reentrant within one store so an ordinary
-        write inside a held exclusion does not deadlock; and the kernel releases
-        it on any exit, so a crash can never leave writers permanently blocked.
+        So every product write path takes this one gate first, and maintenance
+        holds it across its final predicate, its admission recheck, and the
+        rewrite itself. Reentrancy is owned by the acquiring *thread*, the gate
+        is shared by every store instance for the same database, and the
+        ``flock`` beneath it is per open file description and therefore
+        genuinely cross-process. The kernel releases it on any exit, so a crash
+        can never leave writers permanently blocked.
 
         Lock order is single and cycle-free: a storage operation takes the
         storage-operation lease and the owner publication seams *before* it
-        reaches campaign-state maintenance, and nothing holding this lock ever
+        reaches campaign-state maintenance, and nothing holding this gate ever
         reaches back for those.
         """
 
-        with self._writer_gate:
-            if self._writer_depth:
-                self._writer_depth += 1
-                reentered = True
-            else:
-                reentered = False
-        if reentered:
-            try:
-                yield
-            finally:
-                with self._writer_gate:
-                    self._writer_depth -= 1
-            return
-
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        handle = os.open(
-            str(self.path) + CAMPAIGN_WRITER_LOCK_SUFFIX,
-            os.O_CREAT | os.O_RDWR | os.O_CLOEXEC,
-            0o644,
-        )
+        self._require_writable("take the campaign-state writer exclusion")
+        lock_path = self.writer_lock_path
+        gate = _campaign_writer_gate(lock_path)
+        gate.lock.acquire()
         try:
-            fcntl.flock(handle, fcntl.LOCK_EX)
-            with self._writer_gate:
-                self._writer_depth = 1
+            if gate.depth == 0:
+                lock_path.parent.mkdir(parents=True, exist_ok=True)
+                handle = os.open(
+                    lock_path,
+                    os.O_CREAT | os.O_RDWR | os.O_CLOEXEC,
+                    0o644,
+                )
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX)
+                except BaseException:
+                    os.close(handle)
+                    raise
+                gate.handle = handle
+            gate.depth += 1
             try:
                 yield
             finally:
-                with self._writer_gate:
-                    self._writer_depth = 0
-                fcntl.flock(handle, fcntl.LOCK_UN)
+                gate.depth -= 1
+                if gate.depth == 0 and gate.handle is not None:
+                    handle, gate.handle = gate.handle, None
+                    try:
+                        fcntl.flock(handle, fcntl.LOCK_UN)
+                    finally:
+                        os.close(handle)
         finally:
-            os.close(handle)
+            gate.lock.release()
 
     def _require_writable(self, operation: str) -> None:
         """Refuse a mutation on an observational store before it starts.
@@ -592,34 +634,41 @@ class CampaignStore:
         manifest bounds the member set exactly, so a foreign file dropped inside
         one withholds authority over the whole entry.
 
-        Returns ``(certified, detail, members)`` where members are POSIX paths
-        relative to ``entry`` itself.
+        Returns ``(certified, detail, nodes)`` where nodes are
+        ``(posix relative path, kind)`` pairs relative to ``entry`` itself.
         """
 
         from .data4_sharded_store import DATA4_SHARDED_MANIFEST_SCHEMA
+        from .storage.owners import (
+            NODE_DIRECTORY,
+            NODE_FILE,
+            observed_node_kind,
+        )
 
         root = Path(entry)
-        if root.is_symlink():
+        root_kind = observed_node_kind(root)
+        if root_kind == "symlink":
             return False, "a symlink is never a record payload this owner wrote", ()
-        if root.is_file():
+        if root_kind == NODE_FILE:
             return True, "single-file external record payload", ()
-        if not root.is_dir():
+        if root_kind != NODE_DIRECTORY:
             return False, f"{root} is neither a payload file nor a payload directory", ()
 
-        observed: list[str] = []
+        observed: list[tuple[str, str]] = []
         for path in sorted(root.rglob("*")):
-            if path.is_symlink():
+            kind = observed_node_kind(path)
+            if kind == "symlink":
                 return False, (
                     f"record payload contains a symlink this owner did not write: {path.name}"
                 ), ()
-            if not path.is_dir() and not path.is_file():
+            if kind not in (NODE_FILE, NODE_DIRECTORY):
                 return False, (
                     f"record payload contains a special file: {path.name}"
                 ), ()
             # Directories are recorded as nodes too: a recursive removal makes
             # them disappear, so an unrecorded empty directory must be covered
             # rather than swept along.
-            observed.append(path.relative_to(root).as_posix())
+            observed.append((path.relative_to(root).as_posix(), kind))
 
         manifest_path = root / "manifest.json"
         if manifest_path.is_file():
@@ -629,7 +678,10 @@ class CampaignStore:
                 return False, f"record manifest is unreadable ({exc})", ()
             if manifest.get("schema") == DATA4_SHARDED_MANIFEST_SCHEMA:
                 declared = {"manifest.json", *_declared_relative_paths(manifest)}
-                extra = sorted(set(observed) - declared)
+                extra = sorted(
+                    path for path, kind in observed
+                    if kind == NODE_FILE and path not in declared
+                )
                 if extra:
                     return False, (
                         "sharded record contains descendant(s) its manifest does not "
@@ -778,6 +830,7 @@ class CampaignStore:
         self._require_writable("write campaign records")
         if not records:
             return
+        self._require_writable("replace campaign records")
         encoded_rows: list[tuple[str, str, str | None, str, str]] = []
         timestamp = _utc_now()
         for key, record in records.items():

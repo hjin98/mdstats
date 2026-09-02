@@ -150,22 +150,32 @@ class OwnerSynchronization:
     generations: tuple[int, ...] = ()
     #: P5 run roots whose activity leases must be held exclusively, sorted.
     run_roots: tuple[Path, ...] = ()
+    #: P7 attempt roots whose per-attempt state locks must be held, sorted.
+    #:
+    #: The generation publication barrier is not the same boundary: attempt
+    #: state is mutated under its own per-attempt lock, and an *aborted* attempt
+    #: - which storage treats as released - may legally reopen as active. Without
+    #: this seam storage could delete scratch while the attempt is reopening.
+    attempt_roots: tuple[Path, ...] = ()
 
     @classmethod
     def of(
         cls,
         generations: Iterable[int] = (),
         run_roots: Iterable[Path] = (),
+        attempt_roots: Iterable[Path] = (),
     ) -> "OwnerSynchronization":
         return cls(
             generations=tuple(sorted({int(value) for value in generations})),
             run_roots=tuple(sorted({Path(value) for value in run_roots})),
+            attempt_roots=tuple(sorted({Path(value) for value in attempt_roots})),
         )
 
     def merged_with(self, other: "OwnerSynchronization") -> "OwnerSynchronization":
         return OwnerSynchronization.of(
             (*self.generations, *other.generations),
             (*self.run_roots, *other.run_roots),
+            (*self.attempt_roots, *other.attempt_roots),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -186,16 +196,24 @@ def owner_mutation_barrier(
 
     ``storage-operation lease -> owner run-activity leases (path order) ->
     P5 publication barriers (generation order) -> P7 publication barriers
-    (generation order) -> fresh revalidation -> narrow mutation``
+    (generation order) -> P7 attempt-state locks (path order) ->
+    fresh revalidation -> narrow mutation``
 
     P5's own execution path takes the same run-activity lease before it ever
     reaches its publication barrier, so the two acquire the shared locks in the
-    same direction and no cycle exists.
+    same direction and no cycle exists. The attempt-state lock comes last for the
+    same reason: P7 acquires the generation barrier before it touches attempt
+    state, never the reverse.
     """
 
     from ..campaign_post_selection_runtime import post_selection_run_activity_lease
+    from ..qualification.store import attempt_state_lock_at
 
-    if not synchronization.generations and not synchronization.run_roots:
+    if (
+        not synchronization.generations
+        and not synchronization.run_roots
+        and not synchronization.attempt_roots
+    ):
         yield
         return
 
@@ -206,6 +224,8 @@ def owner_mutation_barrier(
             stack.enter_context(post_selection_publication_barrier(paths, generation))
         for generation in synchronization.generations:
             stack.enter_context(qualification_publication_barrier(paths, generation))
+        for attempt_root in synchronization.attempt_roots:
+            stack.enter_context(attempt_state_lock_at(attempt_root))
         yield
 
 
