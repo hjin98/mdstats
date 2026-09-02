@@ -830,7 +830,6 @@ class CampaignStore:
         self._require_writable("write campaign records")
         if not records:
             return
-        self._require_writable("replace campaign records")
         encoded_rows: list[tuple[str, str, str | None, str, str]] = []
         timestamp = _utc_now()
         for key, record in records.items():
@@ -855,8 +854,16 @@ class CampaignStore:
         transaction. The database transaction then performs deletions and alias
         replacement together so incompatible authority generations cannot become
         partially mixed after interruption.
+
+        Because that externalization writes real files before SQLite is ever
+        touched, the capability check has to be the *first* thing this method
+        does. Discovering read-only status later - when the writer exclusion or
+        the database finally refuses - would already have left new payloads in
+        ``.mdstats/records/``, which is exactly the side effect an observational
+        command must not have.
         """
 
+        self._require_writable("replace campaign records")
         encoded_rows: list[tuple[str, str, str | None, str, str]] = []
         timestamp = _utc_now()
         for key, record in records.items():
@@ -5379,12 +5386,28 @@ def _storage_command_context(
 
     cfg, paths = _load_config(config, ensure=consequential)
     boundary = _campaign_ownership_boundary(cfg, paths)
-    state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
-    if not state_authorized:
+    # Every storage command needs campaign state to be physically contained -
+    # a `.mdstats` symlinked outside the workspace is not this campaign's state
+    # and is not even safe to read. Only a *mutation* additionally needs
+    # destructive authority: an observational command must stay available
+    # precisely when that authority is being withheld, because a retention
+    # ambiguity is exactly when an operator needs the report naming what is
+    # wrong.
+    contained, containment_detail = boundary.traversal_authorization(paths.state_db)
+    if not contained:
         raise CampaignCliError(
             "Refusing the storage operation because campaign state is outside the "
-            f"campaign ownership boundary: {state_detail}: {paths.state_db}"
+            f"campaign ownership boundary: {containment_detail}: {paths.state_db}"
         )
+    if consequential:
+        state_authorized, state_detail = boundary.destructive_authorization(
+            paths.state_db
+        )
+        if not state_authorized:
+            raise CampaignCliError(
+                "Refusing the storage operation because campaign state is outside the "
+                f"campaign ownership boundary: {state_detail}: {paths.state_db}"
+            )
     store = CampaignStore(paths.state_db, create=consequential)
     # Rebuild the boundary with the store so the P3 publication-window fence and
     # the P7 durable-evidence fence both reduce deletion authority.

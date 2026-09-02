@@ -1018,7 +1018,17 @@ def test_p7_attempt_reference_survives_process_death_and_grants_no_currentness(
         # The fence can only ever reduce deletion authority: it exposes no
         # publication, membership, currentness, or verdict surface.
         surface = {name for name in dir(fence) if not name.startswith("_")}
-        assert surface == {"qualification_roots", "referenced_paths", "is_active", "protects"}
+        # The ambiguity fields are a retention *reduction* and its truthful
+        # reason; like the rest of the fence they expose no publication,
+        # membership, currentness, or verdict surface.
+        assert surface == {
+            "qualification_roots",
+            "referenced_paths",
+            "ambiguous_attempt_state",
+            "ambiguity_reasons",
+            "is_active",
+            "protects",
+        }
     finally:
         store.close()
 

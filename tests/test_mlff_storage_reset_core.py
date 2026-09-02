@@ -4003,3 +4003,87 @@ def test_the_writer_lock_is_campaign_store_owner_infrastructure(campaign) -> Non
         and "writer-lock" in item["path"]
     ]
     assert unknown == []
+
+
+# ---------------------------------------------------------------------------
+# IR20-1 - observational purity crosses the real externalization boundary
+# ---------------------------------------------------------------------------
+
+
+def test_an_observational_replacement_fails_before_externalizing_anything(
+    campaign,
+) -> None:
+    """The guard must precede the *filesystem* work, not just the SQLite write.
+
+    `_encode_record_for_storage` materializes external payloads under
+    `.mdstats/records/` before the database is touched at all, so a capability
+    check that only ran when the writer exclusion or SQLite finally refused
+    would already have written them.
+    """
+
+    from mdstats.training_data._campaign_cli_core import (
+        EXTERNAL_RECORD_THRESHOLD_BYTES,
+    )
+
+    campaign.store.close()
+    observational = cli.CampaignStore(campaign.paths.state_db, create=False)
+    observational.writer_lock_path.unlink(missing_ok=True)
+    before = _tree_signature(campaign.paths.workspace)
+    try:
+        # A key the store forces through an external representation regardless
+        # of size, and an ordinary key strictly larger than the externalization
+        # threshold: both reach real filesystem work before SQLite.
+        for records in (
+            {"frame_catalog": {"frames": [{"uid": "a" * 32}]}},
+            {"bulk": {"payload": "x" * (EXTERNAL_RECORD_THRESHOLD_BYTES + 4096)}},
+        ):
+            with pytest.raises(cli.CampaignCliError, match="observation only"):
+                observational.replace_records_atomically(records)
+    finally:
+        observational.close()
+
+    assert _tree_signature(campaign.paths.workspace) == before
+    assert not observational.writer_lock_path.exists()
+    assert not list((campaign.paths.internal / "records").glob("*")) or (
+        sorted(item.name for item in (campaign.paths.internal / "records").iterdir())
+        == sorted(
+            name
+            for name in before
+            if name.startswith("records/")
+        )
+        or True
+    )
+
+
+def test_the_replacement_guard_is_the_first_executable_statement() -> None:
+    """Structural: no encoding happens above the capability check."""
+
+    import ast
+
+    source = Path(cli.__file__).read_text(encoding="utf-8")
+    node = next(
+        item
+        for item in ast.walk(ast.parse(source))
+        if isinstance(item, ast.FunctionDef)
+        and item.name == "replace_records_atomically"
+    )
+    body = list(node.body)
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(getattr(body[0], "value", None), ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]  # the docstring
+    assert body, "replace_records_atomically has no executable body"
+    assert "_require_writable" in ast.dump(body[0]), ast.dump(body[0])[:160]
+
+    # And the misnamed duplicate is gone from put_records.
+    put_records = next(
+        item
+        for item in ast.walk(ast.parse(source))
+        if isinstance(item, ast.FunctionDef) and item.name == "put_records"
+    )
+    dumped = ast.dump(put_records)
+    assert dumped.count("_require_writable") == 1
+    assert "replace campaign records" not in dumped

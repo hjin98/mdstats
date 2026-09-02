@@ -448,9 +448,13 @@ recorded, a symlink, or a file swapped for a directory at the same path all
 withhold authority over that whole tree until you clear them. The same applies to
 a released qualification attempt's leftover scratch.
 
-If a qualification attempt's own state file cannot be read, `storage report` says
-so and every consequential command refuses until you repair it. That attempt may
-have been pinning exact checkpoints, and the product will not guess which.
+If a qualification attempt's own state cannot be authenticated, `storage report`
+says so and every consequential command refuses until you repair it - not just
+commands touching qualification. That attempt may have been pinning exact
+checkpoints anywhere in the campaign, and the product will not guess which, so
+nothing campaign-managed is authorized for deletion while the ambiguity lasts.
+Reporting deliberately keeps working: that is when you need it. Repairing the
+exact state restores normal behavior with no migration and no guessing.
 
 `--root` may narrow the selection to one eligible artifact. It may not widen it:
 naming a parent directory is rejected rather than reinterpreted, because a parent

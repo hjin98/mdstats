@@ -179,7 +179,14 @@ def read_owner_record_bytes(path: Path) -> bytes | None:
     checked. An ``lstat`` followed by an ordinary read is a race, not a check.
     """
 
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    if not hasattr(os, "O_NOFOLLOW"):
+        # Without O_NOFOLLOW there is no way to refuse a symlink in the same
+        # syscall that opens the name, and an lstat/open pair is a race rather
+        # than a check. This package's supported target is POSIX with
+        # O_NOFOLLOW; anywhere else, an owner authority record simply cannot be
+        # authenticated and grants nothing.
+        return None
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | os.O_NOFOLLOW
     try:
         handle = os.open(path, flags)
     except OSError:
@@ -1184,7 +1191,7 @@ def qualification_views(
         LOCKED_REVEAL_DIRECTORY,
         QUALIFICATION_ROOT_NAME,
         certified_attempt_nodes,
-        iter_attempt_state_census,
+        iter_attempt_state_authorities,
         qualification_root,
     )
 
@@ -1212,14 +1219,26 @@ def qualification_views(
 
     active_reference_paths: set[str] = set()
     integrity_failures: list[str] = []
+    # One strict authority for every storage-facing P7 decision below: the
+    # census, the active-reference collection, and the per-attempt release
+    # classification all read the same authenticated result, so the owner graph
+    # and the local classifier can never disagree about whether an attempt is
+    # released.
     try:
-        states, unreadable = iter_attempt_state_census(paths)
+        authorities = iter_attempt_state_authorities(paths)
     except Exception as exc:
-        states, unreadable = (), ((str(family_root), f"attempt census failed: {exc}"),)
-    for state in states:
-        if state.is_active:
-            active_reference_paths.update(state.referenced_paths)
-    for state_path, reason in unreadable:
+        authorities = (
+            _UnresolvedAttemptAuthority(family_root, f"attempt census failed: {exc}"),
+        )
+    resolved_states = {
+        str(item.attempt_root): item.state for item in authorities if item.resolved
+    }
+    for item in authorities:
+        if item.state is not None and item.state.is_active:
+            active_reference_paths.update(item.state.referenced_paths)
+    for state_path, reason in (
+        (str(item.attempt_root), item.reason) for item in authorities if not item.resolved
+    ):
         # Reported truthfully *and* propagated as an integrity failure: the
         # references this attempt would have protected are unknowable, and
         # guessing them is exactly what must not happen.
@@ -1261,7 +1280,7 @@ def qualification_views(
             continue
         for attempt in sorted(p for p in attempts_root.iterdir() if p.is_dir()):
             released, why, state = _attempt_release_state(
-                paths, attempt, active_reference_paths
+                resolved_states.get(str(attempt)), attempt, active_reference_paths
             )
             views.append(
                 OwnerArtifactView(
@@ -1483,19 +1502,32 @@ def _reference_request_root(cfg: Mapping[str, Any], paths: Any) -> Path | None:
         return None
 
 
-def _attempt_release_state(
-    paths: Any, attempt_root: Path, active_reference_paths: set[str]
-) -> tuple[bool, str, Any]:
-    """Ask the P7 owner whether this attempt's scratch is genuinely released.
+@dataclass(frozen=True, slots=True)
+class _UnresolvedAttemptAuthority:
+    """A census failure that never carried an authenticated state."""
 
-    Returns the authenticated state as well, because the released-attempt proof
-    binds it: an aborted attempt that legally reopened as active publishes a new
-    state, and the old release proof stops applying for free.
+    attempt_root: Path
+    reason: str
+    state: Any = None
+
+    @property
+    def resolved(self) -> bool:
+        return False
+
+
+def _attempt_release_state(
+    state: Any, attempt_root: Path, active_reference_paths: set[str]
+) -> tuple[bool, str, Any]:
+    """Whether this attempt's scratch is genuinely released.
+
+    The state is supplied by the single strict authority rather than re-read
+    here. Re-reading would be a second, independently fallible opinion about the
+    same record, and a local classifier that disagreed with the owner graph is
+    exactly how released authority could survive an unresolved census.
     """
 
-    from ..qualification.store import ATTEMPT_ACTIVE, read_attempt_state_at
+    from ..qualification.store import ATTEMPT_ACTIVE
 
-    state = read_attempt_state_at(attempt_root)
     if state is None:
         return False, (
             "attempt scratch without authenticated owner state is never proven "

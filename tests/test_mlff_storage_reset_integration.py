@@ -2030,7 +2030,11 @@ def test_an_unreadable_attempt_state_blocks_consequential_planning(tmp_path: Pat
         ["storage", "deduplicate", "--apply"],
         ["storage", "archive", "create", "--apply"],
     ):
-        with pytest.raises(CampaignCliError, match="owner graph"):
+        # Either refusal is truthful and both fail closed: the owner-graph gate,
+        # or the workspace-wide retention ambiguity standing behind it.
+        with pytest.raises(
+            CampaignCliError, match="owner graph|cannot be authenticated"
+        ):
             p4d._run(config, *argv)
     for checkpoint in checkpoints:
         assert checkpoint.is_file()
@@ -2259,3 +2263,412 @@ def test_a_second_process_cannot_bootstrap_schema_while_the_gate_is_held(
         fresh.event("info", "after", "the writer path is available again")
     finally:
         fresh.close()
+
+
+# ---------------------------------------------------------------------------
+# R21-A / R21-B / IR20-2 - strict, root-bound, identity-authenticated P7 state
+# ---------------------------------------------------------------------------
+
+
+def _assert_p7_ambiguity_blocks_everything(config: Path, checkpoints) -> None:
+    """No planning, no released scratch, no destructive authorization anywhere."""
+
+    from mdstats.training_data.qualification.store import (
+        build_qualification_retention_fence,
+    )
+    from mdstats.training_data.storage.inventory import OwnerGraphError
+
+    snapshot, paths = _snapshot(config)
+    assert snapshot.integrity_failures, "an unresolved attempt raised no integrity failure"
+    with pytest.raises(OwnerGraphError):
+        snapshot.require_planable()
+
+    # R21-B: the local classifier must agree with the global graph. A test that
+    # only proved require_planable() was red could stay green while a parallel
+    # reader kept classifying the attempt as released.
+    assert not any(
+        view.safe_reclaimable
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:")
+    ), "released scratch authority survived an unresolved attempt state"
+
+    # R21-D: the physical boundary refuses independently of the planner, and it
+    # refuses for artifacts far outside the P7 tree.
+    fence = build_qualification_retention_fence(paths)
+    assert fence.ambiguous_attempt_state is True
+    assert fence.ambiguity_reasons
+    cfg, _paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db, create=False)
+    try:
+        with cli.observational_campaign_state():
+            boundary = cli._campaign_ownership_boundary(cfg, paths, store)
+    finally:
+        store.close()
+    for checkpoint in checkpoints:
+        authorized, why = boundary.destructive_authorization(checkpoint)
+        assert not authorized, checkpoint
+        assert "cannot be authenticated" in why
+    unrelated = paths.internal / "records"
+    unrelated.mkdir(parents=True, exist_ok=True)
+    authorized, why = boundary.destructive_authorization(unrelated / "anything.bin")
+    assert not authorized and "cannot be authenticated" in why
+
+    assert p4d._run(config, "storage", "report") == 0
+    for checkpoint in checkpoints:
+        assert checkpoint.is_file()
+
+
+def _assert_p7_repair_restores_planning(config: Path) -> None:
+    from mdstats.training_data.qualification.store import (
+        build_qualification_retention_fence,
+    )
+
+    snapshot, paths = _snapshot(config)
+    assert snapshot.integrity_failures == ()
+    snapshot.require_planable()
+    assert build_qualification_retention_fence(paths).ambiguous_attempt_state is False
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "missing_state",
+        "wrong_root_state",
+        "missing_digest",
+        "state_symlink",
+        "attempt_root_symlink",
+        "generation_root_symlink",
+        "attempts_container_symlink",
+        "state_fifo",
+        "canonical_identity_mismatch",
+    ],
+)
+def test_unauthenticated_p7_attempt_state_blocks_everything(
+    tmp_path: Path, corruption: str
+):
+    """Unknown P7 liveness is a workspace-wide reduction, not a local one.
+
+    An active attempt's `referenced_paths` routinely name P5 publication
+    checkpoints outside the P7 tree. If the state cannot be authenticated those
+    paths are unrecoverable, so nothing campaign-managed may be authorized until
+    it is repaired - and the storage planner is not the only thing that has to
+    say so.
+    """
+
+    import shutil as _shutil
+
+    config, _workspace, harness = _released_attempt_campaign(tmp_path)
+    checkpoints = _published_checkpoints(config, harness)
+    assert checkpoints
+    attempt = _released_attempt_root(config)
+    attempts_root = attempt.parent
+    generation_root = attempts_root.parent
+    state = attempt / "attempt-state.json"
+    saved = state.read_bytes()
+    restore: list = []
+
+    if corruption == "missing_state":
+        state.unlink()
+        restore.append(lambda: state.write_bytes(saved))
+    elif corruption == "wrong_root_state":
+        # A digest-valid state, published for a different attempt, copied over
+        # this one. Self-consistency is not identity.
+        other = attempts_root / ("c" * 64)
+        other.mkdir()
+        (other / "attempt-state.json").write_bytes(saved)
+        payload = json.loads(saved.decode("utf-8"))
+        payload["attempt_identity"] = "c" * 64
+        (other / "attempt-state.json").write_text(json.dumps(payload), encoding="utf-8")
+        state.write_text(json.dumps(payload), encoding="utf-8")
+        restore.append(lambda: state.write_bytes(saved))
+        restore.append(lambda: _shutil.rmtree(other))
+    elif corruption == "missing_digest":
+        payload = json.loads(saved.decode("utf-8"))
+        payload.pop("content_digest", None)
+        payload["referenced_paths"] = []
+        payload["state"] = "terminal"
+        state.write_text(json.dumps(payload), encoding="utf-8")
+        restore.append(lambda: state.write_bytes(saved))
+    elif corruption == "canonical_identity_mismatch":
+        # Directory name, recorded identity, and self digest all agree - but the
+        # binding they name derives a different canonical attempt identity.
+        payload = json.loads(saved.decode("utf-8"))
+        payload["binding_digest"] = "d" * 64
+        payload.pop("content_digest", None)
+        state.write_text(json.dumps(payload), encoding="utf-8")
+        from mdstats.training_data.qualification.store import QualificationAttemptState
+
+        rebuilt = QualificationAttemptState.from_dict(
+            json.loads(state.read_text(encoding="utf-8"))
+        )
+        payload["content_digest"] = rebuilt.content_digest
+        state.write_text(json.dumps(payload), encoding="utf-8")
+        restore.append(lambda: state.write_bytes(saved))
+    elif corruption == "state_fifo":
+        state.unlink()
+        os.mkfifo(state)
+        restore.append(lambda: (state.unlink(), state.write_bytes(saved)))
+    elif corruption == "state_symlink":
+        planted = attempts_root / "planted-state.json"
+        planted.write_bytes(saved)
+        state.unlink()
+        state.symlink_to(planted)
+        restore.append(lambda: (state.unlink(), state.write_bytes(saved), planted.unlink()))
+    elif corruption == "attempt_root_symlink":
+        moved = attempts_root.parent / f"moved-{attempt.name}"
+        attempt.rename(moved)
+        attempt.symlink_to(moved)
+        restore.append(lambda: (attempt.unlink(), moved.rename(attempt)))
+    elif corruption == "generation_root_symlink":
+        moved = generation_root.parent / f"moved-{generation_root.name}"
+        generation_root.rename(moved)
+        generation_root.symlink_to(moved)
+        restore.append(lambda: (generation_root.unlink(), moved.rename(generation_root)))
+    else:  # attempts_container_symlink
+        moved = generation_root / "moved-attempts"
+        attempts_root.rename(moved)
+        attempts_root.symlink_to(moved)
+        restore.append(lambda: (attempts_root.unlink(), moved.rename(attempts_root)))
+
+    _assert_p7_ambiguity_blocks_everything(config, checkpoints)
+    for undo in restore:
+        undo()
+    _assert_p7_repair_restores_planning(config)
+
+
+def test_the_strict_state_authority_is_the_only_storage_facing_reader() -> None:
+    """Structural: no permissive parse confers storage authority beside it."""
+
+    import ast
+
+    store_source = (
+        Path(cli.__file__).parent / "qualification" / "store.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(store_source)
+    for name in (
+        "iter_attempt_state_census",
+        "iter_attempt_state_authorities",
+        "read_attempt_state_at",
+        "build_qualification_retention_fence",
+    ):
+        node = next(
+            item
+            for item in ast.walk(tree)
+            if isinstance(item, ast.FunctionDef) and item.name == name
+        )
+        dumped = ast.dump(node)
+        assert "from_dict" not in dumped or name == "iter_attempt_state_authorities", name
+        assert (
+            "authenticate_attempt_state" in dumped
+            or "iter_attempt_state_authorities" in dumped
+            or "iter_attempt_state_census" in dumped
+        ), name
+
+    owners = (Path(cli.__file__).parent / "storage" / "owners.py").read_text(
+        encoding="utf-8"
+    )
+    assert "QualificationAttemptState" not in owners, (
+        "a storage owner view still parses attempt state for itself"
+    )
+    assert "read_attempt_state_at" not in owners
+    assert "iter_attempt_state_authorities" in owners
+
+
+# ---------------------------------------------------------------------------
+# IR20-3 - repeated terminal release validates the retained proof
+# ---------------------------------------------------------------------------
+
+
+def _repeat_terminal_release(config: Path, harness):
+    from mdstats.training_data.qualification.store import release_attempt_reference
+
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        return release_attempt_reference(
+            paths,
+            session.context.selected.binding,
+            attempt_identity=session.binding.attempt_identity,
+        )
+    finally:
+        store.close()
+
+
+def test_a_valid_repeated_terminal_release_reuses_the_bound_proof(tmp_path: Path):
+    config, _workspace, harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    proof = attempt / "attempt-members.json"
+    state = attempt / "attempt-state.json"
+    before = (proof.read_bytes(), state.read_bytes())
+    scratch = sorted(str(item) for item in attempt.rglob("*"))
+
+    result = _repeat_terminal_release(config, harness)
+    assert result is not None and result.state == "terminal"
+    assert (proof.read_bytes(), state.read_bytes()) == before
+    assert sorted(str(item) for item in attempt.rglob("*")) == scratch
+
+
+@pytest.mark.parametrize(
+    "damage", ["missing", "v2_only", "self_digest", "binding_digest", "publication_digest"]
+)
+def test_a_repeated_terminal_release_fails_closed_on_a_broken_proof(
+    tmp_path: Path, damage: str
+):
+    """The owner must surface a lost proof, not report an ordinary success."""
+
+    from mdstats.training_data.qualification.store import QualificationLineageError
+
+    config, _workspace, harness = _released_attempt_campaign(tmp_path)
+    attempt = _released_attempt_root(config)
+    proof = attempt / "attempt-members.json"
+    payload = json.loads(proof.read_text(encoding="utf-8"))
+    scratch_before = sorted(
+        str(item) for item in attempt.rglob("*") if item != proof
+    )
+
+    if damage == "missing":
+        proof.unlink()
+    elif damage == "v2_only":
+        proof.write_text(
+            json.dumps(
+                {
+                    "schema": "mdstats.qualification-attempt-members.v2",
+                    "attempt_root": attempt.name,
+                    "members": [],
+                    "member_count": 0,
+                }
+            ),
+            encoding="utf-8",
+        )
+    elif damage == "self_digest":
+        payload["content_digest"] = "0" * 64
+        proof.write_text(json.dumps(payload), encoding="utf-8")
+    else:
+        # Contradict the state while keeping the record self-consistent, so only
+        # the cross-field binding check can catch it.
+        from mdstats.training_data._common import digest as _digest
+
+        payload[damage] = "e" * 64
+        body = {k: v for k, v in payload.items() if k != "content_digest"}
+        payload["content_digest"] = _digest(body)
+        proof.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(QualificationLineageError, match="released-attempt proof"):
+        _repeat_terminal_release(config, harness)
+    assert (
+        sorted(str(item) for item in attempt.rglob("*") if item != proof)
+        == scratch_before
+    )
+
+
+# ---------------------------------------------------------------------------
+# IR20-4 - concurrent aborted reopen versus real storage cleanup, both orders
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("owner_first", [True, False])
+def test_an_aborted_reopen_and_storage_cleanup_never_interleave(
+    tmp_path: Path, owner_first: bool
+):
+    """Both orderings, through the production attempt-state lock.
+
+    Attempt identity is canonically derived from the qualification binding, so
+    there is exactly one attempt per binding: the aborted-reopen lifecycle has to
+    be exercised on that attempt, not on an invented second one. Whichever side
+    takes the seam first, the other waits - storage never removes scratch an
+    attempt is in the middle of reopening, and a reopen never lands mid-removal.
+    """
+
+    from mdstats.training_data.qualification.store import (
+        ATTEMPT_ABORTED,
+        acquire_attempt_reference,
+        attempt_state_lock_at,
+        read_attempt_state_at,
+        release_attempt_reference,
+    )
+
+    harness = fx.QualificationHarness()
+    config, _workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
+    assert _run_to_waiting(config, harness) == 0
+
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        binding = session.context.selected.binding
+        identity = session.binding.attempt_identity
+        publication = session.binding.publication_digest
+        binding_digest = session.binding.content_digest
+        aborted = release_attempt_reference(
+            paths, binding, attempt_identity=identity, terminal=False
+        )
+        assert aborted is not None and aborted.state == ATTEMPT_ABORTED
+        attempt_root = paths.internal / "qualification" / "g1" / "attempts" / identity
+    finally:
+        store.close()
+    assert attempt_root.is_dir()
+
+    order: list[str] = []
+    failures: list[BaseException] = []
+    holding = threading.Event()
+    release = threading.Event()
+
+    def reopen() -> None:
+        try:
+            _c, p, s, sess = fx.load_session(config, harness)
+            try:
+                acquire_attempt_reference(
+                    p,
+                    sess.context.selected.binding,
+                    attempt_identity=identity,
+                    publication_digest=publication,
+                    binding_digest=binding_digest,
+                    referenced_paths=(),
+                )
+            finally:
+                s.close()
+            order.append("reopen")
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            failures.append(exc)
+
+    def cleanup() -> None:
+        try:
+            assert (
+                p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+            )
+            order.append("cleanup")
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            failures.append(exc)
+
+    winner, loser = (reopen, cleanup) if owner_first else (cleanup, reopen)
+
+    def holder() -> None:
+        with attempt_state_lock_at(attempt_root):
+            holding.set()
+            release.wait(60.0)
+            order.append("seam")
+
+    gate = threading.Thread(target=holder, daemon=True)
+    gate.start()
+    assert holding.wait(60.0)
+    first = threading.Thread(target=winner, daemon=True)
+    first.start()
+    time.sleep(0.5)
+    second = threading.Thread(target=loser, daemon=True)
+    second.start()
+    time.sleep(1.0)
+    assert order == [], "an operation proceeded while the attempt seam was held"
+    release.set()
+    gate.join(60.0)
+    first.join(180.0)
+    second.join(180.0)
+    assert not failures, failures
+    assert order[0] == "seam", order
+
+    # The reopened attempt is active again, and its scratch is not classified as
+    # released regardless of which side won the race.
+    state = read_attempt_state_at(attempt_root)
+    assert state is not None and state.is_active
+    snapshot, _paths = _snapshot(config)
+    assert not any(
+        view.safe_reclaimable
+        for view in snapshot.views
+        if view.artifact_id.startswith(f"p7:attempt_scratch:1:{identity}")
+    )

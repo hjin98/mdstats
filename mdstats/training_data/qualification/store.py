@@ -1158,6 +1158,51 @@ def publish_attempt_member_proof(
     return destination
 
 
+def validate_bound_attempt_proof(
+    attempt_directory: str | os.PathLike[str],
+    state: "QualificationAttemptState",
+) -> tuple[dict[str, Any] | None, str]:
+    """The retained v3 proof, proven to bind *this* exact released state.
+
+    Self-consistency is not enough. The proof redundantly carries the binding
+    and publication digests, and a record that authenticates against its own
+    digest while naming a different binding is contradictory metadata, not
+    authority. Every field that ties the proof to the state is checked here so
+    no consumer has to remember to.
+    """
+
+    from ..storage.owners import NODE_DIRECTORY, observed_node_kind
+
+    root = Path(attempt_directory)
+    if observed_node_kind(root) != NODE_DIRECTORY:
+        return None, f"{root} is not a plain directory"
+    proof, why = read_attempt_member_proof(root)
+    if proof is None:
+        return None, why
+    if str(proof["state_digest"]) != state.content_digest:
+        return None, (
+            "the released-attempt proof binds a different attempt state than the one "
+            "currently published; it grants no authority"
+        )
+    if str(proof["attempt_identity"]) != state.attempt_identity:
+        return None, "the released-attempt proof binds a different attempt"
+    if str(proof["released_state"]) != state.state:
+        return None, (
+            "the released-attempt proof was published for a different released state"
+        )
+    if str(proof["binding_digest"]) != state.binding_digest:
+        return None, (
+            "the released-attempt proof binds a different qualification binding than "
+            "the state it claims to certify"
+        )
+    if str(proof["publication_digest"]) != state.publication_digest:
+        return None, (
+            "the released-attempt proof binds a different publication than the state "
+            "it claims to certify"
+        )
+    return proof, "released-attempt proof authenticated against its bound state"
+
+
 def certified_attempt_nodes(
     attempt_directory: str | os.PathLike[str],
     state: "QualificationAttemptState",
@@ -1170,25 +1215,10 @@ def certified_attempt_nodes(
     the current one.
     """
 
-    from ..storage.owners import NODE_DIRECTORY, observed_node_kind
-
     root = Path(attempt_directory)
-    if observed_node_kind(root) != NODE_DIRECTORY:
-        return False, f"{root} is not a plain directory", ()
-    proof, why = read_attempt_member_proof(root)
+    proof, why = validate_bound_attempt_proof(root, state)
     if proof is None:
         return False, why, ()
-    if str(proof["state_digest"]) != state.content_digest:
-        return False, (
-            "the released-attempt proof binds a different attempt state than the one "
-            "currently published; it grants no authority"
-        ), ()
-    if str(proof["attempt_identity"]) != state.attempt_identity:
-        return False, "the released-attempt proof binds a different attempt", ()
-    if str(proof["released_state"]) != state.state:
-        return False, (
-            "the released-attempt proof was published for a different released state"
-        ), ()
     recorded = {item["path"]: item["kind"] for item in proof["nodes"]}
     contradictions: list[str] = []
     for item in _observe_attempt_nodes(root):
@@ -1215,25 +1245,13 @@ def certified_attempt_nodes(
 def read_attempt_state_at(
     attempt_directory: str | os.PathLike[str],
 ) -> "QualificationAttemptState | None":
-    """Authenticate the attempt state living at one attempt root.
+    """The authenticated state at one attempt root, or ``None``.
 
-    The same strict no-follow reader every other consumer uses; there is
-    deliberately no second, permissive raw-JSON path beside it.
+    A thin projection of :func:`authenticate_attempt_state` - the single strict
+    authority - so that no storage-facing consumer can reach a weaker answer.
     """
 
-    from ..storage.owners import NODE_FILE, observed_node_kind, read_owner_record_bytes
-
-    path = Path(attempt_directory) / ATTEMPT_STATE_FILENAME
-    if observed_node_kind(path) != NODE_FILE:
-        return None
-    raw = read_owner_record_bytes(path)
-    if raw is None:
-        return None
-    try:
-        return QualificationAttemptState.from_dict(json.loads(raw.decode("utf-8")))
-    except (UnicodeDecodeError, ValueError, TrainingDataSerializationError,
-            TrainingDataInputError):
-        return None
+    return authenticate_attempt_state(attempt_directory).state
 
 
 def read_attempt_state(
@@ -1357,8 +1375,23 @@ def release_attempt_reference(
             return None
         # Terminal completion is immutable, including its released reference
         # set.  Duplicate completion calls return the existing state rather
-        # than changing timestamps or downgrading it to aborted.
+        # than changing timestamps or downgrading it to aborted - but they still
+        # have to prove the retained proof is intact. Returning a bare success
+        # while the topology proof that authorizes reclamation has been lost
+        # would report the owner as healthy and leave the terminal scratch
+        # permanently unreclaimable with nothing said about it. The proof is
+        # verified, never rebuilt: rescanning a tree storage may already have
+        # depleted or something may have tampered with is exactly how foreign
+        # content would get absorbed into ownership.
         if existing.state == ATTEMPT_TERMINAL:
+            proof, why = validate_bound_attempt_proof(state_path.parent, existing)
+            if proof is None:
+                raise QualificationLineageError(
+                    f"Repeated terminal release of qualification attempt "
+                    f"{existing.attempt_identity[:12]}... cannot validate its retained "
+                    f"released-attempt proof: {why}. The attempt and its scratch are "
+                    "retained; the proof is never rebuilt from the current tree."
+                )
             return existing
         state = QualificationAttemptState(
             attempt_identity=existing.attempt_identity,
@@ -1388,20 +1421,138 @@ def iter_attempt_states(workspace_or_paths: Any) -> tuple[QualificationAttemptSt
     return states
 
 
-def iter_attempt_state_census(
-    workspace_or_paths: Any,
-) -> tuple[tuple[QualificationAttemptState, ...], tuple[tuple[str, str], ...]]:
-    """``(states, unreadable)`` for every attempt under every generation root.
+@dataclass(frozen=True, slots=True)
+class AttemptStateAuthority:
+    """The single strict, root-bound answer about one P7 attempt.
 
-    Unreadable states are *named*, never silently dropped. An active attempt's
-    ``referenced_paths`` can pin exact P5 checkpoints far outside the P7 tree, so
-    an attempt whose state cannot be authenticated is an unknown cross-owner
-    retention edge. Reporting says so, and consequential planning treats it as an
-    owner-graph integrity failure rather than guessing which paths it would have
-    protected.
+    Either an authenticated state that provably belongs to the attempt root it
+    was read from, or an explicit unresolved result naming the root and the
+    reason. There is deliberately no third answer and no second reader: a
+    permissive parser beside this one could classify an attempt as released
+    while the owner graph is simultaneously reporting it as unknown, and the two
+    contradictory views would race to decide whether external P5 checkpoints
+    stay protected.
     """
 
-    from ..storage.owners import NODE_FILE, observed_node_kind, read_owner_record_bytes
+    attempt_root: Path
+    state: "QualificationAttemptState | None" = None
+    reason: str = ""
+
+    @property
+    def resolved(self) -> bool:
+        return self.state is not None
+
+
+def authenticate_attempt_state(
+    attempt_root: str | os.PathLike[str],
+) -> AttemptStateAuthority:
+    """Authenticate one attempt's state against the root it was read from.
+
+    Four things must agree before this state may release anything, and each one
+    closes a distinct hole:
+
+    * the attempt root is a plain directory and its state a plain regular file,
+      read no-follow, so a substituted object cannot supply the answer;
+    * the persisted ``content_digest`` is present and recomputes exactly. The
+      generic deserializer tolerates its absence for compatibility, but a record
+      that can release external P5 protection may not be authenticated by a
+      digest this process just invented for it;
+    * ``state.attempt_identity`` equals the directory name, so a digest-valid
+      state copied over another attempt is not accepted as that attempt's;
+    * ``state.attempt_identity`` equals the canonical identity derived from
+      ``state.binding_digest``. The directory name is not independent semantic
+      authority: P7 derives attempt identity from the qualification binding, and
+      a state whose binding says it belongs elsewhere is not this attempt's
+      state no matter what it is filed under.
+    """
+
+    from ..storage.owners import (
+        NODE_DIRECTORY,
+        NODE_FILE,
+        observed_node_kind,
+        read_owner_record_bytes,
+    )
+
+    root = Path(attempt_root)
+    if observed_node_kind(root) != NODE_DIRECTORY:
+        return AttemptStateAuthority(
+            root, None, "attempt root is not a plain directory"
+        )
+    path = root / ATTEMPT_STATE_FILENAME
+    kind = observed_node_kind(path)
+    if kind != NODE_FILE:
+        return AttemptStateAuthority(
+            root,
+            None,
+            "attempt state is missing"
+            if kind == "absent"
+            else f"attempt state is a {kind}, not a plain regular file",
+        )
+    raw = read_owner_record_bytes(path)
+    if raw is None:
+        return AttemptStateAuthority(root, None, "attempt state could not be read")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        return AttemptStateAuthority(root, None, f"attempt state is unusable: {exc}")
+    if not isinstance(payload, Mapping):
+        return AttemptStateAuthority(root, None, "attempt state is not an object")
+    recorded_digest = payload.get("content_digest")
+    if not recorded_digest:
+        return AttemptStateAuthority(
+            root,
+            None,
+            "attempt state carries no persisted content digest, so nothing "
+            "authenticates it",
+        )
+    try:
+        state = QualificationAttemptState.from_dict(payload)
+    except (
+        ValueError,
+        TrainingDataSerializationError,
+        TrainingDataInputError,
+    ) as exc:
+        return AttemptStateAuthority(root, None, f"attempt state is unusable: {exc}")
+    if str(recorded_digest) != state.content_digest:
+        return AttemptStateAuthority(
+            root, None, "attempt state does not authenticate against its own digest"
+        )
+    if state.attempt_identity != root.name:
+        return AttemptStateAuthority(
+            root,
+            None,
+            "attempt state belongs to a different attempt identity than the "
+            "directory it was read from",
+        )
+    if state.attempt_identity != _expected_attempt_identity(state.binding_digest):
+        return AttemptStateAuthority(
+            root,
+            None,
+            "attempt identity is not the canonical identity of the qualification "
+            "binding this state names; the directory name is not independent "
+            "authority",
+        )
+    return AttemptStateAuthority(root, state, "attempt state authenticated")
+
+
+def iter_attempt_state_authorities(
+    workspace_or_paths: Any,
+) -> tuple[AttemptStateAuthority, ...]:
+    """Strictly authenticate every attempt in the P7 owner namespace.
+
+    Enumeration descends the namespace **no-follow at every authority-bearing
+    component**. ``O_NOFOLLOW`` on the state file only protects the final name;
+    a symlinked ``g<generation>`` or ``attempts`` directory would otherwise let
+    an entire foreign tree supply P7 state. Any substituted, special, or
+    unreadable component is an integrity failure rather than something to
+    traverse, and the enumeration itself never resolves a link to decide.
+
+    Enumeration is by actual attempt *directory*, not by state file: an attempt
+    directory with no state at all is precisely the case whose external
+    references are unknown, and a state-file glob would not see it.
+    """
+
+    from ..storage.owners import NODE_DIRECTORY, observed_node_kind
 
     internal = (
         Path(workspace_or_paths.internal)
@@ -1409,30 +1560,72 @@ def iter_attempt_state_census(
         else Path(workspace_or_paths) / ".mdstats"
     )
     root = internal.resolve() / QUALIFICATION_ROOT_NAME
-    if not root.is_dir():
-        return (), ()
-    states: list[QualificationAttemptState] = []
-    unreadable: list[tuple[str, str]] = []
-    for path in sorted(root.glob(f"g*/attempts/*/{ATTEMPT_STATE_FILENAME}")):
-        if observed_node_kind(path) != NODE_FILE:
-            unreadable.append((str(path), "attempt state is not a plain regular file"))
+    if observed_node_kind(root) != NODE_DIRECTORY:
+        return ()
+    results: list[AttemptStateAuthority] = []
+    try:
+        generations = sorted(os.scandir(root), key=lambda item: item.name)
+    except OSError as exc:
+        return (
+            AttemptStateAuthority(
+                root, None, f"qualification family root could not be enumerated: {exc}"
+            ),
+        )
+    for entry in generations:
+        if not entry.name.startswith("g"):
             continue
-        raw = read_owner_record_bytes(path)
-        if raw is None:
-            unreadable.append((str(path), "attempt state could not be read"))
+        generation_root = Path(entry.path)
+        if observed_node_kind(generation_root) != NODE_DIRECTORY:
+            results.append(
+                AttemptStateAuthority(
+                    generation_root,
+                    None,
+                    "qualification generation root is not a plain directory; its "
+                    "target is never traversed for attempt authority",
+                )
+            )
+            continue
+        attempts_root = generation_root / "attempts"
+        attempts_kind = observed_node_kind(attempts_root)
+        if attempts_kind == "absent":
+            continue
+        if attempts_kind != NODE_DIRECTORY:
+            results.append(
+                AttemptStateAuthority(
+                    attempts_root,
+                    None,
+                    "qualification attempts container is not a plain directory; its "
+                    "target is never traversed for attempt authority",
+                )
+            )
             continue
         try:
-            states.append(
-                QualificationAttemptState.from_dict(json.loads(raw.decode("utf-8")))
+            attempts = sorted(os.scandir(attempts_root), key=lambda item: item.name)
+        except OSError as exc:
+            results.append(
+                AttemptStateAuthority(
+                    attempts_root,
+                    None,
+                    f"qualification attempts container could not be enumerated: {exc}",
+                )
             )
-        except (
-            UnicodeDecodeError,
-            ValueError,
-            TrainingDataSerializationError,
-            TrainingDataInputError,
-        ) as exc:
-            unreadable.append((str(path), f"attempt state is unusable: {exc}"))
-    return tuple(states), tuple(unreadable)
+            continue
+        for attempt in attempts:
+            results.append(authenticate_attempt_state(Path(attempt.path)))
+    return tuple(results)
+
+
+def iter_attempt_state_census(
+    workspace_or_paths: Any,
+) -> tuple[tuple[QualificationAttemptState, ...], tuple[tuple[str, str], ...]]:
+    """``(states, unresolved)`` derived from the one strict authority above."""
+
+    authorities = iter_attempt_state_authorities(workspace_or_paths)
+    states = tuple(item.state for item in authorities if item.state is not None)
+    unresolved = tuple(
+        (str(item.attempt_root), item.reason) for item in authorities if not item.resolved
+    )
+    return states, unresolved
 
 
 @dataclass
@@ -1445,17 +1638,41 @@ class QualificationRetentionFence:
     attempt still references are protected because reclaiming them mid-run would
     invalidate an expensive qualification that is still legitimately in flight.
     Terminal and aborted attempts protect nothing beyond the evidence itself.
+
+    There is a third, deliberately blunt state. When *any* attempt state cannot
+    be strictly authenticated, the set of artifacts an attempt may have been
+    pinning is unknown - and those references routinely name P5 publication
+    checkpoints far outside the P7 tree. Protecting only the qualification
+    family would therefore leave the very asset whose identity is unknown
+    authorizable, so the fence denies destructive authorization for every
+    campaign-managed path until the state is repaired. It is a reduction only:
+    it never grants ownership or deletion authority to anything.
     """
 
     qualification_roots: tuple[Path, ...]
     referenced_paths: frozenset[str]
+    #: True while some attempt state could not be authenticated.
+    ambiguous_attempt_state: bool = False
+    #: A bounded, truthful account of why, for reporting.
+    ambiguity_reasons: tuple[str, ...] = ()
 
     @property
     def is_active(self) -> bool:
-        return bool(self.qualification_roots or self.referenced_paths)
+        return bool(
+            self.qualification_roots
+            or self.referenced_paths
+            or self.ambiguous_attempt_state
+        )
 
     def protects(self, path: str | os.PathLike[str]) -> tuple[bool, str]:
         candidate = Path(os.path.abspath(os.fspath(path)))
+        if self.ambiguous_attempt_state:
+            reason = self.ambiguity_reasons[0] if self.ambiguity_reasons else "unknown"
+            return True, (
+                "a P7 qualification attempt state cannot be authenticated, so the "
+                "artifacts it may still reference are unknown and no campaign-managed "
+                f"path is destructively authorized until it is repaired ({reason})"
+            )
         for value in self.referenced_paths:
             referenced = Path(value)
             if candidate == referenced or _is_within(referenced, candidate) or _is_within(
@@ -1507,20 +1724,23 @@ def build_qualification_retention_fence(workspace_or_paths: Any) -> Qualificatio
     reveal_root = root / LOCKED_REVEAL_DIRECTORY
     roots = generation_roots + ((reveal_root,) if reveal_root.is_dir() else ())
     referenced: set[str] = set()
-    states, unreadable = iter_attempt_state_census(workspace_or_paths)
+    states, unresolved = iter_attempt_state_census(workspace_or_paths)
     for state in states:
         if state.is_active:
             referenced.update(state.referenced_paths)
-    if unreadable:
-        # Defense in depth for the same ambiguity the owner graph reports. An
-        # attempt whose state cannot be authenticated may have been pinning
-        # exact P5 checkpoints, and the paths it would have named are exactly
-        # what cannot be recovered - so the fence widens to the whole
-        # qualification family rather than letting some other destructive path
-        # act on a possibly referenced managed artifact.
-        referenced.add(str(root))
+    # Defense in depth for the same ambiguity the owner graph reports, and it
+    # has to be *workspace-wide*. The references an unauthenticated attempt
+    # would have named are exactly what cannot be recovered, and they commonly
+    # point at P5 publication checkpoints far outside the P7 tree - so widening
+    # only to `.mdstats/qualification` would leave the very asset whose identity
+    # is unknown authorizable. The fence only ever denies; it grants nothing.
     return QualificationRetentionFence(
-        qualification_roots=roots, referenced_paths=frozenset(referenced)
+        qualification_roots=roots,
+        referenced_paths=frozenset(referenced),
+        ambiguous_attempt_state=bool(unresolved),
+        ambiguity_reasons=tuple(
+            f"{path}: {reason}" for path, reason in unresolved[:5]
+        ),
     )
 
 
@@ -1552,12 +1772,16 @@ __all__ = [
     "build_qualification_retention_fence",
     "find_locked_activation",
     "find_locked_activation_for_role",
+    "AttemptStateAuthority",
+    "authenticate_attempt_state",
     "certified_attempt_nodes",
+    "iter_attempt_state_authorities",
     "iter_attempt_state_census",
     "iter_attempt_states",
     "publish_attempt_member_proof",
     "read_attempt_member_proof",
     "read_attempt_state_at",
+    "validate_bound_attempt_proof",
     "open_qualification_store",
     "publish_current_qualification_pointer",
     "qualification_record_is_current",

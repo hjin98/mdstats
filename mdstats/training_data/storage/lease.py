@@ -171,6 +171,20 @@ class OwnerSynchronization:
             attempt_roots=tuple(sorted({Path(value) for value in attempt_roots})),
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        """The complete synchronization contract, for diagnostics and evidence.
+
+        The P7 attempt seam is part of the contract, so it is serialized: a
+        diagnostic that silently omitted it would make the acquired lock set
+        look smaller than it is.
+        """
+
+        return {
+            "generations": list(self.generations),
+            "run_roots": [str(item) for item in self.run_roots],
+            "attempt_roots": [str(item) for item in self.attempt_roots],
+        }
+
     def merged_with(self, other: "OwnerSynchronization") -> "OwnerSynchronization":
         return OwnerSynchronization.of(
             (*self.generations, *other.generations),

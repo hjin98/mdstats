@@ -1314,7 +1314,20 @@ state it bound is no longer current. Every top-level node must be one the proof
 recorded, of the recorded kind, before storage exposes it as reclaimable. An
 attempt state that cannot be authenticated is not skipped: its references can pin
 exact P5 checkpoints, so it becomes an owner-graph integrity failure that blocks
-consequential planning until repaired.
+consequential planning until repaired, and the retention fence independently
+denies destructive authorization for every campaign-managed path while the
+ambiguity lasts - the lost references routinely name artifacts outside the P7
+tree, so protecting only that tree would leave the unknown asset authorizable.
+
+Authentication is strict, root-bound, and performed by one authority every
+storage-facing consumer reads. An attempt counts as authenticated only when the
+enumeration reached it without traversing a substituted namespace component -
+no-follow at the generation root, the `attempts` container, and the attempt root,
+not merely at the state file - and when its persisted digest recomputes, its
+recorded identity matches the directory, and that identity is the canonical
+identity derived from the qualification binding the state names. Enumeration is
+by actual attempt directory, so an attempt with no state at all is visible rather
+than absent.
 
 **Containment is not ownership.** A directory owner view declares one of two
 coverage semantics. A *closed subtree* is one whose real owner certifies, from
