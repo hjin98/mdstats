@@ -350,6 +350,7 @@ def build_dedup_plan(
 def dedup_engine(
     *,
     boundary: Any,
+    control_plane: Any,
     groups: Sequence[Mapping[str, Any]],
     excluded: Sequence[str],
     failpoint: Callable[[str], None] = lambda _name: None,
@@ -366,7 +367,17 @@ def dedup_engine(
         snapshot: StorageInventorySnapshot,
         result: StorageExecutionResult,
     ) -> None:
+        from .executor import operation_identity
+
         notes = list(excluded)
+        # The pre-rename hardlink lives in storage's own staging area, keyed by
+        # this operation's identity, and never inside the P5 run. A hard crash
+        # between `link` and `replace` therefore leaves *storage-owned* residue
+        # that the existing abandoned-staging lifecycle can retire, instead of an
+        # unrecorded descendant that would permanently make the run uncertifiable
+        # and block the very reclamation that has to finish.
+        staging = control_plane.staging_root_for(operation_identity(plan)) / "dedup"
+        staging.mkdir(parents=True, exist_ok=True)
         for action in plan.actions:
             member = action.path
             canonical = Path(str(action.binding["canonical"]))
@@ -506,7 +517,25 @@ def dedup_engine(
             # recovered tree.
             from ..target_size_execution.persistence import fsync_parent_directory
 
-            temporary = member.parent / f".{member.name}.dedup-{os.getpid()}"
+            if not same_filesystem(staging, member):
+                # An atomic hardlink replacement needs one filesystem. Falling
+                # back to a copy, or to an unowned temporary inside the run,
+                # would trade a refusal for a recovery hole.
+                notes.append(
+                    f"dedup staging is on a different filesystem than {member}"
+                )
+                result.refused.append(
+                    {
+                        **action.to_dict(),
+                        "refusal": (
+                            "storage staging and this member are on different "
+                            "filesystems, so an atomic hardlink replacement is "
+                            "unavailable; the duplicate is retained"
+                        ),
+                    }
+                )
+                continue
+            temporary = staging / f"{len(result.completed)}-{member.name}"
             temporary.unlink(missing_ok=True)
             os.link(canonical, temporary)
             try:
@@ -514,13 +543,16 @@ def dedup_engine(
                 failpoint(BOUNDARY_BEFORE_DIRECTORY_DURABILITY)
                 fsync_parent_directory(member)
             except BaseException:
-                # Deterministic cleanup of this operation's own temporary link
-                # only; the canonical and every other alias are untouched.
+                # Deterministic cleanup of this operation's own staged link
+                # only; the canonical and every other alias are untouched. A
+                # crash that skips this leaves the same name as storage-owned
+                # abandoned staging rather than an unknown P5 descendant.
                 temporary.unlink(missing_ok=True)
                 raise
             result.completed.append({**action.to_dict(), "aliased_to": str(canonical)})
             result.reclaimed_bytes += size
 
+        control_plane.clear_staging(operation_identity(plan))
         result.payload = DedupResult(
             applied=True,
             groups=list(groups),

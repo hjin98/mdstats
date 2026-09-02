@@ -110,7 +110,8 @@ def _pad_historical_bulk(
     """
 
     from mdstats.training_data.campaign_post_selection_runtime import (
-        RUN_MEMBER_MANIFEST_FILENAME,
+        RUN_COMPLETION_ANCHOR_FILENAME,
+        RUN_TOPOLOGY_MANIFEST_FILENAME,
         record_post_selection_run_members,
     )
 
@@ -123,13 +124,14 @@ def _pad_historical_bulk(
         payload = b"\0" * head + rng.randbytes(size_bytes - head)
         (destination / f"bench-{prefix}-{index}.pt").write_bytes(payload)
         total += len(payload)
-    # The owner's completion anchor is create-once, so a *harness* that inflates
-    # a finished run has to retract the old anchor and let the owner re-record
-    # the run as it now stands. Production code never does this; it is how this
+    # The owner's completion proof is create-once, so a *harness* that inflates
+    # a finished run has to retract the old proof and let the owner re-record the
+    # run as it now stands. Production code never does this; it is how this
     # fixture stands in for a run that produced this much bulk in the first
-    # place, and the anchor that certifies the archive path under measurement is
+    # place, and the proof that certifies the archive path under measurement is
     # still written by the real owner.
-    (run_root / RUN_MEMBER_MANIFEST_FILENAME).unlink(missing_ok=True)
+    (run_root / RUN_COMPLETION_ANCHOR_FILENAME).unlink(missing_ok=True)
+    (run_root / RUN_TOPOLOGY_MANIFEST_FILENAME).unlink(missing_ok=True)
     record_post_selection_run_members(run_root)
     return total
 
@@ -257,7 +259,36 @@ def run(*, files: int, size_bytes: int) -> dict[str, Any]:
             ),
         }
 
-        # 2. does report cost follow descendant count?
+        # 2. does report cost follow descendant count - and does it ever pay for
+        #    the O(member-count) topology manifest?
+        from mdstats.training_data.campaign_post_selection_runtime import (
+            RUN_TOPOLOGY_MANIFEST_FILENAME,
+        )
+
+        manifest_path = target_root / RUN_TOPOLOGY_MANIFEST_FILENAME
+        touched: list[str] = []
+        real_read_text = Path.read_text
+
+        def recording_read_text(self, *args, **kwargs):
+            touched.append(str(self))
+            return real_read_text(self, *args, **kwargs)
+
+        Path.read_text = recording_read_text
+        try:
+            _report(False)
+        finally:
+            Path.read_text = real_read_text
+        results["completion_authority"] = {
+            "topology_manifest_bytes": int(manifest_path.stat().st_size),
+            "topology_manifest_read_by_report": str(manifest_path) in touched,
+            "note": (
+                "the compact completion anchor is what normal reporting validates; "
+                "the O(member-count) topology manifest is read only by exact "
+                "closed-subtree certification"
+            ),
+        }
+
+
         before_visits, before_seconds, _ = _counted(lambda: _report(False))
         _pad_historical_bulk(
             target_root,

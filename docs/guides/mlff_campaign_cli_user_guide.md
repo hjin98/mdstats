@@ -418,11 +418,14 @@ campaigns.
 
 Cleanup also plans campaign-state maintenance as its own actions rather than as a
 side effect, and pruning and rewriting are two of them. Too many diagnostic
-events authorize *pruning*; they never authorize a full database rewrite. The
-rewrite is planned only when SQLite's own free-space accounting already says it
-is worth its cost and there is room for the temporary copy it makes - so if
-pruning is what frees the space, the rewrite waits for your next `storage
-cleanup`. The result tells you which of the two actually happened.
+events authorize *pruning*, down to exactly the number you configured; they never
+authorize a full database rewrite. The rewrite is planned only when SQLite's own
+free-space accounting already says it is worth its cost and there is room for the
+temporary copy it makes - so if pruning is what frees the space, the rewrite waits
+for your next `storage cleanup`. Before rewriting, it excludes every other
+campaign writer, including one in another process, and rechecks; if a concurrent
+run consumed the free space while it waited, it skips the rewrite rather than
+doing it anyway. The result tells you which of the two actually happened.
 
 Cold archive turns owner-declared *historical* bulk into a reversible,
 authenticated, identity-keyed cold representation:
@@ -473,11 +476,15 @@ to collect. Equal bytes alone are never enough; a file already hardlinked to
 something outside the campaign is never chosen as the shared inode, and a
 cross-device or unsupported filesystem simply keeps the duplicates.
 
-Every applied action normally leaves one durable record in the storage audit. If
-the audit itself cannot be written - a full disk, an I/O error - the command does
-not pretend otherwise and does not undo work that already succeeded: it reports
-the outcome as `..._unaudited` and prints the publication failure, so you know
-the change happened but the durable record of it did not.
+Every applied action normally leaves one durable record in the storage audit,
+and bounded retention of that log happens in the same serialized step, so a
+concurrent operation can never trim away a record that was just published. If the
+audit itself cannot be written - a full disk, an I/O error - the command does not
+pretend otherwise and does not undo work that already succeeded: it reports the
+outcome as `..._unaudited` and prints the publication failure, so you know the
+change happened but the durable record of it did not. If only the *trimming*
+fails, the record still stands and the command says so; the next operation
+retries it.
 
 Every action protects external inputs, current scientific records, selected
 checkpoints, restart evidence, and diagnostics. The retired `recompute` and

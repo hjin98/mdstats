@@ -250,15 +250,22 @@ storage-operation lease serializes storage against storage only, and is never
 mistaken for serialization against the owners.
 
 **Completion is proved by a retained anchor.** When a post-selection run reaches
-its terminal record, P5 freezes a small create-once completion anchor recording
-that terminal publication and the exact member set. From then on the anchor -
-not the presence of the terminal evidence file - is what certifies the run. The
+its terminal record, P5 freezes its completion proof as two create-once records:
+an immutable topology manifest naming every node the run produced, published
+first, and a compact self-authenticating anchor binding that manifest's identity,
+published last as the commit point. The split is what lets normal reporting
+validate completion in O(1) while exact closed-subtree certification still pays
+for the full topology. The topology covers directories as well as files, so an
+unexpected empty directory cannot vanish inside an authorized recursive delete.
+From then on the anchor - not the presence of the terminal evidence file - is
+what certifies the run. The
 distinction matters because the terminal evidence is an ordinary archive member:
 an interrupted cold reclamation may already have moved it, and a certification
-that needed it would leave that reclamation unable to finish. The anchor is owner
-infrastructure, never part of the reclaimable member set, and republishing a
-different member set for the same run is an integrity conflict rather than an
-update.
+that needed it would leave that reclamation unable to finish. Both records are owner
+infrastructure, never part of the reclaimable member set. Republication verifies
+and reuses the existing proof rather than deriving a new one from a tree storage
+has legitimately depleted, and a tampered, copied, or self-inconsistent proof
+makes the run non-certifiable instead of appearing to own more.
 
 **Containment is not ownership.** A directory owner view declares one of two
 coverage semantics. A *closed subtree* is one whose real owner certifies, from
@@ -295,9 +302,20 @@ never metadata-mutates a container that already existed. Terminal catalog and
 restore receipts are published only downstream of flush, atomic publish,
 directory-entry persistence, and authentication of the published bytes.
 
+**Audit publication and retention are one serialized lifecycle.** Both happen
+under the storage-operation lease, so bounded retention cannot rewrite away a
+record another operation just published and reported as durable. The stored
+record states its own successful publication; retention refuses to rewrite over a
+damaged stream; and a retention failure is surfaced separately without
+unpublishing anything or touching the mutation.
+
 **Deduplication is direct inode sharing under an owner contract.** Byte-identical
-members share one inode among themselves; there is deliberately no persistent
-content-addressed store, which would be a second durable copy of campaign bytes
+members share one inode among themselves. The pre-rename alias is staged in
+storage's own operation-scoped staging area rather than inside the owner's run,
+so a hard crash leaves storage-owned residue with a recovery lifecycle instead of
+an unrecorded descendant that would block future certification; abandonment is
+established by the storage-operation lease and the journals, never by a process
+id or an age. There is deliberately no persistent content-addressed store, which would be a second durable copy of campaign bytes
 with its own retention lifecycle. Exact byte equality is necessary but never
 sufficient: file type and owner-required metadata must match, the canonical
 member's link count must be fully accounted for inside the group, the family must
@@ -312,11 +330,15 @@ tree is reported as ambiguous and retained rather than omitted or pooled.
 
 **Campaign-state maintenance is two planned actions.** Bounding diagnostic
 events and rewriting the state database are separate authorities. Excess events
-authorize pruning only - a small transaction that takes the write lock up front
-and so serializes against any other campaign writer - while a rewrite is planned
-only when a fresh measurement already satisfies the configured reclaimable
-threshold, and re-establishes that threshold and its temporary-space admission
-again at execution. Free pages that pruning created do not widen the prune into a
+authorize pruning only, executed at exactly the resolved bound with no hidden
+floor - a small transaction that takes the write lock up front and so serializes
+against any other campaign writer. A rewrite is planned only when a fresh
+measurement already satisfies the configured reclaimable threshold, and
+re-establishes that threshold and its temporary-space admission inside a
+cross-process exclusion that every campaign-state writer participates in and
+that it holds through the rewrite; a second process consuming the free pages
+while maintenance waits therefore refuses the rewrite instead of performing an
+unjustified one. Free pages that pruning created do not widen the prune into a
 rewrite; that belongs to the next fresh plan. A refused or empty cleanup can
 never carry either along, and results distinguish `events_pruned` from
 `vacuum_performed`.

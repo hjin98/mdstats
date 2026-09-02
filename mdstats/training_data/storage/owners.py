@@ -187,6 +187,13 @@ class OwnerArtifactView:
     #: and lock files.  They are neither members nor contradictions: archiving
     #: or removing them would destroy the certification itself.
     retained_members: tuple[str, ...] = ()
+    #: This owner is the exclusive writer of the whole subtree by construction,
+    #: so every descendant is its own.  Reserved for a private scratch/control
+    #: area no other component writes into - storage's own staging, for
+    #: instance - where enumerating a member set would be circular and the
+    #: exclusivity is the real ownership statement.  It is never a substitute
+    #: for a recorded member set on a directory another component writes into.
+    owner_exclusive: bool = False
     #: The owner's canonical identity for the state this view describes.
     state_identity: str = ""
     requires: tuple[str, ...] = ()
@@ -754,6 +761,7 @@ def post_selection_views(
 
     from ..campaign_post_selection_runtime import (
         certify_closed_post_selection_run_root,
+        post_selection_run_is_complete,
         recorded_post_selection_run_members,
     )
     from ..post_selection_store import POST_SELECTION_ROOT_NAME, post_selection_root
@@ -811,10 +819,14 @@ def post_selection_views(
                 if certify:
                     closed, why = certify_closed_post_selection_run_root(run_root)
                 else:
-                    # Reporting must stay bounded, so it asks the cheap question
-                    # - has this run finished and recorded a member set? - and
-                    # leaves the exact comparison to consequential planning.
-                    closed, why = _run_looks_finished(run_root)
+                    # Reporting must stay bounded, so it asks the owner's own
+                    # O(1) completion question - is there a valid compact
+                    # completion anchor? - and leaves the O(member-count)
+                    # topology comparison to consequential planning. It is the
+                    # same completion authority, so a run whose terminal
+                    # evidence has legitimately gone cold still reports as
+                    # finished.
+                    closed, why = post_selection_run_is_complete(run_root)
                 eligible = bool(historical and closed)
                 recorded = (
                     recorded_post_selection_run_members(run_root)
@@ -997,43 +1009,6 @@ def selection_is_expected(store: Any) -> bool:
     return revision.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
 
 
-def _run_looks_finished(run_root: Path) -> tuple[bool, str]:
-    """The bounded prefilter reporting uses instead of exact certification.
-
-    A handful of ``stat`` calls: did the run reach a terminal record, and did
-    its owner record a member set? Both are necessary for certification, so a
-    negative answer here is final; a positive one is provisional and is proved
-    exactly at planning time.
-    """
-
-    from ..campaign_post_selection_runtime import (
-        FOLD_ACCEPTANCE_FILENAME,
-        RUN_EVIDENCE_FILENAME,
-        RUN_MEMBER_MANIFEST_FILENAME,
-    )
-
-    if not run_root.is_dir() or run_root.is_symlink():
-        return False, f"{run_root} is not a plain directory"
-    terminal = any(
-        (run_root / name).is_file()
-        for name in (FOLD_ACCEPTANCE_FILENAME, RUN_EVIDENCE_FILENAME)
-    )
-    if not terminal:
-        return False, (
-            "run root carries no terminal fold-acceptance/run-evidence record, so the "
-            "owner cannot certify the run is finished"
-        )
-    if not (run_root / RUN_MEMBER_MANIFEST_FILENAME).is_file():
-        return False, (
-            "run root carries no recorded member manifest, so this owner cannot "
-            "certify which descendants it produced"
-        )
-    return True, (
-        "terminal run with a recorded member set; exact certification happens at "
-        "planning time"
-    )
-
-
 def _run_infrastructure_members(run_root: Path) -> tuple[str, ...]:
     """P5's own certification record and locks inside one run root.
 
@@ -1043,11 +1018,10 @@ def _run_infrastructure_members(run_root: Path) -> tuple[str, ...]:
     """
 
     from ..campaign_post_selection_runtime import (
-        RUN_MEMBER_MANIFEST_FILENAME,
-        _OWNED_LOCK_NAMES,
+        RUN_COMPLETION_INFRASTRUCTURE_NAMES,
     )
 
-    names = (RUN_MEMBER_MANIFEST_FILENAME, *sorted(_OWNED_LOCK_NAMES))
+    names = sorted(RUN_COMPLETION_INFRASTRUCTURE_NAMES)
     return tuple(name for name in names if (run_root / name).is_file())
 
 
@@ -1541,6 +1515,13 @@ def control_plane_views(
                     restart_required=open_journal,
                     safe_reclaimable=not open_journal,
                     coverage=SubtreeCoverage.CLOSED,
+                    # `.mdstats/storage/staging` is this owner's own scratch
+                    # area under the control-plane exclusive-writer contract:
+                    # nothing else in the product writes there, so every
+                    # descendant is storage's. Whether an entry is abandoned is
+                    # decided by the storage-operation lease plus the journal
+                    # above, never by a PID, an age, or a pathname.
+                    owner_exclusive=True,
                 )
             )
             del journal

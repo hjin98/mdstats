@@ -1,61 +1,66 @@
 {
   "archive_codecs": {
     "gzip:1": {
-      "archive_bytes": 3293051,
-      "create_seconds": 1.6318545819958672,
+      "archive_bytes": 3293054,
+      "create_seconds": 1.6268632920109667,
       "member_count": 204,
-      "member_logical_bytes": 6517274,
-      "ratio": 1.979099017901636,
+      "member_logical_bytes": 6517269,
+      "ratio": 1.979095696578313,
       "represented_artifact_ids": [
         "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
         "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
         "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
       ],
       "restore_exit_code": 0,
-      "restore_seconds": 1.568252384022344
+      "restore_seconds": 1.5818010760121979
     },
     "gzip:6": {
-      "archive_bytes": 3276203,
-      "create_seconds": 1.6332402040134184,
+      "archive_bytes": 3276207,
+      "create_seconds": 1.686766205006279,
       "member_count": 204,
-      "member_logical_bytes": 6517274,
-      "ratio": 1.9892766107594675,
+      "member_logical_bytes": 6517269,
+      "ratio": 1.9892726558486689,
       "represented_artifact_ids": [
         "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
         "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
         "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
       ],
       "restore_exit_code": 0,
-      "restore_seconds": 1.5911835510050878
+      "restore_seconds": 1.6058625399891753
     },
     "gzip:9": {
-      "archive_bytes": 3274902,
-      "create_seconds": 1.6544430020148866,
+      "archive_bytes": 3274913,
+      "create_seconds": 1.6826127699750941,
       "member_count": 204,
-      "member_logical_bytes": 6517274,
-      "ratio": 1.9900668783371227,
+      "member_logical_bytes": 6517269,
+      "ratio": 1.9900586672073426,
       "represented_artifact_ids": [
         "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
         "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
         "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
       ],
       "restore_exit_code": 0,
-      "restore_seconds": 1.5859043380187359
+      "restore_seconds": 1.6080778719915543
     },
     "none:0": {
       "archive_bytes": 6840320,
-      "create_seconds": 1.5560016450181138,
+      "create_seconds": 1.551728110993281,
       "member_count": 204,
-      "member_logical_bytes": 6517274,
-      "ratio": 0.9527732620696108,
+      "member_logical_bytes": 6517269,
+      "ratio": 0.9527725311096557,
       "represented_artifact_ids": [
         "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
         "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
         "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
       ],
       "restore_exit_code": 0,
-      "restore_seconds": 1.578972674004035
+      "restore_seconds": 1.5914573250047397
     }
+  },
+  "completion_authority": {
+    "note": "the compact completion anchor is what normal reporting validates; the O(member-count) topology manifest is read only by exact closed-subtree certification",
+    "topology_manifest_bytes": 4724,
+    "topology_manifest_read_by_report": false
   },
   "fixture": {
     "compressible_fraction": 0.5,
@@ -67,45 +72,45 @@
   },
   "io_concurrency_note": "I/O workers are configured separately from CPU workers so a storage scan cannot create a metadata or hash thundering herd",
   "io_concurrency_seconds": {
-    "1": 0.005842144979396835,
-    "2": 0.009039203985594213,
-    "4": 0.010559881979133934,
-    "8": 0.01107934198807925
+    "1": 0.005756683996878564,
+    "2": 0.010502275021281093,
+    "4": 0.009440859983442351,
+    "8": 0.010732695023762062
   },
   "receipt_reuse": {
-    "file_count": 149,
-    "first_accelerated_seconds": 0.007406735006952658,
+    "file_count": 151,
+    "first_accelerated_seconds": 0.006918739003594965,
     "note": "receipts accelerate repeated hashing of large immutable artifacts and never establish validity; below RECEIPT_ACCELERATION_MINIMUM_BYTES the direct hash is used because the receipt round-trip costs more than the read it avoids",
-    "reused_seconds": 0.006799904978834093,
-    "speedup_on_reuse": 0.9779952835385287,
-    "uncached_seconds": 0.006650274997809902
+    "reused_seconds": 0.006838628993136808,
+    "speedup_on_reuse": 0.9437093296430109,
+    "uncached_seconds": 0.006453677982790396
   },
   "report_scaling": {
     "descendants_added": 96,
-    "entry_visits_after": 38,
-    "entry_visits_before": 38,
+    "entry_visits_after": 36,
+    "entry_visits_before": 36,
     "note": "adding descendants to an owner-declared artifact must not change the bounded report's entry-visit count",
-    "seconds_after": 0.006855554995127022,
-    "seconds_before": 0.006977704993914813
+    "seconds_after": 0.007078650000039488,
+    "seconds_before": 0.006997090007644147
   },
   "reporting": {
     "deep_audit": {
-      "cold_entry_visits": 8627,
-      "cold_seconds": 0.11546813399763778,
+      "cold_entry_visits": 8687,
+      "cold_seconds": 0.106002268003067,
       "complete": true,
-      "file_count": 841,
-      "warm_entry_visits": 8627,
-      "warm_seconds": 0.11415266498806886
+      "file_count": 848,
+      "warm_entry_visits": 8687,
+      "warm_seconds": 0.10527286501019262
     },
-    "entry_visit_ratio_deep_over_owner": 227.02631578947367,
+    "entry_visit_ratio_deep_over_owner": 241.30555555555554,
     "note": "the owner report visits one entry per owner-declared artifact and never walks a subtree, so its cost is set by how many artifacts the owners declare; the deep audit is the explicit opt-in whose cost is set by how much the campaign holds",
     "owner_report": {
       "artifact_count": 20,
-      "cold_entry_visits": 38,
-      "cold_seconds": 0.007411263999529183,
-      "owner_family_count": 16,
-      "warm_entry_visits": 38,
-      "warm_seconds": 0.006753985013347119
+      "cold_entry_visits": 36,
+      "cold_seconds": 0.007238960009999573,
+      "owner_family_count": 17,
+      "warm_entry_visits": 36,
+      "warm_seconds": 0.006992309994529933
     }
   },
   "schema": "mdstats.mlff-storage-io-reset-benchmark.v2"

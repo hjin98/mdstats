@@ -930,7 +930,7 @@ def attempt_state_path(paths: Any, binding: PostSelectionBinding, attempt_identi
 #: it.  The record is written exactly when the attempt reaches a terminal or
 #: aborted state, which is the moment P7 stops writing into the tree.
 ATTEMPT_MEMBER_MANIFEST_FILENAME = "attempt-members.json"
-ATTEMPT_MEMBER_MANIFEST_SCHEMA = "mdstats.qualification-attempt-members.v1"
+ATTEMPT_MEMBER_MANIFEST_SCHEMA = "mdstats.qualification-attempt-members.v2"
 
 #: Attempt-root infrastructure this owner writes beside its records.  These are
 #: never members and never make an attempt tree look uncertified.
@@ -944,12 +944,20 @@ ATTEMPT_INFRASTRUCTURE_NAMES: frozenset[str] = frozenset(
 )
 
 
-def _attempt_relative_files(root: Path) -> list[str]:
-    """Every regular file under one attempt root, as sorted relative paths."""
+def _attempt_relative_nodes(root: Path) -> list[str]:
+    """Every node under one attempt root - files *and* directories.
+
+    Directories are recorded deliberately. A recursive delete makes directory
+    nodes disappear too, so a manifest naming only files would leave an
+    unexpected empty directory covered by nothing and free to vanish inside an
+    otherwise authorized removal.
+    """
 
     members: list[str] = []
     for path in sorted(root.rglob("*")):
-        if path.is_symlink() or not path.is_file():
+        if path.is_symlink():
+            continue
+        if not path.is_dir() and not path.is_file():
             continue
         relative = path.relative_to(root)
         if relative.parts[0] in ATTEMPT_INFRASTRUCTURE_NAMES:
@@ -967,7 +975,7 @@ def record_attempt_members(attempt_directory: str | os.PathLike[str]) -> Path:
 
     root = Path(attempt_directory)
     destination = root / ATTEMPT_MEMBER_MANIFEST_FILENAME
-    members = _attempt_relative_files(root)
+    members = _attempt_relative_nodes(root)
     _atomic_write_json(
         destination,
         {
@@ -1024,7 +1032,7 @@ def certify_closed_attempt_member(
     observed = {
         path.relative_to(member).as_posix()
         for path in member.rglob("*")
-        if path.is_file() and not path.is_symlink()
+        if not path.is_symlink() and (path.is_file() or path.is_dir())
     }
     extra = sorted(observed - set(inside))
     if extra:

@@ -1304,8 +1304,14 @@ def test_partial_reclaim_resumes_after_the_terminal_evidence_goes_cold(
             "zz-late.bin": b"late" * 512,
         },
     )
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        RUN_COMPLETION_ANCHOR_FILENAME,
+        RUN_TOPOLOGY_MANIFEST_FILENAME,
+    )
+
     evidence = run_root / "run-evidence.json"
-    anchor = run_root / "run-members.json"
+    anchor = run_root / RUN_COMPLETION_ANCHOR_FILENAME
+    topology = run_root / RUN_TOPOLOGY_MANIFEST_FILENAME
     late = run_root / "zz-late.bin"
     relative_root = str(run_root.relative_to(paths.workspace))
 
@@ -1348,6 +1354,7 @@ def test_partial_reclaim_resumes_after_the_terminal_evidence_goes_cold(
         store.close()
     assert not evidence.exists(), "the fixture never reached the intended interruption"
     assert anchor.is_file(), "the completion anchor was reclaimed with the members"
+    assert topology.is_file(), "the topology manifest was reclaimed with the members"
     assert late.is_file()
 
     # Fresh process: the owner still certifies the run from its retained anchor.
@@ -1357,7 +1364,7 @@ def test_partial_reclaim_resumes_after_the_terminal_evidence_goes_cold(
 
     assert p4d._run(config, "storage", "archive", "reclaim", identity, "--apply") == 0
     assert not late.exists()
-    assert anchor.is_file()
+    assert anchor.is_file() and topology.is_file()
 
     # Explicit restore brings the historical evidence back without promoting it.
     assert p4d._run(config, "storage", "archive", "restore", identity, "--apply") == 0
@@ -1533,3 +1540,276 @@ def test_the_public_report_opens_every_nested_store_read_only(tmp_path: Path):
         cli.CampaignStore.__init__ = original
     assert opened, "the report opened no campaign store at all"
     assert all(opened), "an observational report opened a writable campaign store"
+
+
+# ---------------------------------------------------------------------------
+# IR17-3 / IR18-2 - the VACUUM benefit predicate survives a cross-process writer
+# ---------------------------------------------------------------------------
+
+
+_COMPETING_WRITER = """
+import sys, time
+sys.path.insert(0, {repository!r})
+from mdstats.training_data._campaign_cli_core import CampaignStore
+
+store = CampaignStore({database!r})
+try:
+    with store.writer_exclusion():
+        open({ready!r}, "w").close()
+        # Consume the free pages the maintenance decision was based on, while
+        # holding the exclusion that maintenance is waiting for.
+        for index in range({rows}):
+            store.event("info", "competitor", "y" * 512)
+        time.sleep({hold})
+finally:
+    store.close()
+"""
+
+
+def _maintenance_policy(events: int = 1_000_000) -> dict:
+    return {
+        "storage": {
+            "sqlite_compaction_maximum_events": events,
+            "sqlite_compaction_minimum_reclaimable_bytes": 4096,
+            "sqlite_compaction_minimum_reclaimable_fraction": 0.001,
+        }
+    }
+
+
+def test_a_second_process_can_invalidate_the_vacuum_benefit_while_it_waits(
+    tmp_path: Path,
+):
+    """The rewrite is authorized by free space that must still be free.
+
+    Measuring the freelist and then queuing for the database is the race this
+    exclusion exists to close: another *process* - the normal case, a second CLI
+    invocation - can commit in between and consume exactly the space the
+    decision was based on. A thread-only mutex cannot see that writer at all.
+    """
+
+    import subprocess
+    import sys
+
+    from mdstats.training_data.storage.executor import (
+        StorageExecutionResult,
+        synchronization_for,
+    )
+    from mdstats.training_data.storage.maintenance import (
+        campaign_state_maintenance_engine,
+        plan_campaign_state_maintenance,
+        vacuum_is_worthwhile,
+    )
+
+    config, _workspace = p5.build_selected_campaign(tmp_path)
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        for _index in range(4000):
+            store.event("info", "fixture", "z" * 512)
+        store.prune_events(maximum_events=10)
+        worthwhile, _bytes, _fraction, detail = vacuum_is_worthwhile(
+            store,
+            resolve_storage_policy(_maintenance_policy(), action=ACTION_CLEANUP),
+        )
+        assert worthwhile, detail
+
+        # A retention bound nothing exceeds, so the only maintenance authority
+        # in this plan is the rewrite itself: a prune running first would
+        # legitimately free more pages and make the rewrite worthwhile again,
+        # which is correct behavior but not the race under test.
+        merged = {**cfg, **_maintenance_policy()}
+        boundary = cli._campaign_ownership_boundary(merged, paths, store)
+        context = storage_commands.StorageCommandContext(
+            merged, paths, store, boundary
+        )
+        policy = resolve_storage_policy(merged, action=ACTION_CLEANUP, apply=True)
+        context.consequential_plane(policy)
+        decision = plan_campaign_state_maintenance(store, paths, policy)
+        assert decision.vacuum_action is not None, decision.reason
+        assert decision.prune_action is None, decision.reason
+        plan, snapshot = storage_commands.build_cleanup_plan(context, policy)
+        before = paths.state_db.stat().st_size
+
+        def _start_competitor(rows: int, hold: float):
+            ready = tmp_path / f"competitor-ready-{rows}-{hold}"
+            child = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    _COMPETING_WRITER.format(
+                        repository=str(Path(cli.__file__).resolve().parents[2]),
+                        database=str(paths.state_db),
+                        ready=str(ready),
+                        rows=rows,
+                        hold=hold,
+                    ),
+                ]
+            )
+            deadline = time.time() + 60.0
+            while not ready.exists() and time.time() < deadline:
+                time.sleep(0.05)
+            assert ready.exists(), "the competing writer never started"
+            return child
+
+        # (a) The real maintenance engine, with the competitor holding the
+        #     exclusion: the benefit predicate is observed *after* the wait, so
+        #     it sees the state the competitor left rather than the one that
+        #     authorized the plan.
+        child = _start_competitor(rows=6000, hold=2.0)
+        try:
+            outcome = StorageExecutionResult(
+                operation_identity="t" * 32,
+                plan_identity=plan.plan_identity,
+                policy_identity=policy.policy_identity,
+                action=policy.action,
+                status="refused",
+            )
+            engine = campaign_state_maintenance_engine(store, policy)
+            engine(decision.vacuum_action, snapshot, outcome)
+        finally:
+            assert child.wait(120) == 0
+        assert not outcome.completed, "the rewrite ran on a stale benefit observation"
+        assert outcome.refused
+        assert "every competing writer was excluded" in outcome.refused[0]["refusal"]
+        assert paths.state_db.stat().st_size >= before
+
+        # (b) The same race through the real public executor changes nothing
+        #     either: the campaign-state owner advanced, so the plan itself is
+        #     stale and no rewrite happens.
+        child = _start_competitor(rows=2000, hold=1.0)
+        try:
+            result = context.executor(policy).run(
+                plan,
+                trigger="test:cross-process-vacuum",
+                synchronization=synchronization_for(plan, snapshot),
+                engine=storage_commands._cleanup_engine(context, policy),
+            )
+        finally:
+            assert child.wait(120) == 0
+        assert not any(
+            item["action"] == "vacuum_campaign_state" for item in result.completed
+        )
+        assert paths.state_db.stat().st_size >= before
+    finally:
+        store.close()
+
+    # The exclusion is released on every terminal path, so a fresh process can
+    # take the ordinary writer path immediately.
+    fresh = CampaignStore(paths.state_db)
+    try:
+        fresh.event("info", "after", "the writer path is available again")
+    finally:
+        fresh.close()
+
+
+def test_the_writer_exclusion_is_released_after_an_injected_rewrite_failure(
+    tmp_path: Path,
+):
+    config, _workspace = p5.build_selected_campaign(tmp_path)
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        for _index in range(4000):
+            store.event("info", "fixture", "z" * 512)
+        store.prune_events(maximum_events=10)
+
+        original = CampaignStore.vacuum
+
+        def failing_vacuum(self) -> None:
+            raise OSError("injected rewrite failure")
+
+        CampaignStore.vacuum = failing_vacuum
+        try:
+            assert (
+                p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+            )
+        finally:
+            CampaignStore.vacuum = original
+        # Not deadlocked and not permanently excluded.
+        store.event("info", "after", "still writable")
+    finally:
+        store.close()
+
+
+def test_no_supported_campaign_writer_bypasses_the_owner_exclusion() -> None:
+    """Structural: every mutation funnels through one process-safe primitive."""
+
+    import ast
+
+    source = Path(cli.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    store = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == "CampaignStore"
+    )
+    writing = {
+        "set_meta",
+        "put_record",
+        "put_records",
+        "delete_records",
+        "delete_record",
+        "set_stage",
+        "event",
+        "prune_events",
+        "vacuum",
+        "exclusive_transaction",
+    }
+    for node in store.body:
+        if not isinstance(node, ast.FunctionDef) or node.name not in writing:
+            continue
+        dumped = ast.dump(node)
+        assert (
+            "writer_exclusion" in dumped or "exclusive_transaction" in dumped
+        ), node.name
+
+
+# ---------------------------------------------------------------------------
+# IR18-4 - dedup staging liveness comes from the storage-operation lease
+# ---------------------------------------------------------------------------
+
+
+def test_live_dedup_staging_is_never_reclaimed_by_a_concurrent_cleanup(
+    tmp_path: Path,
+):
+    from mdstats.training_data.storage.lease import (
+        StorageLeaseUnavailableError,
+        storage_operation_lease,
+    )
+
+    config, _workspace, _harness = _historical_campaign(tmp_path)
+    _cfg, paths = cli._load_config(config)
+    plane = open_storage_control_plane_readonly(paths)
+    context, store = _context(config)
+    try:
+        plane = context.consequential_plane(
+            resolve_storage_policy({}, action=ACTION_CLEANUP, apply=True)
+        )
+    finally:
+        store.close()
+    live = plane.staging_root_for("a" * 32) / "dedup"
+    live.mkdir(parents=True)
+    (live / "0-held.bin").write_bytes(b"staged")
+
+    with storage_operation_lease(plane):
+        # Another operation cannot even begin while this lease is held, so it
+        # can never decide that live staging is abandoned.
+        with pytest.raises((StorageLeaseUnavailableError, CampaignCliError)):
+            cfg, paths2 = cli._load_config(config)
+            fresh = CampaignStore(paths2.state_db)
+            try:
+                boundary = cli._campaign_ownership_boundary(cfg, paths2, fresh)
+                other = storage_commands.StorageCommandContext(
+                    {**cfg, "storage": {"operation_lease_timeout_seconds": 1}},
+                    paths2,
+                    fresh,
+                    boundary,
+                )
+                storage_commands.storage_cleanup(other, _args(tier="safe", apply=True))
+            finally:
+                fresh.close()
+    assert (live / "0-held.bin").is_file()
+
+    # With no live operation, the same staging is ordinary storage-owned residue.
+    assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
+    assert not live.exists()

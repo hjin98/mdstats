@@ -18,6 +18,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
 import stat
 import tarfile
 import time
@@ -73,6 +74,9 @@ from mdstats.training_data.storage.control_plane import (
     StorageControlPlaneError,
     open_storage_control_plane,
     open_storage_control_plane_readonly,
+)
+from mdstats.training_data.campaign_post_selection_runtime import (
+    certify_closed_post_selection_run_root,
 )
 from mdstats.training_data.storage.durability import sha256_file
 from mdstats.training_data.storage.executor import synchronization_for
@@ -907,39 +911,67 @@ def test_a_run_stays_certified_after_its_terminal_evidence_goes_cold(campaign) -
     assert view.archive_eligible is True
 
 
-def test_a_second_terminal_publication_cannot_rewrite_the_anchor(campaign) -> None:
-    """A completed run's member set is create-once owner authority."""
+def test_a_second_terminal_publication_verifies_rather_than_recomputes(
+    campaign,
+) -> None:
+    """Republication reuses the immutable proof; it never rescans the tree.
+
+    By the time a run is republished, storage may legitimately have moved
+    represented members into a cold archive. Deriving a fresh member set from
+    that depleted tree would look like a conflicting claim about a run that
+    never changed, so the existing proof is verified and reused instead.
+    """
 
     from mdstats.training_data.campaign_post_selection_runtime import (
+        RUN_COMPLETION_ANCHOR_FILENAME,
+        RUN_TOPOLOGY_MANIFEST_FILENAME,
+        certify_closed_post_selection_run_root,
         record_post_selection_run_members,
     )
-    from mdstats.training_data.post_selection_execution import (
-        PostSelectionExecutionError,
-    )
 
     run_root = campaign.historical_run()
-    before = (run_root / "run-members.json").read_bytes()
-    # Republishing the identical member set verifies the anchor.
+    anchor = run_root / RUN_COMPLETION_ANCHOR_FILENAME
+    topology = run_root / RUN_TOPOLOGY_MANIFEST_FILENAME
+    before = (anchor.read_bytes(), topology.read_bytes())
+
     record_post_selection_run_members(run_root)
-    assert (run_root / "run-members.json").read_bytes() == before
+    assert (anchor.read_bytes(), topology.read_bytes()) == before
 
+    # Members going cold is the normal case, not a conflict.
+    (run_root / "checkpoints" / "epoch-1.pt").unlink()
+    record_post_selection_run_members(run_root)
+    assert (anchor.read_bytes(), topology.read_bytes()) == before
+
+    # A foreign descendant does not become owned by republishing either; it
+    # simply makes the run uncertifiable.
     (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"later")
-    with pytest.raises(PostSelectionExecutionError, match="create-once"):
-        record_post_selection_run_members(run_root)
-    assert (run_root / "run-members.json").read_bytes() == before
+    record_post_selection_run_members(run_root)
+    assert (anchor.read_bytes(), topology.read_bytes()) == before
+    certified, why = certify_closed_post_selection_run_root(run_root)
+    assert not certified and "did not write" in why
 
 
-def test_the_completion_anchor_is_never_an_archive_member(campaign) -> None:
+def test_the_completion_proof_is_never_an_archive_member(campaign) -> None:
     """The proof a run needs in order to be reclaimed is not itself reclaimable."""
 
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        RUN_COMPLETION_ANCHOR_FILENAME,
+        RUN_TOPOLOGY_MANIFEST_FILENAME,
+    )
+
     run_root = campaign.historical_run()
-    anchor = run_root / "run-members.json"
+    proof = (
+        run_root / RUN_COMPLETION_ANCHOR_FILENAME,
+        run_root / RUN_TOPOLOGY_MANIFEST_FILENAME,
+    )
     result = _create_archive(campaign)
     manifest = read_manifest(campaign.context().control_plane, result["archive_identity"])
-    assert not any(
-        str(item["path"]).endswith("run-members.json") for item in manifest["members"]
-    )
-    assert anchor.is_file(), "hot reclamation removed the run's completion anchor"
+    for item in proof:
+        assert not any(
+            str(entry["path"]).endswith(item.name) for entry in manifest["members"]
+        )
+        assert item.is_file(), f"hot reclamation removed {item.name}"
+    anchor = proof[0]
 
     # Ordinary cleanup must not collect it either while the archive is retained.
     storage_commands.storage_cleanup(
@@ -1837,9 +1869,12 @@ def test_an_interrupted_operation_is_never_audited_complete(campaign) -> None:
 
 def test_audit_pruning_never_removes_catalog_or_journal_authority(campaign) -> None:
     result = _create_archive(campaign, keep_hot=True)
-    for index in range(20):
-        campaign.control_plane.append_audit({"created_utc": str(index), "note": index})
-    removed = campaign.control_plane.prune_audit(keep=5)
+    with storage_operation_lease(campaign.control_plane):
+        for index in range(20):
+            campaign.control_plane.append_audit(
+                {"created_utc": str(index), "note": index}
+            )
+        removed = campaign.control_plane.prune_audit(keep=5)
     assert removed > 0
     assert len(campaign.control_plane.read_audit()) == 5
     verify_cold_archive(
@@ -3130,3 +3165,553 @@ def test_an_audit_failure_while_recording_a_partial_operation_fabricates_nothing
     assert fresh is not None
     payload = storage_commands.storage_report(campaign.context(), _args())
     assert payload["destructive_actions_performed"] is False
+
+
+# ---------------------------------------------------------------------------
+# IR17-1 / IR17-6 / IR18-1 - the P5 completion proof
+# ---------------------------------------------------------------------------
+
+
+def _anchor_paths(run_root: Path) -> tuple[Path, Path]:
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        RUN_COMPLETION_ANCHOR_FILENAME,
+        RUN_TOPOLOGY_MANIFEST_FILENAME,
+    )
+
+    return (
+        run_root / RUN_COMPLETION_ANCHOR_FILENAME,
+        run_root / RUN_TOPOLOGY_MANIFEST_FILENAME,
+    )
+
+
+def _rewrite_json(path: Path, **changes) -> None:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.update(changes)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def test_the_bounded_report_never_reads_the_full_member_manifest(campaign) -> None:
+    """Completion is O(1); exact topology is not, and reporting pays only the O(1).
+
+    The compact anchor exists precisely so that describing a campaign costs the
+    same whether a run holds ten files or ten thousand.
+    """
+
+    run_root = campaign.historical_run(finish=False)
+    bulk = run_root / "checkpoints"
+    for index in range(400):
+        (bulk / f"bulk-{index}.pt").write_bytes(b"x" * 32)
+    campaign.finish_run(run_root)
+    anchor, topology = _anchor_paths(run_root)
+    assert topology.stat().st_size > anchor.stat().st_size * 4
+
+    opened: list[str] = []
+    real_open = Path.open
+
+    def recording_open(self, *args, **kwargs):
+        opened.append(str(self))
+        return real_open(self, *args, **kwargs)
+
+    real_read_text = Path.read_text
+
+    def recording_read_text(self, *args, **kwargs):
+        opened.append(str(self))
+        return real_read_text(self, *args, **kwargs)
+
+    Path.open = recording_open
+    Path.read_text = recording_read_text
+    try:
+        payload = storage_commands.storage_report(campaign.context(), _args())
+    finally:
+        Path.open = real_open
+        Path.read_text = real_read_text
+    assert str(topology) not in opened, "the bounded report read the full manifest"
+    assert str(anchor) in opened, "the bounded report skipped the completion anchor"
+    assert payload["accounting_mode"] == "bounded_owner_metadata"
+
+    # Consequential planning does pay for it, and does catch its corruption.
+    _rewrite_json(topology, node_count=999)
+    snapshot = campaign.snapshot()
+    view = snapshot.view("p5:run:g7:run-a")
+    assert view.archive_eligible is False
+    assert "topology manifest" in view.detail
+
+
+def test_the_bounded_report_follows_the_owner_after_terminal_evidence_goes_cold(
+    campaign,
+) -> None:
+    """IR17-6: reporting uses the same completion authority as certification."""
+
+    run_root = campaign.historical_run()
+    (run_root / "run-evidence.json").unlink()
+    bounded = campaign.snapshot(certify=False).view("p5:run:g7:run-a")
+    exact = campaign.snapshot(certify=True).view("p5:run:g7:run-a")
+    assert bounded.archive_eligible is exact.archive_eligible is True
+    assert bounded.current is exact.current
+
+
+def test_an_unexpected_empty_directory_is_never_swept_into_a_recursive_action(
+    campaign,
+) -> None:
+    """IR18-1: recursive ownership covers directory nodes, not only files."""
+
+    run_root = campaign.historical_run()
+    stranger = run_root / "checkpoints" / "someone-elses-dir"
+    stranger.mkdir()
+    assert not any(stranger.iterdir())
+
+    certified, why = certify_closed_post_selection_run_root(run_root)
+    assert not certified and "did not write" in why
+
+    snapshot = campaign.snapshot()
+    view = snapshot.view("p5:run:g7:run-a")
+    assert view.archive_eligible is False
+    assert "someone-elses-dir" in view.detail
+    members, _refusals = snapshot.authorized_members(view)
+    assert members == ()
+
+    storage_commands.storage_cleanup(campaign.context(), _args(tier="safe", apply=True))
+    assert stranger.is_dir(), "an unrecorded empty directory disappeared"
+
+    # And when the directory appears under a view that *was* certified, the
+    # recursive authorization itself refuses it rather than sweeping it along.
+    stranger.rmdir()
+    certified_view = campaign.snapshot().view("p5:run:g7:run-a")
+    assert certified_view.archive_eligible is True
+    stranger.mkdir()
+    members, refusals = campaign.snapshot(certify=False).authorized_members(
+        campaign.snapshot(certify=True).view("p5:run:g7:run-a")
+    )
+    del members, refusals
+    fresh_members, fresh_refusals = _authorized_after_planning(
+        campaign, certified_view, stranger
+    )
+    assert fresh_members == () or all(
+        str(item) != str(stranger) for item in fresh_members
+    )
+    assert any(str(stranger) == str(path) for path, _why in fresh_refusals)
+
+
+def _authorized_after_planning(campaign, view, stranger: Path):
+    """Authorize a *planned* closed view against the tree as it is now."""
+
+    return campaign.snapshot(certify=False).authorized_members(view)
+
+
+def test_a_recorded_empty_directory_stays_certifiable(campaign) -> None:
+    run_root = campaign.historical_run(finish=False)
+    owned = run_root / "checkpoints" / "owner-made-empty"
+    owned.mkdir()
+    campaign.finish_run(run_root)
+    certified, why = certify_closed_post_selection_run_root(run_root)
+    assert certified, why
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "topology_extra_member",
+        "topology_duplicate",
+        "topology_absolute_path",
+        "topology_digest",
+        "anchor_terminal_records",
+        "anchor_run_root",
+        "anchor_node_count",
+        "anchor_digest",
+        "anchor_schema",
+        "anchor_copied",
+        "legacy_schema_only",
+    ],
+)
+def test_a_tampered_completion_proof_never_widens_authority(campaign, damage) -> None:
+    """Ambiguity in the proof reduces authority; it never invents ownership."""
+
+    run_root = campaign.historical_run()
+    anchor, topology = _anchor_paths(run_root)
+    foreign = run_root / "checkpoints" / "foreign.pt"
+    foreign.write_bytes(b"not mine")
+
+    if damage == "topology_extra_member":
+        payload = json.loads(topology.read_text(encoding="utf-8"))
+        payload["nodes"].append({"path": "checkpoints/foreign.pt", "kind": "file"})
+        payload["node_count"] = len(payload["nodes"])
+        topology.write_text(json.dumps(payload), encoding="utf-8")
+    elif damage == "topology_duplicate":
+        payload = json.loads(topology.read_text(encoding="utf-8"))
+        payload["nodes"].append(dict(payload["nodes"][0]))
+        topology.write_text(json.dumps(payload), encoding="utf-8")
+    elif damage == "topology_absolute_path":
+        payload = json.loads(topology.read_text(encoding="utf-8"))
+        payload["nodes"][0]["path"] = "/etc/passwd"
+        topology.write_text(json.dumps(payload), encoding="utf-8")
+    elif damage == "topology_digest":
+        _rewrite_json(topology, content_digest="0" * 64)
+    elif damage == "anchor_terminal_records":
+        _rewrite_json(anchor, terminal_records=["not-a-terminal-record.json"])
+    elif damage == "anchor_run_root":
+        _rewrite_json(anchor, run_root="some-other-run")
+    elif damage == "anchor_node_count":
+        _rewrite_json(anchor, node_count=99)
+    elif damage == "anchor_digest":
+        _rewrite_json(anchor, content_digest="0" * 64)
+    elif damage == "anchor_schema":
+        _rewrite_json(anchor, schema="mdstats.post-selection-run-completion.v99")
+    elif damage == "anchor_copied":
+        other = run_root.parent / "run-b"
+        other.mkdir(parents=True, exist_ok=True)
+        (other / "run-evidence.json").write_text("{}\n", encoding="utf-8")
+        shutil.copy2(anchor, other / anchor.name)
+        shutil.copy2(topology, other / topology.name)
+        certified, why = certify_closed_post_selection_run_root(other)
+        assert not certified and "different run root" in why
+        return
+    else:  # legacy_schema_only
+        anchor.unlink()
+        topology.unlink()
+        (run_root / "run-members.json").write_text(
+            json.dumps(
+                {
+                    "schema": "mdstats.post-selection-run-members.v1",
+                    "run_root": run_root.name,
+                    "terminal_records": ["run-evidence.json"],
+                    "members": ["checkpoints/epoch-1.pt", "checkpoints/foreign.pt"],
+                    "member_count": 2,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    certified, _why = certify_closed_post_selection_run_root(run_root)
+    assert not certified
+    snapshot = campaign.snapshot()
+    view = snapshot.view("p5:run:g7:run-a")
+    assert view.archive_eligible is False
+    members, _refusals = snapshot.authorized_members(view)
+    assert all(str(item) != str(foreign) for item in members)
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="create", root=None, apply=True, keep_hot=False),
+    )
+    assert payload["archive"] is None, "a tampered proof authorized an archive"
+    assert foreign.read_bytes() == b"not mine"
+    assert (run_root / "checkpoints" / "epoch-1.pt").is_file()
+
+
+def test_one_validating_reader_owns_every_positive_use_of_the_anchor() -> None:
+    """Structural: no consequential path re-parses the proof for itself."""
+
+    storage = Path(cli.__file__).parent / "storage"
+    for name in ("owners.py", "inventory.py", "archive.py", "dedup.py", "report.py"):
+        source = (storage / name).read_text(encoding="utf-8")
+        assert "run-members.json" not in source, name
+        assert "run-completion.json" not in source, name
+        assert "run-topology.json" not in source, name
+
+
+# ---------------------------------------------------------------------------
+# IR17-2 - one effective event-retention bound
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bound", [0, 1, 10, 99, 100, 250])
+def test_event_retention_executes_the_exact_resolved_bound(campaign, bound) -> None:
+    """A hidden execution floor would make the plan describe a different product."""
+
+    from mdstats.training_data.storage.maintenance import measure_reclaimable
+
+    for _index in range(400):
+        campaign.store.event("info", "fixture", "x" * 16)
+    cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": bound}}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    payload = storage_commands.storage_cleanup(context, _args(tier="safe", apply=True))
+    pruned = [
+        item
+        for item in payload["execution"]["completed_actions"]
+        if item["action"] == "prune_campaign_events"
+    ]
+    assert pruned, payload["plan"]["refusals"]
+    assert pruned[0]["binding"]["maximum_events"] == bound
+    _reclaimable, _total, events = measure_reclaimable(campaign.store)
+    assert events == bound
+
+
+def test_the_legacy_event_alias_resolves_to_the_same_identity() -> None:
+    canonical = resolve_storage_policy(
+        {"storage": {"sqlite_compaction_maximum_events": 7}}, action=ACTION_CLEANUP
+    )
+    aliased = storage_commands._resolve(
+        _args(), {"cleanup": {"maximum_event_records": 7}}, action=ACTION_CLEANUP
+    )
+    assert aliased.sqlite_compaction_maximum_events == 7
+    assert aliased.policy_identity == canonical.policy_identity
+
+
+def test_no_execution_helper_hides_an_event_retention_floor() -> None:
+    import ast
+
+    source = Path(cli.__file__).read_text(encoding="utf-8")
+    prune = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "prune_events"
+    )
+    del ast
+    body = source[source.index("def prune_events("):]
+    body = body[: body.index("\n    def ", 1)]
+    assert "max(100" not in body, "prune_events still clamps the resolved bound"
+
+
+# ---------------------------------------------------------------------------
+# IR17-4 / IR18-3 - the audit stream lifecycle
+# ---------------------------------------------------------------------------
+
+
+def test_the_persisted_audit_record_says_it_was_published(campaign) -> None:
+    campaign.historical_run()
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="create", root=None, apply=True, keep_hot=True),
+    )
+    execution = payload["execution"]
+    stored = campaign.control_plane.read_audit()
+    assert len(stored) == 1
+    record = stored[0]
+    assert record["audit_published"] is True
+    assert record["audit_failure"] == ""
+    assert record["status"] == execution["status"] == "complete"
+    assert record["operation_identity"] == execution["operation_identity"]
+    assert record["plan_identity"] == execution["plan_identity"]
+    assert record["action"] == "archive"
+
+
+def test_audit_retention_is_serialized_with_publication() -> None:
+    """Structural: retention and append share one owner serialization."""
+
+    import ast
+
+    storage = Path(cli.__file__).parent / "storage"
+    control_plane = (storage / "control_plane.py").read_text(encoding="utf-8")
+    tree = ast.parse(control_plane)
+    for name in ("append_audit", "prune_audit"):
+        node = next(
+            item
+            for item in ast.walk(tree)
+            if isinstance(item, ast.FunctionDef) and item.name == name
+        )
+        assert "require_operation_lease" in ast.dump(node), name
+
+    executor = (storage / "executor.py").read_text(encoding="utf-8")
+    finalize = next(
+        item
+        for item in ast.walk(ast.parse(executor))
+        if isinstance(item, ast.FunctionDef) and item.name == "run"
+    )
+    dumped = ast.dump(finalize)
+    # Every terminal path publishes from inside the lease.
+    assert "prune_audit" not in dumped
+
+
+def test_retention_never_drops_a_concurrently_published_record(campaign) -> None:
+    """The read-modify-replace rewrite must not race away a newer record."""
+
+    campaign.historical_run(name="run-a")
+    campaign.historical_run(name="run-b")
+    cfg = {**campaign.cfg, "storage": {"audit_retention_records": 2}}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    identities = []
+    for _index in range(4):
+        payload = storage_commands.storage_deduplicate(context, _args(apply=True))
+        identities.append(payload["execution"]["operation_identity"])
+    stored = campaign.control_plane.read_audit()
+    assert len(stored) == 2
+    assert [item["operation_identity"] for item in stored] == identities[-2:]
+
+
+def test_a_retention_failure_never_unpublishes_a_successful_record(
+    campaign, monkeypatch
+) -> None:
+    campaign.historical_run()
+
+    def _failing_prune(self, *, keep: int) -> int:
+        raise OSError("injected audit retention failure")
+
+    monkeypatch.setattr(type(campaign.control_plane), "prune_audit", _failing_prune)
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="create", root=None, apply=True, keep_hot=True),
+    )
+    execution = payload["execution"]
+    assert execution["status"] == "complete"
+    assert execution["audit_published"] is True
+    assert "injected audit retention failure" in execution["retention_failure"]
+    assert len(campaign.control_plane.read_audit()) == 1
+
+    # A later operation retries retention without any special recovery step.
+    monkeypatch.undo()
+    storage_commands.storage_cleanup(campaign.context(), _args(tier="safe", apply=True))
+    assert campaign.control_plane.audit_stream_integrity() == ()
+
+
+def test_a_damaged_audit_tail_is_surfaced_and_never_rewritten_over(campaign) -> None:
+    campaign.historical_run()
+    storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="create", root=None, apply=True, keep_hot=True),
+    )
+    path = campaign.control_plane.audit_path
+    before = path.read_bytes()
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write('{"schema": "mdstats.mlff-storage-audit.v1", "trunc')
+
+    problems = campaign.control_plane.audit_stream_integrity()
+    assert problems
+    with storage_operation_lease(campaign.control_plane):
+        with pytest.raises(StorageControlPlaneError, match="damaged audit stream"):
+            campaign.control_plane.prune_audit(keep=0)
+    assert path.read_bytes().startswith(before)
+
+
+def test_an_append_failure_after_bytes_reach_the_file_is_pessimistic(
+    campaign, monkeypatch
+) -> None:
+    """A post-write failure cannot prove absence, so the caller is told nothing was."""
+
+    campaign.historical_run()
+    real_append = type(campaign.control_plane).append_audit
+
+    def half_written(self, payload):
+        real_append(self, payload)
+        raise OSError("injected fsync failure after the bytes were written")
+
+    monkeypatch.setattr(type(campaign.control_plane), "append_audit", half_written)
+    payload = storage_commands.storage_archive(
+        campaign.context(),
+        _args(archive_command="create", root=None, apply=True, keep_hot=True),
+    )
+    execution = payload["execution"]
+    assert execution["audit_published"] is False
+    assert execution["status"].endswith("_unaudited")
+    # Either outcome is permitted for the durable stream; neither is authority.
+    monkeypatch.undo()
+    assert len(campaign.control_plane.read_audit()) in (0, 1)
+
+
+# ---------------------------------------------------------------------------
+# IR17-5 / IR18-4 - dedup staging has a storage-owned recovery lifecycle
+# ---------------------------------------------------------------------------
+
+
+def test_the_dedup_temporary_link_never_lands_inside_the_p5_run(campaign) -> None:
+    from mdstats.training_data.storage.dedup import (
+        BOUNDARY_BEFORE_DIRECTORY_DURABILITY,
+    )
+
+    del BOUNDARY_BEFORE_DIRECTORY_DURABILITY
+    first, _second = _dedup_pair(campaign)
+    run_root = first.parent.parent
+    staged: list[str] = []
+    real_replace = os.replace
+
+    def observing_replace(source, destination, *args, **kwargs):
+        # The instant before the destination is replaced is the only moment the
+        # pre-rename alias exists; that is exactly where a hard crash would
+        # strand it, so that is where its ownership matters.
+        staged.append(str(source))
+        raise RuntimeError("injected crash between the staged link and the rename")
+
+    os.replace = observing_replace
+    try:
+        with pytest.raises(RuntimeError, match="injected crash"):
+            storage_commands.storage_deduplicate(campaign.context(), _args(apply=True))
+    finally:
+        os.replace = real_replace
+    assert staged, "dedup never staged a temporary alias"
+    staging_root = str(campaign.control_plane.staging_root)
+    assert all(item.startswith(staging_root) for item in staged), staged
+    assert all(str(run_root) not in item for item in staged)
+
+    certified, why = certify_closed_post_selection_run_root(run_root)
+    assert certified, why
+
+
+def test_abandoned_dedup_staging_is_storage_owned_and_recoverable(campaign) -> None:
+    """A hard crash leaves storage-owned residue, not an unknown P5 descendant."""
+
+    first, second = _dedup_pair(campaign)
+    run_root = first.parent.parent
+    residue = campaign.control_plane.staging_root_for("f" * 32) / "dedup"
+    residue.mkdir(parents=True)
+    os.link(first, residue / "0-dup-a.pt")
+    before = (first.stat().st_mode, first.stat().st_ino, first.stat().st_nlink)
+
+    snapshot = campaign.snapshot()
+    view = snapshot.view(f"storage:staging:{'f' * 32}")
+    assert view is not None and view.safe_reclaimable is True
+    assert view.owner.startswith("storage")
+
+    storage_commands.storage_cleanup(campaign.context(), _args(tier="safe", apply=True))
+    assert not residue.exists()
+    after = first.stat()
+    assert (after.st_mode, after.st_ino) == before[:2]
+    assert after.st_nlink == before[2] - 1
+
+    certified, why = certify_closed_post_selection_run_root(run_root)
+    assert certified, why
+    payload = storage_commands.storage_deduplicate(campaign.context(), _args(apply=True))
+    assert payload["execution"]["status"] == "complete"
+    assert first.stat().st_ino == second.stat().st_ino
+
+
+def test_no_dedup_staging_reclamation_reads_a_pid_or_an_age() -> None:
+    import ast
+
+    storage = Path(cli.__file__).parent / "storage"
+    dedup = (storage / "dedup.py").read_text(encoding="utf-8")
+    assert "getpid" not in dedup
+    owners = (storage / "owners.py").read_text(encoding="utf-8")
+    tree = ast.parse(owners)
+    staging = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "control_plane_views"
+    )
+    dumped = ast.dump(staging)
+    for folklore in ("getpid", "st_mtime", "stale_age_hours", "time("):
+        assert folklore not in dumped, folklore
+
+
+def test_cross_device_dedup_staging_refuses_instead_of_falling_back(
+    campaign, monkeypatch
+) -> None:
+    """An atomic hardlink replacement needs one filesystem, or nothing happens.
+
+    Falling back to a copy, or to an unowned temporary inside the run, would
+    trade a refusal for a recovery hole.
+    """
+
+    from mdstats.training_data.storage import dedup as dedup_module
+
+    first, second = _dedup_pair(campaign)
+    run_root = first.parent.parent
+    real_same_filesystem = dedup_module.same_filesystem
+
+    def not_shared(a: Path, b: Path) -> bool:
+        if str(campaign.control_plane.staging_root) in str(a):
+            return False
+        return real_same_filesystem(a, b)
+
+    monkeypatch.setattr(dedup_module, "same_filesystem", not_shared)
+    payload = storage_commands.storage_deduplicate(campaign.context(), _args(apply=True))
+    execution = payload["execution"]
+    assert execution["status"] == "refused"
+    assert any(
+        "different filesystems" in item["refusal"] for item in execution["refused_actions"]
+    )
+    assert first.stat().st_ino != second.stat().st_ino
+    assert not [item for item in run_root.rglob(".*dedup*")]
+    certified, why = certify_closed_post_selection_run_root(run_root)
+    assert certified, why

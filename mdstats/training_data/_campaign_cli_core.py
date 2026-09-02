@@ -15,6 +15,7 @@ from enum import Enum
 import argparse
 import ast
 import csv
+import fcntl
 import gc
 import hashlib
 import json
@@ -324,6 +325,13 @@ def observational_campaign_state() -> Iterable[None]:
         yield
 
 
+#: Advisory lock file every campaign-state writer takes before mutating.
+#:
+#: It sits beside the database rather than inside it because the competing
+#: writer is normally a second CLI process, which no in-process mutex can see.
+CAMPAIGN_WRITER_LOCK_SUFFIX = ".writer-lock"
+
+
 def _sqlite_readonly_uri(path: Path) -> str:
     """A genuinely read-only SQLite URI for one existing database file.
 
@@ -365,6 +373,8 @@ class CampaignStore:
         """
 
         self.path = Path(path)
+        self._writer_gate = threading.Lock()
+        self._writer_depth = 0
         if _observational_campaign_state_active():
             # An observational invocation cannot be made consequential by a
             # nested helper that happens to open the store for itself, on this
@@ -453,6 +463,63 @@ class CampaignStore:
             self._db_local.connection = db
         return db
 
+    @contextmanager
+    def writer_exclusion(self) -> Iterable[None]:
+        """Exclude every other campaign-state writer, in this process or another.
+
+        SQLite serializes individual statements, but an expensive maintenance
+        decision needs more than that: the free-page measurement that authorizes
+        a whole-file ``VACUUM`` has to still be true when the rewrite starts, and
+        another process committing in between would invalidate it. A thread-only
+        mutex cannot express that, because the competing writer is usually a
+        second CLI invocation.
+
+        So every product write path takes this one advisory ``flock`` first, and
+        maintenance holds it across its final predicate, its admission recheck,
+        and the rewrite itself. The lock is per open file description, so it is
+        genuinely cross-process; it is reentrant within one store so an ordinary
+        write inside a held exclusion does not deadlock; and the kernel releases
+        it on any exit, so a crash can never leave writers permanently blocked.
+
+        Lock order is single and cycle-free: a storage operation takes the
+        storage-operation lease and the owner publication seams *before* it
+        reaches campaign-state maintenance, and nothing holding this lock ever
+        reaches back for those.
+        """
+
+        with self._writer_gate:
+            if self._writer_depth:
+                self._writer_depth += 1
+                reentered = True
+            else:
+                reentered = False
+        if reentered:
+            try:
+                yield
+            finally:
+                with self._writer_gate:
+                    self._writer_depth -= 1
+            return
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = os.open(
+            str(self.path) + CAMPAIGN_WRITER_LOCK_SUFFIX,
+            os.O_CREAT | os.O_RDWR | os.O_CLOEXEC,
+            0o644,
+        )
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            with self._writer_gate:
+                self._writer_depth = 1
+            try:
+                yield
+            finally:
+                with self._writer_gate:
+                    self._writer_depth = 0
+                fcntl.flock(handle, fcntl.LOCK_UN)
+        finally:
+            os.close(handle)
+
     def _require_writable(self, operation: str) -> None:
         """Refuse a mutation on an observational store before it starts.
 
@@ -487,13 +554,14 @@ class CampaignStore:
                 "A campaign write transaction is already active on this connection; "
                 "campaign CAS transitions must not nest."
             )
-        db.execute("BEGIN IMMEDIATE")
-        try:
-            yield db
-        except BaseException:
-            db.rollback()
-            raise
-        db.commit()
+        with self.writer_exclusion():
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                yield db
+            except BaseException:
+                db.rollback()
+                raise
+            db.commit()
 
     def close(self) -> None:
         db = getattr(self._db_local, "connection", None)
@@ -544,12 +612,13 @@ class CampaignStore:
                 return False, (
                     f"record payload contains a symlink this owner did not write: {path.name}"
                 ), ()
-            if path.is_dir():
-                continue
-            if not path.is_file():
+            if not path.is_dir() and not path.is_file():
                 return False, (
                     f"record payload contains a special file: {path.name}"
                 ), ()
+            # Directories are recorded as nodes too: a recursive removal makes
+            # them disappear, so an unrecorded empty directory must be covered
+            # rather than swept along.
             observed.append(path.relative_to(root).as_posix())
 
         manifest_path = root / "manifest.json"
@@ -640,7 +709,7 @@ class CampaignStore:
     def set_meta(self, key: str, value: Any) -> None:
         self._require_writable("write campaign metadata")
         encoded = json.dumps(value, sort_keys=True)
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.execute("INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)", (key, encoded))
 
     def get_meta(self, key: str, default: Any = None) -> Any:
@@ -692,7 +761,7 @@ class CampaignStore:
     def put_record(self, key: str, record: Any) -> None:
         self._require_writable("write a campaign record")
         class_name, record_digest, encoded = self._encode_record_for_storage(key, record)
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.execute(
                 "INSERT OR REPLACE INTO records(key,class_name,digest,payload,updated_utc) VALUES (?,?,?,?,?)",
                 (key, class_name, record_digest, encoded, _utc_now()),
@@ -718,7 +787,7 @@ class CampaignStore:
             encoded_rows.append(
                 (str(key), class_name, record_digest, encoded, timestamp)
             )
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.executemany(
                 "INSERT OR REPLACE INTO records(key,class_name,digest,payload,updated_utc) VALUES (?,?,?,?,?)",
                 encoded_rows,
@@ -743,7 +812,7 @@ class CampaignStore:
             )
             encoded_rows.append((str(key), class_name, record_digest, encoded, timestamp))
         delete = tuple(dict.fromkeys(str(key) for key in delete_keys if str(key)))
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             if delete:
                 db.executemany("DELETE FROM records WHERE key=?", ((key,) for key in delete))
             if encoded_rows:
@@ -861,12 +930,12 @@ class CampaignStore:
         """Delete compact orchestration pointers while leaving native artifacts intact."""
 
         self._require_writable("delete campaign records")
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.execute("DELETE FROM records WHERE key LIKE ?", (prefix + "%",))
 
     def delete_record(self, key: str) -> None:
         self._require_writable("delete a campaign record")
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.execute("DELETE FROM records WHERE key=?", (key,))
 
     def storage_references(self) -> tuple[Path, ...]:
@@ -917,10 +986,16 @@ class CampaignStore:
 
         The delete takes the write lock up front so it serializes against any
         other campaign writer rather than assuming this process is the only one.
+
+        The resolved policy bound is executed **exactly**. There is deliberately
+        no floor here: a hidden clamp would make the plan, the policy identity,
+        and the audit record all describe a retention the execution never
+        applied. If the product ever needs a minimum retained diagnostic count,
+        it belongs in policy resolution, before the value is hashed and planned.
         """
 
         self._require_writable("prune campaign diagnostic events")
-        maximum_events = max(100, int(maximum_events))
+        maximum_events = max(0, int(maximum_events))
         with self.exclusive_transaction() as db:
             before = int(db.execute("SELECT COUNT(*) FROM events").fetchone()[0])
             db.execute(
@@ -936,9 +1011,10 @@ class CampaignStore:
 
         Expensive and independently decided: the caller establishes that the
         rewrite is worth its cost and that there is room for the copy SQLite
-        makes beside the original. ``VACUUM`` cannot run inside a transaction,
-        so serialization comes from SQLite's own exclusive lock plus the
-        connection's busy timeout - not from assuming a single writer.
+        makes beside the original, and it does so while already holding
+        :meth:`writer_exclusion` so that measurement cannot go stale before the
+        rewrite starts. Entering the exclusion here as well is reentrant and
+        makes a direct call safe on its own.
         """
 
         self._require_writable("rewrite the campaign state database")
@@ -948,14 +1024,15 @@ class CampaignStore:
                 "Refusing to rewrite the campaign state database inside an open "
                 "transaction; VACUUM owns the whole file."
             )
-        db.execute("PRAGMA optimize")
-        db.execute("VACUUM")
-        db.commit()
+        with self.writer_exclusion():
+            db.execute("PRAGMA optimize")
+            db.execute("VACUUM")
+            db.commit()
 
     def set_stage(self, name: str, state: StageState, message: str) -> None:
         self._require_writable("record a campaign stage")
         timestamp = _utc_now()
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.execute(
                 "INSERT OR REPLACE INTO stages(name,state,message,updated_utc) VALUES (?,?,?,?)",
                 (name, state.value, message, timestamp),
@@ -974,7 +1051,7 @@ class CampaignStore:
 
     def event(self, level: str, stage: str, message: str) -> None:
         self._require_writable("record a campaign event")
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.execute(
                 "INSERT INTO events(timestamp_utc,level,stage,message) VALUES (?,?,?,?)",
                 (_utc_now(), level, stage, message),

@@ -102,6 +102,10 @@ class StorageExecutionResult:
     audit_published: bool = False
     #: Why publication failed, when it did.
     audit_failure: str = ""
+    #: Why bounded audit retention failed, when it did. Retention is
+    #: housekeeping on diagnostic evidence: its failure never unpublishes a
+    #: record that was written and never touches the primary mutation.
+    retention_failure: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -119,6 +123,7 @@ class StorageExecutionResult:
             "detail": self.detail,
             "audit_published": bool(self.audit_published),
             "audit_failure": self.audit_failure,
+            "retention_failure": self.retention_failure,
             "grants_scientific_authority": False,
             **({"result": self.payload} if self.payload else {}),
         }
@@ -222,13 +227,26 @@ class StorageExecutor:
                             "execution was interrupted after a strict subset of "
                             f"actions: {exc}"
                         )
-                        self._audit(result, trigger=trigger)
+                        self._finalize(result, trigger=trigger)
                         raise
+                    self._settle(result)
+                    self._finalize(result, trigger=trigger)
+                    return result
         except StoragePlanStaleError as exc:
             result.status = STATUS_REFUSED
             result.detail = str(exc)
-            self._audit(result, trigger=trigger)
+            with storage_operation_lease(
+                self.control_plane,
+                timeout_seconds=self.policy.operation_lease_timeout_seconds,
+            ):
+                self._finalize(result, trigger=trigger)
             return result
+
+        # Unreachable: every path above returns inside the lease.
+        raise StorageExecutionError("storage execution reached no terminal disposition")
+
+    def _settle(self, result: StorageExecutionResult) -> None:
+        """Decide the terminal status this execution actually earned."""
 
         if not result.refused:
             result.status = STATUS_COMPLETE
@@ -246,9 +264,30 @@ class StorageExecutor:
                 "some actions were refused at mutation time; the execution is not complete"
             )
         result.detail = result.detail or default_detail
+
+    def _finalize(self, result: StorageExecutionResult, *, trigger: str) -> None:
+        """Publish this operation's audit record and apply bounded retention.
+
+        Both happen while the storage-operation lease is still held, and that is
+        deliberate. Retention reads the whole stream and replaces it; if another
+        operation could append between the read and the replace, the record it
+        just published - and returned as audited - would be silently rewritten
+        away. One serialization owns both halves of the stream's lifecycle.
+        """
+
         self._audit(result, trigger=trigger)
-        self.control_plane.prune_audit(keep=self.policy.audit_retention_records)
-        return result
+        if not result.audit_published:
+            return
+        try:
+            self.control_plane.prune_audit(keep=self.policy.audit_retention_records)
+        except Exception as exc:
+            # Housekeeping on diagnostic evidence. The mutation stands, the
+            # published record stands, and a later operation retries retention.
+            result.retention_failure = str(exc)
+            result.detail = (
+                f"{result.detail} (bounded audit retention failed and will be "
+                f"retried by a later operation: {exc})"
+            ).strip()
 
     def _execute_actions(
         self,
@@ -295,6 +334,11 @@ class StorageExecutor:
         result and the operation's real outcome stands.
         """
 
+        # The record states the truth that holds *if* this append succeeds, so
+        # the durable evidence of a successful operation does not contradict
+        # itself by saying it was never published.
+        result.audit_published = True
+        result.audit_failure = ""
         try:
             self.control_plane.ensure()
             self.control_plane.append_audit(
@@ -309,6 +353,11 @@ class StorageExecutor:
             # Never rolled back, never fabricated, and never reported as an
             # ordinary success: the status itself becomes an explicitly degraded
             # one so a caller cannot mistake this for a fully audited operation.
+            # Pessimistic on purpose. After an arbitrary write/fsync failure a
+            # complete record may or may not have reached the file, and this
+            # package will not promise a proof of absence it cannot have. What
+            # it does promise is that the caller is never told an operation was
+            # audited when publication reported failure.
             result.audit_published = False
             result.audit_failure = str(exc)
             result.status = unaudited_status(result.status)
@@ -316,9 +365,6 @@ class StorageExecutor:
                 f"{result.detail} (the mutation stands, but its durable audit "
                 f"record could not be published: {exc})"
             ).strip()
-            return
-        result.audit_published = True
-        result.audit_failure = ""
 
 
 def remove_durably(path: Path) -> bool:

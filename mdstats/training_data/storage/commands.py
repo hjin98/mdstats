@@ -853,6 +853,7 @@ def storage_deduplicate(context: StorageCommandContext, args: Any) -> dict[str, 
         synchronization=synchronization_for(plan, snapshot),
         engine=dedup_engine(
             boundary=context.boundary,
+            control_plane=context.consequential_plane(policy),
             groups=groups,
             excluded=excluded,
             failpoint=getattr(args, "failpoint", None) or (lambda _name: None),

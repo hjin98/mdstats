@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
+from ..target_size_execution.persistence import fsync_parent_directory
 from .durability import (
     canonical_digest,
     durable_append_jsonl,
@@ -385,19 +386,59 @@ class StorageControlPlane:
         return _generate()
 
     def append_audit(self, payload: Mapping[str, Any]) -> str:
+        self.require_operation_lease("publish a storage audit record")
         record = dict(payload)
         record["schema"] = STORAGE_AUDIT_SCHEMA
         self.audit_root.mkdir(parents=True, exist_ok=True)
         return durable_append_jsonl(self.audit_path, record)
 
     def read_audit(self) -> tuple[dict[str, Any], ...]:
+        """Every well-formed audit record, newest last.
+
+        A malformed or truncated line is skipped rather than raised: the audit
+        is diagnostic evidence, and one unreadable tail must not make the whole
+        stream unreadable. :meth:`audit_stream_integrity` is what a caller asks
+        before doing anything destructive with the stream.
+        """
+
+        records, _problems = self._read_audit_stream()
+        return records
+
+    def _read_audit_stream(self) -> tuple[tuple[dict[str, Any], ...], tuple[str, ...]]:
+        """``(records, problems)`` after validating framing, schema, and digest."""
+
         if not self.audit_path.is_file():
-            return ()
+            return (), ()
         records: list[dict[str, Any]] = []
-        for line in self.audit_path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                records.append(json.loads(line))
-        return tuple(records)
+        problems: list[str] = []
+        for number, line in enumerate(
+            self.audit_path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                problems.append(f"line {number} is not a complete JSON record")
+                continue
+            if not isinstance(record, Mapping):
+                problems.append(f"line {number} is not an audit record object")
+                continue
+            if record.get("schema") != STORAGE_AUDIT_SCHEMA:
+                problems.append(f"line {number} carries an unsupported audit schema")
+                continue
+            body = {k: v for k, v in dict(record).items() if k != "event_digest"}
+            if str(record.get("event_digest", "")) != canonical_digest(body):
+                problems.append(f"line {number} does not authenticate against its digest")
+                continue
+            records.append(dict(record))
+        return tuple(records), tuple(problems)
+
+    def audit_stream_integrity(self) -> tuple[str, ...]:
+        """Framing/schema/digest problems in the audit stream, if any."""
+
+        _records, problems = self._read_audit_stream()
+        return problems
 
     def prune_audit(self, *, keep: int) -> int:
         """Bound audit retention without ever touching catalog/journal state.
@@ -405,18 +446,56 @@ class StorageControlPlane:
         Audit records are diagnostic evidence.  Losing an old one cannot
         invalidate scientific currentness, and this never removes the catalog
         or journal an existing cold representation still needs.
+
+        Two properties matter here beyond "delete the old ones".
+
+        *It is serialized with appends.*  Retention reads the whole stream and
+        replaces it; another operation appending in between would have its
+        freshly published record thrown away by a stale rewrite.  The
+        storage-operation lease is what makes the read-modify-replace atomic
+        with respect to every supported storage operation, so it is required.
+
+        *It never rewrites over damage.*  A truncated or unauthenticated line is
+        a diagnostic problem to surface, not licence to replace the stream with
+        the subset this process happened to be able to parse.
         """
 
-        records = self.read_audit()
+        self.require_operation_lease("apply storage audit retention")
+        records, problems = self._read_audit_stream()
+        if problems:
+            raise StorageControlPlaneError(
+                "Refusing to apply audit retention over a damaged audit stream: "
+                f"{problems[:3]}. The stream is diagnostic evidence and is left "
+                "exactly as it is until the damage is understood."
+            )
         keep = max(0, int(keep))
         if len(records) <= keep:
             return 0
         retained = records[len(records) - keep :] if keep else ()
         temporary = self.audit_path.with_suffix(".jsonl.pruning")
         temporary.unlink(missing_ok=True)
-        for record in retained:
-            durable_append_jsonl(temporary, {k: v for k, v in record.items() if k != "event_digest"})
-        os.replace(temporary, self.audit_path)
+        try:
+            for record in retained:
+                durable_append_jsonl(
+                    temporary, {k: v for k, v in record.items() if k != "event_digest"}
+                )
+            # Validate the staged stream before it replaces the real one, so a
+            # failed rewrite leaves the last valid stream in place.
+            staged = [
+                line
+                for line in temporary.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ] if temporary.is_file() else []
+            if len(staged) != len(retained):
+                raise StorageControlPlaneError(
+                    "the staged retained audit stream is incomplete; the existing "
+                    "stream is kept"
+                )
+            os.replace(temporary, self.audit_path)
+            fsync_parent_directory(self.audit_path)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
         return len(records) - len(retained)
 
     def clear_staging(self, operation_identity: str) -> None:

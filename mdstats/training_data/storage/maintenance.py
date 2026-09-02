@@ -224,41 +224,53 @@ def campaign_state_maintenance_engine(store: Any, policy: StoragePolicy):
             )
             return
 
-        # A rewrite re-establishes its own benefit under the fresh state it is
-        # about to rewrite, so a plan built when the file was full of free pages
-        # cannot rewrite a file that no longer is.
-        worthwhile, _bytes, _fraction, detail = vacuum_is_worthwhile(store, policy)
-        if not worthwhile:
-            result.refused.append(
-                {
-                    **action.to_dict(),
-                    "refusal": (
-                        f"the database rewrite is no longer worthwhile: {detail}"
-                    ),
-                    "vacuum_performed": False,
-                }
-            )
-            return
+        # The predicate that authorizes a whole-file rewrite has to still be
+        # true when the rewrite starts. Measuring it and then waiting for the
+        # database would be exactly the race this repair exists to close: a
+        # second process can commit while we wait and consume the free pages the
+        # decision was based on. So the final observation, the admission
+        # recheck, and the rewrite all happen inside one cross-process writer
+        # exclusion, and the exclusion is released on every terminal path.
         try:
-            size = int(action.path.stat().st_size) if action.path.is_file() else 0
-            admission = admit_storage_operation(
-                action.path.parent,
-                policy,
-                # VACUUM's peak is the original plus its rewritten copy.
-                required_peak_bytes=2 * size,
-                required_inodes=2,
-            )
-        except StorageAdmissionError as exc:
-            result.refused.append(
-                {
-                    **action.to_dict(),
-                    "refusal": f"the rewrite was not admitted and was skipped: {exc}",
-                    "vacuum_performed": False,
-                }
-            )
-            return
-        try:
-            store.vacuum()
+            with store.writer_exclusion():
+                worthwhile, _bytes, _fraction, detail = vacuum_is_worthwhile(
+                    store, policy
+                )
+                if not worthwhile:
+                    result.refused.append(
+                        {
+                            **action.to_dict(),
+                            "refusal": (
+                                "the database rewrite is no longer worthwhile once "
+                                f"every competing writer was excluded: {detail}"
+                            ),
+                            "vacuum_performed": False,
+                        }
+                    )
+                    return
+                try:
+                    size = (
+                        int(action.path.stat().st_size) if action.path.is_file() else 0
+                    )
+                    admission = admit_storage_operation(
+                        action.path.parent,
+                        policy,
+                        # VACUUM's peak is the original plus its rewritten copy.
+                        required_peak_bytes=2 * size,
+                        required_inodes=2,
+                    )
+                except StorageAdmissionError as exc:
+                    result.refused.append(
+                        {
+                            **action.to_dict(),
+                            "refusal": (
+                                f"the rewrite was not admitted and was skipped: {exc}"
+                            ),
+                            "vacuum_performed": False,
+                        }
+                    )
+                    return
+                store.vacuum()
         except Exception as exc:
             result.refused.append(
                 {

@@ -34,7 +34,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from ._common import TrainingDataInputError, digest, sha256_file_cached, validate_digest
+from ._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+    digest,
+    sha256_file_cached,
+    validate_digest,
+)
 from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
@@ -1056,13 +1062,33 @@ FOLD_ACCEPTANCE_FILENAME = "fold-acceptance.json"
 #: The same idea for one completed final-production job.
 RUN_EVIDENCE_FILENAME = "run-evidence.json"
 
-#: The exact set of files this owner produced under one run root, written when
-#: the run reaches its terminal record.  Digests and sizes are deliberately not
-#: repeated here - they belong to the evidence records - but the *membership* is,
-#: because membership is the one thing a downstream consumer cannot re-derive
-#: and must not guess.  A consumer that wants to treat the run tree as a closed
-#: unit asks this owner, and gets a yes only if what is on disk is exactly what
-#: P5 wrote.
+#: One completed run's terminal proof is deliberately **two** records with two
+#: different cost classes.
+#:
+#: The full *topology manifest* names every node - regular file and directory -
+#: this owner produced under the run root.  Membership is the one thing a
+#: downstream consumer cannot re-derive and must not guess, and it has to cover
+#: directories as well as files, because a recursive delete removes directory
+#: nodes too: an unexpected *empty* directory that no file path mentions would
+#: otherwise vanish under an authorized ``rmtree``.  That record is inherently
+#: O(number of descendants).
+#:
+#: The compact *completion anchor* is the commit point, and it is O(1).  It says
+#: that this run finished, which terminal evidence it published, and the content
+#: identity of the topology manifest that goes with it.  Normal storage
+#: reporting validates only this record, so describing a campaign never costs
+#: anything proportional to how much bulk a run holds; exact closed-subtree
+#: certification is the only path that pays for the full manifest.
+RUN_TOPOLOGY_MANIFEST_FILENAME = "run-topology.json"
+RUN_TOPOLOGY_MANIFEST_SCHEMA = "mdstats.post-selection-run-topology.v1"
+RUN_COMPLETION_ANCHOR_FILENAME = "run-completion.json"
+RUN_COMPLETION_ANCHOR_SCHEMA = "mdstats.post-selection-run-completion.v1"
+
+#: The superseded single-file development anchor.  It was never a released
+#: durable authority, and it is not one now: a run root carrying only this file
+#: is diagnosable but grants no consequential storage authority.  The name stays
+#: known so a leftover copy is recognized as this owner's own residue rather
+#: than mistaken for an unexpected descendant.
 RUN_MEMBER_MANIFEST_FILENAME = "run-members.json"
 RUN_MEMBER_MANIFEST_SCHEMA = "mdstats.post-selection-run-members.v1"
 
@@ -1074,8 +1100,28 @@ _OWNED_LOCK_NAMES: frozenset[str] = frozenset(
     for name in (
         FOLD_ACCEPTANCE_FILENAME,
         RUN_EVIDENCE_FILENAME,
+        RUN_TOPOLOGY_MANIFEST_FILENAME,
+        RUN_COMPLETION_ANCHOR_FILENAME,
         RUN_MEMBER_MANIFEST_FILENAME,
     )
+)
+
+#: Every top-level name this owner writes as completion infrastructure rather
+#: than as run content.  These are never manifest nodes and never unexpected
+#: descendants.
+RUN_COMPLETION_INFRASTRUCTURE_NAMES: frozenset[str] = frozenset(
+    {
+        RUN_TOPOLOGY_MANIFEST_FILENAME,
+        RUN_COMPLETION_ANCHOR_FILENAME,
+        RUN_MEMBER_MANIFEST_FILENAME,
+        *_OWNED_LOCK_NAMES,
+    }
+)
+
+#: Terminal evidence kinds this owner actually publishes.  A completion anchor
+#: that names anything else is not describing a run this owner finished.
+RUN_TERMINAL_RECORD_NAMES: frozenset[str] = frozenset(
+    {FOLD_ACCEPTANCE_FILENAME, RUN_EVIDENCE_FILENAME}
 )
 
 #: Advisory activity lease guarding one run root's write lifetime.  P5 holds it
@@ -1118,116 +1164,352 @@ def post_selection_run_activity_lease(run_root: str | os.PathLike[str]):
     )
 
 
-def _run_root_relative_files(root: Path) -> list[str]:
-    """Every regular file under one run root, as sorted POSIX relative paths."""
+def _canonical_node_path(root: Path, path: Path) -> str | None:
+    """The canonical POSIX-relative locator of one node, or ``None`` if unusable."""
 
-    members: list[str] = []
-    for path in sorted(root.rglob("*")):
-        if path.is_symlink() or not path.is_file():
-            continue
-        relative = path.relative_to(root).as_posix()
-        if path.name in _OWNED_LOCK_NAMES:
-            continue
-        members.append(relative)
-    return sorted(members)
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return None
+    parts = relative.parts
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        return None
+    if parts[0] in RUN_COMPLETION_INFRASTRUCTURE_NAMES:
+        return None
+    return relative.as_posix()
 
 
-def record_post_selection_run_members(run_root: str | os.PathLike[str]) -> Path:
-    """Freeze this owner's terminal completion and exact member set, once.
+def _run_root_nodes(root: Path) -> list[dict[str, str]]:
+    """Every node this owner produced under one run root, files and directories.
 
-    This is the run's **completion anchor**, not a convenience index. It is
-    written after the terminal fold-acceptance/run-evidence record is durable,
-    and from then on it - rather than the presence of that record on disk - is
-    what proves the run finished. That distinction is what makes an interrupted
-    cold reclamation recoverable: the terminal evidence is an ordinary archive
-    member and may legitimately have gone cold, while the anchor stays hot and
-    can still certify the run for the reclaim that has to finish.
-
-    It is create-once. A second terminal publication of the same run identity
-    verifies the anchor rather than rewriting it; a *different* claimed member
-    set under the same run is an owner-integrity conflict and fails closed,
-    because silently rewriting completion authority is exactly how a run could
-    be made to certify a member set it never produced.
+    Directories are recorded deliberately.  A recursive delete removes directory
+    nodes as well as files, so a manifest that named only files would leave an
+    unexpected empty directory covered by nothing and free to disappear inside an
+    otherwise authorized ``rmtree``.
     """
 
-    from .target_size_execution import publish_mutable_json_atomic
-
-    root = Path(run_root)
-    destination = root / RUN_MEMBER_MANIFEST_FILENAME
-    members = [
-        name
-        for name in _run_root_relative_files(root)
-        if name != RUN_MEMBER_MANIFEST_FILENAME
-    ]
-    terminal = sorted(
-        name
-        for name in (FOLD_ACCEPTANCE_FILENAME, RUN_EVIDENCE_FILENAME)
-        if (root / name).is_file()
-    )
-    if not terminal:
-        raise PostSelectionExecutionError(
-            f"Refusing to record post-selection run completion for {root.name}: no "
-            "terminal fold-acceptance or run-evidence record is durable yet. The "
-            "completion anchor is only ever written downstream of the evidence it "
-            "certifies."
-        )
-    existing = _read_run_member_manifest(root)
-    if existing is not None:
-        recorded = sorted(str(item) for item in existing.get("members", ()))
-        if recorded != members:
-            raise PostSelectionExecutionError(
-                f"Refusing to rewrite the completion anchor of post-selection run "
-                f"{root.name}: it already certifies {len(recorded)} member(s) and "
-                f"this publication claims {len(members)}. A completed run's member "
-                "set is create-once owner authority, so a disagreement is an "
-                "integrity conflict rather than an update."
-            )
-        return destination
-    publish_mutable_json_atomic(
-        destination,
-        {
-            "schema": RUN_MEMBER_MANIFEST_SCHEMA,
-            "run_root": root.name,
-            "terminal_records": terminal,
-            "members": members,
-            "member_count": len(members),
-        },
-    )
-    return destination
+    nodes: list[dict[str, str]] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            # Symlinks are governed by the stronger refusal rules elsewhere and
+            # are never absorbed into ownership by being listed here.
+            continue
+        relative = _canonical_node_path(root, path)
+        if relative is None:
+            continue
+        if path.is_dir():
+            nodes.append({"path": relative, "kind": "directory"})
+        elif path.is_file():
+            nodes.append({"path": relative, "kind": "file"})
+    return sorted(nodes, key=lambda item: item["path"])
 
 
-def _read_run_member_manifest(root: Path) -> dict[str, Any] | None:
-    """The recorded completion anchor of one run root, or ``None``."""
+def _sealed(payload: dict[str, Any]) -> dict[str, Any]:
+    """One canonical record plus its own content identity."""
 
-    path = root / RUN_MEMBER_MANIFEST_FILENAME
-    if not path.is_file():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+    body = {key: value for key, value in payload.items() if key != "content_digest"}
+    return {**body, "content_digest": digest(body)}
+
+
+def _self_authenticated(payload: Any, schema: str) -> dict[str, Any] | None:
+    """A record whose schema matches and whose own digest re-derives, or ``None``."""
+
     if not isinstance(payload, Mapping):
         return None
-    if payload.get("schema") != RUN_MEMBER_MANIFEST_SCHEMA:
+    if payload.get("schema") != schema:
+        return None
+    recorded = str(payload.get("content_digest", ""))
+    body = {key: value for key, value in dict(payload).items() if key != "content_digest"}
+    if not recorded or recorded != digest(body):
         return None
     return dict(payload)
+
+
+def _load_json(path: Path) -> Any | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class PostSelectionRunCompletion:
+    """The compact, O(1) proof that one post-selection run finished."""
+
+    run_root: str
+    terminal_records: tuple[str, ...]
+    topology_digest: str
+    node_count: int
+    file_count: int
+    directory_count: int
+    content_digest: str
+
+
+def read_post_selection_run_completion(
+    run_root: str | os.PathLike[str],
+) -> tuple[PostSelectionRunCompletion | None, str]:
+    """Validate the compact completion anchor of one run root.
+
+    This is the **one** validating reader every consumer goes through, and it is
+    deliberately bounded: it reads a single small record, re-derives that
+    record's own digest, checks the run identity it claims, and confirms the
+    bound topology manifest is present.  It never reads or hashes the manifest
+    and never walks the run, so normal reporting stays independent of how much
+    the run holds.
+
+    Ambiguity reduces authority.  A missing, malformed, unsupported, tampered,
+    or copied-for-another-run anchor returns ``None`` with a truthful reason; it
+    never degrades into a guessed member set.
+    """
+
+    root = Path(run_root)
+    path = root / RUN_COMPLETION_ANCHOR_FILENAME
+    if not path.is_file():
+        legacy = root / RUN_MEMBER_MANIFEST_FILENAME
+        if legacy.is_file():
+            return None, (
+                "run root carries only the superseded single-file completion record, "
+                "which is diagnosable but grants no consequential authority"
+            )
+        return None, (
+            "run root carries no retained completion anchor, so this owner cannot "
+            "certify that it finished or which descendants it produced"
+        )
+    payload = _self_authenticated(_load_json(path), RUN_COMPLETION_ANCHOR_SCHEMA)
+    if payload is None:
+        return None, (
+            "run completion anchor is unreadable, carries an unsupported schema, or "
+            "does not authenticate against its own recorded identity"
+        )
+    if str(payload.get("run_root", "")) != root.name:
+        return None, (
+            "run completion anchor names a different run root, so it was copied "
+            "rather than published for this run"
+        )
+    terminal = tuple(str(item) for item in payload.get("terminal_records", ()))
+    if not terminal or not set(terminal) <= RUN_TERMINAL_RECORD_NAMES:
+        return None, (
+            "run completion anchor names no recognized terminal evidence record, so "
+            "it does not certify a finished run"
+        )
+    topology_digest = str(payload.get("topology_digest", ""))
+    if len(topology_digest) != 64:
+        return None, "run completion anchor binds no topology manifest identity"
+    try:
+        node_count = int(payload["node_count"])
+        file_count = int(payload["file_count"])
+        directory_count = int(payload["directory_count"])
+    except (KeyError, TypeError, ValueError):
+        return None, "run completion anchor carries an unusable node accounting"
+    if node_count != file_count + directory_count or node_count < 0:
+        return None, "run completion anchor node accounting is self-inconsistent"
+    if not (root / RUN_TOPOLOGY_MANIFEST_FILENAME).is_file():
+        return None, (
+            "the topology manifest this completion anchor binds is missing, so exact "
+            "ownership of the run tree cannot be established"
+        )
+    return (
+        PostSelectionRunCompletion(
+            run_root=root.name,
+            terminal_records=tuple(sorted(terminal)),
+            topology_digest=topology_digest,
+            node_count=node_count,
+            file_count=file_count,
+            directory_count=directory_count,
+            content_digest=str(payload["content_digest"]),
+        ),
+        f"completion anchor published with {', '.join(sorted(terminal))}",
+    )
+
+
+def read_post_selection_run_topology(
+    run_root: str | os.PathLike[str], completion: PostSelectionRunCompletion
+) -> tuple[tuple[dict[str, str], ...] | None, str]:
+    """Authenticate the full member/topology manifest against its anchor.
+
+    Only exact closed-subtree certification calls this: it is the O(member-count)
+    half of the proof, and paying for it is what buys the right to recurse
+    destructively.
+    """
+
+    root = Path(run_root)
+    payload = _self_authenticated(
+        _load_json(root / RUN_TOPOLOGY_MANIFEST_FILENAME), RUN_TOPOLOGY_MANIFEST_SCHEMA
+    )
+    if payload is None:
+        return None, (
+            "run topology manifest is unreadable, carries an unsupported schema, or "
+            "does not authenticate against its own recorded identity"
+        )
+    if str(payload.get("content_digest", "")) != completion.topology_digest:
+        return None, (
+            "run topology manifest is not the one this run's completion anchor "
+            "bound; the proof is inconsistent and grants nothing"
+        )
+    if str(payload.get("run_root", "")) != root.name:
+        return None, "run topology manifest names a different run root"
+    raw = payload.get("nodes", ())
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        return None, "run topology manifest records no usable node set"
+    nodes: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, Mapping):
+            return None, "run topology manifest contains a malformed node entry"
+        relative = str(item.get("path", ""))
+        kind = str(item.get("kind", ""))
+        if kind not in ("file", "directory"):
+            return None, f"run topology manifest records an unsupported node kind: {kind!r}"
+        parts = tuple(relative.split("/")) if relative else ()
+        if (
+            not parts
+            or relative.startswith("/")
+            or any(part in ("", ".", "..") for part in parts)
+            or parts[0] in RUN_COMPLETION_INFRASTRUCTURE_NAMES
+        ):
+            return None, f"run topology manifest records a non-canonical path: {relative!r}"
+        if relative in seen:
+            return None, f"run topology manifest records a duplicate node: {relative!r}"
+        seen.add(relative)
+        nodes.append({"path": relative, "kind": kind})
+    if len(nodes) != completion.node_count:
+        return None, (
+            "run topology manifest node count disagrees with the completion anchor"
+        )
+    directories = {item["path"] for item in nodes if item["kind"] == "directory"}
+    if sum(1 for item in nodes if item["kind"] == "file") != completion.file_count:
+        return None, "run topology manifest file accounting disagrees with its anchor"
+    if len(directories) != completion.directory_count:
+        return None, "run topology manifest directory accounting disagrees with its anchor"
+    for item in nodes:
+        parent = "/".join(item["path"].split("/")[:-1])
+        if parent and parent not in directories:
+            return None, (
+                f"run topology manifest records {item['path']!r} without its parent "
+                "directory; the topology is not self-consistent"
+            )
+    return tuple(nodes), "topology manifest authenticated against its completion anchor"
 
 
 def recorded_post_selection_run_members(
     run_root: str | os.PathLike[str],
 ) -> tuple[str, ...]:
-    """The member set this owner recorded for one run root, or empty."""
+    """Every node path this owner recorded for one run root, or empty.
 
-    path = Path(run_root) / RUN_MEMBER_MANIFEST_FILENAME
-    if not path.is_file():
+    Files *and* directories, because the caller uses this to decide what a
+    recursive action may make disappear.
+    """
+
+    completion, _why = read_post_selection_run_completion(run_root)
+    if completion is None:
         return ()
+    nodes, _detail = read_post_selection_run_topology(run_root, completion)
+    if nodes is None:
+        return ()
+    return tuple(sorted(item["path"] for item in nodes))
+
+
+def post_selection_run_is_complete(
+    run_root: str | os.PathLike[str],
+) -> tuple[bool, str]:
+    """Bounded completion authority: does a valid compact anchor exist?
+
+    This is what normal reporting asks.  It deliberately does not prove that the
+    tree still contains exactly what P5 recorded - that is the expensive
+    question, and consequential planning is the only caller that has to answer
+    it - but it is the same completion authority, so a run whose terminal
+    evidence has legitimately gone cold is still reported as finished.
+    """
+
+    completion, why = read_post_selection_run_completion(run_root)
+    return completion is not None, why
+
+
+def record_post_selection_run_members(run_root: str | os.PathLike[str]) -> Path:
+    """Freeze this owner's terminal completion proof, once.
+
+    Publication order is the contract: the terminal evidence is already durable,
+    the full topology manifest is published next, and the compact anchor - which
+    binds that manifest's identity - is published last and is therefore the
+    commit point.  A crash between the two leaves a manifest nothing points at,
+    which grants nothing, rather than an anchor pointing at a manifest that does
+    not exist.
+
+    It is create-once.  A second terminal publication verifies the existing
+    proof; it deliberately does **not** rescan the tree first, because by then
+    storage may legitimately have moved represented members into a cold archive
+    and a freshly derived set would falsely look like a conflicting claim.
+    """
+
+    from .target_size_execution import publish_immutable_json_create_or_verify
+
+    root = Path(run_root)
+    anchor_path = root / RUN_COMPLETION_ANCHOR_FILENAME
+    terminal = sorted(
+        name for name in sorted(RUN_TERMINAL_RECORD_NAMES) if (root / name).is_file()
+    )
+    existing, why = read_post_selection_run_completion(root)
+    if existing is not None:
+        # An immutable proof already exists. Verify it and stop; the depleted hot
+        # tree is not evidence about what the completed run produced.
+        nodes, detail = read_post_selection_run_topology(root, existing)
+        if nodes is None:
+            raise PostSelectionExecutionError(
+                f"Post-selection run {root.name} carries a completion anchor whose "
+                f"topology manifest does not authenticate: {detail}"
+            )
+        return anchor_path
+    if anchor_path.is_file():
+        raise PostSelectionExecutionError(
+            f"Refusing to republish the completion proof of post-selection run "
+            f"{root.name}: an anchor is already present but does not validate "
+            f"({why}). Completion authority is create-once, so a disagreement is an "
+            "integrity conflict rather than an update."
+        )
+    if not terminal:
+        raise PostSelectionExecutionError(
+            f"Refusing to record post-selection run completion for {root.name}: no "
+            "terminal fold-acceptance or run-evidence record is durable yet. The "
+            "completion proof is only ever written downstream of the evidence it "
+            "certifies."
+        )
+    nodes = _run_root_nodes(root)
+    topology = _sealed(
+        {
+            "schema": RUN_TOPOLOGY_MANIFEST_SCHEMA,
+            "run_root": root.name,
+            "nodes": nodes,
+            "node_count": len(nodes),
+        }
+    )
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return ()
-    if payload.get("schema") != RUN_MEMBER_MANIFEST_SCHEMA:
-        return ()
-    return tuple(sorted(str(item) for item in payload.get("members", ())))
+        publish_immutable_json_create_or_verify(
+            root / RUN_TOPOLOGY_MANIFEST_FILENAME, topology
+        )
+        publish_immutable_json_create_or_verify(
+            anchor_path,
+            _sealed(
+                {
+                    "schema": RUN_COMPLETION_ANCHOR_SCHEMA,
+                    "run_root": root.name,
+                    "terminal_records": terminal,
+                    "topology_locator": RUN_TOPOLOGY_MANIFEST_FILENAME,
+                    "topology_digest": topology["content_digest"],
+                    "node_count": len(nodes),
+                    "file_count": sum(1 for item in nodes if item["kind"] == "file"),
+                    "directory_count": sum(
+                        1 for item in nodes if item["kind"] == "directory"
+                    ),
+                }
+            ),
+        )
+    except (TrainingDataInputError, TrainingDataSerializationError) as exc:
+        raise PostSelectionExecutionError(
+            f"Refusing to rewrite the completion proof of post-selection run "
+            f"{root.name}: {exc}. A completed run's member set is create-once owner "
+            "authority, so a disagreement is an integrity conflict, not an update."
+        ) from exc
+    return anchor_path
 
 
 def certify_closed_post_selection_run_root(
@@ -1235,11 +1517,12 @@ def certify_closed_post_selection_run_root(
 ) -> tuple[bool, str]:
     """Whether P5 certifies every descendant of one run root as its own.
 
-    Two things must hold. The run must be finished, and what is on disk must be
-    contained in the member set P5 recorded when it finished. The second
-    condition is what turns "beneath a P5 directory" into "produced by P5": a
-    file dropped into ``checkpoints/`` by anything else is not in the recorded
-    set and makes the whole run root uncertified.
+    Two things must hold. The run must be finished, and every traversable node
+    on disk - file *and* directory - must belong to the topology P5 recorded when
+    it finished. The second condition is what turns "beneath a P5 directory" into
+    "produced by P5": a file dropped into ``checkpoints/`` by anything else, or
+    an empty directory nobody recorded, is not in the manifest and makes the
+    whole run root uncertified.
 
     Completion is proved by the retained anchor, deliberately *not* by finding
     the terminal fold-acceptance/run-evidence file still hot. That file is an
@@ -1255,37 +1538,25 @@ def certify_closed_post_selection_run_root(
     # delegated to the configured trainer, which writes its own layout inside it
     # (per-epoch metric logs, framework results/logs trees, and so on). Guessing
     # that layout is exactly the pathname inference this certification exists to
-    # replace; the recorded member set below is the owner's own answer.
-    manifest_path = root / RUN_MEMBER_MANIFEST_FILENAME
-    if not manifest_path.is_file():
-        return False, (
-            "run root carries no retained completion anchor, so this owner cannot "
-            "certify that it finished or which descendants it produced"
-        )
-    payload = _read_run_member_manifest(root)
-    if payload is None:
-        return False, "run completion anchor is unreadable or carries an unsupported schema"
-    if not payload.get("terminal_records"):
-        return False, (
-            "run completion anchor names no terminal record, so it does not certify "
-            "a finished run"
-        )
-    recorded = set(payload.get("members", ()))
-    observed = {
-        name
-        for name in _run_root_relative_files(root)
-        if name != RUN_MEMBER_MANIFEST_FILENAME
-    }
+    # replace; the recorded topology below is the owner's own answer.
+    completion, why = read_post_selection_run_completion(root)
+    if completion is None:
+        return False, why
+    nodes, detail = read_post_selection_run_topology(root, completion)
+    if nodes is None:
+        return False, detail
+    recorded = {item["path"] for item in nodes}
+    observed = {item["path"] for item in _run_root_nodes(root)}
     extra = sorted(observed - recorded)
     if extra:
         return False, f"run root contains descendant(s) P5 did not write: {extra[:5]}"
-    # A recorded member that is *absent* means content has legitimately left the
+    # A recorded node that is *absent* means content has legitimately left the
     # tree - reclaimed into a cold archive, for instance. The guarantee this
     # certification makes is that nothing foreign is present, not that nothing
     # has been removed.
     return True, (
-        "terminal run whose descendants all belong to the member set P5 recorded "
-        f"when it published {', '.join(payload['terminal_records'])}"
+        "terminal run whose descendants all belong to the topology P5 recorded "
+        f"when it published {', '.join(completion.terminal_records)}"
     )
 
 

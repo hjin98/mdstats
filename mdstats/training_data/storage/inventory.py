@@ -208,6 +208,21 @@ class StorageInventorySnapshot:
             return (), ()
 
         if view.coverage is SubtreeCoverage.CLOSED:
+            if view.owner_exclusive and not view.certified_members:
+                # A private scratch area whose only writer is the owner itself.
+                # Enumerating a member set here would be circular; exclusivity
+                # is the ownership statement, and it still refuses symlinks.
+                members = []
+                for child in walk_contained(
+                    root, on_refused=lambda path, why: refused.append((path, why))
+                ):
+                    if child.is_symlink():
+                        refused.append((child, "symlink members are never collected"))
+                        continue
+                    if child.is_dir():
+                        continue
+                    members.append(child)
+                return tuple(sorted(members)), tuple(refused)
             if not view.certified_members:
                 return (), (
                     (
@@ -219,25 +234,37 @@ class StorageInventorySnapshot:
             certified = {root / name for name in view.certified_members}
             retained = {root / name for name in view.retained_members}
             members: list[Path] = []
-            # Walk the real tree as well: the certification says these members
-            # are exactly what the owner produced, so anything else present is a
+            # Walk the real tree as well: the certification says these nodes are
+            # exactly what the owner produced, so anything else present is a
             # contradiction that must reduce authority rather than be ignored.
+            #
+            # Directories are checked too, not skipped. A recursive delete makes
+            # directory nodes disappear as well, so an unexpected *empty*
+            # directory that no recorded file path mentions would otherwise be
+            # swept away by an action nobody authorized to remove it.
             for child in walk_contained(
                 root, on_refused=lambda path, why: refused.append((path, why))
             ):
-                if child.is_dir():
-                    continue
                 if child.is_symlink():
                     refused.append((child, "symlink members are never collected"))
                     continue
                 if child in retained:
-                    # The owner's own certification record and locks: known,
+                    # The owner's own certification records and locks: known,
                     # never released, and never a contradiction.
                     continue
                 if child not in certified:
                     refused.append(
-                        (child, "not part of the member set this owner recorded")
+                        (
+                            child,
+                            "not part of the node set this owner recorded"
+                            if not child.is_dir()
+                            else "a directory this owner did not record",
+                        )
                     )
+                    continue
+                if child.is_dir():
+                    # Covered by the certification, so it may disappear with the
+                    # subtree; it is not an individually reclaimable member.
                     continue
                 members.append(child)
             # A recorded member that is absent has legitimately left the tree
