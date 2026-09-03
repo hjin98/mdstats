@@ -60,7 +60,7 @@ from .executor import (
     record_or_reraise,
     record_removal,
     remove_certified_subtree,
-    remove_durably_outcome,
+    remove_planned_outcome,
     synchronization_for,
 )
 from .inventory import (
@@ -509,6 +509,8 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                                 action.path,
                                 members=members,
                                 refusals=refusals,
+                                anchor=plan.workspace,
+                                planned_identity=action.filesystem_identity,
                                 root_identity=view.path_identity,
                                 authority_identity=view.root_identity,
                                 member_authorities=member_authorities,
@@ -516,10 +518,15 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                         ),
                     )
                     continue
+                # The plan's own target binding, spent at the mutation boundary.
+                # A consequential cleanup never reaches an unbound removal mode
+                # while `PlannedAction.filesystem_identity` exists.
                 record_or_reraise(
                     result,
                     action,
-                    lambda action=action: remove_durably_outcome(action.path),
+                    lambda action=action: remove_planned_outcome(
+                        action, anchor=plan.workspace
+                    ),
                 )
         except BaseException as exc:  # noqa: BLE001 - re-raised after cleanup
             primary = exc

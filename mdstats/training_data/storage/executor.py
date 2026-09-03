@@ -362,7 +362,11 @@ class StorageExecutor:
                 )
                 continue
             record_or_reraise(
-                result, action, lambda action=action: remove_durably_outcome(action.path)
+                result,
+                action,
+                lambda action=action: remove_planned_outcome(
+                    action, anchor=plan.workspace
+                ),
             )
 
     def _audit(self, result: StorageExecutionResult, *, trigger: str) -> None:
@@ -426,7 +430,298 @@ def remove_durably(path: Path) -> bool:
     return False
 
 
-def _unlink_measured_file(path: Path, stats: os.stat_result, ledger: MutationLedger) -> None:
+#: The bounded identity dimensions ordinary plan revalidation binds a target on.
+#: The consequential mutation boundary observes exactly these, no fewer: if plan
+#: revalidation later strengthens its identity, this must not silently become
+#: the weaker of the two checks. ``action.size_bytes`` is separate aggregate
+#: accounting and never substitutes for the identity field.
+TARGET_IDENTITY_DIMENSIONS = ("kind", "device", "inode", "size_bytes", "mtime_ns")
+
+
+class _UnanchoredTarget(RuntimeError):
+    """A consequential target is not beneath the anchor it must descend from."""
+
+
+def _observed_identity(stats: os.stat_result) -> dict[str, Any]:
+    """The plan's identity dimensions, from one no-follow observation."""
+
+    mode = stats.st_mode
+    if stat.S_ISLNK(mode):
+        kind = "symlink"
+    elif stat.S_ISREG(mode):
+        kind = "file"
+    elif stat.S_ISDIR(mode):
+        kind = "directory"
+    else:
+        kind = "other"
+    return {
+        "kind": kind,
+        "device": int(stats.st_dev),
+        "inode": int(stats.st_ino),
+        "size_bytes": int(stats.st_size),
+        "mtime_ns": int(stats.st_mtime_ns),
+    }
+
+
+def _identity_contradiction(
+    observed: Mapping[str, Any], expected: Mapping[str, Any] | None
+) -> str:
+    """Which plan-bound dimensions the live object fails to reproduce."""
+
+    if not expected:
+        return ""
+    differing = [
+        key
+        for key in TARGET_IDENTITY_DIMENSIONS
+        if key in expected and observed.get(key) != expected.get(key)
+    ]
+    return ", ".join(differing)
+
+
+def _owner_identity_contradiction(
+    stats: os.stat_result, expected: Mapping[str, int] | None
+) -> str:
+    """Whether an opened directory is the owner-certified filesystem object.
+
+    The owner's ``root_identity``/``authority_identity`` and the plan's own
+    target identity are independent constraints; each may only narrow authority
+    and neither ever stands in for the other.
+    """
+
+    if expected is None:
+        return ""
+    if not stat.S_ISDIR(stats.st_mode):
+        return "kind"
+    differing = []
+    if int(stats.st_dev) != int(expected["device"]):
+        differing.append("device")
+    if int(stats.st_ino) != int(expected["inode"]):
+        differing.append("inode")
+    return ", ".join(differing)
+
+
+def _descend_to_parent(
+    anchor: Path, target: Path, scope: "_DescriptorScope"
+) -> tuple[int, str]:
+    """Open ``target``'s parent by componentwise no-follow descent from ``anchor``.
+
+    The root of this chain is justified rather than merely convenient. The
+    anchor is the campaign workspace root the plan itself is bound to, and
+    :meth:`StorageExecutor.run` holds the storage-operation lease and every
+    touched owner's activity/publication barrier across revalidation and
+    mutation - so it is retained under the frozen owner+synchronization
+    contract, which is exactly what an authenticated root of trust means here.
+    It is also the same discipline the accepted P7 acquisition already uses.
+
+    Every component below it is opened ``O_DIRECTORY|O_NOFOLLOW`` relative to
+    the descriptor of the parent that was already authenticated, and each hop is
+    put through the same opened-descriptor mount decision the recursions use.
+    That is what makes the chain continuous. Re-opening ``path.parent`` - or
+    ``path.parent.parent`` - by pathname would be a fresh multi-component
+    namespace resolution wearing a no-follow final component: it proves
+    something about the object it opened and nothing about the object the plan
+    authorized.
+    """
+
+    from .trust import (
+        MountBoundaryError,
+        open_directory_nofollow,
+        verify_opened_directory_trust,
+    )
+
+    anchor_absolute = Path(os.path.abspath(os.fspath(anchor)))
+    absolute = Path(os.path.abspath(os.fspath(target)))
+    try:
+        relative = absolute.relative_to(anchor_absolute)
+    except ValueError as exc:
+        raise _UnanchoredTarget(
+            f"{absolute} is not beneath the campaign anchor {anchor_absolute}"
+        ) from exc
+    if not relative.parts:
+        raise _UnanchoredTarget(f"{absolute} is the campaign anchor itself")
+
+    parent_fd = scope.adopt(
+        open_directory_nofollow(str(anchor_absolute)), anchor_absolute
+    )
+    display = anchor_absolute
+    for part in relative.parts[:-1]:
+        display = display / part
+        child_fd = scope.adopt(open_directory_nofollow(part, dir_fd=parent_fd), display)
+        crossed, detail = verify_opened_directory_trust(parent_fd, child_fd, display)
+        if crossed:
+            raise MountBoundaryError(f"{display}: {detail}")
+        parent_fd = child_fd
+    return parent_fd, relative.parts[-1]
+
+
+def remove_planned_outcome(action: Any, *, anchor: Path) -> MutationOutcome:
+    """The consequential removal, spent only on the object the plan bound.
+
+    Ordinary plan revalidation happened earlier and by pathname. A same-name
+    object substituted afterwards would otherwise inherit that action's
+    permission, so the live target is observed no-follow through an
+    authenticated parent descriptor and compared against
+    ``PlannedAction.filesystem_identity`` immediately before the destructive
+    syscall - and the syscall is issued relative to that same descriptor, which
+    then carries the directory-entry durability step.
+
+    No new identity schema is introduced: the binding the plan already owns is
+    the one spent here.
+    """
+
+    from .trust import MountBoundaryError, NamespaceAmbiguity
+
+    path = Path(action.path)
+    expected = dict(getattr(action, "filesystem_identity", None) or {})
+    if not expected:
+        raise StorageExecutionError(
+            f"{path} reached the consequential removal boundary without the plan's "
+            "target identity; a consequential action is never removed unbound"
+        )
+    if str(expected.get("kind", "")) == "absent":
+        return already_absent("the plan bound this target as already absent")
+
+    ledger = MutationLedger()
+    scope = _DescriptorScope(ledger)
+    primary: BaseException | None = None
+    outcome: MutationOutcome | None = None
+    try:
+        try:
+            parent_fd, name = _descend_to_parent(anchor, path, scope)
+        except FileNotFoundError:
+            raise _ScopeExit(
+                already_absent("the planned target's authenticated ancestry is gone")
+            )
+        except (
+            NamespaceAmbiguity,
+            MountBoundaryError,
+            _UnanchoredTarget,
+            OSError,
+        ) as exc:
+            raise _ScopeExit(
+                refused_no_change(
+                    f"{path} could not be reached through an authenticated descent "
+                    f"from the campaign anchor: {exc}"
+                )
+            )
+        outcome = _spend_planned_capability(
+            parent_fd, name, path, expected, ledger, scope
+        )
+    except _ScopeExit as exit_:
+        outcome = exit_.outcome
+    except BaseException as exc:  # noqa: BLE001 - re-raised after closing
+        primary = exc
+    primary = scope.close_all(primary)
+    if primary is not None:
+        raise primary
+    assert outcome is not None
+    return outcome
+
+
+def _spend_planned_capability(
+    parent_fd: int,
+    name: str,
+    display: Path,
+    expected: Mapping[str, Any],
+    ledger: MutationLedger,
+    scope: "_DescriptorScope",
+) -> MutationOutcome:
+    """Compare, then mutate, then persist - all through the same parent."""
+
+    from .trust import (
+        MountBoundaryError,
+        NamespaceAmbiguity,
+        open_directory_nofollow,
+        verify_opened_directory_trust,
+    )
+
+    try:
+        stats = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return already_absent("the planned target was already gone")
+    except OSError as exc:
+        return refused_no_change(f"the planned target could not be observed: {exc}")
+    differing = _identity_contradiction(_observed_identity(stats), expected)
+    if differing:
+        return refused_no_change(
+            f"{display} is no longer the object this action was planned against "
+            f"({differing} differ); the replacement is retained"
+        )
+
+    if not stat.S_ISDIR(stats.st_mode):
+        _unlink_measured_file(display, stats, ledger, dir_fd=parent_fd)
+        return removed("removed", removed_bytes=ledger.removed_bytes)
+
+    if not dir_fd_mutation_supported():
+        raise StorageExecutionError(
+            "this platform does not provide the no-follow directory-descriptor "
+            f"primitives recursive removal is built on, so {display} is retained "
+            "rather than removed by pathname"
+        )
+    try:
+        handle = scope.adopt(
+            open_directory_nofollow(name, dir_fd=parent_fd), display
+        )
+    except FileNotFoundError:
+        return already_absent("the planned target was already gone")
+    except NamespaceAmbiguity as exc:
+        return refused_no_change(
+            f"{display} could not be opened as the plain directory the plan bound: {exc}"
+        )
+    # The comparison above was of a directory *entry*. This one is of the
+    # descriptor the recursion will actually enumerate and remove through, which
+    # is the capability the rest of this action spends.
+    differing = _identity_contradiction(_observed_identity(os.fstat(handle)), expected)
+    if differing:
+        return refused_no_change(
+            f"{display} is no longer the directory this action was planned against "
+            f"({differing} differ); the replacement is retained"
+        )
+    crossed, detail = verify_opened_directory_trust(parent_fd, handle, display)
+    if crossed:
+        # Surfaced as a failure rather than a quiet refusal, exactly as the
+        # generic recursion has always surfaced a mounted root: an authorized
+        # target that turns out to belong to someone else stops the execution
+        # instead of being filed as one unremarkable skipped action.
+        raise ledger.failure(
+            MountBoundaryError(f"{display}: {detail}"),
+            f"{display} is not campaign-owned: {detail}",
+        )
+    _remove_tree_contents(handle, display, ledger)
+    _finalize_directory_removal(parent_fd, name, handle, display, ledger)
+    _persist_entry_removal(parent_fd, display, ledger)
+    return removed("removed", removed_bytes=ledger.removed_bytes)
+
+
+def _persist_entry_removal(
+    parent_fd: int, display: Path, ledger: MutationLedger
+) -> None:
+    """Persist a directory-entry removal through the fd that performed it.
+
+    Closing the authenticated parent and reopening ``path.parent`` by pathname
+    for the authoritative fsync would persist whichever directory now answers to
+    that name - possibly a replacement this execution never removed anything
+    from. A failure here is a structured partial mutation carrying this action's
+    exact bytes; it is never a no-change refusal, because the entry is already
+    gone from the live namespace.
+    """
+
+    try:
+        os.fsync(parent_fd)
+    except OSError as exc:
+        raise ledger.failure(
+            exc,
+            f"{display} was removed but the removal could not be made durable: {exc}",
+        ) from exc
+
+
+def _unlink_measured_file(
+    path: Path,
+    stats: os.stat_result,
+    ledger: MutationLedger,
+    *,
+    dir_fd: int | None = None,
+) -> None:
     """Unlink one already-measured non-directory, crediting only a real removal.
 
     The primitive reports whether *this* call's unlink syscall succeeded, and
@@ -435,6 +730,11 @@ def _unlink_measured_file(path: Path, stats: os.stat_result, ledger: MutationLed
     failed to unlink can be absent because another actor removed it, and a name
     it did unlink can be present again because another actor recreated it.
     Either reading transfers someone else's transition into this action's audit.
+
+    ``dir_fd`` carries the authenticated parent capability through both the
+    unlink and the directory-entry fsync that follows it, so a consequential
+    removal never widens back to a pathname resolution once that capability
+    exists.
     """
 
     size = int(stats.st_size)
@@ -447,7 +747,9 @@ def _unlink_measured_file(path: Path, stats: os.stat_result, ledger: MutationLed
         ledger.credit(size, identity)
 
     try:
-        durable_unlink(path, missing_ok=False, on_unlinked=_mark_unlinked)
+        durable_unlink(
+            path, dir_fd=dir_fd, missing_ok=False, on_unlinked=_mark_unlinked
+        )
     except OSError as exc:
         if unlinked:
             raise ledger.failure(
@@ -491,7 +793,6 @@ def remove_durably_outcome(path: Path) -> MutationOutcome:
             "rather than removed by pathname"
         )
     _remove_tree_tracked(path, ledger)
-    _fsync_parent_tracked(path, ledger)
     return removed("removed", removed_bytes=ledger.removed_bytes)
 
 
@@ -529,43 +830,65 @@ def _remove_tree_tracked(root: Path, ledger: MutationLedger) -> None:
             OSError(f"{root.parent} could not be opened as a plain directory: {exc}"),
             f"{root.parent} is not a plain directory: {exc}",
         ) from exc
-    # The parent stays open all the way through the final `rmdir`. Closing it
-    # once the child was acquired would mean the removal had to name the root
-    # by absolute path again - a second namespace resolution, and exactly the
-    # lookup the descent was built to avoid.
+    # The parent stays open all the way through the final `rmdir` *and* the
+    # directory-entry fsync that persists it. Closing it once the child was
+    # acquired would mean both had to name the root by pathname again - a second
+    # namespace resolution, and exactly the lookup the descent was built to
+    # avoid.
     primary: BaseException | None = None
     try:
-        try:
-            handle = open_directory_nofollow(root.name, dir_fd=parent_fd)
-        except FileNotFoundError:
-            return
-        except NamespaceAmbiguity as exc:
-            raise ledger.failure(
-                OSError(f"{root} is not a plain directory: {exc}"),
-                f"{root} could not be opened as a plain directory: {exc}",
-            ) from exc
-        crossed, detail = verify_opened_directory_trust(parent_fd, handle, root)
-        if crossed:
-            primary = ledger.failure(
-                MountBoundaryError(f"{root}: {detail}"),
-                f"{root} is not campaign-owned: {detail}",
-            )
-            primary = _close_descriptor(handle, root, ledger, primary)
-            raise primary
-        try:
-            _remove_tree_contents(handle, root, ledger)
-            _finalize_directory_removal(parent_fd, root.name, handle, root, ledger)
-        except BaseException as exc:  # noqa: BLE001 - re-raised below
-            primary = exc
+        _remove_tree_from_parent(parent_fd, root.name, root, ledger)
+    except BaseException as exc:  # noqa: BLE001 - re-raised below
+        primary = exc
+    close_outcome = _close_descriptor(parent_fd, root.parent, ledger, primary)
+    if close_outcome is not None:
+        raise close_outcome
+
+
+def _remove_tree_from_parent(
+    parent_fd: int, name: str, root: Path, ledger: MutationLedger
+) -> None:
+    """Remove one directory tree through an already-authenticated parent.
+
+    The single mechanism both the plan-bound consequential path and the thin
+    compatibility remover use, so a directory entry is always removed and
+    persisted through the same descriptor that authenticated it.
+    """
+
+    from .trust import (
+        MountBoundaryError,
+        NamespaceAmbiguity,
+        open_directory_nofollow,
+        verify_opened_directory_trust,
+    )
+
+    primary: BaseException | None = None
+    try:
+        handle = open_directory_nofollow(name, dir_fd=parent_fd)
+    except FileNotFoundError:
+        return
+    except NamespaceAmbiguity as exc:
+        raise ledger.failure(
+            OSError(f"{root} is not a plain directory: {exc}"),
+            f"{root} could not be opened as a plain directory: {exc}",
+        ) from exc
+    crossed, detail = verify_opened_directory_trust(parent_fd, handle, root)
+    if crossed:
+        primary = ledger.failure(
+            MountBoundaryError(f"{root}: {detail}"),
+            f"{root} is not campaign-owned: {detail}",
+        )
         primary = _close_descriptor(handle, root, ledger, primary)
-        if primary is not None:
-            raise primary
-    finally:
-        # A close failure here cannot be allowed to displace a primary failure
-        # that already carries this action's mutation truth.
-        close_outcome = _close_descriptor(parent_fd, root.parent, ledger, primary)
-        if close_outcome is not None and close_outcome is not primary:
-            raise close_outcome
+        raise primary
+    try:
+        _remove_tree_contents(handle, root, ledger)
+        _finalize_directory_removal(parent_fd, name, handle, root, ledger)
+        _persist_entry_removal(parent_fd, root, ledger)
+    except BaseException as exc:  # noqa: BLE001 - re-raised below
+        primary = exc
+    primary = _close_descriptor(handle, root, ledger, primary)
+    if primary is not None:
+        raise primary
 
 
 def _finalize_directory_removal(
@@ -659,11 +982,19 @@ def _remove_tree_contents(handle: int, display: Path, ledger: MutationLedger) ->
                 ) from exc
             crossed, detail = verify_opened_directory_trust(handle, child_handle, child)
             if crossed:
-                os.close(child_handle)
-                raise ledger.failure(
+                # The structured refusal is constructed *before* the descriptor
+                # is released, so this action's already-mutated prefix travels
+                # with it. A raw close here would let a close failure escape as
+                # a bare `OSError`, outside the `MutationLedger` transport, and
+                # the audit would lose the bytes this action had already taken.
+                child_primary = ledger.failure(
                     MountBoundaryError(f"{child}: {detail}"),
                     f"{child} is not campaign-owned: {detail}",
                 )
+                child_primary = _close_descriptor(
+                    child_handle, child, ledger, child_primary
+                )
+                raise child_primary
             child_primary: BaseException | None = None
             try:
                 _remove_tree_contents(child_handle, child, ledger)
@@ -699,21 +1030,6 @@ def _remove_tree_contents(handle: int, display: Path, ledger: MutationLedger) ->
         raise ledger.failure(
             exc, f"{display} was emptied but the removal could not be made durable: {exc}"
         ) from exc
-
-
-def _fsync_parent_tracked(path: Path, ledger: MutationLedger) -> None:
-    """Persist the directory-entry removal, keeping the account if it fails."""
-
-    from ..target_size_execution.persistence import fsync_parent_directory
-
-    try:
-        fsync_parent_directory(path)
-    except OSError as exc:
-        raise ledger.failure(
-            exc, f"{path} was removed but the removal could not be made durable: {exc}"
-        ) from exc
-
-
 
 
 def record_or_reraise(result: "StorageExecutionResult", action: Any, run) -> MutationOutcome:
@@ -769,6 +1085,8 @@ def remove_certified_subtree(
     *,
     members: Sequence[Path],
     refusals: Sequence[tuple[Path, str]],
+    anchor: Path,
+    planned_identity: Mapping[str, Any],
     root_identity: Mapping[str, int] | None = None,
     authority_identity: Mapping[str, int] | None = None,
     member_authorities: Mapping[Path, str] | None = None,
@@ -781,48 +1099,168 @@ def remove_certified_subtree(
     members are removed.  That case is a *partial* mutation, not a refusal: the
     authorized members really are gone, and reporting "nothing changed" would
     leave the audit describing a tree that no longer exists.
+
+    The authority root and the container are *opened* through the authenticated
+    descent from the campaign anchor and compared as descriptors, not re-observed
+    by pathname and then reopened. A pathname ``lstat`` proves a fact about
+    whatever answered that name a moment ago; the descriptor this action then
+    enumerates and unlinks through is the only thing worth checking.
+
+    ``planned_identity`` (the plan's own binding) and ``root_identity`` /
+    ``authority_identity`` (the owner's) are independent constraints. Each may
+    only narrow authority and neither substitutes for the other.
     """
 
-    # ``rmtree`` avoiding symlink attacks says nothing about the names *above*
-    # what it recurses into.  A container replaced between certification and this
-    # call - or an authority root above it swapped for a symlink that happens to
-    # lead back to the same bytes - would otherwise be entered as if it were the
-    # certified one.  Both are re-observed here, at the last moment before entry,
-    # with ``lstat`` so a substituted final component is seen as the symlink it
-    # is rather than as its target.
-    for label, target, expected in (
-        ("authority root", path.parent, authority_identity),
-        ("container", path, root_identity),
-    ):
-        if expected is None:
-            continue
-        try:
-            stats = os.lstat(target)
-        except OSError as exc:
-            return refused_no_change(
-                f"the certified {label} could not be re-observed: {exc}"
-            )
-        if (
-            not stat.S_ISDIR(stats.st_mode)
-            or int(stats.st_dev) != int(expected["device"])
-            or int(stats.st_ino) != int(expected["inode"])
-        ):
-            return refused_no_change(
-                f"the certified {label} is no longer the filesystem object this "
-                "action was authorized against; nothing was removed"
-            )
-    ledger = MutationLedger()
-    if refusals:
-        return _remove_authorized_members(
-            path, members, refusals, member_authorities, ledger
-        )
-    if not path.exists() and not path.is_symlink():
-        return already_absent("the certified container was already gone")
-    _remove_tree_or_file_tracked(path, ledger)
-    return removed(
-        "every descendant was covered by the owner's closed-subtree certification",
-        removed_bytes=ledger.removed_bytes,
+    from .trust import (
+        MountBoundaryError,
+        NamespaceAmbiguity,
+        open_directory_nofollow,
+        verify_opened_directory_trust,
     )
+
+    ledger = MutationLedger()
+    scope = _DescriptorScope(ledger)
+    primary: BaseException | None = None
+    outcome: MutationOutcome | None = None
+    try:
+        try:
+            authority_fd, name = _descend_to_parent(anchor, path, scope)
+        except FileNotFoundError:
+            raise _ScopeExit(
+                already_absent("the certified container was already gone")
+            )
+        except (
+            NamespaceAmbiguity,
+            MountBoundaryError,
+            _UnanchoredTarget,
+            OSError,
+        ) as exc:
+            raise _ScopeExit(
+                refused_no_change(
+                    "the authority root above the certified container could not be "
+                    f"reached through an authenticated descent: {exc}"
+                )
+            )
+        differing = _owner_identity_contradiction(
+            os.fstat(authority_fd), authority_identity
+        )
+        if differing:
+            raise _ScopeExit(
+                refused_no_change(
+                    "the certified authority root is no longer the filesystem object "
+                    f"this action was authorized against ({differing} differ); "
+                    "nothing was removed"
+                )
+            )
+
+        try:
+            stats = os.stat(name, dir_fd=authority_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            raise _ScopeExit(
+                already_absent("the certified container was already gone")
+            )
+        except OSError as exc:
+            raise _ScopeExit(
+                refused_no_change(
+                    f"the certified container could not be observed: {exc}"
+                )
+            )
+        differing = _identity_contradiction(
+            _observed_identity(stats), planned_identity
+        )
+        if differing:
+            raise _ScopeExit(
+                refused_no_change(
+                    f"{path} is no longer the object this action was planned against "
+                    f"({differing} differ); the replacement is retained"
+                )
+            )
+        if not stat.S_ISDIR(stats.st_mode):
+            # A certified non-directory target still spends the same plan-bound
+            # capability; only the destructive primitive differs.
+            _unlink_measured_file(path, stats, ledger, dir_fd=authority_fd)
+            raise _ScopeExit(
+                removed(
+                    "every descendant was covered by the owner's closed-subtree "
+                    "certification",
+                    removed_bytes=ledger.removed_bytes,
+                )
+            )
+        if not dir_fd_mutation_supported():
+            raise StorageExecutionError(
+                "this platform does not provide the no-follow directory-descriptor "
+                f"primitives recursive removal is built on, so {path} is retained "
+                "rather than removed by pathname"
+            )
+        try:
+            container_fd = scope.adopt(
+                open_directory_nofollow(name, dir_fd=authority_fd), path
+            )
+        except FileNotFoundError:
+            raise _ScopeExit(
+                already_absent("the certified container was already gone")
+            )
+        except (NamespaceAmbiguity, OSError) as exc:
+            raise _ScopeExit(
+                refused_no_change(f"the certified container could not be opened: {exc}")
+            )
+        crossed, detail = verify_opened_directory_trust(authority_fd, container_fd, path)
+        if crossed:
+            if refusals:
+                # The individually-authorized descent reports a container it may
+                # not enter as a plain no-change refusal; the rest of the
+                # execution is unaffected by one retained container.
+                raise _ScopeExit(
+                    refused_no_change(f"{path} is not campaign-owned: {detail}")
+                )
+            # The fully-certified recursion surfaces a mounted root as a failure,
+            # like the generic one: a whole authorized subtree that turns out to
+            # belong to someone else is not an unremarkable skipped action.
+            raise ledger.failure(
+                MountBoundaryError(f"{path}: {detail}"),
+                f"{path} is not campaign-owned: {detail}",
+            )
+        opened = os.fstat(container_fd)
+        differing = _owner_identity_contradiction(opened, root_identity)
+        if differing:
+            raise _ScopeExit(
+                refused_no_change(
+                    "the certified container is no longer the filesystem object this "
+                    f"action was authorized against ({differing} differ); nothing "
+                    "was removed"
+                )
+            )
+        differing = _identity_contradiction(_observed_identity(opened), planned_identity)
+        if differing:
+            raise _ScopeExit(
+                refused_no_change(
+                    f"{path} is no longer the directory this action was planned "
+                    f"against ({differing} differ); the replacement is retained"
+                )
+            )
+
+        if refusals:
+            outcome = _remove_authorized_members(
+                container_fd, path, members, refusals, member_authorities, ledger, scope
+            )
+        else:
+            _remove_tree_contents(container_fd, path, ledger)
+            _finalize_directory_removal(authority_fd, name, container_fd, path, ledger)
+            _persist_entry_removal(authority_fd, path, ledger)
+            outcome = removed(
+                "every descendant was covered by the owner's closed-subtree "
+                "certification",
+                removed_bytes=ledger.removed_bytes,
+            )
+    except _ScopeExit as exit_:
+        outcome = exit_.outcome
+    except BaseException as exc:  # noqa: BLE001 - re-raised after closing
+        primary = exc
+    primary = scope.close_all(primary)
+    if primary is not None:
+        raise primary
+    assert outcome is not None
+    return outcome
 
 
 class _DescriptorScope:
@@ -867,11 +1305,13 @@ class _DescriptorScope:
 
 
 def _remove_authorized_members(
+    container_fd: int,
     path: Path,
     members: Sequence[Path],
     refusals: Sequence[tuple[Path, str]],
     member_authorities: Mapping[Path, str] | None,
     ledger: MutationLedger,
+    scope: "_DescriptorScope",
 ) -> MutationOutcome:
     """Remove only the members this owner individually certified.
 
@@ -894,153 +1334,111 @@ def _remove_authorized_members(
         verify_opened_directory_trust,
     )
 
-    scope = _DescriptorScope(ledger)
-    primary: BaseException | None = None
-    outcome: MutationOutcome | None = None
     count = 0
-    try:
-        try:
-            anchor_fd = scope.adopt(
-                open_directory_nofollow(str(path.parent)), path.parent
-            )
-        except FileNotFoundError:
-            outcome = already_absent("the certified container was already gone")
-            raise _ScopeExit
-        except (NamespaceAmbiguity, OSError) as exc:
-            outcome = refused_no_change(
-                f"the authority root above the certified container could not be "
-                f"opened as a plain directory: {exc}"
-            )
-            raise _ScopeExit
-        try:
-            container_fd = scope.adopt(
-                open_directory_nofollow(path.name, dir_fd=anchor_fd), path
-            )
-        except FileNotFoundError:
-            outcome = already_absent("the certified container was already gone")
-            raise _ScopeExit
-        except (NamespaceAmbiguity, OSError) as exc:
-            outcome = refused_no_change(
-                f"the certified container could not be opened: {exc}"
-            )
-            raise _ScopeExit
-        crossed, detail = verify_opened_directory_trust(anchor_fd, container_fd, path)
-        if crossed:
-            outcome = refused_no_change(f"{path} is not campaign-owned: {detail}")
-            raise _ScopeExit
-
-        container_depth = scope.mark()
-        for member in members:
-            # Each member's descent is unwound before the next one begins, so
-            # the descriptor count does not grow with the certified member set.
-            released = scope.close_to(container_depth, None)
-            if released is not None:
-                raise released
-            expected_kind = getattr(member, "authorized_kind", None) or (
-                member_authorities or {}
-            ).get(member)
-            if not expected_kind:
-                outcome = ledger.stop(
+    container_depth = scope.mark()
+    for member in members:
+        # Each member's descent is unwound before the next one begins, so
+        # the descriptor count does not grow with the certified member set.
+        released = scope.close_to(container_depth, None)
+        if released is not None:
+            raise released
+        expected_kind = getattr(member, "authorized_kind", None) or (
+            member_authorities or {}
+        ).get(member)
+        if not expected_kind:
+            raise _ScopeExit(
+                ledger.stop(
                     f"{member} carries no owner-certified kind, so nothing "
                     "authorizes deleting it; the container is retained"
                 )
-                raise _ScopeExit
-            try:
-                rel = member.relative_to(path)
-            except ValueError:
-                continue
+            )
+        try:
+            rel = member.relative_to(path)
+        except ValueError:
+            continue
 
-            parent_handle = container_fd
-            descended: list[int] = []
-            for part in rel.parts[:-1]:
-                display = path.joinpath(*rel.parts[: len(descended) + 1])
-                try:
-                    parent_handle = scope.adopt(
-                        open_directory_nofollow(part, dir_fd=parent_handle), display
-                    )
-                except FileNotFoundError:
-                    parent_handle = -1
-                    break
-                except (NamespaceAmbiguity, OSError) as exc:
-                    outcome = ledger.stop(
-                        f"{display} is no longer a plain directory: {exc}"
-                    )
-                    raise _ScopeExit
-                descended.append(parent_handle)
-                # An intermediate directory is a traversal decision like any
-                # other: a nested mount here would carry the descent onto bytes
-                # this campaign does not own.
-                crossed, detail = verify_opened_directory_trust(
-                    descended[-2] if len(descended) > 1 else container_fd,
-                    parent_handle,
-                    display,
+        parent_handle = container_fd
+        descended: list[int] = []
+        for part in rel.parts[:-1]:
+            display = path.joinpath(*rel.parts[: len(descended) + 1])
+            try:
+                parent_handle = scope.adopt(
+                    open_directory_nofollow(part, dir_fd=parent_handle), display
                 )
-                if crossed:
-                    outcome = ledger.stop(f"{display} is not campaign-owned: {detail}")
-                    raise _ScopeExit
-            if parent_handle == -1:
-                continue
-            member_name = rel.parts[-1]
-
-            try:
-                stats = os.stat(member_name, dir_fd=parent_handle, follow_symlinks=False)
             except FileNotFoundError:
-                continue
-            except OSError as exc:
-                raise ledger.failure(exc, f"{member} could not be measured: {exc}")
-
-            is_symlink = stat.S_ISLNK(stats.st_mode)
-            is_regular = stat.S_ISREG(stats.st_mode)
-            if is_symlink:
-                if expected_kind != "symlink":
-                    continue
-            elif is_regular:
-                if expected_kind != "file":
-                    continue
-            else:
-                continue
-
-            unlinked = False
-
-            def _on_unlinked(
-                stats: os.stat_result = stats, is_symlink: bool = is_symlink
-            ) -> None:
-                nonlocal unlinked
-                unlinked = True
-                if is_symlink:
-                    ledger.note_mutation()
-                else:
-                    ledger.credit(
-                        int(stats.st_size), (int(stats.st_dev), int(stats.st_ino))
-                    )
-
-            try:
-                durable_unlink(
-                    member,
-                    dir_fd=parent_handle,
-                    missing_ok=False,
-                    on_unlinked=_on_unlinked,
+                parent_handle = -1
+                break
+            except (NamespaceAmbiguity, OSError) as exc:
+                raise _ScopeExit(
+                    ledger.stop(f"{display} is no longer a plain directory: {exc}")
                 )
-            except OSError as exc:
-                if unlinked:
-                    raise ledger.failure(
-                        exc,
-                        f"{member} was removed but the removal could not be made "
-                        f"durable: {exc}",
-                    ) from exc
+            descended.append(parent_handle)
+            # An intermediate directory is a traversal decision like any
+            # other: a nested mount here would carry the descent onto bytes
+            # this campaign does not own.
+            crossed, detail = verify_opened_directory_trust(
+                descended[-2] if len(descended) > 1 else container_fd,
+                parent_handle,
+                display,
+            )
+            if crossed:
+                raise _ScopeExit(
+                    ledger.stop(f"{display} is not campaign-owned: {detail}")
+                )
+        if parent_handle == -1:
+            continue
+        member_name = rel.parts[-1]
+
+        try:
+            stats = os.stat(member_name, dir_fd=parent_handle, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise ledger.failure(exc, f"{member} could not be measured: {exc}")
+
+        is_symlink = stat.S_ISLNK(stats.st_mode)
+        is_regular = stat.S_ISREG(stats.st_mode)
+        if is_symlink:
+            if expected_kind != "symlink":
+                continue
+        elif is_regular:
+            if expected_kind != "file":
+                continue
+        else:
+            continue
+
+        unlinked = False
+
+        def _on_unlinked(
+            stats: os.stat_result = stats, is_symlink: bool = is_symlink
+        ) -> None:
+            nonlocal unlinked
+            unlinked = True
+            if is_symlink:
+                ledger.note_mutation()
+            else:
+                ledger.credit(
+                    int(stats.st_size), (int(stats.st_dev), int(stats.st_ino))
+                )
+
+        try:
+            durable_unlink(
+                member,
+                dir_fd=parent_handle,
+                missing_ok=False,
+                on_unlinked=_on_unlinked,
+            )
+        except OSError as exc:
+            if unlinked:
                 raise ledger.failure(
-                    exc, f"{member} could not be removed: {exc}"
+                    exc,
+                    f"{member} was removed but the removal could not be made "
+                    f"durable: {exc}",
                 ) from exc
-            count += 1
-    except _ScopeExit:
-        pass
-    except BaseException as exc:  # noqa: BLE001 - re-raised after closing
-        primary = exc
-    primary = scope.close_all(primary)
-    if primary is not None:
-        raise primary
-    if outcome is not None:
-        return outcome
+            raise ledger.failure(
+                exc, f"{member} could not be removed: {exc}"
+            ) from exc
+        count += 1
     detail = (
         f"retained the container and removed {count} individually authorized "
         f"member(s); {len(refusals)} descendant(s) were not owner-certified"
@@ -1049,31 +1447,16 @@ def _remove_authorized_members(
 
 
 class _ScopeExit(Exception):
-    """Leave a descriptor scope with an outcome already decided."""
+    """Leave a descriptor scope with an outcome already decided.
 
+    The outcome travels with the exception so a nested step can decide it
+    without a shared mutable slot, and so the descriptor scope stays the single
+    place that ranks close failures on the way out.
+    """
 
-def _remove_tree_or_file_tracked(path: Path, ledger: MutationLedger) -> None:
-    """Remove one authorized path, keeping this action's running account."""
-
-    try:
-        stats = path.lstat()
-    except OSError as exc:
-        raise ledger.failure(exc, f"{path} could not be observed: {exc}") from exc
-    if not stat.S_ISDIR(stats.st_mode):
-        _unlink_measured_file(path, stats, ledger)
-        return
-    if not dir_fd_mutation_supported():
-        # The recursion below descends through directory descriptors, so this is
-        # the capability that actually protects it. `shutil.rmtree`'s own
-        # symlink-attack promise describes `rmtree`'s implementation and would
-        # be no protection at all for a separate walker.
-        raise StorageExecutionError(
-            "this platform does not provide the no-follow directory-descriptor "
-            f"primitives recursive removal is built on, so {path} is retained "
-            "rather than removed by pathname"
-        )
-    _remove_tree_tracked(path, ledger)
-    _fsync_parent_tracked(path, ledger)
+    def __init__(self, outcome: MutationOutcome) -> None:
+        super().__init__(outcome.detail)
+        self.outcome = outcome
 
 
 def synchronization_for(
@@ -1172,5 +1555,6 @@ __all__ = [
     "operation_identity",
     "remove_certified_subtree",
     "remove_durably",
+    "remove_planned_outcome",
     "synchronization_for",
 ]

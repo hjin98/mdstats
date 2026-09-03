@@ -278,6 +278,33 @@ def _policy(**kwargs):
     return resolve_storage_policy({}, **kwargs)
 
 
+def _certified(container: Path, **kwargs):
+    """Drive the certified-subtree removal with the bindings a real plan supplies.
+
+    IR17-1A/1B made the campaign anchor and the plan's own target identity
+    required arguments of the production owner, because a consequential caller
+    may never reach an unbound removal mode. These unit cases exercise the owner
+    directly, so they supply the same two bindings a `PlannedAction` carries;
+    the anchor rule itself is accepted through the real inventory/planning/
+    executor path in the integration suite.
+    """
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage_reclamation import filesystem_identity
+
+    kwargs.setdefault("anchor", container.parent)
+    if "planned_identity" not in kwargs:
+        try:
+            kwargs["planned_identity"] = filesystem_identity(container)
+        except OSError:
+            kwargs["planned_identity"] = {
+                "schema": "mdstats.mlff-filesystem-identity.v1",
+                "kind": "absent",
+            }
+    return remove_certified_subtree(container, **kwargs)
+
+
+
 def _args(**kwargs):
     base = {"tier": None, "apply": False, "dry_run": False, "top": 200, "deep": False}
     base.update(kwargs)
@@ -4264,7 +4291,19 @@ def test_the_final_p7_apply_certifies_on_the_descriptor_it_mutates() -> None:
         if isinstance(node, ast.FunctionDef)
         and node.name == "open_released_attempt_session"
     )
-    body = ast.dump(opener)
+    # IR17-2C splits *deciding* the acquisition outcome from *releasing* the
+    # descriptor, so the authentication steps live in the helper the opener
+    # calls unconditionally. The claim is unchanged - one descent, then state,
+    # proof, root binding and typed topology on the descriptor that is returned
+    # still open - so the guard follows the delegation rather than the file
+    # layout.
+    decider = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_authenticate_released_attempt"
+    )
+    body = ast.dump(opener) + ast.dump(decider)
     for required in (
         "_authenticate_attempt_from_descriptor",
         "_certify_attempt_from_descriptor",
@@ -4272,6 +4311,31 @@ def test_the_final_p7_apply_certifies_on_the_descriptor_it_mutates() -> None:
         "open_attempt_namespace",
     ):
         assert required in body, required
+    assert "_authenticate_released_attempt" in ast.dump(opener), (
+        "the opener no longer delegates to the acquisition decider"
+    )
+    # The decider never competes with the caller's ranking by closing.
+    assert "os" not in {
+        node.value.id
+        for node in ast.walk(decider)
+        if isinstance(node, ast.Attribute)
+        and node.attr == "close"
+        and isinstance(node.value, ast.Name)
+    }, "the acquisition decider closes the descriptor it is deciding about"
+    # And no raw `finally: os.close(...)` remains around the opener's refusal
+    # returns, where a close failure could cancel an already-decided owner or
+    # authentication refusal.
+    for node in ast.walk(opener):
+        if not isinstance(node, ast.Try):
+            continue
+        for statement in node.finalbody:
+            for inner in ast.walk(statement):
+                assert not (
+                    isinstance(inner, ast.Attribute)
+                    and inner.attr == "close"
+                    and isinstance(inner.value, ast.Name)
+                    and inner.value.id == "os"
+                ), "a raw finally-close can still replace a decided refusal"
 
     remover = next(
         node
@@ -4406,7 +4470,7 @@ def test_the_common_certified_subtree_reports_partial_when_it_half_empties(
     foreign = container / "foreign.bin"
     foreign.write_bytes(b"not ours")
 
-    outcome = remove_certified_subtree(
+    outcome = _certified(
         container,
         # Typed, because an untyped member authorizes no deletion at all.
         members=[_typed(authorized, "file")],
@@ -4426,7 +4490,7 @@ def test_the_common_certified_subtree_reports_partial_when_it_half_empties(
     only_foreign = tmp_path / "only-foreign"
     only_foreign.mkdir()
     (only_foreign / "foreign.bin").write_bytes(b"not ours")
-    outcome = remove_certified_subtree(
+    outcome = _certified(
         only_foreign,
         members=[],
         refusals=[(only_foreign / "foreign.bin", "this owner did not record it")],
@@ -4880,23 +4944,25 @@ def test_a_certified_subtree_durability_failure_records_the_removal(
     container = tmp_path / "certified"
     container.mkdir()
     (container / "one.bin").write_bytes(b"a" * 30)
-    real = executor_mod._fsync_parent_tracked
+    # IR17-1D: durability is now the retained parent capability's own step, so
+    # the injection point is that step rather than a pathname re-resolution.
+    real = executor_mod._persist_entry_removal
 
-    def fail_durability(path, ledger):
+    def fail_durability(parent_fd, display, ledger):
         raise ledger.failure(
             OSError(5, "injected durability failure"),
-            f"{path} was removed but the removal could not be made durable",
+            f"{display} was removed but the removal could not be made durable",
         )
 
-    executor_mod._fsync_parent_tracked = fail_durability
+    executor_mod._persist_entry_removal = fail_durability
     try:
         payload, raised = _drive_removal(
             tmp_path,
             container,
-            lambda: remove_certified_subtree(container, members=[], refusals=[]),
+            lambda: _certified(container, members=[], refusals=[]),
         )
     finally:
-        executor_mod._fsync_parent_tracked = real
+        executor_mod._persist_entry_removal = real
 
     assert isinstance(raised, OSError), raised
     entry = payload["refused_actions"][0]
@@ -4938,7 +5004,7 @@ def test_an_authorized_member_failure_keeps_the_earlier_members_bytes(
         payload, raised = _drive_removal(
             tmp_path,
             container,
-            lambda: remove_certified_subtree(
+            lambda: _certified(
                 container,
                 members=[_typed(first, "file"), _typed(second, "file")],
                 refusals=[(foreign, "this owner did not record it")],
@@ -5392,7 +5458,7 @@ def test_r35_common_member_swapped_to_symlink_or_dir_retained(tmp_path: Path) ->
     f_dir.mkdir()
     (f_dir / "nested.bin").write_bytes(b"nested")
 
-    outcome = remove_certified_subtree(
+    outcome = _certified(
         container,
         members=members,
         refusals=[(container / "unauthorized_retained.txt", "not authorized")],
@@ -6152,7 +6218,7 @@ def test_an_untyped_member_grants_no_deletion_authority(tmp_path: Path) -> None:
     from mdstats.training_data.storage.executor import remove_certified_subtree
 
     container, member, foreign = _certified_container(tmp_path)
-    outcome = remove_certified_subtree(
+    outcome = _certified(
         container,
         members=[Path(member)],  # a bare path: no owner-certified kind
         refusals=[(foreign, "this owner did not record it")],
@@ -6187,7 +6253,7 @@ def test_a_typed_member_is_removed_and_a_substituted_one_is_not(
     else:
         os.mkfifo(swapped)
 
-    outcome = remove_certified_subtree(
+    outcome = _certified(
         container,
         members=[_typed(member, "file"), _typed(swapped, "file")],
         refusals=[(foreign, "this owner did not record it")],
@@ -6226,7 +6292,7 @@ def test_a_nested_mount_under_an_individually_authorized_member_stops_the_descen
         )
     )
     try:
-        outcome = remove_certified_subtree(
+        outcome = _certified(
             container,
             members=[_typed(member, "file")],
             refusals=[(foreign, "this owner did not record it")],
@@ -6254,7 +6320,7 @@ def test_an_unavailable_mount_resolver_stops_the_authorized_descent(
     container, member, foreign = _certified_container(tmp_path)
     set_mount_resolver(MountIdentityResolver(mount_points=frozenset(), available=False))
     try:
-        outcome = remove_certified_subtree(
+        outcome = _certified(
             container,
             members=[_typed(member, "file")],
             refusals=[(foreign, "this owner did not record it")],
@@ -6276,7 +6342,7 @@ def test_a_known_prefix_survives_a_later_contradiction(tmp_path: Path) -> None:
     later = container / "nested" / "later.bin"
     later.write_bytes(b"l" * 7)
 
-    outcome = remove_certified_subtree(
+    outcome = _certified(
         container,
         members=[_typed(member, "file"), Path(later)],
         refusals=[(foreign, "this owner did not record it")],
@@ -6391,7 +6457,7 @@ def test_a_certified_subtree_directory_replacement_is_refused_too(
     payload, raised = _drive_removal(
         tmp_path,
         root,
-        lambda: remove_certified_subtree(root, members=[], refusals=[]),
+        lambda: _certified(root, members=[], refusals=[]),
     )
     assert fired["n"] == 1, "the final identity check never ran"
     assert raised is not None, payload
@@ -6474,7 +6540,7 @@ def test_a_close_failure_before_any_mutation_claims_no_mutation(
     payload, raised = _drive_removal(
         tmp_path,
         container,
-        lambda: remove_certified_subtree(
+        lambda: _certified(
             container,
             members=[Path(member)],
             refusals=[(foreign, "this owner did not record it")],
@@ -6542,7 +6608,7 @@ def test_repeated_contradictions_do_not_accumulate_descriptors(tmp_path: Path) -
     container, member, foreign = _certified_container(tmp_path)
 
     def once() -> None:
-        outcome = remove_certified_subtree(
+        outcome = _certified(
             container,
             members=[Path(member)],
             refusals=[(foreign, "this owner did not record it")],
@@ -6605,7 +6671,7 @@ def test_a_mount_stops_every_recursive_removal_owner(
             (
                 (lambda: remove_durably_outcome(root))
                 if owner == "generic"
-                else (lambda: remove_certified_subtree(root, members=[], refusals=[]))
+                else (lambda: _certified(root, members=[], refusals=[]))
             ),
         )
     finally:
@@ -6643,7 +6709,7 @@ def test_an_unavailable_resolver_stops_every_recursive_removal_owner(
             (
                 (lambda: remove_durably_outcome(root))
                 if owner == "generic"
-                else (lambda: remove_certified_subtree(root, members=[], refusals=[]))
+                else (lambda: _certified(root, members=[], refusals=[]))
             ),
         )
     finally:
@@ -6860,3 +6926,345 @@ def test_every_consequential_rmdir_keeps_parent_authority_and_rechecks() -> None
 
     # The generic recursion no longer removes a root by absolute pathname.
     assert "os.rmdir(root)" not in sources["executor.py"]
+
+
+# ---------------------------------------------------------------------------
+# IR17-2 - one exactly-once primary/secondary close ranking doctrine
+# ---------------------------------------------------------------------------
+
+
+def _count_closes(monkeypatch, module=os):
+    """Every `os.close` this process performs, recorded per descriptor number."""
+
+    real = os.close
+    closed: list[int] = []
+
+    def watched(handle):
+        closed.append(int(handle))
+        return real(handle)
+
+    monkeypatch.setattr(os, "close", watched)
+    return closed, real
+
+
+@pytest.mark.parametrize("failure", ["wrong_kind", "fstat"])
+def test_the_nofollow_acquisition_closes_each_fd_exactly_once(
+    tmp_path: Path, monkeypatch, failure: str
+) -> None:
+    """IR17-2B: cleanup is attempted once, even when the close itself fails.
+
+    The helper either hands the descriptor to its caller or releases it exactly
+    once. A wrong-kind or unidentifiable object is a namespace/authentication
+    failure and stays the primary classification; a failing cleanup close is
+    secondary evidence and never triggers a second close of a number the kernel
+    may already have reissued.
+    """
+
+    from mdstats.training_data.storage.trust import (
+        NamespaceAmbiguity,
+        open_directory_nofollow,
+    )
+
+    victim = tmp_path / "not-a-directory"
+    victim.write_bytes(b"x")
+    real_close = os.close
+    attempts: list[int] = []
+
+    def refusing_close(handle):
+        attempts.append(int(handle))
+        real_close(handle)
+        raise OSError(5, "injected close failure")
+
+    # `O_DIRECTORY` refuses a regular file before any descriptor exists, so the
+    # two post-open branches are reached by making the *identification* step
+    # disagree with the open - which is exactly the racing case the branches
+    # exist for.
+    target = tmp_path / "plain"
+    target.mkdir()
+    victim_stat = os.stat(victim)
+
+    if failure == "fstat":
+
+        def observed_fstat(handle):
+            raise OSError(5, "injected identification failure")
+
+    else:
+
+        def observed_fstat(handle):
+            return victim_stat
+
+    monkeypatch.setattr(os, "fstat", observed_fstat)
+    monkeypatch.setattr(os, "close", refusing_close)
+    with pytest.raises(NamespaceAmbiguity) as caught:
+        open_directory_nofollow(str(target))
+
+    # The namespace/authentication failure survives the failing close.
+    assert "close" not in str(caught.value).lower(), caught.value
+    # Cleanup was attempted exactly once for the one descriptor acquired.
+    assert len(attempts) == 1, attempts
+    assert len(set(attempts)) == 1, attempts
+
+
+def test_a_successful_nofollow_acquisition_transfers_ownership(tmp_path: Path, monkeypatch) -> None:
+    """IR17-2B: once a valid directory fd is returned, the helper never closes it."""
+
+    from mdstats.training_data.storage.trust import open_directory_nofollow
+
+    target = tmp_path / "dir"
+    target.mkdir()
+    real_close = os.close
+    closed: list[int] = []
+    monkeypatch.setattr(os, "close", lambda handle: (closed.append(int(handle)), real_close(handle))[1])
+    handle = open_directory_nofollow(str(target))
+    try:
+        assert closed == [], closed
+        # The returned descriptor is live and is the caller's to spend.
+        assert stat.S_ISDIR(os.fstat(handle).st_mode)
+    finally:
+        monkeypatch.undo()
+        os.close(handle)
+
+
+def test_a_mount_refusal_close_failure_never_bypasses_the_ledger(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """IR17-2A: the structured refusal is built before the descriptor is released.
+
+    A raw close in the mount-refusal branch would let a close failure escape as
+    a bare `OSError`, outside the `MutationLedger` transport, and the action's
+    already-removed prefix would never reach the audit.
+    """
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.outcome import (
+        OUTCOME_PARTIAL_CHANGE_REFUSED,
+        MutationLedger,
+        PartialMutationError,
+    )
+    from mdstats.training_data.storage.trust import (
+        MountIdentityResolver,
+        set_mount_resolver,
+    )
+
+    root = tmp_path / "tree"
+    (root / "nested").mkdir(parents=True)
+    (root / "a-first.bin").write_bytes(b"a" * 7)
+    (root / "nested" / "kept.bin").write_bytes(b"b" * 3)
+
+    set_mount_resolver(
+        MountIdentityResolver(
+            mount_points=frozenset({os.path.abspath(root / "nested")}), available=True
+        )
+    )
+    real_close = os.close
+    refused_handles: list[int] = []
+
+    def refusing_close(handle):
+        refused_handles.append(int(handle))
+        real_close(handle)
+        raise OSError(5, "injected close failure")
+
+    ledger = MutationLedger()
+    handle = os.open(str(root), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        monkeypatch.setattr(os, "close", refusing_close)
+        with pytest.raises(PartialMutationError) as caught:
+            executor_mod._remove_tree_contents(handle, root, ledger)
+    finally:
+        monkeypatch.undo()
+        set_mount_resolver(None)
+        os.close(handle)
+
+    outcome = caught.value.outcome
+    assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
+    # The mount refusal remains primary and the earlier prefix is exact.
+    assert "not campaign-owned" in outcome.detail, outcome.detail
+    assert outcome.removed_bytes == 7, outcome
+    assert refused_handles, "the refused child's descriptor was never released"
+    # The externally owned bytes survive.
+    assert (root / "nested" / "kept.bin").exists()
+
+
+def test_no_direct_close_before_a_structured_outcome_remains() -> None:
+    """IR17-2D: the bounded consequential close-family census, as a guard.
+
+    Every consequential descriptor finalization in the destructive owners goes
+    through one of the ranking helpers. Only those helpers - and the one-way
+    session close, whose caller ranks it - may name `os.close` directly.
+    """
+
+    import ast
+
+    roots = {
+        "storage/executor.py": {"_close_descriptor"},
+        "storage/trust.py": {"_release_unowned_descriptor"},
+        "storage/commands.py": set(),
+        "qualification/store.py": {
+            "_close_owner_descriptor",
+            "release_descriptor_behind",
+            "close",
+            # Observational readers below the destructive boundary; they run
+            # while no action-local mutation and no structured product failure
+            # is in flight, so uniformity buys nothing.
+            "_read_regular_file_nofollow",
+            "_observe_attempt_nodes_from_descriptor",
+            "_observe_attempt",
+            "authenticate_attempt_state",
+            "observe_qualification_namespace",
+            "_observe_generation",
+            "_child_is_directory",
+        },
+    }
+    package = Path(cli.__file__).parent
+    for relative, allowed in roots.items():
+        tree = ast.parse((package / relative).read_text(encoding="utf-8"))
+        owners: dict[int, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for inner in ast.walk(node):
+                    owners.setdefault(id(inner), node.name)
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "close"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "os"
+            ):
+                continue
+            owner = owners.get(id(node), "<module>")
+            assert owner in allowed, f"{relative}: unranked os.close in {owner}"
+
+
+def test_consequential_removal_is_anchored_bound_and_same_parent_durable() -> None:
+    """IR17-4 structural closure for the destructive authority family.
+
+    Source/absence evidence for the claims no counterfactual can establish on
+    its own: that there is no *other* way through the consequential owners.
+    """
+
+    import ast
+
+    package = Path(cli.__file__).parent
+    executor_source = (package / "storage" / "executor.py").read_text(encoding="utf-8")
+    commands_source = (package / "storage" / "commands.py").read_text(encoding="utf-8")
+    executor_tree = ast.parse(executor_source)
+
+    def _function(tree, name):
+        return next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == name
+        )
+
+    # 1. The root of trust is the plan's own campaign anchor, and the descent
+    #    below it is componentwise from an already-authenticated descriptor -
+    #    never a fresh absolute/multi-component open whose last component
+    #    happened to be no-follow.
+    descent = _function(executor_tree, "_descend_to_parent")
+    dumped = ast.dump(descent)
+    assert "relative_to" in dumped, "the descent does not root itself in the anchor"
+    acquisitions = [
+        node
+        for node in ast.walk(descent)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "open_directory_nofollow"
+    ]
+    assert len(acquisitions) == 2, (
+        "the descent no longer opens exactly the anchor plus one hop per component"
+    )
+    # Exactly one of them names an absolute path - the anchor - and every other
+    # hop is relative to the descriptor of the parent already authenticated.
+    assert sum(
+        1
+        for call in acquisitions
+        if not any(keyword.arg == "dir_fd" for keyword in call.keywords)
+    ) == 1, "a consequential hop is opened without naming its parent descriptor"
+    assert "verify_opened_directory_trust" in dumped, (
+        "an intermediate hop escapes the opened-descriptor mount decision"
+    )
+    for owner in ("remove_planned_outcome", "remove_certified_subtree"):
+        assert "_descend_to_parent" in ast.dump(_function(executor_tree, owner)), owner
+    assert "anchor=plan.workspace" in commands_source, (
+        "the production cleanup engine no longer supplies the campaign anchor"
+    )
+    assert "anchor=plan.workspace" in executor_source, (
+        "the default executor no longer supplies the campaign anchor"
+    )
+
+    # 2. The opened target is compared with the plan's own binding, and the
+    #    owner's identities remain independently enforced.
+    spend = ast.dump(_function(executor_tree, "_spend_planned_capability"))
+    assert spend.count("_identity_contradiction") >= 2, (
+        "the entry and the opened descriptor are not both compared"
+    )
+    certified = ast.dump(_function(executor_tree, "remove_certified_subtree"))
+    assert "_identity_contradiction" in certified and (
+        "_owner_identity_contradiction" in certified
+    ), "plan identity and owner identity are no longer independent constraints"
+    assert "planned_identity" in {
+        argument.arg
+        for argument in _function(executor_tree, "remove_certified_subtree").args.kwonlyargs
+    }
+    assert "anchor" in {
+        argument.arg
+        for argument in _function(executor_tree, "remove_certified_subtree").args.kwonlyargs
+    }
+
+    # 3. No consequential caller reaches the unbound compatibility remover.
+    assert "remove_durably_outcome" not in commands_source, (
+        "the production cleanup engine can still reach the unbound removal mode"
+    )
+    default_engine = ast.dump(_function(executor_tree, "_execute_actions"))
+    assert "remove_planned_outcome" in default_engine, default_engine[:200]
+    assert "remove_durably_outcome" not in default_engine, (
+        "the default executor can still reach the unbound removal mode"
+    )
+    # The compatibility mode survives only behind the thin public remover.
+    assert "remove_durably_outcome" in ast.dump(_function(executor_tree, "remove_durably"))
+
+    # 4. Once the plan-bound parent capability exists the single-file path
+    #    cannot fall back to an absolute unlink.
+    unlink_calls = [
+        node
+        for node in ast.walk(_function(executor_tree, "_spend_planned_capability"))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_unlink_measured_file"
+    ]
+    assert unlink_calls, "the single-file boundary disappeared"
+    assert all(
+        any(keyword.arg == "dir_fd" for keyword in call.keywords)
+        for call in unlink_calls
+    ), "a consequential single-file unlink no longer names its parent descriptor"
+
+    # 5. Directory-entry durability spends the retained parent capability; the
+    #    pathname re-resolution is gone from the executor entirely.
+    assert "fsync_parent_directory" not in executor_source, (
+        "the executor can still re-resolve a parent pathname for durability"
+    )
+    persist = ast.dump(_function(executor_tree, "_persist_entry_removal"))
+    assert "fsync" in persist and "parent_fd" in persist, persist[:200]
+    for owner in ("_spend_planned_capability", "_remove_tree_from_parent"):
+        body = ast.dump(_function(executor_tree, owner))
+        assert "_persist_entry_removal" in body, owner
+    assert "_persist_entry_removal" in certified, (
+        "the certified recursion no longer persists through its own parent"
+    )
+
+    # 6. No post-failure disappearance inference or signature-incompatible
+    #    unlink fallback has returned, and publication truth stays at the
+    #    atomic replace.
+    durability_source = (package / "storage" / "durability.py").read_text(
+        encoding="utf-8"
+    )
+    assert "on_published()" in durability_source
+    replace_index = durability_source.index("os.replace(staging, target)")
+    published_index = durability_source.index("on_published()")
+    fsync_index = durability_source.index("fsync_parent_directory(target)")
+    assert replace_index < published_index < fsync_index, (
+        "publication truth no longer fires at the atomic replace"
+    )
+    assert "exists()" not in ast.dump(_function(ast.parse(durability_source), "durable_unlink"))

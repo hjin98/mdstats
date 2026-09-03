@@ -1398,58 +1398,127 @@ def open_released_attempt_session(
     generation = parse_canonical_generation(root.parent.parent.name)
     attempt_fd, why = open_attempt_namespace(paths, root)
     if attempt_fd is None or generation is None:
+        namespace_refusal = refused_no_change(
+            f"the attempt namespace is unresolved: {why}"
+        )
         if attempt_fd is not None:
-            os.close(attempt_fd)
-        return None, refused_no_change(f"the attempt namespace is unresolved: {why}")
-    session: ReleasedAttemptSession | None = None
+            # The namespace/generation refusal is already decided; releasing the
+            # descriptor cannot be allowed to replace it with an `OSError`.
+            release_descriptor_behind(attempt_fd, root, namespace_refusal)
+        return None, namespace_refusal
+
+    # The outcome is materialized first, the descriptor is ranked and released
+    # second, and only then does this function return. A `finally: os.close(...)`
+    # around the returns below would let a close failure cancel an owner,
+    # root-identity, release-authority, state/proof or topology refusal that had
+    # already been decided - the one classification the caller records.
     try:
-        identity = _descriptor_identity(attempt_fd)
-        if expected_root_identity is not None and (
-            int(identity["device"]) != int(expected_root_identity["device"])
-            or int(identity["inode"]) != int(expected_root_identity["inode"])
-        ):
-            return None, refused_no_change(
-                "the attempt root is a different filesystem object than the one this "
-                "action was authorized against; nothing was removed"
-            )
-        authority = _authenticate_attempt_from_descriptor(root, attempt_fd, generation)
-        if authority.state is None:
-            return None, refused_no_change(
-                f"the released attempt state is no longer authentic: {authority.reason}"
-            )
-        certified, certify_why, nodes, proof = _certify_attempt_from_descriptor(
-            attempt_fd, root, generation, authority.state
-        )
-        if not certified or proof is None:
-            return None, refused_no_change(
-                f"the released attempt is no longer certified: {certify_why}"
-            )
-        release_authority = released_authority_identity(
+        session, outcome = _authenticate_released_attempt(
+            paths,
+            root,
+            attempt_fd,
             generation,
-            authority.state.attempt_identity,
-            authority.state.content_digest,
-            str(proof["content_digest"]),
+            expected_root_identity=expected_root_identity,
+            expected_release_authority=expected_release_authority,
         )
-        if expected_release_authority and release_authority != expected_release_authority:
-            return None, refused_no_change(
-                "the released authority behind this attempt changed after planning; "
-                "the state and proof now confer a different release, so the plan no "
-                "longer authorizes it"
-            )
-        session = ReleasedAttemptSession(
-            attempt_fd=attempt_fd,
-            attempt_root=root,
-            generation=generation,
-            state=authority.state,
-            proof=proof,
-            certified_nodes=nodes,
-            root_identity=identity,
-            release_authority=release_authority,
+    except BaseException as exc:
+        release_descriptor_behind(attempt_fd, root, exc)
+        raise
+    if session is None:
+        release_descriptor_behind(attempt_fd, root, outcome)
+        return None, outcome
+    # Ownership transferred exactly once: from here the session owns the
+    # descriptor and this acquisition never closes it.
+    return session, outcome
+
+
+def release_descriptor_behind(
+    handle: int, display: Any, primary: Any
+) -> None:
+    """Close one still-owned descriptor once, behind an already-decided primary.
+
+    Every failed acquisition path releases what it acquired, and exactly once.
+    A close that fails while a namespace, root-identity, release-authority,
+    state/proof, topology or authentication refusal is already decided is
+    secondary evidence: raising it would replace the classification the caller
+    records and, on a mutating path, the mutation truth that travels with it.
+    """
+
+    try:
+        os.close(handle)
+    except OSError:
+        _LOGGER.warning(
+            "qualification: releasing the attempt descriptor for %s failed while "
+            "a primary outcome (%s) was already decided; the primary outcome is "
+            "preserved",
+            display,
+            getattr(primary, "detail", primary),
         )
-        return session, refused_no_change("authenticated")
-    finally:
-        if session is None:
-            os.close(attempt_fd)
+
+
+def _authenticate_released_attempt(
+    paths: Any,
+    root: Path,
+    attempt_fd: int,
+    generation: int,
+    *,
+    expected_root_identity: Mapping[str, int] | None,
+    expected_release_authority: str,
+) -> tuple["ReleasedAttemptSession | None", "MutationOutcomeT"]:
+    """Decide this acquisition's outcome without ever closing the descriptor.
+
+    Separating the decision from the release is what makes the ranking in
+    :func:`open_released_attempt_session` possible: this returns either a live
+    session that has taken ownership of ``attempt_fd`` or a refusal that the
+    caller records, and it never competes with either by closing.
+    """
+
+    from ..storage.outcome import refused_no_change
+
+    identity = _descriptor_identity(attempt_fd)
+    if expected_root_identity is not None and (
+        int(identity["device"]) != int(expected_root_identity["device"])
+        or int(identity["inode"]) != int(expected_root_identity["inode"])
+    ):
+        return None, refused_no_change(
+            "the attempt root is a different filesystem object than the one this "
+            "action was authorized against; nothing was removed"
+        )
+    authority = _authenticate_attempt_from_descriptor(root, attempt_fd, generation)
+    if authority.state is None:
+        return None, refused_no_change(
+            f"the released attempt state is no longer authentic: {authority.reason}"
+        )
+    certified, certify_why, nodes, proof = _certify_attempt_from_descriptor(
+        attempt_fd, root, generation, authority.state
+    )
+    if not certified or proof is None:
+        return None, refused_no_change(
+            f"the released attempt is no longer certified: {certify_why}"
+        )
+    release_authority = released_authority_identity(
+        generation,
+        authority.state.attempt_identity,
+        authority.state.content_digest,
+        str(proof["content_digest"]),
+    )
+    if expected_release_authority and release_authority != expected_release_authority:
+        return None, refused_no_change(
+            "the released authority behind this attempt changed after planning; "
+            "the state and proof now confer a different release, so the plan no "
+            "longer authorizes it"
+        )
+    session = ReleasedAttemptSession(
+        attempt_fd=attempt_fd,
+        attempt_root=root,
+        generation=generation,
+        state=authority.state,
+        proof=proof,
+        certified_nodes=nodes,
+        root_identity=identity,
+        release_authority=release_authority,
+    )
+    return session, refused_no_change("authenticated")
 
 
 #: The bounded filesystem-identity dimensions the storage plan already
@@ -1968,13 +2037,17 @@ def authorize_released_attempt_member(
                             continue
                         members.append(AuthorizedPath.create(child_path, "file"))
             finally:
+                # This resolver is planning, not mutation, but its descriptors
+                # are acquired the same way and released under the same
+                # doctrine: exactly once, behind the authorization result it has
+                # already decided, so a close failure never becomes the answer.
                 for handle in owned:
-                    os.close(handle)
+                    release_descriptor_behind(handle, member_path, "authorization")
             return tuple(sorted(members)), tuple(refused)
         finally:
-            os.close(member_fd)
+            release_descriptor_behind(member_fd, member_path, "authorization")
     finally:
-        os.close(attempt_fd)
+        release_descriptor_behind(attempt_fd, root, "authorization")
 
 
 
@@ -2680,19 +2753,26 @@ def open_attempt_namespace(
         internal_fd = _open_directory_nofollow(str(internal))
     except (FileNotFoundError, NamespaceAmbiguity) as exc:
         return None, f"campaign internal root is unavailable: {exc}"
+    outcome: str = "authenticated"
     try:
         family_fd = _open_directory_nofollow(QUALIFICATION_ROOT_NAME, dir_fd=internal_fd)
         generation_fd = _open_directory_nofollow(root.parent.parent.name, dir_fd=family_fd)
         attempts_fd = _open_directory_nofollow("attempts", dir_fd=generation_fd)
         return _open_directory_nofollow(root.name, dir_fd=attempts_fd), "authenticated"
     except FileNotFoundError:
-        return None, "the attempt namespace no longer exists"
+        outcome = "the attempt namespace no longer exists"
+        return None, outcome
     except NamespaceAmbiguity as exc:
-        return None, str(exc)
+        outcome = str(exc)
+        return None, outcome
     finally:
+        # The ancestors are scaffolding for one descent: each is released
+        # exactly once, and a close failure here is secondary to whatever this
+        # acquisition already decided - the authenticated attempt descriptor it
+        # is handing back, or the namespace refusal the caller will record.
         for handle in (attempts_fd, generation_fd, family_fd, internal_fd):
             if handle is not None:
-                os.close(handle)
+                release_descriptor_behind(handle, root, outcome)
 
 
 def _internal_root(workspace_or_paths: Any) -> Path:

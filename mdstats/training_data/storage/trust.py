@@ -22,11 +22,18 @@ consumes it stays production code.
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
+
+#: Secondary failure evidence - a descriptor close that failed while a primary
+#: namespace/authentication failure was already decided - is logged rather than
+#: raised, so it stays visible without displacing the classification the
+#: caller's refusal and mutation truth depend on.
+_LOGGER = logging.getLogger(__name__)
 
 #: Where Linux publishes the live mount table.  Absence is not an error; it
 #: makes mount discovery unavailable, which fails toward retention.
@@ -170,16 +177,51 @@ def open_directory_nofollow(name: str, *, dir_fd: int | None = None) -> int:
         raise NamespaceAmbiguity(
             f"{name!r} could not be opened as a plain directory ({exc.strerror})"
         ) from exc
+
+    # Ownership is explicit from here on. The descriptor is either handed to the
+    # caller - who then owns closing it, and this helper never touches it again -
+    # or released here exactly once. Deciding the kind inside a `try` whose own
+    # handler also closes is how one acquisition ends up attempting two kernel
+    # closes on the same number, and the second one can land on whatever the
+    # kernel has since reissued.
+    primary: NamespaceAmbiguity
     try:
-        if not stat.S_ISDIR(os.fstat(handle).st_mode):
-            os.close(handle)
-            raise NamespaceAmbiguity(f"{name!r} is not a directory")
+        is_directory = stat.S_ISDIR(os.fstat(handle).st_mode)
     except OSError as exc:
-        os.close(handle)
-        raise NamespaceAmbiguity(
+        primary = NamespaceAmbiguity(
             f"{name!r} could not be identified after opening ({exc.strerror})"
-        ) from exc
-    return handle
+        )
+        primary.__cause__ = exc
+    else:
+        if is_directory:
+            return handle
+        primary = NamespaceAmbiguity(f"{name!r} is not a directory")
+    _release_unowned_descriptor(handle, name, primary)
+    raise primary
+
+
+def _release_unowned_descriptor(
+    handle: int, name: str, primary: BaseException
+) -> None:
+    """Close a descriptor this helper still owns, once, behind a primary failure.
+
+    The wrong kind, or an object that could not be identified after opening, is
+    a namespace/authentication failure, and that classification is what the
+    caller refuses on. A close that fails while cleaning up after it is
+    secondary evidence: raising it instead would replace a decided authority
+    refusal with an unrelated ``OSError``. No second close is attempted either -
+    after a failed close the number is not this helper's to touch again.
+    """
+
+    try:
+        os.close(handle)
+    except OSError:
+        _LOGGER.warning(
+            "storage: releasing the descriptor for %r failed while a namespace "
+            "failure (%s) was already decided; the namespace failure is preserved",
+            name,
+            primary,
+        )
 
 
 def crosses_mount_boundary_at(
