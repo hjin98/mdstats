@@ -27,12 +27,12 @@ Implementation uses:
 - `STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md` — accepted closed final-apply design and protected trust/outcome semantics;
 - `docs/specs/training_data/mlff_storage_management_spec.md` — current storage product contract;
 - `AUTHORITY_REVISION_37.md` — accepted Revision-37 bounded design/workplan authority;
-- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_17.md` — complete current bounded implementation/review correction after the Revision-37 candidate;
-- `AUTHORITY_REVIEW_NOTE_R37_IR17.md` — current candidate verdict summary.
+- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_17.md` — complete refined current bounded implementation/review correction after the Revision-37 candidate;
+- `AUTHORITY_REVIEW_NOTE_R37_IR17.md` — current candidate verdict and plan-closure summary.
 
-`STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_16.md` remains the Revision-37 implementation handoff that produced candidate `9db97f72...`; IR17 supersedes it only for work still open after review. Revision 31-36 review/authority files remain historical provenance.
+`STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_16.md` remains the Revision-37 implementation handoff that produced candidate `9db97f72...`; refined IR17 supersedes it only for work still open after implementation and plan review. Revision 31-36 review/authority files remain historical provenance.
 
-No Revision 38 is created: the current blockers are implementation and acceptance nonconformance under requirements already explicit in Revision 37, not new product semantics.
+No Revision 38 is created. The current blockers and the plan-closure refinements are necessary implementation consequences of already accepted Revision-30/37 target-identity, descriptor-capability, transition-truth, durability, close-ranking, and real-owner acceptance semantics; they do not introduce a new product model.
 
 ## Reviewed candidate
 
@@ -53,17 +53,19 @@ Preserve the candidate's conforming Revision-37 work unless a narrowly necessary
 - one-way `ReleasedAttemptSession` invalidation and conforming P7 action/finalizer ranking;
 - shared `MutationLedger`, exact per-action byte accounting, zero-credit mutation truth, complete P7 target identity, two-attempt isolation, and the frozen four cleanup outcomes.
 
-## Current bounded reopen — IR17
+## Current bounded reopen — refined IR17
 
 The complete still-open contract is `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_17.md`. In summary:
 
-1. generic/fully-certified recursive cleanup must authenticate the actual opened root against the plan-bound target identity before traversal and may not treat a fresh absolute/multi-component parent open as an authenticated capability;
-2. individually-authorized common cleanup must move authority-root/container identity proof onto the actual opened descriptors, eliminating the precheck-then-reopen window;
-3. recursive mount-refusal close must route through the canonical primary/secondary close ranking so an earlier `MutationLedger` prefix cannot be lost;
-4. `open_directory_nofollow()` must never attempt to close the same acquired descriptor twice when cleanup close itself fails;
-5. perform a bounded close-family census over consequential generic/common/P7 acquisition and finalization paths;
-6. replace helper/manual-result proxy acceptance for material generic/common R37 claims with real inventory/planning/`StorageExecutor.run`/audit counterfactuals;
-7. after the last executable/test edit, run and record the complete exact-candidate affected regression/integration/static/document evidence required by IR17/R37.
+1. authenticate the descriptor chain from a justified synchronization-stable or identity-bound root of trust; do not merely move a fresh absolute/multi-component open one ancestor upward;
+2. propagate `PlannedAction.filesystem_identity` into every consequential generic/fully-certified target capability and keep owner root/path identities as independent constraints;
+3. ordinary default single-file cleanup must compare the live no-follow target with the plan-bound identity immediately before fd-relative unlink, rather than allowing a same-name replacement to inherit the old plan;
+4. after unlink or top-level `rmdir`, persist the directory-entry transition through the same authenticated parent fd before release; do not reopen `path.parent` by pathname as the authoritative durability step;
+5. individually-authorized common cleanup must authenticate the opened authority root/container, preserve typed intermediate/member authority, and retain exact action-local mutation truth;
+6. recursive mount-refusal close, `open_directory_nofollow`, P7 failed-session acquisition, capability invalidation, and cleanup finalization must obey one exactly-once primary/secondary close-ranking doctrine;
+7. perform the bounded consequential close-family census and close all siblings in the same family rather than returning one site per review cycle;
+8. material generic/common/default-file/P7 cleanup claims require real inventory/planning/authorization/production engine/`StorageExecutor.run`/settlement/audit acceptance with live low-level seams;
+9. each executable stage requires focused checks plus stage-local affected regression, followed by fresh exact-candidate affected regression/integration/static/document closure after the last executable edit.
 
 Serena/Semgrep/Hypothesis remain optional evidence helpers under Protocol 5.10. Use them where available and materially useful; their absence is nonblocking and does not waive the engineering claims.
 
@@ -71,6 +73,6 @@ External DFT, long GPU production, and environment-specific HPC/shared-storage q
 
 ## Disposition
 
-**Design/workplan:** Revision 30 + Revision 37 remain **CLOSED / implementation-ready**.
+**Design/workplan:** Revision 30 + Revision 37 + refined IR17 are **CLOSED / implementation-ready**.
 
 **Reviewed executable `9db97f72a6ba033aa4b092edb0ece39db56f5b23`, tree `a09dabfe5eb7279adb9398a98f9349c9713962a8`: NO-PASS / reopened for bounded R37 correction under IR17.**
