@@ -56,6 +56,7 @@ from .executor import (
     StorageAuthorizationError,
     StorageExecutionResult,
     StorageExecutor,
+    record_or_reraise,
     record_removal,
     remove_certified_subtree,
     remove_durably_outcome,
@@ -489,7 +490,7 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                     continue
                 if view is not None and view.path == action.path and action.path.is_dir():
                     members, refusals = snapshot.authorized_members(view)
-                    _record_or_reraise(
+                    record_or_reraise(
                         result,
                         action,
                         lambda members=members, refusals=refusals, view=view, action=action: (
@@ -503,7 +504,7 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                         ),
                     )
                     continue
-                _record_or_reraise(
+                record_or_reraise(
                     result,
                     action,
                     lambda action=action: remove_durably_outcome(action.path),
@@ -516,26 +517,6 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
     return _engine
 
 
-def _record_or_reraise(result, action, run) -> Any:
-    """Record what one action did, even when it ends by raising.
-
-    A helper that unlinked and then failed on durability knows something the
-    executor's outer interruption handling never will: which action mutated and
-    how many bytes are already gone. That evidence is recorded here, at the
-    action boundary, before the failure is allowed to continue upward - so the
-    partial audit describes the tree that now exists rather than reporting only
-    that something went wrong.
-    """
-
-    from .outcome import PartialMutationError
-
-    try:
-        outcome = run()
-    except PartialMutationError as exc:
-        record_removal(result, action, exc.outcome)
-        raise (exc.cause or exc) from exc
-    record_removal(result, action, outcome)
-    return outcome
 
 
 def _apply_released_member(

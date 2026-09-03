@@ -1471,7 +1471,7 @@ def remove_released_attempt_member(
     member_name: str,
     *,
     expected_kind: str = "",
-    planned_identity: Mapping[str, Any] | None = None,
+    planned_identity: Mapping[str, Any],
 ) -> "MutationOutcomeT":
     """Remove one proof-certified released member through a live session.
 
@@ -1480,10 +1480,13 @@ def remove_released_attempt_member(
     the session authenticated it.
 
     ``planned_identity`` is the filesystem identity the immutable plan bound to
-    this exact target. It is compared here, immediately before the mutation and
-    through the retained descriptor, because ordinary plan revalidation happened
-    earlier and by pathname: an object swapped in afterwards under the same name
-    and kind would otherwise inherit the plan's permission to delete it.
+    this exact target, and it is **required**. It is compared here, immediately
+    before the mutation and through the retained descriptor, because ordinary
+    plan revalidation happened earlier and by pathname: an object swapped in
+    afterwards under the same name and kind would otherwise inherit the plan's
+    permission to delete it. Making the comparison optional would make the
+    boundary a convention every future caller could forget; a missing or
+    incomplete identity is refused before anything is observed or removed.
 
     The guarantee is descriptor-pinned owner ancestry plus no-follow fd-relative
     mutation under the supported-owner locks. It is deliberately *not* a claim
@@ -1498,6 +1501,20 @@ def remove_released_attempt_member(
     # Before any syscall: a spent capability may hold a descriptor number the
     # kernel has since reissued to something else.
     session.require_live()
+
+    # Also before any syscall: without the plan's full identity there is nothing
+    # to compare the target against, so there is no authority to act on it.
+    missing = [
+        key
+        for key in TARGET_IDENTITY_DIMENSIONS
+        if key not in (planned_identity or {})
+    ]
+    if missing:
+        return refused_no_change(
+            "the plan-bound target identity is incomplete "
+            f"({', '.join(missing)} absent), so this action was not authorized "
+            "against any specific object; nothing was removed"
+        )
 
     attempt_fd = session.attempt_fd
     recorded = session.recorded
@@ -1516,18 +1533,17 @@ def remove_released_attempt_member(
     except OSError as exc:
         return refused_no_change(f"the certified member could not be observed: {exc}")
 
-    if planned_identity is not None:
-        observed = _observed_target_identity(entry_stat)
-        differing = [
-            key
-            for key in TARGET_IDENTITY_DIMENSIONS
-            if key in planned_identity and observed[key] != planned_identity[key]
-        ]
-        if differing:
-            return refused_no_change(
-                "the target is no longer the object this action was planned against "
-                f"({', '.join(differing)} differ); nothing was removed"
-            )
+    observed = _observed_target_identity(entry_stat)
+    differing = [
+        key
+        for key in TARGET_IDENTITY_DIMENSIONS
+        if observed[key] != planned_identity[key]
+    ]
+    if differing:
+        return refused_no_change(
+            "the target is no longer the object this action was planned against "
+            f"({', '.join(differing)} differ); nothing was removed"
+        )
 
     if stat.S_ISREG(entry_stat.st_mode):
         if recorded.get(member_name) != "file":
@@ -1709,17 +1725,22 @@ def _remove_certified_directory(
             # Measured before the unlink, because afterwards there is nothing
             # left to measure - but credited only once the entry has actually
             # gone, so a failed unlink cannot inflate the figure.
+            #
+            # An unmeasurable file is *retained*. Deleting it and crediting zero
+            # would put bytes beyond recovery that this action can never account
+            # for, and if nothing else had been removed yet the outcome would
+            # even read as "nothing changed".
             try:
                 child_stat = entry.stat(follow_symlinks=False)
-                key = (int(child_stat.st_dev), int(child_stat.st_ino))
-                measured = 0 if key in seen else int(child_stat.st_size)
-            except OSError:
-                key, measured = None, 0
+            except OSError as exc:
+                return stop(f"{child_display} could not be measured: {exc}")
+            key = (int(child_stat.st_dev), int(child_stat.st_ino))
+            measured = 0 if key in seen else int(child_stat.st_size)
             try:
                 _unlink_certified_file(handle, entry.name)
             except OSError as exc:
                 return stop(f"{child_display} could not be removed: {exc}")
-            if key is not None and key not in seen:
+            if key not in seen:
                 seen.add(key)
                 freed += measured
         try:

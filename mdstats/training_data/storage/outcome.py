@@ -15,7 +15,7 @@ fragility this replaces.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 #: The requested target was removed by this execution.
 OUTCOME_REMOVED = "removed"
@@ -92,11 +92,20 @@ class MutationOutcome:
         # Absence this execution did not create, and refusals, reclaim nothing.
         return 0
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self, planned_bytes: int = 0) -> dict[str, object]:
+        """This action's evidence, including the bytes it actually removed.
+
+        ``planned_bytes`` resolves the "the whole target went" sentinel at the
+        one place that knows the planned size. An aggregate alone cannot say
+        which of several actions mutated, or explain two partial actions, so
+        the exact amount is recorded per action rather than only summed.
+        """
+
         return {
             "outcome": self.outcome,
             "removed": self.outcome == OUTCOME_REMOVED,
             "mutated": self.mutated,
+            "reclaimed_bytes": self.credited_bytes(planned_bytes),
             "detail": self.detail,
         }
 
@@ -121,6 +130,57 @@ class PartialMutationError(Exception):
         self.cause = cause
 
 
+@dataclass
+class MutationLedger:
+    """What one action has actually removed so far.
+
+    A recursive removal makes many destructive transitions. If a later one
+    fails, the question the audit needs answered is not "did the top-level path
+    disappear" - a subset can be gone while the container survives - but "how
+    much did this action already take". Only a running account kept at the
+    moment of each successful removal can answer that.
+
+    ``(device, inode)`` is remembered across the whole action so a file reached
+    through several hard links is counted once, matching the planner's own tree
+    metric.
+    """
+
+    removed_bytes: int = 0
+    mutated: bool = False
+    _seen: set[tuple[int, int]] = field(default_factory=set)
+
+    def credit(self, size: int, identity: tuple[int, int] | None) -> None:
+        """Record one removal that has already succeeded."""
+
+        self.mutated = True
+        if identity is not None:
+            if identity in self._seen:
+                return
+            self._seen.add(identity)
+        self.removed_bytes += int(size)
+
+    def note_mutation(self) -> None:
+        """Record a destructive transition that frees no accountable bytes."""
+
+        self.mutated = True
+
+    def stop(self, detail: str) -> MutationOutcome:
+        """The outcome this action has earned when it must stop here."""
+
+        if self.mutated:
+            return partial_change_refused(detail, removed_bytes=self.removed_bytes)
+        return refused_no_change(detail)
+
+    def failure(self, exc: BaseException, detail: str) -> BaseException:
+        """The failure to raise, carrying this action's truth when it mutated."""
+
+        if not self.mutated:
+            return exc
+        return PartialMutationError(
+            partial_change_refused(detail, removed_bytes=self.removed_bytes), exc
+        )
+
+
 def removed(detail: str, *, removed_bytes: int | None = None) -> MutationOutcome:
     return MutationOutcome(OUTCOME_REMOVED, detail, removed_bytes)
 
@@ -138,6 +198,7 @@ def partial_change_refused(detail: str, *, removed_bytes: int) -> MutationOutcom
 
 
 __all__ = [
+    "MutationLedger",
     "MutationOutcome",
     "PartialMutationError",
     "OUTCOME_ALREADY_ABSENT",

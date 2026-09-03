@@ -43,6 +43,7 @@ from .durability import durable_unlink
 from .inventory import StorageInventorySnapshot
 from .lease import OwnerSynchronization, owner_mutation_barrier, storage_operation_lease
 from .outcome import (
+    MutationLedger,
     MutationOutcome,
     PartialMutationError,
     already_absent,
@@ -336,7 +337,9 @@ class StorageExecutor:
                     }
                 )
                 continue
-            record_removal(result, action, remove_durably_outcome(action.path))
+            record_or_reraise(
+                result, action, lambda action=action: remove_durably_outcome(action.path)
+            )
 
     def _audit(self, result: StorageExecutionResult, *, trigger: str) -> None:
         """Append this operation to the one durable storage audit stream.
@@ -409,68 +412,125 @@ def remove_durably_outcome(path: Path) -> MutationOutcome:
     """The generic removal, reported as a terminal disposition.
 
     ``remove_durably`` answers "did I remove something", which conflates the
-    target being gone already with this execution having reclaimed it. Only the
-    second earns the planned bytes.
+    target being gone already with this execution having reclaimed it, and it
+    cannot say what a *partial* recursive delete already took. Both matter to
+    the audit, so this owns the walk: every entry is measured before its unlink
+    and credited after it, and a failure part-way through carries the exact
+    amount already gone rather than a bare ``OSError``.
     """
 
-    measured = _measured_tree_bytes(path)
-    try:
-        gone = remove_durably(path)
-    except OSError as exc:
-        # The removal and the fsync that makes it durable are two steps. If the
-        # entry is already gone, this failure is partial mutation, not a no-op,
-        # and the audit has to say so.
-        if path.exists() or path.is_symlink():
-            raise
-        raise PartialMutationError(
-            partial_change_refused(
-                f"{path} was removed but the removal could not be made durable: {exc}",
-                removed_bytes=measured,
-            ),
-            exc,
-        ) from exc
-    if gone:
-        return removed("removed")
-    return already_absent("the planned target was already gone")
-
-
-def _measured_tree_bytes(path: Path) -> int:
-    """Bytes this removal can substantiate, under the planner's own metric.
-
-    Files only, and one count per ``(device, inode)`` - the same convention
-    ``_tree_bytes`` uses when it sizes a planned action, so a partial figure and
-    a planned figure never mean different things.
-    """
-
+    ledger = MutationLedger()
     try:
         stats = path.lstat()
-    except OSError:
-        return 0
+    except FileNotFoundError:
+        return already_absent("the planned target was already gone")
+    except OSError as exc:
+        return refused_no_change(f"the planned target could not be observed: {exc}")
+
     if not stat.S_ISDIR(stats.st_mode):
-        return int(stats.st_size)
-    total = 0
-    seen: set[tuple[int, int]] = set()
-    stack = [path]
-    while stack:
-        current = stack.pop()
         try:
-            entries = list(os.scandir(current))
-        except OSError:
+            durable_unlink(path)
+        except OSError as exc:
+            if path.exists() or path.is_symlink():
+                raise
+            ledger.credit(int(stats.st_size), None)
+            raise ledger.failure(
+                exc,
+                f"{path} was removed but the removal could not be made durable: {exc}",
+            ) from exc
+        ledger.credit(int(stats.st_size), None)
+        return removed("removed", removed_bytes=ledger.removed_bytes)
+
+    if not shutil.rmtree.avoids_symlink_attacks:
+        # The proof this removal rests on was established by a no-follow
+        # observation. A recursive delete that could be redirected by a
+        # directory entry swapped underneath it would not preserve that proof
+        # through to the mutation, so this platform gets a refusal rather than a
+        # traversal it cannot guarantee.
+        raise StorageExecutionError(
+            "this platform cannot perform a symlink-attack-resistant recursive "
+            f"removal, so {path} is retained rather than removed"
+        )
+    _remove_tree_tracked(path, ledger)
+    _fsync_parent_tracked(path, ledger)
+    return removed("removed", removed_bytes=ledger.removed_bytes)
+
+
+def _remove_tree_tracked(root: Path, ledger: MutationLedger) -> None:
+    """Delete one directory tree, accounting for every entry as it goes.
+
+    Depth-first and bottom-up so a directory is only removed once it is empty.
+    A failure at any point raises with the running account attached, because by
+    then the tree on disk is neither what it was nor gone.
+    """
+
+    try:
+        entries = sorted(os.scandir(root), key=lambda item: item.name)
+    except OSError as exc:
+        raise ledger.failure(exc, f"{root} could not be enumerated: {exc}") from exc
+    for entry in entries:
+        child = Path(entry.path)
+        try:
+            is_dir = entry.is_dir(follow_symlinks=False)
+        except OSError as exc:
+            raise ledger.failure(exc, f"{child} could not be observed: {exc}") from exc
+        if is_dir:
+            _remove_tree_tracked(child, ledger)
             continue
-        for entry in entries:
-            try:
-                child = entry.stat(follow_symlinks=False)
-            except OSError:
-                continue
-            if entry.is_dir(follow_symlinks=False):
-                stack.append(Path(entry.path))
-                continue
-            key = (int(child.st_dev), int(child.st_ino))
-            if key in seen:
-                continue
-            seen.add(key)
-            total += int(child.st_size)
-    return total
+        try:
+            child_stat = entry.stat(follow_symlinks=False)
+        except OSError as exc:
+            raise ledger.failure(exc, f"{child} could not be measured: {exc}") from exc
+        try:
+            os.unlink(entry.path)
+        except OSError as exc:
+            raise ledger.failure(exc, f"{child} could not be removed: {exc}") from exc
+        ledger.credit(
+            int(child_stat.st_size), (int(child_stat.st_dev), int(child_stat.st_ino))
+        )
+    try:
+        os.rmdir(root)
+    except OSError as exc:
+        raise ledger.failure(exc, f"{root} could not be removed: {exc}") from exc
+    ledger.note_mutation()
+
+
+def _fsync_parent_tracked(path: Path, ledger: MutationLedger) -> None:
+    """Persist the directory-entry removal, keeping the account if it fails."""
+
+    from ..target_size_execution.persistence import fsync_parent_directory
+
+    try:
+        fsync_parent_directory(path)
+    except OSError as exc:
+        raise ledger.failure(
+            exc, f"{path} was removed but the removal could not be made durable: {exc}"
+        ) from exc
+
+
+
+
+def record_or_reraise(result: "StorageExecutionResult", action: Any, run) -> MutationOutcome:
+    """Record what one action did, even when it ends by raising.
+
+    A helper that unlinked and then failed on durability knows something the
+    executor's outer interruption handling never will: which action mutated and
+    how many bytes are already gone. That evidence is recorded here, at the
+    action boundary, before the failure is allowed to continue upward - so the
+    partial audit describes the tree that now exists rather than reporting only
+    that something went wrong.
+
+    Every ``StorageExecutor`` removal path calls this, including the default
+    engine, so the two cannot drift into different truths again.
+    """
+
+    try:
+        outcome = run()
+    except PartialMutationError as exc:
+        record_removal(result, action, exc.outcome)
+        raise (exc.cause or exc) from exc
+    record_removal(result, action, outcome)
+    return outcome
 
 
 def record_removal(
@@ -486,14 +546,16 @@ def record_removal(
     the outcome; none of them is inferred from a reason string.
     """
 
-    entry = {**action.to_dict(), **outcome.to_dict()}
+    planned = int(action.size_bytes)
+    entry = {**action.to_dict(), **outcome.to_dict(planned)}
     if outcome.mutated:
         result.mutated = True
     if outcome.succeeded:
         result.completed.append(entry)
     else:
         result.refused.append({**entry, "refusal": outcome.detail})
-    result.reclaimed_bytes += outcome.credited_bytes(int(action.size_bytes))
+    # The aggregate is exactly the sum of what the actions each recorded.
+    result.reclaimed_bytes += int(entry["reclaimed_bytes"])
 
 
 def remove_certified_subtree(
@@ -542,47 +604,80 @@ def remove_certified_subtree(
                 f"the certified {label} is no longer the filesystem object this "
                 "action was authorized against; nothing was removed"
             )
+    ledger = MutationLedger()
     if refusals:
-        freed = 0
         count = 0
-        seen: set[tuple[int, int]] = set()
         for member in members:
-            if member.is_file() or member.is_symlink():
-                try:
-                    stats = member.lstat()
-                    key = (int(stats.st_dev), int(stats.st_ino))
-                    if key not in seen:
-                        seen.add(key)
-                        freed += int(stats.st_size)
-                except OSError:
-                    pass
-                try:
-                    durable_unlink(member)
-                except OSError as exc:
-                    if member.exists() or member.is_symlink():
-                        raise
-                    raise PartialMutationError(
-                        partial_change_refused(
-                            f"{member} was removed but the removal could not be made "
-                            f"durable: {exc}",
-                            removed_bytes=freed,
-                        ),
-                        exc,
+            if not (member.is_file() or member.is_symlink()):
+                continue
+            # Measured before the unlink - afterwards there is nothing left to
+            # measure - and credited only once the entry has actually gone. A
+            # failure here, before this member's own removal, still has to carry
+            # what earlier members already took.
+            try:
+                stats = member.lstat()
+            except OSError as exc:
+                raise ledger.failure(
+                    exc, f"{member} could not be measured: {exc}"
+                ) from exc
+            try:
+                durable_unlink(member)
+            except OSError as exc:
+                if member.exists() or member.is_symlink():
+                    raise ledger.failure(
+                        exc, f"{member} could not be removed: {exc}"
                     ) from exc
-                count += 1
+                ledger.credit(
+                    int(stats.st_size), (int(stats.st_dev), int(stats.st_ino))
+                )
+                raise ledger.failure(
+                    exc,
+                    f"{member} was removed but the removal could not be made "
+                    f"durable: {exc}",
+                ) from exc
+            ledger.credit(int(stats.st_size), (int(stats.st_dev), int(stats.st_ino)))
+            count += 1
         detail = (
             f"retained the container and removed {count} individually authorized "
             f"member(s); {len(refusals)} descendant(s) were not owner-certified"
         )
-        if count:
-            return partial_change_refused(detail, removed_bytes=freed)
-        return refused_no_change(detail)
+        return ledger.stop(detail)
     if not path.exists() and not path.is_symlink():
         return already_absent("the certified container was already gone")
-    remove_durably(path)
+    _remove_tree_or_file_tracked(path, ledger)
     return removed(
-        "every descendant was covered by the owner's closed-subtree certification"
+        "every descendant was covered by the owner's closed-subtree certification",
+        removed_bytes=ledger.removed_bytes,
     )
+
+
+def _remove_tree_or_file_tracked(path: Path, ledger: MutationLedger) -> None:
+    """Remove one authorized path, keeping this action's running account."""
+
+    try:
+        stats = path.lstat()
+    except OSError as exc:
+        raise ledger.failure(exc, f"{path} could not be observed: {exc}") from exc
+    if not stat.S_ISDIR(stats.st_mode):
+        try:
+            durable_unlink(path)
+        except OSError as exc:
+            if path.exists() or path.is_symlink():
+                raise ledger.failure(exc, f"{path} could not be removed: {exc}") from exc
+            ledger.credit(int(stats.st_size), None)
+            raise ledger.failure(
+                exc,
+                f"{path} was removed but the removal could not be made durable: {exc}",
+            ) from exc
+        ledger.credit(int(stats.st_size), None)
+        return
+    if not shutil.rmtree.avoids_symlink_attacks:
+        raise StorageExecutionError(
+            "this platform cannot perform a symlink-attack-resistant recursive "
+            f"removal, so {path} is retained rather than removed"
+        )
+    _remove_tree_tracked(path, ledger)
+    _fsync_parent_tracked(path, ledger)
 
 
 def synchronization_for(

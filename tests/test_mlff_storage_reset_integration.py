@@ -52,6 +52,7 @@ from mdstats.training_data.storage.archive import (
 from mdstats.training_data.storage.control_plane import (
     open_storage_control_plane_readonly,
 )
+from mdstats.training_data.storage_reclamation import filesystem_identity
 from mdstats.training_data.storage.executor import synchronization_for
 from mdstats.training_data.storage.outcome import (
     OUTCOME_ALREADY_ABSENT,
@@ -4073,8 +4074,14 @@ def test_a_closed_capability_reaches_no_filesystem_syscall(tmp_path: Path):
         _os.stat = watched_stat
         qstore._open_directory_nofollow = watched_open
         try:
+            # The identity is supplied explicitly, so the refusal can only come
+            # from the spent capability rather than from a missing plan binding.
             with pytest.raises(qstore.SpentCapabilityError):
-                qstore.remove_released_attempt_member(session, view.path.name)
+                qstore.remove_released_attempt_member(
+                    session,
+                    view.path.name,
+                    planned_identity=filesystem_identity(view.path),
+                )
         finally:
             _os.stat = real_stat
             qstore._open_directory_nofollow = real_open_dir
@@ -4406,3 +4413,417 @@ def _read_last_audit(config: Path):
     _cfg, paths = cli._load_config(config)
     records = open_storage_control_plane_readonly(paths).read_audit()
     return dict(records[-1]) if records else None
+
+
+# ---------------------------------------------------------------------------
+# R31 - exact per-action evidence and all-path failure truth, at the real owner
+# ---------------------------------------------------------------------------
+
+
+def _action_bytes(execution: dict) -> dict[str, int]:
+    """Every recorded action's own reclaimed-byte figure."""
+
+    entries = list(execution["completed_actions"]) + list(execution["refused_actions"])
+    return {item["path"]: int(item["reclaimed_bytes"]) for item in entries}
+
+
+def _assert_aggregate_matches_actions(execution: dict) -> None:
+    """The total may only be the sum of what the actions each recorded."""
+
+    per_action = _action_bytes(execution)
+    assert int(execution["reclaimed_bytes"]) == sum(per_action.values()), (
+        execution["reclaimed_bytes"],
+        per_action,
+    )
+
+
+def test_every_action_records_its_own_exact_reclaimed_bytes(tmp_path: Path):
+    """R31-1: an aggregate cannot say which action mutated, or by how much.
+
+    Clean removals carry the amount credited under the existing metric, and a
+    second run over the same attempt records terminally-satisfied absence worth
+    exactly zero. Both are asserted per action and against the aggregate.
+    """
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    planned = {
+        str(action.path): int(action.size_bytes)
+        for action in _cleanup_plan_actions(config)
+    }
+    assert planned
+
+    execution = _apply_cleanup(config)
+    assert execution["status"] == "complete", execution
+    _assert_aggregate_matches_actions(execution)
+    for item in execution["completed_actions"]:
+        assert item["outcome"] == OUTCOME_REMOVED, item
+        assert int(item["reclaimed_bytes"]) == planned[item["path"]], item
+    assert int(execution["reclaimed_bytes"]) > 0
+
+    # Everything is already gone: terminal success, and not one byte claimed.
+    again = _apply_cleanup(config)
+    _assert_aggregate_matches_actions(again)
+    assert int(again["reclaimed_bytes"]) == 0, again
+    for item in again["completed_actions"]:
+        assert int(item["reclaimed_bytes"]) == 0, item
+
+
+def test_a_refused_released_action_records_zero_bytes(tmp_path: Path):
+    """R31-1: a refusal credits nothing, per action and in the aggregate."""
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    monkey = qstore.dir_fd_mutation_supported
+    qstore.dir_fd_mutation_supported = lambda: False
+    try:
+        execution = _apply_cleanup(config)
+    finally:
+        qstore.dir_fd_mutation_supported = monkey
+
+    assert execution["status"] == "refused", execution
+    _assert_aggregate_matches_actions(execution)
+    assert int(execution["reclaimed_bytes"]) == 0
+    for item in execution["refused_actions"]:
+        assert item["outcome"] == OUTCOME_REFUSED_NO_CHANGE, item
+        assert int(item["reclaimed_bytes"]) == 0, item
+
+
+def test_one_success_and_one_refusal_settles_partial_with_exact_bytes(tmp_path: Path):
+    """R31-5: mixed outcomes through the real executor, settlement and audit."""
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage.outcome import refused_no_change
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    planned = {
+        str(action.path): int(action.size_bytes)
+        for action in _cleanup_plan_actions(config)
+    }
+    real_member = qstore.remove_released_attempt_member
+    seen: list[str] = []
+
+    def refuse_after_first(session, member_name, **kwargs):
+        seen.append(member_name)
+        if len(seen) == 1:
+            return real_member(session, member_name, **kwargs)
+        return refused_no_change("injected owner refusal at the mutation boundary")
+
+    qstore.remove_released_attempt_member = refuse_after_first
+    try:
+        execution = _apply_cleanup(config)
+    finally:
+        qstore.remove_released_attempt_member = real_member
+
+    assert len(seen) > 1, seen
+    assert execution["status"] == "partial", execution
+    assert len(execution["completed_actions"]) == 1, execution["completed_actions"]
+    assert execution["refused_actions"], execution
+    _assert_aggregate_matches_actions(execution)
+    completed = execution["completed_actions"][0]
+    assert int(completed["reclaimed_bytes"]) == planned[completed["path"]], completed
+    assert int(execution["reclaimed_bytes"]) == int(completed["reclaimed_bytes"])
+    for item in execution["refused_actions"]:
+        assert int(item["reclaimed_bytes"]) == 0, item
+
+    audit = _read_last_audit(config)
+    assert audit is not None and audit["status"] == "partial", audit
+    _assert_aggregate_matches_actions(audit)
+
+
+def test_an_invalidated_attempt_still_lets_an_independent_action_proceed(
+    tmp_path: Path,
+):
+    """R31-5: invalidation is scoped, proven through the real cleanup executor.
+
+    The contradicted P7 attempt withholds its remaining members while an action
+    that does not depend on that capability completes in the same execution.
+
+    The independent unit here is storage-owned residue rather than a second P7
+    attempt: the fixture campaign has one binding and therefore one attempt. The
+    two-attempt scoping itself is covered by
+    `test_an_invalidated_attempt_does_not_withhold_an_independent_attempt`,
+    which drives two real sessions through the real owner function.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage.control_plane import (
+        open_storage_control_plane_readonly,
+    )
+    from mdstats.training_data.storage.outcome import refused_no_change
+
+    config, _workspace, _harness = _released_attempt_campaign(config_dir := tmp_path)
+    _cfg, paths = cli._load_config(config)
+
+    # Storage-owned residue an interrupted dedup would have left behind.
+    residue = (
+        open_storage_control_plane_readonly(paths).staging_root_for("f" * 32) / "dedup"
+    )
+    residue.mkdir(parents=True)
+    (residue / "0-dup-a.pt").write_bytes(b"stale staging")
+
+    actions = _cleanup_plan_actions(config)
+    released = {
+        str(action.path)
+        for action in actions
+        if action.artifact_id.startswith("p7:attempt_scratch:")
+    }
+    independent = [
+        action for action in actions if str(action.path) not in released
+    ]
+    assert len(released) > 1, released
+    assert independent, "the plan carried no action outside the released attempt"
+
+    real_member = qstore.remove_released_attempt_member
+
+    def refuse_everything(session, member_name, **kwargs):
+        return refused_no_change("injected mutation-boundary contradiction")
+
+    qstore.remove_released_attempt_member = refuse_everything
+    try:
+        execution = _apply_cleanup(config)
+    finally:
+        qstore.remove_released_attempt_member = real_member
+
+    refused = {item["path"] for item in execution["refused_actions"]}
+    assert released <= refused, (released, refused)
+    withheld = [
+        item
+        for item in execution["refused_actions"]
+        if "shares" in item.get("refusal", "")
+    ]
+    assert withheld, execution["refused_actions"]
+    completed = {item["path"] for item in execution["completed_actions"]}
+    assert completed & {str(action.path) for action in independent}, (
+        completed,
+        independent,
+    )
+    assert not residue.exists(), "the independent action was withheld too"
+    assert execution["status"] == "partial", execution
+    _assert_aggregate_matches_actions(execution)
+    del config_dir
+
+
+def test_the_post_mutation_partial_records_the_exact_byte_amount(tmp_path: Path):
+    """R31-5: the durability case must assert the exact per-action value."""
+
+    import os as _os
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    planned = {
+        str(action.path): int(action.size_bytes)
+        for action in _cleanup_plan_actions(config)
+    }
+    real_fsync = _os.fsync
+    unlinked: list[str] = []
+    real_unlink = qstore._unlink_certified_file
+
+    def note_unlink(parent_fd, name):
+        unlinked.append(name)
+        return real_unlink(parent_fd, name)
+
+    def failing_fsync(fd):
+        if unlinked:
+            raise OSError(5, "injected durability failure")
+        return real_fsync(fd)
+
+    _os.fsync = failing_fsync
+    qstore._unlink_certified_file = note_unlink
+    try:
+        with pytest.raises(OSError, match="injected durability failure"):
+            _apply_cleanup(config)
+    finally:
+        _os.fsync = real_fsync
+        qstore._unlink_certified_file = real_unlink
+
+    audit = _read_last_audit(config)
+    assert audit is not None and audit["status"] == "partial", audit
+    partials = [
+        item
+        for item in audit["refused_actions"]
+        if item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
+    ]
+    assert len(partials) == 1, partials
+    entry = partials[0]
+    # Exact, and never the planned size of a target that only partly went.
+    assert int(entry["reclaimed_bytes"]) > 0, entry
+    assert int(entry["reclaimed_bytes"]) <= planned[entry["path"]], (entry, planned)
+    _assert_aggregate_matches_actions(audit)
+
+
+def test_a_resealed_release_authority_is_refused_by_the_real_executor(tmp_path: Path):
+    """R31-5: the *old plan* meets the new authority, at the real executor.
+
+    Replanning after the reseal would simply bind the new authority and proceed,
+    which proves nothing. The plan is therefore built first - by the real
+    planner - the authority is resealed, and that same immutable plan is handed
+    to the real executor. Nothing may be removed under a release the plan was
+    never made against.
+    """
+
+    from mdstats.training_data.storage.executor import synchronization_for as _sync
+    from mdstats.training_data.storage.plan import (
+        StoragePlanStaleError,
+        build_storage_plan,
+    )
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snapshot_before, _paths, view = _released_scratch_view(config)
+    attempt = view.path.parent
+    before = sorted(str(item) for item in view.path.rglob("*"))
+
+    context, store = _context(config)
+    try:
+        policy = resolve_storage_policy(
+            {}, action=ACTION_CLEANUP, tier="safe", apply=True
+        )
+        context.consequential_plane(policy)
+        plan, snapshot = storage_commands.build_cleanup_plan(
+            context, policy.for_apply(apply=False)
+        )
+        assert any(
+            action.artifact_id.startswith("p7:attempt_scratch:")
+            for action in plan.actions
+        )
+        apply_plan = build_storage_plan(
+            snapshot,
+            policy,
+            plan.actions,
+            refusals=plan.refusals,
+            created_utc=plan.created_utc,
+        )
+
+        # Only now does the attempt acquire a different, equally valid release.
+        _reseal_released_authority(attempt)
+
+        try:
+            result = context.executor(policy).run(
+                apply_plan,
+                trigger="test:resealed",
+                synchronization=_sync(apply_plan, snapshot),
+                engine=storage_commands._cleanup_engine(context, policy),
+            )
+        except StoragePlanStaleError:
+            # The owner-state binding caught it before the engine ran, which is
+            # the same refusal one step earlier.
+            result = None
+    finally:
+        store.close()
+
+    if result is not None:
+        execution = result.to_dict()
+        assert int(execution["reclaimed_bytes"]) == 0, execution
+        assert execution["mutated"] is False, execution
+        _assert_aggregate_matches_actions(execution)
+    assert sorted(str(item) for item in view.path.rglob("*")) == before
+
+
+@pytest.mark.parametrize("damage", ["state", "proof", "topology"])
+def test_damaged_final_authority_is_refused_by_the_real_executor(
+    tmp_path: Path, damage: str
+):
+    """R31-5: the same damage cases, through the real cleanup executor."""
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, _paths, view = _released_scratch_view(config)
+    attempt = view.path.parent
+    before = sorted(str(item) for item in view.path.rglob("*"))
+
+    if damage == "state":
+        (attempt / "attempt-state.json").write_text("{ not json", encoding="utf-8")
+    elif damage == "proof":
+        payload = json.loads((attempt / "attempt-members.json").read_text())
+        payload["content_digest"] = "0" * 64
+        (attempt / "attempt-members.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+    else:
+        (view.path / "zz-someone-elses.bin").write_bytes(b"not P7's")
+
+    from mdstats.training_data.storage.owners import OwnerGraphError
+
+    try:
+        execution = _apply_cleanup(config)
+    except (CampaignCliError, OwnerGraphError):
+        # A damaged state can also fail the owner-graph gate before planning;
+        # both are fail-closed and neither may remove anything.
+        execution = None
+    if execution is not None:
+        assert int(execution["reclaimed_bytes"]) == 0, execution
+        assert execution["mutated"] is False, execution
+        _assert_aggregate_matches_actions(execution)
+    surviving = sorted(str(item) for item in view.path.rglob("*"))
+    assert set(before) <= set(surviving), (before, surviving)
+
+
+@pytest.mark.parametrize("shape", ["missing", "incomplete"])
+def test_an_incomplete_plan_identity_reaches_no_syscall(tmp_path: Path, shape: str):
+    """R31-4: the target identity is an invariant, not a caller convention.
+
+    Without the plan's full identity there is nothing to compare the target
+    against, so there is no authority to act on it - and the refusal happens
+    before anything is even observed.
+    """
+
+    import os as _os
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, paths, view = _released_scratch_view(config)
+    before = sorted(str(item) for item in view.path.rglob("*"))
+
+    session, _outcome = qstore.open_released_attempt_session(
+        paths,
+        view.path.parent,
+        expected_root_identity=view.root_identity,
+        expected_release_authority=view.state_identity,
+    )
+    assert session is not None
+    touched: list[str] = []
+    real_stat, real_open_dir = _os.stat, qstore._open_directory_nofollow
+    real_unlink = qstore._unlink_certified_file
+
+    def watched_stat(*args, **kwargs):
+        if kwargs.get("dir_fd") is not None:
+            touched.append("stat")
+        return real_stat(*args, **kwargs)
+
+    def watched_open(*args, **kwargs):
+        touched.append("open")
+        return real_open_dir(*args, **kwargs)
+
+    def watched_unlink(*args, **kwargs):
+        touched.append("unlink")
+        return real_unlink(*args, **kwargs)
+
+    complete = filesystem_identity(view.path)
+    if shape == "missing":
+        candidates = [{}]
+    else:
+        candidates = [
+            {key: value for key, value in complete.items() if key != dimension}
+            for dimension in qstore.TARGET_IDENTITY_DIMENSIONS
+        ]
+
+    _os.stat = watched_stat
+    qstore._open_directory_nofollow = watched_open
+    qstore._unlink_certified_file = watched_unlink
+    try:
+        for identity in candidates:
+            outcome = qstore.remove_released_attempt_member(
+                session, view.path.name, planned_identity=identity
+            )
+            assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, (identity, outcome)
+            assert outcome.mutated is False
+            assert "incomplete" in outcome.detail, outcome.detail
+    finally:
+        _os.stat = real_stat
+        qstore._open_directory_nofollow = real_open_dir
+        qstore._unlink_certified_file = real_unlink
+        session.close()
+
+    assert touched == [], touched
+    assert sorted(str(item) for item in view.path.rglob("*")) == before

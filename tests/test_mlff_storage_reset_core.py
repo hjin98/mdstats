@@ -4282,7 +4282,10 @@ def test_every_cleanup_removal_owner_reports_a_terminal_outcome() -> None:
         if isinstance(node, ast.FunctionDef) and node.name == "record_removal"
     )
     dumped = ast.dump(settle)
-    assert "succeeded" in dumped and "credited_bytes" in dumped and "mutated" in dumped
+    assert "succeeded" in dumped and "mutated" in dumped
+    # The aggregate is the sum of what each action recorded, so the two can
+    # never disagree about how much this execution reclaimed.
+    assert "reclaimed_bytes" in dumped
     assert "detail" in dumped  # carried as evidence...
     assert ".find(" not in dumped and ".startswith(" not in dumped, (
         "the outcome is being inferred from the reason string"
@@ -4618,12 +4621,26 @@ def test_the_cleanup_engine_withholds_the_rest_of_a_contradicted_attempt() -> No
         "the final owner boundary is not given the plan-bound target identity"
     )
     # And a post-mutation failure records the action before it propagates.
+    executor_source = (Path(cli.__file__).parent / "storage" / "executor.py").read_text(
+        encoding="utf-8"
+    )
     recorder = next(
         node
-        for node in ast.walk(ast.parse(commands_source))
-        if isinstance(node, ast.FunctionDef) and node.name == "_record_or_reraise"
+        for node in ast.walk(ast.parse(executor_source))
+        if isinstance(node, ast.FunctionDef) and node.name == "record_or_reraise"
     )
     recorded = ast.dump(recorder)
+    # One recorder, owned by the executor: the CLI engine and the default
+    # engine must not be able to drift into different truths again.
+    assert "record_or_reraise" in commands_source
+    default_engine = next(
+        node
+        for node in ast.walk(ast.parse(executor_source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_execute_actions"
+    )
+    assert "record_or_reraise" in ast.dump(default_engine), (
+        "the default executor still records removals without the shared boundary"
+    )
     assert "PartialMutationError" in recorded and "record_removal" in recorded
     assert "Raise" in recorded, "the failure is swallowed instead of propagating"
 
@@ -4671,3 +4688,301 @@ def test_a_failed_unlink_does_not_inflate_the_partial_figure(tmp_path: Path) -> 
     assert outcome.removed_bytes == 40, outcome
     assert (container / "b-stays.bin").stat().st_size == 900
     assert not (container / "a-goes.bin").exists()
+
+
+# ---------------------------------------------------------------------------
+# R31-2 - post-mutation failure truth on the generic and certified paths
+# ---------------------------------------------------------------------------
+
+
+def _drive_removal(tmp_path: Path, target: Path, run) -> tuple[dict, BaseException | None]:
+    """Run one removal through the real action-boundary recorder.
+
+    The recorder, the result object and the settlement are the production ones;
+    only the filesystem transition below them is made to fail.
+    """
+
+    from mdstats.training_data.storage.executor import (
+        StorageExecutionResult,
+        record_or_reraise,
+    )
+    from mdstats.training_data.storage.plan import planned_action
+
+    action = planned_action(
+        action="remove",
+        path=target,
+        artifact_id="test:generic",
+        reason="test",
+    )
+    result = StorageExecutionResult(
+        operation_identity="t",
+        plan_identity="t",
+        policy_identity="t",
+        action="cleanup",
+        status="planned",
+    )
+    raised: BaseException | None = None
+    try:
+        record_or_reraise(result, action, run)
+    except BaseException as exc:  # noqa: BLE001 - the propagation is the contract
+        raised = exc
+    return result.to_dict(), raised
+
+
+def test_a_generic_partial_directory_removal_records_exact_bytes(
+    tmp_path: Path,
+) -> None:
+    """R31-2: a subset is gone and the container survives - say exactly that.
+
+    Checking only whether the top-level pathname disappeared cannot see this
+    state, and a bare `OSError` would leave the audit unable to name which
+    action mutated or by how much.
+    """
+
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    tree = tmp_path / "tree"
+    (tree / "sub").mkdir(parents=True)
+    (tree / "a.bin").write_bytes(b"a" * 10)
+    (tree / "sub" / "locked.bin").write_bytes(b"b" * 20)
+    os.chmod(tree / "sub", 0o500)  # its child cannot be unlinked
+    try:
+        payload, raised = _drive_removal(
+            tmp_path, tree, lambda: remove_durably_outcome(tree)
+        )
+    finally:
+        os.chmod(tree / "sub", 0o700)
+
+    assert isinstance(raised, OSError), raised
+    assert payload["status"] in ("partial", "planned"), payload
+    entries = payload["refused_actions"]
+    assert len(entries) == 1, entries
+    assert entries[0]["outcome"] == OUTCOME_PARTIAL_CHANGE_REFUSED, entries[0]
+    assert entries[0]["mutated"] is True
+    assert int(entries[0]["reclaimed_bytes"]) == 10, entries[0]
+    assert int(payload["reclaimed_bytes"]) == 10, payload
+    assert payload["mutated"] is True
+    assert tree.exists() and (tree / "sub" / "locked.bin").exists()
+    assert not (tree / "a.bin").exists()
+
+
+def test_a_generic_durability_failure_after_unlink_records_the_removal(
+    tmp_path: Path,
+) -> None:
+    """R31-2 case 1: unlink succeeds, durability fails, action is partial."""
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    victim = tmp_path / "lonely.bin"
+    victim.write_bytes(b"x" * 64)
+    real = executor_mod.durable_unlink
+
+    def unlink_then_fail(path):
+        Path(path).unlink()
+        raise OSError(5, "injected durability failure")
+
+    executor_mod.durable_unlink = unlink_then_fail
+    try:
+        payload, raised = _drive_removal(
+            tmp_path, victim, lambda: remove_durably_outcome(victim)
+        )
+    finally:
+        executor_mod.durable_unlink = real
+
+    assert isinstance(raised, OSError), raised
+    entry = payload["refused_actions"][0]
+    assert entry["outcome"] == OUTCOME_PARTIAL_CHANGE_REFUSED, entry
+    assert int(entry["reclaimed_bytes"]) == 64, entry
+    assert int(payload["reclaimed_bytes"]) == 64
+    assert not victim.exists()
+
+
+def test_a_certified_subtree_durability_failure_records_the_removal(
+    tmp_path: Path,
+) -> None:
+    """R31-2 case 3: the fully certified branch keeps its account too."""
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    container = tmp_path / "certified"
+    container.mkdir()
+    (container / "one.bin").write_bytes(b"a" * 30)
+    real = executor_mod._fsync_parent_tracked
+
+    def fail_durability(path, ledger):
+        raise ledger.failure(
+            OSError(5, "injected durability failure"),
+            f"{path} was removed but the removal could not be made durable",
+        )
+
+    executor_mod._fsync_parent_tracked = fail_durability
+    try:
+        payload, raised = _drive_removal(
+            tmp_path,
+            container,
+            lambda: remove_certified_subtree(container, members=[], refusals=[]),
+        )
+    finally:
+        executor_mod._fsync_parent_tracked = real
+
+    assert isinstance(raised, OSError), raised
+    entry = payload["refused_actions"][0]
+    assert entry["outcome"] == OUTCOME_PARTIAL_CHANGE_REFUSED, entry
+    assert entry["mutated"] is True
+    assert int(entry["reclaimed_bytes"]) == 30, entry
+    assert not container.exists()
+
+
+def test_an_authorized_member_failure_keeps_the_earlier_members_bytes(
+    tmp_path: Path,
+) -> None:
+    """R31-2 case 4: an earlier success survives a later pre-mutation failure."""
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    container = tmp_path / "mixed"
+    container.mkdir()
+    first = container / "a-first.bin"
+    first.write_bytes(b"a" * 11)
+    second = container / "b-second.bin"
+    second.write_bytes(b"b" * 900)
+    foreign = container / "zz-foreign.bin"
+    foreign.write_bytes(b"not ours")
+
+    real = executor_mod.durable_unlink
+    done: list[str] = []
+
+    def fail_on_second(path):
+        if done:
+            raise OSError(13, "injected pre-mutation failure")
+        done.append(str(path))
+        return real(path)
+
+    executor_mod.durable_unlink = fail_on_second
+    try:
+        payload, raised = _drive_removal(
+            tmp_path,
+            container,
+            lambda: remove_certified_subtree(
+                container,
+                members=[first, second],
+                refusals=[(foreign, "this owner did not record it")],
+            ),
+        )
+    finally:
+        executor_mod.durable_unlink = real
+
+    assert isinstance(raised, OSError), raised
+    entry = payload["refused_actions"][0]
+    assert entry["outcome"] == OUTCOME_PARTIAL_CHANGE_REFUSED, entry
+    # Only the 11 bytes that really went; the 900-byte file is still there.
+    assert int(entry["reclaimed_bytes"]) == 11, entry
+    assert int(payload["reclaimed_bytes"]) == 11
+    assert not first.exists() and second.exists() and foreign.exists()
+
+
+def test_a_generic_failure_before_any_mutation_credits_nothing(
+    tmp_path: Path,
+) -> None:
+    """R31-2 case 5: no first destructive transition, no fabricated mutation."""
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+
+    victim = tmp_path / "untouched.bin"
+    victim.write_bytes(b"x" * 40)
+    real = executor_mod.durable_unlink
+
+    def never(path):
+        raise OSError(13, "injected pre-mutation failure")
+
+    executor_mod.durable_unlink = never
+    try:
+        payload, raised = _drive_removal(
+            tmp_path, victim, lambda: remove_durably_outcome(victim)
+        )
+    finally:
+        executor_mod.durable_unlink = real
+
+    assert isinstance(raised, OSError), raised
+    assert payload["mutated"] is False, payload
+    assert int(payload["reclaimed_bytes"]) == 0, payload
+    assert victim.stat().st_size == 40
+
+
+def test_the_p7_recursion_retains_a_file_it_cannot_measure(tmp_path: Path) -> None:
+    """R31-3: an unmeasurable file is retained, never deleted unaccounted.
+
+    Deleting it and crediting zero would put bytes beyond recovery that the
+    action can never account for - and with nothing else removed yet, the
+    outcome would even read as "nothing changed".
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage.outcome import (
+        OUTCOME_PARTIAL_CHANGE_REFUSED,
+        OUTCOME_REFUSED_NO_CHANGE,
+    )
+
+    real_scandir = os.scandir
+
+    class _UnmeasurableEntry:
+        def __init__(self, entry):
+            self._entry = entry
+
+        def __getattr__(self, name):
+            return getattr(self._entry, name)
+
+        def stat(self, *args, **kwargs):
+            raise OSError(5, "injected measurement failure")
+
+    def scandir_with_blind_spot(target):
+        return [
+            _UnmeasurableEntry(item) if item.name == blind_name else item
+            for item in real_scandir(target)
+        ]
+
+    for scenario in ("first", "after-one"):
+        container = tmp_path / f"member-{scenario}"
+        container.mkdir()
+        recorded = {f"member-{scenario}": "directory"}
+        if scenario == "after-one":
+            (container / "a-counted.bin").write_bytes(b"c" * 7)
+            recorded[f"member-{scenario}/a-counted.bin"] = "file"
+        blind_name = "m-unmeasurable.bin"
+        (container / blind_name).write_bytes(b"z" * 11)
+        recorded[f"member-{scenario}/{blind_name}"] = "file"
+
+        os.scandir = scandir_with_blind_spot
+        parent_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            outcome = qstore._remove_certified_directory(
+                parent_fd,
+                container.name,
+                container,
+                recorded,
+                f"{container.name}/",
+                seen=set(),
+            )
+        finally:
+            os.scandir = real_scandir
+            os.close(parent_fd)
+
+        # In both cases the file nobody could measure is still there.
+        assert (container / blind_name).read_bytes() == b"z" * 11, scenario
+        if scenario == "first":
+            assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, (scenario, outcome)
+            assert outcome.mutated is False
+            assert outcome.credited_bytes(1_000_000) == 0
+        else:
+            assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, (scenario, outcome)
+            assert outcome.mutated is True
+            assert outcome.removed_bytes == 7, outcome
+            assert not (container / "a-counted.bin").exists()
