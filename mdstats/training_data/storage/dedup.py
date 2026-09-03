@@ -540,6 +540,12 @@ def dedup_engine(
             os.link(canonical, temporary)
             try:
                 os.replace(temporary, member)
+                # The alias is already replaced. Whatever happens next, this
+                # execution has changed the namespace, and the executor settles
+                # an interruption from what was recorded - so it is recorded
+                # here rather than inferred later from a completed-action list
+                # this member has not reached yet.
+                result.mutated = True
                 failpoint(BOUNDARY_BEFORE_DIRECTORY_DURABILITY)
                 fsync_parent_directory(member)
             except BaseException:

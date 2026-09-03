@@ -37,6 +37,7 @@ Preserve conforming Revision-31 implementation: explicit per-action reclaimed-by
 
 Current blocking implementation/acceptance work is fully specified in `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_12.md`. In summary:
 
+<<<<<<< HEAD
 1. use one action-scoped mutation ledger for P7 recursion so mutation truth is independent of positive byte credit;
 2. replace custom pathname recursive deletion with a public-API fd-relative/no-follow tracked destructive walker for generic/common cleanup, consuming canonical `storage.trust` mount semantics;
 3. preserve mutation truth across every post-mutation observation/descent/durability/descriptor-cleanup failure and avoid fabricating mutation before the first destructive transition;
@@ -47,6 +48,19 @@ Current blocking implementation/acceptance work is fully specified in `STORAGE_I
 8. execute the snapshot-complete exact-candidate focused/storage/known-affected/final regression and static/document checks.
 
 External DFT, long GPU production, and environment-specific HPC/shared-storage qualification remain deferred and nonblocking. Whole-repository behavioral pytest remains conditional on unbounded final impact or independent repository policy.
+=======
+Independent review of executable `2e01d6fa5119ba67088f7c312c44962eba902c8e`, plus the subsequent Revision-32 gap re-derivation against the same tree, found seven blocking groups in the still-open truthful/safe final-apply surface:
+
+1. P7 recursive mutation truth is still inferred from a positive reclaimed-byte total, so zero-byte file deletion, empty-directory removal, or another zero-credit destructive transition can be reported as `refused_no_change` / `mutated=false` after a later contradiction or failure.
+2. R31 replaced symlink-attack-resistant `shutil.rmtree` recursion with a custom pathname walker while retaining only `shutil.rmtree.avoids_symlink_attacks` as a capability check; that flag does not protect the new walker, so a directory-to-symlink substitution can transfer recursive deletion outside the authorized tree.
+3. The added R31 generic/common-subtree failure tests drive `record_or_reraise()` directly rather than the required real `StorageExecutor.run` + settlement + durable-audit boundary.
+4. The combined real-executor independent-P7-attempt invalidation case, exact deterministic post-mutation byte equality, and explicit file+directory incomplete-target-identity acceptance remain incomplete.
+5. No exact-candidate final behavioral regression/integration/static evidence is supplied for executable `2e01d6f...`; connected CI for that SHA contains only the documentation-PDF build.
+6. Any exception escaping the engine sets execution status to `partial` with a "strict subset of actions" detail without consulting the recorded mutation evidence, so an execution that changed nothing is audited as a partial mutation.
+7. The R30 interruption/retry integration case patches `remove_durably` on the executor and command modules, neither of which the cleanup path calls since R31, leaving the generic-removal half of that counterfactual vacuous while the test still passes.
+
+The precise corrected end states, test-double boundaries, settled acceptance premises, and final evidence requirements are in `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_11.md`.
+>>>>>>> e656345 (storage: mutation truth, safe recursion, truthful interruption (R32))
 
 ## Disposition
 

@@ -160,9 +160,20 @@ class MutationLedger:
         self.removed_bytes += int(size)
 
     def note_mutation(self) -> None:
-        """Record a destructive transition that frees no accountable bytes."""
+        """Record a destructive transition that frees no accountable bytes.
+
+        Unlinking a zero-byte file, removing an emptied directory, or dropping
+        one more hard link to an already-counted inode all change the namespace
+        while crediting nothing. They are mutations, and an owner that decided
+        otherwise from the byte total would report them as no change.
+        """
 
         self.mutated = True
+
+    def adopt_seen(self, seen: set[tuple[int, int]]) -> None:
+        """Share one caller-owned dedup set for the whole action."""
+
+        self._seen = seen
 
     def stop(self, detail: str) -> MutationOutcome:
         """The outcome this action has earned when it must stop here."""

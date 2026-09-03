@@ -1018,11 +1018,11 @@ def test_no_consequential_recursive_path_equates_containment_with_ownership() ->
     for module in ("archive.py", "dedup.py", "commands.py"):
         text = (root / module).read_text(encoding="utf-8")
         assert "authorized_members" in text, module
-    # The only rmtree *call* in the consequential path is the certified-subtree
-    # helper, and it is guarded by the platform's own symlink-safety promise.
+    # The consequential recursions do not delegate to `shutil.rmtree` at all;
+    # they descend no-follow through directory descriptors. The one surviving
+    # `rmtree` call belongs to the legacy non-consequential `remove_durably`
+    # utility, which the guard below names explicitly rather than counting.
     executor = (root / "executor.py").read_text(encoding="utf-8")
-    assert executor.count("shutil.rmtree(") == 1
-    assert "shutil.rmtree.avoids_symlink_attacks" in executor
     assert "def remove_certified_subtree" in executor
 
 
@@ -3815,11 +3815,23 @@ def test_a_symlinked_completion_proof_grants_no_authority_and_is_not_followed(
 
 
 def test_recursive_deletion_is_symlink_attack_resistant() -> None:
-    """The platform's own guarantee, asserted rather than assumed."""
+    """The capability the *consequential* recursions actually rest on.
 
+    `shutil.rmtree.avoids_symlink_attacks` describes `rmtree`'s implementation.
+    It is the right guarantee to assert for the legacy `remove_durably` utility,
+    which delegates to it - and no protection whatsoever for a separate walker.
+    The cleanup recursions descend through directory descriptors, so the
+    capability that protects them is the dir-fd primitive set.
+    """
+
+    from mdstats.training_data.storage.trust import dir_fd_mutation_supported
+
+    assert dir_fd_mutation_supported(), (
+        "this platform cannot provide no-follow directory-descriptor removal; "
+        "the storage executor must refuse recursive removal here"
+    )
     assert shutil.rmtree.avoids_symlink_attacks, (
-        "this platform cannot promise symlink-safe recursive deletion; the "
-        "storage executor must refuse recursive removal here"
+        "the legacy remove_durably utility delegates recursion to shutil.rmtree"
     )
 
 
@@ -4986,3 +4998,262 @@ def test_the_p7_recursion_retains_a_file_it_cannot_measure(tmp_path: Path) -> No
             assert outcome.mutated is True
             assert outcome.removed_bytes == 7, outcome
             assert not (container / "a-counted.bin").exists()
+
+
+# ---------------------------------------------------------------------------
+# R32 - mutation truth, safe recursion, and guards that name their owner
+# ---------------------------------------------------------------------------
+
+
+def test_the_recursive_owners_descend_no_follow_and_never_by_pathname() -> None:
+    """R32-2 structural: the descent cannot regress to a pathname walk.
+
+    The failure this replaces was a guard that counted `shutil.rmtree(` calls.
+    It kept passing while the mechanism it protected moved out from under it, so
+    this asserts the shape of the recursion instead: children are opened
+    no-follow from the parent descriptor, and no recursive call is handed a
+    pathname rebuilt from a `DirEntry`.
+    """
+
+    import ast
+
+    storage = Path(cli.__file__).parent / "storage"
+    executor_source = (storage / "executor.py").read_text(encoding="utf-8")
+    tree = ast.parse(executor_source)
+
+    recursions = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name in ("_remove_tree_tracked", "_remove_tree_contents")
+    ]
+    assert len(recursions) == 2, [node.name for node in recursions]
+    bodies = {node.name: ast.dump(node) for node in recursions}
+
+    for name, dumped in bodies.items():
+        assert "open_directory_nofollow" in dumped, name
+        # The exact regression: classify with is_dir(follow_symlinks=False) and
+        # then recurse into Path(entry.path), which a swapped entry redirects.
+        assert "entry.path" not in dumped, (
+            f"{name} rebuilds a pathname from a DirEntry and recurses into it"
+        )
+        assert "avoids_symlink_attacks" not in dumped, (
+            f"{name} cites rmtree's promise as protection for its own walk"
+        )
+
+    # Child mutation is descriptor-relative, not by absolute pathname.
+    contents = bodies["_remove_tree_contents"]
+    assert "dir_fd" in contents
+
+    # And the capability guard names the primitive the recursion really uses.
+    assert "dir_fd_mutation_supported" in executor_source
+
+    # One owner for the primitive: the storage executor must not reach into the
+    # P7 owner for it, and the P7 owner must not keep a private copy.
+    assert "qualification" not in executor_source.replace(
+        "qualification/store.py", ""
+    ) or "from ..qualification" not in executor_source, (
+        "the storage executor imports the P7 owner"
+    )
+    store_source = (
+        Path(cli.__file__).parent / "qualification" / "store.py"
+    ).read_text(encoding="utf-8")
+    assert "def _open_directory_nofollow" not in store_source, (
+        "the P7 owner kept a private second copy of the no-follow open"
+    )
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage import trust
+
+    assert qstore._open_directory_nofollow is trust.open_directory_nofollow
+    assert qstore.NamespaceAmbiguity is trust.NamespaceAmbiguity
+    assert qstore.dir_fd_mutation_supported is trust.dir_fd_mutation_supported
+
+
+def test_a_swapped_child_directory_is_never_followed_out_of_the_tree(
+    tmp_path: Path,
+) -> None:
+    """R32-2: the race the pathname walker lost.
+
+    A child is classified as a directory and then replaced by a symlink to
+    somewhere else entirely. A walk that reopened the child by pathname would
+    delete the external target's contents; a no-follow open from the parent
+    descriptor refuses it.
+    """
+
+    from mdstats.training_data.storage import trust
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel.bin"
+    sentinel.write_bytes(b"someone else's bytes")
+
+    tree = tmp_path / "tree"
+    (tree / "victim").mkdir(parents=True)
+    (tree / "victim" / "inner.bin").write_bytes(b"x" * 5)
+
+    real_open = trust.open_directory_nofollow
+    swapped: list[str] = []
+
+    def racing_open(name, *, dir_fd=None):
+        if name == "victim" and not swapped:
+            swapped.append(name)
+            (tree / "victim" / "inner.bin").unlink()
+            (tree / "victim").rmdir()
+            (tree / "victim").symlink_to(external)
+        return real_open(name, dir_fd=dir_fd)
+
+    trust.open_directory_nofollow = racing_open
+    try:
+        with pytest.raises(OSError):
+            remove_durably_outcome(tree)
+    finally:
+        trust.open_directory_nofollow = real_open
+
+    assert swapped, "the race never fired"
+    assert sentinel.read_bytes() == b"someone else's bytes"
+    assert external.is_dir()
+
+
+def test_a_zero_byte_removal_is_a_mutation_even_though_it_frees_nothing(
+    tmp_path: Path,
+) -> None:
+    """R32-1: mutation truth and byte count are different facts.
+
+    A zero-byte file, an emptied directory, and a second hard link to an
+    already-counted inode all change the namespace while crediting nothing.
+    Deciding "did this mutate?" from the byte total reports them as no change -
+    and skips the durability step the caller owes for entries that really went.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    for scenario in ("zero-byte-file", "empty-directory", "extra-hard-link"):
+        container = tmp_path / scenario
+        container.mkdir()
+        recorded = {scenario: "directory"}
+        if scenario == "zero-byte-file":
+            (container / "a-empty.bin").write_bytes(b"")
+            recorded[f"{scenario}/a-empty.bin"] = "file"
+        elif scenario == "empty-directory":
+            (container / "a-sub").mkdir()
+            recorded[f"{scenario}/a-sub"] = "directory"
+        else:
+            original = container / "a-original.bin"
+            original.write_bytes(b"x" * 12)
+            os.link(original, container / "b-link.bin")
+            recorded[f"{scenario}/a-original.bin"] = "file"
+            recorded[f"{scenario}/b-link.bin"] = "file"
+        # A node the proof never recorded, reached after the credited work.
+        (container / "zz-foreign.bin").write_bytes(b"not ours")
+
+        parent_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            outcome = qstore._remove_certified_directory(
+                parent_fd, scenario, container, recorded, f"{scenario}/", seen=set()
+            )
+        finally:
+            os.close(parent_fd)
+
+        assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, (scenario, outcome)
+        assert outcome.mutated is True, scenario
+        expected = 12 if scenario == "extra-hard-link" else 0
+        assert outcome.removed_bytes == expected, (scenario, outcome)
+        assert (container / "zz-foreign.bin").exists(), scenario
+
+
+def test_a_zero_credit_mutation_still_owes_its_durability_step(
+    tmp_path: Path,
+) -> None:
+    """R32-1: the fsync is gated on mutation, never on the byte total.
+
+    The defect this pins was not only a label: the caller skipped the directory
+    fsync whenever credited bytes were zero, so removals that really happened
+    were also never made durable.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage.outcome import MutationLedger
+
+    fsynced: list[int] = []
+    real_fsync = os.fsync
+
+    def watched_fsync(fd):
+        fsynced.append(fd)
+        return real_fsync(fd)
+
+    container = tmp_path / "member"
+    container.mkdir()
+    (container / "a-empty.bin").write_bytes(b"")
+    recorded = {"member": "directory", "member/a-empty.bin": "file"}
+
+    os.fsync = watched_fsync
+    parent_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        outcome = qstore._remove_certified_directory(
+            parent_fd, "member", container, recorded, "member/", seen=set()
+        )
+    finally:
+        os.close(parent_fd)
+        os.fsync = real_fsync
+
+    assert outcome.outcome == "removed", outcome
+    assert outcome.mutated is True and outcome.removed_bytes == 0, outcome
+    assert fsynced, "a zero-credit removal skipped its durability step"
+
+    # And the ledger keeps the two facts apart at the type level.
+    ledger = MutationLedger()
+    ledger.note_mutation()
+    assert ledger.mutated is True and ledger.removed_bytes == 0
+    assert ledger.stop("x").outcome == "partial_change_refused"
+
+
+def test_every_patched_production_name_is_one_the_product_actually_reads() -> None:
+    """R32-7: a failpoint on a name nobody calls must fail loudly.
+
+    A test that patches `module.name` when the production path no longer reads
+    that attribute keeps passing while the mechanism it claims to cover is
+    entirely untested. That is how the generic-removal half of the interruption
+    counterfactual evaporated, and how a guard's subject moved out from under
+    it. This sweeps both storage suites so the next such drift is caught here.
+    """
+
+    import ast
+    import importlib
+
+    aliases = {
+        "executor_mod": "mdstats.training_data.storage.executor",
+        "storage_commands": "mdstats.training_data.storage.commands",
+        "qstore": "mdstats.training_data.qualification.store",
+        "cli": "mdstats.training_data._campaign_cli_core",
+        "trust": "mdstats.training_data.storage.trust",
+        "_tse": "mdstats.training_data.target_size_execution",
+    }
+    suites = [
+        Path(__file__),
+        Path(__file__).with_name("test_mlff_storage_reset_integration.py"),
+    ]
+    dead: list[str] = []
+    for suite in suites:
+        tree = ast.parse(suite.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if not (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                ):
+                    continue
+                module_name = aliases.get(target.value.id)
+                if module_name is None:
+                    continue
+                module = importlib.import_module(module_name)
+                if not hasattr(module, target.attr):
+                    dead.append(
+                        f"{suite.name}:{node.lineno} patches "
+                        f"{target.value.id}.{target.attr}, which "
+                        f"{module_name} does not define"
+                    )
+    assert dead == [], dead

@@ -23,6 +23,7 @@ consumes it stays production code.
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
@@ -96,6 +97,89 @@ def set_mount_resolver(resolver: MountIdentityResolver | None) -> None:
 
     global _RESOLVER
     _RESOLVER = resolver
+
+
+class NamespaceAmbiguity(RuntimeError):
+    """A directory entry could not be authenticated as the thing it claims to be.
+
+    Distinct from "not there": absence is an answer, but a name that is present
+    and cannot be opened as a plain directory - substituted, wrong kind,
+    unreadable - is unresolved authority, and every owner that descends a tree
+    has to fail closed on it rather than guess.
+    """
+
+
+#: The descriptor-relative primitives every no-follow recursion is built from.
+#: ``shutil.rmtree(..., dir_fd=...)`` does not exist on the supported Python
+#: floor (>=3.10), so the recursions are written from these directly.
+_DIR_FD_PRIMITIVES = ("O_NOFOLLOW", "O_DIRECTORY")
+
+
+def dir_fd_mutation_supported() -> bool:
+    """Whether this platform can mutate relative to a directory descriptor.
+
+    Without these, an authenticated directory cannot be carried through to the
+    destructive syscall, and the accepted answer is to refuse rather than fall
+    back to absolute-path traversal. This is what a recursive owner must check -
+    not ``shutil.rmtree.avoids_symlink_attacks``, which describes `rmtree`'s own
+    implementation and says nothing about a separate walker.
+    """
+
+    return (
+        all(hasattr(os, name) for name in _DIR_FD_PRIMITIVES)
+        and os.unlink in os.supports_dir_fd
+        and os.rmdir in os.supports_dir_fd
+        and os.open in os.supports_dir_fd
+        and os.scandir in getattr(os, "supports_fd", frozenset())
+    )
+
+
+def open_directory_nofollow(name: str, *, dir_fd: int | None = None) -> int:
+    """Open one directory as itself, never through a substituted entry.
+
+    ``O_DIRECTORY|O_NOFOLLOW`` refuses a symlink or non-directory in the same
+    syscall that opens the name, and opening relative to an already
+    authenticated parent descriptor is what makes a descent *continuous*: a
+    check followed by a fresh path lookup is two different namespace
+    resolutions, and an entry swapped between them would be followed.
+
+    This is the repository's single no-follow directory acquisition. Every
+    recursive owner - the P7 released-attempt descent and the storage
+    executor's generic and certified recursions - uses it, because two copies
+    of a trust primitive is exactly how one of them ends up weaker than the
+    other.
+    """
+
+    flags = (
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | os.O_NOFOLLOW
+        # A no-follow open still *opens* the name, and opening a FIFO for
+        # reading blocks until someone opens the write end - forever, for a
+        # planted node nobody writes to. An owner that can be made to hang by
+        # planting a special node has not failed closed, so every authority-
+        # bearing open is non-blocking and the kind is decided by ``fstat``.
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        handle = os.open(name, flags, dir_fd=dir_fd)
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise NamespaceAmbiguity(
+            f"{name!r} could not be opened as a plain directory ({exc.strerror})"
+        ) from exc
+    try:
+        if not stat.S_ISDIR(os.fstat(handle).st_mode):
+            os.close(handle)
+            raise NamespaceAmbiguity(f"{name!r} is not a directory")
+    except OSError as exc:
+        os.close(handle)
+        raise NamespaceAmbiguity(
+            f"{name!r} could not be identified after opening ({exc.strerror})"
+        ) from exc
+    return handle
 
 
 def crosses_mount_boundary_at(
