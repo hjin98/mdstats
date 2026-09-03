@@ -2,10 +2,10 @@
 kind: implementation-workplan-authority-entrypoint
 workplan_id: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
 protocol_version: 5.10.0
-revision: 32
+revision: 33
 status: reopened
-current_authority_pointer: AUTHORITY_REVISION_32.md
-current_workplan: STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_11.md
+current_authority_pointer: AUTHORITY_REVISION_33.md
+current_workplan: STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_12.md
 reviewed_executable_commit: 2e01d6fa5119ba67088f7c312c44962eba902c8e
 reviewed_executable_tree: fe927d28612d411303676fc04d5a9cd7164720b1
 review_verdict: NO-PASS
@@ -17,49 +17,39 @@ This is the sole canonical navigation/status entrypoint for `CODE-MLFF-CAMPAIGN-
 
 ## Current normative handoff
 
-Implementation uses only the following current task authorities:
+Implementation uses only:
 
 - `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — broader frozen owner-driven storage architecture and non-goals;
-- `STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md` — complete accepted final-apply design and preservation boundary;
+- `STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md` — complete accepted final-apply design;
 - `docs/specs/training_data/mlff_storage_management_spec.md` — current storage product contract;
-- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_11.md` — bounded Revision-32 implementation and acceptance corrections, including still-binding Revision-31 acceptance obligations;
-- `AUTHORITY_REVISION_32.md` — concise current disposition/authority summary.
+- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_12.md` — complete current Revision-33 bounded implementation and acceptance contract;
+- `AUTHORITY_REVISION_33.md` — concise current disposition/authority summary.
 
-Revision-26/28/29/30/31 authority and earlier implementation-review files are historical provenance. Revision 30 remains supplied because it owns the accepted final-apply design. Revision 32 is the current bounded implementation-review delta and is snapshot-complete for all still-binding review corrections. No current requirement depends exclusively on superseded files, Git history, prior conversation, or local Serena/Semgrep state.
+Revision 31 and Revision 32 review/authority files are historical provenance. Revision 33 consolidates every still-binding correction and can be implemented without reconstructing prior review history.
 
-## Preserved Revision-30 design and conforming Revision-31 implementation
+## Preserved architecture and implementation
 
-Preserve the accepted owner-driven storage architecture and final-apply semantics, including:
+Revision 30 remains the closed accepted design: P7 owns release/proof/currentness semantics; exact release/root/target identities remain bound to the immutable plan and final live descriptor; proof is an upper bound under monotonic shrink; same-attempt mutation-boundary contradiction invalidates only that attempt capability; proof lookup is once-per-session/read-only; mutation outcomes remain removed/already-absent/refused-no-change/partial-change-refused; Python `>=3.10` and the descriptor-pinned POSIX threat boundary remain frozen.
 
-- exact released-state/proof authority bound into the immutable plan and reauthenticated on the live P7 descriptor;
-- retained descriptor continuity through state/proof/topology certification and fd-relative mutation;
-- mandatory no-follow final comparison of the complete plan-bound target identity before every P7 member mutation;
-- permanently unspendable closed session objects even if fd numbers are reused;
-- proof-as-upper-bound monotonic shrink and safe interrupted retry;
-- same-attempt capability invalidation after mutation-time contradiction;
-- once-per-session non-widenable typed proof lookup;
-- structured removed / already-absent / no-change-refused / partial-change-refused outcomes;
-- action-local exact reclaimed-byte evidence and aggregate summation from those recorded values;
-- one executor-owned structured post-mutation failure recorder for default and CLI cleanup paths;
-- retention of unmeasurable P7 files before mutation;
-- Python `>=3.10`, descriptor-pinned POSIX threat boundary, bounded reporting, R26 historical test/tool retirement, CampaignStore, P5 proof, archive/dedup/restore/control-plane architecture, and P1-P7 scientific/currentness semantics.
+Preserve conforming Revision-31 implementation: explicit per-action reclaimed-byte evidence, aggregate summation from action evidence, one executor-owned structured post-mutation recorder, retention of unmeasurable P7 files, mandatory complete target identity, and existing action-scoped `MutationLedger` behavior.
 
-External-DFT, long GPU, and environment-specific HPC/shared-storage production qualification remain deferred and nonblocking. Whole-repository behavioral pytest remains conditional on unbounded final impact or independent repository policy.
+## Revision-33 bounded reopen
 
-## Revision-32 reopen
+Current blocking implementation/acceptance work is fully specified in `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_12.md`. In summary:
 
-Independent review of executable `2e01d6fa5119ba67088f7c312c44962eba902c8e` found five blocking groups in the still-open truthful/safe final-apply surface:
+1. use one action-scoped mutation ledger for P7 recursion so mutation truth is independent of positive byte credit;
+2. replace custom pathname recursive deletion with a public-API fd-relative/no-follow tracked destructive walker for generic/common cleanup, consuming canonical `storage.trust` mount semantics;
+3. preserve mutation truth across every post-mutation observation/descent/durability/descriptor-cleanup failure and avoid fabricating mutation before the first destructive transition;
+4. prove generic/default/common failure behavior through real `StorageExecutor.run`, settlement and durable audit;
+5. prove same-attempt invalidation versus a genuinely independent P7 attempt in one real cleanup execution, exact deterministic action bytes, and complete target identity for both file and directory targets;
+6. consolidate generic removal authority while preserving the exported `remove_durably` compatibility surface unless separately authorized to change it;
+7. align traversal documentation with canonical mount-policy versus destructive-descent ownership;
+8. execute the snapshot-complete exact-candidate focused/storage/known-affected/final regression and static/document checks.
 
-1. P7 recursive mutation truth is still inferred from a positive reclaimed-byte total, so zero-byte file deletion, empty-directory removal, or another zero-credit destructive transition can be reported as `refused_no_change` / `mutated=false` after a later contradiction or failure.
-2. R31 replaced symlink-attack-resistant `shutil.rmtree` recursion with a custom pathname walker while retaining only `shutil.rmtree.avoids_symlink_attacks` as a capability check; that flag does not protect the new walker, so a directory-to-symlink substitution can transfer recursive deletion outside the authorized tree.
-3. The added R31 generic/common-subtree failure tests drive `record_or_reraise()` directly rather than the required real `StorageExecutor.run` + settlement + durable-audit boundary.
-4. The combined real-executor independent-P7-attempt invalidation case, exact deterministic post-mutation byte equality, and explicit file+directory incomplete-target-identity acceptance remain incomplete.
-5. No exact-candidate final behavioral regression/integration/static evidence is supplied for executable `2e01d6f...`; connected CI for that SHA contains only the documentation-PDF build.
-
-The precise corrected end states, test-double boundaries, and final evidence requirements are in `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_11.md`.
+External DFT, long GPU production, and environment-specific HPC/shared-storage qualification remain deferred and nonblocking. Whole-repository behavioral pytest remains conditional on unbounded final impact or independent repository policy.
 
 ## Disposition
 
-**Design/workplan: CLOSED / implementation-ready under Revision 30 plus the bounded Revision-32 corrections.**
+**Design/workplan:** **CLOSED / implementation-ready under Revision 30 plus the complete Revision-33 bounded corrections.**
 
-**Reviewed executable `2e01d6fa5119ba67088f7c312c44962eba902c8e`: NO-PASS / reopened under Revision 32.**
+**Reviewed executable `2e01d6fa5119ba67088f7c312c44962eba902c8e`: NO-PASS / reopened under Revision 33.**
