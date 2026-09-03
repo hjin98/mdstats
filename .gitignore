@@ -52,3 +52,7 @@ tmp/
 # checkpoints). Its immutable identity, content manifest, database snapshot, and
 # deterministic builder are tracked; the ~3 MiB workspace itself is not.
 qualification/p6-p5a6-compat/workspace/
+
+# Serena local/runtime state
+.serena/*
+!.serena/project.yml

@@ -2,7 +2,9 @@
 
 Active workplans are temporary engineering coordination and do not define current mdstats behavior by themselves.
 
-There is one active MLFF implementation workplan:
+There are two active MLFF implementation workplans:
+
+- `mlff-storage-io-reset/AUTHORITY.md` — owner-driven MLFF storage/I-O reset. The Revision-30 final-apply design remains closed, but independent review of executable `3295bc4...` found bounded blocking gaps in exact per-action byte evidence, generic/common post-mutation failure truth, P7 measurement-before-delete handling, mandatory final target identity, and real-owner/candidate-bound acceptance. Implementation is reopened under Revision 31 without reopening P1-P7 science/currentness or the accepted storage architecture.
 
 - `MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_ARCH_RESET_WORKPLAN.md` — V7 scientific simplification and clean transition freeze. Electronic-structure provenance is recorded precisely but is advisory by default; one target-size study operates across the user-authorized usable target data. Target-size selection is a controlled convergence experiment in training cardinality `N`, with one deterministic training order, one disjoint nested `M1/M2/M3` evaluation ladder, fixed non-`N` training choices, exact `n1/n2/n3` continuation, paired optimizer seeds, configured power ladders/ceiling, and nominal `Nmax + M3` capacity. Cross-validation is a separate post-selection methodological-validation experiment built only from frozen `T_selected`. The plan removes compatibility-domain influence from current numerical/frame/partition identity and collapses retired per-domain and FEAS/MVIDX/MVSEL/REPAIR/MVQUAL target-size authority layers while allowing valid optimized numerical kernels to survive internally.
 

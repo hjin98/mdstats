@@ -2,12 +2,12 @@
 kind: implementation-workplan-authority-entrypoint
 workplan_id: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
 protocol_version: 5.10.0
-revision: 30
-status: closed-implementation-ready
-current_authority_pointer: AUTHORITY_REVISION_30.md
-current_workplan: STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md
-reviewed_executable_commit: 6423a3f33a36c09ca1b89f5740f42c402b1993d2
-reviewed_executable_tree: a40bdf7cbd4bc1e2a2de4ec41ccb77fede4dc926
+revision: 31
+status: reopened
+current_authority_pointer: AUTHORITY_REVISION_31.md
+current_workplan: STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_10.md
+reviewed_executable_commit: 3295bc47775f521db3518f6f1ba8419c78cd8b82
+reviewed_executable_tree: 1fb6ac2cf368922adde06171216f55e50bf04811
 review_verdict: NO-PASS
 ---
 
@@ -22,11 +22,12 @@ Implementation uses only the following current task authorities:
 - `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — broader frozen owner-driven storage architecture and non-goals;
 - `STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md` — complete remaining final-apply repair contract;
 - `docs/specs/training_data/mlff_storage_management_spec.md` — current storage product contract;
-- `AUTHORITY_REVISION_30.md` — concise disposition/authority summary.
+- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_10.md` — bounded Revision-31 implementation and acceptance corrections;
+- `AUTHORITY_REVISION_31.md` — concise disposition/authority summary.
 
-Revision-26/28/29 repair, authority, and implementation-review files are historical provenance. No still-binding Revision-30 implementation requirement depends exclusively on reading those superseded files, Git history, or prior conversation.
+Revision-26/28/29/30 authority and earlier implementation-review files are historical provenance. Revision 30 remains supplied because it owns the accepted final-apply design; Revision 31 is a bounded implementation-review delta over that complete contract. No current requirement depends exclusively on superseded files, Git history, or prior conversation.
 
-## Revision-30 closure
+## Preserved Revision-30 closure
 
 Revision 30 preserves the accepted owner-driven storage architecture and consolidates all final-apply requirements, including:
 
@@ -46,8 +47,20 @@ The accepted Python `>=3.10` floor, descriptor-pinned POSIX threat boundary, bou
 
 External-DFT, long GPU, and environment-specific HPC/shared-storage production qualification remain deferred and nonblocking. Whole-repository behavioral pytest is required only if final affected-surface analysis cannot remain bounded or independent repository policy requires it.
 
+## Revision-31 reopen
+
+Independent review of executable `3295bc47775f521db3518f6f1ba8419c78cd8b82` found bounded blocking nonconformance in the still-open truthful-final-apply surface:
+
+- per-action serialized evidence drops the exact `removed_bytes` carried by a partial outcome;
+- generic/default and common certified-subtree failure paths can mutate and then bypass structured action recording;
+- P7 recursion may delete an entry whose size observation failed and then report no mutation/zero bytes;
+- the exported P7 member mutation entry accepts absent or incomplete planned target identity and therefore permits the required final identity check to be bypassed;
+- several mandatory R30 real-executor counterfactuals and exact-candidate acceptance records remain absent.
+
+The accepted R30 owner architecture, exact release/root binding, live descriptor capability, proof-as-upper-bound semantics, same-attempt invalidation, once-per-session proof lookup, four-outcome model, and Python/POSIX threat boundary remain closed and must be preserved.
+
 ## Disposition
 
-**Design/workplan: CLOSED / implementation-ready under Revision 30.**
+**Design/workplan: CLOSED / implementation-ready under Revision 30 plus the bounded Revision-31 corrections.**
 
-**Reviewed executable `6423a3f33a36c09ca1b89f5740f42c402b1993d2`: NO-PASS / bounded implementation repair remains required.**
+**Reviewed executable `3295bc47775f521db3518f6f1ba8419c78cd8b82`: NO-PASS / reopened for bounded implementation and acceptance repair under Revision 31.**
