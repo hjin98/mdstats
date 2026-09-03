@@ -5,12 +5,13 @@ protocol_version: 5.10.0
 revision: 37
 status: reopened
 current_authority_pointer: AUTHORITY_REVISION_37.md
-current_workplan: STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_16.md
+current_workplan: STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_17.md
+current_review_note: AUTHORITY_REVIEW_NOTE_R37_IR17.md
 accepted_design: STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md
-reviewed_executable_commit: 84a2df7779884fa3c0590588366bd139dd6241de
-reviewed_executable_tree: 9e57b388a5826ea900edb674decc605605b51fe2
-reviewed_repository_head: deaeff0a97a89858694e4f0a31a21a1ad2c8efbb
-reviewed_repository_tree: 337c053b1acb4f78f408e3c165dd4342331d0c08
+reviewed_executable_commit: 9db97f72a6ba033aa4b092edb0ece39db56f5b23
+reviewed_executable_tree: a09dabfe5eb7279adb9398a98f9349c9713962a8
+reviewed_branch_head: bd4b78e59f0b500ac130597943adab5e07fcad4b
+reviewed_branch_tree: 683fcc2324780a6f9b3dba4aab98f949090529e4
 review_verdict: NO-PASS
 ---
 
@@ -25,36 +26,51 @@ Implementation uses:
 - `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — broader frozen owner-driven storage architecture and non-goals;
 - `STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md` — accepted closed final-apply design and protected trust/outcome semantics;
 - `docs/specs/training_data/mlff_storage_management_spec.md` — current storage product contract;
-- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_16.md` — complete current Revision-37 bounded implementation and acceptance contract;
-- `AUTHORITY_REVISION_37.md` — current disposition/authority summary.
+- `AUTHORITY_REVISION_37.md` — accepted Revision-37 bounded design/workplan authority;
+- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_17.md` — complete current bounded implementation/review correction after the Revision-37 candidate;
+- `AUTHORITY_REVIEW_NOTE_R37_IR17.md` — current candidate verdict summary.
 
-Revision 31-36 implementation-review and authority files are historical provenance. Revision 37 is snapshot-complete for all still-open implementation/acceptance work; no current repair requirement depends exclusively on superseded review files, Git history, prior conversation, or optional tool state.
+`STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_16.md` remains the Revision-37 implementation handoff that produced candidate `9db97f72...`; IR17 supersedes it only for work still open after review. Revision 31-36 review/authority files remain historical provenance.
 
-## Preserved architecture and conforming implementation
+No Revision 38 is created: the current blockers are implementation and acceptance nonconformance under requirements already explicit in Revision 37, not new product semantics.
 
-Revision 30 remains the closed accepted design: P7 owns released-state/proof/currentness semantics; exact release/root/target identities remain plan-bound and reauthenticated on live capabilities; proof remains a monotonic-shrink upper bound; same-attempt contradiction invalidates only that attempt; proof lookup remains once-per-session/read-only; the four cleanup mutation outcomes remain frozen; Python `>=3.10` and the accepted descriptor-pinned POSIX threat boundary remain unchanged.
+## Reviewed candidate
 
-Preserve conforming implementation including the shared cleanup `MutationLedger`, mutation truth independent of byte credit, exact per-action reclaimed bytes, explicit executor mutation-based exceptional terminality, descriptor-relative/no-follow child recursion, trust-owned opened-descriptor mount helper, typed common-member handoff, complete P7 target identity, real two-attempt isolation, restore destination/dedup/maintenance immediate mutation marks, the thin public `remove_durably` wrapper, truthful traversal documentation, and the current storage-specification direction.
+The executable candidate is `9db97f72a6ba033aa4b092edb0ece39db56f5b23`, tree `a09dabfe5eb7279adb9398a98f9349c9713962a8`.
 
-## Revision-37 bounded reopen
+The branch successor `bd4b78e59f0b500ac130597943adab5e07fcad4b`, tree `683fcc2324780a6f9b3dba4aab98f949090529e4`, changes only the generated storage-specification PDF, so behavioral findings remain bound to the executable tree above.
 
-Current blocking implementation/acceptance work is fully specified in `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_16.md`. In summary:
+## Preserved conforming implementation
 
-1. make unlink and every acceptance-relevant atomic storage publication transition-exact; remove post-hoc pathname disappearance inference and signature-incompatible fallback paths that can fabricate mutation;
-2. propagate atomic publication truth through archive blob, manifest, and catalog phases, so the last successfully crossed phase is recorded before later fsync/readback failure can escape;
-3. treat restore-journal publication as the durable recovery-state mutation it is: the initial nonterminal journal and terminal replacement must establish execution mutation/phase truth at their atomic publication boundaries, independently of later destination installation;
-4. retain opened parent/child descriptor authority through each final fd-relative `rmdir`, with an immediate final no-follow identity comparison, and apply opened-descriptor mount trust throughout individually-authorized common-member descent;
-5. require explicit typed common-member authority; a bare path may not default to regular-file deletion permission;
-6. make P7/generic/common descriptor and `ReleasedAttemptSession` closure leak-free and terminality-safe, preserving primary mutation failures while surfacing close-only failures;
-7. replace helper/manual-result acceptance with required real planner/owner/`StorageExecutor`/audit counterfactuals, including publication-phase and restore-journal counterfactuals, and strengthen patch/failpoint liveness beyond `hasattr`;
-8. run and record fresh exact-candidate affected regression/integration/static/document evidence after the final executable edit.
+Preserve the candidate's conforming Revision-37 work unless a narrowly necessary local adjustment is required by IR17:
 
-Serena/Semgrep/Hypothesis remain optional evidence helpers under the bound protocol. They may improve source understanding, variant discovery, or invariant testing when available, but they are not authority and their absence is nonblocking.
+- exact unlink transition callbacks with no post-hoc disappearance inference or mutation-fabricating signature fallback;
+- atomic-publication callbacks at `os.replace`, monotonic archive blob/manifest/catalog phases, and restore nonterminal/terminal journal mutation phases;
+- hot-reclaim transition truth, restore destination transition truth, and existing dedup/maintenance mutation timing;
+- final no-follow name-vs-opened-descriptor comparison before fd-relative directory `rmdir`;
+- descriptor-relative/no-follow child recursion and canonical opened-descriptor mount policy;
+- explicit typed common-member authority;
+- one-way `ReleasedAttemptSession` invalidation and conforming P7 action/finalizer ranking;
+- shared `MutationLedger`, exact per-action byte accounting, zero-credit mutation truth, complete P7 target identity, two-attempt isolation, and the frozen four cleanup outcomes.
 
-External DFT, long GPU production, and environment-specific HPC/shared-storage qualification remain deferred and nonblocking. Whole-repository behavioral pytest remains conditional on an unbounded final affected surface or independent repository policy.
+## Current bounded reopen — IR17
+
+The complete still-open contract is `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_17.md`. In summary:
+
+1. generic/fully-certified recursive cleanup must authenticate the actual opened root against the plan-bound target identity before traversal and may not treat a fresh absolute/multi-component parent open as an authenticated capability;
+2. individually-authorized common cleanup must move authority-root/container identity proof onto the actual opened descriptors, eliminating the precheck-then-reopen window;
+3. recursive mount-refusal close must route through the canonical primary/secondary close ranking so an earlier `MutationLedger` prefix cannot be lost;
+4. `open_directory_nofollow()` must never attempt to close the same acquired descriptor twice when cleanup close itself fails;
+5. perform a bounded close-family census over consequential generic/common/P7 acquisition and finalization paths;
+6. replace helper/manual-result proxy acceptance for material generic/common R37 claims with real inventory/planning/`StorageExecutor.run`/audit counterfactuals;
+7. after the last executable/test edit, run and record the complete exact-candidate affected regression/integration/static/document evidence required by IR17/R37.
+
+Serena/Semgrep/Hypothesis remain optional evidence helpers under Protocol 5.10. Use them where available and materially useful; their absence is nonblocking and does not waive the engineering claims.
+
+External DFT, long GPU production, and environment-specific HPC/shared-storage qualification remain deferred and nonblocking.
 
 ## Disposition
 
-**Design/workplan:** **CLOSED / implementation-ready under Revision 30 plus the bounded Revision-37 implementation corrections.**
+**Design/workplan:** Revision 30 + Revision 37 remain **CLOSED / implementation-ready**.
 
-**Reviewed executable commit `84a2df7779884fa3c0590588366bd139dd6241de`, tree `9e57b388a5826ea900edb674decc605605b51fe2`: NO-PASS / reopened under Revision 37.**
+**Reviewed executable `9db97f72a6ba033aa4b092edb0ece39db56f5b23`, tree `a09dabfe5eb7279adb9398a98f9349c9713962a8`: NO-PASS / reopened for bounded R37 correction under IR17.**
