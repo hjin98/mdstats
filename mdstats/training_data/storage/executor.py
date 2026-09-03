@@ -41,6 +41,7 @@ from .admission import revalidate_admission
 from .control_plane import StorageControlPlane
 from .durability import durable_unlink
 from .inventory import StorageInventorySnapshot
+from .trust import dir_fd_mutation_supported
 from .lease import OwnerSynchronization, owner_mutation_barrier, storage_operation_lease
 from .outcome import (
     MutationLedger,
@@ -234,15 +235,32 @@ class StorageExecutor:
                         else:
                             engine(plan, snapshot, result)
                     except BaseException as exc:
-                        # An interruption part-way through is recorded truthfully
-                        # as partial. Each completed mutation was individually
-                        # authorized, so nothing is rolled back; the next run
+                        # An interruption is reported from what the action
+                        # recorder actually captured, not from the fact that
+                        # control left this way. An execution that failed before
+                        # changing anything is not "partial after a strict
+                        # subset of actions" - that sentence claims a mutation
+                        # that never happened, and it is the sentence an
+                        # operator reads after an incident. `_settle` already
+                        # refuses to call a nothing-happened execution partial;
+                        # the two paths agree now.
+                        #
+                        # Whatever did complete was individually authorized, so
+                        # nothing is rolled back and the audit is still
+                        # published before the failure continues; the next run
                         # re-inventories and re-plans from live state.
-                        result.status = STATUS_PARTIAL
-                        result.detail = (
-                            "execution was interrupted after a strict subset of "
-                            f"actions: {exc}"
-                        )
+                        if result.mutated or result.completed:
+                            result.status = STATUS_PARTIAL
+                            result.detail = (
+                                "execution was interrupted after a strict subset of "
+                                f"actions: {exc}"
+                            )
+                        else:
+                            result.status = STATUS_REFUSED
+                            result.detail = (
+                                "execution was interrupted before any action changed "
+                                f"anything; nothing was modified: {exc}"
+                            )
                         self._finalize(result, trigger=trigger)
                         raise
                     self._settle(result)
@@ -384,7 +402,21 @@ class StorageExecutor:
 
 
 def remove_durably(path: Path) -> bool:
-    """Remove one authorized path and persist the directory-entry change."""
+    """Remove one path and persist the directory-entry change.
+
+    **Not the cleanup owner.** No consequential storage path calls this: the
+    cleanup engines route every removal through `remove_durably_outcome` or
+    `remove_certified_subtree`, which descend no-follow through directory
+    descriptors and keep an exact per-transition account. This one delegates
+    recursion to `shutil.rmtree` and answers with a boolean.
+
+    It is retained deliberately as a plain utility for callers that own their
+    own target and need neither the descriptor-pinned trust boundary nor the
+    mutation ledger - test setup and cross-store adoption tooling. It must not
+    be reintroduced into a cleanup path; the two have different trust and
+    accounting properties, and leaving that difference unstated is how the
+    weaker one gets picked up by mistake.
+    """
 
     from ..target_size_execution.persistence import fsync_parent_directory
 
@@ -441,15 +473,15 @@ def remove_durably_outcome(path: Path) -> MutationOutcome:
         ledger.credit(int(stats.st_size), None)
         return removed("removed", removed_bytes=ledger.removed_bytes)
 
-    if not shutil.rmtree.avoids_symlink_attacks:
-        # The proof this removal rests on was established by a no-follow
-        # observation. A recursive delete that could be redirected by a
-        # directory entry swapped underneath it would not preserve that proof
-        # through to the mutation, so this platform gets a refusal rather than a
-        # traversal it cannot guarantee.
+    if not dir_fd_mutation_supported():
+        # The recursion below descends through directory descriptors, so this is
+        # the capability that actually protects it. `shutil.rmtree`'s own
+        # symlink-attack promise describes `rmtree`'s implementation and would
+        # be no protection at all for a separate walker.
         raise StorageExecutionError(
-            "this platform cannot perform a symlink-attack-resistant recursive "
-            f"removal, so {path} is retained rather than removed"
+            "this platform does not provide the no-follow directory-descriptor "
+            f"primitives recursive removal is built on, so {path} is retained "
+            "rather than removed by pathname"
         )
     _remove_tree_tracked(path, ledger)
     _fsync_parent_tracked(path, ledger)
@@ -459,40 +491,102 @@ def remove_durably_outcome(path: Path) -> MutationOutcome:
 def _remove_tree_tracked(root: Path, ledger: MutationLedger) -> None:
     """Delete one directory tree, accounting for every entry as it goes.
 
+    Descriptor-relative and no-follow throughout. `shutil.rmtree` earns its
+    symlink-attack resistance by descending through directory descriptors; a
+    pathname walk that merely *checks* that flag inherits none of it, because
+    between classifying a child as a directory and reopening its path, that
+    entry can become a symlink and the recursion follows it out of the
+    authorized tree. So this opens each child through the one no-follow
+    acquisition the repository owns and operates relative to that descriptor.
+
     Depth-first and bottom-up so a directory is only removed once it is empty.
     A failure at any point raises with the running account attached, because by
-    then the tree on disk is neither what it was nor gone.
+    then the tree on disk is neither what it was nor gone - and an emptied
+    directory that is now removed counts as a mutation even though a directory
+    entry credits no bytes.
     """
 
+    from .trust import NamespaceAmbiguity, open_directory_nofollow
+
     try:
-        entries = sorted(os.scandir(root), key=lambda item: item.name)
+        handle = open_directory_nofollow(str(root))
+    except FileNotFoundError:
+        return
+    except NamespaceAmbiguity as exc:
+        raise ledger.failure(
+            OSError(f"{root} is not a plain directory: {exc}"),
+            f"{root} could not be opened as a plain directory: {exc}",
+        ) from exc
+    try:
+        _remove_tree_contents(handle, root, ledger)
+    finally:
+        os.close(handle)
+    try:
+        os.rmdir(root)
     except OSError as exc:
-        raise ledger.failure(exc, f"{root} could not be enumerated: {exc}") from exc
+        raise ledger.failure(exc, f"{root} could not be removed: {exc}") from exc
+    ledger.note_mutation()
+
+
+def _remove_tree_contents(handle: int, display: Path, ledger: MutationLedger) -> None:
+    """Empty one already-authenticated directory, relative to its descriptor."""
+
+    from .trust import NamespaceAmbiguity, open_directory_nofollow
+
+    try:
+        entries = sorted(os.scandir(handle), key=lambda item: item.name)
+    except OSError as exc:
+        raise ledger.failure(exc, f"{display} could not be enumerated: {exc}") from exc
     for entry in entries:
-        child = Path(entry.path)
+        child = display / entry.name
         try:
             is_dir = entry.is_dir(follow_symlinks=False)
         except OSError as exc:
             raise ledger.failure(exc, f"{child} could not be observed: {exc}") from exc
         if is_dir:
-            _remove_tree_tracked(child, ledger)
+            # Opened no-follow from this descriptor: an entry replaced by a
+            # symlink between the classification above and this open is refused
+            # here rather than followed to whatever it points at.
+            try:
+                child_handle = open_directory_nofollow(entry.name, dir_fd=handle)
+            except FileNotFoundError:
+                continue
+            except NamespaceAmbiguity as exc:
+                raise ledger.failure(
+                    OSError(f"{child} is no longer a plain directory: {exc}"),
+                    f"{child} is no longer the plain directory it was observed as: {exc}",
+                ) from exc
+            try:
+                _remove_tree_contents(child_handle, child, ledger)
+            finally:
+                os.close(child_handle)
+            try:
+                os.rmdir(entry.name, dir_fd=handle)
+            except OSError as exc:
+                raise ledger.failure(exc, f"{child} could not be removed: {exc}") from exc
+            ledger.note_mutation()
             continue
         try:
             child_stat = entry.stat(follow_symlinks=False)
         except OSError as exc:
             raise ledger.failure(exc, f"{child} could not be measured: {exc}") from exc
         try:
-            os.unlink(entry.path)
+            os.unlink(entry.name, dir_fd=handle)
         except OSError as exc:
             raise ledger.failure(exc, f"{child} could not be removed: {exc}") from exc
+        if stat.S_ISLNK(child_stat.st_mode):
+            # The link entry itself is removed; its target never is.
+            ledger.note_mutation()
+            continue
         ledger.credit(
             int(child_stat.st_size), (int(child_stat.st_dev), int(child_stat.st_ino))
         )
     try:
-        os.rmdir(root)
+        os.fsync(handle)
     except OSError as exc:
-        raise ledger.failure(exc, f"{root} could not be removed: {exc}") from exc
-    ledger.note_mutation()
+        raise ledger.failure(
+            exc, f"{display} was emptied but the removal could not be made durable: {exc}"
+        ) from exc
 
 
 def _fsync_parent_tracked(path: Path, ledger: MutationLedger) -> None:
@@ -671,10 +765,15 @@ def _remove_tree_or_file_tracked(path: Path, ledger: MutationLedger) -> None:
             ) from exc
         ledger.credit(int(stats.st_size), None)
         return
-    if not shutil.rmtree.avoids_symlink_attacks:
+    if not dir_fd_mutation_supported():
+        # The recursion below descends through directory descriptors, so this is
+        # the capability that actually protects it. `shutil.rmtree`'s own
+        # symlink-attack promise describes `rmtree`'s implementation and would
+        # be no protection at all for a separate walker.
         raise StorageExecutionError(
-            "this platform cannot perform a symlink-attack-resistant recursive "
-            f"removal, so {path} is retained rather than removed"
+            "this platform does not provide the no-follow directory-descriptor "
+            f"primitives recursive removal is built on, so {path} is retained "
+            "rather than removed by pathname"
         )
     _remove_tree_tracked(path, ledger)
     _fsync_parent_tracked(path, ledger)

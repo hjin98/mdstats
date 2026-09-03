@@ -911,31 +911,45 @@ def test_interrupted_multi_action_cleanup_is_truthful_and_re_plans(tmp_path: Pat
         ]
         assert len(targets) >= 3, targets
 
-        # The failpoint has to sit on whichever removal owner the actions
-        # actually reach: generic storage removal, and the P7 released-attempt
-        # boundary that owns descriptor-relative reclamation.
+        # The failpoint has to sit on the removal owners the engine actually
+        # calls. `remove_durably` is no longer one of them - patching it would
+        # intercept nothing while the assertions below still claimed to cover
+        # the generic branch - so this patches `remove_durably_outcome` and the
+        # certified-container helper, and asserts each was really invoked.
         from mdstats.training_data.qualification import store as qstore
 
-        real_remove = executor_mod.remove_durably
+        real_generic = executor_mod.remove_durably_outcome
+        real_subtree = executor_mod.remove_certified_subtree
         real_released = qstore.remove_released_attempt_member
         removed: list[Path] = []
+        owners_used: set[str] = set()
 
         def _interrupt_after_two() -> None:
             if len(removed) >= 2:
                 raise RuntimeError("injected interruption after a strict subset")
 
-        def failing_remove(path: Path) -> bool:
+        def failing_generic(path: Path):
+            owners_used.add("generic")
             _interrupt_after_two()
             removed.append(path)
-            return real_remove(path)
+            return real_generic(path)
+
+        def failing_subtree(path, **kwargs):
+            owners_used.add("subtree")
+            _interrupt_after_two()
+            removed.append(Path(path))
+            return real_subtree(path, **kwargs)
 
         def failing_released(session, member_name, **kwargs):
+            owners_used.add("released")
             _interrupt_after_two()
             removed.append(Path(session.attempt_root) / member_name)
             return real_released(session, member_name, **kwargs)
 
-        executor_mod.remove_durably = failing_remove
-        storage_commands.remove_durably = failing_remove
+        executor_mod.remove_durably_outcome = failing_generic
+        storage_commands.remove_durably_outcome = failing_generic
+        executor_mod.remove_certified_subtree = failing_subtree
+        storage_commands.remove_certified_subtree = failing_subtree
         qstore.remove_released_attempt_member = failing_released
         try:
             with pytest.raises(RuntimeError, match="injected interruption"):
@@ -946,10 +960,15 @@ def test_interrupted_multi_action_cleanup_is_truthful_and_re_plans(tmp_path: Pat
                     engine=storage_commands._cleanup_engine(context, policy),
                 )
         finally:
-            executor_mod.remove_durably = real_remove
-            storage_commands.remove_durably = real_remove
+            executor_mod.remove_durably_outcome = real_generic
+            storage_commands.remove_durably_outcome = real_generic
+            executor_mod.remove_certified_subtree = real_subtree
+            storage_commands.remove_certified_subtree = real_subtree
             qstore.remove_released_attempt_member = real_released
 
+        # Proven, not inferred from a surviving-target count: a failpoint on a
+        # name the engine never calls would otherwise pass silently.
+        assert owners_used, "no removal owner was intercepted at all"
         surviving = [item for item in targets if item.exists()]
         assert len(surviving) == len(targets) - 2
 
@@ -4605,31 +4624,48 @@ def test_an_invalidated_attempt_still_lets_an_independent_action_proceed(
 
 
 def test_the_post_mutation_partial_records_the_exact_byte_amount(tmp_path: Path):
-    """R31-5: the durability case must assert the exact per-action value."""
+    """R32-4: the exact per-action value, not a range.
+
+    The failure is injected at a known point - after one certified file has been
+    unlinked - so the substantiated amount is that file's size and nothing else.
+    `> 0` and `<= planned` would pass for any wrong number in between.
+    """
 
     import os as _os
 
     from mdstats.training_data.qualification import store as qstore
 
     config, _workspace, _harness = _released_attempt_campaign(tmp_path)
-    planned = {
-        str(action.path): int(action.size_bytes)
-        for action in _cleanup_plan_actions(config)
-    }
+    _snap, _paths, view = _released_scratch_view(config)
+
+    # Every certified file's size, measured from the live tree *before* the run.
+    # The expectation is therefore computed independently of anything the
+    # implementation reports.
+    measured = {}
+    for item in view.path.rglob("*"):
+        if item.is_file():
+            stats = item.stat()
+            measured[item.name] = (
+                int(stats.st_size),
+                (int(stats.st_dev), int(stats.st_ino)),
+            )
+    assert measured
+
     real_fsync = _os.fsync
-    unlinked: list[str] = []
     real_unlink = qstore._unlink_certified_file
+    unlinked: list[str] = []
 
     def note_unlink(parent_fd, name):
+        result = real_unlink(parent_fd, name)
         unlinked.append(name)
-        return real_unlink(parent_fd, name)
+        return result
 
-    def failing_fsync(fd):
+    def fail_once_something_went(fd):
         if unlinked:
             raise OSError(5, "injected durability failure")
         return real_fsync(fd)
 
-    _os.fsync = failing_fsync
+    _os.fsync = fail_once_something_went
     qstore._unlink_certified_file = note_unlink
     try:
         with pytest.raises(OSError, match="injected durability failure"):
@@ -4638,6 +4674,20 @@ def test_the_post_mutation_partial_records_the_exact_byte_amount(tmp_path: Path)
         _os.fsync = real_fsync
         qstore._unlink_certified_file = real_unlink
 
+    # The substantiated amount is the pre-run size of exactly the entries that
+    # went, deduplicated by inode as the planner's own metric does. Computed
+    # from the tree as it was, so it is independent of anything the
+    # implementation reported - and legitimately zero for zero-byte entries,
+    # which is the point: mutation truth does not follow the byte total.
+    assert unlinked, "nothing went before the injected failure"
+    seen_inodes: set[tuple[int, int]] = set()
+    expected_bytes = 0
+    for name in unlinked:
+        size, identity = measured[name]
+        if identity in seen_inodes:
+            continue
+        seen_inodes.add(identity)
+        expected_bytes += size
     audit = _read_last_audit(config)
     assert audit is not None and audit["status"] == "partial", audit
     partials = [
@@ -4646,10 +4696,11 @@ def test_the_post_mutation_partial_records_the_exact_byte_amount(tmp_path: Path)
         if item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
     ]
     assert len(partials) == 1, partials
-    entry = partials[0]
-    # Exact, and never the planned size of a target that only partly went.
-    assert int(entry["reclaimed_bytes"]) > 0, entry
-    assert int(entry["reclaimed_bytes"]) <= planned[entry["path"]], (entry, planned)
+    assert int(partials[0]["reclaimed_bytes"]) == expected_bytes, (
+        partials[0],
+        expected_bytes,
+    )
+    assert int(audit["reclaimed_bytes"]) == expected_bytes, audit
     _assert_aggregate_matches_actions(audit)
 
 
@@ -4758,8 +4809,11 @@ def test_damaged_final_authority_is_refused_by_the_real_executor(
     assert set(before) <= set(surviving), (before, surviving)
 
 
+@pytest.mark.parametrize("kind", ["file", "directory"])
 @pytest.mark.parametrize("shape", ["missing", "incomplete"])
-def test_an_incomplete_plan_identity_reaches_no_syscall(tmp_path: Path, shape: str):
+def test_an_incomplete_plan_identity_reaches_no_syscall(
+    tmp_path: Path, shape: str, kind: str
+):
     """R31-4: the target identity is an invariant, not a caller convention.
 
     Without the plan's full identity there is nothing to compare the target
@@ -4772,8 +4826,18 @@ def test_an_incomplete_plan_identity_reaches_no_syscall(tmp_path: Path, shape: s
     from mdstats.training_data.qualification import store as qstore
 
     config, _workspace, _harness = _released_attempt_campaign(tmp_path)
-    _snap, paths, view = _released_scratch_view(config)
+    snapshot, paths = _snapshot(config)
+    candidates = [
+        item
+        for item in snapshot.views
+        if item.artifact_id.startswith("p7:attempt_scratch:")
+        and item.safe_reclaimable
+        and (item.path.is_dir() if kind == "directory" else item.path.is_file())
+    ]
+    assert candidates, f"the fixture produced no reclaimable released {kind}"
+    view = candidates[0]
     before = sorted(str(item) for item in view.path.rglob("*"))
+    assert view.path.exists()
 
     session, _outcome = qstore.open_released_attempt_session(
         paths,
@@ -4826,4 +4890,429 @@ def test_an_incomplete_plan_identity_reaches_no_syscall(tmp_path: Path, shape: s
         session.close()
 
     assert touched == [], touched
+    assert view.path.exists(), "the target was removed without an identity"
     assert sorted(str(item) for item in view.path.rglob("*")) == before
+
+
+# ---------------------------------------------------------------------------
+# R32-3 / R32-6 - failure truth through the real StorageExecutor and audit
+# ---------------------------------------------------------------------------
+
+
+def _run_real_cleanup(config: Path, *, engine: bool = True):
+    """Plan and apply through the real executor, returning the result or failure.
+
+    Authorization, planning, `StorageExecutor.run`, action recording, settlement,
+    finalization and the durable audit are all production code; only the
+    low-level filesystem transition is ever instrumented by the callers below.
+    """
+
+    context, store = _context(config)
+    try:
+        policy = resolve_storage_policy(
+            {}, action=ACTION_CLEANUP, tier="safe", apply=True
+        )
+        context.consequential_plane(policy)
+        plan, snapshot = storage_commands.build_cleanup_plan(
+            context, policy.for_apply(apply=False)
+        )
+        from mdstats.training_data.storage.plan import build_storage_plan
+
+        apply_plan = build_storage_plan(
+            snapshot,
+            policy,
+            plan.actions,
+            refusals=plan.refusals,
+            created_utc=plan.created_utc,
+        )
+        raised: BaseException | None = None
+        result = None
+        try:
+            result = context.executor(policy).run(
+                apply_plan,
+                trigger="test:r32",
+                synchronization=synchronization_for(apply_plan, snapshot),
+                engine=(
+                    storage_commands._cleanup_engine(context, policy) if engine else None
+                ),
+            )
+        except BaseException as exc:  # noqa: BLE001 - propagation is the contract
+            raised = exc
+        return (result.to_dict() if result is not None else None), raised, apply_plan
+    finally:
+        store.close()
+
+
+def test_a_pre_mutation_interruption_is_never_audited_as_partial(tmp_path: Path):
+    """R32-6: the status comes from what was recorded, not from how it left.
+
+    An execution that failed before changing anything is not "partial after a
+    strict subset of actions" - that sentence claims a mutation that never
+    happened, and it is the sentence an operator reads after an incident.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    released = [
+        view.path
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    before = {path: sorted(str(item) for item in path.rglob("*")) for path in released}
+
+    real_member = qstore.remove_released_attempt_member
+
+    def fail_before_touching_anything(session, member_name, **kwargs):
+        raise RuntimeError("injected pre-mutation interruption")
+
+    qstore.remove_released_attempt_member = fail_before_touching_anything
+    try:
+        _execution, raised, _plan = _run_real_cleanup(config)
+    finally:
+        qstore.remove_released_attempt_member = real_member
+
+    assert isinstance(raised, RuntimeError), raised
+    audit = _read_last_audit(config)
+    assert audit is not None, "the audit was not published before propagation"
+    assert audit["status"] != "partial", audit
+    assert audit["status"] != "complete", audit
+    assert audit["mutated"] is False, audit
+    assert audit["completed_actions"] == [], audit
+    assert int(audit["reclaimed_bytes"]) == 0, audit
+    assert "before any action changed anything" in audit["detail"], audit["detail"]
+    for path in released:
+        assert sorted(str(item) for item in path.rglob("*")) == before[path]
+
+
+def test_a_post_mutation_interruption_remains_audited_as_partial(tmp_path: Path):
+    """R32-6: a genuine partial still reports partial, with exact bytes."""
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    planned = {
+        str(action.path): int(action.size_bytes)
+        for action in _cleanup_plan_actions(config)
+    }
+    real_member = qstore.remove_released_attempt_member
+    done: list[str] = []
+
+    def fail_after_the_first(session, member_name, **kwargs):
+        if done:
+            raise RuntimeError("injected post-mutation interruption")
+        done.append(member_name)
+        return real_member(session, member_name, **kwargs)
+
+    qstore.remove_released_attempt_member = fail_after_the_first
+    try:
+        _execution, raised, _plan = _run_real_cleanup(config)
+    finally:
+        qstore.remove_released_attempt_member = real_member
+
+    assert isinstance(raised, RuntimeError), raised
+    audit = _read_last_audit(config)
+    assert audit is not None and audit["status"] == "partial", audit
+    assert audit["mutated"] is True, audit
+    assert len(audit["completed_actions"]) == 1, audit["completed_actions"]
+    entry = audit["completed_actions"][0]
+    # Deterministic: exactly the planned size of the one target that fully went.
+    assert int(entry["reclaimed_bytes"]) == planned[entry["path"]], (entry, planned)
+    assert int(audit["reclaimed_bytes"]) == int(entry["reclaimed_bytes"]), audit
+
+
+def test_the_default_engine_records_a_post_mutation_failure(tmp_path: Path):
+    """R32-3 case 1: `engine=None` shares the action-boundary recorder."""
+
+    from mdstats.training_data.storage import executor as executor_mod
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    real = executor_mod.durable_unlink
+    unlinked: list[str] = []
+
+    def unlink_then_fail(path):
+        Path(path).unlink()
+        unlinked.append(str(path))
+        raise OSError(5, "injected durability failure")
+
+    executor_mod.durable_unlink = unlink_then_fail
+    try:
+        _execution, raised, _plan = _run_real_cleanup(config, engine=False)
+    finally:
+        executor_mod.durable_unlink = real
+
+    audit = _read_last_audit(config)
+    assert audit is not None, "no audit was published"
+    if unlinked:
+        assert isinstance(raised, OSError), raised
+        assert audit["status"] == "partial", audit
+        assert audit["mutated"] is True, audit
+        partials = [
+            item
+            for item in audit["refused_actions"]
+            if item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
+        ]
+        assert partials, audit["refused_actions"]
+        assert all(int(item["reclaimed_bytes"]) >= 0 for item in partials)
+    else:
+        # The default engine refused every P7 action before mutating; that is
+        # still a truthful terminal state and never a fabricated partial.
+        assert audit["mutated"] is False, audit
+
+
+def test_the_generic_recursive_partial_is_recorded_by_the_real_executor(
+    tmp_path: Path,
+):
+    """R32-3 case 2: a subset goes, the container survives, the audit says so."""
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.control_plane import (
+        open_storage_control_plane_readonly,
+    )
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _cfg, paths = cli._load_config(config)
+    residue = (
+        open_storage_control_plane_readonly(paths).staging_root_for("f" * 32) / "dedup"
+    )
+    (residue / "sub").mkdir(parents=True)
+    (residue / "a.bin").write_bytes(b"a" * 10)
+    (residue / "sub" / "locked.bin").write_bytes(b"b" * 20)
+
+    real_contents = executor_mod._remove_tree_contents
+    fired: list[str] = []
+
+    def fail_inside_the_subdirectory(handle, display, ledger):
+        if display.name == "sub":
+            fired.append(display.name)
+            raise ledger.failure(
+                OSError(13, "injected removal failure"),
+                f"{display} could not be emptied",
+            )
+        return real_contents(handle, display, ledger)
+
+    executor_mod._remove_tree_contents = fail_inside_the_subdirectory
+    try:
+        _execution, raised, _plan = _run_real_cleanup(config)
+    finally:
+        executor_mod._remove_tree_contents = real_contents
+
+    assert fired, "the generic recursion was never reached"
+    assert isinstance(raised, OSError), raised
+    audit = _read_last_audit(config)
+    assert audit is not None and audit["status"] == "partial", audit
+    assert audit["mutated"] is True, audit
+    partials = [
+        item
+        for item in audit["refused_actions"]
+        if item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
+    ]
+    assert partials, audit["refused_actions"]
+    # The 10-byte child went before the injected failure; the locked one did not.
+    assert int(partials[0]["reclaimed_bytes"]) == 10, partials[0]
+    assert (residue / "sub" / "locked.bin").exists()
+    assert not (residue / "a.bin").exists()
+
+
+def _publish_second_released_attempt(config: Path) -> Path:
+    """A second, independently authenticated released attempt in one generation.
+
+    The P7 owner authenticates an attempt from its own records: the state must
+    authenticate against its persisted digest, its identity must be the
+    canonical identity of the binding it names, and the released proof must bind
+    that state and the generation-scoped root. Those records are produced here
+    with the production state type and the production proof publisher, so the
+    owner's real authentication - not a relaxed one - is what accepts it.
+
+    The fixture campaign has one binding and therefore one attempt of its own;
+    a second qualification generation would need a whole second P5 selection and
+    publication cycle, which this bounded case does not need. What it needs is
+    two independently authenticated attempt roots in one plan, which is exactly
+    what the owner enumerates.
+    """
+
+    from mdstats.training_data._common import digest as _digest
+    from mdstats.training_data.qualification.store import (
+        ATTEMPT_TERMINAL,
+        QualificationAttemptState,
+        _expected_attempt_identity,
+        publish_attempt_member_proof,
+    )
+
+    _snap, _paths, view = _released_scratch_view(config)
+    first_attempt = view.path.parent
+    attempts_root = first_attempt.parent
+
+    binding_digest = _digest({"schema": "test.second-attempt-binding", "seed": 2})
+    identity = _expected_attempt_identity(binding_digest)
+    publication_digest = json.loads(
+        (first_attempt / "attempt-state.json").read_text(encoding="utf-8")
+    )["publication_digest"]
+
+    second = attempts_root / identity
+    (second / "components").mkdir(parents=True)
+    (second / "components" / "one.bin").write_bytes(b"s" * 24)
+    (second / "resource-observation.json").write_bytes(b"{}")
+
+    state = QualificationAttemptState(
+        attempt_identity=identity,
+        binding_digest=binding_digest,
+        publication_digest=publication_digest,
+        state=ATTEMPT_TERMINAL,
+        referenced_paths=(),
+        opened_at="2030-01-01T00:00:00+00:00",
+        updated_at="2030-01-01T00:00:00+00:00",
+    )
+    # The real publisher writes the proof, bound to the generation-scoped root.
+    publish_attempt_member_proof(second, state, campaign_generation=1)
+    (second / "attempt-state.json").write_text(
+        json.dumps(state.to_dict()), encoding="utf-8"
+    )
+    return second
+
+
+def test_two_released_attempts_are_authenticated_independently(tmp_path: Path):
+    """The fixture premise: two attempt roots, each certified on its own."""
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    second = _publish_second_released_attempt(config)
+
+    snapshot, _paths = _snapshot(config)
+    reclaimable = [
+        view
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    roots = {view.path.parent for view in reclaimable}
+    assert len(roots) == 2, roots
+    assert second in roots, (second, roots)
+    assert snapshot.integrity_failures == (), snapshot.integrity_failures
+
+
+def test_a_contradicted_attempt_does_not_withhold_an_independent_attempt(
+    tmp_path: Path,
+):
+    """R32-4: same-attempt withholding is scoped to the attempt that failed.
+
+    Two independently authenticated released attempts in one real cleanup
+    execution. One attempt's mutation boundary contradicts its session; its
+    remaining members are withheld without a destructive call, while the other
+    attempt opens its own session and removes its members through it.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage.outcome import refused_no_change
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    second = _publish_second_released_attempt(config)
+
+    snapshot, _paths = _snapshot(config)
+    reclaimable = [
+        view
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    first_root = next(
+        view.path.parent for view in reclaimable if view.path.parent != second
+    )
+    first_members = {
+        str(view.path) for view in reclaimable if view.path.parent == first_root
+    }
+    second_members = {
+        str(view.path) for view in reclaimable if view.path.parent == second
+    }
+    assert len(first_members) > 1, first_members
+    assert second_members, second_members
+
+    sessions_opened: list[str] = []
+    real_open = qstore.open_released_attempt_session
+    real_member = qstore.remove_released_attempt_member
+
+    def observed_open(paths_arg, attempt_root, **kwargs):
+        sessions_opened.append(str(attempt_root))
+        return real_open(paths_arg, attempt_root, **kwargs)
+
+    def contradict_only_the_first(session, member_name, **kwargs):
+        if str(session.attempt_root) == str(first_root):
+            return refused_no_change("injected mutation-boundary contradiction")
+        return real_member(session, member_name, **kwargs)
+
+    qstore.open_released_attempt_session = observed_open
+    qstore.remove_released_attempt_member = contradict_only_the_first
+    try:
+        execution = _apply_cleanup(config)
+    finally:
+        qstore.open_released_attempt_session = real_open
+        qstore.remove_released_attempt_member = real_member
+
+    # Both attempts got their own live session.
+    assert {str(first_root), str(second)} <= set(sessions_opened), sessions_opened
+
+    refused = {item["path"]: item for item in execution["refused_actions"]}
+    completed = {item["path"]: item for item in execution["completed_actions"]}
+    assert first_members <= set(refused), (first_members, refused)
+    withheld = [
+        item for item in refused.values() if "shares" in item.get("refusal", "")
+    ]
+    assert withheld, refused
+    for path in first_members:
+        assert int(refused[path]["reclaimed_bytes"]) == 0
+        assert Path(path).exists(), path
+
+    # The independent attempt proceeded through its own session.
+    assert second_members <= set(completed), (second_members, completed)
+    for path in second_members:
+        assert not Path(path).exists(), path
+    assert execution["status"] == "partial", execution
+    _assert_aggregate_matches_actions(execution)
+
+
+def test_a_partial_mutation_terminates_the_execution_truthfully(tmp_path: Path):
+    """R32-4: what the design actually guarantees after a partial.
+
+    `_apply_released_member` records the partial action, invalidates the
+    session, and re-raises - so the engine loop never reaches a later action of
+    any attempt. Withholding is therefore not observable here and is not
+    asserted; what is asserted is that the partial was recorded before the
+    exception propagated and that nothing else executed.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage.outcome import (
+        PartialMutationError,
+        partial_change_refused,
+    )
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _publish_second_released_attempt(config)
+
+    real_member = qstore.remove_released_attempt_member
+    calls: list[str] = []
+
+    def partial_then_fail(session, member_name, **kwargs):
+        calls.append(member_name)
+        raise PartialMutationError(
+            partial_change_refused("injected partial mutation", removed_bytes=7),
+            OSError(5, "injected post-mutation failure"),
+        )
+
+    qstore.remove_released_attempt_member = partial_then_fail
+    try:
+        _execution, raised, _plan = _run_real_cleanup(config)
+    finally:
+        qstore.remove_released_attempt_member = real_member
+
+    assert isinstance(raised, OSError), raised
+    assert len(calls) == 1, calls
+    audit = _read_last_audit(config)
+    assert audit is not None and audit["status"] == "partial", audit
+    assert audit["mutated"] is True, audit
+    partials = [
+        item
+        for item in audit["refused_actions"]
+        if item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
+    ]
+    assert len(partials) == 1, partials
+    assert int(partials[0]["reclaimed_bytes"]) == 7, partials[0]
+    assert int(audit["reclaimed_bytes"]) == 7, audit

@@ -1231,21 +1231,8 @@ def validate_bound_attempt_proof(
 _DIR_FD_MUTATION_PRIMITIVES = ("O_NOFOLLOW", "O_DIRECTORY")
 
 
-def dir_fd_mutation_supported() -> bool:
-    """Whether this platform can mutate relative to a directory descriptor.
-
-    Without these, an authenticated attempt root cannot be carried through to
-    the destructive syscall, and the accepted answer is to refuse rather than
-    fall back to absolute-path traversal.
-    """
-
-    return (
-        all(hasattr(os, name) for name in _DIR_FD_MUTATION_PRIMITIVES)
-        and os.unlink in os.supports_dir_fd
-        and os.rmdir in os.supports_dir_fd
-        and os.open in os.supports_dir_fd
-        and os.scandir in getattr(os, "supports_fd", frozenset())
-    )
+#: Owned by ``storage.trust`` alongside the primitive it guards; bound at
+#: the bottom of this module for the circular-import reason given there.
 
 
 class SpentCapabilityError(RuntimeError):
@@ -1569,6 +1556,9 @@ def remove_released_attempt_member(
         f"{member_name}/",
         seen=set(),
     )
+    # Gated on mutation, never on the byte total: a recursion that unlinked a
+    # zero-byte file or removed an empty directory changed the namespace and
+    # owes the same durability step as one that freed a gigabyte.
     if outcome.mutated:
         _fsync_after_mutation(
             attempt_fd,
@@ -1620,7 +1610,8 @@ def _remove_certified_directory(
     recorded: Mapping[str, str],
     prefix: str,
     *,
-    seen: set[tuple[int, int]],
+    seen: set[tuple[int, int]] | None = None,
+    ledger: "MutationLedgerT | None" = None,
 ) -> "MutationOutcomeT":
     """Recursively remove one certified directory, descriptor-relative.
 
@@ -1632,44 +1623,41 @@ def _remove_certified_directory(
 
     Stopping part-way is a real outcome, not a failure to report: by the time a
     contradiction appears, earlier certified children of this container may
-    already be unlinked. The caller is told exactly that, with the bytes that
-    actually went - measured before each unlink, because afterwards there is
-    nothing left to measure, and accumulated through nested calls so a subtree
-    that was fully removed still counts toward a parent that later stops.
+    already be unlinked. The ledger answers two *different* questions - whether
+    anything was destroyed, and how many bytes that accounted for - because they
+    genuinely come apart. Unlinking a zero-byte file, removing an empty
+    directory, or dropping one more hard link to an already-counted inode all
+    change the namespace while crediting nothing. Deciding "did this mutate?"
+    from the byte total would report those as no change, and would also skip the
+    durability step the caller owes for entries that really went.
 
     ``seen`` carries ``(device, inode)`` across the whole action so a file with
     several hard links is counted once, matching the planner's own tree metric.
-    Counting it per link would report more reclaimed bytes than the filesystem
-    ever had.
     """
 
     from ..storage.outcome import (
+        MutationLedger,
         PartialMutationError,
         already_absent,
-        partial_change_refused,
-        refused_no_change,
         removed as removed_outcome,
     )
     from ..storage.trust import crosses_mount_boundary_at
 
-    freed = 0
+    if ledger is None:
+        ledger = MutationLedger()
+    if seen is not None:
+        # Callers that pre-seed the dedup set keep it authoritative.
+        ledger.adopt_seen(seen)
 
     def stop(detail: str) -> "MutationOutcomeT":
-        if freed:
-            return partial_change_refused(detail, removed_bytes=freed)
-        return refused_no_change(detail)
-
-    def stop_failure(exc: BaseException, detail: str) -> "PartialMutationError":
-        return PartialMutationError(
-            partial_change_refused(detail, removed_bytes=freed), exc
-        )
+        return ledger.stop(detail)
 
     try:
         handle = _open_directory_nofollow(name, dir_fd=parent_fd)
     except FileNotFoundError:
         return already_absent("already gone")
     except NamespaceAmbiguity as exc:
-        return refused_no_change(f"{display}: {exc}")
+        return stop(f"{display}: {exc}")
     try:
         try:
             entries = sorted(os.scandir(handle), key=lambda item: item.name)
@@ -1693,22 +1681,14 @@ def _remove_certified_directory(
                 )
                 if crossed:
                     return stop(detail)
-                try:
-                    nested = _remove_certified_directory(
-                        handle,
-                        entry.name,
-                        child_display,
-                        recorded,
-                        f"{child_relative}/",
-                        seen=seen,
-                    )
-                except PartialMutationError as exc:
-                    # A nested subtree mutated and then failed. Its bytes are
-                    # this action's bytes too, so they are folded in before the
-                    # failure continues upward.
-                    freed += int(exc.outcome.removed_bytes or 0)
-                    raise stop_failure(exc.cause or exc, exc.outcome.detail) from exc
-                freed += int(nested.removed_bytes or 0)
+                nested = _remove_certified_directory(
+                    handle,
+                    entry.name,
+                    child_display,
+                    recorded,
+                    f"{child_relative}/",
+                    ledger=ledger,
+                )
                 if not nested.succeeded:
                     return stop(nested.detail)
                 continue
@@ -1734,19 +1714,18 @@ def _remove_certified_directory(
                 child_stat = entry.stat(follow_symlinks=False)
             except OSError as exc:
                 return stop(f"{child_display} could not be measured: {exc}")
-            key = (int(child_stat.st_dev), int(child_stat.st_ino))
-            measured = 0 if key in seen else int(child_stat.st_size)
             try:
                 _unlink_certified_file(handle, entry.name)
             except OSError as exc:
                 return stop(f"{child_display} could not be removed: {exc}")
-            if key not in seen:
-                seen.add(key)
-                freed += measured
+            ledger.credit(
+                int(child_stat.st_size),
+                (int(child_stat.st_dev), int(child_stat.st_ino)),
+            )
         try:
             os.fsync(handle)
         except OSError as exc:
-            raise stop_failure(
+            raise ledger.failure(
                 exc,
                 f"{display} was emptied but the removal could not be made durable: {exc}",
             ) from exc
@@ -1756,7 +1735,10 @@ def _remove_certified_directory(
         os.rmdir(name, dir_fd=parent_fd)
     except OSError as exc:
         return stop(f"{display} could not be removed: {exc}")
-    return removed_outcome("removed", removed_bytes=freed)
+    # An emptied directory that is now gone is a destructive transition even
+    # though a directory entry credits no bytes under the planner's metric.
+    ledger.note_mutation()
+    return removed_outcome("removed", removed_bytes=ledger.removed_bytes)
 
 
 def authorize_released_attempt_member(
@@ -2076,8 +2058,11 @@ def iter_attempt_states(workspace_or_paths: Any) -> tuple[QualificationAttemptSt
     return states
 
 
-class NamespaceAmbiguity(RuntimeError):
-    """A P7 authority-bearing namespace component could not be authenticated."""
+#: Both are owned by ``storage.trust`` and bound at the bottom of this module.
+#: The storage package initializes this one, so binding them up here would be a
+#: circular import; by the end of the file this module is complete and the
+#: import resolves normally.  Declared here so readers meet them in place.
+NamespaceAmbiguity: type[RuntimeError]
 
 
 #: Errors that mean "this name is simply not there".  Everything else - a
@@ -2091,51 +2076,17 @@ _ABSENT_ERRNOS = frozenset({errno.ENOENT})
 NODE_SYMLINK_NAME = "symlink"
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ..storage.outcome import MutationLedger as MutationLedgerT
     from ..storage.outcome import MutationOutcome as MutationOutcomeT
 else:  # pragma: no cover - the alias is only a name for signatures
     MutationOutcomeT = "MutationOutcome"
+    MutationLedgerT = "MutationLedger"
 
 
-def _open_directory_nofollow(name: str, *, dir_fd: int | None = None) -> int:
-    """Open one directory as itself, never through a substituted entry.
-
-    ``O_DIRECTORY|O_NOFOLLOW`` refuses a symlink or non-directory in the same
-    syscall that opens the name, and opening relative to an already
-    authenticated parent descriptor is what makes the descent *continuous*: a
-    check followed by a fresh path lookup is two different namespace
-    resolutions, and an ancestor swapped between them would be followed.
-    """
-
-    flags = (
-        os.O_RDONLY
-        | os.O_DIRECTORY
-        | os.O_NOFOLLOW
-        # A no-follow open still *opens* the name, and opening a FIFO for
-        # reading blocks until someone opens the write end - forever, for a
-        # planted node nobody writes to. An owner that can be made to hang by
-        # planting a special node has not failed closed, so every authority-
-        # bearing open is non-blocking and the kind is decided by ``fstat``.
-        | getattr(os, "O_NONBLOCK", 0)
-        | getattr(os, "O_CLOEXEC", 0)
-    )
-    try:
-        handle = os.open(name, flags, dir_fd=dir_fd)
-    except FileNotFoundError:
-        raise
-    except OSError as exc:
-        raise NamespaceAmbiguity(
-            f"{name!r} could not be opened as a plain directory ({exc.strerror})"
-        ) from exc
-    try:
-        if not stat.S_ISDIR(os.fstat(handle).st_mode):
-            os.close(handle)
-            raise NamespaceAmbiguity(f"{name!r} is not a directory")
-    except OSError as exc:
-        os.close(handle)
-        raise NamespaceAmbiguity(
-            f"{name!r} could not be identified after opening ({exc.strerror})"
-        ) from exc
-    return handle
+#: The one no-follow directory acquisition, owned by ``storage.trust``.  The P7
+#: descent and the storage executor's recursions share it deliberately: two
+#: copies of a trust primitive is how one of them ends up weaker than the other.
+#: Bound at the bottom of this module, for the reason given above.
 
 
 def _read_regular_file_nofollow(name: str, *, dir_fd: int) -> bytes | None:
@@ -3143,3 +3094,13 @@ __all__ = [
     "release_attempt_reference",
     "resolve_current_qualification_record",
 ]
+
+
+# Owned by ``storage.trust`` so the P7 descent and the storage executor's
+# recursions cannot drift apart.  Imported here, at the end, because the storage
+# package initializes this module: by now this one is complete.
+from ..storage.trust import (  # noqa: E402
+    NamespaceAmbiguity,
+    dir_fd_mutation_supported,
+    open_directory_nofollow as _open_directory_nofollow,
+)

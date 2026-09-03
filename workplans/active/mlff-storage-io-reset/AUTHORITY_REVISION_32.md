@@ -47,9 +47,11 @@ It is nevertheless **NO-PASS** because:
 - the new generic/common recursive pathname walker no longer inherits `shutil.rmtree`'s symlink-attack-resistant fd-based descent even though it still checks `shutil.rmtree.avoids_symlink_attacks`, creating a new deletion-safety regression;
 - several Revision-31 acceptance claims remain proxy/helper evidence instead of real `StorageExecutor.run` + settlement + durable-audit evidence;
 - the required independent-P7-attempt scoping case and exact deterministic post-mutation byte equality remain unclosed;
-- exact-candidate final behavioral regression/integration/static evidence for the executable commit/tree is not supplied.
+- exact-candidate final behavioral regression/integration/static evidence for the executable commit/tree is not supplied;
+- an interrupted execution is reported and audited as `partial` even when nothing was recorded as mutated, contradicting the settlement rule the same executor already applies on its success path;
+- the R30 interruption/retry integration case installs its generic-removal failpoint on names the cleanup path no longer calls, so half of that counterfactual is vacuous while still passing.
 
-The precise findings and repair contract are in `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_11.md`.
+The precise findings and repair contract — seven blocking groups R32-1..R32-7, plus the two acceptance premises now settled against the executable tree (two independent released P7 attempts in one execution are supported; a partial mutation terminates the execution rather than withholding later same-attempt actions) — are in `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_11.md`.
 
 ## Authority
 
