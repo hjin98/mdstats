@@ -8,8 +8,7 @@ predecessor_workplan: DOC-REPAIR2-PERF1
 review_status: FINAL_REVIEW_HARDENED
 completed_date: 2026-08-21
 accepted_source_commit: 9d97569bf3d7802d813d3562a2e34f4409be67ec
-product_evidence: qualification/mvqual-mem1/mvqual-mem1-p2.json
-closeout_record: qualification/mvqual-mem1/p3-product-closeout.json
+raw_qualification_evidence: retired_after_closeout_for_publication_hygiene
 ---
 
 # DOC-MVQUAL-MEM1-PERF1 — completed bounded exact MVQUAL and progressive sparse optimization
@@ -18,7 +17,7 @@ closeout_record: qualification/mvqual-mem1/p3-product-closeout.json
 
 DONE. MEM1 is accepted and PERF1 stops at P2/P3.
 
-TARGET-DATA2C-MVQUAL1 now completes the full product ladder through 16,384 with strict bounded sparse scratch, exact unchanged scientific authority, zero swap in the measured product runs, and approximately half the accepted M5 warm builder wall time.
+TARGET-DATA2C-MVQUAL1 completes the full product ladder through 16,384 with strict bounded sparse scratch, exact unchanged scientific authority, zero swap in the measured product runs, and approximately half the accepted M5 warm builder wall time.
 
 The accepted runtime uses the bounded M2 independent-rung implementation as the exact oracle and adds progressive sparse reuse only for truly nested selector ladders. P1 progressive direct TARGET-DATA2B reuse was measured and rejected because it increased the critical path; it is not part of the accepted runtime.
 
@@ -52,21 +51,13 @@ The scheduler admission estimate is phase-aware rather than proportional to tota
 
 ### P2
 
-For exact nested `(domain, selector)` ladders, progressive sparse telemetry processes only candidate rows newly added between rungs. Per family it carries:
-
-- witness multiplicity;
-- sole owner while multiplicity equals one;
-- per-candidate unique-witness count;
-- exact `0 -> 1` ownership creation;
-- exact `1 -> 2+` ownership revocation.
+For exact nested `(domain, selector)` ladders, progressive sparse telemetry processes only candidate rows newly added between rungs. Per family it carries witness multiplicity, sole-owner state, per-candidate unique-witness counts, exact `0 -> 1` ownership creation, and exact `1 -> 2+` ownership revocation.
 
 Scientific mass reductions are still recomputed in canonical full-witness order at every rung. Families remain parallel work units, preserving four-worker product concurrency. Nonnested ladders fall back to the accepted bounded M2 implementation.
 
 ## P1 rejected
 
-P1 reused the existing progressive TARGET-DATA2B scorer and preserved exact science, but failed its performance acceptance gate.
-
-Evidence is retained in `qualification/mvqual-mem1/p1-product-rejection.json`:
+P1 reused the existing progressive TARGET-DATA2B scorer and preserved exact science, but failed its performance acceptance gate. The retained closeout facts are:
 
 - accepted M5 warm builder: 00:06:58;
 - P1 repeat-1 builder: approximately 00:07:33;
@@ -74,11 +65,9 @@ Evidence is retained in `qualification/mvqual-mem1/p1-product-rejection.json`:
 - scientific digest unchanged;
 - peak RSS remained bounded and swap remained zero.
 
-The regression occurred because only two selector-level progressive direct tasks ran before the normal MVQUAL queue, while the previous direct work had already overlapped inside the four-worker rung queue. P1 therefore reduced theoretical direct work but lengthened the product critical path. Its executable runtime is retired at closeout; only rejection chronology is retained.
+The regression occurred because only two selector-level progressive direct tasks ran before the normal MVQUAL queue, while the previous direct work had already overlapped inside the four-worker rung queue. P1 therefore reduced theoretical direct work but lengthened the product critical path. Its executable runtime was retired at closeout.
 
 ## P2/P3 product qualification
-
-Authoritative evidence is `qualification/mvqual-mem1/mvqual-mem1-p2.json`; normalized closeout is `qualification/mvqual-mem1/p3-product-closeout.json`.
 
 Product identity:
 
@@ -101,7 +90,7 @@ Repeated total benchmark results including authority load:
 
 The accepted M5 warm builder was 418.325 s (00:06:58). P2 therefore reduces the comparable builder wall by approximately 50% and is comfortably below the workplan's approximately five-minute stop target.
 
-P2 execution itself recorded:
+P2 execution recorded:
 
 - progressive groups: 2/2;
 - fallback groups: 0;
@@ -137,9 +126,11 @@ Memory/safety evidence:
 | P2 | PASS | Progressive sparse telemetry reduced repeated nested-rung rescans while preserving M2 as exact oracle. |
 | P3 | PASS | Repeated product builder 00:03:27/00:03:29, unchanged digest, bounded RSS, zero swap, strict chunking. |
 
-## Documentation decision
+## Evidence-retention decision
 
-No permanent architecture/specification delta is required. The accepted change is execution-only and does not alter a durable scientific, public API, persistence, policy, schema, or content-digest contract. Benchmark and qualification evidence remain in their dedicated repository locations; this archived workplan retains implementation chronology only.
+The raw `qualification/mvqual-mem1/` host/run receipts were retired after final closeout as part of pre-publication repository hygiene. They contained no continuing product authority beyond the accepted facts preserved above and included machine-specific provenance unsuitable for the public repository. This archived workplan is the durable compact record for the accepted scientific digest, performance measurements, memory/swap observations, P1 rejection, P2/P3 acceptance, and gate disposition.
+
+No permanent architecture/specification delta is required. The accepted change is execution-only and does not alter a durable scientific, public API, persistence, policy, schema, or content-digest contract.
 
 ## Test-evidence note
 
@@ -160,4 +151,4 @@ Further direct TARGET-DATA2B progressive regrouping is specifically not justifie
 
 ## Handoff
 
-`DOC-MVQUAL-MEM1-PERF1` is closed. The feature branch is ready for review/merge after removal of rejected P1 executable artifacts and the active-plan copy. No additional PERF1 gate is authorized by this workplan.
+`DOC-MVQUAL-MEM1-PERF1` is closed. No additional PERF1 gate is authorized by this workplan.

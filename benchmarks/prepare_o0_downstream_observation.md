@@ -2,7 +2,7 @@
 
 Date: 2026-08-20
 Branch: `codex/repair2-perf1`
-Evidence: `prepare-o0.json`
+Evidence status: summarized below; the raw host-specific observation receipt was retired during pre-publication repository hygiene.
 
 ## Scope
 
