@@ -13,7 +13,7 @@ The frozen candidate commit and tree (`97fa48fc4a8e5be0da8cbcd22ba10248fa37acee`
 Preflight inspection performed directly from the qualifying Python interpreter:
 
 ```text
-Imported mdstats module: $HOME/QE/lammps-proj/zeolite/90_scripts/mdstats/mdstats/__init__.py
+Imported mdstats module: $REPO_ROOT/mdstats/__init__.py
 mdstats._version.__version__: 0.20.242a0
 Package Version: 0.20.242a0
 Source Tree Digest: 7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6
@@ -34,7 +34,7 @@ Executable Tree: 9e4be0fc9d23c4036413a2ced86dc19d98ad9ed6
 ## 3. R13.5-P3: Production Lineage and Authenticated P5 Publication
 
 The campaign completed the full production lifecycle:
-- **Campaign Root**: `/tmp/mdstats_p7_r13_5_production`
+- **Campaign Root**: `$QUALIFICATION_WORKSPACE`
 - **Generation**: Generation 1
 - **Experiment Definition Digest**: `dfeef167d9ac53a067a9a148a04bfa95f32eb4a719602f9e4e207909b0b4a4cb`
 - **Common Preparation Digest**: `caf18499536a0d24e5ef90f96e47e5bdaeb1fe7e4e13d11b3ea0ffea73f0be71`
@@ -164,3 +164,5 @@ conda run -n mace pytest -n auto -q tests/test_mlff_p7_*.py
 | **R13.5-P6** | All components + locked test succeed | **PASS** | `RELEASE_QUALIFIED`, record `3d096247...` |
 | **R13.5-P7** | Fresh-process reauthentication succeeds | **PASS** | Subprocess reauthenticated all digests and `RELEASE_QUALIFIED` |
 | **R13.5-P8** | Complete evidence record published | **PASS** | Documented in `P7_REVISION_13_5_IMPLEMENTATION_EVIDENCE.md` |
+
+> Publication-hygiene note: host-specific absolute paths in the original execution transcript were normalized to logical repository/workspace paths. Scientific identities, digests, outcomes, and hardware-class evidence are unchanged.

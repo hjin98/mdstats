@@ -5,7 +5,7 @@
 This document records the exact evaluation and evidence under **P7 Revision 13.6 Amendment** (`workplans/active/mlff-target-size-v7-packages/P7_REVISION_13_6_REAL_PRODUCTION_OWNER_AND_DFT_PROVENANCE_CLOSURE_AMENDMENT.md`), addressing review findings **R13.6-B11G** (campaign state created for qualification) and **R13.6-B12J** (external DFT provenance).
 
 In accordance with R13.6 binding instructions:
-1. Candidate commit [`97fa48fc4a8e5be0da8cbcd22ba10248fa37acee`](file://$HOME/QE/lammps-proj/zeolite/90_scripts/mdstats), tree `9e4be0fc9d23c4036413a2ced86dc19d98ad9ed6`, and source tree digest `7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6` remain strictly frozen without source modification.
+1. Candidate commit `97fa48fc4a8e5be0da8cbcd22ba10248fa37acee`, tree `9e4be0fc9d23c4036413a2ced86dc19d98ad9ed6`, and source tree digest `7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6` remain strictly frozen without source modification.
 2. The hard anti-shortcut rules of §2 and §3 were strictly enforced: no new campaign or synthetic P1–P5 state was manufactured, and no mock reference data was substituted for real DFT calculations.
 3. The pre-existing repository campaign was evaluated through the authoritative production CLI, establishing the exact truthful fail-closed status.
 
@@ -16,7 +16,7 @@ In accordance with R13.6 binding instructions:
 Preflight inspection performed directly from the qualifying Python interpreter in conda environment `mace`:
 
 ```text
-Imported mdstats module: $HOME/QE/lammps-proj/zeolite/90_scripts/mdstats/mdstats/__init__.py
+Imported mdstats module: $REPO_ROOT/mdstats/__init__.py
 mdstats._version.__version__: 0.20.242a0
 Package Version: 0.20.242a0
 Source Tree Digest: 7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6
@@ -29,10 +29,10 @@ Environment Digest: d5dc64d7c951eb036126564dff6be074854185c8aa442b86c37014618c53
 
 ## 3. R13.6-P2 & R13.6-P3: Audit of Existing Operator Production Campaign
 
-An exhaustive audit across `$HOME/QE/lammps-proj/zeolite` identified the sole pre-existing campaign configuration in the repository:
-- **Config Path**: `$HOME/QE/lammps-proj/zeolite/90_scripts/mdstats/qualification/p6-p5a6-compat/workspace/campaign.toml`
-- **Workspace Path**: `$HOME/QE/lammps-proj/zeolite/90_scripts/mdstats/qualification/p6-p5a6-compat/workspace/campaign`
-- **State Store**: `$HOME/QE/lammps-proj/zeolite/90_scripts/mdstats/qualification/p6-p5a6-compat/workspace/campaign/.mdstats/campaign.sqlite3`
+An exhaustive audit of the operator workspace identified the sole pre-existing campaign configuration in the repository fixture:
+- **Config Path**: `$REPO_ROOT/qualification/p6-p5a6-compat/workspace/campaign.toml`
+- **Workspace Path**: `$REPO_ROOT/qualification/p6-p5a6-compat/workspace/campaign`
+- **State Store**: `$REPO_ROOT/qualification/p6-p5a6-compat/workspace/campaign/.mdstats/campaign.sqlite3`
 
 ### State Store Inspection
 Inspection of the existing state store via `CampaignStore` and `PostSelectionContext`:
@@ -106,3 +106,5 @@ From R13.5 (accepted in §4 of R13.6):
 | **R13.6-P8** | Truthful Evidence Record | **PASS** | Documented in `P7_REVISION_13_6_IMPLEMENTATION_EVIDENCE.md` |
 
 **Terminal Disposition**: P7 is correctly and truthfully reported as **UNAVAILABLE/BLOCKING** (for P5 publication) and **WAITING_FOR_REFERENCE** (for DFT provenance), preserving semantic owner boundaries without artificial workarounds.
+
+> Publication-hygiene note: host-specific absolute paths and local checkout links in the original execution transcript were normalized to logical repository paths. Scientific identities, digests, outcomes, and hardware-class evidence are unchanged.

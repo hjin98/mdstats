@@ -13,9 +13,7 @@
       "path": "ARCHITECTURE_NOTES_MLFF_REV58.pdf",
       "preflight_ok": true,
       "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
-      "visually_inspected_pages": [
-        1
-      ],
+      "visually_inspected_pages": [1],
       "warnings": []
     },
     {
@@ -23,11 +21,7 @@
       "path": "mlff_perf_cert1_end_to_end_certification_spec.pdf",
       "preflight_ok": true,
       "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
-      "visually_inspected_pages": [
-        1,
-        2,
-        3
-      ],
+      "visually_inspected_pages": [1, 2, 3],
       "warnings": []
     },
     {
@@ -35,12 +29,7 @@
       "path": "mlff_final_gpu1_deferred_qualification_spec.pdf",
       "preflight_ok": true,
       "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
-      "visually_inspected_pages": [
-        1,
-        2,
-        3,
-        4
-      ],
+      "visually_inspected_pages": [1, 2, 3, 4],
       "warnings": []
     },
     {
@@ -48,9 +37,7 @@
       "path": "PATCH_NOTES_0.20.191a0.pdf",
       "preflight_ok": true,
       "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
-      "visually_inspected_pages": [
-        1
-      ],
+      "visually_inspected_pages": [1],
       "warnings": []
     },
     {
@@ -58,10 +45,7 @@
       "path": "audits/analysis/mlff_perf_cert1_development_host_2026-08-15.pdf",
       "preflight_ok": true,
       "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
-      "visually_inspected_pages": [
-        1,
-        2
-      ],
+      "visually_inspected_pages": [1, 2],
       "warnings": []
     },
     {
@@ -69,18 +53,12 @@
       "path": "mlff_training_data_architecture.pdf",
       "preflight_ok": true,
       "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
-      "visually_inspected_pages": [
-        1,
-        195,
-        196,
-        197,
-        198
-      ],
+      "visually_inspected_pages": [1, 195, 196, 197, 198],
       "warnings": []
     }
   ],
   "release": "0.20.191a0",
-  "renderer": "$HOME/skills/pdfs/scripts/render_pdf.py",
+  "renderer": "pdf-render-workflow",
   "result": "pass",
   "schema": "mdstats.mlff-perf-cert1-pdf-qa.v1"
 }
