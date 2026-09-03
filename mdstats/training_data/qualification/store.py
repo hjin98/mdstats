@@ -1326,12 +1326,22 @@ class ReleasedAttemptSession:
 
         if not self.invalidation_reason:
             self.invalidation_reason = reason or "withdrawn"
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            import sys
+            if sys.is_finalizing() or sys.exc_info()[0] is not None:
+                pass
+            else:
+                raise
 
     def close(self) -> None:
         if not self.closed:
             self.closed = True
-            os.close(self.attempt_fd)
+            fd = self.attempt_fd
+            self.attempt_fd = -1
+            if fd >= 0:
+                os.close(fd)
 
     def __enter__(self) -> "ReleasedAttemptSession":
         return self
@@ -1641,7 +1651,10 @@ def _remove_certified_directory(
         already_absent,
         removed as removed_outcome,
     )
-    from ..storage.trust import crosses_mount_boundary_at
+    from ..storage.trust import (
+        crosses_mount_boundary_at,
+        verify_opened_directory_trust,
+    )
 
     if ledger is None:
         ledger = MutationLedger()
@@ -1658,6 +1671,12 @@ def _remove_certified_directory(
         return already_absent("already gone")
     except NamespaceAmbiguity as exc:
         return stop(f"{display}: {exc}")
+
+    crossed, detail = verify_opened_directory_trust(parent_fd, handle, display)
+    if crossed:
+        os.close(handle)
+        return stop(detail)
+
     try:
         try:
             entries = sorted(os.scandir(handle), key=lambda item: item.name)
@@ -1667,9 +1686,15 @@ def _remove_certified_directory(
             child_relative = f"{prefix}{entry.name}"
             child_display = display / entry.name
             expected = recorded.get(child_relative)
-            if entry.is_symlink():
+            try:
+                is_sym = entry.is_symlink()
+                is_dir = entry.is_dir(follow_symlinks=False)
+                is_file = entry.is_file(follow_symlinks=False)
+            except OSError as exc:
+                return stop(f"{child_display} could not be observed: {exc}")
+            if is_sym:
                 return stop(f"{child_display} is a symlink; the container is retained")
-            if entry.is_dir(follow_symlinks=False):
+            if is_dir:
                 if expected != "directory":
                     return stop(
                         f"{child_display} is a directory this owner did not record"
@@ -1692,7 +1717,7 @@ def _remove_certified_directory(
                 if not nested.succeeded:
                     return stop(nested.detail)
                 continue
-            if not entry.is_file(follow_symlinks=False):
+            if not is_file:
                 return stop(
                     f"{child_display} is a special node; the container is retained"
                 )
@@ -1729,8 +1754,22 @@ def _remove_certified_directory(
                 exc,
                 f"{display} was emptied but the removal could not be made durable: {exc}",
             ) from exc
-    finally:
-        os.close(handle)
+    except BaseException:
+        try:
+            os.close(handle)
+        except Exception:
+            pass
+        raise
+    else:
+        try:
+            os.close(handle)
+        except OSError as exc:
+            if ledger.mutated:
+                raise ledger.failure(
+                    exc,
+                    f"{display} was emptied but descriptor close failed: {exc}",
+                ) from exc
+            return stop(f"{display} descriptor close failed: {exc}")
     try:
         os.rmdir(name, dir_fd=parent_fd)
     except OSError as exc:
@@ -1764,6 +1803,7 @@ def authorize_released_attempt_member(
     wrong-kind nodes reduce authority exactly as they do elsewhere.
     """
 
+    from ..storage.inventory import AuthorizedPath
     from ..storage.trust import crosses_mount_boundary
 
     root = Path(attempt_root)
@@ -1862,7 +1902,7 @@ def authorize_released_attempt_member(
                                 )
                             )
                             continue
-                        members.append(child_path)
+                        members.append(AuthorizedPath.create(child_path, "file"))
             finally:
                 for handle in owned:
                     os.close(handle)

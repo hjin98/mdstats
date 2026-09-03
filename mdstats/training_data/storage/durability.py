@@ -224,17 +224,47 @@ def durable_append_jsonl(destination: str | os.PathLike[str], payload: Mapping[s
     return event_digest
 
 
-def durable_unlink(path: str | os.PathLike[str]) -> None:
+def durable_unlink(
+    path: str | os.PathLike[str],
+    *,
+    dir_fd: int | None = None,
+    missing_ok: bool = True,
+    on_unlinked: Callable[[], None] | None = None,
+) -> None:
     """Unlink one file and persist the directory entry removal.
 
     Hot reclamation after an authenticated archive is a recovery-relevant
     deletion: the promise that a restart observes either the hot member or the
     catalog's account of it depends on the removal reaching the directory.
+    When ``on_unlinked`` is supplied, it is invoked immediately after the unlink
+    syscall succeeds and before parent directory fsync.
     """
 
     target = Path(path)
-    target.unlink(missing_ok=True)
-    fsync_parent_directory(target)
+    if dir_fd is not None:
+        try:
+            os.unlink(target.name, dir_fd=dir_fd)
+        except FileNotFoundError:
+            if not missing_ok:
+                raise
+        if on_unlinked is not None:
+            on_unlinked()
+        os.fsync(dir_fd)
+    else:
+        target.unlink(missing_ok=missing_ok)
+        if on_unlinked is not None:
+            on_unlinked()
+        fsync_parent_directory(target)
+
+
+def durable_unlink_tracked(
+    path: str | os.PathLike[str],
+    *,
+    on_unlinked: Callable[[], None] | None = None,
+) -> None:
+    """Unlink one file and persist the directory entry removal with transition tracking."""
+
+    durable_unlink(path, missing_ok=False, on_unlinked=on_unlinked)
 
 
 __all__ = [
@@ -247,6 +277,7 @@ __all__ = [
     "durable_publish_bytes",
     "durable_publish_json",
     "durable_unlink",
+    "durable_unlink_tracked",
     "parallel_digests",
     "sha256_file",
 ]

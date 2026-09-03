@@ -218,6 +218,34 @@ def crosses_mount_boundary_at(
     return False, ""
 
 
+def verify_opened_directory_trust(
+    parent_fd: int, child_fd: int, display: Path
+) -> tuple[bool, str]:
+    """Whether ``child_fd`` leaves ``parent_fd``'s filesystem, or is a mount point.
+
+    Evaluates the actual opened directory descriptor that destructive descent will
+    enumerate. An unreadable identity, device mismatch, detected mount point,
+    or mount table unavailability fails closed toward retention.
+    """
+
+    try:
+        parent_device = int(os.fstat(parent_fd).st_dev)
+        child = os.fstat(child_fd)
+    except OSError as exc:
+        return True, f"the filesystem identity of {display} is unreadable ({exc})"
+    if int(child.st_dev) != parent_device:
+        return True, f"{display} is on a different filesystem than its parent"
+    resolver = mount_resolver()
+    if resolver.is_mount_point(display):
+        return True, f"{display} is a mount point beneath its authorized root"
+    if not resolver.available:
+        return True, (
+            "mount discovery is unavailable on this platform, so a same-device "
+            f"nested mount at {display} cannot be ruled out"
+        )
+    return False, ""
+
+
 def crosses_mount_boundary(root: Path, candidate: Path) -> tuple[bool, str]:
     """Whether reaching ``candidate`` from ``root`` leaves ``root``'s filesystem.
 
@@ -292,10 +320,11 @@ def iter_contained_entries(root: Path) -> Iterable[Path]:
 def walk_contained(root: Path, *, on_refused: Callable[[Path, str], None] | None = None):
     """Depth-first walk of ``root`` that never crosses a nested mount boundary.
 
-    This is the single traversal primitive every recursive storage action uses,
-    so a nested mount is refused once rather than in each caller.  Refusals are
-    reported through ``on_refused`` so a plan can record them truthfully instead
-    of silently narrowing.
+    This is a read-only and planning traversal helper owned by filesystem trust
+    policy, so a nested mount is refused once rather than in each caller. Refusals
+    are reported through ``on_refused`` so a plan can record them truthfully instead
+    of silently narrowing. Destructive owners use descriptor-relative walkers
+    operating relative to authenticated directory descriptors.
     """
 
     root_absolute = Path(os.path.abspath(os.fspath(root)))
@@ -324,8 +353,12 @@ __all__ = [
     "MountBoundaryError",
     "MountIdentityResolver",
     "crosses_mount_boundary",
+    "crosses_mount_boundary_at",
+    "dir_fd_mutation_supported",
     "iter_contained_entries",
     "mount_resolver",
+    "open_directory_nofollow",
     "set_mount_resolver",
+    "verify_opened_directory_trust",
     "walk_contained",
 ]

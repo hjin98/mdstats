@@ -490,16 +490,21 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                     continue
                 if view is not None and view.path == action.path and action.path.is_dir():
                     members, refusals = snapshot.authorized_members(view)
+                    member_authorities = {
+                        (view.path / node.path): node.kind
+                        for node in view.certified_nodes
+                    } if view.certified_nodes else {}
                     record_or_reraise(
                         result,
                         action,
-                        lambda members=members, refusals=refusals, view=view, action=action: (
+                        lambda members=members, refusals=refusals, view=view, action=action, member_authorities=member_authorities: (
                             remove_certified_subtree(
                                 action.path,
                                 members=members,
                                 refusals=refusals,
                                 root_identity=view.path_identity,
                                 authority_identity=view.root_identity,
+                                member_authorities=member_authorities,
                             )
                         ),
                     )
@@ -510,9 +515,17 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                     lambda action=action: remove_durably_outcome(action.path),
                 )
         finally:
+            import sys
+            close_exc: Exception | None = None
             for session, _why in sessions.values():
                 if session is not None:
-                    session.close()
+                    try:
+                        session.close()
+                    except Exception as exc:
+                        if close_exc is None:
+                            close_exc = exc
+            if close_exc is not None and sys.exc_info()[0] is None:
+                raise close_exc
 
     return _engine
 
@@ -575,7 +588,10 @@ def _apply_released_member(
         )
     except PartialMutationError as exc:
         record_removal(result, action, exc.outcome)
-        session.invalidate(exc.outcome.detail)
+        try:
+            session.invalidate(exc.outcome.detail)
+        except Exception:
+            pass
         sessions[key] = (session, exc.outcome)
         raise (exc.cause or exc) from exc
     record_removal(result, action, outcome)

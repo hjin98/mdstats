@@ -215,6 +215,8 @@ def campaign_state_maintenance_engine(store: Any, policy: StoragePolicy):
                     {**action.to_dict(), "refusal": f"event pruning failed: {exc}"}
                 )
                 return
+            if int(pruned) > 0:
+                result.mutated = True
             result.completed.append(
                 {
                     **action.to_dict(),
@@ -271,6 +273,7 @@ def campaign_state_maintenance_engine(store: Any, policy: StoragePolicy):
                     )
                     return
                 store.vacuum()
+                result.mutated = True
         except Exception as exc:
             result.refused.append(
                 {

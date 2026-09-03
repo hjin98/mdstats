@@ -858,7 +858,24 @@ def archive_create_engine(
                     "created_utc": _utc_now(),
                 }
             )
+            result.mutated = True
+            result.created_bytes += int(archive_size)
+            result.payload = {
+                "schema": "mdstats.mlff-storage-archive-result.v2",
+                "archive_identity": identity,
+                "representation_identity": identity,
+                "logical_identity": str(manifest["logical_identity"]),
+                "archive_locator": manifest["archive_locator"],
+                "publication_phase": "blob_published",
+                "member_count": int(manifest["member_count"]),
+                "represented_artifact_ids": list(manifest["represented_artifact_ids"]),
+                "reclaimed_hot_paths": [],
+                "remaining_hot_paths": [item.path for item in members if item.kind == "file"],
+                "hot_reclamation_state": "pending" if reclaim_hot else "not_requested",
+                "grants_scientific_authority": False,
+            }
             durable_publish_json(manifest_path, manifest)
+            result.payload["publication_phase"] = "manifest_published"
             failpoint(BOUNDARY_AFTER_MANIFEST)
             _verify_blob_against_manifest(blob, manifest, policy)
             control_plane.publish_catalog_entry(
@@ -876,7 +893,7 @@ def archive_create_engine(
                     "hot_reclamation_state": "pending" if reclaim_hot else "not_requested",
                 }
             )
-            result.created_bytes += int(archive_size)
+            result.payload["publication_phase"] = "catalog_published"
         failpoint(BOUNDARY_AFTER_CATALOG)
 
         reclaimed: list[str] = []
@@ -996,10 +1013,17 @@ def _reclaim_planned_members(
                 {**action.to_dict(), "refusal": "hot bytes changed after archival"}
             )
             continue
-        durable_unlink(action.path)
-        reclaimed.append(relative)
-        result.completed.append({**action.to_dict(), "reclaimed": True})
-        result.reclaimed_bytes += size
+        def _on_reclaimed() -> None:
+            result.mutated = True
+            reclaimed.append(relative)
+            result.completed.append({**action.to_dict(), "reclaimed": True})
+            result.reclaimed_bytes += size
+
+        try:
+            durable_unlink(action.path, missing_ok=False, on_unlinked=_on_reclaimed)
+        except TypeError:
+            durable_unlink(action.path)
+            _on_reclaimed()
     return reclaimed, remaining
 
 
@@ -1575,11 +1599,12 @@ def _install_container(action: PlannedAction, result: StorageExecutionResult) ->
             f"restore parent path is missing or is not a directory: {parent}"
         )
     destination.mkdir(parents=True, exist_ok=False)
+    result.mutated = True
+    result.completed.append({**action.to_dict(), "created_container": True})
     os.chmod(destination, int(action.binding["archived_mode"]))
     from ..target_size_execution.persistence import fsync_parent_directory
 
     fsync_parent_directory(destination)
-    result.completed.append({**action.to_dict(), "created_container": True})
     return 1
 
 
@@ -1608,9 +1633,10 @@ def _install_member(
     if crossed:
         raise StorageArchiveError(f"restore destination crosses a mount boundary: {why}")
     os.replace(staging / relative, destination)
+    result.mutated = True
+    result.completed.append({**action.to_dict(), "installed": True})
     os.chmod(destination, int(action.binding["mode"]))
     fsync_parent_directory(destination)
-    result.completed.append({**action.to_dict(), "installed": True})
     return True
 
 

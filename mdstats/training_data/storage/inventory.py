@@ -54,6 +54,18 @@ class ProtectionReason:
     detail: str
 
 
+class AuthorizedPath(type(Path())):
+    """A Path carrying its owner-certified node kind."""
+
+    authorized_kind: str
+
+    @classmethod
+    def create(cls, path: Path, kind: str) -> "AuthorizedPath":
+        obj = cls(path)
+        obj.authorized_kind = str(kind)
+        return obj
+
+
 @dataclass(frozen=True, slots=True)
 class StorageInventorySnapshot:
     """The cross-owner snapshot every storage plan is derived from."""
@@ -234,7 +246,7 @@ class StorageInventorySnapshot:
             )
         root_kind = observed_node_kind(root)
         if root_kind == NODE_FILE:
-            return (root,), ()
+            return (AuthorizedPath.create(root, "file"),), ()
         if root_kind != NODE_DIRECTORY:
             return (), ()
 
@@ -256,7 +268,7 @@ class StorageInventorySnapshot:
                             (child, f"a {kind} is never collected as an owned member")
                         )
                         continue
-                    members.append(child)
+                    members.append(AuthorizedPath.create(child, kind))
                 return tuple(sorted(members)), tuple(refused)
             if not view.certified_nodes:
                 return (), (
@@ -303,7 +315,7 @@ class StorageInventorySnapshot:
                     # Covered by the certification, so it may disappear with the
                     # subtree; it is not an individually reclaimable member.
                     continue
-                members.append(child)
+                members.append(AuthorizedPath.create(child, recorded))
             # A recorded node that is absent has legitimately left the tree
             # (reclaimed into an archive, for instance); it bounds what may be
             # acted on, and its absence is not a contradiction.
@@ -329,7 +341,7 @@ class StorageInventorySnapshot:
                         )
                     )
                     continue
-                members.append(child)
+                members.append(AuthorizedPath.create(child, item.kind))
             return tuple(sorted(members)), tuple(refused)
 
         return (), ((root, "the owner certifies no descendant of this container"),)

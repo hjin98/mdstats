@@ -5209,6 +5209,305 @@ def test_a_zero_credit_mutation_still_owes_its_durability_step(
     assert ledger.stop("x").outcome == "partial_change_refused"
 
 
+def test_r35_canonical_opened_descriptor_mount_trust(tmp_path: Path) -> None:
+    """R35-1: canonical opened-descriptor mount trust helper fails closed."""
+    from unittest import mock
+    from mdstats.training_data.storage.trust import verify_opened_directory_trust
+
+    parent_dir = tmp_path / "parent"
+    child_dir = parent_dir / "child"
+    child_dir.mkdir(parents=True)
+
+    parent_fd = os.open(parent_dir, os.O_RDONLY | os.O_DIRECTORY)
+    child_fd = os.open(child_dir, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        # 1. Normal case: same device, not mount point -> (False, "")
+        crossed, why = verify_opened_directory_trust(parent_fd, child_fd, child_dir)
+        assert crossed is False and why == ""
+
+        # 2. Mount point resolver unavailable -> fails closed
+        class UnavailableResolver:
+            available = False
+
+            def is_mount_point(self, path):
+                return False
+
+        with mock.patch("mdstats.training_data.storage.trust.mount_resolver", return_value=UnavailableResolver()):
+            crossed, why = verify_opened_directory_trust(parent_fd, child_fd, child_dir)
+            assert crossed is True
+            assert "unavailable" in why
+
+        # 3. Mount point detected -> fails closed
+        class MountResolver:
+            available = True
+
+            def is_mount_point(self, path):
+                return True
+
+        with mock.patch("mdstats.training_data.storage.trust.mount_resolver", return_value=MountResolver()):
+            crossed, why = verify_opened_directory_trust(parent_fd, child_fd, child_dir)
+            assert crossed is True
+            assert "mount point" in why
+
+        # 4. Device boundary mismatch -> fails closed
+        real_fstat = os.fstat
+
+        def fake_fstat(fd):
+            st = real_fstat(fd)
+            if fd == child_fd:
+                class FakeStat:
+                    st_dev = st.st_dev + 1
+                    st_ino = st.st_ino
+                    st_mode = st.st_mode
+                return FakeStat()
+            return st
+
+        with mock.patch("os.fstat", side_effect=fake_fstat):
+            crossed, why = verify_opened_directory_trust(parent_fd, child_fd, child_dir)
+            assert crossed is True
+            assert "different filesystem" in why
+    finally:
+        os.close(child_fd)
+        os.close(parent_fd)
+
+
+def test_r35_single_file_transition_aware_replacement_survives(tmp_path: Path) -> None:
+    """R35-2A: single file unlink succeeds, replacement installed before fsync fails."""
+    from unittest import mock
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED, PartialMutationError
+
+    victim = tmp_path / "victim.bin"
+    victim.write_bytes(b"ORIGINAL_BYTES" * 8)
+    original_size = victim.stat().st_size
+    replacement_content = b"REPLACEMENT_DATA" * 4
+
+    def fsync_interceptor(fd):
+        victim.write_bytes(replacement_content)
+        raise OSError(5, "injected durability failure")
+
+    with mock.patch("os.fsync", side_effect=fsync_interceptor):
+        with pytest.raises(PartialMutationError) as exc_info:
+            remove_durably_outcome(victim)
+
+    exc = exc_info.value
+    assert exc.outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED
+    assert exc.outcome.mutated is True
+    assert int(exc.outcome.removed_bytes) == original_size
+    assert victim.exists()
+    assert victim.read_bytes() == replacement_content
+
+
+def test_r35_single_file_unlink_not_occurring_no_mutation(tmp_path: Path) -> None:
+    """R35-2A: single file unlink does not occur; no mutation or bytes attributed."""
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage.outcome import OUTCOME_ALREADY_ABSENT
+
+    nonexistent = tmp_path / "never_existed.bin"
+    outcome = remove_durably_outcome(nonexistent)
+    assert outcome.outcome == OUTCOME_ALREADY_ABSENT
+    assert outcome.mutated is False
+    assert outcome.removed_bytes is None or outcome.removed_bytes == 0
+
+
+def test_r35_common_member_swapped_to_symlink_or_dir_retained(tmp_path: Path) -> None:
+    """R35-2B: authorized regular file swapped to symlink or directory is retained untouched."""
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    container = tmp_path / "common_container"
+    container.mkdir()
+    f_sym = container / "victim_sym.bin"
+    f_sym.write_bytes(b"S" * 40)
+    f_dir = container / "victim_dir.bin"
+    f_dir.write_bytes(b"D" * 50)
+    f_ord = container / "ordinary.bin"
+    f_ord.write_bytes(b"O" * 30)
+
+    external_sentinel = tmp_path / "external_sentinel.bin"
+    external_sentinel.write_bytes(b"SENTINEL_CONTENT")
+
+    members = [f_sym, f_dir, f_ord]
+    member_authorities = {f_sym: "file", f_dir: "file", f_ord: "file"}
+
+    f_sym.unlink()
+    f_sym.symlink_to(external_sentinel)
+    f_dir.unlink()
+    f_dir.mkdir()
+    (f_dir / "nested.bin").write_bytes(b"nested")
+
+    outcome = remove_certified_subtree(
+        container,
+        members=members,
+        refusals=[(container / "unauthorized_retained.txt", "not authorized")],
+        root_identity={"device": int(container.stat().st_dev), "inode": int(container.stat().st_ino)},
+        authority_identity={"device": int(container.parent.stat().st_dev), "inode": int(container.parent.stat().st_ino)},
+        member_authorities=member_authorities,
+    )
+
+    assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED
+    assert outcome.mutated is True
+    assert int(outcome.removed_bytes) == 30
+    assert not f_ord.exists()
+    assert f_sym.is_symlink()
+    assert external_sentinel.read_bytes() == b"SENTINEL_CONTENT"
+    assert f_dir.is_dir()
+    assert (f_dir / "nested.bin").exists()
+
+
+def test_r35_session_close_failure_preserves_primary_exception(tmp_path: Path) -> None:
+    """R35-3: session close failure does not replace active in-flight exception."""
+    from unittest import mock
+    from mdstats.training_data.qualification.store import ReleasedAttemptSession
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    fd = os.open(scratch, os.O_RDONLY | os.O_DIRECTORY)
+    session = ReleasedAttemptSession(
+        attempt_fd=fd,
+        attempt_root=scratch,
+        generation=1,
+        state=mock.Mock(),
+        proof={},
+        certified_nodes=(),
+        root_identity={"device": 0, "inode": 0},
+        release_authority="auth",
+    )
+    assert session.live is True
+    session.close()
+    assert session.closed is True
+    assert session.attempt_fd == -1
+    assert session.live is False
+
+    fd2 = os.open(scratch, os.O_RDONLY | os.O_DIRECTORY)
+    session2 = ReleasedAttemptSession(
+        attempt_fd=fd2,
+        attempt_root=scratch,
+        generation=1,
+        state=mock.Mock(),
+        proof={},
+        certified_nodes=(),
+        root_identity={"device": 0, "inode": 0},
+        release_authority="auth",
+    )
+    with mock.patch("os.close", side_effect=OSError(9, "Bad file descriptor")):
+        try:
+            raise RuntimeError("primary cause")
+        except RuntimeError:
+            session2.invalidate("contradiction reason")
+            assert session2.closed is True
+            assert session2.attempt_fd == -1
+
+
+def test_r35_archive_create_and_reclaim_mutation_truth(tmp_path: Path) -> None:
+    """R35-5: archive create records mutation upon blob publication; reclaim records upon unlink."""
+    from mdstats.training_data.storage.executor import StorageExecutionResult, StorageExecutor
+
+    res = StorageExecutionResult(
+        operation_identity="op",
+        plan_identity="pl",
+        policy_identity="pol",
+        action="archive",
+        status="running",
+        mutated=True,
+        completed=[],
+        refused=[{"action": "dummy"}],
+    )
+    executor = StorageExecutor.__new__(StorageExecutor)
+    executor._settle(res)
+    assert res.status == "partial"
+
+    res2 = StorageExecutionResult(
+        operation_identity="op",
+        plan_identity="pl",
+        policy_identity="pol",
+        action="archive",
+        status="running",
+        mutated=False,
+        completed=[],
+        refused=[{"action": "dummy"}],
+    )
+    executor._settle(res2)
+    assert res2.status == "refused"
+
+
+def test_r35_dedup_and_maintenance_mutation_truth(tmp_path: Path) -> None:
+    """R35-5: dedup and maintenance establish explicit mutation truth."""
+    from unittest import mock
+    from mdstats.training_data.storage.executor import StorageExecutionResult
+    from mdstats.training_data.storage.maintenance import (
+        campaign_state_maintenance_engine,
+        ACTION_PRUNE_EVENTS,
+    )
+    from mdstats.training_data.storage.plan import StoragePlan, PlannedAction
+    from mdstats.training_data.storage.policy import resolve_storage_policy
+
+    store = mock.Mock()
+    store.prune_events.return_value = 0
+    policy = resolve_storage_policy({}, action="cleanup", tier="safe", apply=True)
+    engine = campaign_state_maintenance_engine(store, policy)
+    action = PlannedAction(
+        path=tmp_path,
+        action=ACTION_PRUNE_EVENTS,
+        size_bytes=0,
+        binding={},
+        artifact_id="art",
+        reason="prune",
+        capability_cost=0,
+        filesystem_identity={"device": 0, "inode": 0},
+    )
+    snapshot = mock.Mock()
+    snapshot.view.return_value = mock.Mock(path=tmp_path)
+    res = StorageExecutionResult(
+        operation_identity="op",
+        plan_identity="pl",
+        policy_identity="pol",
+        action="maintenance",
+        status="running",
+    )
+    engine(action, snapshot, res)
+    assert res.mutated is False
+    assert len(res.completed) == 1
+    assert res.completed[0]["events_pruned"] == 0
+
+    store.prune_events.return_value = 5
+    res2 = StorageExecutionResult(
+        operation_identity="op",
+        plan_identity="pl",
+        policy_identity="pol",
+        action="maintenance",
+        status="running",
+    )
+    engine(action, snapshot, res2)
+    assert res2.mutated is True
+    assert res2.completed[0]["events_pruned"] == 5
+
+
+def test_r35_remove_durably_is_thin_wrapper(tmp_path: Path) -> None:
+    """R35-6: remove_durably is a thin wrapper over remove_durably_outcome."""
+    from unittest import mock
+    from mdstats.training_data.storage.executor import remove_durably
+    from mdstats.training_data.storage.outcome import MutationOutcome, OUTCOME_PARTIAL_CHANGE_REFUSED, PartialMutationError
+
+    source = inspect.getsource(remove_durably)
+    assert "rmtree" not in source
+    assert "remove_durably_outcome" in source
+
+    target = tmp_path / "test.txt"
+    target.write_text("hello")
+    assert remove_durably(target) is True
+    assert not target.exists()
+
+    assert remove_durably(tmp_path / "missing.txt") is False
+
+    with mock.patch(
+        "mdstats.training_data.storage.executor.remove_durably_outcome",
+        side_effect=PartialMutationError(MutationOutcome(OUTCOME_PARTIAL_CHANGE_REFUSED, "detail", removed_bytes=10), cause=OSError()),
+    ):
+        with pytest.raises(PartialMutationError):
+            remove_durably(tmp_path / "some.txt")
+
+
 def test_every_patched_production_name_is_one_the_product_actually_reads() -> None:
     """R32-7: a failpoint on a name nobody calls must fail loudly.
 

@@ -249,7 +249,7 @@ class StorageExecutor:
                         # nothing is rolled back and the audit is still
                         # published before the failure continues; the next run
                         # re-inventories and re-plans from live state.
-                        if result.mutated or result.completed:
+                        if result.mutated:
                             result.status = STATUS_PARTIAL
                             result.detail = (
                                 "execution was interrupted after a strict subset of "
@@ -285,12 +285,12 @@ class StorageExecutor:
         if not result.refused:
             result.status = STATUS_COMPLETE
             default_detail = "every planned action reached a verified terminal disposition"
-        elif not result.completed and not result.mutated:
-            # Nothing happened at all. Reporting that as "partial" would imply a
-            # mutation this operation never made.
+        elif not result.mutated:
+            # Nothing was mutated. Reporting that as "partial" would imply a
+            # persistent change this operation never made.
             result.status = STATUS_REFUSED
             default_detail = (
-                "every planned action was refused at mutation time; nothing was changed"
+                "every planned action was refused or unchanged at mutation time; nothing was modified"
             )
         else:
             result.status = STATUS_PARTIAL
@@ -404,39 +404,19 @@ class StorageExecutor:
 def remove_durably(path: Path) -> bool:
     """Remove one path and persist the directory-entry change.
 
-    **Not the cleanup owner.** No consequential storage path calls this: the
-    cleanup engines route every removal through `remove_durably_outcome` or
-    `remove_certified_subtree`, which descend no-follow through directory
-    descriptors and keep an exact per-transition account. This one delegates
-    recursion to `shutil.rmtree` and answers with a boolean.
-
-    It is retained deliberately as a plain utility for callers that own their
-    own target and need neither the descriptor-pinned trust boundary nor the
-    mutation ledger - test setup and cross-store adoption tooling. It must not
-    be reintroduced into a cleanup path; the two have different trust and
-    accounting properties, and leaving that difference unstated is how the
-    weaker one gets picked up by mistake.
+    Thin wrapper over :func:`remove_durably_outcome` to preserve compatibility
+    without maintaining a separate recursive algorithm. Partial mutations
+    propagate rather than being converted to False.
     """
 
-    from ..target_size_execution.persistence import fsync_parent_directory
-
-    if path.is_symlink() or path.is_file():
-        durable_unlink(path)
+    try:
+        outcome = remove_durably_outcome(path)
+    except PartialMutationError:
+        raise
+    if outcome.outcome == "removed":
         return True
-    if path.is_dir():
-        if not shutil.rmtree.avoids_symlink_attacks:
-            # The proof this removal rests on was established by a no-follow
-            # observation. A recursive delete that could be redirected by a
-            # directory entry swapped underneath it would not preserve that
-            # proof through to the mutation, so this platform gets a refusal
-            # rather than a traversal it cannot guarantee.
-            raise StorageExecutionError(
-                "this platform cannot perform a symlink-attack-resistant recursive "
-                f"removal, so {path} is retained rather than removed"
-            )
-        shutil.rmtree(path, ignore_errors=False)
-        fsync_parent_directory(path)
-        return True
+    if outcome.mutated:
+        raise PartialMutationError(outcome, OSError(outcome.detail))
     return False
 
 
@@ -460,17 +440,32 @@ def remove_durably_outcome(path: Path) -> MutationOutcome:
         return refused_no_change(f"the planned target could not be observed: {exc}")
 
     if not stat.S_ISDIR(stats.st_mode):
+        size = int(stats.st_size)
+        identity = (int(stats.st_dev), int(stats.st_ino))
+        unlinked = False
+
+        def _mark_unlinked() -> None:
+            nonlocal unlinked
+            if not unlinked:
+                unlinked = True
+                ledger.credit(size, identity)
+
         try:
-            durable_unlink(path)
+            try:
+                durable_unlink(path, missing_ok=False, on_unlinked=_mark_unlinked)
+            except TypeError:
+                durable_unlink(path)
         except OSError as exc:
-            if path.exists() or path.is_symlink():
-                raise
-            ledger.credit(int(stats.st_size), None)
-            raise ledger.failure(
-                exc,
-                f"{path} was removed but the removal could not be made durable: {exc}",
-            ) from exc
-        ledger.credit(int(stats.st_size), None)
+            if ledger.mutated or (not unlinked and not path.exists() and not path.is_symlink()):
+                if not ledger.mutated:
+                    ledger.credit(size, identity)
+                raise ledger.failure(
+                    exc,
+                    f"{path} was removed but the removal could not be made durable: {exc}",
+                ) from exc
+            raise ledger.failure(exc, f"{path} could not be removed: {exc}") from exc
+        if not ledger.mutated:
+            ledger.credit(size, identity)
         return removed("removed", removed_bytes=ledger.removed_bytes)
 
     if not dir_fd_mutation_supported():
@@ -506,21 +501,59 @@ def _remove_tree_tracked(root: Path, ledger: MutationLedger) -> None:
     entry credits no bytes.
     """
 
-    from .trust import NamespaceAmbiguity, open_directory_nofollow
+    from .trust import (
+        MountBoundaryError,
+        NamespaceAmbiguity,
+        open_directory_nofollow,
+        verify_opened_directory_trust,
+    )
 
     try:
-        handle = open_directory_nofollow(str(root))
+        parent_fd = open_directory_nofollow(str(root.parent))
     except FileNotFoundError:
         return
     except NamespaceAmbiguity as exc:
         raise ledger.failure(
-            OSError(f"{root} is not a plain directory: {exc}"),
-            f"{root} could not be opened as a plain directory: {exc}",
+            OSError(f"{root.parent} could not be opened as a plain directory: {exc}"),
+            f"{root.parent} is not a plain directory: {exc}",
         ) from exc
     try:
-        _remove_tree_contents(handle, root, ledger)
+        try:
+            handle = open_directory_nofollow(root.name, dir_fd=parent_fd)
+        except FileNotFoundError:
+            return
+        except NamespaceAmbiguity as exc:
+            raise ledger.failure(
+                OSError(f"{root} is not a plain directory: {exc}"),
+                f"{root} could not be opened as a plain directory: {exc}",
+            ) from exc
+        crossed, detail = verify_opened_directory_trust(parent_fd, handle, root)
+        if crossed:
+            os.close(handle)
+            raise ledger.failure(
+                MountBoundaryError(f"{root}: {detail}"),
+                f"{root} is not campaign-owned: {detail}",
+            )
     finally:
-        os.close(handle)
+        os.close(parent_fd)
+
+    try:
+        _remove_tree_contents(handle, root, ledger)
+    except BaseException:
+        try:
+            os.close(handle)
+        except Exception:
+            pass
+        raise
+    else:
+        try:
+            os.close(handle)
+        except OSError as exc:
+            if ledger.mutated:
+                raise ledger.failure(
+                    exc, f"{root} descriptor close failed: {exc}"
+                ) from exc
+            raise ledger.failure(exc, f"{root} descriptor close failed: {exc}") from exc
     try:
         os.rmdir(root)
     except OSError as exc:
@@ -531,7 +564,12 @@ def _remove_tree_tracked(root: Path, ledger: MutationLedger) -> None:
 def _remove_tree_contents(handle: int, display: Path, ledger: MutationLedger) -> None:
     """Empty one already-authenticated directory, relative to its descriptor."""
 
-    from .trust import NamespaceAmbiguity, open_directory_nofollow
+    from .trust import (
+        MountBoundaryError,
+        NamespaceAmbiguity,
+        open_directory_nofollow,
+        verify_opened_directory_trust,
+    )
 
     try:
         entries = sorted(os.scandir(handle), key=lambda item: item.name)
@@ -556,10 +594,32 @@ def _remove_tree_contents(handle: int, display: Path, ledger: MutationLedger) ->
                     OSError(f"{child} is no longer a plain directory: {exc}"),
                     f"{child} is no longer the plain directory it was observed as: {exc}",
                 ) from exc
+            crossed, detail = verify_opened_directory_trust(handle, child_handle, child)
+            if crossed:
+                os.close(child_handle)
+                raise ledger.failure(
+                    MountBoundaryError(f"{child}: {detail}"),
+                    f"{child} is not campaign-owned: {detail}",
+                )
             try:
                 _remove_tree_contents(child_handle, child, ledger)
-            finally:
-                os.close(child_handle)
+            except BaseException:
+                try:
+                    os.close(child_handle)
+                except Exception:
+                    pass
+                raise
+            else:
+                try:
+                    os.close(child_handle)
+                except OSError as exc:
+                    if ledger.mutated:
+                        raise ledger.failure(
+                            exc, f"{child} descriptor close failed: {exc}"
+                        ) from exc
+                    raise ledger.failure(
+                        exc, f"{child} descriptor close failed: {exc}"
+                    ) from exc
             try:
                 os.rmdir(entry.name, dir_fd=handle)
             except OSError as exc:
@@ -659,6 +719,7 @@ def remove_certified_subtree(
     refusals: Sequence[tuple[Path, str]],
     root_identity: Mapping[str, int] | None = None,
     authority_identity: Mapping[str, int] | None = None,
+    member_authorities: Mapping[Path, str] | None = None,
 ) -> MutationOutcome:
     """Remove a directory only when every disappearing descendant is certified.
 
@@ -700,37 +761,105 @@ def remove_certified_subtree(
             )
     ledger = MutationLedger()
     if refusals:
+        from .trust import open_directory_nofollow
+
         count = 0
-        for member in members:
-            if not (member.is_file() or member.is_symlink()):
-                continue
-            # Measured before the unlink - afterwards there is nothing left to
-            # measure - and credited only once the entry has actually gone. A
-            # failure here, before this member's own removal, still has to carry
-            # what earlier members already took.
-            try:
-                stats = member.lstat()
-            except OSError as exc:
-                raise ledger.failure(
-                    exc, f"{member} could not be measured: {exc}"
-                ) from exc
-            try:
-                durable_unlink(member)
-            except OSError as exc:
-                if member.exists() or member.is_symlink():
-                    raise ledger.failure(
-                        exc, f"{member} could not be removed: {exc}"
-                    ) from exc
-                ledger.credit(
-                    int(stats.st_size), (int(stats.st_dev), int(stats.st_ino))
+        try:
+            container_fd = open_directory_nofollow(str(path))
+        except FileNotFoundError:
+            return already_absent("the certified container was already gone")
+        except OSError as exc:
+            return refused_no_change(f"the certified container could not be opened: {exc}")
+
+        try:
+            for member in members:
+                expected_kind = (
+                    getattr(member, "authorized_kind", None)
+                    or (member_authorities or {}).get(member)
+                    or "file"
                 )
-                raise ledger.failure(
-                    exc,
-                    f"{member} was removed but the removal could not be made "
-                    f"durable: {exc}",
-                ) from exc
-            ledger.credit(int(stats.st_size), (int(stats.st_dev), int(stats.st_ino)))
-            count += 1
+                try:
+                    rel = member.relative_to(path)
+                except ValueError:
+                    continue
+                parent_handle = container_fd
+                opened_dirs: list[int] = []
+                try:
+                    if len(rel.parts) > 1:
+                        cur_fd = container_fd
+                        for part in rel.parts[:-1]:
+                            cur_fd = open_directory_nofollow(part, dir_fd=cur_fd)
+                            opened_dirs.append(cur_fd)
+                        parent_handle = cur_fd
+                    member_name = rel.parts[-1]
+
+                    try:
+                        stats = os.stat(member_name, dir_fd=parent_handle, follow_symlinks=False)
+                    except FileNotFoundError:
+                        continue
+                    except OSError as exc:
+                        raise ledger.failure(
+                            exc, f"{member} could not be measured: {exc}"
+                        ) from exc
+
+                    is_symlink = stat.S_ISLNK(stats.st_mode)
+                    is_regular = stat.S_ISREG(stats.st_mode)
+
+                    if is_symlink:
+                        if expected_kind != "symlink":
+                            continue
+                    elif is_regular:
+                        if expected_kind != "file":
+                            continue
+                    else:
+                        continue
+
+                    def _on_unlinked() -> None:
+                        if is_symlink:
+                            ledger.note_mutation()
+                        else:
+                            ledger.credit(
+                                int(stats.st_size), (int(stats.st_dev), int(stats.st_ino))
+                            )
+
+                    try:
+                        try:
+                            durable_unlink(
+                                member,
+                                dir_fd=parent_handle,
+                                missing_ok=False,
+                                on_unlinked=_on_unlinked,
+                            )
+                        except TypeError:
+                            durable_unlink(member)
+                            _on_unlinked()
+                    except OSError as exc:
+                        if ledger.mutated:
+                            raise ledger.failure(
+                                exc,
+                                f"{member} was removed but the removal could not be made "
+                                f"durable: {exc}",
+                            ) from exc
+                        raise ledger.failure(
+                            exc, f"{member} could not be removed: {exc}"
+                        ) from exc
+                    count += 1
+                finally:
+                    for d_fd in reversed(opened_dirs):
+                        try:
+                            os.close(d_fd)
+                        except Exception:
+                            pass
+        finally:
+            try:
+                os.close(container_fd)
+            except OSError as exc:
+                if ledger.mutated:
+                    raise ledger.failure(
+                        exc,
+                        f"{path} container descriptor close failed after mutation: {exc}",
+                    ) from exc
+                raise
         detail = (
             f"retained the container and removed {count} individually authorized "
             f"member(s); {len(refusals)} descendant(s) were not owner-certified"
@@ -753,17 +882,32 @@ def _remove_tree_or_file_tracked(path: Path, ledger: MutationLedger) -> None:
     except OSError as exc:
         raise ledger.failure(exc, f"{path} could not be observed: {exc}") from exc
     if not stat.S_ISDIR(stats.st_mode):
+        size = int(stats.st_size)
+        identity = (int(stats.st_dev), int(stats.st_ino))
+        unlinked = False
+
+        def _mark_unlinked() -> None:
+            nonlocal unlinked
+            if not unlinked:
+                unlinked = True
+                ledger.credit(size, identity)
+
         try:
-            durable_unlink(path)
+            try:
+                durable_unlink(path, missing_ok=False, on_unlinked=_mark_unlinked)
+            except TypeError:
+                durable_unlink(path)
         except OSError as exc:
-            if path.exists() or path.is_symlink():
-                raise ledger.failure(exc, f"{path} could not be removed: {exc}") from exc
-            ledger.credit(int(stats.st_size), None)
-            raise ledger.failure(
-                exc,
-                f"{path} was removed but the removal could not be made durable: {exc}",
-            ) from exc
-        ledger.credit(int(stats.st_size), None)
+            if ledger.mutated or (not unlinked and not path.exists() and not path.is_symlink()):
+                if not ledger.mutated:
+                    ledger.credit(size, identity)
+                raise ledger.failure(
+                    exc,
+                    f"{path} was removed but the removal could not be made durable: {exc}",
+                ) from exc
+            raise ledger.failure(exc, f"{path} could not be removed: {exc}") from exc
+        if not ledger.mutated:
+            ledger.credit(size, identity)
         return
     if not dir_fd_mutation_supported():
         # The recursion below descends through directory descriptors, so this is

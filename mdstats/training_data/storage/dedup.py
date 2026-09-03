@@ -546,6 +546,8 @@ def dedup_engine(
                 # here rather than inferred later from a completed-action list
                 # this member has not reached yet.
                 result.mutated = True
+                result.completed.append({**action.to_dict(), "aliased_to": str(canonical)})
+                result.reclaimed_bytes += size
                 failpoint(BOUNDARY_BEFORE_DIRECTORY_DURABILITY)
                 fsync_parent_directory(member)
             except BaseException:
@@ -555,8 +557,6 @@ def dedup_engine(
                 # abandoned staging rather than an unknown P5 descendant.
                 temporary.unlink(missing_ok=True)
                 raise
-            result.completed.append({**action.to_dict(), "aliased_to": str(canonical)})
-            result.reclaimed_bytes += size
 
         control_plane.clear_staging(operation_identity(plan))
         result.payload = DedupResult(
