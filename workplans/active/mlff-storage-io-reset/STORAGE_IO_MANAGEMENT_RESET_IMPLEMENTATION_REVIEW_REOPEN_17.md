@@ -272,6 +272,7 @@ tests/test_mlff_campaign_cli.py
    - no consequential absolute/multi-component anchor is accepted merely because its final component was opened no-follow;
    - the chosen root of trust is either retained under an existing synchronization/owner guarantee or identity-checked against existing bound authority;
    - actual opened generic/common action targets are compared with the plan-bound identity before traversal/mutation, and owner identities remain independently enforced where supplied;
+   - no consequential default or production cleanup caller reaches the unbound compatibility-removal mode when a `PlannedAction.filesystem_identity` exists;
    - the default consequential single-file path cannot call an unbound pathname unlink mode after a plan-bound parent capability exists;
    - top-level directory-entry durability does not close the authenticated parent and reopen its pathname before the authoritative fsync;
    - no direct close-before-structured-outcome remains in destructive paths;
@@ -335,13 +336,13 @@ Fixture inconvenience, optional-tool absence, or an ordinary implementation refa
 
 Each material executable stage closes both semantics and function before dependent work proceeds: focused checks **plus stage-local affected regression** on the current stage candidate. A later edit to a shared primitive reruns earlier claims it can plausibly invalidate. Final assembled acceptance remains fresh after all executable edits.
 
-## Stage A — close the descriptor-ownership primitive family
+## Stage A — close the descriptor-ownership/finalization family
 
-Repair IR17-2B/2C and the bounded IR17-2D census first so later acquisition work builds on the final exactly-once primitive/finalization semantics. Run focused wrong-kind/fstat-close tests, P7 failed-acquisition close-ranking tests, and stage-local affected regression across shared trust/P7/executor finalization consumers.
+Repair IR17-2A/2B/2C and complete the bounded IR17-2D census in one family closure so later acquisition work builds on final exactly-once primary/secondary semantics. Close every consequential sibling found by the census before leaving the stage. Run focused mount-refusal+close, wrong-kind/fstat-close, P7 failed-acquisition close-ranking, capability-finalizer tests, and stage-local affected regression across shared trust/P7/executor/commands finalization consumers.
 
 ## Stage B — authenticate plan-bound capabilities through mutation and durability
 
-Repair IR17-1A/B/C/D and IR17-2A using the stable Stage-A primitives. Add pre-acquisition replacement, default single-file identity, same-parent durability, mount+close, and final-rmdir counterfactuals. Before Stage C, run focused tests and the stage-local affected regression spanning default cleanup, generic/common cleanup, shared trust, and any P7 consumer affected by shared helper changes.
+Repair IR17-1A/B/C/D using the stable Stage-A primitives. Add pre-acquisition replacement, default single-file identity, same-parent durability, mount/substitution, and final-rmdir counterfactuals. Before Stage C, run focused tests and the stage-local affected regression spanning default cleanup, generic/common cleanup, shared trust, and any P7 consumer affected by shared helper changes.
 
 ## Stage C — close semantic-owner acceptance
 
