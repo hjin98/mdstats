@@ -2,66 +2,52 @@
 kind: implementation-workplan-authority-entrypoint
 workplan_id: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
 protocol_version: 5.10.0
-revision: 29
-status: reopened
-current_authority_pointer: AUTHORITY_REVISION_29.md
+revision: 30
+status: closed-implementation-ready
+current_authority_pointer: AUTHORITY_REVISION_30.md
+current_workplan: STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md
+reviewed_executable_commit: 6423a3f33a36c09ca1b89f5740f42c402b1993d2
+reviewed_executable_tree: a40bdf7cbd4bc1e2a2de4ec41ccb77fede4dc926
 review_verdict: NO-PASS
 ---
 
 # Storage/I-O reset package authority
 
-This is the **sole canonical navigation entrypoint** for the active storage/I-O reset package.
+This is the sole canonical navigation/status entrypoint for `CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1`.
 
-Revision 26 remains the accepted storage architecture/mutation/test-retirement basis. Revision 28 remains the accepted final repair design for plan-bound released authority, live descriptor capability, monotonic proof shrink, and structured mutation outcomes. Revision 29 is a bounded implementation-review reopen of the executable realization; it does not reopen P1-P7 science or the owner-driven storage architecture.
+## Current normative handoff
 
-Reviewed executable:
+Implementation uses only the following current task authorities:
 
-```text
-commit 6423a3f33a36c09ca1b89f5740f42c402b1993d2
-tree   a40bdf7cbd4bc1e2a2de4ec41ccb77fede4dc926
-```
+- `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — broader frozen owner-driven storage architecture and non-goals;
+- `STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md` — complete remaining final-apply repair contract;
+- `docs/specs/training_data/mlff_storage_management_spec.md` — current storage product contract;
+- `AUTHORITY_REVISION_30.md` — concise disposition/authority summary.
 
-The reviewed branch head `106081269735c27c862c174e18cb1ffaa3820382` is a generated-PDF-only successor and does not alter the executable verdict.
+Revision-26/28/29 repair, authority, and implementation-review files are historical provenance. No still-binding Revision-30 implementation requirement depends exclusively on reading those superseded files, Git history, or prior conversation.
 
-## Current supplied contract
+## Revision-30 closure
 
-Read the still-binding Revision-26 storage authority/specification set together with:
+Revision 30 preserves the accepted owner-driven storage architecture and consolidates all final-apply requirements, including:
 
-- `STORAGE_IO_MANAGEMENT_RESET_REPAIR_PLAN_CLOSURE_REVISION_28.md`;
-- `AUTHORITY_REVISION_28.md` for the accepted final repair design;
-- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_9.md` for the exact remaining implementation findings;
-- `AUTHORITY_REVISION_29.md` for the current bounded rework authority.
+- exact released-state/proof authority bound into the immutable plan and reauthenticated on the live P7 descriptor;
+- retained descriptor continuity through state/proof/topology certification and fd-relative mutation;
+- no-follow final comparison of the plan-bound target identity immediately before each P7 member mutation;
+- permanently unspendable closed session objects even if fd numbers are reused;
+- proof-as-upper-bound monotonic shrink and safe interrupted retry;
+- same-attempt capability invalidation after mutation-time contradiction;
+- once-per-session non-widenable typed proof lookup;
+- structured removed / already-absent / no-change-refused / partial-change-refused outcomes;
+- action-boundary preservation of mutation truth when a later fsync/durability/destructive step raises;
+- exact nested partial-byte propagation under the existing storage accounting metric;
+- real-executor / real-synchronization / real-P7-owner acceptance and exact-candidate regression/integration evidence.
 
-Earlier `current_authority_pointer` fields are historical metadata only; this `AUTHORITY.md` controls navigation.
+The accepted Python `>=3.10` floor, descriptor-pinned POSIX threat boundary, bounded reporting, R26 historical test/tool retirement, CampaignStore, P5 proof, archive/dedup/restore/control-plane architecture, and P1-P7 scientific/currentness semantics remain frozen.
 
-## Revision-29 bounded implementation corrections
+External-DFT, long GPU, and environment-specific HPC/shared-storage production qualification remain deferred and nonblocking. Whole-repository behavioral pytest is required only if final affected-surface analysis cannot remain bounded or independent repository policy requires it.
 
-Preserve the conforming Revision-28 implementation: exact released-authority plan binding, `ReleasedAttemptSession`, proof-as-upper-bound monotonic shrink, the four-outcome `MutationOutcome` model, descriptor-relative no-follow mutation, corrected R26/R28 counterfactuals, synchronization, and specification updates.
+## Disposition
 
-Close only these remaining surfaces:
+**Design/workplan: CLOSED / implementation-ready under Revision 30.**
 
-1. a mutation-time P7 refusal/partial contradiction invalidates that attempt's live capability for the remainder of the execution; later same-attempt actions are refused without mutation, while `removed`/`already_absent` may continue;
-2. materialize the authenticated `{path: kind}` proof lookup once per ephemeral attempt session instead of rebuilding the whole mapping per member;
-3. propagate exact measured nested-removal bytes under the existing storage/inode metric so later partial outcomes neither drop removed subtrees nor claim full planned size;
-4. once a destructive transition has occurred, any later exception/durability failure must expose structured partial-mutation truth and substantiated bytes to the executor/audit before error propagation can discard them; pre-mutation failures must fabricate nothing;
-5. add real-executor/real-P7-owner counterfactuals for resealed release authority, final state/proof/topology damage, mixed success/refusal, partial recursive mutation, same-attempt invalidation, post-mutation versus pre-mutation exception behavior, returned execution status/collections/bytes, and durable audit truth;
-6. after the final executable edit, record exact-candidate focused R22-R29, full storage core/integration, affected P1/P3/P4/P5/P7 + P6 current-lifecycle regressions, clean collection, final re-derived affected regression/integration, and static/current-doc validation.
-
-Whole-repository behavioral pytest remains conditional on inability to bound the final affected surface or independent repository policy. External-DFT, long GPU, and environment-specific HPC/storage production qualification remain deferred and nonblocking.
-
-## Route
-
-```text
-same-attempt contradiction invalidation
- + one proof lookup per session
- + exact nested partial-byte propagation
- + post-mutation exception truth
- -> real-owner proxy-proof tests
- -> affected regression
- -> final affected-surface re-derivation
- -> exact-candidate regression/integration + static/docs evidence
-```
-
-**Design/workplan disposition:** **CLOSED / implementation-ready under Revision 28 plus the bounded Revision-29 implementation corrections.**
-
-**Executable disposition:** **NO-PASS / reopened under Revision 29.**
+**Reviewed executable `6423a3f33a36c09ca1b89f5740f42c402b1993d2`: NO-PASS / bounded implementation repair remains required.**
