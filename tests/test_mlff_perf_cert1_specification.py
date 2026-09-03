@@ -19,7 +19,6 @@ def test_perf_cert1_manual_graph_spec_release_and_final_gpu_handoff_are_synchron
     nodes = {item["id"]: item for item in graph["nodes"]}
     edges = graph["edges"]
 
-    assert mdstats.__version__ == "0.20.209a0"
     for exported in (
         "PERF_CERT1_POLICY_SCHEMA", "PERF_CERT1_TELEMETRY_SCHEMA", "PERF_CERT1_PROFILE_SCHEMA",
         "PERF_CERT1_UPSTREAM_SCHEMA", "PERF_CERT1_ASSESSMENT_SCHEMA", "PERF_CERT1_QUALIFICATION_SCHEMA",

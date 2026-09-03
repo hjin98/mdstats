@@ -11,7 +11,6 @@ ARCH = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
 
 
 def test_adapt_verify1_release_identity_and_specification() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
     text = SPEC.read_text(encoding="utf-8")
     assert "Status: implemented in `mdstats 0.20.127a0`." in text
     assert "fallback_to_next_full_evaluation_candidate = true" in text

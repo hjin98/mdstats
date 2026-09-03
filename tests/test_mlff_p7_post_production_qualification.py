@@ -1018,7 +1018,17 @@ def test_p7_attempt_reference_survives_process_death_and_grants_no_currentness(
         # The fence can only ever reduce deletion authority: it exposes no
         # publication, membership, currentness, or verdict surface.
         surface = {name for name in dir(fence) if not name.startswith("_")}
-        assert surface == {"qualification_roots", "referenced_paths", "is_active", "protects"}
+        # The ambiguity fields are a retention *reduction* and its truthful
+        # reason; like the rest of the fence they expose no publication,
+        # membership, currentness, or verdict surface.
+        assert surface == {
+            "qualification_roots",
+            "referenced_paths",
+            "ambiguous_attempt_state",
+            "ambiguity_reasons",
+            "is_active",
+            "protects",
+        }
     finally:
         store.close()
 
@@ -1123,13 +1133,13 @@ def test_p7_publication_identity_composes_the_full_upstream_lineage(tmp_path: Pa
 
 
 def test_p7_introduces_no_second_cache_or_cleanup_authority():
-    """Cache and safe cleanup remain the single accepted P6 owners."""
+    """Cache and cleanup authority stays with the one storage owner."""
 
     joined = "\n".join(_qualification_sources().values())
     for forbidden in (
         "def command_cleanup",
         "def command_storage",
-        "_MANUAL_RECLAMATION_TIERS",
+        "StorageInventorySnapshot",
         "frame_cache",
         "def evict",
         "def reclaim",
@@ -1137,7 +1147,7 @@ def test_p7_introduces_no_second_cache_or_cleanup_authority():
         assert forbidden not in joined, forbidden
     core = Path(cli.__file__).read_text(encoding="utf-8")
     assert core.count("def command_cleanup") == 1
-    assert core.count("_MANUAL_RECLAMATION_TIERS = ") == 1
+    assert core.count("def command_storage(") == 1
     # The qualification fence only ever *reduces* deletion authority; it is
     # composed with the target-size fence rather than replacing it.
     from mdstats.training_data.storage_accounting import CompositeRetentionFence

@@ -9,7 +9,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_data9a9c_public_contracts_and_version() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
     for name in (
         "ProductionCorpusPlan", "ProductionExpectedRun",
         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",

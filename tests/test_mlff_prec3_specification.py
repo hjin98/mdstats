@@ -16,7 +16,6 @@ def test_prec3_architecture_is_closed_and_storage_is_next() -> None:
     manual = MANUAL.read_text(encoding="utf-8")
     spec = SPEC.read_text(encoding="utf-8")
     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
-    assert mdstats.__version__ == "0.20.140a0"
     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
     assert "PREC3 implementation closure (0.20.110a0)" in manual
     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

@@ -571,8 +571,9 @@ def test_p4c_no_target_size_transaction_body_nests_reconciliation_or_cleanup():
         "reconcile_and_adopt_target_size_head",
         "commit_target_size_boundary_batch",
         "record_candidate_boundary_outcome",
-        "_cleanup_remove",
-        "deduplicate_immutable_files",
+        "remove_durably",
+        "durable_unlink",
+        "deduplicate",
         "create_cold_archive",
         "restore_cold_archive",
         "rmtree",
@@ -771,11 +772,10 @@ def _cleanup_production_race_child(
     from mdstats.training_data._campaign_cli_core import (
         CampaignPaths,
         CampaignStore,
-        _CampaignCleanupReport,
         _campaign_ownership_boundary,
-        _cleanup_remove,
         _load_config,
     )
+    from mdstats.training_data.storage.executor import remove_durably
 
     workspace = Path(workspace_text)
     if config_path_text is not None:
@@ -802,20 +802,18 @@ def _cleanup_production_race_child(
     store = CampaignStore(paths.state_db)
     try:
         boundary = _campaign_ownership_boundary(cfg, paths, store)
-        report = _CampaignCleanupReport(
-            phase="test-p4c3-race",
-            dry_run=False,
-            ownership_boundary=boundary,
-        )
+        removed_paths: list[str] = []
+        skipped_messages: list[str] = []
         for target in targets:
-            _cleanup_remove(
-                report,
-                Path(target),
-                reason="production STOR race target candidate",
-                cleanup_class="test_candidate",
-            )
-        removed_paths = [str(action["path"]) for action in report.actions]
-        skipped_messages = list(report.skipped)
+            candidate = Path(target)
+            if not candidate.exists() and not candidate.is_symlink():
+                continue
+            authorized, detail = boundary.destructive_authorization(candidate)
+            if not authorized:
+                skipped_messages.append(f"cleanup authority denied for {candidate}: {detail}")
+                continue
+            remove_durably(candidate)
+            removed_paths.append(str(candidate))
         if return_list:
             queue.put(removed_paths)
         else:
@@ -892,10 +890,9 @@ def test_p4c_production_cleanup_owner_consumes_the_retention_fence(tmp_path: Pat
 
     from mdstats.training_data._campaign_cli_core import (
         CampaignPaths,
-        _CampaignCleanupReport,
         _campaign_ownership_boundary,
-        _cleanup_remove,
     )
+    from mdstats.training_data.storage.executor import remove_durably
 
     env = _env(tmp_path, root_name="screen_production_cleanup")
     store, revision = _campaign(tmp_path, env)
@@ -914,20 +911,24 @@ def test_p4c_production_cleanup_owner_consumes_the_retention_fence(tmp_path: Pat
         cfg = {"campaign": {"workspace": str(tmp_path)}, "cleanup": {"stale_age_hours": 0.25}}
         paths = CampaignPaths.from_config(config, cfg)
         boundary = _campaign_ownership_boundary(cfg, paths, store)
-        report = _CampaignCleanupReport(
-            phase="p4c-retention-fence", dry_run=False, ownership_boundary=boundary
-        )
 
         import os as _os
 
         old = time.time() - 86_400
+        removed: list[Path] = []
+        denials: list[str] = []
         for path in (head_path, batch_path):
             _os.utime(path, (old, old))
-            _cleanup_remove(report, path, reason="test destructive attempt")
+            authorized, detail = boundary.destructive_authorization(path)
+            if authorized:
+                remove_durably(path)
+                removed.append(path)
+            else:
+                denials.append(detail)
 
-        assert report.actions == []
-        assert len(report.skipped) == 2
-        assert all("target-size" in item for item in report.skipped)
+        assert removed == []
+        assert len(denials) == 2
+        assert all("target-size" in item for item in denials)
         assert head_path.is_file()
         assert batch_path.is_file()
     finally:

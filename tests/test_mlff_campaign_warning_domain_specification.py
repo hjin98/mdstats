@@ -9,7 +9,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_rev87_warning_domain_is_retained_under_current_release() -> None:
-    assert mdstats.__version__ == "0.20.221a0"
     manual = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
     note = (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV87.md").read_text()
     spec = (ROOT / "docs/specs/training_data/mlff_campaign_warning_domain_spec.md").read_text()

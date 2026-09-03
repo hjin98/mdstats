@@ -256,6 +256,45 @@ class TargetSizeRetentionFence:
         return False, ""
 
 
+#: Every top-level child name the P3 execution owner produces under one
+#: generation root.  This is the owner's own layout contract, declared here
+#: beside the reachability constants that already define it, and it is what
+#: makes a closed-subtree certification possible for storage: a child outside
+#: this set was not written by P3 and must never inherit P3's authority.
+EXECUTION_ROOT_MEMBER_NAMES: frozenset[str] = (
+    frozenset(CONTENT_ADDRESSED_SUBDIRECTORIES) | frozenset(SEED_SUBDIRECTORIES)
+)
+
+
+def certify_closed_execution_root(root: str | os.PathLike[str]) -> tuple[bool, str]:
+    """Whether P3 certifies every descendant of one execution root as its own.
+
+    Certification is a statement by this owner about its own layout, not a
+    pathname heuristic: the root is closed exactly when every top-level child is
+    one of the directories P3 itself writes.  An unexpected child - a stray
+    file, an operator's scratch directory, a foreign tool's output - contradicts
+    the certification, and storage must then treat the root as an open
+    container and touch nothing it cannot individually authorize.
+    """
+
+    candidate = _absolute(root)
+    if not candidate.is_dir():
+        return False, f"{candidate} is not a directory"
+    if candidate.is_symlink():
+        return False, f"{candidate} is a symlink"
+    try:
+        children = sorted(entry.name for entry in os.scandir(candidate))
+    except OSError as exc:
+        return False, f"{candidate} could not be enumerated: {exc}"
+    unexpected = [name for name in children if name not in EXECUTION_ROOT_MEMBER_NAMES]
+    if unexpected:
+        return False, (
+            "target-size execution root contains descendant(s) P3 did not write: "
+            f"{unexpected[:5]}"
+        )
+    return True, "every top-level child belongs to the P3 execution layout"
+
+
 def _no_fence(reason: str) -> TargetSizeRetentionFence:
     return TargetSizeRetentionFence(
         execution_root=None, generation=None, reason=reason, protect_everything=False
@@ -339,7 +378,9 @@ def retention_fence_for_revision(
 
 __all__ = [
     "CONTENT_ADDRESSED_SUBDIRECTORIES",
+    "EXECUTION_ROOT_MEMBER_NAMES",
     "SEED_SUBDIRECTORIES",
+    "certify_closed_execution_root",
     "TargetSizeRetentionFence",
     "build_target_size_retention_fence",
     "retention_fence_for_revision",

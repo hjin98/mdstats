@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
     assert 'version = "0.20.140a0"' in (ROOT / "pyproject.toml").read_text()

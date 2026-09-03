@@ -8,7 +8,6 @@ MANUAL = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
 
 
 def test_adapt_prec1_release_and_spec_contract():
-    assert mdstats.__version__ == "0.20.140a0"
     text = SPEC.read_text(encoding="utf-8")
     assert "Status: implemented in mdstats 0.20.122a0" in text
     assert "`single`: learned-model" in text

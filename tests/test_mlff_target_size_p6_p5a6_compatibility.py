@@ -56,6 +56,12 @@ _DERIVED_PREFIXES = (
     "campaign/.mdstats/frame-cache/",
 )
 
+#: Coordination infrastructure, not preserved evidence.  The campaign-state
+#: writer lock is an empty advisory-lock pathname every writer flocks before
+#: mutating; a reopen that takes it carries no scientific authority and changes
+#: no persisted campaign content.
+_DERIVED_SUFFIXES = (".writer-lock",)
+
 #: The content-hash receipt cache is a low-level content/recipe cache whose
 #: entries are recomputable from the files they describe.  It carries no
 #: target-size, selection, CV, or final-production authority, so a real-owner
@@ -225,5 +231,6 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners():
         name
         for name in set(after) - set(recorded)
         if not name.startswith(_DERIVED_PREFIXES)
+        and not name.endswith(_DERIVED_SUFFIXES)
     )
     assert not unexpected, f"the reopen wrote unexpected persisted files: {unexpected}"

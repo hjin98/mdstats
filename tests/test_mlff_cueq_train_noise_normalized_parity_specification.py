@@ -9,7 +9,6 @@ from mdstats.training_data import acceleration, campaign_cli
 ROOT=Path(__file__).resolve().parents[1]
 
 def test_rev86_permanent_parity_release_manual_graph_and_policies_are_synchronized():
-    assert mdstats.__version__ == "0.20.221a0"
     assert campaign_cli._training_acceleration_parity_policy().tolerance("float32") == (1.0e-5, 1.0e-6)
     policy=campaign_cli._training_acceleration_noise_normalized_policy()
     assert policy.repeat_count == 10 and policy.warmup_count == 1

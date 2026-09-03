@@ -15,6 +15,7 @@ from enum import Enum
 import argparse
 import ast
 import csv
+import fcntl
 import gc
 import hashlib
 import json
@@ -23,6 +24,7 @@ import tempfile
 import threading
 import os
 import re
+import urllib.parse
 from pathlib import Path
 import shutil
 import signal
@@ -50,13 +52,14 @@ from .storage_accounting import (
     build_campaign_storage_report,
     configured_protected_inputs,
 )
-from .storage_reclamation import append_cleanup_manifest, filesystem_identity
+from .storage_reclamation import filesystem_identity
 from .campaign_target_size_retention import build_target_size_retention_fence
 from .campaign_target_size_state import (
     TargetSizeCampaignStateError,
     TargetSizeLifecycle,
 )
 
+from . import _observation
 from ._common import (
     TrainingDataSerializationError,
     configure_sha256_receipt_store,
@@ -110,7 +113,9 @@ from .inference_parallel import (
 # 0.20.114a0 implements STOR3 lifecycle-safe automatic reclamation/audit manifests, and
 # 0.20.115a0 implements STOR4 manual tiered reclamation/capability plans, and
 # 0.20.116a0 implements STOR5 immutable deduplication and authenticated cold archive/restore, and
-# 0.20.117a0 consolidates the four storage-management CLI commands under `storage`.
+# 0.20.117a0 consolidates the four storage-management CLI commands under `storage`, and
+# the storage/I-O reset replaces the STOR1-STOR5 tier policy with the owner-driven
+# inventory/plan/executor, cold archive v2, and owner-certified deduplication.
 # None changes the frozen MLFF scientific/materialization identity, so existing
 # 0.20.99a0 campaign state and prediction caches remain reusable.
 MLFF_DATA9B3_VERSION = "0.20.99a0"
@@ -297,15 +302,135 @@ class _TrainingMethodSpec:
 
 
 
+def _observational_campaign_state_active() -> bool:
+    return _observation.observational()
+
+
+@contextmanager
+def observational_campaign_state() -> Iterable[None]:
+    """Forbid this invocation from creating or writing managed campaign state.
+
+    The capability is carried by :mod:`._observation`, so it reaches every
+    nested owner helper and every worker thread this invocation spawns rather
+    than only the store the command opened itself.  Nothing process-global is
+    toggled: a concurrent consequential command keeps its own writable receipt
+    and store behavior while this block runs.
+
+    Receipts are a pure acceleration cache - losing one only forces a fresh byte
+    hash - but the cache is itself a managed artifact this package inventories,
+    so an observational command reads it without ever writing to it.
+    """
+
+    with _observation.observing():
+        yield
+
+
+#: Advisory lock file every campaign-state writer takes before mutating.
+#:
+#: It sits beside the database rather than inside it because the competing
+#: writer is normally a second CLI process, which no in-process mutex can see.
+CAMPAIGN_WRITER_LOCK_SUFFIX = ".writer-lock"
+
+
+@dataclass
+class _CampaignWriterGate:
+    """The single writer gate for one campaign database, shared process-wide.
+
+    Two properties have to hold at once and neither is optional.
+
+    *Reentrancy belongs to a thread, not to an object.* An instance-level depth
+    counter would let thread B see thread A's nonzero depth, conclude it was
+    already inside, and mutate the database without ever taking the lock. The
+    ``RLock`` gives reentrancy to exactly the thread that owns it and blocks
+    every other one.
+
+    *The gate is per database, not per object.* Two ``CampaignStore`` instances
+    for the same file in one process are the same writer, so they share one
+    entry here; the ``flock`` beneath handles the second *process*.
+    """
+
+    lock: threading.RLock = field(default_factory=threading.RLock)
+    depth: int = 0
+    handle: int | None = None
+
+
+_CAMPAIGN_WRITER_GATES: dict[str, _CampaignWriterGate] = {}
+_CAMPAIGN_WRITER_GATES_LOCK = threading.Lock()
+
+
+def _campaign_writer_gate(lock_path: Path) -> _CampaignWriterGate:
+    key = str(Path(os.path.abspath(os.fspath(lock_path))))
+    with _CAMPAIGN_WRITER_GATES_LOCK:
+        gate = _CAMPAIGN_WRITER_GATES.get(key)
+        if gate is None:
+            gate = _CampaignWriterGate()
+            _CAMPAIGN_WRITER_GATES[key] = gate
+        return gate
+
+
+def _sqlite_readonly_uri(path: Path) -> str:
+    """A genuinely read-only SQLite URI for one existing database file.
+
+    Escaping matters: a campaign workspace path can contain characters that a
+    URI would otherwise reinterpret, and `?` in particular would silently split
+    the path from the query string and open the wrong database.
+    """
+
+    quoted = urllib.parse.quote(str(Path(path).resolve()))
+    return f"file:{quoted}?mode=ro"
+
+
+def _declared_relative_paths(payload: Any) -> set[str]:
+    """Every ``relative_path`` a sharded-record manifest declares, at any depth."""
+
+    found: set[str] = set()
+    if isinstance(payload, Mapping):
+        value = payload.get("relative_path")
+        if isinstance(value, str):
+            found.add(value)
+        for item in payload.values():
+            found |= _declared_relative_paths(item)
+    elif isinstance(payload, (list, tuple)):
+        for item in payload:
+            found |= _declared_relative_paths(item)
+    return found
+
+
 class CampaignStore:
     """Single-file durable state for orchestration records and stage summaries."""
 
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, *, create: bool = True):
+        """Open the campaign state database.
+
+        ``create=False`` is the observational open used by read-only storage
+        paths: it will not create the directory, will not initialize a schema,
+        and will not turn on write-through SHA-256 receipts. Describing a
+        campaign must never be what brings its state into existence.
+        """
+
         self.path = Path(path)
+        if _observational_campaign_state_active():
+            # An observational invocation cannot be made consequential by a
+            # nested helper that happens to open the store for itself, on this
+            # thread or on any worker it spawned.
+            create = False
+        self.read_only = not create
+        if not create:
+            if not self.path.is_file():
+                raise CampaignCliError(
+                    f"Campaign state database is missing: {self.path}. It is reported "
+                    "as uninitialized rather than created by an observational command."
+                )
+            self._db_local = threading.local()
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._db_local = threading.local()
         configure_sha256_receipt_store(self.path.parent / "hash-receipts.sqlite3")
-        with self._connect() as db:
+        # Schema bootstrap is a real write. Leaving it outside the common
+        # exclusion would let a second process construct a store and mutate the
+        # database while maintenance believed every supported writer was
+        # excluded, so construction joins the writer census like anything else.
+        with self.writer_exclusion(), self._connect() as db:
             db.executescript(
                 """
                 PRAGMA journal_mode=DELETE;
@@ -360,10 +485,97 @@ class CampaignStore:
 
         db = getattr(self._db_local, "connection", None)
         if db is None:
-            db = sqlite3.connect(self.path, timeout=30.0)
+            if self.read_only:
+                # An observational open is enforced by SQLite itself, not by the
+                # convention that no nested helper ever calls a write path. The
+                # connection cannot create the file, a journal, a schema row, or
+                # anything else, and `query_only` refuses a write even if some
+                # future caller reaches one.
+                db = sqlite3.connect(
+                    _sqlite_readonly_uri(self.path), uri=True, timeout=30.0
+                )
+                db.execute("PRAGMA query_only=ON")
+            else:
+                db = sqlite3.connect(self.path, timeout=30.0)
             db.execute("PRAGMA busy_timeout=30000")
             self._db_local.connection = db
         return db
+
+    @property
+    def writer_lock_path(self) -> Path:
+        return Path(str(self.path) + CAMPAIGN_WRITER_LOCK_SUFFIX)
+
+    @contextmanager
+    def writer_exclusion(self) -> Iterable[None]:
+        """Exclude every other campaign-state writer, in this process or another.
+
+        SQLite serializes individual statements, but an expensive maintenance
+        decision needs more than that: the free-page measurement that authorizes
+        a whole-file ``VACUUM`` has to still be true when the rewrite starts, and
+        another process committing in between would invalidate it. A thread-only
+        mutex cannot express that, because the competing writer is usually a
+        second CLI invocation.
+
+        So every product write path takes this one gate first, and maintenance
+        holds it across its final predicate, its admission recheck, and the
+        rewrite itself. Reentrancy is owned by the acquiring *thread*, the gate
+        is shared by every store instance for the same database, and the
+        ``flock`` beneath it is per open file description and therefore
+        genuinely cross-process. The kernel releases it on any exit, so a crash
+        can never leave writers permanently blocked.
+
+        Lock order is single and cycle-free: a storage operation takes the
+        storage-operation lease and the owner publication seams *before* it
+        reaches campaign-state maintenance, and nothing holding this gate ever
+        reaches back for those.
+        """
+
+        self._require_writable("take the campaign-state writer exclusion")
+        lock_path = self.writer_lock_path
+        gate = _campaign_writer_gate(lock_path)
+        gate.lock.acquire()
+        try:
+            if gate.depth == 0:
+                lock_path.parent.mkdir(parents=True, exist_ok=True)
+                handle = os.open(
+                    lock_path,
+                    os.O_CREAT | os.O_RDWR | os.O_CLOEXEC,
+                    0o644,
+                )
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX)
+                except BaseException:
+                    os.close(handle)
+                    raise
+                gate.handle = handle
+            gate.depth += 1
+            try:
+                yield
+            finally:
+                gate.depth -= 1
+                if gate.depth == 0 and gate.handle is not None:
+                    handle, gate.handle = gate.handle, None
+                    try:
+                        fcntl.flock(handle, fcntl.LOCK_UN)
+                    finally:
+                        os.close(handle)
+        finally:
+            gate.lock.release()
+
+    def _require_writable(self, operation: str) -> None:
+        """Refuse a mutation on an observational store before it starts.
+
+        SQLite would refuse this too, but a clear owner error names the real
+        problem - an observational command reached a write path - instead of
+        surfacing a generic read-only database error from three helpers down.
+        """
+
+        if self.read_only:
+            raise CampaignCliError(
+                f"Refusing to {operation}: this campaign state database was opened "
+                "for observation only. A read-only storage command never changes "
+                "managed campaign state; run the consequential command explicitly."
+            )
 
     @contextmanager
     def exclusive_transaction(self) -> Iterable[sqlite3.Connection]:
@@ -377,19 +589,21 @@ class CampaignStore:
         logic; this method owns only transaction lifetime.
         """
 
+        self._require_writable("open a campaign write transaction")
         db = self._connect()
         if db.in_transaction:
             raise CampaignCliError(
                 "A campaign write transaction is already active on this connection; "
                 "campaign CAS transitions must not nest."
             )
-        db.execute("BEGIN IMMEDIATE")
-        try:
-            yield db
-        except BaseException:
-            db.rollback()
-            raise
-        db.commit()
+        with self.writer_exclusion():
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                yield db
+            except BaseException:
+                db.rollback()
+                raise
+            db.commit()
 
     def close(self) -> None:
         db = getattr(self._db_local, "connection", None)
@@ -402,6 +616,84 @@ class CampaignStore:
     @property
     def external_record_directory(self) -> Path:
         return self.path.parent / "records"
+
+    def certify_closed_external_record(
+        self, entry: str | Path
+    ) -> tuple[bool, str, tuple[str, ...]]:
+        """Whether this owner certifies every descendant of one payload entry.
+
+        ``records/`` is this store's private externalized-payload area.  This
+        owner creates it, is its only writer, and delegates no part of it to any
+        other component - which is what makes a closed-subtree statement here a
+        truthful ownership claim rather than a containment guess.  Contrast the
+        post-selection run tree, whose contents are written by a configured
+        third-party trainer and therefore need an explicit recorded membership.
+
+        The claim is still refused for anything this owner cannot have written
+        (symlinks, special files), and for a sharded record the authenticated
+        manifest bounds the member set exactly, so a foreign file dropped inside
+        one withholds authority over the whole entry.
+
+        Returns ``(certified, detail, nodes)`` where nodes are
+        ``(posix relative path, kind)`` pairs relative to ``entry`` itself.
+        """
+
+        from .data4_sharded_store import DATA4_SHARDED_MANIFEST_SCHEMA
+        from .storage.owners import (
+            NODE_DIRECTORY,
+            NODE_FILE,
+            observed_node_kind,
+        )
+
+        root = Path(entry)
+        root_kind = observed_node_kind(root)
+        if root_kind == "symlink":
+            return False, "a symlink is never a record payload this owner wrote", ()
+        if root_kind == NODE_FILE:
+            return True, "single-file external record payload", ()
+        if root_kind != NODE_DIRECTORY:
+            return False, f"{root} is neither a payload file nor a payload directory", ()
+
+        observed: list[tuple[str, str]] = []
+        for path in sorted(root.rglob("*")):
+            kind = observed_node_kind(path)
+            if kind == "symlink":
+                return False, (
+                    f"record payload contains a symlink this owner did not write: {path.name}"
+                ), ()
+            if kind not in (NODE_FILE, NODE_DIRECTORY):
+                return False, (
+                    f"record payload contains a special file: {path.name}"
+                ), ()
+            # Directories are recorded as nodes too: a recursive removal makes
+            # them disappear, so an unrecorded empty directory must be covered
+            # rather than swept along.
+            observed.append((path.relative_to(root).as_posix(), kind))
+
+        manifest_path = root / "manifest.json"
+        if manifest_path.is_file():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                return False, f"record manifest is unreadable ({exc})", ()
+            if manifest.get("schema") == DATA4_SHARDED_MANIFEST_SCHEMA:
+                declared = {"manifest.json", *_declared_relative_paths(manifest)}
+                extra = sorted(
+                    path for path, kind in observed
+                    if kind == NODE_FILE and path not in declared
+                )
+                if extra:
+                    return False, (
+                        "sharded record contains descendant(s) its manifest does not "
+                        f"declare: {extra[:5]}"
+                    ), ()
+                return True, (
+                    "sharded external record whose descendants are exactly what its "
+                    "authenticated manifest declares"
+                ), tuple(sorted(observed))
+        return True, (
+            "external record payload in this owner's exclusively written record area"
+        ), tuple(sorted(observed))
 
     def _write_external_payload(self, key: str, payload: Mapping[str, Any]) -> tuple[str, str]:
         """Stream a large JSON record to content-addressed storage.
@@ -467,8 +759,9 @@ class CampaignStore:
         return payload
 
     def set_meta(self, key: str, value: Any) -> None:
+        self._require_writable("write campaign metadata")
         encoded = json.dumps(value, sort_keys=True)
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.execute("INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)", (key, encoded))
 
     def get_meta(self, key: str, default: Any = None) -> Any:
@@ -518,8 +811,9 @@ class CampaignStore:
         return class_name, record_digest, encoded
 
     def put_record(self, key: str, record: Any) -> None:
+        self._require_writable("write a campaign record")
         class_name, record_digest, encoded = self._encode_record_for_storage(key, record)
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.execute(
                 "INSERT OR REPLACE INTO records(key,class_name,digest,payload,updated_utc) VALUES (?,?,?,?,?)",
                 (key, class_name, record_digest, encoded, _utc_now()),
@@ -533,6 +827,7 @@ class CampaignStore:
         lock. This method is for naturally atomic parent-side record groups.
         """
 
+        self._require_writable("write campaign records")
         if not records:
             return
         encoded_rows: list[tuple[str, str, str | None, str, str]] = []
@@ -544,7 +839,7 @@ class CampaignStore:
             encoded_rows.append(
                 (str(key), class_name, record_digest, encoded, timestamp)
             )
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.executemany(
                 "INSERT OR REPLACE INTO records(key,class_name,digest,payload,updated_utc) VALUES (?,?,?,?,?)",
                 encoded_rows,
@@ -559,8 +854,16 @@ class CampaignStore:
         transaction. The database transaction then performs deletions and alias
         replacement together so incompatible authority generations cannot become
         partially mixed after interruption.
+
+        Because that externalization writes real files before SQLite is ever
+        touched, the capability check has to be the *first* thing this method
+        does. Discovering read-only status later - when the writer exclusion or
+        the database finally refuses - would already have left new payloads in
+        ``.mdstats/records/``, which is exactly the side effect an observational
+        command must not have.
         """
 
+        self._require_writable("replace campaign records")
         encoded_rows: list[tuple[str, str, str | None, str, str]] = []
         timestamp = _utc_now()
         for key, record in records.items():
@@ -569,7 +872,7 @@ class CampaignStore:
             )
             encoded_rows.append((str(key), class_name, record_digest, encoded, timestamp))
         delete = tuple(dict.fromkeys(str(key) for key in delete_keys if str(key)))
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             if delete:
                 db.executemany("DELETE FROM records WHERE key=?", ((key,) for key in delete))
             if encoded_rows:
@@ -686,11 +989,13 @@ class CampaignStore:
     def delete_records(self, prefix: str) -> None:
         """Delete compact orchestration pointers while leaving native artifacts intact."""
 
-        with self._connect() as db:
+        self._require_writable("delete campaign records")
+        with self.writer_exclusion(), self._connect() as db:
             db.execute("DELETE FROM records WHERE key LIKE ?", (prefix + "%",))
 
     def delete_record(self, key: str) -> None:
-        with self._connect() as db:
+        self._require_writable("delete a campaign record")
+        with self.writer_exclusion(), self._connect() as db:
             db.execute("DELETE FROM records WHERE key=?", (key,))
 
     def storage_references(self) -> tuple[Path, ...]:
@@ -731,25 +1036,63 @@ class CampaignStore:
                 references.add(candidate.parent)
         return tuple(sorted(references))
 
-    def compact(self, *, maximum_events: int = 10_000) -> None:
-        """Bound orchestration history and compact the SQLite file."""
+    def prune_events(self, *, maximum_events: int = 10_000) -> int:
+        """Bound diagnostic history to the newest ``maximum_events`` rows.
 
-        maximum_events = max(100, int(maximum_events))
-        with self._connect() as db:
+        This is the cheap half of campaign-state maintenance and is deliberately
+        separate from :meth:`vacuum`. Deleting rows costs one small transaction;
+        rewriting the whole database file does not, and one excess diagnostic
+        event is not a reason to pay for the second.
+
+        The delete takes the write lock up front so it serializes against any
+        other campaign writer rather than assuming this process is the only one.
+
+        The resolved policy bound is executed **exactly**. There is deliberately
+        no floor here: a hidden clamp would make the plan, the policy identity,
+        and the audit record all describe a retention the execution never
+        applied. If the product ever needs a minimum retained diagnostic count,
+        it belongs in policy resolution, before the value is hashed and planned.
+        """
+
+        self._require_writable("prune campaign diagnostic events")
+        maximum_events = max(0, int(maximum_events))
+        with self.exclusive_transaction() as db:
+            before = int(db.execute("SELECT COUNT(*) FROM events").fetchone()[0])
             db.execute(
                 "DELETE FROM events WHERE id NOT IN "
                 "(SELECT id FROM events ORDER BY id DESC LIMIT ?)",
                 (maximum_events,),
             )
+            after = int(db.execute("SELECT COUNT(*) FROM events").fetchone()[0])
+        return max(0, before - after)
+
+    def vacuum(self) -> None:
+        """Rewrite the database file to return free pages to the filesystem.
+
+        Expensive and independently decided: the caller establishes that the
+        rewrite is worth its cost and that there is room for the copy SQLite
+        makes beside the original, and it does so while already holding
+        :meth:`writer_exclusion` so that measurement cannot go stale before the
+        rewrite starts. Entering the exclusion here as well is reentrant and
+        makes a direct call safe on its own.
+        """
+
+        self._require_writable("rewrite the campaign state database")
+        db = self._connect()
+        if db.in_transaction:
+            raise CampaignCliError(
+                "Refusing to rewrite the campaign state database inside an open "
+                "transaction; VACUUM owns the whole file."
+            )
+        with self.writer_exclusion():
             db.execute("PRAGMA optimize")
-        # VACUUM cannot run inside a transaction. It is safe here because the
-        # campaign parent is the sole database writer.
-        with self._connect() as db:
             db.execute("VACUUM")
+            db.commit()
 
     def set_stage(self, name: str, state: StageState, message: str) -> None:
+        self._require_writable("record a campaign stage")
         timestamp = _utc_now()
-        with self._connect() as db:
+        with self.writer_exclusion(), self._connect() as db:
             db.execute(
                 "INSERT OR REPLACE INTO stages(name,state,message,updated_utc) VALUES (?,?,?,?)",
                 (name, state.value, message, timestamp),
@@ -767,7 +1110,8 @@ class CampaignStore:
         return StageState(row[0]), row[1]
 
     def event(self, level: str, stage: str, message: str) -> None:
-        with self._connect() as db:
+        self._require_writable("record a campaign event")
+        with self.writer_exclusion(), self._connect() as db:
             db.execute(
                 "INSERT INTO events(timestamp_utc,level,stage,message) VALUES (?,?,?,?)",
                 (_utc_now(), level, stage, message),
@@ -798,7 +1142,16 @@ def _resolve_path(value: str | Path, base: Path) -> Path:
     return (path if path.is_absolute() else base / path).resolve()
 
 
-def _load_config(path: str | Path) -> tuple[dict[str, Any], CampaignPaths]:
+def _load_config(
+    path: str | Path, *, ensure: bool = True
+) -> tuple[dict[str, Any], CampaignPaths]:
+    """Resolve configuration and campaign paths.
+
+    ``ensure=False`` inspects a campaign without materializing its directory
+    layout. Observational storage commands use it so that reporting on a
+    campaign cannot be what creates its workspace.
+    """
+
     config_path = Path(path).expanduser().resolve()
     if not config_path.is_file():
         raise CampaignCliError(f"Configuration not found: {config_path}. Run `init` first.")
@@ -808,7 +1161,8 @@ def _load_config(path: str | Path) -> tuple[dict[str, Any], CampaignPaths]:
         raise CampaignCliError(f"Unsupported campaign configuration schema: {cfg.get('schema')!r}.")
     _normalize_target_size_fidelity_config(cfg)
     paths = CampaignPaths.from_config(config_path, cfg)
-    paths.ensure()
+    if ensure:
+        paths.ensure()
     # TRAIN2A migration authority is configuration-level and must fail on every
     # command, not only when DATA8 is rebuilt. Historical configs without an
     # explicit policy_generation remain under their original semantics.
@@ -1810,298 +2164,6 @@ def _file_size_mib(path: Path) -> float:
     except OSError:
         return 0.0
 
-
-def _path_size_bytes(path: Path) -> int:
-    """Return allocated logical bytes without following directory symlinks."""
-
-    try:
-        if path.is_symlink():
-            return int(path.lstat().st_size)
-        if path.is_file():
-            return int(path.stat().st_size)
-        total = 0
-        for root, directories, files in os.walk(path, followlinks=False):
-            # Symlinked directories must be counted as links, not traversed.
-            kept: list[str] = []
-            root_path = Path(root)
-            for name in directories:
-                candidate = root_path / name
-                if candidate.is_symlink():
-                    try:
-                        total += int(candidate.lstat().st_size)
-                    except OSError:
-                        pass
-                else:
-                    kept.append(name)
-            directories[:] = kept
-            for name in files:
-                candidate = root_path / name
-                try:
-                    total += int(candidate.lstat().st_size)
-                except OSError:
-                    pass
-        return total
-    except OSError:
-        return 0
-
-
-def _format_reclaimed_bytes(value: int) -> str:
-    gib = float(value) / (1024.0 ** 3)
-    if gib >= 0.1:
-        return f"{gib:.2f} GiB"
-    return f"{float(value) / (1024.0 ** 2):.1f} MiB"
-
-
-@dataclass
-class _CampaignCleanupReport:
-    phase: str
-    dry_run: bool
-    actions: list[dict[str, Any]] = field(default_factory=list)
-    skipped: list[str] = field(default_factory=list)
-    ownership_boundary: CampaignOwnershipBoundary | None = field(default=None, repr=False)
-
-    @property
-    def reclaimed_bytes(self) -> int:
-        return sum(int(item["size_bytes"]) for item in self.actions)
-
-    def add(
-        self,
-        path: Path,
-        *,
-        reason: str,
-        size_bytes: int,
-        cleanup_class: str = "lifecycle_safe",
-        prior_identity: Mapping[str, Any] | None = None,
-        preserved_capabilities: Sequence[str] = (),
-        capability_loss: Sequence[str] = (),
-    ) -> None:
-        self.actions.append(
-            {
-                "path": str(path),
-                "reason": reason,
-                "size_bytes": int(size_bytes),
-                "cleanup_class": str(cleanup_class),
-                "prior_identity": None if prior_identity is None else dict(prior_identity),
-                "capability_loss": list(capability_loss),
-                "preserved_capabilities": list(preserved_capabilities),
-            }
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "schema": "mdstats.mlff-campaign-cleanup-report.v1",
-            "phase": self.phase,
-            "dry_run": self.dry_run,
-            "created_utc": _utc_now(),
-            "reclaimed_bytes": self.reclaimed_bytes,
-            "actions": list(self.actions),
-            "skipped": list(self.skipped),
-        }
-
-
-def _cleanup_remove(
-    report: _CampaignCleanupReport,
-    path: Path,
-    *,
-    reason: str,
-    cleanup_class: str = "lifecycle_safe",
-    preserved_capabilities: Sequence[str] = (),
-    capability_loss: Sequence[str] = (),
-) -> None:
-    if not path.exists() and not path.is_symlink():
-        return
-    if report.ownership_boundary is not None:
-        authorized, detail = report.ownership_boundary.destructive_authorization(path)
-        if not authorized:
-            report.skipped.append(
-                f"cleanup authority denied for {path}: {detail}"
-            )
-            return
-    size = _path_size_bytes(path)
-    try:
-        prior_identity = filesystem_identity(path)
-    except OSError:
-        prior_identity = {"schema": "mdstats.mlff-filesystem-identity.v1", "kind": "unavailable"}
-    if not report.dry_run:
-        if path.is_symlink() or path.is_file():
-            path.unlink(missing_ok=True)
-        else:
-            shutil.rmtree(path, ignore_errors=False)
-    report.add(
-        path,
-        reason=reason,
-        size_bytes=size,
-        cleanup_class=cleanup_class,
-        prior_identity=prior_identity,
-        preserved_capabilities=preserved_capabilities,
-        capability_loss=capability_loss,
-    )
-
-
-def _cleanup_orphan_record_storage(
-    report: _CampaignCleanupReport,
-    store: CampaignStore,
-    *,
-    stale_before: float,
-) -> None:
-    root = store.external_record_directory
-    if report.ownership_boundary is not None:
-        authorized, detail = report.ownership_boundary.traversal_authorization(root)
-        if not authorized:
-            report.skipped.append(
-                f"external-record cleanup skipped because the root failed ownership checks: {detail}: {root}"
-            )
-            return
-    if not root.is_dir():
-        return
-    references = set(store.storage_references())
-    keep_top: set[Path] = set()
-    for reference in references:
-        try:
-            relative = reference.relative_to(root.resolve())
-        except ValueError:
-            continue
-        if relative.parts:
-            keep_top.add((root / relative.parts[0]).resolve())
-    for child in root.iterdir():
-        resolved = child.resolve()
-        if resolved in keep_top:
-            continue
-        try:
-            if child.lstat().st_mtime > stale_before:
-                report.skipped.append(f"young external record candidate retained: {child}")
-                continue
-        except OSError:
-            continue
-        _cleanup_remove(report, child, reason="orphaned external campaign record", cleanup_class="garbage", preserved_capabilities=("all_referenced_campaign_records", "campaign_state"))
-
-
-def _append_cleanup_audit_manifest(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    *,
-    trigger: str,
-) -> None:
-    if report.dry_run or report.ownership_boundary is None:
-        return
-    destination = paths.results / "cleanup-manifest.jsonl"
-    authorized, detail = report.ownership_boundary.destructive_authorization(destination)
-    if not authorized:
-        report.skipped.append(
-            f"cleanup manifest append skipped by ownership boundary: {detail}: {destination}"
-        )
-        return
-    payload = {
-        "created_utc": _utc_now(),
-        "phase": report.phase,
-        "trigger": trigger,
-        "workspace": str(paths.workspace),
-        "reclaimed_bytes": report.reclaimed_bytes,
-        "action_count": len(report.actions),
-        "actions": list(report.actions),
-        "protected_capabilities": [
-            "external_user_inputs",
-            "selected_production_models",
-            "selected_production_checkpoints",
-            "campaign_protocol_and_selection_records",
-            "diagnostic_logs_and_histories",
-            "active_training_restart",
-            "authoritative_scientific_metrics",
-            "qualified_selected_head_training_foundation",
-            "foundation_identity_and_acceleration_realization",
-        ],
-        "capability_loss": sorted({
-            str(capability)
-            for action in report.actions
-            for capability in action.get("capability_loss", [])
-        }),
-    }
-    try:
-        append_cleanup_manifest(destination, payload)
-    except OSError as exc:
-        report.skipped.append(f"cleanup manifest append failed: {exc}")
-
-
-def _campaign_cleanup(
-    cfg: Mapping[str, Any],
-    paths: CampaignPaths,
-    store: CampaignStore,
-    *,
-    phase: str,
-    dry_run: bool = False,
-    include_preparation_caches: bool = False,
-) -> _CampaignCleanupReport:
-    """Conservatively remove only artifacts with surviving current semantic owners."""
-
-    report = _CampaignCleanupReport(
-        phase=phase,
-        dry_run=dry_run,
-        ownership_boundary=_campaign_ownership_boundary(cfg, paths, store),
-    )
-    if not bool(_cfg(cfg, "cleanup", "enabled", True)):
-        report.skipped.append("automatic cleanup disabled by [cleanup].enabled")
-        return report
-    stale_hours = max(0.25, float(_cfg(cfg, "cleanup", "stale_age_hours", 6.0)))
-    stale_before = time.time() - stale_hours * 3600.0
-
-    _cleanup_orphan_record_storage(report, store, stale_before=stale_before)
-
-    if not dry_run:
-        assert report.ownership_boundary is not None
-        store_authorized, store_detail = report.ownership_boundary.destructive_authorization(store.path)
-        if not store_authorized:
-            report.skipped.append(
-                f"SQLite compaction skipped because campaign state failed ownership checks: {store_detail}"
-            )
-        else:
-            try:
-                store.compact(
-                    maximum_events=int(
-                        _cfg(cfg, "cleanup", "maximum_event_records", 10_000)
-                    )
-                )
-            except Exception as exc:
-                report.skipped.append(f"SQLite compaction skipped: {exc}")
-        cleanup_report_path = paths.results / f"cleanup-{phase}.json"
-        output_authorized, output_detail = report.ownership_boundary.destructive_authorization(
-            cleanup_report_path
-        )
-        if output_authorized:
-            try:
-                _atomic_json(cleanup_report_path, report.to_dict())
-            except OSError as exc:
-                report.skipped.append(f"cleanup report write failed: {exc}")
-        else:
-            report.skipped.append(
-                f"cleanup report write skipped by ownership boundary: {output_detail}"
-            )
-        _append_cleanup_audit_manifest(
-            report,
-            paths,
-            trigger=("manual" if phase.startswith("manual") else "automatic_lifecycle"),
-        )
-    return report
-
-
-
-
-def _print_cleanup_report(report: _CampaignCleanupReport) -> None:
-    if report.actions:
-        action = "would reclaim" if report.dry_run else "reclaimed"
-        _ok(
-            f"campaign cleanup {action} {_format_reclaimed_bytes(report.reclaimed_bytes)} "
-            f"from {len(report.actions)} stale/cache artifact(s)"
-        )
-        for item in sorted(report.actions, key=lambda value: int(value["size_bytes"]), reverse=True)[:8]:
-            print(
-                f"  {_format_reclaimed_bytes(int(item['size_bytes'])):>10}  "
-                f"{item['reason']}: {item['path']}",
-                flush=True,
-            )
-    else:
-        _ok("campaign cleanup found no removable stale/cache artifacts")
-    for item in report.skipped[:8]:
-        _warn(item)
 
 
 class _ProgressReporter:
@@ -5311,337 +5373,147 @@ def _atomic_copy_file(source: Path, destination: Path) -> None:
 
 
 
-def _format_storage_bytes(value: int) -> str:
-    value = int(value)
-    units = ("B", "KiB", "MiB", "GiB", "TiB")
-    number = float(value)
-    for unit in units:
-        if abs(number) < 1024.0 or unit == units[-1]:
-            return f"{number:.1f} {unit}" if unit != "B" else f"{int(number)} B"
-        number /= 1024.0
-    return f"{value} B"
+def _storage_command_context(
+    config: Path, *, consequential: bool
+) -> tuple[Any, Any, "CampaignStore", Any]:
+    """Resolve the one owner/boundary context every storage command shares.
+
+    ``consequential`` decides whether this invocation may create anything. An
+    observational command resolves paths without materializing them and opens
+    the state database read-only; only an explicitly authorized apply is allowed
+    to bring campaign state into existence.
+    """
+
+    cfg, paths = _load_config(config, ensure=consequential)
+    boundary = _campaign_ownership_boundary(cfg, paths)
+    # Every storage command needs campaign state to be physically contained -
+    # a `.mdstats` symlinked outside the workspace is not this campaign's state
+    # and is not even safe to read. Only a *mutation* additionally needs
+    # destructive authority: an observational command must stay available
+    # precisely when that authority is being withheld, because a retention
+    # ambiguity is exactly when an operator needs the report naming what is
+    # wrong.
+    contained, containment_detail = boundary.traversal_authorization(paths.state_db)
+    if not contained:
+        raise CampaignCliError(
+            "Refusing the storage operation because campaign state is outside the "
+            f"campaign ownership boundary: {containment_detail}: {paths.state_db}"
+        )
+    if consequential:
+        state_authorized, state_detail = boundary.destructive_authorization(
+            paths.state_db
+        )
+        if not state_authorized:
+            raise CampaignCliError(
+                "Refusing the storage operation because campaign state is outside the "
+                f"campaign ownership boundary: {state_detail}: {paths.state_db}"
+            )
+    store = CampaignStore(paths.state_db, create=consequential)
+    # Rebuild the boundary with the store so the P3 publication-window fence and
+    # the P7 durable-evidence fence both reduce deletion authority.
+    boundary = _campaign_ownership_boundary(cfg, paths, store)
+    return cfg, paths, store, boundary
+
+
+def _storage_dispatch(args: argparse.Namespace, handler: str, printer: str) -> int:
+    from .storage import commands as storage_commands
+    from .storage.admission import StorageAdmissionError
+    from .storage.archive import StorageArchiveError
+    from .storage.control_plane import StorageControlPlaneError
+    from .storage.commands import StorageDisabledError
+    from .storage.dedup import StorageDedupError
+    from .storage.executor import StorageAuthorizationError
+    from .storage.inventory import OwnerGraphError
+    from .storage.lease import StorageLeaseUnavailableError
+    from .storage.plan import StoragePlanStaleError
+    from .storage.policy import StoragePolicyError
+
+    consequential = storage_commands.invocation_apply(args)
+    if not consequential:
+        with observational_campaign_state():
+            return _storage_dispatch_locked(args, handler, printer)
+    return _storage_dispatch_locked(args, handler, printer)
+
+
+def _storage_dispatch_locked(
+    args: argparse.Namespace, handler: str, printer: str
+) -> int:
+    from .storage import commands as storage_commands
+    from .storage.admission import StorageAdmissionError
+    from .storage.archive import StorageArchiveError
+    from .storage.control_plane import StorageControlPlaneError
+    from .storage.commands import StorageDisabledError
+    from .storage.dedup import StorageDedupError
+    from .storage.executor import StorageAuthorizationError
+    from .storage.inventory import OwnerGraphError
+    from .storage.lease import StorageLeaseUnavailableError
+    from .storage.plan import StoragePlanStaleError
+    from .storage.policy import StoragePolicyError
+
+    consequential = storage_commands.invocation_apply(args)
+    cfg, paths, store, boundary = _storage_command_context(
+        args.config, consequential=consequential
+    )
+    try:
+        context = storage_commands.StorageCommandContext(cfg, paths, store, boundary)
+        try:
+            payload = getattr(storage_commands, handler)(context, args)
+        except (
+            StorageAdmissionError,
+            StorageArchiveError,
+            StorageControlPlaneError,
+            StorageDedupError,
+            StorageDisabledError,
+            StorageAuthorizationError,
+            StorageLeaseUnavailableError,
+            StoragePlanStaleError,
+            StoragePolicyError,
+            OwnerGraphError,
+        ) as exc:
+            raise CampaignCliError(str(exc)) from exc
+        getattr(storage_commands, printer)(payload)
+        print(
+            "  storage operations never grant scientific authority and never change "
+            "a scientific decision",
+            flush=True,
+        )
+        return 0
+    finally:
+        store.close()
 
 
 def command_storage(args: argparse.Namespace) -> int:
-    """Read-only campaign storage accounting and ownership report."""
+    """Read-only owner-driven storage report, or an explicit deep audit."""
 
-    cfg, paths = _load_config(args.config)
-    protected_inputs = configured_protected_inputs(
-        cfg, config_dir=paths.config_dir, config_path=paths.config
-    )
-    report = build_campaign_storage_report(
-        paths.workspace,
-        protected_inputs=protected_inputs,
-        largest_limit=int(getattr(args, "top", 20)),
-    )
-    payload = report.to_dict()
-    destination = paths.results / "storage-report.json"
-    # Read-only storage accounting; the only write is this report, which lives
-    # outside any target-size execution root, so no retention fence applies.
-    boundary = _campaign_ownership_boundary(cfg, paths)
-    output_authorized, output_detail = boundary.destructive_authorization(destination)
-    report_written = False
-    if output_authorized:
-        _atomic_json(destination, payload)
-        report_written = True
-
-    totals = payload["totals"]
-    print("Campaign storage report", flush=True)
-    print(f"  workspace: {paths.workspace}", flush=True)
-    print(
-        "  totals: "
-        f"logical={_format_storage_bytes(int(totals['logical_bytes']))}; "
-        f"allocated={_format_storage_bytes(int(totals['allocated_physical_bytes']))}; "
-        f"unique-inode={_format_storage_bytes(int(totals['unique_inode_bytes']))}; "
-        f"files={int(totals['file_count'])}; dirs={int(totals['directory_count'])}; "
-        f"symlinks={int(totals['symlink_count'])}",
-        flush=True,
-    )
-    print("  largest families:", flush=True)
-    for item in payload["families"][:10]:
-        print(
-            f"    {_format_storage_bytes(int(item['logical_bytes'])):>10}  "
-            f"{item['family']} [{item['retention_class']}]",
-            flush=True,
-        )
-    catalog = payload["ownership_catalog"]
-    if catalog["symlink_escapes"]:
-        _warn(
-            f"{len(catalog['symlink_escapes'])} workspace symlink(s) resolve outside "
-            "the campaign workspace; targets are not campaign-owned"
-        )
-    if catalog["ambiguous_paths"]:
-        _warn(
-            f"{len(catalog['ambiguous_paths'])} path(s) could not be fully classified; "
-            "destructive authority remains denied"
-        )
-    if report_written:
-        _ok(
-            f"read-only storage report written: {destination}; no cleanup/deletion was performed"
-        )
-    else:
-        _warn(
-            f"storage report was not written because the destination failed ownership/containment checks: "
-            f"{output_detail}; no cleanup/deletion was performed"
-        )
-    return 0
+    return _storage_dispatch(args, "storage_report", "print_storage_report")
 
 
+def _reject_conflicting_authorization(args: argparse.Namespace) -> None:
+    """`--dry-run` and `--apply` are opposite answers to the same question."""
 
-_MANUAL_RECLAMATION_TIERS = ("safe", "cache")
-_MANUAL_RECLAMATION_RANK = {name: index for index, name in enumerate(_MANUAL_RECLAMATION_TIERS)}
-_MANUAL_CAPABILITIES = (
-    "training_restart",
-    "frame_cache_acceleration",
-    "active_campaign_continuation",
-    "current_production_models",
-)
-
-
-def _manual_reclamation_capability_report(
-    tier: str,
-    actions: Sequence[Mapping[str, Any]],
-) -> dict[str, Any]:
-    losses = {
-        str(value)
-        for action in actions
-        for value in action.get("capability_loss", ())
-    }
-    status: dict[str, dict[str, str]] = {
-        name: {"status": "preserved", "detail": "retained by the requested tier"}
-        for name in _MANUAL_CAPABILITIES
-    }
-    status["current_production_models"] = {
-        "status": "preserved",
-        "detail": "workspace production models are never deletion candidates",
-    }
-    return {
-        "requested_tier": tier,
-        "capabilities": status,
-        "declared_capability_losses": sorted(losses),
-        "archived_capabilities": [],
-    }
-
-
-def _manual_reclamation_add_candidate(
-    report: _CampaignCleanupReport,
-    path: Path,
-    *,
-    reason: str,
-    cleanup_class: str,
-    preserved_capabilities: Sequence[str] = (),
-    capability_loss: Sequence[str] = (),
-) -> None:
-    if not path.exists() and not path.is_symlink():
-        return
-    _cleanup_remove(
-        report,
-        path,
-        reason=reason,
-        cleanup_class=cleanup_class,
-        preserved_capabilities=preserved_capabilities,
-        capability_loss=capability_loss,
-    )
-
-
-def _manual_reclamation_add_cache_tier(
-    report: _CampaignCleanupReport,
-    paths: CampaignPaths,
-    store: CampaignStore | None = None,
-) -> None:
-    # In P6/P7, all cache families are conservatively retained/deferred to the
-    # post-P7 storage reset (CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1). No destructive
-    # cache candidates are added.
-    return
-
-
-def _manual_reclamation_plan_payload(
-    *,
-    tier: str,
-    reports: Sequence[_CampaignCleanupReport],
-    apply_requested: bool,
-    archive_pending: bool,
-) -> dict[str, Any]:
-    action_by_path: dict[str, dict[str, Any]] = {}
-    for report in reports:
-        for action in report.actions:
-            # Later/more-consequential tier records override the same path from
-            # the safe plan so potential bytes are never double-counted.
-            action_by_path[str(action.get("path", ""))] = dict(action)
-    actions = list(action_by_path.values())
-    skipped = [value for report in reports for value in report.skipped]
-    capability = _manual_reclamation_capability_report(tier, actions)
-    return {
-        "schema": "mdstats.mlff-manual-reclamation-plan.v1",
-        "created_utc": _utc_now(),
-        "requested_tier": tier,
-        "cumulative_tiers": list(_MANUAL_RECLAMATION_TIERS[: _MANUAL_RECLAMATION_RANK[tier] + 1]),
-        "apply_requested": bool(apply_requested),
-        "archive_representation_required": bool(archive_pending),
-        "planned_reclaimed_bytes": sum(int(action.get("size_bytes", 0)) for action in actions),
-        "action_count": len(actions),
-        "actions": actions,
-        "skipped": skipped,
-        "capability_report": capability,
-        "protected_by_all_tiers": [
-            "external_user_inputs",
-            "workspace_production_models",
-            "selected_production_raw_checkpoints",
-            "campaign_protocol_selection_verification_records",
-            "diagnostic_text_logs_histories",
-            "qualified_selected_head_training_foundation",
-            "foundation_identity_and_acceleration_realization",
-        ],
-    }
-
-
-def _print_manual_reclamation_plan(payload: Mapping[str, Any]) -> None:
-    print(f"Transitional storage cleanup plan: tier={payload['requested_tier']}", flush=True)
-    print(
-        f"  candidates={int(payload['action_count'])}; potential reclaim="
-        f"{_format_storage_bytes(int(payload['planned_reclaimed_bytes']))}",
-        flush=True,
-    )
-    capabilities = payload["capability_report"]["capabilities"]
-    for name in _MANUAL_CAPABILITIES:
-        item = capabilities[name]
-        print(f"  {name}: {item['status']} - {item['detail']}", flush=True)
-
-
-def _build_manual_tier_report(
-    tier: str,
-    cfg: Mapping[str, Any],
-    paths: CampaignPaths,
-    store: CampaignStore,
-    *,
-    dry_run: bool,
-) -> _CampaignCleanupReport:
-    if tier in ("recompute", "compact", "archive"):
-        raise CampaignCliError(
-            f"Consequential storage tier {tier!r} is deferred to the post-P7 storage reset "
-            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
-        )
-    if tier not in _MANUAL_RECLAMATION_RANK:
-        raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
-    report = _CampaignCleanupReport(
-        phase=f"manual-{tier}",
-        dry_run=dry_run,
-        ownership_boundary=_campaign_ownership_boundary(cfg, paths, store),
-    )
-    if tier == "cache":
-        _manual_reclamation_add_cache_tier(report, paths, store)
-    return report
+    if bool(getattr(args, "apply", False)) and bool(getattr(args, "dry_run", False)):
+        raise CampaignCliError("Choose either --dry-run or --apply, not both.")
 
 
 def command_cleanup(args: argparse.Namespace) -> int:
-    """Explicitly clean up campaign scratch, caches, and storage tiers."""
+    """Plan and, when authorized, apply owner-driven safe/cache cleanup."""
 
-    cfg, paths = _load_config(args.config)
-    boundary = _campaign_ownership_boundary(cfg, paths)
-    state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
-    if not state_authorized:
-        raise CampaignCliError(
-            "Refusing cleanup operation because campaign state database is outside "
-            f"campaign ownership boundary: {state_detail}: {paths.state_db}"
-        )
-    store = CampaignStore(paths.state_db)
-    boundary = _campaign_ownership_boundary(cfg, paths, store)
+    _reject_conflicting_authorization(args)
+    return _storage_dispatch(args, "storage_cleanup", "print_cleanup")
 
-    explicit_tier = getattr(args, "tier", None)
-    if explicit_tier is None:
-        tier = "safe" if bool(args.keep_preparation_caches) else "safe"
-    else:
-        tier = str(explicit_tier)
-    if tier in ("recompute", "compact", "archive"):
-        raise CampaignCliError(
-            f"Consequential storage tier {tier!r} is deferred to the post-P7 storage reset "
-            "(CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1) and is not available for current-generation campaigns."
-        )
-    if tier not in _MANUAL_RECLAMATION_RANK:
-        raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
-    if bool(getattr(args, "apply", False)) and bool(args.dry_run):
-        raise CampaignCliError("Choose either --dry-run or --apply, not both.")
 
-    # Mandatory plan phase. This is always dry-run.
-    plan_reports: list[_CampaignCleanupReport] = []
-    safe_plan = _campaign_cleanup(
-        cfg,
-        paths,
-        store,
-        phase="manual-plan-safe",
-        dry_run=True,
-        include_preparation_caches=False,
-    )
-    plan_reports.append(safe_plan)
+def command_storage_archive(args: argparse.Namespace) -> int:
+    """Create, list, verify, restore, or resume a cold archive representation."""
 
-    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
-        manual_plan = _build_manual_tier_report(
-            tier, cfg, paths, store, dry_run=True
-        )
-        plan_reports.append(manual_plan)
+    _reject_conflicting_authorization(args)
+    return _storage_dispatch(args, "storage_archive", "print_archive")
 
-    apply_requested = bool(getattr(args, "apply", False))
-    plan_payload = _manual_reclamation_plan_payload(
-        tier=tier,
-        reports=plan_reports,
-        apply_requested=apply_requested,
-        archive_pending=False,
-    )
-    _print_manual_reclamation_plan(plan_payload)
-    plan_path = paths.results / f"manual-reclamation-plan-{tier}.json"
-    plan_authorized, plan_detail = boundary.destructive_authorization(plan_path)
-    if plan_authorized:
-        try:
-            _atomic_json(plan_path, plan_payload)
-            _ok(f"manual reclamation plan written: {plan_path}")
-        except OSError as exc:
-            _warn(f"manual reclamation plan write failed: {exc}")
-    else:
-        _warn(f"manual reclamation plan write denied by ownership boundary: {plan_detail}")
 
-    if bool(args.dry_run):
-        return 0
+def command_storage_deduplicate(args: argparse.Namespace) -> int:
+    """Plan and, when authorized, apply owner-certified immutable dedup."""
 
-    # Apply phase.
-    safe_report = _campaign_cleanup(
-        cfg,
-        paths,
-        store,
-        phase="manual-safe",
-        dry_run=False,
-        include_preparation_caches=False,
-    )
-    _print_cleanup_report(safe_report)
-
-    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
-        manual_report = _build_manual_tier_report(
-            tier, cfg, paths, store, dry_run=False
-        )
-        _append_cleanup_audit_manifest(
-            manual_report,
-            paths,
-            trigger=f"manual_tier:{tier}",
-        )
-        output = paths.results / f"cleanup-manual-{tier}.json"
-        output_authorized, output_detail = boundary.destructive_authorization(output)
-        if output_authorized:
-            try:
-                _atomic_json(output, manual_report.to_dict())
-            except OSError as exc:
-                manual_report.skipped.append(f"manual tier report write failed: {exc}")
-        else:
-            manual_report.skipped.append(
-                f"manual tier report write denied by ownership boundary: {output_detail}"
-            )
-        _print_cleanup_report(manual_report)
-
-    disk = shutil.disk_usage(paths.workspace)
-    print(
-        f"Workspace: {paths.workspace}\n"
-        f"Free disk after cleanup: {disk.free / 1024**3:.1f} GiB",
-        flush=True,
-    )
-    return 0
+    _reject_conflicting_authorization(args)
+    return _storage_dispatch(args, "storage_deduplicate", "print_dedup")
 
 
 @dataclass(frozen=True)
@@ -6442,11 +6314,20 @@ evaluation_shared_runtime_residency_mib = 0
 stop_scheduling_after_failure = true
 
 [cleanup]
-# Conservative lifecycle cleanup runs automatically at current stage boundaries.
-# Manual retention is CLI-selected: storage cleanup --tier safe|cache.
+# Storage is operator-driven: storage cleanup --tier safe|cache. It plans first and
+# mutates only with --apply on the invocation you run; a persisted apply/action key
+# under [storage] is rejected rather than obeyed. Setting enabled = false withholds
+# every consequential storage mutation while leaving reporting and planning
+# available. Optional [storage] policy keys tune codecs, bounds, and reserves only;
+# they never widen deletion or archive authority.
 enabled = true
-# Young temporary trees are retained to avoid racing a recently interrupted process.
+# Publication window. Evidence younger than this is retained so storage can never
+# race a reference that has not landed yet.
 stale_age_hours = 6.0
+# Bound on retained diagnostic campaign-store events; scientific records and the
+# SHA-256 receipt cache have separate retention. Exceeding this bound authorizes
+# pruning only: rewriting the state database is a separate, independently
+# benefit-gated storage action.
 maximum_event_records = 10000
 
 [replay]
@@ -6526,7 +6407,10 @@ Post-production qualification is a separate, downstream family:
 qualification status | qualification run | qualification activate-locked
 
 The orthogonal storage command reports and manages reconstructible campaign
-artifacts. status and advance project the training lifecycle only; advance never
+artifacts. Its report modes and every --dry-run are observational: they change
+nothing, not even a cache, and they never create a campaign. Only --apply on the
+invocation you are running authorizes a mutation; configuration cannot carry that
+authority. status and advance project the training lifecycle only; advance never
 runs qualification and never opens locked evidence. A target-size scientific
 failure is terminal evidence; it does not authorize a production command.
 
@@ -6610,18 +6494,30 @@ are rebuilt by their owning stage.
 
 Storage operations
 ------------------
-Use storage report for a read-only inventory. Use storage cleanup with a
-dry-run before applying safe or cache cleanup:
+Storage semantics come from the real P1-P7 owners, never from a pathname, a
+report label, a stage name, or a process id. Every consequential action plans
+first, shows what it would do, and mutates only when you authorize it:
 
-storage report                         read-only inventory
-storage cleanup --tier safe --dry-run  inspect zero-loss cleanup
-storage cleanup --tier cache --dry-run inspect cache tier cleanup
-storage cleanup --tier safe|cache      apply the selected transitional tier
+storage report                          owner-driven read-only inventory
+storage report --deep                   exact recursive physical audit
+storage cleanup --tier safe --dry-run   inspect zero-loss cleanup
+storage cleanup --tier cache --dry-run  inspect owner-certified cache eviction
+storage cleanup --tier safe|cache --apply   apply the shown plan
+storage archive create --dry-run        show cold-replaceable historical bulk
+storage archive create --apply          archive it and reclaim its hot bytes
+storage archive list|verify|restore     catalog, authenticate, bring bytes back
+storage deduplicate --dry-run|--apply   owner-certified immutable dedup
 
-Consequential storage transformations (recompute, compaction, archival,
-and deduplication) are deferred to CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1.
-External inputs, current scientific records, restart checkpoints, and logs
-needed for diagnosis remain protected.
+safe loses no scientific, restart, qualification, locked, or acceleration-cache
+capability. cache adds only eviction an owner certifies as exactly
+reconstructible, so it costs recomputation and nothing else. archive is a
+reversible representation change for historical bulk: restored evidence stays
+historical and is never promoted to current. The retired recompute and compact
+loss tiers are not current product authority.
+
+External inputs, current scientific records, restart checkpoints, and the logs
+needed for diagnosis are never deletion candidates. Anything an owner cannot
+positively classify is retained.
 
 The P6 implementation ends at current functional/restart closure. Downstream
 accelerator and long-production qualification is separate evidence and is not
@@ -6751,46 +6647,124 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "storage",
-        help="inspect and manage transitional MLFF campaign storage",
+        help="inspect and manage owner-driven MLFF campaign storage",
         description=(
-            "Transitional P6/P7 storage management. Use `report` or `cleanup`. "
-            "Bare `storage` is a shorthand for `storage report`."
+            "Owner-driven storage management. Semantic eligibility always comes "
+            "from the real P1-P7 owners, never from a pathname or a report label. "
+            "Use `report`, `cleanup`, `archive`, or `deduplicate`; bare `storage` "
+            "is a shorthand for `storage report`."
         ),
     )
     p.add_argument(
         "--top", type=int, default=20,
         help="with bare `storage`, number of largest artifacts retained in the report",
     )
-    storage_sub = p.add_subparsers(dest="storage_command", metavar="{report,cleanup}")
-    p.set_defaults(func=command_storage, storage_command="report")
+    storage_sub = p.add_subparsers(
+        dest="storage_command", metavar="{report,cleanup,archive,deduplicate}"
+    )
+    p.set_defaults(func=command_storage, storage_command="report", deep=False)
 
-    sp = storage_sub.add_parser("report", help="Read-only storage accounting and ownership report")
+    sp = storage_sub.add_parser(
+        "report",
+        help="read-only owner-driven inventory; --deep for exact physical accounting",
+    )
     sp.add_argument(
         "--top", type=int, default=20,
-        help="number of largest individual artifacts to retain in the JSON report",
+        help="number of largest artifacts to retain in the JSON report",
+    )
+    sp.add_argument(
+        "--deep", action="store_true",
+        help=(
+            "run the explicit deep physical audit: exact recursive accounting, "
+            "symlink and ownership inspection. Still read-only."
+        ),
     )
     sp.set_defaults(func=command_storage, storage_command="report")
 
-    sp = storage_sub.add_parser("cleanup", help="Conservative transitional cleanup with capability reporting")
-    sp.add_argument(
-        "--tier", choices=_MANUAL_RECLAMATION_TIERS,
-        default="safe",
-        help="manual retention tier: safe or cache; omitting it defaults to safe",
+    sp = storage_sub.add_parser(
+        "cleanup",
+        help="owner-driven safe/cache cleanup under a mandatory plan-then-authorize flow",
     )
-    sp.add_argument("--dry-run", action="store_true", help="print/write the mandatory capability plan without deleting anything")
+    sp.add_argument(
+        "--tier", choices=("safe", "cache"), default="safe",
+        help=(
+            "safe: zero scientific/restart/qualification/locked and acceleration-cache "
+            "capability loss. cache: safe plus owner-certified exactly reconstructible "
+            "cache eviction, which costs only recomputation."
+        ),
+    )
+    sp.add_argument(
+        "--dry-run", action="store_true",
+        help="print and write the plan without modifying anything",
+    )
     sp.add_argument(
         "--apply", action="store_true",
-        help="authorize reclamation after the plan is shown",
-    )
-    sp.add_argument(
-        "--keep-preparation-caches", action="store_true",
-        help="retain normalized frame and shared preparation caches",
-    )
-    sp.add_argument(
-        "--keep-unselected-checkpoints", action="store_true",
-        help="retain all checkpoint bytes eligible for cleanup",
+        help="authorize the plan; it is revalidated against fresh owner state first",
     )
     sp.set_defaults(func=command_cleanup, storage_command="cleanup")
+
+    sp = storage_sub.add_parser(
+        "archive",
+        help="reversible authenticated cold representation of historical bulk",
+    )
+    archive_sub = sp.add_subparsers(
+        dest="archive_command", metavar="{create,list,verify,restore,reclaim}"
+    )
+    sp.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="list")
+
+    ap = archive_sub.add_parser(
+        "create", help="archive owner-declared cold-replaceable historical bulk"
+    )
+    ap.add_argument(
+        "--root", action="append", default=None,
+        help=(
+            "workspace-relative root to archive; may be repeated. Omitting it archives "
+            "every owner-declared cold-replaceable artifact."
+        ),
+    )
+    ap.add_argument(
+        "--keep-hot", action="store_true",
+        help="create and catalog the archive without reclaiming any hot byte",
+    )
+    ap.add_argument("--dry-run", action="store_true", help="show eligibility and stop")
+    ap.add_argument("--apply", action="store_true", help="authorize archive creation")
+    ap.add_argument(
+        "--archive-codec", default=None, choices=("gzip", "none"),
+        help="archive codec; the default is resolved from [storage]",
+    )
+    ap.add_argument("--archive-compression-level", type=int, default=None)
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="create")
+
+    ap = archive_sub.add_parser("list", help="list the identity-keyed archive catalog")
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="list")
+
+    ap = archive_sub.add_parser("verify", help="authenticate one cataloged archive")
+    ap.add_argument("archive_identity")
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="verify")
+
+    ap = archive_sub.add_parser(
+        "restore", help="restore one cataloged archive; restored evidence stays historical"
+    )
+    ap.add_argument("archive_identity")
+    ap.add_argument("--dry-run", action="store_true", help="authenticate only")
+    ap.add_argument("--apply", action="store_true", help="authorize installation")
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="restore")
+
+    ap = archive_sub.add_parser(
+        "reclaim", help="resume interrupted hot reclamation for an authenticated archive"
+    )
+    ap.add_argument("archive_identity")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--apply", action="store_true")
+    ap.set_defaults(func=command_storage_archive, storage_command="archive", archive_command="reclaim")
+
+    sp = storage_sub.add_parser(
+        "deduplicate",
+        help="owner-certified immutable deduplication; representation change only",
+    )
+    sp.add_argument("--dry-run", action="store_true", help="plan without relinking")
+    sp.add_argument("--apply", action="store_true", help="authorize inode replacement")
+    sp.set_defaults(func=command_storage_deduplicate, storage_command="deduplicate")
 
     p = sub.add_parser(
         "qualification",

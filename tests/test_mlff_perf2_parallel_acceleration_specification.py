@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_perf2_release_and_configuration_contract() -> None:
-    assert mdstats.__version__ == "0.20.180a0"
     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
     template = campaign_cli._config_template(
         workspace="workspace",

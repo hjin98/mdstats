@@ -28,8 +28,13 @@ def _lock_file_path(path: Path) -> Path:
     return path.parent / f".{path.name}.lock"
 
 
-def _fsync_parent_directory(path: Path) -> None:
-    """Persist a completed rename in the destination directory entry."""
+def fsync_parent_directory(path: Path) -> None:
+    """Persist a completed rename in the destination directory entry.
+
+    This is the repository's single durable directory-entry publication
+    primitive.  Storage archive/restore publication reuses it rather than
+    reimplementing a divergent durability discipline.
+    """
 
     try:
         fd = os.open(str(path.parent), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
@@ -137,7 +142,7 @@ def publish_immutable_bytes_create_or_verify(
 
             # Destination does not exist; atomically place temp file
             os.replace(str(temp_path), str(dest))
-            _fsync_parent_directory(dest)
+            fsync_parent_directory(dest)
             temp_path = None
             return computed_sha
     finally:
@@ -225,7 +230,7 @@ def publish_immutable_json_create_or_verify(
                 return existing_obj
 
             os.replace(str(temp_path), str(dest))
-            _fsync_parent_directory(dest)
+            fsync_parent_directory(dest)
             temp_path = None
             return obj_to_return
     finally:
@@ -257,7 +262,7 @@ def publish_mutable_json_atomic(
 
         with _FileLock(_lock_file_path(dest)):
             os.replace(str(temp_path), str(dest))
-            _fsync_parent_directory(dest)
+            fsync_parent_directory(dest)
         temp_path = None
     finally:
         if temp_path is not None and temp_path.exists():
@@ -286,7 +291,7 @@ def publish_mutable_bytes_atomic(
 
         with _FileLock(_lock_file_path(dest)):
             os.replace(str(temp_path), str(dest))
-            _fsync_parent_directory(dest)
+            fsync_parent_directory(dest)
         temp_path = None
     finally:
         if temp_path is not None and temp_path.exists():
@@ -294,6 +299,8 @@ def publish_mutable_bytes_atomic(
 
 
 __all__ = [
+    "artifact_publication_lock",
+    "fsync_parent_directory",
     "publish_immutable_bytes_create_or_verify",
     "publish_immutable_json_create_or_verify",
     "publish_mutable_bytes_atomic",

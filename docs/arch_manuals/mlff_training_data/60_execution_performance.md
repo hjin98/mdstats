@@ -198,6 +198,191 @@ re-authenticates currentness before reuse. Cleanup removes only known
 campaign-owned reconstructible state and preserves external inputs, selected
 scientific records, restart checkpoints, and diagnostics needed for recovery.
 
+## Storage and I/O management
+
+Storage is a first-class resource plane and never a second scientific
+authority. `mdstats.training_data.storage` turns each accepted current owner
+into a uniform *owner view* and composes those views into one cross-owner
+inventory. Semantics come from the owning API; pathnames, report labels, stage
+names, process ids, and file ages carry no authority at all.
+
+**Authority is invocation-local.** `--apply` on the invocation being run is the
+only thing that authorizes a mutation, and the subcommand being run is the only
+thing that selects the action; an `apply` or `action` key under `[storage]` is
+rejected rather than obeyed, and no environment variable is consulted. The
+complement is that every non-apply path is genuinely observational: it creates
+no workspace, no state database, no generation root, no control plane, no
+acceleration receipt, and no report artifact.
+
+Observation is an invocation-scoped capability carried by a context variable,
+not a flag on the first store a command opens. It reaches nested owner helpers
+and the worker threads the storage fan-out spawns, so no helper can escape it by
+calling an ordinary default-creating constructor; and it is enforced as well as
+declared, because an observational campaign-state open is a read-only SQLite
+connection whose write paths refuse before committing. Nothing process-global is
+toggled to achieve it, so a concurrent consequential operation keeps its own
+writable store and receipt behavior.
+
+Every consequential mutation follows one path:
+
+```text
+real P1-P7 owners -> owner views -> cross-owner inventory snapshot
+ -> resolved storage policy -> immutable owner-bound plan
+ -> owner publication barrier + revalidation -> executor -> durable audit
+```
+
+**Retention is a transitive closure, not a per-owner question.** The current P7
+publication is a read-only descendant of the accepted P5 publication and
+re-authenticates the exact P5 checkpoint bytes at their canonical hot paths, so
+those bytes stay pinned after the P7 attempt retention reference is released.
+P4's current terminal authority pins the P3 evidence its canonical loader needs.
+A truthful `waiting_for_reference` pins the whole predecessor lineage. Protection
+is monotone: no owner's cache or history classification overrides another current
+owner's requirement, and the closure is rebuilt from live owner records rather
+than persisted as a second registry.
+
+**Mutation is race-safe, not merely recent.** P5 and P7 both publish an
+immutable object and then the pointer that makes it current, so there is a real
+window in which the object exists and nothing references it. Each owner exposes
+a per-generation publication barrier that the publisher holds across both steps
+and that any storage mutation acquires across revalidation and mutation. The
+storage-operation lease serializes storage against storage only, and is never
+mistaken for serialization against the owners.
+
+**Completion is proved by a retained anchor.** When a post-selection run reaches
+its terminal record, P5 freezes its completion proof as two create-once records:
+an immutable topology manifest naming every node the run produced, published
+first, and a compact self-authenticating anchor binding that manifest's identity,
+published last as the commit point. The split is what lets normal reporting
+validate completion in O(1) while exact closed-subtree certification still pays
+for the full topology. The topology is typed and covers directories as well as files, so neither an
+unexpected empty directory nor a same-name file/directory substitution can pass
+as the node the owner certified, and no symlink or special object becomes owned
+by appearing at a familiar name. Every observation on that path is no-follow, and
+the owner's own authority records are opened with `O_NOFOLLOW` and confirmed
+regular by `fstat` on the opened descriptor rather than by a separate `lstat` a
+rename could invalidate.
+From then on the anchor - not the presence of the terminal evidence file - is
+what certifies the run. The
+distinction matters because the terminal evidence is an ordinary archive member:
+an interrupted cold reclamation may already have moved it, and a certification
+that needed it would leave that reclamation unable to finish. Both records are owner
+infrastructure, never part of the reclaimable member set. Republication verifies
+and reuses the existing proof rather than deriving a new one from a tree storage
+has legitimately depleted, and a tampered, copied, or self-inconsistent proof
+makes the run non-certifiable instead of appearing to own more.
+
+**A released P7 attempt proves its own scratch.** Releasing an attempt publishes
+a versioned typed topology proof bound to the exact released state, written
+before that state so the state stays the commit point; an aborted attempt that
+legally reopens as active invalidates its release proof for free, because the
+state it bound is no longer current. Every top-level node must be one the proof
+recorded, of the recorded kind, before storage exposes it as reclaimable. An
+attempt state that cannot be authenticated is not skipped: its references can pin
+exact P5 checkpoints, so it becomes an owner-graph integrity failure that blocks
+consequential planning until repaired, and the retention fence independently
+denies destructive authorization for every campaign-managed path while the
+ambiguity lasts - the lost references routinely name artifacts outside the P7
+tree, so protecting only that tree would leave the unknown asset authorizable.
+
+Authentication is strict, root-bound, and performed by one authority every
+storage-facing consumer reads. An attempt counts as authenticated only when the
+enumeration reached it without traversing a substituted namespace component -
+no-follow at the generation root, the `attempts` container, and the attempt root,
+not merely at the state file - and when its persisted digest recomputes, its
+recorded identity matches the directory, and that identity is the canonical
+identity derived from the qualification binding the state names. Enumeration is
+by actual attempt directory, so an attempt with no state at all is visible rather
+than absent.
+
+**Containment is not ownership.** A directory owner view declares one of two
+coverage semantics. A *closed subtree* is one whose real owner certifies, from
+its own authenticated record or exclusive-writer contract, that every traversable
+descendant belongs to that artifact; a *container* is owner-known but its
+descendants need individual views, and anything unknown beneath it stays
+ambiguous and retained. Only a freshly revalidated closed subtree may be recursed
+into destructively. P5 records a run-member manifest when a run reaches its
+terminal record, because the run directory is delegated to the configured
+trainer; P7 records an attempt-member manifest at the moment an attempt becomes
+terminal; the campaign store's externalized record area is closed by
+exclusive-writer contract. A superseded target-size execution root records no
+such membership and is therefore honestly a container. A nested mount below an
+authorized root is a further ownership boundary and is never traversed.
+
+**Archive is representation, not resolution.** Hot bytes are replaceable only
+for owner-declared historical bulk with no current or restartable hot
+dependency; no P1-P7 loader is given an implicit cold-read fallback. Archive
+A reclaim or restore additionally binds the exact retained representation it
+intends to consume and re-authenticates that catalog entry, manifest, and blob
+*inside* the protected consequential window, before removing a hot member or
+installing a restored one; every supported writer of retained archive control
+state takes the same storage-operation lease, which is what makes that check
+race-closed. A restore also binds the `(device, inode, type)` of every existing
+parent it installs through, so a same-path directory swap refuses rather than
+redirecting the installation. Archive verification and restore bound member
+paths, member types, member count, total expansion, per-member size while
+streaming, and decompression amplification before writing anything, and a manifest carries an identity-owned relative
+locator resolved only inside the storage-owned archive root. A requested root may
+narrow a selection into an eligible artifact but never widen it to an ancestor,
+an archive identity binds its representation (codec, level, serialization) and
+not only its logical content, and a restore is an exact owner-bound plan that
+never metadata-mutates a container that already existed. Terminal catalog and
+restore receipts are published only downstream of flush, atomic publish,
+directory-entry persistence, and authentication of the published bytes.
+
+**Audit publication and retention are one serialized lifecycle.** Both happen
+under the storage-operation lease, so bounded retention cannot rewrite away a
+record another operation just published and reported as durable. The stored
+record states its own successful publication; retention refuses to rewrite over a
+damaged stream; and a retention failure is surfaced separately without
+unpublishing anything or touching the mutation.
+
+**Deduplication is direct inode sharing under an owner contract.** Byte-identical
+members share one inode among themselves. The pre-rename alias is staged in
+storage's own operation-scoped staging area rather than inside the owner's run,
+so a hard crash leaves storage-owned residue with a recovery lifecycle instead of
+an unrecorded descendant that would block future certification; abandonment is
+established by the storage-operation lease and the journals, never by a process
+id or an age. There is deliberately no persistent content-addressed store, which would be a second durable copy of campaign bytes
+with its own retention lifecycle. Exact byte equality is necessary but never
+sufficient: file type and owner-required metadata must match, the canonical
+member's link count must be fully accounted for inside the group, the family must
+have no accepted in-place writer, and cross-device or unsupported filesystems
+retain duplicate bytes without a correctness failure.
+
+**Reporting is bounded and complete.** The normal report costs one `lstat` per
+declared owner artifact and never walks a subtree, so directory aggregates are
+labelled unknown rather than guessed and `--deep` is the explicit opt-in to exact
+recursive physical accounting. The census is complete: an unrecognized workspace
+tree is reported as ambiguous and retained rather than omitted or pooled.
+
+**Campaign-state maintenance is two planned actions.** Bounding diagnostic
+events and rewriting the state database are separate authorities. Excess events
+authorize pruning only, executed at exactly the resolved bound with no hidden
+floor - a small transaction that takes the write lock up front and so serializes
+against any other campaign writer. A rewrite is planned only when a fresh
+measurement already satisfies the configured reclaimable threshold, and
+re-establishes that threshold and its temporary-space admission inside a
+cross-process exclusion that every campaign-state writer participates in -
+writable construction included, since schema bootstrap is a real write - and that
+it holds through the rewrite. The gate is one per database shared by every store
+instance in the process, its reentrancy belongs to the acquiring thread rather
+than to an object, and its advisory lock file is campaign-store infrastructure no
+storage action targets; a second process consuming the free pages
+while maintenance waits therefore refuses the rewrite instead of performing an
+unjustified one. Free pages that pruning created do not widen the prune into a
+rewrite; that belongs to the next fresh plan. A refused or empty cleanup can
+never carry either along, and results distinguish `events_pruned` from
+`vacuum_performed`.
+
+Storage owns durable state of its own - an identity-keyed archive catalog,
+manifests and blobs, restore journals, a bounded execution audit, and
+operation-serialization state - under an explicit control-plane root. Terminal
+restore journals are retained to a bound while a nonterminal one is recovery
+authority, and catalog fields that establish what a representation *is* are
+create-once. None of it carries a currentness decision, and none of it can be
+reclaimed while a retained cold representation still needs it.
+
 ## GPU/VRAM and host admission
 
 GPU jobs are admitted against explicit device availability, free memory, and

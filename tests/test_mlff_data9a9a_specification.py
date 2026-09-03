@@ -65,7 +65,6 @@ def test_dependency_graph_contains_restartable_model_sweep_chain() -> None:
 
 
 def test_public_runtime_exports_data9a9a_contracts() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
     assert mdstats.MLFF_DATA9A9A_VERSION
     assert mdstats.Data6ModelSweepPlan

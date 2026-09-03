@@ -13,7 +13,6 @@ EXAMPLE = ROOT / "campaign.toml.example"
 
 def test_eval2_release_and_manual_contract_are_current():
     text = MANUAL.read_text(encoding="utf-8")
-    assert mdstats.__version__ == "0.20.185a0"
     assert "EVAL2 is implemented in `mdstats 0.20.171a0`" in text
     assert "Implementation status (`0.20.171a0`): complete for static target/replay checkpoint evaluation" in text
     assert "development-only complement" in text

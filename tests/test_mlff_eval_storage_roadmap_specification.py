@@ -58,17 +58,33 @@ def test_staged_precision_plan_records_profiles_and_refine_defaults() -> None:
         assert token in text
 
 
-def test_storage_plan_protects_external_inputs_production_and_diagnostics() -> None:
+def test_current_storage_specification_states_the_owner_driven_contract() -> None:
+    """The current storage spec is the owner-driven contract, not the STOR tiers."""
+
     text = STOR_SPEC.read_text(encoding="utf-8")
     for token in (
-        "external\n   directories is read-only",
-        "Final selected production models are retained by default",
-        "selected production checkpoint is retained by default",
-        "Diagnostic text records, logs, training histories",
-        "fail-closed under ambiguous ownership",
-        "evaluation capsules",
+        "Storage is never a second scientific authority",
+        "External inputs are indestructible",
+        "A reference is not an authority",
+        "Symlink targets are never traversed",
+        "Ambiguity retains",
+        "A report never authorizes a mutation",
+        "transitive dependency closure of every current or restartable owner",
+        "including after the P7 attempt retention reference has been released",
+        "publication barrier",
+        "identity-owned relative locator",
+        "per-member size bound applied *while streaming*",
+        "decompression amplification",
+        "authenticate the published bytes",
+        "owner-certified metadata compatibility",
+        "no accepted in-place content or material-metadata writer",
+        "No terminal `complete` audit is published",
+        "`recompute` and `compact` are retired",
     ):
-        assert token in text
+        assert token in text, token
+    # The retired tiers must not be described as current product authority.
+    assert "storage cleanup --tier recompute" not in text
+    assert "deferred to `CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1`" not in text
 
 
 def test_dependency_graph_revision_34_contains_eval_precision_storage_nodes() -> None:

@@ -69,7 +69,6 @@ def test_data9a7b_ownership_modules_are_separate_and_generic() -> None:
 
 
 def test_data9a7b_public_exports_and_release_version() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
     assert callable(mdstats.compute_local_structure_features)

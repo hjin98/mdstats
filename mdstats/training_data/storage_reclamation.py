@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import stat
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
-CAMPAIGN_CLEANUP_MANIFEST_SCHEMA = "mdstats.mlff-campaign-cleanup-manifest.v1"
 FILESYSTEM_IDENTITY_SCHEMA = "mdstats.mlff-filesystem-identity.v1"
 
 
@@ -44,28 +42,3 @@ def filesystem_identity(path: str | Path, *, hash_regular_file_limit_bytes: int 
                 digest.update(chunk)
         payload["sha256"] = digest.hexdigest()
     return payload
-
-
-def append_cleanup_manifest(path: str | Path, payload: Mapping[str, Any]) -> str:
-    """Append one authenticated JSONL cleanup event and fsync it.
-
-    The returned digest binds the event payload excluding ``event_digest``.
-    ``O_APPEND`` prevents a later cleanup invocation from rewriting older entries.
-    """
-
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    body = dict(payload)
-    body["schema"] = CAMPAIGN_CLEANUP_MANIFEST_SCHEMA
-    body.pop("event_digest", None)
-    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    event_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    body["event_digest"] = event_digest
-    encoded = (json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
-    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-    try:
-        os.write(fd, encoded)
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    return event_digest

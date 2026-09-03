@@ -45,6 +45,20 @@ _TARGET_SIZE_FAMILIES = {
 }
 
 
+def _safe_cleanup(cfg, paths, store) -> dict:
+    """Apply the real owner-driven safe tier through its production owner."""
+
+    from types import SimpleNamespace
+
+    from mdstats.training_data.storage import commands as storage_commands
+
+    boundary = cli._campaign_ownership_boundary(cfg, paths, store)
+    context = storage_commands.StorageCommandContext(cfg, paths, store, boundary)
+    return storage_commands.storage_cleanup(
+        context, SimpleNamespace(tier="safe", apply=True, dry_run=False)
+    )
+
+
 def _screened_campaign(tmp_path: Path):
     config, workspace = p4d._fixture_campaign(tmp_path)
     assert p4d._run(config, "prepare") == 0
@@ -100,18 +114,58 @@ def test_p4f_req1_storage_report_accounts_promoted_target_size_families(
     assert "internal_campaign_artifacts" not in present
 
 
+
+def _storage_report_payload(config, *, deep: bool, top: int = 50):
+    """The report payload itself.
+
+    A read-only report is returned to its caller and printed; it is no longer
+    deposited in `results/`, because a nominally observational command must not
+    produce campaign artifacts.
+    """
+
+    from types import SimpleNamespace
+
+    from mdstats.training_data.storage import commands as storage_commands
+
+    cfg, paths = cli._load_config(config, ensure=False)
+    store = CampaignStore(paths.state_db, create=False)
+    try:
+        boundary = cli._campaign_ownership_boundary(cfg, paths, store)
+        context = storage_commands.StorageCommandContext(cfg, paths, store, boundary)
+        with cli.observational_campaign_state():
+            return storage_commands.storage_report(
+                context, SimpleNamespace(config=str(config), top=top, deep=deep)
+            )
+    finally:
+        store.close()
+
+
 def test_p4f_req1_storage_command_reports_target_size_bytes(tmp_path: Path):
+    from types import SimpleNamespace
+
     config, workspace = _screened_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
+    # The owner-driven report attributes the bytes to the real P3 owner.
     assert cli.command_storage(
-        __import__("types").SimpleNamespace(config=str(config), top=50)
+        SimpleNamespace(config=str(config), top=50, deep=False)
     ) == 0
-    payload = json.loads(
-        (paths.results / "storage-report.json").read_text(encoding="utf-8")
-    )
-    families = {item["family"] for item in payload["families"]}
-    assert _TARGET_SIZE_FAMILIES & families
+    payload = _storage_report_payload(config, deep=False)
+    assert not (paths.results / "storage-report.json").exists()
+    owners = {item["owner"] for item in payload["owner_families"]}
+    assert "p3" in owners
     assert payload["destructive_actions_performed"] is False
+    assert payload["grants_mutation_authority"] is False
+
+    # The explicit deep audit still reports the physical path families.
+    assert cli.command_storage(
+        SimpleNamespace(config=str(config), top=50, deep=True)
+    ) == 0
+    deep = _storage_report_payload(config, deep=True)
+    # The deep audit keys bytes by where they physically live; the semantic
+    # target-size family names above come from the owner-driven report.
+    families = {item["family"] for item in deep["families"]}
+    assert ".mdstats/target-size" in families, sorted(families)
+    assert deep["destructive_actions_performed"] is False
 
 
 # --- REQ2 safe cleanup preserves restart and reconciliation capability -----
@@ -134,9 +188,7 @@ def test_p4f_req2_safe_cleanup_preserves_the_execution_root(tmp_path: Path):
         for path in list(before):
             os.utime(path, (old, old))
 
-        report = cli._campaign_cleanup(
-            cfg, paths, store, phase="p4f-safe", dry_run=False
-        )
+        payload = _safe_cleanup(cfg, paths, store)
         after = {
             path: path.stat().st_size
             for path in sorted(root.rglob("*"))
@@ -144,7 +196,8 @@ def test_p4f_req2_safe_cleanup_preserves_the_execution_root(tmp_path: Path):
         }
         assert after == before, sorted(set(before) - set(after))
         assert not any(
-            str(root) in str(action["path"]) for action in report.actions
+            str(root) in str(action["path"])
+            for action in payload["execution"]["completed_actions"]
         )
     finally:
         store.close()
@@ -157,7 +210,7 @@ def test_p4f_req2_fresh_process_replay_after_safe_cleanup_is_identical(
     cfg, paths, store, _boundary = _boundary_for(config)
     try:
         before = load_target_size_campaign_revision(store)
-        cli._campaign_cleanup(cfg, paths, store, phase="p4f-safe", dry_run=False)
+        _safe_cleanup(cfg, paths, store)
     finally:
         store.close()
 
@@ -437,10 +490,11 @@ def test_p4f_req4_no_reverse_nested_lock_or_transaction_path():
         "commit_target_size_boundary_batch",
         "record_candidate_boundary_outcome",
         "resolve_target_size_candidate_for_resume",
-        "_cleanup_remove",
-        "_campaign_cleanup",
-        "deduplicate_immutable_files",
+        "_remove_durably",
+        "durable_unlink",
+        "deduplicate",
         "create_cold_archive",
+        "restore_cold_archive",
         "rmtree",
         "unlink",
         "flock",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import urllib.parse
 import threading
 from functools import lru_cache
 from collections.abc import Mapping
@@ -12,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from . import _observation
 
 
 class TrainingDataError(ValueError):
@@ -122,20 +125,35 @@ def configure_sha256_receipt_store(path: str | Path | None) -> None:
         previous = _SHA256_RECEIPT_PATH
         _SHA256_RECEIPT_PATH = target
         if previous != target:
-            connection = getattr(_SHA256_RECEIPT_LOCAL, "connection", None)
-            if connection is not None:
-                try:
-                    connection.close()
-                except Exception:
-                    pass
-                _SHA256_RECEIPT_LOCAL.connection = None
-                _SHA256_RECEIPT_LOCAL.connection_path = None
+            for attribute, path_attribute in (
+                ("connection", "connection_path"),
+                ("readonly_connection", "readonly_path"),
+            ):
+                connection = getattr(_SHA256_RECEIPT_LOCAL, attribute, None)
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+                    setattr(_SHA256_RECEIPT_LOCAL, attribute, None)
+                    setattr(_SHA256_RECEIPT_LOCAL, path_attribute, None)
 
 
-def _sha256_receipt_connection() -> sqlite3.Connection | None:
+def _sha256_receipt_connection(*, for_write: bool = True) -> sqlite3.Connection | None:
+    """The receipt database connection appropriate to this execution context.
+
+    An observational invocation may still *read* receipts - that is a pure
+    accelerator and changes nothing - but it must not create the database, add a
+    row, or bound the table.  The decision is per call and per context rather
+    than a process-global destination toggle, so an observational report running
+    beside a legitimate writer cannot disable or redirect that writer's cache.
+    """
+
     path = _SHA256_RECEIPT_PATH
     if path is None:
         return None
+    if _observation.observational():
+        return None if for_write else _readonly_receipt_connection(path)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         connection = getattr(_SHA256_RECEIPT_LOCAL, "connection", None)
@@ -193,8 +211,40 @@ def _sha256_receipt_connection() -> sqlite3.Connection | None:
         return None
 
 
+def _readonly_receipt_connection(path: Path) -> sqlite3.Connection | None:
+    """A genuinely read-only connection to an existing receipt database.
+
+    Absent database, unreadable file, or any other failure simply means no
+    acceleration: the caller falls back to hashing the bytes, which is always
+    the authoritative answer anyway.
+    """
+
+    if not path.is_file():
+        return None
+    connection = getattr(_SHA256_RECEIPT_LOCAL, "readonly_connection", None)
+    connection_path = getattr(_SHA256_RECEIPT_LOCAL, "readonly_path", None)
+    if connection is not None and connection_path == str(path):
+        return connection
+    if connection is not None:
+        try:
+            connection.close()
+        except Exception:
+            pass
+        _SHA256_RECEIPT_LOCAL.readonly_connection = None
+        _SHA256_RECEIPT_LOCAL.readonly_path = None
+    try:
+        uri = f"file:{urllib.parse.quote(str(path))}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=5.0)
+        connection.execute("PRAGMA query_only=ON")
+    except Exception:
+        return None
+    _SHA256_RECEIPT_LOCAL.readonly_connection = connection
+    _SHA256_RECEIPT_LOCAL.readonly_path = str(path)
+    return connection
+
+
 def _read_sha256_receipt(key: tuple[str, int, int, int, int, int]) -> str | None:
-    connection = _sha256_receipt_connection()
+    connection = _sha256_receipt_connection(for_write=False)
     if connection is None:
         return None
     try:
@@ -231,7 +281,7 @@ def read_validation_receipt(namespace: str, identity_digest: str) -> str | None:
 
     if not namespace or len(identity_digest) != 64:
         return None
-    connection = _sha256_receipt_connection()
+    connection = _sha256_receipt_connection(for_write=False)
     if connection is None:
         return None
     try:

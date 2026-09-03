@@ -334,11 +334,20 @@ evaluation_shared_runtime_residency_mib = 0
 stop_scheduling_after_failure = true
 
 [cleanup]
-# Conservative lifecycle cleanup runs automatically at current stage boundaries.
-# Manual retention is CLI-selected: storage cleanup --tier safe|cache.
+# Storage is operator-driven: storage cleanup --tier safe|cache. It plans first and
+# mutates only with --apply on the invocation you run; a persisted apply/action key
+# under [storage] is rejected rather than obeyed. Setting enabled = false withholds
+# every consequential storage mutation while leaving reporting and planning
+# available. Optional [storage] policy keys tune codecs, bounds, and reserves only;
+# they never widen deletion or archive authority.
 enabled = true
-# Young temporary trees are retained to avoid racing a recently interrupted process.
+# Publication window. Evidence younger than this is retained so storage can never
+# race a reference that has not landed yet.
 stale_age_hours = 6.0
+# Bound on retained diagnostic campaign-store events; scientific records and the
+# SHA-256 receipt cache have separate retention. Exceeding this bound authorizes
+# pruning only: rewriting the state database is a separate, independently
+# benefit-gated storage action.
 maximum_event_records = 10000
 
 [replay]

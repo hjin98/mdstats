@@ -1,0 +1,117 @@
+{
+  "archive_codecs": {
+    "gzip:1": {
+      "archive_bytes": 3293055,
+      "create_seconds": 1.6697307940048631,
+      "member_count": 204,
+      "member_logical_bytes": 6517270,
+      "ratio": 1.979095399256921,
+      "represented_artifact_ids": [
+        "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
+        "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
+        "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
+      ],
+      "restore_exit_code": 0,
+      "restore_seconds": 1.582340397988446
+    },
+    "gzip:6": {
+      "archive_bytes": 3276206,
+      "create_seconds": 1.6654887260228861,
+      "member_count": 204,
+      "member_logical_bytes": 6517270,
+      "ratio": 1.9892735682676852,
+      "represented_artifact_ids": [
+        "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
+        "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
+        "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
+      ],
+      "restore_exit_code": 0,
+      "restore_seconds": 1.6051644000108354
+    },
+    "gzip:9": {
+      "archive_bytes": 3274909,
+      "create_seconds": 1.6728567259851843,
+      "member_count": 204,
+      "member_logical_bytes": 6517270,
+      "ratio": 1.9900614032328838,
+      "represented_artifact_ids": [
+        "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
+        "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
+        "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
+      ],
+      "restore_exit_code": 0,
+      "restore_seconds": 1.6155012550007086
+    },
+    "none:0": {
+      "archive_bytes": 6840320,
+      "create_seconds": 1.6870305289921816,
+      "member_count": 204,
+      "member_logical_bytes": 6517270,
+      "ratio": 0.9527726773016467,
+      "represented_artifact_ids": [
+        "p5:run:g1:0bc4f85fce20f260ffb3eda55006421a2a299913e1edffab1f548a0fefb587ec",
+        "p5:run:g1:4123e498ff56a095510b3e213f5be5acb8de1a3ed173d3a78a39bc38b32af577",
+        "p5:run:g1:45be0b3f4547b35f9f316a006b64c9859ebde9367ea09fbb6b222bc6de4afd4e"
+      ],
+      "restore_exit_code": 0,
+      "restore_seconds": 1.5707637110026553
+    }
+  },
+  "completion_authority": {
+    "note": "the compact completion anchor is what normal reporting validates; the O(member-count) topology manifest is read only by exact closed-subtree certification",
+    "topology_manifest_bytes": 4724,
+    "topology_manifest_read_by_report": false
+  },
+  "fixture": {
+    "compressible_fraction": 0.5,
+    "historical_run_roots": 3,
+    "kind": "real P1-P5 campaign with one superseded generation",
+    "padded_file_count": 24,
+    "padded_file_size_bytes": 262144,
+    "padded_logical_bytes": 6291456
+  },
+  "io_concurrency_note": "I/O workers are configured separately from CPU workers so a storage scan cannot create a metadata or hash thundering herd",
+  "io_concurrency_seconds": {
+    "1": 0.005650562990922481,
+    "2": 0.008847557997796685,
+    "4": 0.008753128000535071,
+    "8": 0.011111622996395454
+  },
+  "receipt_reuse": {
+    "file_count": 151,
+    "first_accelerated_seconds": 0.006803805998060852,
+    "note": "receipts accelerate repeated hashing of large immutable artifacts and never establish validity; below RECEIPT_ACCELERATION_MINIMUM_BYTES the direct hash is used because the receipt round-trip costs more than the read it avoids",
+    "reused_seconds": 0.006677604018477723,
+    "speedup_on_reuse": 0.9839476842313178,
+    "uncached_seconds": 0.006570413010194898
+  },
+  "report_scaling": {
+    "descendants_added": 96,
+    "entry_visits_after": 36,
+    "entry_visits_before": 36,
+    "note": "adding descendants to an owner-declared artifact must not change the bounded report's entry-visit count",
+    "seconds_after": 0.0071178300131578,
+    "seconds_before": 0.006995708012254909
+  },
+  "reporting": {
+    "deep_audit": {
+      "cold_entry_visits": 8687,
+      "cold_seconds": 0.10814148199278861,
+      "complete": true,
+      "file_count": 848,
+      "warm_entry_visits": 8687,
+      "warm_seconds": 0.10737110499758273
+    },
+    "entry_visit_ratio_deep_over_owner": 241.30555555555554,
+    "note": "the owner report visits one entry per owner-declared artifact and never walks a subtree, so its cost is set by how many artifacts the owners declare; the deep audit is the explicit opt-in whose cost is set by how much the campaign holds",
+    "owner_report": {
+      "artifact_count": 20,
+      "cold_entry_visits": 36,
+      "cold_seconds": 0.007604995014844462,
+      "owner_family_count": 17,
+      "warm_entry_visits": 36,
+      "warm_seconds": 0.007317571988096461
+    }
+  },
+  "schema": "mdstats.mlff-storage-io-reset-benchmark.v2"
+}

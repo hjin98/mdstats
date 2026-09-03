@@ -326,63 +326,6 @@ class _FakeRoleDomain:
         self.cv_checkpoint_monitor_unit_ids_by_fold = ((0, ("a" * 64,)), (1, ("b" * 64,)))
 
 
-class _FakeRoleFreeze:
-    content_digest = "c" * 64
-    def __init__(self, count: int = 300): self._domain = _FakeRoleDomain(count)
-    def domain(self, label_domain_id): return self._domain
-    def require_size_selection_frames(self, frames, **kwargs): return tuple(frames)
-
-
-class _FakeRepair:
-    dataset_id = "dataset"
-    def __init__(
-        self,
-        frames,
-        *,
-        label_domain_id: str = "target",
-        reference_domain_digest: str | None = None,
-    ):
-        self._domain = SimpleNamespace(
-            label_domain_id=label_domain_id,
-            repaired_master_order=tuple(frames),
-            reference_domain_digest=reference_domain_digest,
-        )
-        self.domains = (self._domain,)
-        self.content_digest = digest({"repair": list(frames)})
-    def domain(self, label_domain_id):
-        if label_domain_id != self._domain.label_domain_id:
-            raise KeyError(label_domain_id)
-        return self._domain
-
-
-class _FakeQual:
-    dataset_id = "dataset"
-    def __init__(self, repair, qualified):
-        self.target_multi_view_repair_digest = repair.content_digest
-        self.mv_qualified_sizes = tuple(qualified)
-        self.content_digest = digest({"qualified": list(qualified)})
-
-
-def _fake_v5_size_inputs(*, count: int = 300, qualified=(128, 256)):
-    freeze = _FakeRoleFreeze(count)
-    repair = _FakeRepair(freeze._domain.size_development_frame_uids)
-    qual = _FakeQual(repair, qualified)
-    study = mdstats.build_target_size_study(repair, qual)
-    return freeze, repair, study
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def test_bootstrap_cannot_reverse_material_point_estimate_direction():
     policy = mdstats.CheckpointSelectionPolicy(bootstrap_replicates=2000, bootstrap_min_independent_blocks=10)
     p1, p2 = point(1, 0.010), point(2, 0.020)

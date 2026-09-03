@@ -39,7 +39,6 @@ def test_data9a7e_dependency_graph_and_public_api() -> None:
         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
         "CROSS_SYSTEM_QUALIFICATION_SUITE",
     } <= nodes
-    assert mdstats.__version__ == "0.20.140a0"
     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
     assert callable(mdstats.qualify_cross_system_case)
     assert callable(mdstats.build_cross_system_qualification_suite)

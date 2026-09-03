@@ -47,12 +47,22 @@ def test_parser_exposes_the_current_lifecycle_surface() -> None:
         parser.parse_args(["qualification", "activate"])
     storage = choices["storage"]
     storage_choices = storage._subparsers._group_actions[0].choices
-    assert tuple(storage_choices) == ("report", "cleanup")
+    assert tuple(storage_choices) == ("report", "cleanup", "archive", "deduplicate")
     assert parser.parse_args(["storage"]).func is campaign_cli.command_storage
     assert parser.parse_args(["storage", "report", "--top", "7"]).top == 7
+    assert parser.parse_args(["storage", "report", "--deep"]).deep is True
     assert parser.parse_args(["storage", "cleanup", "--tier", "cache"]).func is campaign_cli.command_cleanup
-    with pytest.raises(SystemExit):
-        parser.parse_args(["storage", "deduplicate", "--apply"])
+    assert (
+        parser.parse_args(["storage", "deduplicate", "--apply"]).func
+        is campaign_cli.command_storage_deduplicate
+    )
+    archive = parser.parse_args(["storage", "archive", "verify", "0" * 32])
+    assert archive.func is campaign_cli.command_storage_archive
+    assert archive.archive_identity == "0" * 32
+    # The retired consequential-loss tiers are not current product authority.
+    for tier in ("recompute", "compact"):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["storage", "cleanup", "--tier", tier])
     with pytest.raises(SystemExit):
         parser.parse_args(["storage", "archive", "verify"])
 

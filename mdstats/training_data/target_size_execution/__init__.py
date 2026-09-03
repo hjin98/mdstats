@@ -141,6 +141,7 @@ from .export import (
 )
 from .persistence import (
     artifact_publication_lock,
+    fsync_parent_directory,
     publish_immutable_bytes_create_or_verify,
     publish_immutable_json_create_or_verify,
     publish_mutable_json_atomic,
@@ -155,6 +156,7 @@ from .schedule import (
 
 __all__ = [
     "artifact_publication_lock",
+    "fsync_parent_directory",
     "authenticate_train2_checkpoint_provider",
     "CommonAtomicReferenceFit",
     "EVALUATION_MODEL_STATE_EMA",

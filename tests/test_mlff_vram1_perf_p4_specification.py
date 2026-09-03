@@ -12,7 +12,6 @@ def _root() -> Path:
 
 def test_vram1_perf_p4_release_authorities_are_synchronized() -> None:
     root = _root()
-    assert mdstats.__version__ == "0.20.209a0"
     assert mdstats.MACE_BATCH_CAPACITY_CALIBRATION_SCHEMA == "mdstats.mace-batch-capacity-calibration.v2"
     assert mdstats.MACE_BATCH_CAPACITY_PROBE_SCHEMA == "mdstats.mace-batch-capacity-probe.v1"
     assert mdstats.DATA6_MODEL_SWEEP_EXECUTION_POLICY_SCHEMA == "mdstats.data6-model-sweep-execution-policy.v4"

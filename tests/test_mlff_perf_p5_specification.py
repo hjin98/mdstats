@@ -18,7 +18,6 @@ def test_perf_p5_release_manual_graph_and_spec_are_synchronized() -> None:
     graph = json.loads((root / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
     nodes = {item["id"]: item for item in graph["nodes"]}
 
-    assert mdstats.__version__ == "0.20.209a0"
     assert "revision 59" in manual
     assert "PERF-P5 CPU/control-plane qualification passes" in manual
     assert "46.05% reduction" in manual

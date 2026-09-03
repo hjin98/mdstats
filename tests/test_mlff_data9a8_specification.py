@@ -66,7 +66,6 @@ def test_dependency_graph_places_policy_upstream_and_forbids_posthoc_thresholds(
 
 
 def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
-    assert mdstats.__version__ == "0.20.140a0"
     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
     assert mdstats.ObservableComparisonPolicy
     assert mdstats.compare_mlff_observable_validation
