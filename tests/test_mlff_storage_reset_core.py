@@ -4367,3 +4367,307 @@ def test_the_common_certified_subtree_reports_partial_when_it_half_empties(
     assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, outcome
     assert outcome.mutated is False
     assert outcome.credited_bytes(1_000_000) == 0
+
+
+# ---------------------------------------------------------------------------
+# R30-H - exact action-local bytes through recursive partial mutation
+# ---------------------------------------------------------------------------
+
+
+def _recorded_tree(root: Path) -> dict[str, str]:
+    """The typed node map a released proof would carry for this tree."""
+
+    recorded: dict[str, str] = {root.name: "directory"}
+    for item in sorted(root.rglob("*")):
+        relative = f"{root.name}/{item.relative_to(root).as_posix()}"
+        recorded[relative] = "directory" if item.is_dir() else "file"
+    return recorded
+
+
+def test_recursive_partial_mutation_reports_exact_action_local_bytes(
+    tmp_path: Path,
+) -> None:
+    """A fully removed nested subtree still counts toward a later refusal.
+
+    The recursion unlinks a complete subtree, then meets a node the proof never
+    recorded. If the nested success did not propagate its measured bytes, the
+    parent's partial figure would silently drop everything the subtree freed -
+    reporting less reclaim than the filesystem actually gave back.
+    """
+
+    import os as _os
+
+    from mdstats.training_data.qualification.store import (
+        _remove_certified_directory,
+        dir_fd_mutation_supported,
+    )
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    assert dir_fd_mutation_supported()
+    container = tmp_path / "member"
+    nested = container / "a-nested"
+    nested.mkdir(parents=True)
+    (nested / "one.bin").write_bytes(b"x" * 100)
+    (nested / "two.bin").write_bytes(b"y" * 250)
+    (container / "m-later.bin").write_bytes(b"z" * 7)
+    recorded = _recorded_tree(container)
+
+    # Planted after the proof was taken: an addition the owner never authored.
+    # Sorted enumeration reaches it after the nested subtree is already gone.
+    (container / "zz-foreign.bin").write_bytes(b"not ours")
+
+    parent_fd = _os.open(tmp_path, _os.O_RDONLY | _os.O_DIRECTORY)
+    try:
+        outcome = _remove_certified_directory(
+            parent_fd, "member", container, recorded, "member/", seen=set()
+        )
+    finally:
+        _os.close(parent_fd)
+
+    assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
+    assert outcome.mutated is True and outcome.succeeded is False
+    # 100 + 250 from the nested subtree that fully went, plus the 7-byte file
+    # removed before the foreign node stopped the walk.
+    assert outcome.removed_bytes == 357, outcome
+    assert outcome.credited_bytes(1_000_000) == 357
+    assert not nested.exists(), "the nested subtree survived"
+    assert (container / "zz-foreign.bin").read_bytes() == b"not ours"
+
+
+def test_recursive_byte_accounting_deduplicates_hard_links(tmp_path: Path) -> None:
+    """One file with several names is one file's worth of reclaim.
+
+    The planner's own tree metric counts each `(device, inode)` once. If the
+    removal counted per link, a partial figure would claim more bytes back than
+    the filesystem ever held.
+    """
+
+    import os as _os
+
+    from mdstats.training_data.qualification.store import _remove_certified_directory
+    from mdstats.training_data.storage.plan import _tree_bytes
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    container = tmp_path / "member"
+    container.mkdir()
+    original = container / "a-original.bin"
+    original.write_bytes(b"x" * 512)
+    _os.link(original, container / "b-hardlink.bin")
+    recorded = _recorded_tree(container)
+    planner_view = _tree_bytes(container)
+    assert planner_view == 512, planner_view
+
+    (container / "zz-foreign.bin").write_bytes(b"not ours")
+
+    parent_fd = _os.open(tmp_path, _os.O_RDONLY | _os.O_DIRECTORY)
+    try:
+        outcome = _remove_certified_directory(
+            parent_fd, "member", container, recorded, "member/", seen=set()
+        )
+    finally:
+        _os.close(parent_fd)
+
+    assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
+    assert outcome.removed_bytes == 512, outcome
+    assert outcome.removed_bytes == planner_view
+
+
+def test_a_clean_recursive_removal_measures_what_the_planner_would(
+    tmp_path: Path,
+) -> None:
+    """The success path's measured bytes agree with the planned size metric."""
+
+    import os as _os
+
+    from mdstats.training_data.qualification.store import _remove_certified_directory
+    from mdstats.training_data.storage.plan import _tree_bytes
+    from mdstats.training_data.storage.outcome import OUTCOME_REMOVED
+
+    container = tmp_path / "member"
+    (container / "deep").mkdir(parents=True)
+    (container / "top.bin").write_bytes(b"a" * 33)
+    (container / "deep" / "inner.bin").write_bytes(b"b" * 77)
+    recorded = _recorded_tree(container)
+    expected = _tree_bytes(container)
+
+    parent_fd = _os.open(tmp_path, _os.O_RDONLY | _os.O_DIRECTORY)
+    try:
+        outcome = _remove_certified_directory(
+            parent_fd, "member", container, recorded, "member/", seen=set()
+        )
+    finally:
+        _os.close(parent_fd)
+
+    assert outcome.outcome == OUTCOME_REMOVED, outcome
+    assert outcome.removed_bytes == expected == 110, (outcome, expected)
+    assert not container.exists()
+
+
+def test_the_final_target_check_is_no_weaker_than_plan_revalidation() -> None:
+    """R30-B: the two identity checks may not drift apart.
+
+    Ordinary plan revalidation and the final P7 boundary answer the same
+    question at different moments. If revalidation later strengthens its bounded
+    identity and the final owner boundary silently keeps the old, narrower set,
+    the last check before the syscall becomes the weakest one.
+    """
+
+    import ast
+
+    from mdstats.training_data.qualification.store import (
+        TARGET_IDENTITY_DIMENSIONS,
+    )
+
+    plan_source = (Path(cli.__file__).parent / "storage" / "plan.py").read_text(
+        encoding="utf-8"
+    )
+    revalidate = next(
+        node
+        for node in ast.walk(ast.parse(plan_source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_revalidate_action_target"
+    )
+    checked: set[str] = set()
+    for node in ast.walk(revalidate):
+        if isinstance(node, ast.Tuple):
+            values = [
+                item.value
+                for item in node.elts
+                if isinstance(item, ast.Constant) and isinstance(item.value, str)
+            ]
+            if {"kind", "device", "inode"} <= set(values):
+                checked = set(values)
+    assert checked, "the plan's revalidation dimensions could not be located"
+    assert checked <= set(TARGET_IDENTITY_DIMENSIONS), (
+        checked - set(TARGET_IDENTITY_DIMENSIONS)
+    )
+
+
+def test_a_spent_capability_is_rejected_before_any_descriptor_syscall() -> None:
+    """R30-B structural: the guard runs first, not after a stat.
+
+    A closed session's integer may already belong to something else, so the
+    check has to precede every use of it - including the observation that would
+    otherwise decide the outcome.
+    """
+
+    import ast
+
+    store_source = (
+        Path(cli.__file__).parent / "qualification" / "store.py"
+    ).read_text(encoding="utf-8")
+    remover = next(
+        node
+        for node in ast.walk(ast.parse(store_source))
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "remove_released_attempt_member"
+    )
+    statements = [
+        node
+        for node in remover.body
+        if not (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        )
+    ]
+    guard_index = next(
+        index
+        for index, node in enumerate(statements)
+        if "require_live" in ast.dump(node)
+    )
+    syscall_index = next(
+        index
+        for index, node in enumerate(statements)
+        if any(
+            name in ast.dump(node)
+            for name in ("dir_fd", "_unlink_certified_file", "_remove_certified_directory")
+        )
+    )
+    assert guard_index < syscall_index, (guard_index, syscall_index)
+
+    # And the guard is one-way: closing sets a flag nothing clears.
+    session_class = next(
+        node
+        for node in ast.walk(ast.parse(store_source))
+        if isinstance(node, ast.ClassDef) and node.name == "ReleasedAttemptSession"
+    )
+    dumped = ast.dump(session_class)
+    assert "invalidation_reason" in dumped and "require_live" in dumped
+    assert "MappingProxyType" in dumped, (
+        "the session's proof lookup is not handed out read-only"
+    )
+
+
+def test_the_cleanup_engine_withholds_the_rest_of_a_contradicted_attempt() -> None:
+    """R30-D structural: refusal invalidates the shared capability."""
+
+    import ast
+
+    commands_source = (Path(cli.__file__).parent / "storage" / "commands.py").read_text(
+        encoding="utf-8"
+    )
+    applier = next(
+        node
+        for node in ast.walk(ast.parse(commands_source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_apply_released_member"
+    )
+    dumped = ast.dump(applier)
+    assert "invalidate" in dumped, "a contradicted attempt keeps its capability"
+    assert "live" in dumped, "later members never consult the capability's state"
+    assert "planned_identity" in dumped, (
+        "the final owner boundary is not given the plan-bound target identity"
+    )
+    # And a post-mutation failure records the action before it propagates.
+    recorder = next(
+        node
+        for node in ast.walk(ast.parse(commands_source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_record_or_reraise"
+    )
+    recorded = ast.dump(recorder)
+    assert "PartialMutationError" in recorded and "record_removal" in recorded
+    assert "Raise" in recorded, "the failure is swallowed instead of propagating"
+
+
+def test_a_failed_unlink_does_not_inflate_the_partial_figure(tmp_path: Path) -> None:
+    """Bytes are credited once the entry has actually gone, not before.
+
+    The size has to be read before the unlink - afterwards there is nothing left
+    to read - but a measurement is not a removal. If the unlink then fails, the
+    file is still there and its bytes are not this execution's to claim.
+    """
+
+    import os as _os
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    container = tmp_path / "member"
+    container.mkdir()
+    (container / "a-goes.bin").write_bytes(b"x" * 40)
+    (container / "b-stays.bin").write_bytes(b"y" * 900)
+    recorded = _recorded_tree(container)
+
+    real_unlink = qstore._unlink_certified_file
+    seen_names: list[str] = []
+
+    def fail_on_second(parent_fd, name):
+        seen_names.append(name)
+        if len(seen_names) > 1:
+            raise OSError(13, "injected unlink failure")
+        return real_unlink(parent_fd, name)
+
+    qstore._unlink_certified_file = fail_on_second
+    parent_fd = _os.open(tmp_path, _os.O_RDONLY | _os.O_DIRECTORY)
+    try:
+        outcome = qstore._remove_certified_directory(
+            parent_fd, "member", container, recorded, "member/", seen=set()
+        )
+    finally:
+        _os.close(parent_fd)
+        qstore._unlink_certified_file = real_unlink
+
+    assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
+    # Only the 40 bytes that really went; never the 900 that are still there.
+    assert outcome.removed_bytes == 40, outcome
+    assert (container / "b-stays.bin").stat().st_size == 900
+    assert not (container / "a-goes.bin").exists()

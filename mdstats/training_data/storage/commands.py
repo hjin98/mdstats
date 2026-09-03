@@ -477,50 +477,130 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                     view is not None
                     and view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER
                 ):
-                    attempt_root = view.path.parent
-                    key = str(attempt_root)
-                    if key not in sessions:
-                        sessions[key] = open_released_attempt_session(
-                            snapshot.campaign_paths,
-                            attempt_root,
-                            expected_root_identity=view.root_identity,
-                            expected_release_authority=view.state_identity,
-                        )
-                    session, why = sessions[key]
-                    if session is None:
-                        record_removal(result, action, why)
-                        continue
-                    record_removal(
+                    _apply_released_member(
                         result,
                         action,
-                        remove_released_attempt_member(
-                            session,
-                            view.path.name,
-                            expected_kind=_view_node_kind(view),
-                        ),
+                        view,
+                        snapshot,
+                        sessions,
+                        open_released_attempt_session,
+                        remove_released_attempt_member,
                     )
                     continue
                 if view is not None and view.path == action.path and action.path.is_dir():
                     members, refusals = snapshot.authorized_members(view)
-                    record_removal(
+                    _record_or_reraise(
                         result,
                         action,
-                        remove_certified_subtree(
-                            action.path,
-                            members=members,
-                            refusals=refusals,
-                            root_identity=view.path_identity,
-                            authority_identity=view.root_identity,
+                        lambda members=members, refusals=refusals, view=view, action=action: (
+                            remove_certified_subtree(
+                                action.path,
+                                members=members,
+                                refusals=refusals,
+                                root_identity=view.path_identity,
+                                authority_identity=view.root_identity,
+                            )
                         ),
                     )
                     continue
-                record_removal(result, action, remove_durably_outcome(action.path))
+                _record_or_reraise(
+                    result,
+                    action,
+                    lambda action=action: remove_durably_outcome(action.path),
+                )
         finally:
             for session, _why in sessions.values():
                 if session is not None:
                     session.close()
 
     return _engine
+
+
+def _record_or_reraise(result, action, run) -> Any:
+    """Record what one action did, even when it ends by raising.
+
+    A helper that unlinked and then failed on durability knows something the
+    executor's outer interruption handling never will: which action mutated and
+    how many bytes are already gone. That evidence is recorded here, at the
+    action boundary, before the failure is allowed to continue upward - so the
+    partial audit describes the tree that now exists rather than reporting only
+    that something went wrong.
+    """
+
+    from .outcome import PartialMutationError
+
+    try:
+        outcome = run()
+    except PartialMutationError as exc:
+        record_removal(result, action, exc.outcome)
+        raise (exc.cause or exc) from exc
+    record_removal(result, action, outcome)
+    return outcome
+
+
+def _apply_released_member(
+    result,
+    action,
+    view,
+    snapshot,
+    sessions: dict[str, Any],
+    open_session,
+    remove_member,
+) -> None:
+    """One released-attempt action, under the attempt's live capability.
+
+    A contradiction found at any member's mutation boundary is evidence about
+    the whole attempt, not just that member: the session's certification is no
+    longer a sufficient premise. So the capability is withdrawn and the rest of
+    that attempt's planned members inherit an explicit no-change refusal without
+    reaching the filesystem. Other attempts are unaffected - their authority was
+    never in question.
+    """
+
+    from .outcome import PartialMutationError, refused_no_change
+
+    attempt_root = view.path.parent
+    key = str(attempt_root)
+    if key not in sessions:
+        sessions[key] = open_session(
+            snapshot.campaign_paths,
+            attempt_root,
+            expected_root_identity=view.root_identity,
+            expected_release_authority=view.state_identity,
+        )
+    session, why = sessions[key]
+    if session is None:
+        # A failed acquisition is the attempt's answer for this execution; it is
+        # not re-attempted per member.
+        record_removal(result, action, why)
+        return
+    if not session.live:
+        record_removal(
+            result,
+            action,
+            refused_no_change(
+                "an earlier member of this attempt contradicted the authority this "
+                f"action shares, so it was withheld: {session.invalidation_reason}"
+            ),
+        )
+        return
+
+    try:
+        outcome = remove_member(
+            session,
+            view.path.name,
+            expected_kind=_view_node_kind(view),
+            planned_identity=action.filesystem_identity,
+        )
+    except PartialMutationError as exc:
+        record_removal(result, action, exc.outcome)
+        session.invalidate(exc.outcome.detail)
+        sessions[key] = (session, exc.outcome)
+        raise (exc.cause or exc) from exc
+    record_removal(result, action, outcome)
+    if outcome.refused:
+        session.invalidate(outcome.detail)
+        sessions[key] = (session, outcome)
 
 
 def print_cleanup(payload: Mapping[str, Any]) -> None:

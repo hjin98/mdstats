@@ -3936,8 +3936,9 @@ def test_the_certified_recursion_reports_partial_change_with_measured_bytes(
             session.attempt_fd,
             view.path.name,
             view.path,
-            session.recorded_kinds(),
+            session.recorded,
             f"{view.path.name}/",
+            seen=set(),
         )
     finally:
         session.close()
@@ -3953,3 +3954,455 @@ def test_the_certified_recursion_reports_partial_change_with_measured_bytes(
     # Never the planned size by default: the credit is what was measured.
     assert outcome.credited_bytes(10_000_000) == outcome.removed_bytes
     assert (deepest / "zz-someone-elses.bin").exists(), "the foreign node was removed"
+
+
+# ---------------------------------------------------------------------------
+# R30 - final target identity, unspendable capability, same-attempt invalidation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("kind", ["file", "directory"])
+def test_a_target_replaced_after_revalidation_is_refused_at_the_final_check(
+    tmp_path: Path, kind: str
+):
+    """R30-B: ordinary plan revalidation happened earlier, and by pathname.
+
+    An object swapped in afterwards under the same name and the same kind would
+    inherit the plan's permission to delete it. The final owner boundary
+    re-observes the planned identity through the retained descriptor, so the
+    replacement survives and the action refuses.
+    """
+
+    import shutil as _shutil
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    candidates = [
+        view
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:")
+        and view.safe_reclaimable
+        and (view.path.is_dir() if kind == "directory" else view.path.is_file())
+    ]
+    assert candidates, f"the fixture produced no reclaimable released {kind}"
+    victim = candidates[0].path
+    replaced: list[Path] = []
+
+    real_open = qstore.open_released_attempt_session
+
+    def swap_after_certification(*args, **kwargs):
+        session, outcome = real_open(*args, **kwargs)
+        if session is not None and not replaced:
+            replaced.append(victim)
+            parked = victim.parent / f"parked-{victim.name}"
+            victim.rename(parked)
+            if kind == "directory":
+                # Same name, same kind, different inode - no symlink or type
+                # check could tell them apart.
+                victim.mkdir()
+                (victim / "impostor.bin").write_bytes(b"not the planned tree")
+            else:
+                victim.write_bytes(b"?" * parked.stat().st_size)
+        return session, outcome
+
+    qstore.open_released_attempt_session = swap_after_certification
+    try:
+        execution = _apply_cleanup(config)
+    finally:
+        qstore.open_released_attempt_session = real_open
+
+    assert replaced, "the swap never fired"
+    entries = {item["path"]: item for item in execution["refused_actions"]}
+    assert str(victim) in entries, execution
+    entry = entries[str(victim)]
+    assert entry["outcome"] == OUTCOME_REFUSED_NO_CHANGE, entry
+    assert entry["mutated"] is False, entry
+    assert "planned against" in entry["refusal"], entry["refusal"]
+    assert victim.exists(), "the replacement was removed under the old plan"
+    if kind == "directory":
+        assert (victim / "impostor.bin").read_bytes() == b"not the planned tree"
+
+
+def test_a_closed_capability_reaches_no_filesystem_syscall(tmp_path: Path):
+    """R30-B: a spent capability is unspendable, fd-number reuse included.
+
+    The integer in a closed session is not an identity. The kernel is free to
+    hand the same number to the next thing that opens a file, so the guard has
+    to run before any syscall that would use it - not after a stat has already
+    touched whatever now answers to that descriptor.
+    """
+
+    import os as _os
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, paths, view = _released_scratch_view(config)
+
+    session, _outcome = qstore.open_released_attempt_session(
+        paths,
+        view.path.parent,
+        expected_root_identity=view.root_identity,
+        expected_release_authority=view.state_identity,
+    )
+    assert session is not None
+    stolen_fd = session.attempt_fd
+    session.close()
+    assert session.closed is True
+
+    # Force the descriptor number to be reused by something unrelated.
+    decoy = tmp_path / "decoy.bin"
+    decoy.write_bytes(b"decoy")
+    handle = _os.open(decoy, _os.O_RDONLY)
+    try:
+        reused = handle == stolen_fd
+        touched: list[str] = []
+        real_stat, real_open_dir = _os.stat, qstore._open_directory_nofollow
+
+        def watched_stat(*args, **kwargs):
+            if kwargs.get("dir_fd") is not None:
+                touched.append("stat")
+            return real_stat(*args, **kwargs)
+
+        def watched_open(*args, **kwargs):
+            touched.append("open")
+            return real_open_dir(*args, **kwargs)
+
+        _os.stat = watched_stat
+        qstore._open_directory_nofollow = watched_open
+        try:
+            with pytest.raises(qstore.SpentCapabilityError):
+                qstore.remove_released_attempt_member(session, view.path.name)
+        finally:
+            _os.stat = real_stat
+            qstore._open_directory_nofollow = real_open_dir
+        assert touched == [], touched
+    finally:
+        _os.close(handle)
+        decoy.unlink()
+
+    assert list(view.path.rglob("*")), "a closed capability still removed scratch"
+    # Closing twice must not close a descriptor number someone else now owns.
+    session.close()
+    assert session.closed is True
+    del reused
+
+
+def test_the_session_proof_map_is_built_once_and_cannot_be_widened(tmp_path: Path):
+    """R30-E: one materialization per capability, read-only afterwards.
+
+    Rebuilding the typed lookup per planned member would re-walk the whole proof
+    for every target. Handing out something writable would let a caller add an
+    entry and widen the certified set after authentication - the exact authority
+    the session exists to bound.
+    """
+
+    from mdstats.training_data.qualification.store import (
+        open_released_attempt_session,
+    )
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, paths, view = _released_scratch_view(config)
+
+    session, _outcome = open_released_attempt_session(
+        paths,
+        view.path.parent,
+        expected_root_identity=view.root_identity,
+        expected_release_authority=view.state_identity,
+    )
+    assert session is not None
+    try:
+        first = session.recorded
+        assert first is session.recorded, "the proof map is rebuilt per access"
+        assert dict(first) == {path: kind for path, kind in session.certified_nodes}
+        with pytest.raises(TypeError):
+            first["someone-elses.bin"] = "file"  # type: ignore[index]
+        assert "someone-elses.bin" not in session.recorded
+    finally:
+        session.close()
+
+
+def test_a_mutation_time_contradiction_withholds_the_rest_of_that_attempt(
+    tmp_path: Path,
+):
+    """R30-D: the contradiction is evidence about the attempt, not one member.
+
+    Once a member's mutation boundary contradicts the session's certification,
+    the premise the whole attempt shares is no longer sufficient. Continuing to
+    spend it would ignore evidence the owner just saw fail, so the capability is
+    withdrawn and the remaining members are withheld without touching disk.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    released = [
+        view.path
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    assert len(released) > 1, "the fixture produced a single-member released attempt"
+
+    real_open = qstore.open_released_attempt_session
+    fired: list[Path] = []
+
+    def contradict_first_target(*args, **kwargs):
+        session, outcome = real_open(*args, **kwargs)
+        if session is not None and not fired:
+            # The first planned target becomes a different object of the same
+            # name and kind: a mutation-boundary contradiction, nothing else.
+            victim = sorted(released)[0]
+            fired.append(victim)
+            parked = victim.parent / f"parked-{victim.name}"
+            victim.rename(parked)
+            if parked.is_dir():
+                victim.mkdir()
+            else:
+                victim.write_bytes(b"?" * parked.stat().st_size)
+        return session, outcome
+
+    destructive: list[str] = []
+    real_unlink = qstore._unlink_certified_file
+    real_directory = qstore._remove_certified_directory
+
+    def watched_unlink(parent_fd, name):
+        destructive.append(name)
+        return real_unlink(parent_fd, name)
+
+    def watched_directory(*args, **kwargs):
+        destructive.append(str(args[1]))
+        return real_directory(*args, **kwargs)
+
+    qstore.open_released_attempt_session = contradict_first_target
+    qstore._unlink_certified_file = watched_unlink
+    qstore._remove_certified_directory = watched_directory
+    try:
+        execution = _apply_cleanup(config)
+    finally:
+        qstore.open_released_attempt_session = real_open
+        qstore._unlink_certified_file = real_unlink
+        qstore._remove_certified_directory = real_directory
+
+    assert fired, "the contradiction never fired"
+    refused = {item["path"]: item for item in execution["refused_actions"]}
+    assert len(refused) == len(released), (refused, released)
+    for path in released:
+        assert str(path) in refused, (path, refused)
+        assert refused[str(path)]["outcome"] == OUTCOME_REFUSED_NO_CHANGE
+        assert refused[str(path)]["mutated"] is False
+    withheld = [
+        item
+        for item in refused.values()
+        if "shares" in item["refusal"]
+    ]
+    assert withheld, refused
+    assert execution["status"] == "refused", execution
+    assert execution["mutated"] is False, execution
+    assert execution["reclaimed_bytes"] == 0, execution
+    # Nothing was removed anywhere in the attempt.
+    assert destructive == [], destructive
+    for path in released[1:]:
+        assert path.exists(), path
+
+
+def test_an_invalidated_attempt_does_not_withhold_an_independent_attempt(
+    tmp_path: Path,
+):
+    """R30-D: invalidation is scoped to the attempt whose premise failed."""
+
+    from mdstats.training_data.storage import commands as sc
+    from mdstats.training_data.qualification.store import (
+        open_released_attempt_session,
+        remove_released_attempt_member,
+    )
+    from mdstats.training_data.storage.executor import StorageExecutionResult
+
+    first_config, _w1, _h1 = _released_attempt_campaign(tmp_path / "one")
+    second_config, _w2, _h2 = _released_attempt_campaign(tmp_path / "two")
+    first_snapshot, first_paths, first_view = _released_scratch_view(first_config)
+    second_snapshot, second_paths, second_view = _released_scratch_view(second_config)
+
+    result = StorageExecutionResult(
+        operation_identity="t",
+        plan_identity="t",
+        policy_identity="t",
+        action="cleanup",
+        status="planned",
+    )
+    sessions: dict[str, object] = {}
+    first_action = next(
+        action
+        for action in _cleanup_plan_actions(first_config)
+        if Path(action.path) == first_view.path
+    )
+    second_action = next(
+        action
+        for action in _cleanup_plan_actions(second_config)
+        if Path(action.path) == second_view.path
+    )
+
+    def refuse_first(session, member_name, **kwargs):
+        from mdstats.training_data.storage.outcome import refused_no_change
+
+        return refused_no_change("injected mutation-boundary contradiction")
+
+    sc._apply_released_member(
+        result,
+        first_action,
+        first_view,
+        first_snapshot,
+        sessions,
+        open_released_attempt_session,
+        refuse_first,
+    )
+    sc._apply_released_member(
+        result,
+        second_action,
+        second_view,
+        second_snapshot,
+        sessions,
+        open_released_attempt_session,
+        remove_released_attempt_member,
+    )
+    try:
+        first_session = sessions[str(first_view.path.parent)][0]
+        second_session = sessions[str(second_view.path.parent)][0]
+        assert first_session is not None and first_session.live is False
+        assert second_session is not None
+        # The independent attempt really acted.
+        assert not second_view.path.exists(), second_view.path
+        assert first_view.path.exists(), "the withheld attempt was mutated anyway"
+        assert len(result.completed) == 1 and len(result.refused) == 1
+    finally:
+        for session, _why in sessions.values():
+            if session is not None:
+                session.close()
+
+
+def test_a_post_mutation_durability_failure_is_recorded_before_it_propagates(
+    tmp_path: Path,
+):
+    """R30-G: the audit must describe the tree that now exists.
+
+    The unlink succeeded and the fsync that was meant to make it durable did
+    not. Letting that exception fly past the action boundary would leave the
+    executor knowing only that something failed, and the durable record would
+    inherit the blindness.
+    """
+
+    import os as _os
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    released = [
+        view.path
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    assert released
+
+    real_fsync = _os.fsync
+    unlinked: list[str] = []
+    real_unlink = qstore._unlink_certified_file
+
+    def note_unlink(parent_fd, name):
+        unlinked.append(name)
+        return real_unlink(parent_fd, name)
+
+    def failing_fsync(fd):
+        if unlinked:
+            raise OSError(5, "injected durability failure")
+        return real_fsync(fd)
+
+    _os.fsync = failing_fsync
+    qstore._unlink_certified_file = note_unlink
+    try:
+        with pytest.raises(OSError, match="injected durability failure"):
+            _apply_cleanup(config)
+    finally:
+        _os.fsync = real_fsync
+        qstore._unlink_certified_file = real_unlink
+
+    assert unlinked, "nothing was unlinked before the injected failure"
+    # The action boundary recorded the partial truth before the failure left.
+    audit = _read_last_audit(config)
+    assert audit is not None, "no durable record was published"
+    assert audit["status"] == "partial", audit
+    assert audit["mutated"] is True, audit
+    partials = [
+        item
+        for item in audit["refused_actions"]
+        if item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
+    ]
+    assert partials, audit["refused_actions"]
+    assert all(item["mutated"] is True for item in partials), partials
+    assert int(audit["reclaimed_bytes"]) > 0, audit
+
+
+def test_a_pre_mutation_failure_fabricates_no_mutation(tmp_path: Path):
+    """R30-G: the counterfactual - failing before the first destructive call.
+
+    Whether the owner turns the failure into a refusal or lets it propagate,
+    the one thing it may never do is invent a mutation. Nothing was unlinked,
+    so nothing is credited and the audit says so.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    released = [
+        view.path
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    assert released
+    before = {path: sorted(str(item) for item in path.rglob("*")) for path in released}
+
+    real_unlink = qstore._unlink_certified_file
+
+    def never_gets_there(parent_fd, name):
+        raise OSError(5, "injected pre-mutation failure")
+
+    qstore._unlink_certified_file = never_gets_there
+    try:
+        try:
+            execution = _apply_cleanup(config)
+        except OSError as exc:
+            assert "injected pre-mutation failure" in str(exc)
+            execution = None
+    finally:
+        qstore._unlink_certified_file = real_unlink
+
+    if execution is not None:
+        assert execution["mutated"] is False, execution
+        assert int(execution["reclaimed_bytes"]) == 0, execution
+        assert execution["status"] in ("refused", "partial"), execution
+        assert not any(
+            item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
+            for item in execution["refused_actions"]
+        ), execution["refused_actions"]
+
+    audit = _read_last_audit(config)
+    if audit is not None:
+        assert audit["mutated"] is False, audit
+        assert int(audit["reclaimed_bytes"]) == 0, audit
+    for path in released:
+        assert sorted(str(item) for item in path.rglob("*")) == before[path], path
+
+
+def _read_last_audit(config: Path):
+    """The most recent durable storage-audit record, if one was published."""
+
+    from mdstats.training_data.storage.control_plane import (
+        open_storage_control_plane_readonly,
+    )
+
+    _cfg, paths = cli._load_config(config)
+    records = open_storage_control_plane_readonly(paths).read_audit()
+    return dict(records[-1]) if records else None

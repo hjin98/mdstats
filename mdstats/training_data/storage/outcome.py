@@ -101,6 +101,26 @@ class MutationOutcome:
         }
 
 
+class PartialMutationError(Exception):
+    """A failure that happened *after* this action already changed the disk.
+
+    An owner can unlink a certified member and then fail on the fsync that was
+    supposed to make the removal durable, or on a later sibling. Letting that
+    exception fly straight past the action boundary would leave the executor
+    knowing only that "something failed" - not which action mutated, nor how
+    many bytes are already gone. The audit would inherit that blindness.
+
+    So the failure carries the truth with it: the structured outcome the action
+    had earned at the moment it failed, and the original cause. The engine
+    records the action from ``outcome`` before letting the exception continue.
+    """
+
+    def __init__(self, outcome: MutationOutcome, cause: BaseException | None = None):
+        super().__init__(outcome.detail)
+        self.outcome = outcome
+        self.cause = cause
+
+
 def removed(detail: str, *, removed_bytes: int | None = None) -> MutationOutcome:
     return MutationOutcome(OUTCOME_REMOVED, detail, removed_bytes)
 
@@ -119,6 +139,7 @@ def partial_change_refused(detail: str, *, removed_bytes: int) -> MutationOutcom
 
 __all__ = [
     "MutationOutcome",
+    "PartialMutationError",
     "OUTCOME_ALREADY_ABSENT",
     "OUTCOME_PARTIAL_CHANGE_REFUSED",
     "OUTCOME_REFUSED_NO_CHANGE",

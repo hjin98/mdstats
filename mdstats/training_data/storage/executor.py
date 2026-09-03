@@ -44,6 +44,7 @@ from .inventory import StorageInventorySnapshot
 from .lease import OwnerSynchronization, owner_mutation_barrier, storage_operation_lease
 from .outcome import (
     MutationOutcome,
+    PartialMutationError,
     already_absent,
     partial_change_refused,
     refused_no_change,
@@ -412,9 +413,64 @@ def remove_durably_outcome(path: Path) -> MutationOutcome:
     second earns the planned bytes.
     """
 
-    if remove_durably(path):
+    measured = _measured_tree_bytes(path)
+    try:
+        gone = remove_durably(path)
+    except OSError as exc:
+        # The removal and the fsync that makes it durable are two steps. If the
+        # entry is already gone, this failure is partial mutation, not a no-op,
+        # and the audit has to say so.
+        if path.exists() or path.is_symlink():
+            raise
+        raise PartialMutationError(
+            partial_change_refused(
+                f"{path} was removed but the removal could not be made durable: {exc}",
+                removed_bytes=measured,
+            ),
+            exc,
+        ) from exc
+    if gone:
         return removed("removed")
     return already_absent("the planned target was already gone")
+
+
+def _measured_tree_bytes(path: Path) -> int:
+    """Bytes this removal can substantiate, under the planner's own metric.
+
+    Files only, and one count per ``(device, inode)`` - the same convention
+    ``_tree_bytes`` uses when it sizes a planned action, so a partial figure and
+    a planned figure never mean different things.
+    """
+
+    try:
+        stats = path.lstat()
+    except OSError:
+        return 0
+    if not stat.S_ISDIR(stats.st_mode):
+        return int(stats.st_size)
+    total = 0
+    seen: set[tuple[int, int]] = set()
+    stack = [path]
+    while stack:
+        current = stack.pop()
+        try:
+            entries = list(os.scandir(current))
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                child = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                stack.append(Path(entry.path))
+                continue
+            key = (int(child.st_dev), int(child.st_ino))
+            if key in seen:
+                continue
+            seen.add(key)
+            total += int(child.st_size)
+    return total
 
 
 def record_removal(
@@ -489,13 +545,30 @@ def remove_certified_subtree(
     if refusals:
         freed = 0
         count = 0
+        seen: set[tuple[int, int]] = set()
         for member in members:
             if member.is_file() or member.is_symlink():
                 try:
-                    freed += int(member.lstat().st_size)
+                    stats = member.lstat()
+                    key = (int(stats.st_dev), int(stats.st_ino))
+                    if key not in seen:
+                        seen.add(key)
+                        freed += int(stats.st_size)
                 except OSError:
                     pass
-                durable_unlink(member)
+                try:
+                    durable_unlink(member)
+                except OSError as exc:
+                    if member.exists() or member.is_symlink():
+                        raise
+                    raise PartialMutationError(
+                        partial_change_refused(
+                            f"{member} was removed but the removal could not be made "
+                            f"durable: {exc}",
+                            removed_bytes=freed,
+                        ),
+                        exc,
+                    ) from exc
                 count += 1
         detail = (
             f"retained the container and removed {count} individually authorized "
