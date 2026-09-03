@@ -5031,8 +5031,10 @@ def test_the_default_engine_records_a_post_mutation_failure(tmp_path: Path):
     real = executor_mod.durable_unlink
     unlinked: list[str] = []
 
-    def unlink_then_fail(path):
+    def unlink_then_fail(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
         Path(path).unlink()
+        if on_unlinked is not None:
+            on_unlinked()
         unlinked.append(str(path))
         raise OSError(5, "injected durability failure")
 
@@ -5316,3 +5318,333 @@ def test_a_partial_mutation_terminates_the_execution_truthfully(tmp_path: Path):
     assert len(partials) == 1, partials
     assert int(partials[0]["reclaimed_bytes"]) == 7, partials[0]
     assert int(audit["reclaimed_bytes"]) == 7, audit
+
+
+# ---------------------------------------------------------------------------
+# R37-2 / R37-3 - P7: continuous descriptor authority through the final rmdir,
+# and one-way capability closure
+# ---------------------------------------------------------------------------
+
+
+def test_a_p7_directory_replaced_before_its_final_rmdir_is_refused(
+    tmp_path: Path, monkeypatch
+):
+    """R37-2A: the P7 recursion also spends its capability on the checked entry.
+
+    The production check is wrapped rather than replaced, so what refuses the
+    substitution is the shipped comparison; the spy only creates the race it is
+    supposed to catch.
+    """
+
+    from mdstats.training_data.qualification.store import (
+        _remove_certified_directory,
+        open_released_attempt_session,
+    )
+    from mdstats.training_data.storage import trust as trust_mod
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, paths, view = _released_scratch_view(config)
+    attempt = view.path.parent
+
+    real_check = trust_mod.verify_final_directory_identity
+    fired = {"n": 0}
+    swapped: list[Path] = []
+
+    def swap_then_check(parent_fd, entry_name, child_fd, display):
+        if fired["n"] == 0:
+            fired["n"] += 1
+            swapped.append(display)
+            display.rename(display.parent / "moved-aside")
+            display.mkdir()
+        return real_check(parent_fd, entry_name, child_fd, display)
+
+    monkeypatch.setattr(trust_mod, "verify_final_directory_identity", swap_then_check)
+
+    session, _outcome = open_released_attempt_session(
+        paths,
+        attempt,
+        expected_root_identity=view.root_identity,
+        expected_release_authority=view.state_identity,
+    )
+    assert session is not None
+    try:
+        outcome = _remove_certified_directory(
+            session.attempt_fd,
+            view.path.name,
+            view.path,
+            session.recorded,
+            f"{view.path.name}/",
+            seen=set(),
+        )
+    finally:
+        session.close()
+
+    assert fired["n"] == 1, "the final identity check never ran"
+    assert outcome.succeeded is False, outcome
+    assert "no longer the directory" in outcome.detail or "not a directory" in outcome.detail, (
+        outcome.detail
+    )
+    # The substituted directory is retained, and so is what was moved aside.
+    assert view.path.is_dir(), "the released member was removed anyway"
+    assert swapped and swapped[0].is_dir()
+    assert (swapped[0].parent / "moved-aside").is_dir()
+
+
+def test_a_p7_session_close_failure_leaves_the_capability_unspendable(
+    tmp_path: Path, monkeypatch
+):
+    """R37-3: `invalidate()` withdraws first, so a failing close cannot restore it.
+
+    The close failure is raised to the caller, which is the only place that
+    knows whether a primary product failure is already in flight - but the
+    capability is spent either way.
+    """
+
+    from mdstats.training_data.qualification.store import (
+        SpentCapabilityError,
+        open_released_attempt_session,
+        remove_released_attempt_member,
+    )
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    _snap, paths, view = _released_scratch_view(config)
+
+    session, _outcome = open_released_attempt_session(
+        paths,
+        view.path.parent,
+        expected_root_identity=view.root_identity,
+        expected_release_authority=view.state_identity,
+    )
+    assert session is not None
+
+    real_close = os.close
+    target = session.attempt_fd
+    fired = {"n": 0}
+
+    def guarded_close(handle):
+        if handle == target:
+            fired["n"] += 1
+            real_close(handle)
+            raise OSError(5, "injected close failure")
+        return real_close(handle)
+
+    monkeypatch.setattr(os, "close", guarded_close)
+    with pytest.raises(OSError, match="injected close failure"):
+        session.invalidate("a contradiction withdrew this capability")
+    monkeypatch.undo()
+
+    assert fired["n"] == 1, "the injected close seam never fired"
+    assert session.live is False
+    assert session.attempt_fd == -1, "a failed close left a spendable descriptor"
+    with pytest.raises(SpentCapabilityError):
+        session.require_live()
+    with pytest.raises(SpentCapabilityError):
+        remove_released_attempt_member(
+            session,
+            view.path.name,
+            expected_kind="directory",
+            planned_identity={
+                "kind": "directory",
+                "device": 0,
+                "inode": 0,
+                "size_bytes": 0,
+                "mtime_ns": 0,
+            },
+        )
+    # A second withdrawal is a no-op rather than a second close.
+    session.invalidate("again")
+    assert fired["n"] == 1
+
+
+def test_a_cleanup_session_close_only_failure_is_not_converted_to_success(
+    tmp_path: Path, monkeypatch
+):
+    """R37-3: the engine's final release cannot fabricate a clean execution.
+
+    The whole cleanup succeeds; only releasing the attempt capability fails.
+    That is still a failure, and because bytes really went it settles as a
+    partial rather than as `complete`.
+    """
+
+    from mdstats.training_data.qualification import store as store_mod
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    opened: list[int] = []
+    real_open = store_mod.open_released_attempt_session
+
+    def spy_open(paths, attempt_root, **kwargs):
+        session, why = real_open(paths, attempt_root, **kwargs)
+        if session is not None:
+            opened.append(session.attempt_fd)
+        return session, why
+
+    monkeypatch.setattr(store_mod, "open_released_attempt_session", spy_open)
+
+    real_close = os.close
+    fired = {"n": 0}
+
+    def guarded_close(handle):
+        if handle in opened:
+            opened.remove(handle)
+            fired["n"] += 1
+            real_close(handle)
+            raise OSError(5, "injected session close failure")
+        return real_close(handle)
+
+    monkeypatch.setattr(os, "close", guarded_close)
+    execution, raised, _plan = _run_real_cleanup(config)
+    monkeypatch.undo()
+
+    assert fired["n"] == 1, "the injected session close seam never fired"
+    assert isinstance(raised, OSError), raised
+    audit = _read_last_audit(config)
+    assert audit is not None, "no audit was published"
+    assert audit["mutated"] is True, audit
+    assert audit["status"] == "partial", audit
+    del execution
+
+
+def test_a_p7_post_mutation_failure_survives_a_session_close_failure(
+    tmp_path: Path, monkeypatch
+):
+    """R37-3/R37-4: the primary failure crosses action, engine and audit intact.
+
+    A post-mutation durability failure knows what this action already removed.
+    A close failure that happened behind it knows nothing of the kind, so it is
+    logged and subordinated rather than becoming the reported cause.
+    """
+
+    from mdstats.training_data.qualification import store as store_mod
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    captured: list[int] = []
+    real_open = store_mod.open_released_attempt_session
+
+    def spy_open(paths, attempt_root, **kwargs):
+        session, why = real_open(paths, attempt_root, **kwargs)
+        if session is not None:
+            captured.append(session.attempt_fd)
+        return session, why
+
+    monkeypatch.setattr(store_mod, "open_released_attempt_session", spy_open)
+
+    real_fsync = os.fsync
+    real_close = os.close
+    fsync_fired = {"n": 0}
+    close_fired = {"n": 0}
+
+    def guarded_fsync(handle):
+        if handle in captured:
+            fsync_fired["n"] += 1
+            raise OSError(5, "injected post-mutation durability failure")
+        return real_fsync(handle)
+
+    def guarded_close(handle):
+        if handle in captured:
+            captured.remove(handle)
+            close_fired["n"] += 1
+            real_close(handle)
+            raise OSError(9, "injected session close failure")
+        return real_close(handle)
+
+    monkeypatch.setattr(os, "fsync", guarded_fsync)
+    monkeypatch.setattr(os, "close", guarded_close)
+    _execution, raised, _plan = _run_real_cleanup(config)
+    monkeypatch.undo()
+
+    assert fsync_fired["n"] >= 1, "the post-mutation durability seam never fired"
+    assert close_fired["n"] == 1, "the session close seam never fired"
+    assert isinstance(raised, OSError), raised
+    assert "injected post-mutation durability failure" in str(raised), raised
+    audit = _read_last_audit(config)
+    assert audit is not None and audit["mutated"] is True, audit
+    assert audit["status"] == "partial", audit
+    partials = [
+        item
+        for item in audit["refused_actions"]
+        if item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
+    ]
+    assert partials, audit["refused_actions"]
+
+
+def test_a_released_refusal_with_a_close_only_failure_claims_no_mutation(
+    tmp_path: Path, monkeypatch
+):
+    """R37-3: withdrawal is unconditional; its close failure is still surfaced.
+
+    The refusal is the real owner's - the plan-bound identity no longer matches
+    the object under that name - so nothing was removed. The capability is
+    withdrawn anyway, and the close failure that follows is reported rather than
+    quietly dropped, without becoming a claim that something changed.
+    """
+
+    from mdstats.training_data.qualification.store import (
+        open_released_attempt_session,
+        remove_released_attempt_member,
+    )
+    from mdstats.training_data.storage.commands import _apply_released_member
+    from mdstats.training_data.storage.executor import StorageExecutionResult
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, paths, view = _released_scratch_view(config)
+
+    session, why = open_released_attempt_session(
+        paths,
+        view.path.parent,
+        expected_root_identity=view.root_identity,
+        expected_release_authority=view.state_identity,
+    )
+    assert session is not None, why
+
+    action = SimpleNamespace(
+        path=view.path,
+        size_bytes=0,
+        artifact_id=view.artifact_id,
+        # A plan-bound identity that no longer describes the object: the real
+        # owner refuses this before any syscall touches it.
+        filesystem_identity={
+            "kind": "directory",
+            "device": 0,
+            "inode": 0,
+            "size_bytes": 0,
+            "mtime_ns": 0,
+        },
+        to_dict=lambda: {"action": "remove", "path": str(view.path)},
+    )
+    result = StorageExecutionResult(
+        operation_identity="t",
+        plan_identity="t",
+        policy_identity="t",
+        action="cleanup",
+        status="planned",
+    )
+    sessions = {str(view.path.parent): (session, why)}
+
+    real_close = os.close
+    fired = {"n": 0}
+    target = session.attempt_fd
+
+    def guarded_close(handle):
+        if handle == target:
+            fired["n"] += 1
+            real_close(handle)
+            raise OSError(9, "injected close failure")
+        return real_close(handle)
+
+    monkeypatch.setattr(os, "close", guarded_close)
+    with pytest.raises(OSError, match="injected close failure"):
+        _apply_released_member(
+            result,
+            action,
+            view,
+            snapshot,
+            sessions,
+            open_released_attempt_session,
+            remove_released_attempt_member,
+        )
+    monkeypatch.undo()
+
+    assert fired["n"] == 1, "the injected close seam never fired"
+    assert result.mutated is False, result
+    assert result.refused and "no longer the object" in result.refused[0]["refusal"]
+    assert view.path.is_dir(), "the refused member was removed anyway"

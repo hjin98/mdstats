@@ -246,6 +246,48 @@ def verify_opened_directory_trust(
     return False, ""
 
 
+def verify_final_directory_identity(
+    parent_fd: int, name: str, child_fd: int, display: Path
+) -> tuple[bool, str]:
+    """Whether ``name`` under ``parent_fd`` is still the directory ``child_fd`` holds.
+
+    The last act of a recursive removal names a directory *entry* again -
+    ``rmdir`` takes a name, not a descriptor - so the authority established by
+    opening the child is not what the kernel acts on. Between emptying the
+    directory and removing it, that name can be unlinked and recreated, or
+    replaced by a symlink or a fresh directory that this action never
+    authenticated.
+
+    This is the last moment the two can be compared: the entry is stat'ed
+    no-follow relative to the authenticated parent and matched against the
+    descriptor that is still open. A mismatch means the capability no longer
+    describes the name, and the caller stops rather than spending it on
+    whatever arrived instead.
+
+    What remains outside the guarantee is only the irreducible window between
+    this comparison and the syscall itself; POSIX offers no compare-and-remove.
+    """
+
+    try:
+        opened = os.fstat(child_fd)
+    except OSError as exc:
+        return False, f"the authenticated directory {display} is unreadable ({exc})"
+    try:
+        entry = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False, f"{display} disappeared after it was emptied"
+    except OSError as exc:
+        return False, f"{display} could not be re-observed before removal ({exc})"
+    if not stat.S_ISDIR(entry.st_mode):
+        return False, f"{display} is no longer a directory; it is retained"
+    if int(entry.st_dev) != int(opened.st_dev) or int(entry.st_ino) != int(opened.st_ino):
+        return False, (
+            f"{display} is no longer the directory this action authenticated; "
+            "the replacement is retained"
+        )
+    return True, ""
+
+
 def crosses_mount_boundary(root: Path, candidate: Path) -> tuple[bool, str]:
     """Whether reaching ``candidate`` from ``root`` leaves ``root``'s filesystem.
 
@@ -359,6 +401,7 @@ __all__ = [
     "mount_resolver",
     "open_directory_nofollow",
     "set_mount_resolver",
+    "verify_final_directory_identity",
     "verify_opened_directory_trust",
     "walk_contained",
 ]

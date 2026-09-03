@@ -23,6 +23,7 @@ truthful terminal audit.  The engines differ; the authorization does not.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -94,6 +95,11 @@ from .policy import (
     resolve_storage_policy,
 )
 from .report import build_deep_storage_audit, build_owner_storage_report
+
+
+#: Secondary close failures are logged rather than raised, so they stay
+#: visible without displacing a primary failure's mutation truth.
+_LOGGER = logging.getLogger(__name__)
 
 
 def _format_bytes(value: int | None) -> str:
@@ -464,6 +470,7 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
         # through it, so the authority is verified once and never lapses between
         # verification and use.
         sessions: dict[str, Any] = {}
+        primary: BaseException | None = None
         try:
             for action in plan.actions:
                 if action.action not in (ACTION_REMOVE, ACTION_EVICT_CACHE):
@@ -514,18 +521,34 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                     action,
                     lambda action=action: remove_durably_outcome(action.path),
                 )
-        finally:
-            import sys
-            close_exc: Exception | None = None
-            for session, _why in sessions.values():
-                if session is not None:
-                    try:
-                        session.close()
-                    except Exception as exc:
-                        if close_exc is None:
-                            close_exc = exc
-            if close_exc is not None and sys.exc_info()[0] is None:
-                raise close_exc
+        except BaseException as exc:  # noqa: BLE001 - re-raised after cleanup
+            primary = exc
+        # Sessions are released on every path, and a close that fails is never
+        # quietly dropped. It is only ranked: behind a primary product failure
+        # it is secondary evidence, because the primary carries what this
+        # execution already removed; alone it is the failure, and the executor
+        # settles it as partial or refused from the recorded mutation truth.
+        close_failure: BaseException | None = None
+        for session, _why in sessions.values():
+            if session is None:
+                continue
+            try:
+                session.close()
+            except Exception as exc:
+                if primary is not None:
+                    _LOGGER.warning(
+                        "storage: releasing the released-attempt capability for "
+                        "%s failed after a primary failure (%s); the primary "
+                        "failure is preserved",
+                        getattr(session, "attempt_root", "?"),
+                        exc,
+                    )
+                elif close_failure is None:
+                    close_failure = exc
+        if primary is not None:
+            raise primary
+        if close_failure is not None:
+            raise close_failure
 
     return _engine
 
@@ -590,8 +613,15 @@ def _apply_released_member(
         record_removal(result, action, exc.outcome)
         try:
             session.invalidate(exc.outcome.detail)
-        except Exception:
-            pass
+        except Exception as close_exc:
+            # The capability is already withdrawn; this close failure is
+            # secondary to the post-mutation failure that carries the bytes.
+            _LOGGER.warning(
+                "storage: withdrawing the capability for %s failed after a "
+                "post-mutation failure (%s); the primary failure is preserved",
+                attempt_root,
+                close_exc,
+            )
         sessions[key] = (session, exc.outcome)
         raise (exc.cause or exc) from exc
     record_removal(result, action, outcome)

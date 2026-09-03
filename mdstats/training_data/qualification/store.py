@@ -22,6 +22,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence
 import json
 import errno
+import logging
 import stat
 import os
 import tempfile
@@ -39,6 +40,11 @@ from ..campaign_post_selection import (
 )
 from ..post_selection_store import PostSelectionPublicationConflictError
 from .errors import QualificationError, QualificationLineageError
+
+#: Close failures that arrive behind a primary product failure are logged
+#: rather than raised, so they stay visible without displacing the failure
+#: that carries this action's mutation truth.
+_LOGGER = logging.getLogger(__name__)
 
 QUALIFICATION_ROOT_NAME = "qualification"
 QUALIFICATION_ATTEMPT_STATE_SCHEMA = "mdstats.qualification-attempt-state.v1"
@@ -1322,20 +1328,31 @@ class ReleasedAttemptSession:
             )
 
     def invalidate(self, reason: str) -> None:
-        """Withdraw the capability and close its descriptor, once."""
+        """Withdraw the capability and close its descriptor, once.
+
+        The withdrawal is recorded and the descriptor released before anything
+        can fail, so the capability is unspendable from here on whatever the
+        kernel says about the close. A close failure is then raised to the
+        caller, because only the caller knows whether a primary product failure
+        is already in flight and therefore whether this is the failure that
+        should be reported or secondary evidence behind one. Deciding that here
+        by inspecting the ambient exception state would make a genuine
+        close-only failure invisible whenever anything else happened to be
+        propagating.
+        """
 
         if not self.invalidation_reason:
             self.invalidation_reason = reason or "withdrawn"
-        try:
-            self.close()
-        except Exception:
-            import sys
-            if sys.is_finalizing() or sys.exc_info()[0] is not None:
-                pass
-            else:
-                raise
+        self.close()
 
     def close(self) -> None:
+        """Spend this capability, once and irreversibly.
+
+        The session is marked closed and the descriptor number cleared *before*
+        the kernel close, so a close that fails cannot leave a session that
+        still looks live holding a descriptor number the kernel may reissue.
+        """
+
         if not self.closed:
             self.closed = True
             fd = self.attempt_fd
@@ -1645,16 +1662,8 @@ def _remove_certified_directory(
     several hard links is counted once, matching the planner's own tree metric.
     """
 
-    from ..storage.outcome import (
-        MutationLedger,
-        PartialMutationError,
-        already_absent,
-        removed as removed_outcome,
-    )
-    from ..storage.trust import (
-        crosses_mount_boundary_at,
-        verify_opened_directory_trust,
-    )
+    from ..storage.outcome import MutationLedger, already_absent
+    from ..storage.trust import verify_opened_directory_trust
 
     if ledger is None:
         ledger = MutationLedger()
@@ -1662,114 +1671,169 @@ def _remove_certified_directory(
         # Callers that pre-seed the dedup set keep it authoritative.
         ledger.adopt_seen(seen)
 
-    def stop(detail: str) -> "MutationOutcomeT":
-        return ledger.stop(detail)
-
     try:
         handle = _open_directory_nofollow(name, dir_fd=parent_fd)
     except FileNotFoundError:
         return already_absent("already gone")
     except NamespaceAmbiguity as exc:
-        return stop(f"{display}: {exc}")
+        return ledger.stop(f"{display}: {exc}")
 
-    crossed, detail = verify_opened_directory_trust(parent_fd, handle, display)
-    if crossed:
-        os.close(handle)
-        return stop(detail)
+    # From here there is exactly one way out: whatever the descent decides, the
+    # descriptor is closed once on the way. Returning from inside the walk is
+    # how a bounded contradiction loop leaks one descriptor per contradiction.
+    primary: BaseException | None = None
+    outcome: "MutationOutcomeT | None" = None
+    try:
+        crossed, detail = verify_opened_directory_trust(parent_fd, handle, display)
+        if crossed:
+            outcome = ledger.stop(detail)
+        else:
+            outcome = _empty_and_remove_certified_directory(
+                handle, parent_fd, name, display, recorded, prefix, ledger
+            )
+    except BaseException as exc:  # noqa: BLE001 - re-raised after the close
+        primary = exc
+    primary = _close_owner_descriptor(handle, display, ledger, primary)
+    if primary is not None:
+        raise primary
+    assert outcome is not None
+    return outcome
+
+
+def _close_owner_descriptor(
+    handle: int,
+    display: Path,
+    ledger: "MutationLedgerT",
+    primary: BaseException | None,
+) -> BaseException | None:
+    """Close one owner descriptor once, without displacing a primary failure.
+
+    A close failure after this action already destroyed something is real
+    evidence, but it is not the evidence the audit needs most: the primary
+    failure carries what was removed. So it is logged and subordinated there,
+    and only becomes the outcome when nothing else failed.
+    """
 
     try:
+        os.close(handle)
+    except OSError as exc:
+        if primary is not None:
+            _LOGGER.warning(
+                "qualification: closing the descriptor for %s failed after a "
+                "primary failure (%s); the primary failure is preserved",
+                display,
+                exc,
+            )
+            return primary
+        return ledger.failure(exc, f"{display} descriptor close failed: {exc}")
+    return primary
+
+
+def _empty_and_remove_certified_directory(
+    handle: int,
+    parent_fd: int,
+    name: str,
+    display: Path,
+    recorded: Mapping[str, str],
+    prefix: str,
+    ledger: "MutationLedgerT",
+) -> "MutationOutcomeT":
+    """Empty one authenticated certified directory and then spend it.
+
+    The descriptor stays open across the final ``rmdir`` on purpose: ``rmdir``
+    names an entry, and the entry is compared against this still-open
+    descriptor immediately before the syscall so a directory substituted after
+    authentication is refused rather than removed.
+    """
+
+    from ..storage.outcome import removed as removed_outcome
+    from ..storage.trust import (
+        crosses_mount_boundary_at,
+        verify_final_directory_identity,
+    )
+
+    def stop(detail: str) -> "MutationOutcomeT":
+        return ledger.stop(detail)
+
+    try:
+        entries = sorted(os.scandir(handle), key=lambda item: item.name)
+    except OSError as exc:
+        return stop(f"{display} could not be enumerated: {exc}")
+    for entry in entries:
+        child_relative = f"{prefix}{entry.name}"
+        child_display = display / entry.name
+        expected = recorded.get(child_relative)
         try:
-            entries = sorted(os.scandir(handle), key=lambda item: item.name)
+            is_sym = entry.is_symlink()
+            is_dir = entry.is_dir(follow_symlinks=False)
+            is_file = entry.is_file(follow_symlinks=False)
         except OSError as exc:
-            return stop(f"{display} could not be enumerated: {exc}")
-        for entry in entries:
-            child_relative = f"{prefix}{entry.name}"
-            child_display = display / entry.name
-            expected = recorded.get(child_relative)
-            try:
-                is_sym = entry.is_symlink()
-                is_dir = entry.is_dir(follow_symlinks=False)
-                is_file = entry.is_file(follow_symlinks=False)
-            except OSError as exc:
-                return stop(f"{child_display} could not be observed: {exc}")
-            if is_sym:
-                return stop(f"{child_display} is a symlink; the container is retained")
-            if is_dir:
-                if expected != "directory":
-                    return stop(
-                        f"{child_display} is a directory this owner did not record"
-                        if expected is None
-                        else f"{child_display} was recorded as a {expected}"
-                    )
-                crossed, detail = crosses_mount_boundary_at(
-                    handle, entry.name, child_display
-                )
-                if crossed:
-                    return stop(detail)
-                nested = _remove_certified_directory(
-                    handle,
-                    entry.name,
-                    child_display,
-                    recorded,
-                    f"{child_relative}/",
-                    ledger=ledger,
-                )
-                if not nested.succeeded:
-                    return stop(nested.detail)
-                continue
-            if not is_file:
+            return stop(f"{child_display} could not be observed: {exc}")
+        if is_sym:
+            return stop(f"{child_display} is a symlink; the container is retained")
+        if is_dir:
+            if expected != "directory":
                 return stop(
-                    f"{child_display} is a special node; the container is retained"
-                )
-            if expected != "file":
-                return stop(
-                    f"{child_display} is a file this owner did not record"
+                    f"{child_display} is a directory this owner did not record"
                     if expected is None
                     else f"{child_display} was recorded as a {expected}"
                 )
-            # Measured before the unlink, because afterwards there is nothing
-            # left to measure - but credited only once the entry has actually
-            # gone, so a failed unlink cannot inflate the figure.
-            #
-            # An unmeasurable file is *retained*. Deleting it and crediting zero
-            # would put bytes beyond recovery that this action can never account
-            # for, and if nothing else had been removed yet the outcome would
-            # even read as "nothing changed".
-            try:
-                child_stat = entry.stat(follow_symlinks=False)
-            except OSError as exc:
-                return stop(f"{child_display} could not be measured: {exc}")
-            try:
-                _unlink_certified_file(handle, entry.name)
-            except OSError as exc:
-                return stop(f"{child_display} could not be removed: {exc}")
-            ledger.credit(
-                int(child_stat.st_size),
-                (int(child_stat.st_dev), int(child_stat.st_ino)),
+            crossed, detail = crosses_mount_boundary_at(
+                handle, entry.name, child_display
             )
+            if crossed:
+                return stop(detail)
+            nested = _remove_certified_directory(
+                handle,
+                entry.name,
+                child_display,
+                recorded,
+                f"{child_relative}/",
+                ledger=ledger,
+            )
+            if not nested.succeeded:
+                return stop(nested.detail)
+            continue
+        if not is_file:
+            return stop(
+                f"{child_display} is a special node; the container is retained"
+            )
+        if expected != "file":
+            return stop(
+                f"{child_display} is a file this owner did not record"
+                if expected is None
+                else f"{child_display} was recorded as a {expected}"
+            )
+        # Measured before the unlink, because afterwards there is nothing
+        # left to measure - but credited only once the entry has actually
+        # gone, so a failed unlink cannot inflate the figure.
+        #
+        # An unmeasurable file is *retained*. Deleting it and crediting zero
+        # would put bytes beyond recovery that this action can never account
+        # for, and if nothing else had been removed yet the outcome would
+        # even read as "nothing changed".
         try:
-            os.fsync(handle)
+            child_stat = entry.stat(follow_symlinks=False)
         except OSError as exc:
-            raise ledger.failure(
-                exc,
-                f"{display} was emptied but the removal could not be made durable: {exc}",
-            ) from exc
-    except BaseException:
+            return stop(f"{child_display} could not be measured: {exc}")
         try:
-            os.close(handle)
-        except Exception:
-            pass
-        raise
-    else:
-        try:
-            os.close(handle)
+            _unlink_certified_file(handle, entry.name)
         except OSError as exc:
-            if ledger.mutated:
-                raise ledger.failure(
-                    exc,
-                    f"{display} was emptied but descriptor close failed: {exc}",
-                ) from exc
-            return stop(f"{display} descriptor close failed: {exc}")
+            return stop(f"{child_display} could not be removed: {exc}")
+        ledger.credit(
+            int(child_stat.st_size),
+            (int(child_stat.st_dev), int(child_stat.st_ino)),
+        )
+    try:
+        os.fsync(handle)
+    except OSError as exc:
+        raise ledger.failure(
+            exc,
+            f"{display} was emptied but the removal could not be made durable: {exc}",
+        ) from exc
+    same, why = verify_final_directory_identity(parent_fd, name, handle, display)
+    if not same:
+        return stop(why)
     try:
         os.rmdir(name, dir_fd=parent_fd)
     except OSError as exc:

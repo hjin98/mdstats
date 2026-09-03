@@ -29,7 +29,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from ..target_size_execution.persistence import fsync_parent_directory
 from .durability import (
@@ -308,7 +308,12 @@ class StorageControlPlane:
                 "consequential storage operation."
             )
 
-    def publish_catalog_entry(self, entry: Mapping[str, Any]) -> Path:
+    def publish_catalog_entry(
+        self,
+        entry: Mapping[str, Any],
+        *,
+        on_published: Callable[[], None] | None = None,
+    ) -> Path:
         """Durably publish one identity-keyed archive catalog entry.
 
         Create-once for the fields that locate and authenticate a retained
@@ -316,6 +321,11 @@ class StorageControlPlane:
         same identity with a different blob digest, locator, or member identity
         is refused, so a retained archive can never be silently repointed at
         different bytes; the old entry stays independently verifiable.
+
+        ``on_published`` is forwarded to the durability primitive, so a caller
+        whose execution truth depends on this entry learns at the atomic replace
+        rather than at return - the entry is canonical from the replace onward
+        even if its parent fsync or reparse then fails.
         """
 
         self.require_operation_lease("publish an archive catalog entry")
@@ -348,7 +358,7 @@ class StorageControlPlane:
 
         payload["entry_digest"] = canonical_digest(payload)
         self.catalog_root.mkdir(parents=True, exist_ok=True)
-        durable_publish_json(destination, payload)
+        durable_publish_json(destination, payload, on_published=on_published)
         return destination
 
     def read_catalog_entry(self, archive_identity: str) -> dict[str, Any]:

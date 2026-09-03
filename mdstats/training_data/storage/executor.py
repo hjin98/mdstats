@@ -29,6 +29,7 @@ strict subset is recorded truthfully as partial before the exception propagates.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import stat
@@ -62,6 +63,11 @@ from .plan import (
     revalidate_plan,
 )
 from .policy import StoragePolicy
+
+#: Secondary failure evidence - a descriptor close that failed while a primary
+#: product failure was already propagating - is logged rather than raised, so it
+#: is visible without displacing the failure that carries the mutation truth.
+_LOGGER = logging.getLogger(__name__)
 
 STORAGE_EXECUTION_SCHEMA = "mdstats.mlff-storage-execution.v1"
 
@@ -420,6 +426,37 @@ def remove_durably(path: Path) -> bool:
     return False
 
 
+def _unlink_measured_file(path: Path, stats: os.stat_result, ledger: MutationLedger) -> None:
+    """Unlink one already-measured non-directory, crediting only a real removal.
+
+    The primitive reports whether *this* call's unlink syscall succeeded, and
+    that is the only evidence used. Asking the filesystem afterwards whether the
+    name is gone cannot answer the question that matters: a name this execution
+    failed to unlink can be absent because another actor removed it, and a name
+    it did unlink can be present again because another actor recreated it.
+    Either reading transfers someone else's transition into this action's audit.
+    """
+
+    size = int(stats.st_size)
+    identity = (int(stats.st_dev), int(stats.st_ino))
+    unlinked = False
+
+    def _mark_unlinked() -> None:
+        nonlocal unlinked
+        unlinked = True
+        ledger.credit(size, identity)
+
+    try:
+        durable_unlink(path, missing_ok=False, on_unlinked=_mark_unlinked)
+    except OSError as exc:
+        if unlinked:
+            raise ledger.failure(
+                exc,
+                f"{path} was removed but the removal could not be made durable: {exc}",
+            ) from exc
+        raise ledger.failure(exc, f"{path} could not be removed: {exc}") from exc
+
+
 def remove_durably_outcome(path: Path) -> MutationOutcome:
     """The generic removal, reported as a terminal disposition.
 
@@ -440,32 +477,7 @@ def remove_durably_outcome(path: Path) -> MutationOutcome:
         return refused_no_change(f"the planned target could not be observed: {exc}")
 
     if not stat.S_ISDIR(stats.st_mode):
-        size = int(stats.st_size)
-        identity = (int(stats.st_dev), int(stats.st_ino))
-        unlinked = False
-
-        def _mark_unlinked() -> None:
-            nonlocal unlinked
-            if not unlinked:
-                unlinked = True
-                ledger.credit(size, identity)
-
-        try:
-            try:
-                durable_unlink(path, missing_ok=False, on_unlinked=_mark_unlinked)
-            except TypeError:
-                durable_unlink(path)
-        except OSError as exc:
-            if ledger.mutated or (not unlinked and not path.exists() and not path.is_symlink()):
-                if not ledger.mutated:
-                    ledger.credit(size, identity)
-                raise ledger.failure(
-                    exc,
-                    f"{path} was removed but the removal could not be made durable: {exc}",
-                ) from exc
-            raise ledger.failure(exc, f"{path} could not be removed: {exc}") from exc
-        if not ledger.mutated:
-            ledger.credit(size, identity)
+        _unlink_measured_file(path, stats, ledger)
         return removed("removed", removed_bytes=ledger.removed_bytes)
 
     if not dir_fd_mutation_supported():
@@ -517,6 +529,11 @@ def _remove_tree_tracked(root: Path, ledger: MutationLedger) -> None:
             OSError(f"{root.parent} could not be opened as a plain directory: {exc}"),
             f"{root.parent} is not a plain directory: {exc}",
         ) from exc
+    # The parent stays open all the way through the final `rmdir`. Closing it
+    # once the child was acquired would mean the removal had to name the root
+    # by absolute path again - a second namespace resolution, and exactly the
+    # lookup the descent was built to avoid.
+    primary: BaseException | None = None
     try:
         try:
             handle = open_directory_nofollow(root.name, dir_fd=parent_fd)
@@ -529,36 +546,82 @@ def _remove_tree_tracked(root: Path, ledger: MutationLedger) -> None:
             ) from exc
         crossed, detail = verify_opened_directory_trust(parent_fd, handle, root)
         if crossed:
-            os.close(handle)
-            raise ledger.failure(
+            primary = ledger.failure(
                 MountBoundaryError(f"{root}: {detail}"),
                 f"{root} is not campaign-owned: {detail}",
             )
+            primary = _close_descriptor(handle, root, ledger, primary)
+            raise primary
+        try:
+            _remove_tree_contents(handle, root, ledger)
+            _finalize_directory_removal(parent_fd, root.name, handle, root, ledger)
+        except BaseException as exc:  # noqa: BLE001 - re-raised below
+            primary = exc
+        primary = _close_descriptor(handle, root, ledger, primary)
+        if primary is not None:
+            raise primary
     finally:
-        os.close(parent_fd)
+        # A close failure here cannot be allowed to displace a primary failure
+        # that already carries this action's mutation truth.
+        close_outcome = _close_descriptor(parent_fd, root.parent, ledger, primary)
+        if close_outcome is not None and close_outcome is not primary:
+            raise close_outcome
+
+
+def _finalize_directory_removal(
+    parent_fd: int, name: str, handle: int, display: Path, ledger: MutationLedger
+) -> None:
+    """Spend the authenticated capability on the entry it actually describes.
+
+    ``rmdir`` names an entry, so the descriptor that authenticated this
+    directory is compared against that entry one last time, immediately before
+    the syscall and relative to the parent this descent authenticated. A
+    substituted name is refused instead of removed; nothing is re-resolved by
+    absolute path.
+    """
+
+    from .trust import verify_final_directory_identity
+
+    same, why = verify_final_directory_identity(parent_fd, name, handle, display)
+    if not same:
+        raise ledger.failure(OSError(why), why)
+    try:
+        os.rmdir(name, dir_fd=parent_fd)
+    except OSError as exc:
+        raise ledger.failure(exc, f"{display} could not be removed: {exc}") from exc
+    ledger.note_mutation()
+
+
+def _close_descriptor(
+    handle: int,
+    display: Path,
+    ledger: MutationLedger,
+    primary: BaseException | None,
+) -> BaseException | None:
+    """Close one descriptor exactly once and rank its failure honestly.
+
+    A descriptor is closed on every path, including the failing ones, or a
+    bounded retry loop leaks one per contradiction. But a close that fails while
+    a primary product failure is already in flight is secondary evidence: the
+    primary carries what this action removed, and replacing it would lose that.
+    So the failure is logged and the primary is preserved; only when close is
+    the *sole* failure does it become the outcome - as a partial when the action
+    had already mutated, and as a plain failure when it had not.
+    """
 
     try:
-        _remove_tree_contents(handle, root, ledger)
-    except BaseException:
-        try:
-            os.close(handle)
-        except Exception:
-            pass
-        raise
-    else:
-        try:
-            os.close(handle)
-        except OSError as exc:
-            if ledger.mutated:
-                raise ledger.failure(
-                    exc, f"{root} descriptor close failed: {exc}"
-                ) from exc
-            raise ledger.failure(exc, f"{root} descriptor close failed: {exc}") from exc
-    try:
-        os.rmdir(root)
+        os.close(handle)
     except OSError as exc:
-        raise ledger.failure(exc, f"{root} could not be removed: {exc}") from exc
-    ledger.note_mutation()
+        if primary is not None:
+            _LOGGER.warning(
+                "storage: closing the descriptor for %s failed after a primary "
+                "failure (%s); the primary failure is preserved",
+                display,
+                exc,
+            )
+            return primary
+        return ledger.failure(exc, f"{display} descriptor close failed: {exc}")
+    return primary
 
 
 def _remove_tree_contents(handle: int, display: Path, ledger: MutationLedger) -> None:
@@ -601,30 +664,19 @@ def _remove_tree_contents(handle: int, display: Path, ledger: MutationLedger) ->
                     MountBoundaryError(f"{child}: {detail}"),
                     f"{child} is not campaign-owned: {detail}",
                 )
+            child_primary: BaseException | None = None
             try:
                 _remove_tree_contents(child_handle, child, ledger)
-            except BaseException:
-                try:
-                    os.close(child_handle)
-                except Exception:
-                    pass
-                raise
-            else:
-                try:
-                    os.close(child_handle)
-                except OSError as exc:
-                    if ledger.mutated:
-                        raise ledger.failure(
-                            exc, f"{child} descriptor close failed: {exc}"
-                        ) from exc
-                    raise ledger.failure(
-                        exc, f"{child} descriptor close failed: {exc}"
-                    ) from exc
-            try:
-                os.rmdir(entry.name, dir_fd=handle)
-            except OSError as exc:
-                raise ledger.failure(exc, f"{child} could not be removed: {exc}") from exc
-            ledger.note_mutation()
+                _finalize_directory_removal(
+                    handle, entry.name, child_handle, child, ledger
+                )
+            except BaseException as exc:  # noqa: BLE001 - re-raised below
+                child_primary = exc
+            child_primary = _close_descriptor(
+                child_handle, child, ledger, child_primary
+            )
+            if child_primary is not None:
+                raise child_primary
             continue
         try:
             child_stat = entry.stat(follow_symlinks=False)
@@ -761,110 +813,9 @@ def remove_certified_subtree(
             )
     ledger = MutationLedger()
     if refusals:
-        from .trust import open_directory_nofollow
-
-        count = 0
-        try:
-            container_fd = open_directory_nofollow(str(path))
-        except FileNotFoundError:
-            return already_absent("the certified container was already gone")
-        except OSError as exc:
-            return refused_no_change(f"the certified container could not be opened: {exc}")
-
-        try:
-            for member in members:
-                expected_kind = (
-                    getattr(member, "authorized_kind", None)
-                    or (member_authorities or {}).get(member)
-                    or "file"
-                )
-                try:
-                    rel = member.relative_to(path)
-                except ValueError:
-                    continue
-                parent_handle = container_fd
-                opened_dirs: list[int] = []
-                try:
-                    if len(rel.parts) > 1:
-                        cur_fd = container_fd
-                        for part in rel.parts[:-1]:
-                            cur_fd = open_directory_nofollow(part, dir_fd=cur_fd)
-                            opened_dirs.append(cur_fd)
-                        parent_handle = cur_fd
-                    member_name = rel.parts[-1]
-
-                    try:
-                        stats = os.stat(member_name, dir_fd=parent_handle, follow_symlinks=False)
-                    except FileNotFoundError:
-                        continue
-                    except OSError as exc:
-                        raise ledger.failure(
-                            exc, f"{member} could not be measured: {exc}"
-                        ) from exc
-
-                    is_symlink = stat.S_ISLNK(stats.st_mode)
-                    is_regular = stat.S_ISREG(stats.st_mode)
-
-                    if is_symlink:
-                        if expected_kind != "symlink":
-                            continue
-                    elif is_regular:
-                        if expected_kind != "file":
-                            continue
-                    else:
-                        continue
-
-                    def _on_unlinked() -> None:
-                        if is_symlink:
-                            ledger.note_mutation()
-                        else:
-                            ledger.credit(
-                                int(stats.st_size), (int(stats.st_dev), int(stats.st_ino))
-                            )
-
-                    try:
-                        try:
-                            durable_unlink(
-                                member,
-                                dir_fd=parent_handle,
-                                missing_ok=False,
-                                on_unlinked=_on_unlinked,
-                            )
-                        except TypeError:
-                            durable_unlink(member)
-                            _on_unlinked()
-                    except OSError as exc:
-                        if ledger.mutated:
-                            raise ledger.failure(
-                                exc,
-                                f"{member} was removed but the removal could not be made "
-                                f"durable: {exc}",
-                            ) from exc
-                        raise ledger.failure(
-                            exc, f"{member} could not be removed: {exc}"
-                        ) from exc
-                    count += 1
-                finally:
-                    for d_fd in reversed(opened_dirs):
-                        try:
-                            os.close(d_fd)
-                        except Exception:
-                            pass
-        finally:
-            try:
-                os.close(container_fd)
-            except OSError as exc:
-                if ledger.mutated:
-                    raise ledger.failure(
-                        exc,
-                        f"{path} container descriptor close failed after mutation: {exc}",
-                    ) from exc
-                raise
-        detail = (
-            f"retained the container and removed {count} individually authorized "
-            f"member(s); {len(refusals)} descendant(s) were not owner-certified"
+        return _remove_authorized_members(
+            path, members, refusals, member_authorities, ledger
         )
-        return ledger.stop(detail)
     if not path.exists() and not path.is_symlink():
         return already_absent("the certified container was already gone")
     _remove_tree_or_file_tracked(path, ledger)
@@ -872,6 +823,233 @@ def remove_certified_subtree(
         "every descendant was covered by the owner's closed-subtree certification",
         removed_bytes=ledger.removed_bytes,
     )
+
+
+class _DescriptorScope:
+    """Every descriptor one descent opens, closed exactly once at the end.
+
+    Closing inside each branch is how a bounded contradiction loop ends up
+    leaking a descriptor per iteration: one path forgets, or an exception skips
+    the close it was supposed to reach. The scope owns them instead, and ranks
+    close failures against whatever product failure is already in flight rather
+    than swallowing them.
+    """
+
+    def __init__(self, ledger: MutationLedger) -> None:
+        self._open: list[tuple[int, Path]] = []
+        self._ledger = ledger
+
+    def adopt(self, handle: int, display: Path) -> int:
+        self._open.append((handle, display))
+        return handle
+
+    def mark(self) -> int:
+        """The current depth, so one member's descent can be unwound alone."""
+
+        return len(self._open)
+
+    def close_to(self, depth: int, primary: BaseException | None) -> BaseException | None:
+        """Release everything opened past ``depth``, innermost first.
+
+        A descent to one nested member releases its own intermediates before the
+        next member starts. Holding them for the whole action would make the
+        descriptor count grow with the certified member set, which is exactly
+        the size that is unbounded here.
+        """
+
+        while len(self._open) > depth:
+            handle, display = self._open.pop()
+            primary = _close_descriptor(handle, display, self._ledger, primary)
+        return primary
+
+    def close_all(self, primary: BaseException | None) -> BaseException | None:
+        return self.close_to(0, primary)
+
+
+def _remove_authorized_members(
+    path: Path,
+    members: Sequence[Path],
+    refusals: Sequence[tuple[Path, str]],
+    member_authorities: Mapping[Path, str] | None,
+    ledger: MutationLedger,
+) -> MutationOutcome:
+    """Remove only the members this owner individually certified.
+
+    The container itself is retained - something inside it was not certified -
+    so this is a descent to authorized leaves rather than a recursive delete.
+    That does not make the descent less consequential: every directory it passes
+    through is an opportunity for a substituted entry or a nested mount to
+    redirect a deletion, so each one is opened no-follow from the descriptor
+    above it and put through the same opened-descriptor mount decision the
+    recursive owners use.
+
+    A member with no owner-certified kind is not deleted. Treating an untyped
+    path as a regular file would let the *absence* of authority stand in for
+    permission, which is the one substitution no later check can catch.
+    """
+
+    from .trust import (
+        NamespaceAmbiguity,
+        open_directory_nofollow,
+        verify_opened_directory_trust,
+    )
+
+    scope = _DescriptorScope(ledger)
+    primary: BaseException | None = None
+    outcome: MutationOutcome | None = None
+    count = 0
+    try:
+        try:
+            anchor_fd = scope.adopt(
+                open_directory_nofollow(str(path.parent)), path.parent
+            )
+        except FileNotFoundError:
+            outcome = already_absent("the certified container was already gone")
+            raise _ScopeExit
+        except (NamespaceAmbiguity, OSError) as exc:
+            outcome = refused_no_change(
+                f"the authority root above the certified container could not be "
+                f"opened as a plain directory: {exc}"
+            )
+            raise _ScopeExit
+        try:
+            container_fd = scope.adopt(
+                open_directory_nofollow(path.name, dir_fd=anchor_fd), path
+            )
+        except FileNotFoundError:
+            outcome = already_absent("the certified container was already gone")
+            raise _ScopeExit
+        except (NamespaceAmbiguity, OSError) as exc:
+            outcome = refused_no_change(
+                f"the certified container could not be opened: {exc}"
+            )
+            raise _ScopeExit
+        crossed, detail = verify_opened_directory_trust(anchor_fd, container_fd, path)
+        if crossed:
+            outcome = refused_no_change(f"{path} is not campaign-owned: {detail}")
+            raise _ScopeExit
+
+        container_depth = scope.mark()
+        for member in members:
+            # Each member's descent is unwound before the next one begins, so
+            # the descriptor count does not grow with the certified member set.
+            released = scope.close_to(container_depth, None)
+            if released is not None:
+                raise released
+            expected_kind = getattr(member, "authorized_kind", None) or (
+                member_authorities or {}
+            ).get(member)
+            if not expected_kind:
+                outcome = ledger.stop(
+                    f"{member} carries no owner-certified kind, so nothing "
+                    "authorizes deleting it; the container is retained"
+                )
+                raise _ScopeExit
+            try:
+                rel = member.relative_to(path)
+            except ValueError:
+                continue
+
+            parent_handle = container_fd
+            descended: list[int] = []
+            for part in rel.parts[:-1]:
+                display = path.joinpath(*rel.parts[: len(descended) + 1])
+                try:
+                    parent_handle = scope.adopt(
+                        open_directory_nofollow(part, dir_fd=parent_handle), display
+                    )
+                except FileNotFoundError:
+                    parent_handle = -1
+                    break
+                except (NamespaceAmbiguity, OSError) as exc:
+                    outcome = ledger.stop(
+                        f"{display} is no longer a plain directory: {exc}"
+                    )
+                    raise _ScopeExit
+                descended.append(parent_handle)
+                # An intermediate directory is a traversal decision like any
+                # other: a nested mount here would carry the descent onto bytes
+                # this campaign does not own.
+                crossed, detail = verify_opened_directory_trust(
+                    descended[-2] if len(descended) > 1 else container_fd,
+                    parent_handle,
+                    display,
+                )
+                if crossed:
+                    outcome = ledger.stop(f"{display} is not campaign-owned: {detail}")
+                    raise _ScopeExit
+            if parent_handle == -1:
+                continue
+            member_name = rel.parts[-1]
+
+            try:
+                stats = os.stat(member_name, dir_fd=parent_handle, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                raise ledger.failure(exc, f"{member} could not be measured: {exc}")
+
+            is_symlink = stat.S_ISLNK(stats.st_mode)
+            is_regular = stat.S_ISREG(stats.st_mode)
+            if is_symlink:
+                if expected_kind != "symlink":
+                    continue
+            elif is_regular:
+                if expected_kind != "file":
+                    continue
+            else:
+                continue
+
+            unlinked = False
+
+            def _on_unlinked(
+                stats: os.stat_result = stats, is_symlink: bool = is_symlink
+            ) -> None:
+                nonlocal unlinked
+                unlinked = True
+                if is_symlink:
+                    ledger.note_mutation()
+                else:
+                    ledger.credit(
+                        int(stats.st_size), (int(stats.st_dev), int(stats.st_ino))
+                    )
+
+            try:
+                durable_unlink(
+                    member,
+                    dir_fd=parent_handle,
+                    missing_ok=False,
+                    on_unlinked=_on_unlinked,
+                )
+            except OSError as exc:
+                if unlinked:
+                    raise ledger.failure(
+                        exc,
+                        f"{member} was removed but the removal could not be made "
+                        f"durable: {exc}",
+                    ) from exc
+                raise ledger.failure(
+                    exc, f"{member} could not be removed: {exc}"
+                ) from exc
+            count += 1
+    except _ScopeExit:
+        pass
+    except BaseException as exc:  # noqa: BLE001 - re-raised after closing
+        primary = exc
+    primary = scope.close_all(primary)
+    if primary is not None:
+        raise primary
+    if outcome is not None:
+        return outcome
+    detail = (
+        f"retained the container and removed {count} individually authorized "
+        f"member(s); {len(refusals)} descendant(s) were not owner-certified"
+    )
+    return ledger.stop(detail)
+
+
+class _ScopeExit(Exception):
+    """Leave a descriptor scope with an outcome already decided."""
 
 
 def _remove_tree_or_file_tracked(path: Path, ledger: MutationLedger) -> None:
@@ -882,32 +1060,7 @@ def _remove_tree_or_file_tracked(path: Path, ledger: MutationLedger) -> None:
     except OSError as exc:
         raise ledger.failure(exc, f"{path} could not be observed: {exc}") from exc
     if not stat.S_ISDIR(stats.st_mode):
-        size = int(stats.st_size)
-        identity = (int(stats.st_dev), int(stats.st_ino))
-        unlinked = False
-
-        def _mark_unlinked() -> None:
-            nonlocal unlinked
-            if not unlinked:
-                unlinked = True
-                ledger.credit(size, identity)
-
-        try:
-            try:
-                durable_unlink(path, missing_ok=False, on_unlinked=_mark_unlinked)
-            except TypeError:
-                durable_unlink(path)
-        except OSError as exc:
-            if ledger.mutated or (not unlinked and not path.exists() and not path.is_symlink()):
-                if not ledger.mutated:
-                    ledger.credit(size, identity)
-                raise ledger.failure(
-                    exc,
-                    f"{path} was removed but the removal could not be made durable: {exc}",
-                ) from exc
-            raise ledger.failure(exc, f"{path} could not be removed: {exc}") from exc
-        if not ledger.mutated:
-            ledger.credit(size, identity)
+        _unlink_measured_file(path, stats, ledger)
         return
     if not dir_fd_mutation_supported():
         # The recursion below descends through directory descriptors, so this is

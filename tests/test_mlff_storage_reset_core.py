@@ -1443,7 +1443,7 @@ def test_the_terminal_receipt_follows_final_authentication(campaign) -> None:
 def test_terminal_publication_uses_the_repository_durable_helpers() -> None:
     source = Path(archive_mod.__file__).read_text(encoding="utf-8")
     assert "durable_publish_bytes(blob" in source
-    assert "durable_publish_json(manifest_path, manifest)" in source
+    assert "durable_publish_json(\n                manifest_path," in source
     assert "publish_catalog_entry" in source
     assert "json.dump(" not in source
     verify_index = source.index("_verify_blob_against_manifest(blob, manifest, policy)")
@@ -1452,7 +1452,55 @@ def test_terminal_publication_uses_the_repository_durable_helpers() -> None:
     control = Path(archive_mod.__file__).with_name("control_plane.py").read_text(
         encoding="utf-8"
     )
-    assert "durable_publish_json(destination, payload)" in control
+    assert "durable_publish_json(destination, payload, on_published=on_published)" in control
+
+
+def test_every_publication_that_carries_execution_truth_is_transition_exact() -> None:
+    """R37-5 structural: no owner infers publication from a helper's return.
+
+    The window between the atomic replace and the helper's return is real and
+    cannot be recovered afterwards, so each phase this execution can claim must
+    be established by the primitive's transition callback. Asserting it
+    structurally guards against a later edit quietly moving a phase assignment
+    back below the call, where the counterfactuals would still pass on the
+    happy path.
+    """
+
+    import ast
+
+    source = Path(archive_mod.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    names = {
+        "durable_publish_json",
+        "durable_publish_bytes",
+        "publish_catalog_entry",
+        "_publish_archive_blob",
+    }
+    # Both execution owners - archive creation and restore - are named `_engine`.
+    engines = [
+        item
+        for item in ast.walk(tree)
+        if isinstance(item, ast.FunctionDef) and item.name == "_engine"
+    ]
+    assert len(engines) >= 2, [item.name for item in engines]
+    checked = 0
+    for engine in engines:
+        for call in ast.walk(engine):
+            if not isinstance(call, ast.Call):
+                continue
+            called = getattr(call.func, "id", "") or getattr(call.func, "attr", "")
+            if called not in names:
+                continue
+            checked += 1
+            assert any(
+                keyword.arg == "on_published" for keyword in call.keywords
+            ), ast.dump(call)
+    assert checked >= 6, checked
+
+    # And the phase vocabulary is the transition's, not a helper's return value.
+    assert 'result.payload["publication_phase"] =' not in source
+    assert 'result.payload = receipt' not in source
 
 
 # ---------------------------------------------------------------------------
@@ -3087,7 +3135,7 @@ def test_every_retained_archive_writer_is_beneath_the_storage_lease() -> None:
     archive_source = (storage / "archive.py").read_text(encoding="utf-8")
     assert 'require_operation_lease("publish an archive blob/manifest")' in archive_source
     publication = archive_source.index("require_operation_lease(\"publish an archive")
-    for marker in ("_publish_archive_blob(", "durable_publish_json(manifest_path"):
+    for marker in ("_publish_archive_blob(", "durable_publish_json(\n                manifest_path"):
         assert archive_source.index(marker) > publication, marker
 
     # Read-only discovery deliberately needs no lease.
@@ -3139,11 +3187,14 @@ def test_an_audit_failure_while_recording_a_partial_operation_fabricates_nothing
     calls = {"n": 0}
     real_unlink = archive_mod.durable_unlink
 
-    def failing_unlink(path: Path) -> None:
+    def failing_unlink(path, *, dir_fd=None, missing_ok=True, on_unlinked=None) -> None:
+        # Signature-faithful: the production caller passes the transition
+        # callback, and a double that could not accept it would prove nothing
+        # about how the real primitive reports what it removed.
         calls["n"] += 1
         if calls["n"] > 1:
             raise RuntimeError("injected interruption")
-        real_unlink(path)
+        real_unlink(path, dir_fd=dir_fd, missing_ok=missing_ok, on_unlinked=on_unlinked)
 
     monkeypatch.setattr(archive_mod, "durable_unlink", failing_unlink)
     del executor_mod
@@ -4357,7 +4408,8 @@ def test_the_common_certified_subtree_reports_partial_when_it_half_empties(
 
     outcome = remove_certified_subtree(
         container,
-        members=[authorized],
+        # Typed, because an untyped member authorizes no deletion at all.
+        members=[_typed(authorized, "file")],
         refusals=[(foreign, "this owner did not record it")],
     )
     assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
@@ -4792,8 +4844,12 @@ def test_a_generic_durability_failure_after_unlink_records_the_removal(
     victim.write_bytes(b"x" * 64)
     real = executor_mod.durable_unlink
 
-    def unlink_then_fail(path):
+    def unlink_then_fail(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
+        # The transition really crosses, and it is reported the way the real
+        # primitive reports it, before the durability step fails.
         Path(path).unlink()
+        if on_unlinked is not None:
+            on_unlinked()
         raise OSError(5, "injected durability failure")
 
     executor_mod.durable_unlink = unlink_then_fail
@@ -4871,11 +4927,11 @@ def test_an_authorized_member_failure_keeps_the_earlier_members_bytes(
     real = executor_mod.durable_unlink
     done: list[str] = []
 
-    def fail_on_second(path):
+    def fail_on_second(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
         if done:
             raise OSError(13, "injected pre-mutation failure")
         done.append(str(path))
-        return real(path)
+        return real(path, dir_fd=dir_fd, missing_ok=missing_ok, on_unlinked=on_unlinked)
 
     executor_mod.durable_unlink = fail_on_second
     try:
@@ -4884,7 +4940,7 @@ def test_an_authorized_member_failure_keeps_the_earlier_members_bytes(
             container,
             lambda: remove_certified_subtree(
                 container,
-                members=[first, second],
+                members=[_typed(first, "file"), _typed(second, "file")],
                 refusals=[(foreign, "this owner did not record it")],
             ),
         )
@@ -4912,7 +4968,7 @@ def test_a_generic_failure_before_any_mutation_credits_nothing(
     victim.write_bytes(b"x" * 40)
     real = executor_mod.durable_unlink
 
-    def never(path):
+    def never(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
         raise OSError(13, "injected pre-mutation failure")
 
     executor_mod.durable_unlink = never
@@ -5390,17 +5446,37 @@ def test_r35_session_close_failure_preserves_primary_exception(tmp_path: Path) -
         root_identity={"device": 0, "inode": 0},
         release_authority="auth",
     )
+    # R37-3 supersedes the earlier behaviour here. `invalidate()` no longer
+    # inspects the ambient exception state to decide whether its own close
+    # failure matters: that ranking belongs to the caller that knows whether a
+    # primary product failure is in flight, and deciding it here made a genuine
+    # close-only failure invisible whenever anything else happened to be
+    # propagating. What the session still guarantees unconditionally is that the
+    # capability is spent before the close is attempted.
+    from mdstats.training_data.qualification.store import SpentCapabilityError
+
     with mock.patch("os.close", side_effect=OSError(9, "Bad file descriptor")):
         try:
             raise RuntimeError("primary cause")
         except RuntimeError:
-            session2.invalidate("contradiction reason")
-            assert session2.closed is True
-            assert session2.attempt_fd == -1
+            with pytest.raises(OSError):
+                session2.invalidate("contradiction reason")
+    assert session2.closed is True
+    assert session2.attempt_fd == -1
+    assert session2.live is False
+    with pytest.raises(SpentCapabilityError):
+        session2.require_live()
+    os.close(fd2)
 
 
-def test_r35_archive_create_and_reclaim_mutation_truth(tmp_path: Path) -> None:
-    """R35-5: archive create records mutation upon blob publication; reclaim records upon unlink."""
+def test_settlement_maps_explicit_mutation_truth_to_status(tmp_path: Path) -> None:
+    """R35-5/R37-4: settlement reads `mutated`, and only settlement is tested here.
+
+    A hand-built result proves how `_settle` maps mutation truth to a status. It
+    proves nothing about whether any engine sets that flag correctly, so the
+    archive create/reclaim and restore claims are carried by the real-owner
+    publication counterfactuals above, never by this.
+    """
     from mdstats.training_data.storage.executor import StorageExecutionResult, StorageExecutor
 
     res = StorageExecutionResult(
@@ -5509,13 +5585,20 @@ def test_r35_remove_durably_is_thin_wrapper(tmp_path: Path) -> None:
 
 
 def test_every_patched_production_name_is_one_the_product_actually_reads() -> None:
-    """R32-7: a failpoint on a name nobody calls must fail loudly.
+    """R32-7/R37-4: a failpoint on a name nobody calls must fail loudly.
 
-    A test that patches `module.name` when the production path no longer reads
+    A test that patches ``module.name`` when the production path no longer reads
     that attribute keeps passing while the mechanism it claims to cover is
     entirely untested. That is how the generic-removal half of the interruption
     counterfactual evaporated, and how a guard's subject moved out from under
-    it. This sweeps both storage suites so the next such drift is caught here.
+    it.
+
+    ``hasattr`` alone is too weak to catch the next one: a name can survive as a
+    definition long after every caller stopped reading it. So each patched name
+    must also be *read* somewhere in the production storage/qualification
+    sources - the seam has a consumer, not just a home. Whether the seam fired
+    in one particular counterfactual is a separate claim, and every such test
+    asserts its own execution counter.
     """
 
     import ast
@@ -5524,6 +5607,11 @@ def test_every_patched_production_name_is_one_the_product_actually_reads() -> No
     aliases = {
         "executor_mod": "mdstats.training_data.storage.executor",
         "storage_commands": "mdstats.training_data.storage.commands",
+        "archive_mod": "mdstats.training_data.storage.archive",
+        "durability_mod": "mdstats.training_data.storage.durability",
+        "persistence_mod": "mdstats.training_data.target_size_execution.persistence",
+        "trust_mod": "mdstats.training_data.storage.trust",
+        "store_mod": "mdstats.training_data.qualification.store",
         "qstore": "mdstats.training_data.qualification.store",
         "cli": "mdstats.training_data._campaign_cli_core",
         "trust": "mdstats.training_data.storage.trust",
@@ -5533,26 +5621,1242 @@ def test_every_patched_production_name_is_one_the_product_actually_reads() -> No
         Path(__file__),
         Path(__file__).with_name("test_mlff_storage_reset_integration.py"),
     ]
+
+    # Every name the production storage/qualification sources actually read.
+    product_roots = [
+        Path(cli.__file__).parent / "storage",
+        Path(cli.__file__).parent / "qualification",
+    ]
+    read_names: set[str] = set()
+    for root in product_roots:
+        for module_path in sorted(root.glob("*.py")):
+            product = ast.parse(module_path.read_text(encoding="utf-8"))
+            for node in ast.walk(product):
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                    read_names.add(node.id)
+                elif isinstance(node, ast.Attribute):
+                    read_names.add(node.attr)
+    assert "durable_unlink" in read_names, "the sweep is not reading the product"
+
+    def _patched(tree: ast.AST):
+        """Both ways these suites replace a production attribute."""
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Attribute) and isinstance(
+                        target.value, ast.Name
+                    ):
+                        yield node.lineno, target.value.id, target.attr
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "setattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[0], ast.Name)
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[1].value, str)
+            ):
+                yield node.lineno, node.args[0].id, node.args[1].value
+
     dead: list[str] = []
+    checked = 0
     for suite in suites:
         tree = ast.parse(suite.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign):
+        for lineno, alias, attribute in _patched(tree):
+            module_name = aliases.get(alias)
+            if module_name is None:
                 continue
-            for target in node.targets:
-                if not (
-                    isinstance(target, ast.Attribute)
-                    and isinstance(target.value, ast.Name)
-                ):
-                    continue
-                module_name = aliases.get(target.value.id)
-                if module_name is None:
-                    continue
-                module = importlib.import_module(module_name)
-                if not hasattr(module, target.attr):
-                    dead.append(
-                        f"{suite.name}:{node.lineno} patches "
-                        f"{target.value.id}.{target.attr}, which "
-                        f"{module_name} does not define"
-                    )
+            checked += 1
+            module = importlib.import_module(module_name)
+            if not hasattr(module, attribute):
+                dead.append(
+                    f"{suite.name}:{lineno} patches {alias}.{attribute}, which "
+                    f"{module_name} does not define"
+                )
+            elif attribute not in read_names:
+                dead.append(
+                    f"{suite.name}:{lineno} patches {alias}.{attribute}, which no "
+                    "production storage or qualification module reads"
+                )
+    assert checked >= 10, checked
     assert dead == [], dead
+
+
+# ---------------------------------------------------------------------------
+# R37-1 - every consequential persistent transition establishes mutation truth
+# at the transition, not at the helper's return
+# ---------------------------------------------------------------------------
+
+
+def _last_audit(campaign) -> dict:
+    """The durable record this execution actually published."""
+
+    records = campaign.control_plane.read_audit()
+    assert records, "the execution published no audit record"
+    return dict(records[-1])
+
+
+def _fail_parent_fsync(monkeypatch, predicate):
+    """Fail one publication's parent-directory fsync, *after* its atomic replace.
+
+    ``fsync_parent_directory`` is the lowest real callable both
+    ``durable_publish_bytes`` and ``durable_unlink`` reach once their transition
+    has already crossed, so failing it models exactly the window this
+    requirement is about: the canonical name resolves to the new state and the
+    step meant to make that durable then fails. The counter proves the seam
+    fired rather than the test passing because nothing was injected.
+    """
+
+    from mdstats.training_data.storage import durability as durability_mod
+
+    real = durability_mod.fsync_parent_directory
+    fired = {"n": 0}
+
+    def guarded(path):
+        target = Path(path)
+        if predicate(target):
+            fired["n"] += 1
+            raise OSError(5, f"injected durability failure at {target}")
+        return real(target)
+
+    monkeypatch.setattr(durability_mod, "fsync_parent_directory", guarded)
+    return fired
+
+
+def _fail_before_replace(monkeypatch, predicate):
+    """Fail one publication while it is still staging, before any replace."""
+
+    import tempfile as tempfile_mod
+
+    from mdstats.training_data.storage import durability as durability_mod
+
+    real = tempfile_mod.mkstemp
+    fired = {"n": 0}
+
+    def guarded(*args, **kwargs):
+        directory = kwargs.get("dir")
+        if directory is not None and predicate(Path(directory)):
+            fired["n"] += 1
+            raise OSError(13, "injected pre-publication failure")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(
+        durability_mod, "tempfile", SimpleNamespace(mkstemp=guarded)
+    )
+    return fired
+
+
+def test_an_absent_target_fires_no_unlink_transition(tmp_path: Path) -> None:
+    """R37-1A case 1: a name that was already gone was not removed by this call."""
+
+    from mdstats.training_data.storage.durability import durable_unlink
+
+    fired: list[str] = []
+    absent = tmp_path / "never-existed.bin"
+    durable_unlink(absent, missing_ok=True, on_unlinked=lambda: fired.append("x"))
+    assert fired == [], "the callback claimed a removal that never happened"
+
+    with pytest.raises(FileNotFoundError):
+        durable_unlink(absent, missing_ok=False, on_unlinked=lambda: fired.append("y"))
+    assert fired == []
+
+    # And the positive control: a real removal does fire it exactly once.
+    present = tmp_path / "present.bin"
+    present.write_bytes(b"gone")
+    durable_unlink(present, missing_ok=False, on_unlinked=lambda: fired.append("z"))
+    assert fired == ["z"]
+
+
+def test_a_failed_unlink_never_inherits_another_actors_removal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """R37-1A case 2: absence afterwards is not proof this execution caused it.
+
+    The unlink genuinely fails; while the failure is being handled, another
+    actor removes the name. Asking the filesystem "is it gone?" would answer
+    yes and hand this execution a mutation and a byte credit it never earned.
+    """
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+
+    victim = tmp_path / "contended.bin"
+    victim.write_bytes(b"x" * 128)
+    fired = {"n": 0}
+
+    def unlink_fails_then_vanishes(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
+        fired["n"] += 1
+        failure = OSError(13, "injected unlink failure")
+        # Another actor, between our failed syscall and our error handling.
+        Path(path).unlink()
+        raise failure
+
+    monkeypatch.setattr(executor_mod, "durable_unlink", unlink_fails_then_vanishes)
+    payload, raised = _drive_removal(
+        tmp_path, victim, lambda: remove_durably_outcome(victim)
+    )
+
+    assert fired["n"] == 1, "the injected unlink seam never fired"
+    assert isinstance(raised, OSError), raised
+    assert payload["mutated"] is False, payload
+    assert int(payload["reclaimed_bytes"]) == 0, payload
+    assert not victim.exists()
+
+
+def test_an_unlink_then_a_replacement_and_a_durability_failure_is_exact(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """R37-1A case 3: the replacement survives and the partial is still exact."""
+
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    victim = tmp_path / "reappearing.bin"
+    victim.write_bytes(b"x" * 200)
+
+    from mdstats.training_data.storage import durability as durability_mod
+
+    real = durability_mod.fsync_parent_directory
+    fired = {"n": 0}
+
+    def guarded(path):
+        target = Path(path)
+        if target == victim:
+            fired["n"] += 1
+            # Another actor repopulates the name before we handle the failure.
+            target.write_bytes(b"someone else's file")
+            raise OSError(5, "injected durability failure")
+        return real(target)
+
+    monkeypatch.setattr(durability_mod, "fsync_parent_directory", guarded)
+    payload, raised = _drive_removal(
+        tmp_path, victim, lambda: remove_durably_outcome(victim)
+    )
+
+    assert fired["n"] == 1, "the injected durability seam never fired"
+    assert isinstance(raised, OSError), raised
+    entry = payload["refused_actions"][0]
+    assert entry["outcome"] == OUTCOME_PARTIAL_CHANGE_REFUSED, entry
+    assert int(entry["reclaimed_bytes"]) == 200, entry
+    assert victim.read_bytes() == b"someone else's file"
+
+
+def test_a_blob_publication_that_fails_after_its_replace_is_mutated(
+    campaign, monkeypatch
+) -> None:
+    """R37-1C case 5: the blob is canonical from its replace, not from the return."""
+
+    campaign.historical_run()
+    plane = campaign.control_plane
+    # Manifests live beside blobs, so the blob is named by exclusion.
+    fired = _fail_parent_fsync(
+        monkeypatch,
+        lambda path: path.parent == plane.archive_root
+        and not path.name.endswith(".manifest.json"),
+    )
+
+    with pytest.raises(OSError):
+        _create_archive(campaign)
+
+    assert fired["n"] == 1, "the blob durability seam never fired"
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is True, audit
+    assert audit["status"] == "partial", audit
+    assert audit["result"]["publication_phase"] == archive_mod.ARCHIVE_PHASE_BLOB_PUBLISHED
+    assert audit["result"]["archive_identity"], audit
+
+
+def test_a_blob_publication_that_fails_before_its_replace_is_not_mutated(
+    campaign, monkeypatch
+) -> None:
+    """R37-1C case 5, symmetric control: a staging failure claims nothing."""
+
+    campaign.historical_run()
+    plane = campaign.control_plane
+    fired = _fail_before_replace(
+        monkeypatch, lambda directory: directory == plane.archive_root
+    )
+
+    with pytest.raises(OSError):
+        _create_archive(campaign)
+
+    assert fired["n"] == 1, "the injected pre-publication seam never fired"
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is False, audit
+    assert "publication_phase" not in audit.get("result", {}), audit
+
+
+def test_the_boundary_after_the_blob_records_the_blob_it_published(campaign) -> None:
+    """R37-1C case 4: `BOUNDARY_AFTER_BLOB` cannot escape as "nothing happened"."""
+
+    campaign.historical_run()
+    with pytest.raises(_Injected):
+        _create_archive(campaign, failpoint=_fail_at(BOUNDARY_AFTER_BLOB))
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is True, audit
+    assert audit["status"] == "partial", audit
+    assert audit["result"]["publication_phase"] == archive_mod.ARCHIVE_PHASE_BLOB_PUBLISHED
+    # ... and it is also the symmetric pre-replace control for the manifest.
+    assert list_archives(campaign.control_plane) == ()
+
+
+def test_a_manifest_publication_that_fails_after_its_replace_advances_the_phase(
+    campaign, monkeypatch
+) -> None:
+    """R37-1C case 6: manifest publication is transition-exact too."""
+
+    campaign.historical_run()
+    plane = campaign.control_plane
+    fired = _fail_parent_fsync(
+        monkeypatch, lambda path: path.name.endswith(".manifest.json")
+    )
+
+    with pytest.raises(OSError):
+        _create_archive(campaign)
+
+    assert fired["n"] == 1, "the manifest durability seam never fired"
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is True, audit
+    assert (
+        audit["result"]["publication_phase"]
+        == archive_mod.ARCHIVE_PHASE_MANIFEST_PUBLISHED
+    ), audit
+    assert list_archives(campaign.control_plane) == ()
+
+
+def test_a_catalog_publication_that_fails_after_its_replace_advances_the_phase(
+    campaign, monkeypatch
+) -> None:
+    """R37-1C case 7: the catalog entry is claimed only from its own replace."""
+
+    campaign.historical_run()
+    plane = campaign.control_plane
+    fired = _fail_parent_fsync(
+        monkeypatch, lambda path: path.parent == plane.catalog_root
+    )
+
+    with pytest.raises(OSError):
+        _create_archive(campaign)
+
+    assert fired["n"] == 1, "the catalog durability seam never fired"
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is True, audit
+    assert (
+        audit["result"]["publication_phase"]
+        == archive_mod.ARCHIVE_PHASE_CATALOG_PUBLISHED
+    ), audit
+
+
+def test_the_boundary_after_the_manifest_does_not_claim_the_catalog(campaign) -> None:
+    """R37-1C cases 7 and 12: phases advance only where a replace crossed."""
+
+    from mdstats.training_data.storage.archive import BOUNDARY_AFTER_MANIFEST
+
+    campaign.historical_run()
+    with pytest.raises(_Injected):
+        _create_archive(campaign, failpoint=_fail_at(BOUNDARY_AFTER_MANIFEST))
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is True, audit
+    assert (
+        audit["result"]["publication_phase"]
+        == archive_mod.ARCHIVE_PHASE_MANIFEST_PUBLISHED
+    ), audit
+    assert list_archives(campaign.control_plane) == ()
+
+
+def test_a_hot_reclamation_durability_failure_credits_exactly_what_went(
+    campaign, monkeypatch
+) -> None:
+    """R37-1C case 8: the reclaimed member is credited, once, and exactly."""
+
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    size = checkpoint.stat().st_size
+    fired = _fail_parent_fsync(monkeypatch, lambda path: path == checkpoint)
+
+    with pytest.raises(OSError):
+        _create_archive(campaign, keep_hot=False)
+
+    assert fired["n"] == 1, "the reclamation durability seam never fired"
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is True, audit
+    assert int(audit["reclaimed_bytes"]) == size, audit
+    assert not checkpoint.exists()
+
+
+def test_a_failed_hot_unlink_fabricates_no_reclamation(campaign, monkeypatch) -> None:
+    """R37-1C case 8, control: a member that did not go is not credited."""
+
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    fired = {"n": 0}
+    real = archive_mod.durable_unlink
+
+    def refuse(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
+        if Path(path) == checkpoint:
+            fired["n"] += 1
+            raise OSError(13, "injected pre-transition unlink failure")
+        return real(path, dir_fd=dir_fd, missing_ok=missing_ok, on_unlinked=on_unlinked)
+
+    monkeypatch.setattr(archive_mod, "durable_unlink", refuse)
+    with pytest.raises(OSError):
+        _create_archive(campaign, keep_hot=False)
+
+    assert fired["n"] == 1, "the injected unlink seam never fired"
+    audit = _last_audit(campaign)
+    assert int(audit["reclaimed_bytes"]) == 0, audit
+    assert checkpoint.is_file()
+
+
+def test_the_initial_restore_journal_is_an_execution_mutation(
+    campaign, monkeypatch
+) -> None:
+    """R37-1D case 9: a published nonterminal journal is durable recovery state.
+
+    The control plane is fully materialized by the archive creation above, so
+    the only transition this counterfactual can be crediting is the journal's
+    own atomic publication - nothing has been staged or installed yet.
+    """
+
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    result = _create_archive(campaign)
+    assert not checkpoint.exists()
+
+    journal = campaign.control_plane.journal_path(result["archive_identity"])
+    fired = _fail_parent_fsync(monkeypatch, lambda path: path == journal)
+
+    with pytest.raises(OSError):
+        _restore(campaign, result["archive_identity"])
+
+    assert fired["n"] == 1, "the journal durability seam never fired"
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is True, audit
+    assert audit["status"] == "partial", audit
+    assert int(audit["restored_bytes"]) == 0, audit
+    assert (
+        audit["result"]["restore_phase"]
+        == archive_mod.RESTORE_PHASE_JOURNAL_STAGING_PUBLISHED
+    ), audit
+    assert not checkpoint.exists(), "nothing was installed, and none is claimed"
+
+
+def test_a_restore_journal_failure_before_its_replace_is_nonmutating(
+    campaign, monkeypatch
+) -> None:
+    """R37-1D case 10: no transition crossed, so nothing is claimed."""
+
+    campaign.historical_run()
+    result = _create_archive(campaign)
+    journal = campaign.control_plane.journal_path(result["archive_identity"])
+    fired = _fail_before_replace(monkeypatch, lambda directory: directory == journal.parent)
+
+    with pytest.raises(OSError):
+        _restore(campaign, result["archive_identity"])
+
+    assert fired["n"] == 1, "the injected pre-publication seam never fired"
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is False, audit
+    assert audit["status"] == "refused", audit
+    assert "restore_phase" not in audit.get("result", {}), audit
+
+
+@pytest.mark.parametrize("second_restore", [False, True])
+def test_the_terminal_restore_journal_phase_survives_a_later_failure(
+    campaign, monkeypatch, second_restore: bool
+) -> None:
+    """R37-1D case 11: proven with and without any destination mutation.
+
+    The reuse run installs nothing at all - every member is already present -
+    so if the terminal journal's own publication did not establish mutation
+    truth, that case would report a nonmutating refusal while a terminal
+    receipt sits on disk.
+    """
+
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    result = _create_archive(campaign)
+    identity = result["archive_identity"]
+    if second_restore:
+        assert _restore(campaign, identity)["restore"]["status"] == "complete"
+        assert checkpoint.is_file()
+
+    journal = campaign.control_plane.journal_path(identity)
+    seen = {"n": 0}
+
+    from mdstats.training_data.storage import durability as durability_mod
+
+    real = durability_mod.fsync_parent_directory
+
+    def guarded(path):
+        target = Path(path)
+        if target == journal:
+            seen["n"] += 1
+            if seen["n"] >= 2:
+                raise OSError(5, "injected terminal journal durability failure")
+        return real(target)
+
+    monkeypatch.setattr(durability_mod, "fsync_parent_directory", guarded)
+    with pytest.raises(OSError):
+        _restore(campaign, identity)
+
+    assert seen["n"] == 2, "the terminal journal seam never fired"
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is True, audit
+    # Phase evidence never regresses: the terminal replacement really crossed.
+    assert (
+        audit["result"]["restore_phase"]
+        == archive_mod.RESTORE_PHASE_JOURNAL_TERMINAL_PUBLISHED
+    ), audit
+    if second_restore:
+        # Nothing was installed at all, so the journal is the only transition
+        # this execution can be reporting.
+        assert int(audit["restored_bytes"]) == 0, audit
+    else:
+        assert int(audit["restored_bytes"]) >= checkpoint.stat().st_size, audit
+
+
+# ---------------------------------------------------------------------------
+# R37-2 / R37-3 - descriptor and mount authority through the final syscall,
+# and finalization that is leak-free and terminality-safe
+# ---------------------------------------------------------------------------
+
+
+def _certified_container(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A container the owner only partly certifies, so members go individually."""
+
+    container = tmp_path / "container"
+    (container / "nested").mkdir(parents=True)
+    member = container / "nested" / "owned.bin"
+    member.write_bytes(b"m" * 64)
+    foreign = container / "foreign.bin"
+    foreign.write_bytes(b"not ours")
+    return container, member, foreign
+
+
+def _typed(path: Path, kind: str):
+    from mdstats.training_data.storage.inventory import AuthorizedPath
+
+    return AuthorizedPath.create(path, kind)
+
+
+def test_an_untyped_member_grants_no_deletion_authority(tmp_path: Path) -> None:
+    """R37-2B: the absence of a certified kind is not permission to delete.
+
+    Defaulting an untyped member to "file" lets a caller that simply forgot to
+    carry the owner's kind evidence delete by pathname - the one substitution no
+    later check can catch, because there is nothing left to compare against.
+    """
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+
+    container, member, foreign = _certified_container(tmp_path)
+    outcome = remove_certified_subtree(
+        container,
+        members=[Path(member)],  # a bare path: no owner-certified kind
+        refusals=[(foreign, "this owner did not record it")],
+    )
+    assert outcome.refused, outcome
+    assert outcome.mutated is False, outcome
+    assert "no owner-certified kind" in outcome.detail, outcome.detail
+    assert member.is_file(), "an untyped member was deleted anyway"
+
+
+@pytest.mark.parametrize("substitute", ["symlink", "directory", "fifo"])
+def test_a_typed_member_is_removed_and_a_substituted_one_is_not(
+    tmp_path: Path, substitute: str
+) -> None:
+    """R37-2B: typed authority is compared, not assumed, at the member itself.
+
+    Whatever the owner certified as a regular file has been replaced by
+    something else by the time the descent reaches it. Each replacement is
+    retained: the kind is what the authority was granted against, and a
+    same-name object of another kind is not that object.
+    """
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+
+    container, member, foreign = _certified_container(tmp_path)
+    swapped = container / "nested" / "swapped.bin"
+    if substitute == "symlink":
+        swapped.symlink_to(tmp_path / "elsewhere")
+    elif substitute == "directory":
+        swapped.mkdir()
+        (swapped / "inside.bin").write_bytes(b"planted")
+    else:
+        os.mkfifo(swapped)
+
+    outcome = remove_certified_subtree(
+        container,
+        members=[_typed(member, "file"), _typed(swapped, "file")],
+        refusals=[(foreign, "this owner did not record it")],
+    )
+    assert outcome.mutated is True, outcome
+    assert int(outcome.removed_bytes or 0) == 64, outcome
+    assert not member.exists()
+    # Certified as a file, found as something else: retained, never followed.
+    assert swapped.exists() or swapped.is_symlink()
+    if substitute == "directory":
+        assert (swapped / "inside.bin").read_bytes() == b"planted"
+    assert foreign.is_file()
+
+
+def test_a_nested_mount_under_an_individually_authorized_member_stops_the_descent(
+    tmp_path: Path,
+) -> None:
+    """R37-2B: every intermediate directory is a traversal decision.
+
+    The descent to a nested member passes through directories the owner never
+    re-authenticated for this action. A mount appearing at one of them exposes
+    somebody else's bytes under a campaign-looking name, so it stops the descent
+    rather than being walked through on the way to an authorized leaf.
+    """
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage.trust import (
+        MountIdentityResolver,
+        set_mount_resolver,
+    )
+
+    container, member, foreign = _certified_container(tmp_path)
+    set_mount_resolver(
+        MountIdentityResolver(
+            mount_points=frozenset({str(container / "nested")}), available=True
+        )
+    )
+    try:
+        outcome = remove_certified_subtree(
+            container,
+            members=[_typed(member, "file")],
+            refusals=[(foreign, "this owner did not record it")],
+        )
+    finally:
+        set_mount_resolver(None)
+
+    assert outcome.refused, outcome
+    assert outcome.mutated is False, outcome
+    assert "not campaign-owned" in outcome.detail, outcome.detail
+    assert member.read_bytes() == b"m" * 64
+
+
+def test_an_unavailable_mount_resolver_stops_the_authorized_descent(
+    tmp_path: Path,
+) -> None:
+    """R37-2B: ambiguity retains. A same-device bind mount cannot be ruled out."""
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage.trust import (
+        MountIdentityResolver,
+        set_mount_resolver,
+    )
+
+    container, member, foreign = _certified_container(tmp_path)
+    set_mount_resolver(MountIdentityResolver(mount_points=frozenset(), available=False))
+    try:
+        outcome = remove_certified_subtree(
+            container,
+            members=[_typed(member, "file")],
+            refusals=[(foreign, "this owner did not record it")],
+        )
+    finally:
+        set_mount_resolver(None)
+
+    assert outcome.refused and outcome.mutated is False, outcome
+    assert "mount discovery is unavailable" in outcome.detail, outcome.detail
+    assert member.is_file()
+
+
+def test_a_known_prefix_survives_a_later_contradiction(tmp_path: Path) -> None:
+    """R37-2B: earlier successful members keep their exact account."""
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+
+    container, member, foreign = _certified_container(tmp_path)
+    later = container / "nested" / "later.bin"
+    later.write_bytes(b"l" * 7)
+
+    outcome = remove_certified_subtree(
+        container,
+        members=[_typed(member, "file"), Path(later)],
+        refusals=[(foreign, "this owner did not record it")],
+    )
+    assert outcome.mutated is True, outcome
+    assert outcome.refused, outcome
+    assert int(outcome.removed_bytes or 0) == 64, outcome
+    assert not member.exists() and later.is_file()
+
+
+def _swap_before_the_final_check(monkeypatch, name: str, replacement):
+    """Substitute a directory after it is emptied, just before its `rmdir`.
+
+    The spy wraps the production check rather than replacing it, so the check
+    itself is what decides - and the counter proves it actually ran.
+    """
+
+    from mdstats.training_data.storage import trust as trust_mod
+
+    real = trust_mod.verify_final_directory_identity
+    fired = {"n": 0}
+
+    def swap_then_check(parent_fd, entry_name, child_fd, display):
+        if display.name == name and fired["n"] == 0:
+            fired["n"] += 1
+            replacement(display)
+        return real(parent_fd, entry_name, child_fd, display)
+
+    monkeypatch.setattr(trust_mod, "verify_final_directory_identity", swap_then_check)
+    return fired
+
+
+def test_a_directory_replaced_before_its_final_rmdir_is_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """R37-2A: `rmdir` names an entry, so the entry is checked against the fd.
+
+    Without the final comparison the emptied directory's name would be removed
+    whatever now stands behind it, spending an authority that was established
+    against a different filesystem object.
+    """
+
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+
+    root = tmp_path / "tree"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "child.bin").write_bytes(b"c" * 12)
+
+    def replace(display: Path) -> None:
+        display.rename(display.parent / "moved-aside")
+        display.mkdir()
+        (display / "impostor.bin").write_bytes(b"planted")
+
+    fired = _swap_before_the_final_check(monkeypatch, "sub", replace)
+    payload, raised = _drive_removal(
+        tmp_path, root, lambda: remove_durably_outcome(root)
+    )
+
+    assert fired["n"] == 1, "the final identity check never ran"
+    assert raised is not None, payload
+    assert payload["mutated"] is True, payload
+    assert int(payload["reclaimed_bytes"]) == 12, payload
+    assert (root / "sub" / "impostor.bin").read_bytes() == b"planted"
+    assert (root / "moved-aside").is_dir()
+
+
+def test_a_directory_swapped_for_a_symlink_before_its_rmdir_is_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """R37-2A: a substituted final component is seen as the symlink it is."""
+
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "external.bin").write_bytes(b"someone else's bytes")
+    root = tmp_path / "tree"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "child.bin").write_bytes(b"c" * 9)
+
+    def replace(display: Path) -> None:
+        display.rmdir()
+        display.symlink_to(outside, target_is_directory=True)
+
+    fired = _swap_before_the_final_check(monkeypatch, "sub", replace)
+    payload, raised = _drive_removal(
+        tmp_path, root, lambda: remove_durably_outcome(root)
+    )
+
+    assert fired["n"] == 1, "the final identity check never ran"
+    assert raised is not None, payload
+    assert (outside / "external.bin").read_bytes() == b"someone else's bytes"
+    assert (root / "sub").is_symlink()
+
+
+def test_a_certified_subtree_directory_replacement_is_refused_too(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """R37-2A: the fully-certified common recursion shares the same boundary."""
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+
+    root = tmp_path / "closed"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "child.bin").write_bytes(b"c" * 21)
+
+    def replace(display: Path) -> None:
+        display.rename(display.parent / "aside")
+        display.mkdir()
+
+    fired = _swap_before_the_final_check(monkeypatch, "sub", replace)
+    payload, raised = _drive_removal(
+        tmp_path,
+        root,
+        lambda: remove_certified_subtree(root, members=[], refusals=[]),
+    )
+    assert fired["n"] == 1, "the final identity check never ran"
+    assert raised is not None, payload
+    assert payload["mutated"] is True, payload
+    assert int(payload["reclaimed_bytes"]) == 21, payload
+    assert (root / "sub").is_dir() and (root / "aside").is_dir()
+
+
+def _fail_close_of(monkeypatch, predicate):
+    """Make exactly the descriptors matching ``predicate`` fail to close.
+
+    The descriptor is really closed first, so the injection models a failing
+    ``close(2)`` rather than leaking the fd it is testing the handling of.
+    """
+
+    from mdstats.training_data.storage import trust as trust_mod
+
+    real_open = trust_mod.open_directory_nofollow
+    real_close = os.close
+    marked: set[int] = set()
+    fired = {"n": 0}
+
+    def spy_open(name, *, dir_fd=None):
+        handle = real_open(name, dir_fd=dir_fd)
+        if predicate(name):
+            marked.add(handle)
+        return handle
+
+    def guarded_close(handle):
+        if handle in marked:
+            marked.discard(handle)
+            fired["n"] += 1
+            real_close(handle)
+            raise OSError(5, "injected close failure")
+        return real_close(handle)
+
+    monkeypatch.setattr(trust_mod, "open_directory_nofollow", spy_open)
+    monkeypatch.setattr(os, "close", guarded_close)
+    return fired
+
+
+def test_a_close_failure_after_mutation_is_an_exact_partial(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """R37-3: a close that fails alone, after bytes went, is a partial."""
+
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+
+    root = tmp_path / "tree"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "child.bin").write_bytes(b"c" * 33)
+
+    fired = _fail_close_of(monkeypatch, lambda name: name == "sub")
+    payload, raised = _drive_removal(
+        tmp_path, root, lambda: remove_durably_outcome(root)
+    )
+
+    assert fired["n"] == 1, "the injected close seam never fired"
+    assert isinstance(raised, OSError), raised
+    entry = payload["refused_actions"][0]
+    assert entry["outcome"] == OUTCOME_PARTIAL_CHANGE_REFUSED, entry
+    assert int(entry["reclaimed_bytes"]) == 33, entry
+
+
+def test_a_close_failure_before_any_mutation_claims_no_mutation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """R37-3: the same failure, before anything went, is not a partial.
+
+    The descent refuses at the untyped member, so nothing has been removed when
+    the container descriptor fails to close. Reporting that as a partial would
+    claim a mutation; suppressing it would hide a real failure.
+    """
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+
+    container, member, foreign = _certified_container(tmp_path)
+    fired = _fail_close_of(monkeypatch, lambda name: name == container.name)
+    payload, raised = _drive_removal(
+        tmp_path,
+        container,
+        lambda: remove_certified_subtree(
+            container,
+            members=[Path(member)],
+            refusals=[(foreign, "this owner did not record it")],
+        ),
+    )
+
+    assert fired["n"] == 1, "the injected close seam never fired"
+    assert isinstance(raised, OSError), raised
+    assert "injected close failure" in str(raised), raised
+    assert payload["mutated"] is False, payload
+    assert int(payload["reclaimed_bytes"]) == 0, payload
+    assert member.is_file()
+
+
+def test_a_primary_failure_survives_a_close_failure_behind_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """R37-3: the failure that carries the mutation truth is the one reported."""
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.executor import remove_durably_outcome
+
+    root = tmp_path / "tree"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "child.bin").write_bytes(b"c" * 5)
+
+    fired = _fail_close_of(monkeypatch, lambda name: name == "sub")
+    real_contents = executor_mod._remove_tree_contents
+    primary_fired = {"n": 0}
+
+    def fail_inside(handle, display, ledger):
+        outcome = real_contents(handle, display, ledger)
+        if display.name == "sub":
+            primary_fired["n"] += 1
+            raise ledger.failure(
+                OSError(13, "injected primary failure"), f"{display} stopped"
+            )
+        return outcome
+
+    monkeypatch.setattr(executor_mod, "_remove_tree_contents", fail_inside)
+    payload, raised = _drive_removal(
+        tmp_path, root, lambda: remove_durably_outcome(root)
+    )
+
+    assert primary_fired["n"] == 1 and fired["n"] == 1, (primary_fired, fired)
+    assert isinstance(raised, OSError), raised
+    assert "injected primary failure" in str(raised), raised
+    assert payload["mutated"] is True, payload
+    assert int(payload["reclaimed_bytes"]) == 5, payload
+
+
+def test_repeated_contradictions_do_not_accumulate_descriptors(tmp_path: Path) -> None:
+    """R37-3: every refusal path releases what it opened.
+
+    A leak here is invisible in any single run and fatal in a long one, so the
+    same contradiction is driven repeatedly and the process's own descriptor
+    count is the evidence.
+    """
+
+    from mdstats.training_data.storage.executor import remove_certified_subtree
+
+    def open_descriptor_count() -> int:
+        return len(os.listdir("/proc/self/fd"))
+
+    container, member, foreign = _certified_container(tmp_path)
+
+    def once() -> None:
+        outcome = remove_certified_subtree(
+            container,
+            members=[Path(member)],
+            refusals=[(foreign, "this owner did not record it")],
+        )
+        assert outcome.refused, outcome
+
+    once()
+    before = open_descriptor_count()
+    for _ in range(40):
+        once()
+    assert open_descriptor_count() <= before, "descriptors accumulated across refusals"
+
+
+# ---------------------------------------------------------------------------
+# R37-2 - mount authority at every shared destructive mechanism
+# ---------------------------------------------------------------------------
+
+
+def _mounted_at(points) -> None:
+    from mdstats.training_data.storage.trust import (
+        MountIdentityResolver,
+        set_mount_resolver,
+    )
+
+    set_mount_resolver(
+        MountIdentityResolver(
+            mount_points=frozenset(str(item) for item in points), available=True
+        )
+    )
+
+
+@pytest.mark.parametrize("owner", ["generic", "certified"])
+@pytest.mark.parametrize("where", ["top", "nested"])
+def test_a_mount_stops_every_recursive_removal_owner(
+    tmp_path: Path, owner: str, where: str
+) -> None:
+    """R37-2A: the two recursive owners share one mount decision, at both depths.
+
+    A same-device bind mount is indistinguishable by device number alone, so the
+    mount table is what decides - and it decides on the descriptor that is about
+    to be enumerated, not on a pathname checked earlier.
+    """
+
+    from mdstats.training_data.storage.executor import (
+        remove_certified_subtree,
+        remove_durably_outcome,
+    )
+    from mdstats.training_data.storage.trust import set_mount_resolver
+
+    root = tmp_path / "tree"
+    nested = root / "sub"
+    nested.mkdir(parents=True)
+    (nested / "foreign.bin").write_bytes(b"someone else's bytes")
+
+    _mounted_at([root if where == "top" else nested])
+    try:
+        payload, raised = _drive_removal(
+            tmp_path,
+            root,
+            (
+                (lambda: remove_durably_outcome(root))
+                if owner == "generic"
+                else (lambda: remove_certified_subtree(root, members=[], refusals=[]))
+            ),
+        )
+    finally:
+        set_mount_resolver(None)
+
+    assert raised is not None, payload
+    assert payload["mutated"] is False, payload
+    assert (nested / "foreign.bin").read_bytes() == b"someone else's bytes"
+
+
+@pytest.mark.parametrize("owner", ["generic", "certified"])
+def test_an_unavailable_resolver_stops_every_recursive_removal_owner(
+    tmp_path: Path, owner: str
+) -> None:
+    """R37-2A: ambiguity retains at every shared destructive mechanism."""
+
+    from mdstats.training_data.storage.executor import (
+        remove_certified_subtree,
+        remove_durably_outcome,
+    )
+    from mdstats.training_data.storage.trust import (
+        MountIdentityResolver,
+        set_mount_resolver,
+    )
+
+    root = tmp_path / "tree"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "child.bin").write_bytes(b"c" * 4)
+
+    set_mount_resolver(MountIdentityResolver(mount_points=frozenset(), available=False))
+    try:
+        payload, raised = _drive_removal(
+            tmp_path,
+            root,
+            (
+                (lambda: remove_durably_outcome(root))
+                if owner == "generic"
+                else (lambda: remove_certified_subtree(root, members=[], refusals=[]))
+            ),
+        )
+    finally:
+        set_mount_resolver(None)
+
+    assert raised is not None, payload
+    assert payload["mutated"] is False, payload
+    assert (root / "sub" / "child.bin").is_file()
+
+
+# ---------------------------------------------------------------------------
+# R37-4 - restore destination and maintenance transitions through real owners
+# ---------------------------------------------------------------------------
+
+
+def test_a_restore_destination_failure_after_the_replace_records_the_install(
+    campaign, monkeypatch
+) -> None:
+    """R37-4: the installed member is recorded at its own `os.replace`."""
+
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    result = _create_archive(campaign)
+    assert not checkpoint.exists()
+
+    # The installer reaches the shared persistence primitive directly, which is
+    # the lowest real callable on that path.
+    from mdstats.training_data.target_size_execution import persistence as persistence_mod
+
+    real = persistence_mod.fsync_parent_directory
+    fired = {"n": 0}
+
+    def guarded(path):
+        if Path(path) == checkpoint:
+            fired["n"] += 1
+            raise OSError(5, "injected destination durability failure")
+        return real(path)
+
+    monkeypatch.setattr(persistence_mod, "fsync_parent_directory", guarded)
+    with pytest.raises(OSError):
+        _restore(campaign, result["archive_identity"])
+
+    assert fired["n"] == 1, "the destination durability seam never fired"
+    audit = _last_audit(campaign)
+    assert audit["mutated"] is True, audit
+    assert audit["status"] == "partial", audit
+    installed = [
+        item for item in audit["completed_actions"] if item.get("installed") is True
+    ]
+    assert installed, audit["completed_actions"]
+    assert checkpoint.is_file(), "the replace really happened"
+
+
+def test_a_restore_that_fails_before_installing_claims_no_destination_change(
+    campaign,
+) -> None:
+    """R37-4 control: the journal transition is real; the install is not claimed."""
+
+    run_root = campaign.historical_run()
+    checkpoint = run_root / "checkpoints" / "epoch-1.pt"
+    result = _create_archive(campaign)
+
+    from mdstats.training_data.storage.archive import BOUNDARY_AFTER_STAGING
+
+    with pytest.raises(_Injected):
+        storage_commands.storage_archive(
+            campaign.context(),
+            _args(
+                archive_command="restore",
+                archive_identity=result["archive_identity"],
+                apply=True,
+                failpoint=_fail_at(BOUNDARY_AFTER_STAGING),
+            ),
+        )
+    audit = _last_audit(campaign)
+    # Mutated, because the nonterminal journal really was published - but the
+    # destination evidence is absent, because no destination changed.
+    assert audit["mutated"] is True, audit
+    assert (
+        audit["result"]["restore_phase"]
+        == archive_mod.RESTORE_PHASE_JOURNAL_STAGING_PUBLISHED
+    ), audit
+    assert int(audit["restored_bytes"]) == 0, audit
+    assert not any(item.get("installed") for item in audit["completed_actions"]), audit
+    assert not checkpoint.exists()
+
+
+def test_event_pruning_marks_mutation_only_where_it_pruned(
+    campaign, monkeypatch
+) -> None:
+    """R37-4: a positive prune is a mutation; a cleanup with nothing to prune is not."""
+
+    campaign.historical_run()
+    control = storage_commands.storage_cleanup(
+        campaign.context(), _args(tier="safe", apply=True)
+    )["execution"]
+    assert not any(
+        item["action"] == "prune_campaign_events"
+        for item in control["completed_actions"]
+    ), control
+    assert control["mutated"] is False, control
+
+    for _index in range(150):
+        campaign.store.event("info", "fixture", "x" * 32)
+    cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 100}}
+    context = storage_commands.StorageCommandContext(
+        cfg, campaign.paths, campaign.store, campaign.boundary
+    )
+    execution = storage_commands.storage_cleanup(
+        context, _args(tier="safe", apply=True)
+    )["execution"]
+    pruned = [
+        item
+        for item in execution["completed_actions"]
+        if item["action"] == "prune_campaign_events"
+    ]
+    assert pruned and int(pruned[0]["events_pruned"]) > 0, execution
+    assert execution["mutated"] is True, execution
+
+
+# ---------------------------------------------------------------------------
+# R37-5 - structural closure over the mechanisms the counterfactuals exercise
+# ---------------------------------------------------------------------------
+
+
+def _destructive_sources() -> dict[str, str]:
+    storage = Path(cli.__file__).parent / "storage"
+    qualification = Path(cli.__file__).parent / "qualification"
+    return {
+        "executor.py": (storage / "executor.py").read_text(encoding="utf-8"),
+        "archive.py": (storage / "archive.py").read_text(encoding="utf-8"),
+        "durability.py": (storage / "durability.py").read_text(encoding="utf-8"),
+        "store.py": (qualification / "store.py").read_text(encoding="utf-8"),
+    }
+
+
+def test_no_owner_infers_a_removal_from_a_later_pathname_lookup() -> None:
+    """R37-5: absence after a failure is not evidence this execution caused it.
+
+    The inference is cheap to reintroduce and impossible to see in a green
+    suite, because on the happy path it agrees with the truth. It only diverges
+    under exactly the contention the counterfactuals model.
+    """
+
+    import ast
+
+    for name, source in _destructive_sources().items():
+        tree = ast.parse(source)
+        for handler in (
+            node for node in ast.walk(tree) if isinstance(node, ast.ExceptHandler)
+        ):
+            dumped = ast.dump(handler)
+            assert "attr='exists'" not in dumped, (
+                f"{name}: an error handler consults pathname existence, which "
+                "cannot distinguish this execution's removal from another's"
+            )
+            assert "attr='is_symlink'" not in dumped, name
+
+
+def test_no_consequential_unlink_has_a_signature_incompatible_fallback() -> None:
+    """R37-5: a `TypeError` fallback would fabricate the transition it lost.
+
+    Calling an older signature and then invoking the callback by hand claims a
+    removal the primitive never reported, and it hides the fact that some caller
+    is out of date with the durability contract.
+    """
+
+    import ast
+
+    for name, source in _destructive_sources().items():
+        tree = ast.parse(source)
+        for handler in (
+            node for node in ast.walk(tree) if isinstance(node, ast.ExceptHandler)
+        ):
+            if handler.type is None:
+                continue
+            caught = ast.dump(handler.type)
+            if "TypeError" not in caught:
+                continue
+            body = ast.dump(ast.Module(body=handler.body, type_ignores=[]))
+            assert "durable_unlink" not in body, f"{name}: unlink fallback"
+            assert "durable_publish" not in body, f"{name}: publication fallback"
+
+
+def test_every_consequential_rmdir_keeps_parent_authority_and_rechecks() -> None:
+    """R37-5: the last destructive syscall spends the capability it authenticated.
+
+    Both recursive owners must reach `rmdir` through the parent descriptor they
+    descended with, immediately after comparing the entry against the still-open
+    child descriptor. An absolute-path `rmdir` would re-resolve the name and
+    discard everything the descent established.
+    """
+
+    import ast
+
+    sources = _destructive_sources()
+    sites = 0
+    for name in ("executor.py", "store.py"):
+        tree = ast.parse(sources[name])
+        for call in ast.walk(tree):
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "rmdir"
+            ):
+                continue
+            sites += 1
+            assert any(
+                keyword.arg == "dir_fd" for keyword in call.keywords
+            ), f"{name}: a consequential rmdir does not name its parent descriptor"
+        # And the comparison is what guards it.
+        assert "verify_final_directory_identity(" in sources[name], name
+    assert sites == 2, sites
+
+    # The generic recursion no longer removes a root by absolute pathname.
+    assert "os.rmdir(root)" not in sources["executor.py"]
