@@ -35,7 +35,7 @@ from mdstats.training_data.campaign_target_size_cutover import (
 )
 from mdstats.training_data.campaign_target_size_runtime import (
     MaceTargetSizeBoundaryTrainer,
-    build_current_target_size_authorities,
+    build_prepared_target_size_substrate,
     TargetSizeRungRequest,
     mace_run_configuration,
 )
@@ -580,7 +580,7 @@ def test_p4d_req2_select_target_size_accepts_condition_balanced_candidates(
     cfg, paths = cli._load_config(config)
     store = CampaignStore(paths.state_db)
     try:
-        authorities = build_current_target_size_authorities(cfg, paths, store)
+        authorities = build_prepared_target_size_substrate(cfg, paths, store)
     finally:
         store.close()
     aggregate = authorities.aggregate
@@ -839,7 +839,7 @@ def test_p4d_req5_assembled_boundary_one_config_passes_the_real_mace_parser(
     cfg, paths = cli._load_config(config)
     store = CampaignStore(paths.state_db)
     try:
-        authorities = build_current_target_size_authorities(cfg, paths, store)
+        authorities = build_prepared_target_size_substrate(cfg, paths, store)
     finally:
         store.close()
     expected_avg_num_neighbors = authorities.common.common_avg_num_neighbors

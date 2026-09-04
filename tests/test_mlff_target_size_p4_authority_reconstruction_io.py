@@ -20,7 +20,7 @@ import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data._campaign_cli_core import CampaignStore
 from mdstats.training_data.campaign_target_size_runtime import (
-    build_current_target_size_authorities,
+    build_prepared_target_size_substrate,
 )
 from mdstats.training_data.neutral_substrate import frame_authority as frame_authority_module
 from mdstats.training_data.neutral_substrate import (
@@ -65,7 +65,7 @@ def test_p4_warm_cache_authority_reconstruction_reads_no_source_frames(
     calls = _count_source_frame_reads(monkeypatch)
     store = CampaignStore(paths.state_db)
     try:
-        authorities = build_current_target_size_authorities(cfg, paths, store)
+        authorities = build_prepared_target_size_substrate(cfg, paths, store)
     finally:
         store.close()
     assert calls == []
@@ -88,7 +88,7 @@ def test_p4_cache_rebuild_reads_each_source_at_most_once(
     calls = _count_source_frame_reads(monkeypatch)
     store = CampaignStore(paths.state_db)
     try:
-        authorities = build_current_target_size_authorities(cfg, paths, store)
+        authorities = build_prepared_target_size_substrate(cfg, paths, store)
     finally:
         store.close()
     run_count = len(authorities.source_catalog.sources)
@@ -102,7 +102,7 @@ def test_p4_canonical_and_common_share_one_frame_data_mapping(tmp_path: Path):
     cfg, paths, _workspace = _prepared(tmp_path)
     store = CampaignStore(paths.state_db)
     try:
-        authorities = build_current_target_size_authorities(cfg, paths, store)
+        authorities = build_prepared_target_size_substrate(cfg, paths, store)
     finally:
         store.close()
     observed: list[int] = []

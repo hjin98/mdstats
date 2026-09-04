@@ -27,7 +27,7 @@ from mdstats.training_data.campaign_target_size_state import (
     load_target_size_campaign_revision,
 )
 from mdstats.training_data.campaign_target_size_runtime import (
-    build_current_target_size_authorities,
+    build_prepared_target_size_substrate,
 )
 from mdstats.training_data.campaign_target_size_terminal import (
     validate_terminal_projection,
@@ -101,7 +101,7 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
             TargetSizeLifecycle.TERMINAL_SELECTED,
             TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
         )
-        definition = build_current_target_size_authorities(
+        definition = build_prepared_target_size_substrate(
             cfg, paths, store
         ).aggregate.definition
         resolver = TargetSizeExecutionResolver(

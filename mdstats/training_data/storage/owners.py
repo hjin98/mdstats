@@ -642,6 +642,77 @@ def frame_cache_view(paths: Any, store: Any) -> OwnerArtifactView | None:
     )
 
 
+# ---------------------------------------------------------------------------
+# P4 prepared generations: immutable, content-addressed, and shared
+# ---------------------------------------------------------------------------
+
+
+PREPARED_DIRECTORY = "prepared"
+
+
+def prepared_generation_view(paths: Any, store: Any) -> OwnerArtifactView | None:
+    """Classify the immutable prepared substrate through its real owner.
+
+    Prepared components are content-addressed, so two generations that differ in
+    one run share every component and normalized frame member the change did not
+    touch.  Reclaimability is therefore a question about *owner reachability*,
+    never about which generation directory a pathname happens to sit under:
+    retiring a historical generation may release only what no protected owner
+    still requires.
+
+    The current generation's substrate is a hard restart dependency.  A
+    downstream command deliberately has no path back to live sources, so losing
+    a member of the current prepared generation is a capability loss that only
+    an explicit `prepare` can repair, and this view retains it accordingly.
+    """
+
+    root = _absolute(paths.internal) / PREPARED_DIRECTORY
+    if not root.exists():
+        return None
+    detail = "immutable content-addressed prepared scientific substrate"
+    generation: int | None = None
+    protected = 0
+    try:
+        from ..campaign_prepared_generation import prepared_generation_protected_paths
+        from ..campaign_target_size_state import load_target_size_campaign_revision
+
+        revision = load_target_size_campaign_revision(store)
+        if revision is None:
+            detail += "; no current target-size generation claims it"
+        else:
+            generation = int(revision.state.generation)
+            digests = [revision.state.prepared_manifest_digest]
+            protected = len(prepared_generation_protected_paths(paths, digests))
+            if protected:
+                detail += (
+                    f"; canonical generation {generation} reaches {protected} "
+                    "protected object(s), including normalized frame members it "
+                    "shares with any other prepared generation"
+                )
+            else:
+                detail += (
+                    f"; canonical generation {generation} binds no prepared "
+                    "substrate, so nothing here is currently reachable"
+                )
+    except Exception as exc:  # fail toward retention
+        detail += f"; owner reachability could not be established ({exc})"
+    return OwnerArtifactView(
+        owner=OWNER_P4,
+        artifact_id="p4:prepared_generations",
+        path=root,
+        artifact_class=ArtifactClass.RESTART_STATE,
+        detail=detail,
+        generation=generation,
+        current=True,
+        restart_required=True,
+        immutable=True,
+        # Downstream commands resolve prepared members directly from these
+        # paths, so nothing here may be moved to a cold representation.
+        hot_path_required=True,
+        coverage=SubtreeCoverage.CLOSED,
+    )
+
+
 def _orphan_external_record_views(
     cfg: Mapping[str, Any], store: Any
 ) -> list[OwnerArtifactView]:
@@ -1963,6 +2034,7 @@ _RECOGNIZED_INTERNAL_NAMES = frozenset(
         "records",
         "hash-receipts.sqlite3",
         "frame-cache",
+        "prepared",
         "target-size",
         "post-selection",
         "qualification",
@@ -2016,6 +2088,9 @@ def build_owner_views(
     frame_cache = frame_cache_view(paths, store)
     if frame_cache is not None:
         views.append(frame_cache)
+    prepared = prepared_generation_view(paths, store)
+    if prepared is not None:
+        views.append(prepared)
 
     try:
         target_views, current_generation, target_unresolved = target_size_views(paths, store)
@@ -2163,6 +2238,7 @@ __all__ = [
     "campaign_store_views",
     "control_plane_views",
     "frame_cache_view",
+    "prepared_generation_view",
     "post_selection_views",
     "selection_is_expected",
     "qualification_views",

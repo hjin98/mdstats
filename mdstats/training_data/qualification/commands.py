@@ -111,47 +111,79 @@ def execute_qualification_run(args: Any) -> int:
 
 
 def execute_qualification_status(args: Any) -> int:
-    """`qualification status`: observational only; mutates no scientific state."""
+    """`qualification status`: observational only; mutates no scientific state.
 
-    from .._campaign_cli_core import CampaignStore, _load_config, _ok, _print_header, _warn
+    The command runs entirely under the observational capability, so the store
+    is opened read-only, path resolution creates nothing, and no nested owner
+    can write.  It reports what durable qualification evidence says rather than
+    building a session to find out -- describing a qualification must not be a
+    way of performing one.
+    """
 
-    cfg, paths = _load_config(args.config)
-    store = CampaignStore(paths.state_db)
-    _print_header("Post-production qualification status")
-    try:
-        session = build_qualification_session(cfg, paths, store, **_seams(args))
-    except (PostSelectionError, QualificationError) as exc:
-        _warn(str(exc))
-        return 0
-    if session is None:
-        _warn(_no_publication_message())
-        return 0
-    print(f"  publication            {session.binding.publication_digest[:16]}", flush=True)
-    print(f"  published members      {[m.member_id for m in session.publication.members]}", flush=True)
-    print(f"  executable candidate   {session.binding.executable.content_digest[:16]}", flush=True)
-    print(f"  environment            {session.binding.environment.content_digest[:16]}", flush=True)
-    print(f"  qualification spec     {session.binding.specification.content_digest[:16]}", flush=True)
-    from .reference import load_reference_bundle
+    from .._campaign_cli_core import (
+        CampaignStore,
+        _load_config,
+        _ok,
+        _print_header,
+        _warn,
+        observational_campaign_state,
+    )
+    from ..campaign_lifecycle import _binding_for
+    from ..campaign_target_size_state import load_target_size_campaign_revision
+    from .observation import observe_current_qualification
 
-    bundle = load_reference_bundle(session.reference_root, session.reference_request)
-    print(f"  attempt identity       {session.binding.attempt_identity[:16]}", flush=True)
-    for component in session.plan.planned_components:
-        evidence = session.completed_component(
-            component, session.component_input_digest(component, bundle)
+    with observational_campaign_state():
+        cfg, paths = _load_config(args.config, ensure=False)
+        _print_header("Post-production qualification status")
+        if not paths.state_db.is_file():
+            _warn(_no_publication_message())
+            return 0
+        store = CampaignStore(paths.state_db, create=False)
+        try:
+            revision = load_target_size_campaign_revision(store)
+            binding = None if revision is None else _binding_for(revision)
+            if binding is None:
+                _warn(_no_publication_message())
+                return 0
+            observation = observe_current_qualification(paths, store, binding)
+        finally:
+            store.close()
+
+    print(f"  canonical generation   {observation.generation}", flush=True)
+    print(f"  selected binding       {observation.binding_digest[:16]}", flush=True)
+    print(f"  attempt identity       {observation.attempt_identity[:16]}", flush=True)
+    if not observation.started:
+        _warn(
+            "no qualification plan is current for this publication; run "
+            "`qualification run` to open one"
         )
-        state = "not_started" if evidence is None else evidence.status.value
-        reason = "" if evidence is None else evidence.reason_code
-        print(f"  {component:<24} {state:<22} {reason}", flush=True)
-    activation = resolve_current_locked_activation(store, paths, session.context)
+        return 0
+    print(f"  qualification plan     {str(observation.plan_digest)[:16]}", flush=True)
+    if observation.attempt_state is not None:
+        print(f"  attempt state          {observation.attempt_state}", flush=True)
+    for component, state in observation.component_states:
+        print(f"  {component:<24} {state}", flush=True)
     print(
-        f"  locked activation        {'activated ' + activation.activated_at if activation else 'not activated'}",
+        "  locked activation        "
+        + (
+            f"activated {observation.locked_activated_at}"
+            if observation.locked_activated_at
+            else "not activated"
+        ),
         flush=True,
     )
-    record = resolve_current_qualification_verdict(store, paths, session.context)
-    if record is None:
+    if observation.blocked_detail is not None:
+        _warn(
+            "current qualification evidence is incomplete or corrupt: "
+            f"{observation.blocked_detail}"
+        )
+    if observation.verdict is None:
         _warn("no current terminal qualification record has been published yet")
     else:
-        _ok(f"current verdict: {record.verdict.value} ({record.reason_code})")
+        _ok(
+            f"current verdict: {observation.verdict} "
+            f"({observation.verdict_reason or 'no reason code'})"
+        )
     return 0
 
 

@@ -145,12 +145,19 @@ class PostSelectionEvidenceStore:
 
 
 def open_post_selection_store(
-    paths: Any, binding: PostSelectionBinding
+    paths: Any, binding: PostSelectionBinding, *, create: bool = True
 ) -> PostSelectionEvidenceStore:
-    """Open the evidence store for one authenticated selected binding."""
+    """Open the evidence store for one authenticated selected binding.
+
+    ``create=False`` is the observational open.  Consequential execution may
+    bring a generation's evidence root into existence; describing a campaign
+    must not, because a root created by a read makes "no evidence" and "an
+    empty evidence store" indistinguishable afterwards.
+    """
 
     root = post_selection_root(paths, binding.campaign_generation)
-    root.mkdir(parents=True, exist_ok=True)
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
     return PostSelectionEvidenceStore(root=root)
 
 

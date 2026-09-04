@@ -33,6 +33,7 @@ from .._common import (
     digest,
     validate_digest,
 )
+from ..bounded_inference import execution_batch_width, run_bounded_inference
 from ..eval2 import (
     EVAL2_NUMERICAL_FAILURE_CODES,
     Eval2NumericalEvaluationError,
@@ -1171,10 +1172,16 @@ def run_target_size_direct_boundary_inference(
             "Evaluation artifact frame count mismatch."
         )
 
-    if forward_fn is not None:
-        raw_predictions = forward_fn(provider, atoms_list)
-    else:
-        raw_predictions = provider.predict_batch(atoms_list)
+    # The exact-M population is evaluated through deterministic ordered device
+    # batches bounded by the accepted execution policy. M itself is scientific
+    # membership and is unchanged; only the width of one device forward is
+    # bounded, which is what keeps peak VRAM independent of the boundary size.
+    raw_predictions = run_bounded_inference(
+        provider,
+        atoms_list,
+        batch_width=execution_batch_width(optimizer_policy),
+        forward=forward_fn,
+    )
 
     if len(raw_predictions) != evaluation_data.evaluation_size:
         raise TrainingDataInputError(

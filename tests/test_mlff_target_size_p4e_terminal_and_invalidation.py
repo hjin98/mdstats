@@ -111,13 +111,13 @@ def _state_db(workspace: Path) -> Path:
 def _definition(config: Path):
     from mdstats.training_data import _campaign_cli_core as cli
     from mdstats.training_data.campaign_target_size_runtime import (
-        build_current_target_size_authorities,
+        build_prepared_target_size_substrate,
     )
 
     cfg, paths = cli._load_config(config)
     store = CampaignStore(paths.state_db)
     try:
-        authorities = build_current_target_size_authorities(cfg, paths, store)
+        authorities = build_prepared_target_size_substrate(cfg, paths, store)
     finally:
         store.close()
     return authorities.aggregate.definition, paths
@@ -429,21 +429,21 @@ def test_p4e_req3_cv_only_and_production_only_settings_are_target_size_neutral(
 
     from mdstats.training_data import _campaign_cli_core as cli
     from mdstats.training_data.campaign_target_size_runtime import (
-        build_current_target_size_authorities,
+        build_prepared_target_size_substrate,
     )
 
     config, workspace, _harness = _terminal_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
     store = CampaignStore(paths.state_db)
     try:
-        baseline = build_current_target_size_authorities(cfg, paths, store).identity
+        baseline = build_prepared_target_size_substrate(cfg, paths, store).identity
 
         neutral = json.loads(json.dumps(cfg))
         neutral.setdefault("partition", {})["cross_validation_seed"] = 987654
         neutral.setdefault("evaluation", {})["checkpoint_strategy"] = "topk"
         neutral.setdefault("production", {})["horizon_epochs"] = 512
         neutral.setdefault("cv", {})["folds"] = 7
-        observed = build_current_target_size_authorities(
+        observed = build_prepared_target_size_substrate(
             neutral, paths, store
         ).identity
         assert observed == baseline
@@ -461,17 +461,17 @@ def test_p4e_req3_cv_only_and_production_only_settings_are_target_size_neutral(
 def test_p4e_req3_target_size_policy_change_does_invalidate(tmp_path: Path):
     from mdstats.training_data import _campaign_cli_core as cli
     from mdstats.training_data.campaign_target_size_runtime import (
-        build_current_target_size_authorities,
+        build_prepared_target_size_substrate,
     )
 
     config, workspace, _harness = _terminal_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
     store = CampaignStore(paths.state_db)
     try:
-        baseline = build_current_target_size_authorities(cfg, paths, store).identity
+        baseline = build_prepared_target_size_substrate(cfg, paths, store).identity
         changed_cfg = json.loads(json.dumps(cfg))
         changed_cfg["training"]["seeds"] = [3, 4]
-        changed = build_current_target_size_authorities(
+        changed = build_prepared_target_size_substrate(
             changed_cfg, paths, store
         ).identity
         assert changed != baseline

@@ -211,15 +211,20 @@ def test_p7_structural_locked_evidence_is_unreachable_without_activation():
 
 
 def test_p7_advance_never_activates_locked_evidence():
-    """`advance` remains bounded to the P1-P5 training lifecycle."""
+    """`advance` may run ordinary qualification and may never unlock anything.
+
+    The public campaign does not end at final production, so routing to the
+    ordinary nonlocked `qualification run` is correct and is what keeps status
+    from claiming a frozen-but-unqualified product is complete. Locked
+    activation is irreversible one-shot disclosure: it stays an explicit
+    operator command and must be unreachable from automatic routing.
+    """
 
     core = Path(cli.__file__).read_text(encoding="utf-8")
     advance = core[core.index("def command_advance") : core.index("def command_guide")]
-    assert "qualification" not in advance
-    assert "activate" not in advance
-    assert all(
-        name != "post_production_qualification" for name, _description in cli.PIPELINE
-    )
+    assert "qualification run" in advance
+    assert "activate_locked" not in advance
+    assert "activate-locked" not in advance
 
 
 # ---------------------------------------------------------------------------

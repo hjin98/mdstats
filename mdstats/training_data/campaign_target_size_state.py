@@ -280,6 +280,7 @@ class TargetSizeCampaignState:
     policy_digest: str | None = None
     experiment_definition_digest: str | None = None
     aggregate_digest: str | None = None
+    prepared_manifest_digest: str | None = None
     execution_context_digest: str | None = None
     common_preparation_digest: str | None = None
     screen_window_digest: str | None = None
@@ -313,6 +314,7 @@ class TargetSizeCampaignState:
             "policy_digest",
             "experiment_definition_digest",
             "aggregate_digest",
+            "prepared_manifest_digest",
             "execution_context_digest",
             "common_preparation_digest",
             "screen_window_digest",
@@ -430,7 +432,7 @@ class TargetSizeCampaignState:
                     "Terminal projection binds a different adopted reducer state."
                 )
 
-    def _payload(self) -> dict[str, Any]:
+    def _base_payload(self) -> dict[str, Any]:
         return {
             "schema": TARGET_SIZE_CAMPAIGN_STATE_SCHEMA,
             "regime": self.regime.value,
@@ -453,6 +455,17 @@ class TargetSizeCampaignState:
             "disposition": self.disposition,
             "disposition_detail": self.disposition_detail,
         }
+
+    def _payload(self) -> dict[str, Any]:
+        payload = self._base_payload()
+        if self.prepared_manifest_digest is not None:
+            # Only a state that actually binds an immutable prepared generation
+            # carries this key. Omitting it when absent keeps the identity of a
+            # pre-repair campaign row exactly what it was when committed, so an
+            # old-format workspace still loads and can be told, truthfully, that
+            # it needs one explicit `prepare`.
+            payload["prepared_manifest_digest"] = self.prepared_manifest_digest
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -485,6 +498,9 @@ class TargetSizeCampaignState:
                 payload.get("experiment_definition_digest")
             ),
             aggregate_digest=_text_or_none(payload.get("aggregate_digest")),
+            prepared_manifest_digest=_text_or_none(
+                payload.get("prepared_manifest_digest")
+            ),
             execution_context_digest=_text_or_none(
                 payload.get("execution_context_digest")
             ),

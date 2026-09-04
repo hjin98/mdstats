@@ -134,6 +134,7 @@ def commit_terminal_projection(
         policy_digest=state.policy_digest,
         experiment_definition_digest=state.experiment_definition_digest,
         aggregate_digest=state.aggregate_digest,
+        prepared_manifest_digest=state.prepared_manifest_digest,
         execution_context_digest=state.execution_context_digest,
         common_preparation_digest=state.common_preparation_digest,
         screen_window_digest=state.screen_window_digest,
@@ -274,7 +275,7 @@ class ValidatedTargetSizeTerminalResult:
 
     A consumer holding this object has established that:
     1. Campaign regime is CURRENT and lifecycle is terminal;
-    2. Current P1/P2 scientific authorities were reconstructed through accepted owners;
+    2. The immutable prepared generation was loaded and authenticated;
     3. Target-size scientific identity matches the canonical generation;
     4. P3 execution context matches the canonical generation;
     5. The persisted execution root was resolved through the real P3 owner;
@@ -323,18 +324,19 @@ def load_validated_target_size_terminal_result(
     replay and downstream P5 consumption. The loader always establishes the
     current campaign revision directly from CampaignStore. If an expected_revision
     assertion token is passed, it must match the current revision exactly.
-    Nothing persisted is trusted: current P1/P2 authorities are reconstructed
-    from source inputs, scientific and context identities are verified against
-    the current persisted generation, the persisted execution root and adopted
-    immutable head are re-authenticated through P3 owners, and the terminal
-    selection is re-derived before returning.
+    Nothing persisted is trusted blindly: the immutable prepared generation is
+    loaded and authenticated against the identities the campaign store binds,
+    the P3 execution context is re-derived, the persisted execution root and
+    adopted immutable head are re-authenticated through P3 owners, and the
+    terminal selection is re-derived before returning.
     """
 
     from ._campaign_cli_core import _cfg, _optimizer_policy
     from .campaign_target_size_cutover import require_current_target_size_runtime
     from .campaign_target_size_paths import target_size_execution_root
+    from .campaign_prepared_generation import PreparedGenerationError
     from .campaign_target_size_runtime import (
-        build_current_target_size_authorities,
+        load_prepared_target_size_generation,
     )
     from .target_size_execution import (
         TargetSizeExecutionResolver,
@@ -372,22 +374,18 @@ def load_validated_target_size_terminal_result(
             f"Campaign canonical generation {state.generation} has no persisted terminal projection."
         )
 
-    authorities = build_current_target_size_authorities(cfg, paths, store)
-
-    invalidation = classify_target_size_invalidation(state, authorities.identity)
-    if not invalidation.is_current:
-        raise TargetSizeTerminalProjectionError(
-            "The reconstructed target-size scientific identity does not match the persisted "
-            f"terminal generation ({', '.join(invalidation.changed_fields)}). Run `prepare` to bind "
-            "a fresh canonical generation; prior terminal results cannot be exposed or "
-            "reinterpreted under a changed identity."
+    # The prepared generation is loaded, not rebuilt: exposing a terminal result
+    # must not depend on reinterpreting live source bytes, and the loader itself
+    # proves the published substrate matches every identity the campaign store
+    # binds for this generation.
+    try:
+        authorities = load_prepared_target_size_generation(
+            cfg, paths, store, current
         )
-
-    if state.common_preparation_digest != authorities.common.content_digest:
-        raise TargetSizeTerminalProjectionError(
-            "The reconstructed common preparation digest does not match the persisted "
-            "terminal generation. Run `prepare` to bind a fresh canonical generation."
-        )
+    except PreparedGenerationError as exc:
+        # Exposing a terminal result under a substrate that no longer
+        # authenticates is exactly the projection failure this error names.
+        raise TargetSizeTerminalProjectionError(str(exc)) from exc
 
     aggregate = authorities.aggregate
     definition = aggregate.definition

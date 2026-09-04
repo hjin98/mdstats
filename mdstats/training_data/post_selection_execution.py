@@ -32,6 +32,7 @@ from ._common import (
     digest,
     validate_digest,
 )
+from .bounded_inference import run_bounded_inference
 from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
@@ -1388,6 +1389,7 @@ def evaluate_post_selection_dataset(
     root_directory: str | os.PathLike[str],
     provider: Any,
     block_ids: Sequence[str],
+    execution_batch_width: int,
     extxyz_policy: Any = None,
     inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
 ) -> Any:
@@ -1438,10 +1440,16 @@ def evaluate_post_selection_dataset(
         focus_atomic_numbers=(),
         condition_keys=(),
     )
-    if inference_evaluator is not None:
-        raw_predictions = inference_evaluator(provider, atoms_list)
-    else:
-        raw_predictions = provider.predict_batch(atoms_list)
+    # The evaluation population is scientific membership; the device batch is
+    # not. Post-selection evaluation shares the bounded execution boundary with
+    # target-size EVAL2 so the same oversized-batch failure cannot reappear on
+    # a CV monitor, replay, or outer population.
+    raw_predictions = run_bounded_inference(
+        provider,
+        atoms_list,
+        batch_width=execution_batch_width,
+        forward=inference_evaluator,
+    )
     if len(raw_predictions) != len(atoms_list):
         raise PostSelectionExecutionError(
             "Post-selection inference returned the wrong number of predictions."

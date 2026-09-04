@@ -77,6 +77,7 @@ from .post_selection_execution import (
     post_selection_checkpoint_candidates,
     post_selection_runtime_plan,
 )
+from .bounded_inference import execution_batch_width
 from .post_selection_identity import (
     CvValidationPolicyIdentity,
     FinalProductionPolicyIdentity,
@@ -543,6 +544,13 @@ def evaluate_post_selection_run_candidates(
     selected = context.selected
     admissibility = context.method_policies.checkpoint_admissibility
     extxyz_policy = context.method_policies.extxyz
+    batch_width = execution_batch_width(
+        _optimizer_policy_for(
+            context,
+            seed=run_plan.optimizer_seed,
+            planned_epochs=run_plan.planned_epochs,
+        )
+    )
 
     candidates = post_selection_checkpoint_candidates(
         run_plan=run_plan,
@@ -577,6 +585,7 @@ def evaluate_post_selection_run_candidates(
                 root_directory=material_directory,
                 provider=provider,
                 block_ids=monitor_blocks,
+                execution_batch_width=batch_width,
                 extxyz_policy=extxyz_policy,
                 inference_evaluator=context.inference_evaluator,
             )
@@ -613,6 +622,7 @@ def evaluate_post_selection_run_candidates(
                     root_directory=replay_monitor_path.parent,
                     provider=provider,
                     block_ids=replay_blocks,
+                    execution_batch_width=batch_width,
                     extxyz_policy=extxyz_policy,
                     inference_evaluator=context.inference_evaluator,
                 )
@@ -682,6 +692,7 @@ def evaluate_post_selection_run_candidates(
                         root_directory=replay_monitor_path.parent,
                         provider=baseline_provider,
                         block_ids=replay_blocks,
+                        execution_batch_width=batch_width,
                         extxyz_policy=extxyz_policy,
                         inference_evaluator=context.inference_evaluator,
                     )
@@ -896,6 +907,7 @@ def _execute_post_selection_run_locked(
                 root_directory=material_directory,
                 provider=provider,
                 block_ids=_component_block_ids(selected, outer_evaluation_frame_uids),
+                execution_batch_width=execution_batch_width(optimizer_policy),
                 extxyz_policy=extxyz_policy,
                 inference_evaluator=context.inference_evaluator,
             )

@@ -174,9 +174,19 @@ class QualificationEvidenceStore:
         )
 
 
-def open_qualification_store(paths: Any, binding: PostSelectionBinding) -> QualificationEvidenceStore:
+def open_qualification_store(
+    paths: Any, binding: PostSelectionBinding, *, create: bool = True
+) -> QualificationEvidenceStore:
+    """Open one generation's P7 evidence store.
+
+    ``create=False`` is the observational open: an absent root then means "no
+    evidence has ever been published", which is exactly what an observational
+    command must be able to report without changing it.
+    """
+
     root = qualification_root(paths, binding.campaign_generation)
-    root.mkdir(parents=True, exist_ok=True)
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
     return QualificationEvidenceStore(root=root)
 
 

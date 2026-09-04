@@ -251,8 +251,9 @@ def bind_current_target_size_authorities(
     experiment_definition_digest: str,
     aggregate_digest: str,
     common_preparation_digest: str | None = None,
+    prepared_manifest_digest: str | None = None,
 ) -> TargetSizeCampaignRevision:
-    """CAS-bind the reconstructed current P1/P2 authority identities.
+    """CAS-bind the published current P1/P2 authority identities.
 
     The caller must have constructed these through the accepted P1/P2 owners.
     Only stable identities are persisted; the owning loaders revalidate them.
@@ -273,6 +274,7 @@ def bind_current_target_size_authorities(
         policy_digest=policy_digest,
         experiment_definition_digest=experiment_definition_digest,
         aggregate_digest=aggregate_digest,
+        prepared_manifest_digest=prepared_manifest_digest,
         common_preparation_digest=common_preparation_digest,
         disposition="cutover_in_progress",
         disposition_detail=(
@@ -314,6 +316,7 @@ def complete_target_size_cutover(
         policy_digest=revision.state.policy_digest,
         experiment_definition_digest=revision.state.experiment_definition_digest,
         aggregate_digest=revision.state.aggregate_digest,
+        prepared_manifest_digest=revision.state.prepared_manifest_digest,
         common_preparation_digest=revision.state.common_preparation_digest,
     )
     return commit_target_size_campaign_transition(
@@ -357,6 +360,7 @@ def ensure_current_target_size_authorities(
     identity: Mapping[str, str],
     *,
     common_preparation_digest: str | None = None,
+    prepared_manifest_digest: str | None = None,
 ) -> TargetSizeCampaignRevision:
     """Bring the campaign to the current regime bound to exactly this identity.
 
@@ -374,9 +378,18 @@ def ensure_current_target_size_authorities(
     fields = dict(identity)
     if revision.state.regime is TargetSizeRegime.CURRENT:
         invalidation = classify_target_size_invalidation(revision.state, fields)
-        unchanged = invalidation.is_current and (
-            common_preparation_digest is None
-            or revision.state.common_preparation_digest == common_preparation_digest
+        unchanged = (
+            invalidation.is_current
+            and (
+                common_preparation_digest is None
+                or revision.state.common_preparation_digest
+                == common_preparation_digest
+            )
+            # A generation that binds a different -- or no -- prepared substrate
+            # is not the same generation, even when every scientific digest
+            # matches: downstream consumption loads the exact published members,
+            # so the binding itself is part of what makes the generation usable.
+            and revision.state.prepared_manifest_digest == prepared_manifest_digest
         )
         if unchanged:
             return revision
@@ -385,8 +398,16 @@ def ensure_current_target_size_authorities(
             generation=revision.state.generation + 1,
             lifecycle=TargetSizeLifecycle.AUTHORITIES_BOUND,
             common_preparation_digest=common_preparation_digest,
+            prepared_manifest_digest=prepared_manifest_digest,
             disposition="scientific_identity_changed",
-            disposition_detail=invalidation.detail,
+            disposition_detail=(
+                invalidation.detail
+                if not invalidation.is_current
+                else (
+                    "The prepared scientific substrate published for this campaign "
+                    "changed; a fresh canonical generation binds it."
+                )
+            ),
             **fields,
         )
         return commit_target_size_campaign_transition(
@@ -404,6 +425,7 @@ def ensure_current_target_size_authorities(
         store,
         transitioning,
         common_preparation_digest=common_preparation_digest,
+        prepared_manifest_digest=prepared_manifest_digest,
         **fields,
     )
     return complete_target_size_cutover(store, bound)

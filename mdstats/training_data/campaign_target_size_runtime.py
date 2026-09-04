@@ -194,11 +194,13 @@ def _authority_stage(label: str) -> Any:
 
 @dataclass(frozen=True, slots=True)
 class CurrentTargetSizeAuthorities:
-    """One reconstructed current P1/P2/P3 authority bundle.
+    """One complete P1/P2/P3-common authority bundle for a generation.
 
-    Every member is rebuilt from source inputs through its accepted owner.  The
-    campaign store holds only their identities, so nothing here is ever restored
-    from a mutable campaign row.
+    ``prepare`` builds this from live source inputs through the accepted owners
+    and publishes it as an immutable prepared generation.  Every later command
+    obtains the same bundle by loading that published generation, so a
+    downstream command never reinterprets live source bytes it does not own and
+    never pays O(dataset) reconstruction to establish currentness.
     """
 
     manifest: Any
@@ -213,6 +215,24 @@ class CurrentTargetSizeAuthorities:
     frame_catalog: Any
     frame_data_by_run: Mapping[str, Any]
     frame_array_index: Mapping[str, Any]
+    frame_records: tuple[Mapping[str, Any], ...] = ()
+
+    @property
+    def components(self) -> dict[str, Any]:
+        """Publishable prepared components, keyed by prepared-manifest name."""
+
+        return {
+            "manifest": self.manifest,
+            "source_catalog": self.source_catalog,
+            "frame_catalog": self.frame_catalog,
+            "source_authority": self.source_authority,
+            "frame_authority": self.frame_authority,
+            "feature_evidence": self.feature_evidence,
+            "neutral_base": self.neutral_base,
+            "split_exclusion": self.split_exclusion,
+            "aggregate": self.aggregate,
+            "common": self.common,
+        }
 
     @property
     def identity(self) -> dict[str, str]:
@@ -226,15 +246,26 @@ class CurrentTargetSizeAuthorities:
         }
 
 
-def build_current_target_size_authorities(
-    cfg: Mapping[str, Any], paths: Any, store: Any
+def build_prepared_target_size_substrate(
+    cfg: Mapping[str, Any],
+    paths: Any,
+    store: Any,
+    *,
+    data4: Any | None = None,
 ) -> CurrentTargetSizeAuthorities:
-    """Rebuild the current P1 -> P2 -> P3-common chain through its owners.
+    """Build the P1 -> P2 -> P3-common chain through its owners.
 
-    Only lower-level content-addressed inputs whose identity is independent of
-    retired target-size semantics are reused, and each is re-validated by the
-    owner that consumes it.  No retired selector, role-domain, coverage, or
-    qualification record participates.
+    This is the **prepare-only** construction boundary.  It performs fresh P1
+    authentication against the real source files and is the single place where
+    live inputs are interpreted.  No downstream command may call it, directly or
+    as a fallback: a missing or corrupt prepared generation fails closed with
+    guidance to run `prepare`, because silently rebuilding the substrate under a
+    generation that already owns immutable evidence would rebind that evidence
+    to a scientific state nobody accepted.
+
+    ``data4`` may be supplied when the caller has just constructed and validated
+    the bundle in this same invocation, so cold preparation does not persist a
+    sharded DATA4 record and immediately restore it again.
     """
 
     import mdstats
@@ -269,7 +300,8 @@ def build_current_target_size_authorities(
     source_catalog = store.get_record(
         "source_catalog", mdstats.TrainingDataSourceCatalog
     )
-    data4 = store.get_record("data4", mdstats.Data4FeatureBundle)
+    if data4 is None:
+        data4 = store.get_record("data4", mdstats.Data4FeatureBundle)
     frame_catalog = store.get_record("frame_catalog", mdstats.TrainingFrameCatalog)
 
     with _authority_stage("P1 source authority"):
@@ -290,7 +322,9 @@ def build_current_target_size_authorities(
     # a warm cache performs no source frame read at all and a rebuild performs
     # exactly one read per source.
     with _authority_stage("normalized frame data"):
-        frame_data_by_run = _load_or_rebuild_frame_data(cfg, paths, source_catalog)
+        frame_data_by_run, frame_records = _load_or_rebuild_frame_data(
+            cfg, paths, source_catalog
+        )
     with _authority_stage("P1 canonical frame authority"):
         canonical_atom_frames = sum(
             int(data.n_frames) * int(data.n_atoms)
@@ -363,7 +397,91 @@ def build_current_target_size_authorities(
         frame_catalog=frame_catalog,
         frame_data_by_run=frame_data_by_run,
         frame_array_index=frame_array_index,
+        frame_records=frame_records,
     )
+
+
+def load_prepared_target_size_generation(
+    cfg: Mapping[str, Any], paths: Any, store: Any, revision: Any
+) -> CurrentTargetSizeAuthorities:
+    """Load the immutable prepared generation bound to ``revision``.
+
+    This is the one canonical downstream consumption owner.  It authenticates
+    the published components against the exact manifest the campaign store
+    binds, then rebuilds only the cheap derived index that P3 materialization
+    needs.  It performs no source parsing, no DATA4 restore, and no P1/P2/P3
+    reconstruction, and it never falls back to the prepare builder.
+    """
+
+    from ._frame_access import build_frame_array_index
+    from .campaign_prepared_generation import (
+        PreparedGenerationConfigurationError,
+        PreparedGenerationError,
+        PreparedGenerationMissingError,
+        load_prepared_frame_data,
+        load_prepared_generation_components,
+        read_prepared_generation_manifest,
+    )
+
+    state = revision.state
+    manifest_digest = state.prepared_manifest_digest
+    if manifest_digest is None:
+        raise PreparedGenerationMissingError(
+            f"Canonical target-size generation {state.generation} was prepared by an "
+            "earlier implementation that persisted only scientific identities and no "
+            "immutable prepared substrate. It is not reinterpreted or retrofitted "
+            "from live sources. Run `prepare` once to bind a fresh generation; the "
+            "existing screen evidence stays historical under its own generation."
+        )
+    manifest = read_prepared_generation_manifest(paths, manifest_digest)
+    # Preparation-owned configuration is checked before anything is loaded. It
+    # is a pure config projection, so it costs nothing, and mixing a changed
+    # preparation policy into an already published generation would silently
+    # reinterpret evidence that was accepted under the old one.
+    changed = manifest.changed_preparation_configuration(cfg)
+    if changed:
+        raise PreparedGenerationConfigurationError(
+            "The preparation-owned configuration changed after canonical generation "
+            f"{state.generation} was prepared ({', '.join(changed)}). Run `prepare` to "
+            "bind a fresh canonical generation; prior evidence is never reinterpreted "
+            "under a changed preparation policy."
+        )
+    components = load_prepared_generation_components(paths, manifest)
+    frame_data_by_run = load_prepared_frame_data(
+        paths, manifest, components["source_catalog"]
+    )
+    frame_catalog = components["frame_catalog"]
+    frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
+    authorities = CurrentTargetSizeAuthorities(
+        manifest=components["manifest"],
+        source_catalog=components["source_catalog"],
+        source_authority=components["source_authority"],
+        frame_authority=components["frame_authority"],
+        feature_evidence=components["feature_evidence"],
+        neutral_base=components["neutral_base"],
+        split_exclusion=components["split_exclusion"],
+        aggregate=components["aggregate"],
+        common=components["common"],
+        frame_catalog=frame_catalog,
+        frame_data_by_run=frame_data_by_run,
+        frame_array_index=frame_array_index,
+        frame_records=manifest.frame_records,
+    )
+    observed = authorities.identity
+    for name, value in observed.items():
+        if getattr(state, name) != value:
+            raise PreparedGenerationError(
+                "The prepared scientific substrate published for this campaign "
+                f"generation does not match the identity the campaign store binds "
+                f"({name}). This is durable-state corruption; run `prepare` to bind a "
+                "fresh canonical generation rather than reinterpreting the old one."
+            )
+    if state.common_preparation_digest != authorities.common.content_digest:
+        raise PreparedGenerationError(
+            "The prepared common preparation does not match the digest the campaign "
+            "store binds for this canonical generation."
+        )
+    return authorities
 
 
 current_target_size_execution_root = target_size_execution_root
@@ -607,6 +725,10 @@ def execute_current_prepare(args: Any) -> int:
         _print_header,
         _require_stage_complete,
     )
+    from .campaign_prepared_generation import (
+        preparation_configuration_identity,
+        publish_prepared_generation,
+    )
     from .campaign_target_size_cutover import ensure_current_target_size_authorities
     from .campaign_target_size_view import write_target_size_result_view
 
@@ -642,25 +764,40 @@ def execute_current_prepare(args: Any) -> int:
         StageState.RUNNING,
         "rebuilding the current P1/P2 substrate and common preparation",
     )
+    prepared_data4 = None
     try:
         if bool(getattr(args, "rebuild_catalog", False)) or not store.has_record("data5"):
-            _prepare_catalog(
+            prepared_data4 = _prepare_catalog(
                 cfg,
                 paths,
                 store,
                 approve_manifest=False,
                 refresh_inferences=refresh_inferences,
-            )
+            )["data4"]
         else:
             _ok(
                 "lower-level source, frame, and feature inputs are present and will be "
                 "re-validated by the current P1 owners"
             )
-        authorities = build_current_target_size_authorities(cfg, paths, store)
+        authorities = build_prepared_target_size_substrate(
+            cfg, paths, store, data4=prepared_data4
+        )
+        # Publish before adopt: every immutable component and normalized frame
+        # member exists and authenticates before the campaign store is asked to
+        # make this generation current. An interruption here leaves unreachable
+        # content, never a current generation with a missing dependency.
+        prepared_manifest = publish_prepared_generation(
+            paths,
+            components=authorities.components,
+            frame_records=authorities.frame_records,
+            scientific_identity=authorities.identity,
+            preparation_configuration=preparation_configuration_identity(cfg),
+        )
         revision = ensure_current_target_size_authorities(
             store,
             authorities.identity,
             common_preparation_digest=authorities.common.content_digest,
+            prepared_manifest_digest=prepared_manifest.content_digest,
         )
     except Exception as exc:
         _mark_stage(store, paths, "prepare", StageState.FAILED, str(exc))
@@ -759,16 +896,7 @@ def build_screen_context(
         target_size_population_correlation_blocks,
     )
 
-    authorities = build_current_target_size_authorities(cfg, paths, store)
-    observed = authorities.identity
-    for name, value in observed.items():
-        if getattr(revision.state, name) != value:
-            raise TargetSizeRuntimeError(
-                "The reconstructed current target-size scientific identity no longer "
-                f"matches the persisted canonical generation ({name}). Run `prepare` "
-                "to start a fresh generation; existing screen evidence is never "
-                "reinterpreted under a changed identity."
-            )
+    authorities = load_prepared_target_size_generation(cfg, paths, store, revision)
     aggregate = authorities.aggregate
     definition = aggregate.definition
     schedule = build_target_size_screen_schedule(definition.policy.fidelity_epochs)
@@ -1149,6 +1277,7 @@ def execute_current_select_target_size(
                     revision.state.experiment_definition_digest
                 ),
                 aggregate_digest=revision.state.aggregate_digest,
+                prepared_manifest_digest=revision.state.prepared_manifest_digest,
                 execution_context_digest=screen.context.content_digest,
                 common_preparation_digest=screen.authorities.common.content_digest,
                 screen_window_digest=screen.window.content_digest,
@@ -1320,7 +1449,8 @@ __all__ = [
     "MaceTargetSizeBoundaryTrainer",
     "TargetSizeBoundaryTrainer",
     "TargetSizeRungRequest",
-    "build_current_target_size_authorities",
+    "build_prepared_target_size_substrate",
+    "load_prepared_target_size_generation",
     "build_screen_context",
     "execute_current_prepare",
     "execute_current_select_target_size",

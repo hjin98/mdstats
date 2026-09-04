@@ -7,6 +7,15 @@ Schema v2 stores each normalized array as an independent ``.npy`` member. The
 members can be opened read-only with ``mmap_mode='r'`` and shared by forked or
 spawned workers without decoding one monolithic NPZ into private memory.
 Schema-v1 NPZ entries remain readable.
+
+Entries are **content-addressed and immutable**. A prepared campaign generation
+binds exact member identities, so publishing new normalized content for the same
+run must never overwrite or delete the bytes an already adopted generation still
+requires. Writing an entry whose content identity already exists is a no-op that
+reuses the published member, which is also what makes two generations share the
+normalized payload of every unchanged run instead of copying it. The top-level
+``frame-cache.json`` remains a convenience discovery alias for the most recently
+finalized catalog; it is never the authority for a prepared generation.
 """
 
 from __future__ import annotations
@@ -30,6 +39,7 @@ from .frame_catalog import FrameData
 FRAME_CACHE_SCHEMA = "mdstats.mlff-frame-cache.v2"
 FRAME_CACHE_LEGACY_SCHEMA = "mdstats.mlff-frame-cache.v1"
 FRAME_CACHE_ENTRY_SCHEMA = "mdstats.mlff-frame-cache-entry.v2"
+FRAME_CACHE_ENTRY_DIRECTORY = "entries"
 
 
 def _sha256_file(path: Path) -> str:
@@ -144,21 +154,38 @@ def _payload_arrays(data: FrameData) -> dict[str, np.ndarray]:
     return payload
 
 
+def _entry_identity(manifest: Mapping[str, Any]) -> str:
+    """Content identity of one normalized entry, covering every member hash."""
+
+    encoded = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def frame_cache_entry_relative_path(entry_identity: str) -> str:
+    return f"{FRAME_CACHE_ENTRY_DIRECTORY}/{entry_identity}/arrays.json"
+
+
 def write_frame_data_cache_entry(
     run_id: str,
     source: Any,
     data: FrameData,
     directory: str | Path,
 ) -> dict[str, Any]:
-    """Atomically write one normalized run and return its manifest record.
+    """Publish one normalized run immutably and return its manifest record.
 
     Every array is an independently authenticated NPY member. This removes NPZ
     decompression/materialization and lets later stages share immutable arrays
     through the operating-system page cache.
+
+    The published location is derived from the entry content itself, so the
+    same normalized bytes are written once and reused by every generation that
+    binds them, and differing bytes never collide with -- or destroy -- an
+    entry that a current or in-flight prepared generation still requires.
     """
 
     root = Path(directory)
-    root.mkdir(parents=True, exist_ok=True)
+    entries_root = root / FRAME_CACHE_ENTRY_DIRECTORY
+    entries_root.mkdir(parents=True, exist_ok=True)
     if source.run_id != run_id:
         raise TrainingDataInputError("Frame-cache source/run identity mismatch.")
     if (
@@ -169,9 +196,7 @@ def write_frame_data_cache_entry(
             f"Frame-cache dimensions disagree for {run_id!r}."
         )
 
-    directory_name = _safe_directory_name(run_id)
-    destination = root / directory_name
-    temporary = root / f".{directory_name}.{os.getpid()}.tmp"
+    temporary = entries_root / f".staging-{_safe_directory_name(run_id)}.{os.getpid()}.tmp"
     shutil.rmtree(temporary, ignore_errors=True)
     temporary.mkdir(parents=True)
     arrays = _payload_arrays(data)
@@ -200,13 +225,20 @@ def write_frame_data_cache_entry(
         }
         entry_manifest_path = temporary / "arrays.json"
         entry_sha256 = _atomic_json(entry_manifest_path, entry_manifest)
-
-        old = root / f".{directory_name}.old-{os.getpid()}"
-        shutil.rmtree(old, ignore_errors=True)
-        if destination.exists():
-            os.replace(destination, old)
-        os.replace(temporary, destination)
-        shutil.rmtree(old, ignore_errors=True)
+        identity = _entry_identity(entry_manifest)
+        destination = entries_root / identity
+        if (destination / "arrays.json").is_file():
+            # The identical normalized content is already published. Reuse it
+            # rather than replacing bytes another generation may depend on.
+            shutil.rmtree(temporary, ignore_errors=True)
+        else:
+            try:
+                os.replace(temporary, destination)
+            except OSError:
+                # A concurrent publisher won the race with identical content.
+                if not (destination / "arrays.json").is_file():
+                    raise
+                shutil.rmtree(temporary, ignore_errors=True)
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
         raise
@@ -218,7 +250,8 @@ def write_frame_data_cache_entry(
         "frame_count": data.n_frames,
         "atom_count": data.n_atoms,
         "storage_kind": "npy_directory",
-        "relative_path": f"{directory_name}/arrays.json",
+        "relative_path": frame_cache_entry_relative_path(identity),
+        "entry_identity": identity,
         "sha256": entry_sha256,
         "arrays": sorted(arrays),
     }
@@ -445,42 +478,24 @@ def _load_v1_entry(path: Path) -> FrameData:
         )
 
 
-def load_frame_data_cache(
+def load_frame_data_cache_records(
     source_catalog: Any,
+    records: Any,
     directory: str | Path,
     *,
     verify_hashes: bool = True,
 ) -> dict[str, FrameData]:
-    """Load normalized frame arrays bound to ``source_catalog``."""
+    """Load normalized frame arrays from an exact, caller-supplied record set.
+
+    This is the authoritative entry point for a prepared campaign generation:
+    it binds the exact immutable members that generation published instead of
+    whatever the mutable discovery alias happens to name now.
+    """
 
     root = Path(directory)
-    manifest_path = root / "frame-cache.json"
-    if not manifest_path.is_file():
-        raise TrainingDataInputError(
-            "Normalized frame cache is absent; rebuild the prepare catalog."
-        )
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise TrainingDataSerializationError(
-            "Normalized frame-cache manifest is invalid."
-        ) from exc
-    schema = manifest.get("schema")
-    if schema not in {FRAME_CACHE_SCHEMA, FRAME_CACHE_LEGACY_SCHEMA}:
-        raise TrainingDataSerializationError(
-            "Unsupported normalized frame-cache schema."
-        )
-    if manifest.get("source_catalog_digest") != source_catalog.content_digest:
-        raise TrainingDataInputError(
-            "Normalized frame cache belongs to another DATA2 catalog."
-        )
-
     source_by_run = {source.run_id: source for source in source_catalog.sources}
-    records = {
-        str(record["run_id"]): record
-        for record in manifest.get("records", ())
-    }
-    if set(records) != set(source_by_run):
+    by_run = {str(record["run_id"]): record for record in records}
+    if set(by_run) != set(source_by_run):
         raise TrainingDataSerializationError(
             "Normalized frame cache does not cover the DATA2 runs exactly."
         )
@@ -489,7 +504,7 @@ def load_frame_data_cache(
     root_resolved = root.resolve()
     for run_id in sorted(source_by_run):
         source = source_by_run[run_id]
-        record = records[run_id]
+        record = by_run[run_id]
         if (
             record.get("source_identity_signature")
             != source.source_identity_signature
@@ -519,7 +534,7 @@ def load_frame_data_cache(
             raise TrainingDataSerializationError(
                 f"Frame-cache hash mismatch for {run_id!r}."
             )
-        if schema == FRAME_CACHE_SCHEMA and record.get("storage_kind") == "npy_directory":
+        if record.get("storage_kind") == "npy_directory":
             data = _load_v2_entry(path, record, verify_hashes=verify_hashes)
         else:
             data = _load_v1_entry(path)
@@ -534,12 +549,58 @@ def load_frame_data_cache(
     return output
 
 
+def read_frame_data_cache_manifest(directory: str | Path) -> dict[str, Any]:
+    """Read the non-authoritative discovery alias for a cache directory."""
+
+    manifest_path = Path(directory) / "frame-cache.json"
+    if not manifest_path.is_file():
+        raise TrainingDataInputError(
+            "Normalized frame cache is absent; rebuild the prepare catalog."
+        )
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TrainingDataSerializationError(
+            "Normalized frame-cache manifest is invalid."
+        ) from exc
+    if manifest.get("schema") not in {FRAME_CACHE_SCHEMA, FRAME_CACHE_LEGACY_SCHEMA}:
+        raise TrainingDataSerializationError(
+            "Unsupported normalized frame-cache schema."
+        )
+    return manifest
+
+
+def load_frame_data_cache(
+    source_catalog: Any,
+    directory: str | Path,
+    *,
+    verify_hashes: bool = True,
+) -> dict[str, FrameData]:
+    """Load normalized frame arrays bound to ``source_catalog``."""
+
+    manifest = read_frame_data_cache_manifest(directory)
+    if manifest.get("source_catalog_digest") != source_catalog.content_digest:
+        raise TrainingDataInputError(
+            "Normalized frame cache belongs to another DATA2 catalog."
+        )
+    return load_frame_data_cache_records(
+        source_catalog,
+        manifest.get("records", ()),
+        directory,
+        verify_hashes=verify_hashes,
+    )
+
+
 __all__ = [
     "FRAME_CACHE_SCHEMA",
     "FRAME_CACHE_LEGACY_SCHEMA",
     "FRAME_CACHE_ENTRY_SCHEMA",
+    "FRAME_CACHE_ENTRY_DIRECTORY",
     "finalize_frame_data_cache",
+    "frame_cache_entry_relative_path",
     "load_frame_data_cache",
+    "load_frame_data_cache_records",
+    "read_frame_data_cache_manifest",
     "write_frame_data_cache",
     "write_frame_data_cache_entry",
 ]

@@ -1078,6 +1078,8 @@ from .frame_cache import (
     FRAME_CACHE_SCHEMA,
     finalize_frame_data_cache,
     load_frame_data_cache,
+    load_frame_data_cache_records,
+    read_frame_data_cache_manifest,
     write_frame_data_cache,
     write_frame_data_cache_entry,
 )

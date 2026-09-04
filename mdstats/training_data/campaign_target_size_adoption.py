@@ -178,6 +178,7 @@ def adopt_reconciled_execution_head(
         policy_digest=state.policy_digest,
         experiment_definition_digest=state.experiment_definition_digest,
         aggregate_digest=state.aggregate_digest,
+        prepared_manifest_digest=state.prepared_manifest_digest,
         execution_context_digest=state.execution_context_digest,
         common_preparation_digest=state.common_preparation_digest,
         screen_window_digest=state.screen_window_digest,
