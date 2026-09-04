@@ -3,15 +3,15 @@ kind: implementation-workplan-authority-entrypoint
 workplan_id: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
 protocol_version: 5.14.0
 revision: 38
-status: implemented
-current_authority_pointer: STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md
+status: reopened
+current_authority_pointer: STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_20.md
 current_workplan: STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md
 accepted_design: STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md
-reviewed_current_executable_commit: 38b37f6761d30c66ec29e27abf8f2ee3a311f804
-reviewed_current_executable_tree: c5918d5db992c42b144b7770d100c160f9d417f7
-review_verdict: DESIGN-RESET / IMPLEMENTATION-COMPLETE
-implemented_commit: 58854cb7b7bd7e57733807086d77c18b47f9c28e
-implemented_tree: b209d26d2f1a297c14803da7b0877704f1ecbcad
+reviewed_candidate_executable_commit: 58854cb7b7bd7e57733807086d77c18b47f9c28e
+reviewed_candidate_executable_tree: b209d26d2f1a297c14803da7b0877704f1ecbcad
+reviewed_branch_head: 62e00bad5bc0373a991cf973977574a3b82a38a6
+reviewed_branch_tree: 8d4b3764fabe346ee7c7a03092f76b5159623122
+review_verdict: NO-PASS / IMPLEMENTATION-REOPENED
 ---
 
 # Storage/I-O reset package authority
@@ -20,67 +20,45 @@ This is the sole canonical navigation/status entrypoint for `CODE-MLFF-CAMPAIGN-
 
 ## Current normative handoff
 
-Implementation uses this supplied current authority set:
+Use this supplied authority set:
 
-- `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — original owner-driven storage product problem, engineering envelope, and non-goals;
-- `STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md` — current Protocol-5.14 snapshot-complete architecture-reduction and implementation contract;
-- `docs/specs/training_data/mlff_storage_management_spec.md` — stable behavioral storage contract; section 5c has been reconciled to the Revision 38 architecture and no longer describes classifier/default-engine implementation topology;
-- current source/tests — evidence of the pre-consolidation Tier-2 implementation to reduce, not authority for preserving it.
+- `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — original owner-driven storage problem, engineering envelope, and non-goals;
+- `STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md` — accepted Protocol-5.14 Tier-1/Frozen architecture and implementation contract;
+- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_20.md` — current bounded implementation-repair and closure authority;
+- `docs/specs/training_data/mlff_storage_management_spec.md` — stable storage contract except for the two explicitly identified stale cleanup-topology sentences in IR20-1, which must be corrected to match Revision 38 before closure;
+- current source/tests — implementation and acceptance evidence, not authority for preserving replaceable Tier-2 machinery.
 
-Revision 30-37 and implementation-review/reopen artifacts are historical provenance. They do not define the current target realization and are not required normative input for Revision 38.
+Revision 30-37 and IR1-IR19 are historical provenance. They do not reopen superseded Tier-2 mechanisms or define the current repair target.
 
-The reviewed current executable is commit `38b37f6761d30c66ec29e27abf8f2ee3a311f804`, tree `c5918d5db992c42b144b7770d100c160f9d417f7`. Later changes through this plan review are workplan/documentation-only and do not change that executable baseline.
+## Global invariants and Frozen architecture
 
-## Protocol adoption
+The original problem remains invariant: storage may reclaim campaign-managed bytes only when the real semantic owner positively establishes that the artifact is safely reclaimable/currently expendable, while externally supplied inputs and ambiguous/current/in-flight/unreadable/unresolved state fail closed. Consequential work uses an immutable owner-bound plan followed by synchronized fresh reauthentication/revalidation before mutation, and mutation must never silently retarget to a same-name replacement, symlink, or different mount.
 
-Revision 38 explicitly adopts backward-compatible Protocol **5.14.0**. The current handoff has been reconciled to the 5.14 three-tier authority model:
+Revision 38 freezes the high-level realization for this implementation cycle:
 
-- Tier 1A: intrinsic product/problem invariants;
-- Tier 1B: only deliberately Frozen high-level storage architecture;
-- Tier 2: replaceable implementation machinery, including functions, modules, helpers, callbacks, session representations, prior patches, tests, and implementation-created invariants unless separately justified and promoted.
-
-Affected-surface expansion does not create product requirements. Existing dependencies/tests do not promote Tier-2 machinery into Frozen authority.
-
-## Frozen storage architecture
-
-The storage subsystem is governed by these high-level decisions for this cycle:
-
-- real semantic owners remain the sole authority for scientific/currentness/reclaimability facts;
-- consequential work uses an immutable owner-bound plan and a synchronized fresh authority check before mutation;
-- there is one common non-destructive consequential execution envelope and one canonical production cleanup semantic path, with no hidden alternate destructive cleanup route;
-- ordinary and P7 cleanup share one canonical consequential filesystem destructive implementation family and one transition-truth model;
-- recursive cleanup requires whole-unit owner authority; an open/container root is not recursive destructive authority, and selectively reclaimable children are authorized as independent destructive units before mutation;
-- P7 retains its release/proof/generation/root/target semantics but does not own a second generic filesystem deletion algorithm;
-- mutation truth is established at the state-changing transition and is never inferred later from pathname disappearance, reclaimed-byte totals, or compatibility fallback;
-- archive/restore/dedup/maintenance remain specialized only where their transformation/recovery semantics materially require it;
+- real semantic owners remain the sole scientific/currentness/reclaimability authority;
+- the common consequential executor is a non-destructive synchronization/revalidation envelope, not an alternate cleanup engine;
+- there is one canonical cleanup semantic path and no default/hidden destructive route;
+- ordinary and released-P7 cleanup share one canonical consequential filesystem destructive implementation family and one transition-truth model;
+- recursive cleanup requires whole-unit owner authority; open/container ownership is not selective recursive destructive authority;
+- P7 retains release/proof/generation/root/target authority but delegates filesystem deletion mechanics to the canonical destructive owner;
+- mutation truth is captured at the state-changing transition and is not reconstructed from later pathname disappearance, reclaimed-byte totals, or compatibility fallback;
+- archive/restore/dedup/maintenance remain specialized only where materially required by distinct semantics;
 - no new persistent storage scientific/currentness authority or descriptor/inode/release/retry registry is introduced.
 
-Exact module/function names, callable counts/signatures, location of the current-owner gate, session-cache representation, callback identity, helper layout, and test organization are delegated Tier-2 realization. Revision 38 does not freeze them merely because the current implementation or acceptance harness names them.
+Exact functions, module layout, helper counts, session representation, callbacks, tests, and other Tier-2 mechanics remain replaceable. A repair must first delete, narrow, alter, consolidate, or replace causal Tier-2 machinery before adding a wrapper, fallback, classifier, compatibility route, state bit, retry layer, or second representation.
 
-## Active simplicity rule
+## 2026-09-04 implementation review disposition
 
-A defect created only by surviving Tier-2 machinery is a Tier-2 problem. Before adding a durable wrapper, fallback, classifier, compatibility path, state bit, retry, session layer, or second representation, implementation must first challenge whether deleting, narrowing, altering, consolidating, refactoring, or replacing the causal machinery makes the problem disappear.
+**Design/workplan:** **CLOSED / Revision 38 Frozen architecture remains accepted.** No Revision 39 or architectural redesign is justified by this review.
 
-Net-new machinery is justified only when it protects an identified Tier-1/Frozen requirement that the simplified existing realization cannot satisfy cleanly, or when one canonical mechanism replaces broader existing complexity and lowers total system complexity.
+**Implementation:** **NO-PASS / REOPENED** against executable candidate `58854cb7b7bd7e57733807086d77c18b47f9c28e`, tree `b209d26d2f1a297c14803da7b0877704f1ecbcad`; reviewed branch head `62e00bad5bc0373a991cf973977574a3b82a38a6`, tree `8d4b3764fabe346ee7c7a03092f76b5159623122`, differs from the executable candidate only by closure documentation/PDF regeneration successors.
 
-## Preservation
+The executable consolidation is materially aligned with Revision 38 O1-O6: the classifier/default destructive path was removed, the common executor no longer owns mutation, ordinary and P7 cleanup converge on `mdstats/training_data/storage/removal.py`, whole-unit owner authority is enforced at the destructive boundary, P7 delegates its filesystem mechanics, and transition/partial-byte truth is carried by the canonical removal owner rather than inferred later.
 
-Revision 38 preserves the hard product requirements established by the storage reset: owner-driven scientific/currentness authority, fail-closed ambiguity, protected external input, plan/apply freshness, storage/owner synchronization, safe no-follow/mount-aware destructive behavior within the supported POSIX boundary, P7 released-proof semantics, truthful absent/refused/removed/partial outcomes, exact zero-byte/hard-link/partial accounting, durability/recovery, truthful audit degradation, archive/restore/dedup/maintenance behavior, resource admission, Python >=3.10, and bounded reporting/audit behavior.
+Two genuine closure blockers remain and are bounded by `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_20.md`:
 
-## Revision discipline
+1. **O7 source/specification reconciliation is incomplete.** The Markdown still calls the ordinary plan-bound path an "ordinary default single-file removal" and says the public thin remover retains an "unbound convenience mode". Both describe machinery Revision 38 intentionally removed. The generated PDF therefore reproduces a false contract even though its build succeeded. Repair the contract by deleting/altering the stale claims; do not restore a default or unbound destructive route in code.
+2. **Exact-candidate functional acceptance is unproven.** The implementation SHA has no recorded GitHub Actions runs or commit statuses, and the closure handoff records no exact regression/integration/static execution commands or results. Source presence and static inspection are not execution evidence. Run and record the Revision-38 focused and affected-surface functional checks on the exact assembled candidate after the last material edit.
 
-Revision 38 is the bounded Design reconsideration triggered by repeated same-family failure and accumulated implementation machinery.
-
-After implementation, an ordinary defect still governed by the Frozen architecture is repaired by reducing/altering the surviving Tier-2 owner under the same authority. A new failure site, failing test, current helper dependency, or additional affected caller does not create another numbered storage revision.
-
-Reopen Design only when evidence shows that a Frozen high-level decision itself cannot satisfy a required product contract or the accepted engineering envelope.
-
-## Disposition
-
-**Design/workplan:** **CLOSED / implemented under Protocol 5.14.0 Revision 38.**
-
-**Implementation:** **COMPLETE** at commit `58854cb7b7bd7e57733807086d77c18b47f9c28e`, tree `b209d26d2f1a297c14803da7b0877704f1ecbcad`.
-
-The consolidation landed as O1-O7 required: one cleanup semantic path after the common execution envelope, one canonical consequential destructive implementation family (`mdstats/training_data/storage/removal.py`) shared by ordinary and released-P7 cleanup, whole-unit owner authority enforced live at the mutation boundary, and no surviving classifier, default destructive route, selective open-container recursion, or obsolete destructive compatibility surface. `docs/specs/training_data/mlff_storage_management_spec.md` section 5c is reconciled.
-
-**Deferred / unavailable:** the storage-specification PDF derivative is regenerated by the pinned `docs-build` CI toolchain (pandoc + typst), which is not installed in the development environment; it publishes on push of the changed Markdown. External DFT, long GPU production, and environment-specific HPC/shared-filesystem qualification remain deferred and nonblocking, as Revision 38 records.
+External DFT, long GPU production, and machine-specific HPC/shared-filesystem qualification remain deferred/nonblocking exactly as Revision 38 states. The reopened checks are ordinary functional regression/integration and closure verification, not production qualification.
