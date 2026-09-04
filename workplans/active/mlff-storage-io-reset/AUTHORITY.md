@@ -5,13 +5,13 @@ protocol_version: 5.10.0
 revision: 37
 status: reopened
 current_authority_pointer: AUTHORITY_REVISION_37.md
-current_workplan: STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_18.md
-current_review_note: AUTHORITY_REVIEW_NOTE_R37_IR18.md
+current_workplan: STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_19.md
+current_review_note: AUTHORITY_REVIEW_NOTE_R37_IR19.md
 accepted_design: STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md
-reviewed_executable_commit: 6391043b3641e007017d1781678c96a2b6b0d259
-reviewed_executable_tree: 4055b67f2f86954b4355023cc84c9b0134a76e85
-reviewed_branch_head: e76ca9cf40bc5b52b48827cb3503d4611b19de34
-reviewed_branch_tree: 5ab42b2996d58804e70871ee9dc436e34a968dea
+reviewed_executable_commit: 7aa938d71361d2cb2ce6e370165a9a12566669f3
+reviewed_executable_tree: 5fd91f30672fb7d9a2be89d6e0fdc261619509aa
+reviewed_branch_head: d035492a71652d562be7c23d0e1e77e8d5bb03c5
+reviewed_branch_tree: 0b5a898308406f49cef3bc561584c12b1fc4b562
 review_verdict: NO-PASS
 ---
 
@@ -27,43 +27,44 @@ Implementation uses this supplied current authority set:
 - `STORAGE_IO_MANAGEMENT_RESET_FINAL_APPLY_CLOSURE_REVISION_30.md` — accepted closed final-apply design and protected trust/outcome semantics;
 - `docs/specs/training_data/mlff_storage_management_spec.md` — current storage product contract;
 - `AUTHORITY_REVISION_37.md` — accepted Revision-37 bounded design/workplan authority;
-- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_18.md` — complete current bounded implementation/review correction after candidate `6391043b...`;
-- `AUTHORITY_REVIEW_NOTE_R37_IR18.md` — current candidate verdict and plan-closure summary.
+- `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_19.md` — complete current bounded implementation/review correction after candidate `7aa938d...`;
+- `AUTHORITY_REVIEW_NOTE_R37_IR19.md` — current candidate verdict and review summary.
 
-Earlier IR17 and Revision-31 through Revision-37 implementation-review artifacts are historical provenance only. They may identify useful maintained regression nodes, but no still-open requirement depends on loading them: current product semantics live in the current storage specification / accepted Revision-30/37 authority, and every still-open implementation/acceptance consequence is consolidated into IR18.
+IR18 and earlier implementation-review artifacts are historical provenance only. The current storage specification plus Revision 30/37 preserve the closed behavior, and every still-open implementation/acceptance consequence is consolidated into IR19.
 
-No Revision 38 is created. The open work is implementation/acceptance nonconformance under already accepted owner-authority, descriptor-capability, typed-subtree, P7 live-session, durability, close-ranking, and exact-candidate evidence semantics.
+No Revision 38 is created. The open work is implementation/acceptance nonconformance under already accepted invocation-local action authority, semantic-owner routing, descriptor-capability, durability, transition-truth, close-ranking, and exact-candidate evidence semantics.
 
 ## Reviewed candidate
 
-The executable candidate is `6391043b3641e007017d1781678c96a2b6b0d259`, tree `4055b67f2f86954b4355023cc84c9b0134a76e85`.
+The executable candidate is `7aa938d71361d2cb2ce6e370165a9a12566669f3`, tree `5fd91f30672fb7d9a2be89d6e0fdc261619509aa`.
 
-The branch successor `e76ca9cf40bc5b52b48827cb3503d4611b19de34`, tree `5ab42b2996d58804e70871ee9dc436e34a968dea`, changes only `docs/specs/training_data/mlff_storage_management_spec.pdf`; behavioral findings remain bound to the executable tree above.
+The branch successor `d035492a71652d562be7c23d0e1e77e8d5bb03c5`, tree `0b5a898308406f49cef3bc561584c12b1fc4b562`, changes only `docs/specs/training_data/mlff_storage_management_spec.pdf`; behavioral findings remain bound to the executable tree above.
 
 ## Preserved conforming implementation
 
-Preserve candidate `6391043b...` unless a narrowly necessary adjustment is required by IR18:
+Preserve candidate `7aa938d...` unless a narrowly necessary adjustment is required by IR19:
 
-- anchored componentwise descriptor acquisition and plan-bound opened-target identity;
-- default single-file final identity, fd-relative unlink, and same-parent durability;
+- one canonical positive cleanup semantic classifier shared by default and production cleanup;
+- fresh post-revalidation classification while storage lease and owner barriers remain held;
+- exact action-to-current-owner path binding and current remove/evict eligibility checks;
+- unknown exact-authorizer fail-closed behavior;
+- generic-leaf-only default destructive domain and whole-plan domain preflight;
+- production P7 exact-authorizer, owner-subtree, maintenance, and generic routing through the shared classification;
+- anchored componentwise descriptor acquisition, plan-bound opened-target identity, default single-file fd-relative unlink, and same-parent durability;
 - common opened authority/container identities, typed members, and action-wide mutation truth;
 - final no-follow name-vs-opened-descriptor comparison before fd-relative `rmdir` and same-parent fsync;
 - exact unlink/publication transition callbacks and archive/restore-journal transition phases;
-- ranked recursive mount-refusal close, exactly-once no-follow acquisition cleanup, failed P7 session-acquisition ranking, and one-way session invalidation;
-- shared `MutationLedger`, exact action bytes, zero-credit mutation truth, complete P7 target identity, two-attempt isolation, and all other conforming Revision-30 through Revision-37 behavior represented in the current specification and maintained tests.
+- ranked close/finalization behavior, one-way P7 session invalidation, shared `MutationLedger`, exact action bytes, zero-credit mutation truth, and the other conforming Revision-30 through Revision-37 behavior represented in the current specification and maintained tests.
 
-## Current bounded reopen — corrected IR18
+## Current bounded reopen — IR19
 
-The complete still-open contract is `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_18.md`. Its plan-closure refinements are material:
+The complete still-open contract is `STORAGE_IO_MANAGEMENT_RESET_IMPLEMENTATION_REVIEW_REOPEN_19.md`. In summary:
 
-1. cleanup semantic routing must have **one canonical classifier/dispatch owner** consumed by both production cleanup and `StorageExecutor.run(..., engine=None)`; duplicated negative fallthrough is not acceptable closure;
-2. classification uses the **fresh post-revalidation snapshot while the storage lease and owner barriers remain held**;
-3. every cleanup action is positively bound to the matching current owner view and action-kind eligibility; an `artifact_id` cannot camouflage a different path or ineligible action;
-4. the default engine has a positive **generic-leaf-only** destructive domain; P7/exact-authorizer, owner-scoped directory/container, maintenance/specialized, cache-directory, unknown/special, and ambiguous/malformed shapes fail closed;
-5. wrong-engine/domain incompatibility is preflighted across the **entire plan before any mutation**, independent of action order;
-6. production cleanup consumes the same classification and retains its existing P7/common/maintenance/generic implementations rather than maintaining a second semantic definition;
-7. acceptance explicitly covers common/P7 bypass, both mixed-plan orders, maintenance, cache-directory, mismatched action/view binding, owner-ineligible actions, unknown exact authorizer, generic-leaf liveness, production routing, and structural absence of residual generic fallthrough;
-8. after the final executable/test edit, fresh exact-candidate focused, affected-regression, complete core/integration, owner-regression, collection/static/structural/document evidence is mandatory with commands and pass/fail/skip counts.
+1. the cleanup/default execution domain must be explicitly bound to the **cleanup policy action family**; a non-cleanup plan cannot spend `ACTION_REMOVE` / `ACTION_EVICT_CACHE` authority through `engine=None`, and even an empty non-cleanup plan must not settle `complete` through the default cleanup engine;
+2. the generic destructive branch must be **explicitly positive** (`CLASS_GENERIC_LEAF` or equivalent exhaustive dispatch), with any residual/unexpected semantic class failing closed instead of mutating;
+3. the structural negative proof must detect a classifier-present function that also contains an undominated generic-remover call; mere function-level co-occurrence of classifier/guard tokens is insufficient evidence of dominance;
+4. preserve the successful IR18 common/P7/mixed-order/maintenance/cache/action-owner/owner-eligibility/unknown-authorizer/generic-liveness/production-routing behavior;
+5. after the final executable/test edit, fresh exact-candidate focused, affected-regression, complete core/integration, owner-regression, collection/static/structural/document evidence is mandatory with commands and pass/fail/skip counts.
 
 Serena/Semgrep/Hypothesis remain optional evidence helpers under Protocol 5.10. Use them where available and materially useful; their absence does not relax the product or acceptance claim.
 
@@ -71,6 +72,6 @@ External DFT, long GPU production, and environment-specific HPC/shared-storage q
 
 ## Disposition
 
-**Design/workplan:** Revision 30 + Revision 37 + current storage specification + corrected IR18 are **CLOSED / implementation-ready**.
+**Design/workplan:** Revision 30 + Revision 37 + current storage specification + IR19 are **CLOSED / implementation-ready**.
 
-**Reviewed executable `6391043b3641e007017d1781678c96a2b6b0d259`, tree `4055b67f2f86954b4355023cc84c9b0134a76e85`: NO-PASS / reopened under IR18.**
+**Reviewed executable `7aa938d71361d2cb2ce6e370165a9a12566669f3`, tree `5fd91f30672fb7d9a2be89d6e0fdc261619509aa`: NO-PASS / reopened under IR19.**
