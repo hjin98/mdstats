@@ -7480,80 +7480,169 @@ def test_a_directory_shaped_evictable_cache_is_owner_scoped_not_generic(
     )
 
 
-def test_no_cleanup_branch_falls_through_to_the_generic_remover():
-    """IR18-1 case 11: every generic removal is dominated by its class.
+def _generic_remover_findings(source: str) -> list[str]:
+    """Consequential `remove_planned_outcome` references that are not dominated.
 
-    The rule is validated on a known-positive and a known-negative construct
-    before its zero-finding result over the real modules is relied on, because a
-    structural check that silently matches nothing proves nothing.
+    A call is *dominated* only when every path from its enclosing function's
+    entry to the call passes through a positive test on ``CLASS_GENERIC_LEAF``.
+    Lexical nesting inside that branch's body is what this checks, which is the
+    conservative direction: a correctly dominated call is nested, and a call
+    reached by falling out of earlier owner-specific tests is not.
+
+    Function-level co-occurrence is deliberately *not* accepted. A dispatcher
+    that legitimately classifies and preflights its plan and then also contains
+    one undominated generic call is exactly the shape this family exists to
+    catch, and a co-occurrence rule reports it as clean.
+
+    A bare reference to the remover that is not an immediate call is reported
+    too: aliasing it into a variable or a handler table would move the mutation
+    out of this analysis' reach.
+
+    Scope/limits: one module's own source. Dominance through ``match``
+    statements, decorators, or a call made by another module on this module's
+    behalf is not modelled; the census in
+    `test_every_production_storage_execution_supplies_an_explicit_engine` and
+    the executed counterfactual tests cover what this cannot see. A zero-finding
+    result is a claim about the scanned modules only.
     """
 
     import ast as _ast
 
+    target = "remove_planned_outcome"
+
+    def _is_generic_guard(test) -> bool:
+        if isinstance(test, _ast.Compare):
+            if not all(isinstance(op, _ast.Eq) for op in test.ops):
+                return False
+            return any(
+                isinstance(operand, _ast.Name) and operand.id == "CLASS_GENERIC_LEAF"
+                for operand in (test.left, *test.comparators)
+            )
+        if isinstance(test, _ast.BoolOp) and isinstance(test.op, _ast.And):
+            return any(_is_generic_guard(value) for value in test.values)
+        return False
+
+    findings: list[str] = []
+    #: (enclosing function, dominated by the generic class, is an immediate call)
+    seen: list[tuple[str, bool, bool]] = []
+
+    def _walk(node, function: str, guarded: bool) -> None:
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            if node.name == target:
+                return  # the remover's own definition, not a call site
+            for child in node.body:
+                _walk(child, node.name, False)
+            return
+        if isinstance(node, _ast.If):
+            _walk(node.test, function, guarded)
+            inner = guarded or _is_generic_guard(node.test)
+            for child in node.body:
+                _walk(child, function, inner)
+            for child in node.orelse:
+                _walk(child, function, guarded)
+            return
+        if isinstance(node, _ast.Call):
+            name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+            if name == target:
+                seen.append((function, guarded, True))
+                for child in [*node.args, *(kw.value for kw in node.keywords)]:
+                    _walk(child, function, guarded)
+                return
+        if isinstance(node, _ast.Name) and node.id == target:
+            seen.append((function, guarded, False))
+            return
+        for child in _ast.iter_child_nodes(node):
+            _walk(child, function, guarded)
+
+    for node in _ast.parse(source).body:
+        _walk(node, "<module>", False)
+
+    for function, guarded, is_call in seen:
+        if function == "<module>":
+            continue  # module-level `__all__` strings and re-exports
+        if not is_call:
+            findings.append(f"{function}: aliased reference to {target}")
+        elif not guarded:
+            findings.append(f"{function}: undominated call to {target}")
+    return findings
+
+
+def test_no_cleanup_branch_falls_through_to_the_generic_remover():
+    """IR18-1 case 11 / IR19-C3: every generic removal is dominated by its class.
+
+    The rule is validated against a known-bad and a known-good construct before
+    its zero-finding result over the real modules is relied on. The known-bad
+    case is specifically the false negative IR19 identified: a function that
+    does legitimate classification and preflight work *and also* contains an
+    undominated generic removal.
+    """
+
     package = Path(cli.__file__).parent
 
-    def _generic_calls_not_dominated(source: str) -> list[str]:
-        """Calls to `remove_planned_outcome` not guarded by the classification.
-
-        A call is dominated when the enclosing function establishes the
-        canonical classification and the call site is not reachable from a
-        branch that merely failed to match earlier owner-specific tests.
-        """
-
-        tree = _ast.parse(source)
-        findings: list[str] = []
-        for node in _ast.walk(tree):
-            if not isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-                continue
-            if node.name == "remove_planned_outcome":
-                # The generic remover's own definition; it is the implementation
-                # being dominated, not a call site.
-                continue
-            calls = any(
-                isinstance(child, _ast.Call)
-                and getattr(child.func, "id", getattr(child.func, "attr", ""))
-                == "remove_planned_outcome"
-                for child in _ast.walk(node)
-            )
-            if not calls:
-                continue
-            body = _ast.dump(node)
-            classified = (
-                "classify_cleanup_plan" in body or "classify_cleanup_action" in body
-            )
-            guarded = "CLASS_GENERIC_LEAF" in body or "require_supported_domain" in body
-            if not (classified and guarded):
-                findings.append(node.name)
-        return findings
-
-    positive = (
-        "def bad(plan, snapshot):\n"
+    classifier_present_but_undominated = (
+        "def bad(plan, snapshot, policy):\n"
+        "    items = classify_cleanup_plan(plan, snapshot, policy)\n"
+        "    require_supported_domain(items, engine='x', supported=(CLASS_GENERIC_LEAF,))\n"
+        "    for item in items:\n"
+        "        if item.semantic_class == CLASS_MAINTENANCE:\n"
+        "            continue\n"
+        "        remove_planned_outcome(item.action, anchor=plan.workspace)\n"
+    )
+    negative_fallthrough = (
+        "def worse(plan, snapshot):\n"
         "    for action in plan.actions:\n"
         "        if action.kind == 'p7':\n"
         "            continue\n"
         "        remove_planned_outcome(action, anchor=plan.workspace)\n"
     )
-    negative = (
-        "def good(plan, snapshot):\n"
+    aliased = (
+        "def sneaky(plan, snapshot, policy):\n"
         "    items = classify_cleanup_plan(plan, snapshot, policy)\n"
-        "    require_supported_domain(items, engine='x', supported=(CLASS_GENERIC_LEAF,))\n"
         "    for item in items:\n"
-        "        remove_planned_outcome(item.action, anchor=plan.workspace)\n"
+        "        if item.semantic_class == CLASS_GENERIC_LEAF:\n"
+        "            handler = remove_planned_outcome\n"
+        "            handler(item.action, anchor=plan.workspace)\n"
     )
-    assert _generic_calls_not_dominated(positive) == ["bad"], (
-        "the structural rule cannot see an undominated generic removal"
-    )
-    assert _generic_calls_not_dominated(negative) == [], (
-        "the structural rule rejects a correctly dominated generic removal"
+    dominated_with_closed_residual = (
+        "def good(plan, snapshot, policy):\n"
+        "    items = classify_cleanup_plan(plan, snapshot, policy)\n"
+        "    require_supported_domain(items, engine='x', supported=DOMAIN)\n"
+        "    for item in items:\n"
+        "        if item.semantic_class == CLASS_GENERIC_LEAF:\n"
+        "            record_or_reraise(\n"
+        "                result,\n"
+        "                item.action,\n"
+        "                lambda action=item.action: remove_planned_outcome(\n"
+        "                    action, anchor=plan.workspace\n"
+        "                ),\n"
+        "            )\n"
+        "            continue\n"
+        "        raise StorageEngineDomainError('no handler')\n"
     )
 
+    assert _generic_remover_findings(classifier_present_but_undominated) == [
+        "bad: undominated call to remove_planned_outcome"
+    ], "the rule accepts the exact false negative IR19 identified"
+    assert _generic_remover_findings(negative_fallthrough) == [
+        "worse: undominated call to remove_planned_outcome"
+    ]
+    assert _generic_remover_findings(aliased) == [
+        "sneaky: aliased reference to remove_planned_outcome"
+    ]
+    assert _generic_remover_findings(dominated_with_closed_residual) == [], (
+        "the rule rejects a correctly dominated generic removal"
+    )
+
+    # Scope: the two consequential cleanup dispatch modules.
     for name in ("executor.py", "commands.py"):
         source = (package / "storage" / name).read_text(encoding="utf-8")
-        assert _generic_calls_not_dominated(source) == [], name
+        assert _generic_remover_findings(source) == [], name
 
     # Exactly one canonical classifier owns the decision, and both consequential
     # cleanup paths consume it rather than maintaining a second definition.
     domain = (package / "storage" / "cleanup_domain.py").read_text(encoding="utf-8")
+    import ast as _ast
+
     definitions = [
         node.name
         for node in _ast.walk(_ast.parse(domain))
@@ -7942,3 +8031,512 @@ def test_production_cleanup_still_routes_every_class_to_its_owner(campaign):
     assert any(
         item["action"] == "prune_campaign_events" for item in result.completed
     ), result.completed
+
+
+# ---------------------------------------------------------------------------
+# IR19 / IR19 plan closure: cleanup action-family totality and positive dispatch
+#
+# IR18 closed *who* may mutate one cleanup action. IR19 closes the two ways that
+# answer could still be reached from outside a cleanup invocation:
+#
+#   IR19-C1  `StorageExecutor.run` and `_cleanup_engine` are generic shells.
+#            `revalidate_plan()` proves the executor policy and the plan policy
+#            agree with each other; it never proves the actions they agree on
+#            belong to the action family that authorized the invocation. So an
+#            archive/dedup/restore/report invocation could carry an owner-
+#            released `remove` and spend cleanup deletion authority - and an
+#            *empty* wrong-family plan could settle `complete`, reporting that
+#            an engine executed an operation it never implements.
+#
+#   IR19-C2  Production cleanup named its owner-specific classes and then let
+#            the residual branch mean "generic destructive removal". That is the
+#            negative-fallthrough shape IR18 exists to remove, one level up.
+# ---------------------------------------------------------------------------
+
+
+def _ir19_wrong_family_run(
+    campaign,
+    *,
+    default_engine,
+    action,
+    cfg=None,
+    tier="safe",
+    plan_actions=None,
+):
+    """A real apply plan deliberately built under a *non-cleanup* policy.
+
+    Everything below the policy is real: real owners, real planning, real
+    `build_storage_plan`, real `StorageExecutor.run`, real audit. The only
+    malformation is the one under test - the invocation's action family.
+    """
+
+    context = _ir18_context(campaign, cfg)
+    cleanup_policy = resolve_storage_policy(
+        cfg if cfg is not None else {}, action=ACTION_CLEANUP, tier=tier, apply=True
+    )
+    context.consequential_plane(cleanup_policy)
+    cleanup_plan, snapshot = storage_commands.build_cleanup_plan(
+        context, cleanup_policy.for_apply(apply=False)
+    )
+    actions = list(cleanup_plan.actions)
+    if plan_actions is not None:
+        actions = list(plan_actions(actions, snapshot))
+    wrong_policy = resolve_storage_policy(
+        cfg if cfg is not None else {}, action=action, tier=tier, apply=True
+    )
+    apply_plan = build_storage_plan(
+        snapshot,
+        wrong_policy,
+        actions,
+        refusals=cleanup_plan.refusals,
+        created_utc=cleanup_plan.created_utc,
+    )
+    # The point of the counterfactual: ordinary revalidation is *satisfied*.
+    # Policy identity, action equality, owner binding, protection closure, and
+    # per-action filesystem identity all hold, so nothing before the cleanup
+    # family gate would have refused this execution.
+    revalidate_plan(apply_plan, snapshot, wrong_policy)
+
+    engine = (
+        None
+        if default_engine
+        else storage_commands._cleanup_engine(context, wrong_policy)
+    )
+    raised: BaseException | None = None
+    result = None
+    try:
+        result = context.executor(wrong_policy).run(
+            apply_plan,
+            trigger="test:ir19",
+            synchronization=synchronization_for(apply_plan, snapshot),
+            engine=engine,
+        )
+    except BaseException as exc:  # noqa: BLE001 - propagation is the contract
+        raised = exc
+    return result, raised, apply_plan
+
+
+def _assert_wrong_family_refusal(campaign, result, raised, *, action):
+    """Refused, non-mutating, zero-byte, durably audited - and for this reason."""
+
+    from mdstats.training_data.storage.cleanup_domain import StorageEngineDomainError
+
+    assert isinstance(raised, StorageEngineDomainError), raised
+    detail = str(raised)
+    assert action in detail, detail
+    assert "cleanup" in detail and "action family" in detail, detail
+    assert result is None, "a wrong-family execution must not settle a result"
+    audit = _last_audit(campaign)
+    assert audit is not None, "the refused truth was never published"
+    assert audit["status"] == "refused", audit
+    assert audit["mutated"] is False, audit
+    assert int(audit["reclaimed_bytes"]) == 0, audit
+    assert audit["completed_actions"] == [], audit
+    assert "re-plan" not in audit["detail"], audit["detail"]
+    return detail
+
+
+def test_the_default_engine_refuses_a_non_cleanup_policy_carrying_a_removal(campaign):
+    """IR19-C1 case A: an archive invocation cannot spend cleanup deletion.
+
+    The plan is built under a real archive policy but carries the real,
+    owner-released generic leaf the cleanup planner produced. Revalidation
+    succeeds; the plan-level cleanup family gate is what refuses, and the leaf
+    survives byte for byte.
+    """
+
+    from mdstats.training_data.storage import executor as executor_mod
+
+    leaf = _generic_leaf(campaign)
+    before = leaf.read_bytes()
+
+    calls: list[str] = []
+    real = executor_mod.remove_planned_outcome
+    executor_mod.remove_planned_outcome = lambda action, **kw: calls.append(
+        str(action.path)
+    )
+    try:
+        result, raised, plan = _ir19_wrong_family_run(
+            campaign,
+            default_engine=True,
+            action=ACTION_ARCHIVE,
+            plan_actions=lambda actions, snapshot: [
+                item for item in actions if item.path == leaf
+            ],
+        )
+    finally:
+        executor_mod.remove_planned_outcome = real
+
+    assert [item.action for item in plan.actions] == ["remove"], plan.actions
+    _assert_wrong_family_refusal(campaign, result, raised, action=ACTION_ARCHIVE)
+    assert calls == [], calls
+    assert leaf.exists() and leaf.read_bytes() == before
+
+
+def test_the_default_engine_refuses_an_empty_non_cleanup_plan(campaign):
+    """IR19-C1 case B: the family gate is plan-level, not per-action.
+
+    An empty plan has no action to classify, so a per-action family test would
+    let this settle `complete` - falsely reporting that the default cleanup
+    engine executed the requested archive operation.
+    """
+
+    _generic_leaf(campaign)
+    result, raised, plan = _ir19_wrong_family_run(
+        campaign,
+        default_engine=True,
+        action=ACTION_DEDUPLICATE,
+        plan_actions=lambda actions, snapshot: [],
+    )
+    assert plan.actions == (), plan.actions
+    _assert_wrong_family_refusal(campaign, result, raised, action=ACTION_DEDUPLICATE)
+
+
+@pytest.mark.parametrize("shape", ["generic_leaf", "maintenance"])
+def test_production_cleanup_refuses_a_non_cleanup_plan(campaign, shape):
+    """IR19-C1 case C: the production engine consumes the same plan-level gate.
+
+    Both a removal-shaped and a maintenance-shaped wrong-family plan are refused
+    before owner dispatch: maintenance is exactly as out of domain as removal
+    once the invocation is not a cleanup.
+    """
+
+    from mdstats.training_data.storage import commands as commands_mod
+
+    campaign.historical_run()
+    for index in range(4000):
+        campaign.store.event("info", "fixture", "x" * 256)
+    cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}}
+    leaf = _generic_leaf(campaign)
+
+    generic: list[str] = []
+    subtree: list[str] = []
+    real_generic = commands_mod.remove_planned_outcome
+    real_subtree = commands_mod.remove_certified_subtree
+    commands_mod.remove_planned_outcome = lambda action, **kw: generic.append(
+        str(action.path)
+    )
+    commands_mod.remove_certified_subtree = lambda path, **kw: subtree.append(str(path))
+
+    def _select(actions, snapshot):
+        if shape == "generic_leaf":
+            return [item for item in actions if item.path == leaf]
+        return [item for item in actions if item.action in ("prune_campaign_events",)]
+
+    try:
+        result, raised, plan = _ir19_wrong_family_run(
+            campaign,
+            default_engine=False,
+            action=ACTION_RESTORE,
+            cfg=cfg,
+            plan_actions=_select,
+        )
+    finally:
+        commands_mod.remove_planned_outcome = real_generic
+        commands_mod.remove_certified_subtree = real_subtree
+
+    assert plan.actions, f"the {shape} fixture produced no action to carry"
+    _assert_wrong_family_refusal(campaign, result, raised, action=ACTION_RESTORE)
+    assert generic == [] and subtree == [], (generic, subtree)
+    assert leaf.exists()
+
+
+def test_the_exported_classifier_never_positively_classifies_a_wrong_family(
+    tmp_path: Path,
+):
+    """IR19-C1 case D: the exported single-action classifier is family-bound.
+
+    `classify_cleanup_action` is public. A consumer that reaches it directly
+    must not be able to obtain `generic_leaf`, `maintenance`, `owner_subtree`,
+    or `exact_authorizer` under an archive/dedup/restore/report policy, or the
+    family gate would exist only on the plan-level path.
+    """
+
+    from mdstats.training_data.storage.cleanup_domain import (
+        CLASS_GENERIC_LEAF,
+        CLASS_INVALID,
+        CLASS_MAINTENANCE,
+        classify_cleanup_action,
+    )
+    from mdstats.training_data.storage.owners import ArtifactClass
+    from mdstats.training_data.storage.plan import ACTION_PRUNE_EVENTS, ACTION_REMOVE
+
+    leaf = tmp_path / "residue.bin"
+    leaf.write_bytes(b"r" * 16)
+    view = OwnerArtifactView(
+        owner="storage",
+        artifact_id="storage:residue",
+        path=leaf,
+        artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
+        detail="released orphan record",
+        safe_reclaimable=True,
+    )
+    action = _cleanup_action(
+        action=ACTION_REMOVE, path=leaf, artifact_id="storage:residue", view=view
+    )
+    snapshot = _classifier_snapshot([view])
+
+    # The control: under a genuine cleanup policy this is exactly generic leaf.
+    assert (
+        classify_cleanup_action(
+            action, snapshot, _policy(action=ACTION_CLEANUP, tier="safe")
+        ).semantic_class
+        == CLASS_GENERIC_LEAF
+    )
+
+    maintenance_action = _cleanup_action(
+        action=ACTION_PRUNE_EVENTS, path=leaf, artifact_id="campaign:state"
+    )
+    assert (
+        classify_cleanup_action(
+            maintenance_action, snapshot, _policy(action=ACTION_CLEANUP, tier="safe")
+        ).semantic_class
+        == CLASS_MAINTENANCE
+    )
+
+    for wrong in (ACTION_ARCHIVE, ACTION_DEDUPLICATE, ACTION_RESTORE, ACTION_REPORT):
+        wrong_policy = _policy(action=wrong, tier="safe")
+        for candidate in (action, maintenance_action):
+            classification = classify_cleanup_action(candidate, snapshot, wrong_policy)
+            assert classification.semantic_class == CLASS_INVALID, (
+                wrong,
+                candidate.action,
+                classification,
+            )
+            assert not classification.valid
+            assert "action family" in classification.detail, classification.detail
+
+
+@pytest.mark.parametrize("default_engine", [True, False])
+def test_a_genuinely_empty_cleanup_plan_is_a_valid_no_op(campaign, default_engine):
+    """IR19-C1 case E: `empty` never means `refuse`; wrong-family does.
+
+    The gate distinguishes an empty *cleanup* invocation - a legitimate,
+    successful, non-mutating outcome - from an empty wrong-family one.
+    """
+
+    result, raised, plan = _ir18_run(
+        campaign,
+        default_engine=default_engine,
+        plan_actions=lambda actions, snapshot: [],
+    )
+    assert raised is None, raised
+    assert plan.actions == (), plan.actions
+    assert result is not None
+    assert result.status == "complete", result.to_dict()
+    assert result.mutated is False, result.to_dict()
+    audit = _last_audit(campaign)
+    assert audit["status"] == "complete", audit
+    assert audit["mutated"] is False, audit
+    assert int(audit["reclaimed_bytes"]) == 0, audit
+
+
+def _ir19_engine_dispatch_sources():
+    """The two consequential cleanup dispatchers and their declared domains."""
+
+    package = Path(cli.__file__).parent / "storage"
+    return (
+        ("executor.py", "_execute_actions", "DEFAULT_CLEANUP_DOMAIN"),
+        ("commands.py", "_engine", "PRODUCTION_CLEANUP_DOMAIN"),
+    ), package
+
+
+def _ir19_handled_classes(function_node) -> set[str]:
+    """Semantic-class names this dispatcher explicitly branches on."""
+
+    import ast as _ast
+
+    handled: set[str] = set()
+    for node in _ast.walk(function_node):
+        if not isinstance(node, _ast.Compare):
+            continue
+        if not all(isinstance(op, _ast.Eq) for op in node.ops):
+            continue
+        for operand in (node.left, *node.comparators):
+            if isinstance(operand, _ast.Name) and operand.id.startswith("CLASS_"):
+                handled.add(operand.id)
+    return handled
+
+
+def test_each_cleanup_engine_declares_exactly_the_classes_it_dispatches():
+    """IR19-C2 case A: supported domain and handler set are one closed set.
+
+    A defensive residual raise keeps a domain/handler mismatch from mutating,
+    but two silently divergent lists still recreate the routing debt IR18 was
+    opened for. This is the completeness half: the set each engine preflights as
+    supported must equal the set it explicitly branches on.
+    """
+
+    import ast as _ast
+
+    from mdstats.training_data.storage import cleanup_domain as domain_mod
+    from mdstats.training_data.storage import commands as commands_mod
+    from mdstats.training_data.storage import executor as executor_mod
+
+    modules = {"executor.py": executor_mod, "commands.py": commands_mod}
+    targets, package = _ir19_engine_dispatch_sources()
+    for filename, function_name, domain_name in targets:
+        tree = _ast.parse((package / filename).read_text(encoding="utf-8"))
+        functions = [
+            node
+            for node in _ast.walk(tree)
+            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+            and node.name == function_name
+        ]
+        assert len(functions) == 1, (filename, function_name, len(functions))
+        handled = {
+            getattr(domain_mod, name) for name in _ir19_handled_classes(functions[0])
+        }
+        declared = set(getattr(modules[filename], domain_name))
+        assert declared, (filename, domain_name)
+        assert declared == handled, (filename, sorted(declared), sorted(handled))
+        # And the declared domain is a subset of what the canonical classifier
+        # can actually return, so a typo cannot widen an engine silently.
+        assert declared <= set(domain_mod.CLEANUP_SEMANTIC_CLASSES), filename
+
+    # Every positively classifiable class has a home in production cleanup.
+    assert set(commands_mod.PRODUCTION_CLEANUP_DOMAIN) == set(
+        domain_mod.CLEANUP_SEMANTIC_CLASSES
+    )
+
+    # IR19-C1: both engines reach per-action semantics only through the one
+    # canonical entry point, and that entry point runs the plan-level cleanup
+    # family gate unconditionally, before any action is classified.
+    plan_classifier = next(
+        node
+        for node in _ast.walk(_ast.parse((package / "cleanup_domain.py").read_text("utf-8")))
+        if isinstance(node, _ast.FunctionDef) and node.name == "classify_cleanup_plan"
+    )
+    statements = [
+        node
+        for node in plan_classifier.body
+        if not (
+            isinstance(node, _ast.Expr)
+            and isinstance(node.value, _ast.Constant)
+            and isinstance(node.value.value, str)
+        )
+    ]
+    gate = next(
+        index
+        for index, node in enumerate(statements)
+        if "require_cleanup_family" in _ast.dump(node)
+    )
+    classification = next(
+        index
+        for index, node in enumerate(statements)
+        if "classify_cleanup_action" in _ast.dump(node)
+    )
+    assert gate < classification, "the family gate does not precede classification"
+    assert not any(
+        isinstance(node, (_ast.If, _ast.Try)) for node in statements[: gate + 1]
+    ), "the family gate is conditional"
+
+
+@pytest.mark.parametrize("default_engine", [True, False])
+def test_an_unhandled_semantic_class_fails_closed_instead_of_mutating(
+    campaign, default_engine
+):
+    """IR19-C2 case B: the residual branch raises; it never removes.
+
+    The domain is widened with a class no dispatcher implements - exactly what a
+    future owner class would look like on the day it is added to the accepted
+    domain but not to the dispatch. The preflight therefore admits it, and the
+    only thing standing between it and `remove_planned_outcome` is the residual
+    branch under test.
+    """
+
+    from mdstats.training_data.storage import commands as commands_mod
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.cleanup_domain import (
+        CleanupClassification,
+        StorageEngineDomainError,
+    )
+
+    leaf = _generic_leaf(campaign)
+    module = executor_mod if default_engine else commands_mod
+    domain_name = "DEFAULT_CLEANUP_DOMAIN" if default_engine else "PRODUCTION_CLEANUP_DOMAIN"
+    real_domain = getattr(module, domain_name)
+    real_classify = module.classify_cleanup_plan
+    real_generic = module.remove_planned_outcome
+    calls: list[str] = []
+
+    def future_classify(plan, snapshot, policy=None, **kwargs):
+        items = real_classify(plan, snapshot, policy, **kwargs)
+        return tuple(
+            CleanupClassification(
+                item.action, "future_owner_class", item.view, "an unimplemented class"
+            )
+            for item in items
+        )
+
+    setattr(module, domain_name, tuple(real_domain) + ("future_owner_class",))
+    module.classify_cleanup_plan = future_classify
+    module.remove_planned_outcome = lambda action, **kw: calls.append(str(action.path))
+    try:
+        result, raised, plan = _ir18_run(
+            campaign,
+            default_engine=default_engine,
+            plan_actions=lambda actions, snapshot: [
+                item for item in actions if item.path == leaf
+            ],
+        )
+    finally:
+        setattr(module, domain_name, real_domain)
+        module.classify_cleanup_plan = real_classify
+        module.remove_planned_outcome = real_generic
+
+    assert plan.actions, "the generic-leaf fixture produced no action"
+    assert isinstance(raised, StorageEngineDomainError), raised
+    assert "no handler" in str(raised), raised
+    assert "future_owner_class" in str(raised), raised
+    assert calls == [], calls
+    assert result is None
+    assert leaf.exists(), "a class with no handler reached a destructive path"
+    audit = _last_audit(campaign)
+    assert audit["status"] == "refused", audit
+    assert audit["mutated"] is False, audit
+    assert int(audit["reclaimed_bytes"]) == 0, audit
+
+
+def test_every_production_storage_execution_supplies_an_explicit_engine():
+    """IR19-C3 census: no production `StorageExecutor.run` relies on `engine=None`.
+
+    Scan scope: `mdstats/training_data/storage/commands.py`, the only module in
+    the package that calls `StorageExecutor.run`. That claim is itself checked
+    below over the whole `mdstats` package, so the narrow scope is established
+    rather than assumed. Tests deliberately drive `engine=None`; they are not
+    production callers and are outside this scope.
+    """
+
+    import ast as _ast
+
+    root = Path(cli.__file__).parent.parent
+    callers: list[str] = []
+    for source_path in sorted(root.rglob("*.py")):
+        source = source_path.read_text(encoding="utf-8")
+        if ".run(" not in source:
+            continue
+        tree = _ast.parse(source)
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Call):
+                continue
+            if getattr(node.func, "attr", "") != "run":
+                continue
+            keywords = {kw.arg for kw in node.keywords}
+            if "trigger" not in keywords or "synchronization" not in keywords:
+                continue  # not a `StorageExecutor.run` call
+            relative = source_path.relative_to(root).as_posix()
+            callers.append(relative)
+            engine = next((kw for kw in node.keywords if kw.arg == "engine"), None)
+            assert engine is not None, (
+                f"{relative}:{node.lineno} calls StorageExecutor.run without an engine"
+            )
+            assert not (
+                isinstance(engine.value, _ast.Constant) and engine.value.value is None
+            ), (
+                f"{relative}:{node.lineno} runs a production plan on the default "
+                "cleanup engine"
+            )
+    assert callers, "the census found no StorageExecutor.run call at all"
+    assert set(callers) == {"training_data/storage/commands.py"}, sorted(set(callers))
+    assert len(callers) == 5, callers

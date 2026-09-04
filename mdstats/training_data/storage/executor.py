@@ -168,6 +168,12 @@ def operation_identity(plan: StoragePlan) -> str:
 #: the result it must fill in truthfully.  It never re-derives authority.
 Engine = Callable[[StoragePlan, StorageInventorySnapshot, StorageExecutionResult], None]
 
+#: The default engine's complete destructive domain, declared once.  It is both
+#: the set :func:`require_supported_domain` preflights and the set the dispatch
+#: loop below branches on; a focused invariant test proves the two agree, so a
+#: future class cannot be admitted to the domain without a handler.
+DEFAULT_CLEANUP_DOMAIN = (CLASS_GENERIC_LEAF,)
+
 
 class StorageExecutor:
     """Authorize and run one consequential storage operation."""
@@ -250,11 +256,24 @@ class StorageExecutor:
                         # not a stale plan, and not an owner refusing a target.
                         # It is materialized and durably published here, and only
                         # then does the typed failure continue to the caller.
-                        result.status = STATUS_REFUSED
-                        result.detail = (
-                            "the plan was refused before any action was attempted "
-                            f"because the selected engine cannot execute it: {exc}"
-                        )
+                        if result.mutated:
+                            # A domain failure raised by a fail-closed residual
+                            # branch *after* an earlier action already completed
+                            # is unreachable while every declared class has a
+                            # handler, but the audit still reports what actually
+                            # happened rather than a sentence that erases a
+                            # persistent change.
+                            result.status = STATUS_PARTIAL
+                            result.detail = (
+                                "the execution stopped at an action the selected "
+                                f"engine cannot execute: {exc}"
+                            )
+                        else:
+                            result.status = STATUS_REFUSED
+                            result.detail = (
+                                "the plan was refused before any action was attempted "
+                                f"because the selected engine cannot execute it: {exc}"
+                            )
                         self._finalize(result, trigger=trigger)
                         raise
                     except BaseException as exc:
@@ -363,24 +382,38 @@ class StorageExecutor:
         convenient prefix of it has already been spent.
         """
 
-        classifications = classify_cleanup_plan(plan, snapshot, self.policy)
+        classifications = classify_cleanup_plan(
+            plan, snapshot, self.policy, engine="default cleanup engine"
+        )
         require_supported_domain(
             classifications,
             engine="default cleanup engine",
-            supported=(CLASS_GENERIC_LEAF,),
+            supported=DEFAULT_CLEANUP_DOMAIN,
         )
         for item in classifications:
             action = item.action
-            authorized, detail = self.authorize_path(action.path, snapshot)
-            if not authorized:
-                result.refused.append({**action.to_dict(), "refusal": detail})
+            if item.semantic_class == CLASS_GENERIC_LEAF:
+                authorized, detail = self.authorize_path(action.path, snapshot)
+                if not authorized:
+                    result.refused.append({**action.to_dict(), "refusal": detail})
+                    continue
+                record_or_reraise(
+                    result,
+                    action,
+                    lambda action=action: remove_planned_outcome(
+                        action, anchor=plan.workspace
+                    ),
+                )
                 continue
-            record_or_reraise(
-                result,
-                action,
-                lambda action=action: remove_planned_outcome(
-                    action, anchor=plan.workspace
-                ),
+            # Unreachable while the preflight above and this branch declare the
+            # same one class. It is written as a positive branch plus a
+            # fail-closed residual anyway, so that widening the declared domain
+            # without adding a handler raises here instead of silently turning
+            # the loop body into a generic fallback.
+            raise StorageEngineDomainError(
+                f"the default cleanup engine has no handler for the "
+                f"{item.semantic_class!r} class of {action.action} {action.path}; "
+                "no action was attempted"
             )
 
     def _audit(self, result: StorageExecutionResult, *, trigger: str) -> None:
@@ -1569,6 +1602,7 @@ __all__ = [
     "operation_identity",
     "remove_certified_subtree",
     "remove_durably",
+    "DEFAULT_CLEANUP_DOMAIN",
     "remove_planned_outcome",
     "synchronization_for",
 ]

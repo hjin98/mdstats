@@ -50,7 +50,7 @@ from .plan import (
     PlannedAction,
     StoragePlan,
 )
-from .policy import TIER_CACHE, StoragePolicy
+from .policy import ACTION_CLEANUP, TIER_CACHE, StoragePolicy
 
 #: A released-attempt or other owner-specific exact authorizer decides this
 #: action.  Only the named owner implementation may mutate it.
@@ -66,6 +66,16 @@ CLASS_GENERIC_LEAF = "generic_leaf"
 CLASS_MAINTENANCE = "maintenance"
 #: Nothing above could be positively established.  Fails closed before mutation.
 CLASS_INVALID = "invalid"
+
+#: Every semantic class this module can positively return.  An engine's declared
+#: destructive domain is a subset of this set; a class outside it is not cleanup
+#: work at all.
+CLEANUP_SEMANTIC_CLASSES = (
+    CLASS_EXACT_AUTHORIZER,
+    CLASS_OWNER_SUBTREE,
+    CLASS_GENERIC_LEAF,
+    CLASS_MAINTENANCE,
+)
 
 #: The exact authorizers a specialized owner implementation exists for.  An
 #: authorizer absent from this set is unsupported, never generic.
@@ -102,6 +112,44 @@ class CleanupClassification:
         return self.semantic_class != CLASS_INVALID
 
 
+def _wrong_family_detail(policy: StoragePolicy, *, engine: str) -> str:
+    return (
+        f"the {engine} may only execute the {ACTION_CLEANUP!r} action family, but "
+        f"this plan was resolved under the {policy.action!r} action; cleanup "
+        "deletion authority is invocation-local and is never spent by another "
+        "storage action"
+    )
+
+
+def require_cleanup_family(
+    policy: StoragePolicy,
+    *,
+    engine: str,
+    plan_policy: StoragePolicy | None = None,
+) -> None:
+    """Refuse a whole plan whose invocation is not the cleanup action family.
+
+    This is the plan-level half of the cleanup domain, and it is deliberately
+    *total*: it runs before any action is inspected or dispatched, so an empty
+    plan, a maintenance-only plan, and a plan carrying an owner-released generic
+    leaf are all refused identically under an archive/dedup/restore/report
+    policy.  ``revalidate_plan`` proves the executor policy and the plan policy
+    agree with *each other*; it cannot prove that the actions they agree on
+    belong to the family that authorized the invocation.  That is this gate.
+
+    A genuinely empty ``cleanup`` plan is untouched and remains a valid no-op.
+    """
+
+    for candidate in (policy, plan_policy):
+        if candidate is None:
+            continue
+        if candidate.action != ACTION_CLEANUP:
+            raise StorageEngineDomainError(
+                _wrong_family_detail(candidate, engine=engine)
+                + "; no action was inspected and nothing was attempted"
+            )
+
+
 def classify_cleanup_action(
     action: PlannedAction,
     snapshot,
@@ -117,6 +165,14 @@ def classify_cleanup_action(
     def _invalid(detail: str, view: OwnerArtifactView | None = None):
         return CleanupClassification(action, CLASS_INVALID, view, detail)
 
+    if policy.action != ACTION_CLEANUP:
+        # Cleanup semantic authority exists only inside a cleanup invocation.
+        # This classifier is exported, so an archive/dedup/restore/report policy
+        # must not be able to obtain a *positive* cleanup class here either -
+        # otherwise the family gate would live only in the plan-level path and a
+        # direct consumer could still launder deletion authority into a
+        # different action family.
+        return _invalid(_wrong_family_detail(policy, engine="cleanup classifier"))
     if action.action in MAINTENANCE_ACTIONS:
         return CleanupClassification(
             action,
@@ -281,11 +337,20 @@ def _leaf_authority_requirements(view: OwnerArtifactView) -> tuple[str, ...]:
 
 
 def classify_cleanup_plan(
-    plan: StoragePlan, snapshot, policy: StoragePolicy | None = None
+    plan: StoragePlan,
+    snapshot,
+    policy: StoragePolicy | None = None,
+    *,
+    engine: str = "cleanup engine",
 ) -> tuple[CleanupClassification, ...]:
-    """Classify every action in one plan, in plan order."""
+    """Classify every action in one plan, in plan order.
+
+    The cleanup action-family gate runs first and unconditionally, so every
+    cleanup engine that reaches per-action semantics necessarily traversed it.
+    """
 
     resolved = policy if policy is not None else plan.policy
+    require_cleanup_family(resolved, engine=engine, plan_policy=plan.policy)
     return tuple(
         classify_cleanup_action(action, snapshot, resolved) for action in plan.actions
     )
@@ -327,9 +392,11 @@ __all__ = [
     "CLASS_OWNER_SUBTREE",
     "GENERIC_LEAF_KINDS",
     "IMPLEMENTED_EXACT_AUTHORIZERS",
+    "CLEANUP_SEMANTIC_CLASSES",
     "CleanupClassification",
     "StorageEngineDomainError",
     "classify_cleanup_action",
     "classify_cleanup_plan",
+    "require_cleanup_family",
     "require_supported_domain",
 ]

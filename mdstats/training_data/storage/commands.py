@@ -51,6 +51,7 @@ from .cleanup_domain import (
     CLASS_GENERIC_LEAF,
     CLASS_MAINTENANCE,
     CLASS_OWNER_SUBTREE,
+    StorageEngineDomainError,
     classify_cleanup_plan,
     require_supported_domain,
 )
@@ -456,6 +457,18 @@ def _view_node_kind(view: Any) -> str:
     return "directory" if view.coverage is SubtreeCoverage.CLOSED else "file"
 
 
+#: The production cleanup engine's complete semantic domain, declared once.  It
+#: is both the preflight's supported set and the set the dispatcher branches on;
+#: a focused invariant test proves the two agree so a class can never be admitted
+#: to the domain without an explicit handler.
+PRODUCTION_CLEANUP_DOMAIN = (
+    CLASS_MAINTENANCE,
+    CLASS_EXACT_AUTHORIZER,
+    CLASS_GENERIC_LEAF,
+    CLASS_OWNER_SUBTREE,
+)
+
+
 def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
     """Cleanup removals plus the separately planned owner maintenance."""
 
@@ -487,16 +500,13 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
         # semantics cannot be positively established refuses the whole plan
         # before anything mutates rather than falling through to generic
         # removal.
-        classifications = classify_cleanup_plan(plan, snapshot, policy)
+        classifications = classify_cleanup_plan(
+            plan, snapshot, policy, engine="production cleanup engine"
+        )
         require_supported_domain(
             classifications,
             engine="production cleanup engine",
-            supported=(
-                CLASS_EXACT_AUTHORIZER,
-                CLASS_OWNER_SUBTREE,
-                CLASS_GENERIC_LEAF,
-                CLASS_MAINTENANCE,
-            ),
+            supported=PRODUCTION_CLEANUP_DOMAIN,
         )
         try:
             for item in classifications:
@@ -518,6 +528,20 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                         sessions,
                         open_released_attempt_session,
                         remove_released_attempt_member,
+                    )
+                    continue
+                if item.semantic_class == CLASS_GENERIC_LEAF:
+                    # The plan's own target binding, spent at the mutation
+                    # boundary. A consequential cleanup never reaches an unbound
+                    # removal mode while `PlannedAction.filesystem_identity`
+                    # exists. This is a *positive* branch on the generic class,
+                    # not the residual of the tests above.
+                    record_or_reraise(
+                        result,
+                        action,
+                        lambda action=action: remove_planned_outcome(
+                            action, anchor=plan.workspace
+                        ),
                     )
                     continue
                 if item.semantic_class == CLASS_OWNER_SUBTREE:
@@ -543,16 +567,15 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                         ),
                     )
                     continue
-                # CLASS_GENERIC_LEAF. The plan's own target binding, spent at
-                # the mutation boundary. A consequential cleanup never reaches
-                # an unbound removal mode while
-                # `PlannedAction.filesystem_identity` exists.
-                record_or_reraise(
-                    result,
-                    action,
-                    lambda action=action: remove_planned_outcome(
-                        action, anchor=plan.workspace
-                    ),
+                # Every class this engine declares support for has an explicit
+                # positive branch above. A class that reaches here was admitted
+                # to the declared domain without a handler; it fails closed
+                # before any destructive work rather than falling through to
+                # generic removal.
+                raise StorageEngineDomainError(
+                    "the production cleanup engine has no handler for the "
+                    f"{item.semantic_class!r} class of {action.action} "
+                    f"{action.path}; no further action was attempted"
                 )
         except BaseException as exc:  # noqa: BLE001 - re-raised after cleanup
             primary = exc
