@@ -6,132 +6,191 @@ parent_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 protocol_version: 5.8.0
 status: active
 created_date: 2026-09-04
+amended_date: 2026-09-04
 branch: plan/mlff-storage-io-reset-r37-review-closure
 branch_baseline: 4d61cd1f5ba0356a5746d5c45254430db5188595
-scope: bounded-P4-stage-ownership-persistence-currentness-and-I/O-simplification
+scope: bounded-P4-stage-ownership-persistence-currentness-I/O-and-direct-EVAL2-resource-safety
 compatibility_policy: destructive-current-generation-rebind-no-scientific-change
-design_reopen: P4-D prepare/select/terminal prepared-state ownership only
+design_reopen: P4-D prepared-state ownership plus P3 direct-EVAL2 execution batching only
 ---
 
-# P4 prepared-generation stage-boundary repair
+# P4 prepared-generation stage-boundary and direct-EVAL2 resource-safety repair
 
-## 0. Verdict and reason for reopening P4-D
+## 0. Verdict and bounded design reopening
 
 **NO-PASS until this amendment closes.**
 
-The current runtime violates the intended stage ownership of the V7 lifecycle. `prepare` constructs the expensive target-size scientific substrate, but the implementation persists only selected digests and then makes later commands reconstruct the same upstream scientific graph again. The result is repeated O(dataset) work and repeated large-artifact I/O across command boundaries.
+Two independent implementation defects now block the current target-size workflow.
 
-The present call graph is materially:
+### Defect A — preparation is reconstructed across command boundaries
+
+`prepare` constructs the expensive target-size scientific substrate, but the implementation persists only selected identities and later commands reconstruct the same upstream scientific graph. The present control flow is materially:
 
 ```text
 prepare
-  -> _prepare_catalog(...) when needed
-       -> DATA2/DATA3/DATA4/DATA5 construction and persistence
-  -> build_current_target_size_authorities(...)
-       -> restore DATA4 from CampaignStore
-       -> rebuild P1 source authority
-       -> fresh P1 source authentication
-       -> restore/rebuild normalized frame payload
-       -> rebuild canonical frame authority
-       -> rebuild neutral statistical substrate
-       -> rebuild P2 target-size aggregate
-       -> rebuild P3 common preparation
-  -> persist only target-size generation identities/digests
+  -> DATA2/DATA3/DATA4/DATA5 + normalized frame payload as needed
+  -> restore DATA4
+  -> rebuild/authenticate P1
+  -> rebuild neutral substrate / split exclusion
+  -> rebuild P2 aggregate
+  -> rebuild P3 common preparation
+  -> persist generation identities/digests
 
 select-target-size
-  -> build_screen_context(...)
-       -> build_current_target_size_authorities(...) AGAIN
-            -> restore DATA4 AGAIN
-            -> rebuild P1/P2/P3-common AGAIN
+  -> restore DATA4 AGAIN
+  -> rebuild P1/P2/P3-common AGAIN
   -> run/resume P3 screen
 
-terminal result exposure / replay / downstream P5 consumption
-  -> load_validated_target_size_terminal_result(...)
-       -> build_current_target_size_authorities(...) AGAIN
-            -> restore DATA4 AGAIN
-            -> rebuild P1/P2/P3-common AGAIN
-       -> validate P3 head/reducer/terminal projection
+terminal/current-result/P5-facing load
+  -> restore DATA4 AGAIN
+  -> rebuild P1/P2/P3-common AGAIN
+  -> validate P3 terminal evidence
 ```
 
-`CampaignStore.get_record("data4", Data4FeatureBundle)` is not a cheap pointer lookup. It restores and verifies the sharded DATA4 artifact. Therefore every downstream call to `build_current_target_size_authorities(...)` can replay the full DATA4 restore path even though DATA4 is already a completed prepare-owned artifact.
+`CampaignStore.get_record("data4", Data4FeatureBundle)` performs the real sharded DATA4 restore/verification path. This is repeated O(dataset) work, not a cheap currentness check.
 
-The recently implemented post-DATA4 performance repair remains useful inside the **prepare builder**: it removed redundant direct VASP frame rereads, split fresh P1 authentication from frame payload acquisition, reused the existing normalized frame cache, and restored bounded canonical-frame parallelism. However, it optimized an upstream reconstruction that downstream commands should not be performing at all. Further tuning of repeated reconstruction would preserve the wrong lifecycle.
+The prior post-DATA4 performance repair remains valid inside the **prepare builder**: it removed redundant direct VASP frame rereads, separated fresh P1 authentication from frame acquisition, reused normalized frame data, and restored bounded canonical-frame parallelism. It does not justify repeating preparation in downstream commands.
 
-This amendment therefore reopens only the P4-D prepared-state/currentness architecture and the directly dependent terminal/current-exposure validation path. It does **not** reopen target-size science, P1/P2 scientific semantics, P3 screen/reducer semantics, CampaignStore as the sole current-generation authority, STOR ownership, P5 science, or P7 science.
+### Defect B — direct EVAL2 passes the scientific population as one GPU batch
+
+The supplied failing production run reaches the first target-size boundary, completes TRAIN2, then fails in direct EVAL2 inference with:
+
+```text
+run_target_size_direct_boundary_inference(...)
+  -> provider.predict_batch(atoms_list)
+  -> MaceCalculatorProvider.predict_batch(...)
+  -> one native torch_geometric Batch for the entire atoms_list
+  -> model(... compute_stress=True ...)
+  -> CUDA OOM
+```
+
+Observed failure evidence includes:
+
+- GPU total capacity about 23.55 GiB;
+- about 8.26 GiB free at the failing operation;
+- one additional requested allocation of about 8.54 GiB;
+- about 14.58 GiB already actively allocated by PyTorch;
+- only about 72.62 MiB reserved-but-unallocated.
+
+Therefore allocator fragmentation is not the material cause. The active derivative-bearing MACE forward for the full evaluation set exceeds the device envelope. `PYTORCH_CUDA_ALLOC_CONF`, `empty_cache()`, or allocator tuning cannot make an intrinsically oversized full-evaluation batch a sound execution policy.
+
+The current source confirms the mismatch:
+
+```text
+run_target_size_direct_boundary_inference
+  -> read and authenticate exact-M evaluation artifact
+  -> atoms_list = all M frames
+  -> provider.predict_batch(atoms_list)
+```
+
+while the native provider path:
+
+```text
+predict_batch(atoms_batch)
+  -> _native_batch(atoms_batch)
+       -> build one CPU graph batch
+       -> move that whole batch to the configured device
+  -> derivative-enabled model forward
+```
+
+The scientific **evaluation population size M** and the resource **execution batch width** are different concepts. Conflating them makes VRAM scale with the full scientific population and will become worse at later M2/M3 boundaries.
+
+This amendment therefore reopens only:
+
+1. P4-D prepared-state/currentness ownership and its dependent terminal/current-result seam; and
+2. the P3 direct-EVAL2 **execution batching/resource realization**, without changing any P3 scientific role, population, model-state, metric, reduction, or evidence semantics.
+
+A bounded sibling census is also required for direct MACE evaluation consumers that repeat the same full-list `predict_batch(...)` pattern, including post-selection evaluation if the current candidate still does so. This is affected-surface expansion of the same resource invariant, not a reopening of P5 science.
 
 ---
 
 ## 1. Original problem and product invariants
 
-The stakeholder-visible workflow is staged deliberately:
+The stakeholder-visible lifecycle remains:
 
 ```text
 prepare
-  -> construct and freeze the scientific substrate for one target-size generation
+  -> construct and freeze the scientific substrate for one generation
 
 select-target-size
-  -> consume that frozen substrate and perform the paired-seed configurable-fidelity screen
+  -> consume that frozen substrate
+  -> execute paired-seed configurable-fidelity TRAIN2/EVAL2 screening
 
-post-selection / terminal consumers
-  -> consume the same frozen generation and its authenticated P3 descendants
+terminal/post-selection consumers
+  -> consume the same frozen generation and authenticated P3 descendants
 ```
 
-The product requirement is not merely that all commands eventually derive equal digests. The stage boundary must make expensive completed preparation reusable and restartable.
+The product must be scientifically exact, restartable, reusable across command boundaries, and executable within the configured machine resource envelope without requiring a scientific-policy change merely to fit memory.
 
 ### 1.1 Frozen scientific invariants
 
 The following remain unchanged:
 
 1. The V7 target-size scientific question and one-dimensional `N` experiment.
-2. Exact P1 source/canonical-frame semantics, including the accepted source/control/ensemble/energy authentication facts.
+2. Exact P1 source/canonical-frame semantics and accepted source/control/ensemble/energy authentication facts.
 3. Exact neutral statistical substrate and split-exclusion semantics.
-4. Exact P2 target-size policy, experiment definition, training order, aggregate, and reducer initialization semantics.
+4. Exact P2 target-size policy, experiment definition, deterministic training order, aggregate, and reducer initialization semantics.
 5. Exactly one deterministic P3 common preparation per target-size generation.
-6. Exact paired optimizer-seed, fidelity-boundary, M1/M2/M3, TRAIN2/EVAL2, continuation, immutable evidence, reducer, and selected-`N/T` semantics.
-7. Worker count, cache representation, persistence representation, and command restarts must not change scientific identities.
-8. CampaignStore remains the sole current generation/revision/lifecycle authority.
-9. Immutable P3 execution evidence remains generation-bound and is never rewritten to make a changed scientific identity fit an old generation.
+6. Exact ordered candidate sizes, optimizer-seed pairing, fidelity boundaries, M1/M2/M3 evaluation populations, TRAIN2/EVAL2 roles, continuation, immutable evidence, reducer, and selected-`N/T` semantics.
+7. Exact EVAL2 evaluation membership and order for each role.
+8. The authenticated model/checkpoint state, live-vs-EMA choice, device, dtype/precision policy, required forces/stress/energy predictions, metric definition, and reducer outcome do not change as a memory workaround.
+9. CampaignStore remains the sole current generation/revision/lifecycle authority.
+10. Immutable P3 execution evidence remains generation-bound and is never rewritten to make changed scientific identity fit an old generation.
 
 ### 1.2 Stage and operational invariants
 
-The repaired product must additionally satisfy the stage semantics already implied by the V7 lifecycle:
+1. Successful `prepare` freezes one immutable prepared scientific snapshot for generation `g`.
+2. `select-target-size` does not recompute or reinterpret the upstream prepared substrate for `g`.
+3. Downstream commands do not restore DATA4 merely to recreate already-completed P1/P2/P3-common state.
+4. Resume/reload/report paths do not repeat O(dataset) preparation work merely to prove currentness.
+5. Live source edits after successful `prepare` do not retroactively mutate or reinterpret `g`; a subsequent `prepare` owns detection and generation advance.
+6. Missing/corrupt prepared state fails closed with actionable `prepare` guidance. Downstream commands do not silently rebuild it from live sources.
+7. Existing immutable screen evidence stays bound to the exact prepared generation that created it.
+8. Warm startup scales with data the command actually consumes, not DATA4/P1/P2 reconstruction cost.
+9. Scientific evaluation size `M` is not an execution batch size. Peak device work for one direct-EVAL2 forward must be bounded independently of full `M`.
+10. Batching/chunking is an execution realization only: concatenated predictions must preserve exact evaluation order, count, role ancestry, and accepted numerical semantics.
+11. One authenticated provider/model state performs all chunks for one direct-EVAL2 role. Chunking must not rebuild/reload a different provider state per chunk.
 
-1. A successful `prepare` freezes one immutable prepared scientific snapshot for canonical generation `g`.
-2. `select-target-size` **must not recompute or reinterpret the upstream prepared substrate** for `g`.
-3. `select-target-size` must not restore DATA4 merely to recreate P1/P2/P3-common objects that `prepare` already completed.
-4. Resume/reload/report paths must not repeat O(dataset) preparation work merely to prove that the same generation is still the same generation.
-5. The prepared generation is a snapshot. Live source-file edits after successful `prepare` do not silently mutate or reinterpret that already-prepared generation.
-6. A later `prepare` is the boundary that may detect changed preparation-owned inputs and advance to a fresh generation.
-7. Corrupt/missing prepared-generation artifacts fail closed with actionable `prepare` repair/rebuild guidance. Downstream commands do not silently fall back to rebuilding P1/P2/P3 from live sources.
-8. Existing immutable screen evidence remains associated with the exact prepared generation that created it. A changed preparation must advance generation/root instead of trying to republish a different `screen.json` under the old generation.
-9. Warm command startup must be bounded by the data that command actually consumes. It must not scale with DATA4 size or P1/P2 reconstruction cost when no preparation change is being requested.
+### 1.3 Resource envelope
 
-### 1.3 Non-goals
+For the accepted MACE GPU path:
+
+- no single target-size EVAL2 call may intentionally materialize the entire exact-M evaluation population as one native device batch unless `M <= optimizer_policy.valid_batch_size`;
+- the production EVAL2 batch width is bounded by the already accepted positive `MaceOptimizerPolicy.valid_batch_size` for that candidate policy;
+- the final short batch may be smaller;
+- scientific `M`, frame order, model state, dtype/device, force/stress computation, and reduction remain unchanged;
+- target-hardware acceptance must include a real GPU smoke because CPU-only tests cannot establish the VRAM claim.
+
+The existing optimizer policy already serializes `valid_batch_size`, and the seed-neutral target-size execution-context identity includes the optimizer-policy payload except only the explicitly excluded seed/per-realization acceleration fields. No second `eval2_batch_size` configuration is required.
+
+### 1.4 Non-goals
 
 This repair does not:
 
-- change target-size scientific policy or candidate/fidelity/seed semantics;
-- weaken P1 authentication during creation of a new prepared generation;
-- introduce a second scientific authority beside CampaignStore + the generation-bound prepared artifacts;
-- migrate or reinterpret retired pre-V7 derived state;
-- add a general cache database, freshness registry, generation registry, or workflow engine;
-- make a result-view file authoritative;
-- require long GPU training or full production qualification;
-- optimize unrelated P5/P6/P7 numerical kernels.
+- change candidate sizes, fidelity epochs, evaluation sizes, seeds, or P2/P3 ranking policy;
+- lower evaluation size to avoid OOM;
+- disable forces, stress, or any accepted EVAL2 observable;
+- change precision, device, acceleration backend, or checkpoint state to avoid OOM;
+- add automatic CPU fallback;
+- add a general workflow engine, cache database, freshness registry, generation registry, or resource-policy database;
+- add a second frame cache;
+- make result-view files authoritative;
+- require long full-screen GPU qualification during ordinary implementation tests;
+- optimize unrelated P5/P6/P7 numerical kernels. A direct-inference full-batch sibling is affected only because it violates the same memory-safety invariant.
 
 ---
 
 ## 2. Frozen high-level architecture
 
-### 2.1 Creation and consumption are different ownership operations
+### 2.1 Prepare creates; downstream commands consume
 
-For this repair the following high-level ownership is Frozen:
+Frozen ownership:
 
 ```text
                          PREPARE OWNS CREATION
 
 live source inputs
-  -> DATA2/DATA3/DATA4/DATA5 and normalized frame payload
+  -> DATA2/DATA3/DATA4/DATA5 + normalized frame payload
   -> fresh P1 authentication
   -> canonical frame authority
   -> neutral statistical substrate + split exclusion
@@ -143,155 +202,203 @@ live source inputs
                          DOWNSTREAM OWNS CONSUMPTION
 
 CampaignStore current generation
-  -> load exact prepared-generation artifacts for that generation
-  -> verify persisted component identity/integrity against CampaignStore
+  -> load exact generation-scoped prepared artifacts
+  -> verify prepared component integrity against CampaignStore
   -> select-target-size / resume
-  -> terminal validation/report/current result exposure
+  -> terminal validation/report/current-result exposure
   -> P5/P7 consumers as applicable
 ```
 
-A downstream consumer may authenticate the **prepared artifact it is loading** and the current CampaignStore revision. It must not prove currentness by reconstructing the entire upstream scientific graph from live source data.
+A downstream consumer may verify the prepared artifact it loads and the current CampaignStore revision. It must not establish currentness by reconstructing the entire upstream scientific graph from live inputs.
 
-### 2.2 Prepared generation is immutable and generation-scoped
+### 2.2 Prepared state is immutable and generation-scoped
 
-Prepared scientific state required by downstream P3 must be persisted under immutable generation-scoped ownership. Mutable generic aliases may exist only as convenience pointers if they are never scientific authority.
+Persist enough downstream-required prepared state to restart P3 without P1/P2/P3-common reconstruction. Prefer the minimum sufficient consumer-facing state.
 
-The current realization already persists the generation plus the important scientific digests:
-
-- frame authority;
-- neutral statistical base;
-- split exclusion;
-- target-size policy;
-- experiment definition;
-- aggregate;
-- common preparation.
-
-The repaired implementation must persist enough corresponding prepared objects to let downstream consumers load the exact objects whose identities are already bound to CampaignStore, rather than reconstructing them.
-
-The exact class names and record layout are delegated, but the minimal consumer-facing prepared state should be preferred. Do **not** persist every intermediate merely because it exists in memory.
-
-At minimum, downstream P3 currently needs the semantic equivalents of:
+At minimum downstream P3 currently needs semantic equivalents of:
 
 - canonical frame authority;
 - split-exclusion/correlation evidence required by P3;
 - target-size aggregate/definition/reducer initial state;
 - common preparation;
 - frame catalog;
-- normalized frame payload / frame array access needed for materialization/evaluation.
+- normalized frame payload/frame-array access required for materialization/evaluation.
 
-Persist neutral/source/feature intermediates only when a real downstream consumer needs them or when one compact persisted representation demonstrably reduces total machinery. DATA4 itself remains a lower-level durable preparation artifact but is not a normal P3 startup dependency.
+Persist neutral/source/feature intermediates only when a real downstream consumer requires them or one compact representation reduces total machinery.
 
-### 2.3 Existing frame payload representation is reused, not reinvented
+A compact prepared-generation manifest/receipt is allowed only if it canonicalizes component membership and replaces broader synchronization. It is not a second current pointer; CampaignStore remains sole current-generation authority.
 
-The existing authenticated normalized frame cache is the canonical hot representation for normalized frame payload. Do not add a second frame cache.
+### 2.3 Existing normalized frame representation is reused
 
-For an active prepared generation whose P3/P5/P7 consumers still require normalized frame payload, retention follows actual owner demand. It must not be deleted merely because `prepare` returned. The existing storage reset already treats this cache as a current mmap-oriented representation whose lifetime follows current consumers rather than `after_prepare` folklore.
+The existing authenticated normalized frame cache remains the canonical hot frame representation. Do not create another frame cache.
 
-If the implementation chooses to keep the frame payload formally classified as a reusable cache, eviction while an active downstream consumer still requires it must not trigger hidden upstream reconstruction inside `select-target-size`. Either retention prevents such eviction during the required lifetime or the owning prepared-generation representation must provide an equivalent direct restore. Prefer retention over another representation unless measured storage pressure proves a second representation is necessary.
+For an active prepared generation whose P3/P5/P7 consumers require it, retention follows actual owner demand. Cleanup must not evict it in a way that forces hidden DATA4/P1 reconstruction inside downstream commands. Prefer retaining the existing representation over adding another one unless measured storage pressure proves otherwise.
 
 ### 2.4 DATA4 is prepare-owned cold evidence after preparation
 
-DATA4 may remain durable for reproducibility, later explicit re-preparation, auditing, or other real consumers. That does not make it a mandatory dependency of every target-size command.
-
 After successful preparation:
 
-- `select-target-size` ordinary start/resume: **no DATA4 sharded restore**;
-- terminal load/report/current result exposure: **no DATA4 sharded restore**;
-- P5/P7 target-size-result consumption: **no DATA4 sharded restore unless those stages independently need DATA4 for their own scientific work**.
+- ordinary `select-target-size` start/resume: zero DATA4 sharded restore;
+- terminal load/report/current-result exposure: zero DATA4 sharded restore;
+- P5/P7 target-size-result consumption: zero DATA4 restore unless the stage independently needs DATA4 for its own science.
 
-No downstream command may load DATA4 solely because an implementation helper happens to rebuild P1/P2 objects from it.
+No downstream command loads DATA4 solely because a helper reconstructs P1/P2 objects from it.
 
-### 2.5 Currentness is snapshot currentness, not live-source reconstruction
+### 2.5 Snapshot currentness replaces live-source reconstruction
 
-For an already prepared generation `g`, currentness means:
+For prepared generation `g`, downstream currentness means:
 
-1. CampaignStore says `g` is the current canonical generation/revision expected by the caller;
-2. the generation-scoped prepared artifacts exist;
-3. their intrinsic digests/integrity checks match the identities bound in that CampaignStore generation;
+1. CampaignStore identifies the expected current generation/revision;
+2. required generation-scoped prepared artifacts exist;
+3. their intrinsic integrity/digests equal the identities bound to `g`;
 4. downstream P3/P5/P7 evidence binds to those exact identities and generation.
 
-It does **not** mean reparsing live source files and rebuilding P1/P2/P3 before every downstream exposure.
-
-Fresh P1 source authentication remains mandatory when `prepare` creates a new scientific snapshot. Once those exact source bytes and their derived prepared products are frozen into `g`, later mutation of the external source tree does not retroactively alter `g`.
+Fresh P1 source authentication remains mandatory when `prepare` creates a new snapshot. Unchanged exact source bytes do not require repeating semantic authentication merely because another command starts.
 
 ### 2.6 Re-running prepare
 
-`prepare` remains the only command allowed to create/advance the prepared scientific snapshot.
+`prepare` is the sole command that may create/advance the prepared snapshot.
 
-A repeated `prepare` should first determine whether the existing prepared generation remains reusable using preparation-owned input identity, not by unconditionally rebuilding the whole scientific graph.
+Repeated `prepare` first decides reuse from preparation-owned exact input identity using existing identities/receipts, such as:
 
-Use the cheapest existing identities that safely establish this decision, for example:
+- manifest identity;
+- preparation configuration projection/digest;
+- exact source/companion byte identities already authenticated at preparation time;
+- existing lower-level artifact identities where authoritative for the same snapshot.
 
-- approved manifest identity;
-- explicit preparation-owned configuration projection/digest;
-- exact source/companion byte identities already authenticated at preparation time, using the existing shared SHA/validation-receipt machinery where safe;
-- lower-level artifact identities such as source/frame/DATA4 identities where they are already authoritative outputs of the same prepared snapshot.
+Unchanged bytes/config permit reuse. Changed preparation inputs trigger the required fresh authentication/rebuild and a fresh generation. Do not add a freshness database or use mtimes alone as scientific identity.
 
-If exact source bytes and preparation-owned configuration are unchanged, prior semantic authentication of those unchanged bytes remains valid and the prepared generation may be reused without reconstructing P1/P2/P3.
+### 2.7 Direct EVAL2 separates scientific population from execution minibatches
 
-If a preparation-owned source dependency or semantic configuration changes, or the operator explicitly requests the relevant rebuild, `prepare` performs the required fresh P1/DATA4/etc. work and publishes a fresh generation. A byte change may require semantic reparse/re-authentication; unchanged bytes do not.
+For each accepted EVAL2 role:
 
-Do not add an independent freshness database. Reuse existing content identities/hash receipts and the prepared-generation publication contract.
+```text
+exact immutable role + exact-M evaluation artifact
+  -> authenticate one provider/model state
+  -> preserve the exact ordered M frames
+  -> deterministic contiguous chunks, each size <= optimizer_policy.valid_batch_size
+       -> same provider.predict_batch(chunk)
+       -> materialize predictions to host representation
+  -> concatenate in exact role order
+  -> require exactly M predictions
+  -> compute one prediction-evidence digest / reduce exactly as before
+```
+
+The production semantic owner remains `run_target_size_direct_boundary_inference(...)` or an equivalent final owner if implementation legitimately refactors it. The chunking decision must execute **inside that real owner or below it without bypassing its state/role/evaluation validation**.
+
+For this cycle, `optimizer_policy.valid_batch_size` is the existing canonical EVAL2 batch-width bound. Do not add `target_size_eval_batch_size`, a second resource policy, or an auto-tuned scientific identity merely to repair this defect.
+
+The same authenticated provider instance is reused across chunks. Provider/state authentication occurs once per direct-EVAL2 role, not once per chunk.
+
+The forward test seam remains below the chunking/resource owner: a fake may replace the expensive numerical forward for each chunk, but a test fake may not receive the whole M-frame population and thereby bypass the production chunk orchestration it claims to test.
+
+### 2.8 OOM behavior is fail-closed, not hidden policy mutation
+
+The ordinary corrected path should fit because its batch width is already bounded by accepted `valid_batch_size`.
+
+If one configured batch still OOMs, do not silently change scientific `M`, device, dtype, observables, checkpoint/model state, or execution-context policy. Surface a clear resource failure naming the configured EVAL2 batch width and the need for an explicit compatible policy/configuration change.
+
+A hidden adaptive OOM-halving loop is not required for this repair and must not be added merely to preserve an oversized configured batch. If implementation proposes adaptive backoff, it must first prove that batch grouping cannot alter accepted numerical/evidence identity and that the backoff is represented consistently in execution provenance; otherwise bounded deterministic batching is the accepted simpler design.
 
 ---
 
-## 3. Required simplification of the current implementation
+## 3. Required simplification / repair of current implementation
 
-The current design statement in `CurrentTargetSizeAuthorities` — that every member is rebuilt from source inputs and CampaignStore stores only identities — is the mechanism causing the repeated work. It is Tier-2/P4-D machinery and is explicitly reopened by this amendment.
+### 3.1 Split prepare builder from prepared loader
 
-### 3.1 Split builder from loader
+Replace the current single semantic role of `build_current_target_size_authorities(...)` with:
 
-Replace the current single semantic role of `build_current_target_size_authorities(...)` with two distinct operations:
+1. a **prepare builder** that constructs a new prepared substrate and performs fresh P1 authentication; and
+2. a **prepared-generation loader** that loads/validates the immutable substrate already bound to the current generation.
 
-1. **prepare builder** — constructs a new prepared substrate from live/lower-level inputs and performs fresh P1 authentication;
-2. **prepared-generation loader** — loads the immutable prepared substrate already bound to the current CampaignStore generation and verifies component integrity/digests.
+Exact names are delegated. The old function may be narrowed, renamed, split, or removed. A downstream loader never invokes the prepare builder as fallback.
 
-Exact names are delegated. The old function may be renamed, narrowed, split, or removed.
+### 3.2 Stop DATA4 write/read bounce inside prepare
 
-A downstream current loader must never call the prepare builder as a fallback.
+When `_prepare_catalog(...)` has just produced DATA4 and normalized frame data in the same invocation, flow those validated objects directly into the prepare builder where practical. Do not persist DATA4 and immediately restore it solely because a helper API only accepts CampaignStore lookup.
 
-### 3.2 Stop the DATA4 write/read bounce inside prepare
+Warm/reused prepare loads the prepared generation rather than restoring DATA4 and rebuilding P1/P2/P3 merely to rediscover equal digests.
 
-When `_prepare_catalog(...)` has just produced DATA4 and the normalized frame payload in the same invocation, the subsequent prepare builder must consume those in-memory outputs directly where practical. It must not persist DATA4 and immediately restore the same sharded record merely because the next helper only knows how to fetch it from CampaignStore.
+### 3.3 Select-target-size becomes consumption-only upstream of P3 execution
 
-Refactor the boundary so newly built lower-level outputs can flow forward into the prepare builder in the same invocation. Persistence remains mandatory before stage completion, but persistence should not force an immediate read-back of a large artifact whose validated object is already available.
+`build_screen_context(...)` loads the exact prepared generation and does not invoke the prepare builder.
 
-For a warm/reused prepare, load the existing prepared generation rather than restoring DATA4 and rebuilding P1/P2/P3 merely to discover equal digests.
+Screen initialization uses that generation's exact aggregate/common/frame authority/split exclusion/frame catalog/normalized frame payload. Changed preparation creates a fresh generation/root rather than attempting to republish a changed immutable `screen.json` under the old root.
 
-### 3.3 Remove prepare reconstruction from select-target-size
+### 3.4 Terminal/current-result exposure uses prepared state
 
-`build_screen_context(...)` must consume the current prepared-generation loader/result. It must not invoke the prepare builder.
-
-Screen initialization must therefore use the exact `aggregate`, `common`, frame authority, split exclusion, frame catalog, and normalized frame payload belonging to the prepared generation.
-
-This also guarantees that `initialize_target_size_screen(...)` sees the same frozen scientific/preparation identity that `prepare` bound. If preparation changes, the campaign advances to a new generation/root; the implementation must not attempt to republish a different immutable screen descriptor under the old generation.
-
-### 3.4 Remove prepare reconstruction from terminal/current-result exposure
-
-`load_validated_target_size_terminal_result(...)` currently establishes currentness by rebuilding P1/P2/P3 from source inputs. Replace that part of its validation chain with the current prepared-generation loader.
-
-The authoritative terminal-load chain becomes materially:
+Replace terminal live-source P1/P2/P3 reconstruction with prepared-generation loading while preserving strict P3 immutable-evidence validation:
 
 ```text
 CampaignStore current terminal revision
-  -> load exact prepared generation bound to that revision
-  -> verify prepared component digests/integrity
-  -> reconstruct only cheap execution context derived from that prepared state/config as needed
+  -> load exact prepared generation
+  -> verify prepared component integrity/digests
+  -> derive only cheap P3 execution context as needed
   -> resolve real P3 execution root
-  -> authenticate adopted immutable head + reducer state
+  -> authenticate adopted head + reducer
   -> rederive terminal projection / selected membership
-  -> compare persisted terminal projection
+  -> compare persisted projection
 ```
 
-The real P3 head/reducer/terminal validation remains mandatory. What disappears is source/DATA4/P1/P2 reconstruction that has already been frozen by `prepare`.
+Update terminal result documentation/tests to prove current prepared-generation identity, not repeated live-source reconstruction.
 
-Update `ValidatedTargetSizeTerminalResult` documentation and tests accordingly. It should prove current prepared-generation identity, not claim that live P1/P2 were reconstructed during every exposure.
+### 3.5 Direct EVAL2 must not call `predict_batch` on the full role population
 
-### 3.5 Downstream consumers follow the same boundary
+Current code effectively does:
 
-Search every caller of the prepare builder/current-authority reconstruction path. Production P5/P7/current-result consumers must load the current prepared generation rather than re-enter preparation.
+```text
+atoms_list = parse_exact_M_artifact(...)
+raw_predictions = provider.predict_batch(atoms_list)
+```
 
-Tests that directly call the prepare builder to exercise P1/P2 construction remain legitimate prepare/P1 tests. They must not be used as the ordinary downstream production path.
+Replace this with ordered bounded execution. Suggested realization:
+
+```text
+batch_width = optimizer_policy.valid_batch_size
+predictions = []
+for start in range(0, len(atoms_list), batch_width):
+    chunk = atoms_list[start:start + batch_width]
+    predictions.extend(forward(provider, chunk))
+require len(predictions) == M
+```
+
+This pseudocode is not a frozen helper/API shape. The required semantics are:
+
+- exact ordered contiguous partition;
+- every chunk size `<= valid_batch_size`;
+- same authenticated provider state for all chunks;
+- no missing/duplicate/reordered frames;
+- predictions concatenated before existing evidence/reduction;
+- no full-M native provider batch.
+
+Do not pass a generator into a provider API that materializes it back into one full batch. The memory bound must exist at the device-batch owner.
+
+### 3.6 Do not “fix” the OOM by weakening EVAL2
+
+Forbidden as the primary repair:
+
+- lowering M1/M2/M3 or otherwise changing evaluation membership;
+- reducing target-size candidate population or fidelity policy;
+- setting `compute_stress=False`, dropping forces, or changing accepted metrics;
+- switching CUDA to CPU after OOM;
+- changing float precision or acceleration backend for memory reasons;
+- `torch.cuda.empty_cache()` between a still-oversized full-M attempt;
+- relying on `PYTORCH_CUDA_ALLOC_CONF`/allocator fragmentation tuning;
+- catching OOM and retrying the same full-M batch;
+- adding a second EVAL2 batch-size configuration when `valid_batch_size` already owns the accepted bound;
+- constructing one full CPU graph batch and only slicing after transfer/build; chunk before native graph/device materialization.
+
+### 3.7 Close the bounded sibling family, not only this call site
+
+Inspect direct MACE evaluation consumers that accept an ordered scientific population and call `provider.predict_batch(...)` on the entire list. At minimum inspect:
+
+- target-size direct EVAL2;
+- post-selection direct evaluation/current P5 execution if the current candidate retains the same full-list call;
+- any shared authenticated checkpoint/provider evaluation seam used by those paths.
+
+If more than one production consumer needs the same ordered bounded inference operation, implementation may extract **one small canonical helper** that replaces duplication. Do not import DATA6's restart/journal/runtime-batch state machine wholesale into P3/P5. Reuse only a genuinely compatible minimal primitive if one already exists.
+
+This census is bounded to direct authenticated MACE evaluation. It does not authorize a general inference-framework redesign.
 
 ---
 
@@ -299,120 +406,118 @@ Tests that directly call the prepare builder to exercise P1/P2 construction rema
 
 ### 4.1 Minimum sufficient prepared state
 
-Persist the minimum set of generation-scoped prepared objects needed to restart and consume P3 without recomputing preparation.
+Persist the smallest set of generation-scoped prepared objects needed to restart P3 without preparation reconstruction. Prefer existing typed serialization and CampaignStore/content-addressed primitives. Avoid a parallel object store.
 
-Prefer existing serializable scientific objects and `CampaignStore`/existing content-addressed storage primitives. Avoid creating a parallel object store.
+### 4.2 Publish before adopt
 
-A small generation manifest/receipt is allowed only if it canonicalizes the component membership and replaces broader duplicated synchronization. It must not become a second current-generation authority; CampaignStore remains the current pointer.
-
-### 4.2 Publish-before-adopt crash safety
-
-Use the repository's existing immutable publish-before-adopt pattern:
+Use the existing immutable publish-before-adopt pattern:
 
 ```text
 build/validate prepared components
-  -> publish immutable generation-scoped component records
-  -> verify published component identities
+  -> publish immutable generation-scoped components
+  -> verify component identities
   -> CAS CampaignStore generation/revision to bind those identities
 ```
 
-If interruption occurs before CampaignStore adoption, the published content is not current and may later be recognized as unreachable residue. If the CampaignStore revision is current, every required prepared component must be present and digest-valid.
-
-Do not overwrite an adopted generation's prepared component with different bytes.
+If interrupted before adoption, published residue is not current. If CampaignStore identifies a current generation, all required prepared components must exist and validate. Never overwrite an adopted generation component with different bytes.
 
 ### 4.3 Existing generations without prepared artifacts
 
-Do not fabricate prepared objects for an already existing generation by reconstructing from live sources and pretending they were the original snapshot.
+Do not reconstruct missing prepared objects from live sources and retroactively attach them to an already existing generation.
 
-A current generation created before this repair that lacks the new minimum prepared-state persistence is incompatible with downstream reuse. Require one explicit `prepare` to create/bind a fresh generation under the repaired contract. Preserve historical immutable evidence under its old generation; do not reinterpret it.
+An old-format current generation lacking required prepared state is incompatible with repaired downstream reuse. `select-target-size` refuses it with actionable guidance to run `prepare`. One explicit `prepare` creates/binds a fresh generation under the repaired contract. Historical immutable evidence remains historical under its old generation/root.
 
-This one-time rebind is the compatibility boundary and also prevents immutable `screen.json` collision caused by trying to run changed preparation under an old execution root.
-
-### 4.4 No duplicate currentness state
+### 4.4 No duplicate authority/currentness state
 
 Forbidden:
 
-- a second generation counter;
-- a prepared-state `latest` record that can disagree with CampaignStore and is treated as authority;
-- a freshness registry separate from existing content/hash identities;
-- a `trust_prepared`, `skip_validation`, `fast`, or `reuse_anyway` bypass;
-- silent fallback from prepared-load failure to live-source reconstruction in downstream commands;
+- second generation counter;
+- authoritative prepared-state `latest` pointer beside CampaignStore;
+- independent freshness registry;
+- `trust_prepared`, `skip_validation`, `fast`, or `reuse_anyway` bypass;
+- downstream prepared-load failure falling back to live-source reconstruction;
 - mutable overwrite of generation-scoped prepared scientific records.
 
 ---
 
 ## 5. Implementation obligations
 
-### P4-STAGE-A — establish the prepared-generation persistence owner
+### P4-STAGE-A — establish prepared-generation persistence owner
 
-**Concern.** A stage cannot be reusable when its downstream-required outputs are discarded after only their digests are persisted.
+**Concern.** A stage cannot be reusable when downstream-required objects are discarded after only digests are persisted.
 
-**Required end state.** `prepare` publishes enough immutable generation-scoped prepared state to restart P3 without reconstructing P1/P2/P3-common.
+**Required end state.** `prepare` publishes enough immutable generation-scoped state to restart P3 without reconstructing P1/P2/P3-common.
 
-**Delegated solution space.** Reuse existing typed records, externalized CampaignStore records, generation-scoped content-addressed files, or one compact canonical manifest over those objects. Prefer the smallest representation and fewest owners.
+**Delegated solution space.** Existing typed records, externalized CampaignStore records, generation-scoped content-addressed files, or one compact canonical manifest over those objects. Prefer the smallest representation and fewest owners.
 
-**Acceptance.** A fresh process can close `prepare`, destroy all in-memory Python objects, reopen the campaign, and load the complete downstream-required prepared state with identities equal to the CampaignStore-bound digests and with no DATA4/P1/P2 rebuild.
+**Acceptance.** A fresh process after `prepare` can load complete downstream-required prepared state with identities equal to CampaignStore-bound identities and with zero DATA4/P1/P2 rebuild.
 
-### P4-STAGE-B — make prepare the sole creation owner
+### P4-STAGE-B — make prepare sole creation owner
 
-**Concern.** Cold prepare currently can build lower-level artifacts and then read them back immediately; repeated prepare can rebuild the whole graph merely to rediscover equality.
+**Concern.** Cold prepare can write then immediately reread DATA4; repeated prepare can rebuild the whole graph merely to rediscover equality.
 
-**Required end state.** New lower-level objects flow directly into the prepare builder when already available. Repeated prepare reuses the current prepared generation when preparation-owned input identity is unchanged, and creates a fresh generation only when preparation-owned inputs changed or an explicit rebuild requires it.
+**Required end state.** Newly built lower-level objects flow directly into the prepare builder when already available. Repeated prepare reuses current prepared state when preparation-owned input identity is unchanged and creates a fresh generation when required inputs change.
 
-**Acceptance.** Cold prepare does not immediately perform a DATA4 sharded restore after producing/persisting DATA4 solely for P1/P2 construction. An unchanged repeated prepare does not rebuild P1/P2/P3-common.
+**Acceptance.** Cold prepare has no immediate DATA4 sharded restore solely for P1/P2 continuation. Unchanged repeated prepare does not rebuild P1/P2/P3-common.
 
-### P4-STAGE-C — cut select-target-size over to consumption only
+### P4-STAGE-C — cut select-target-size to prepared consumption
 
 **Concern.** `build_screen_context()` currently re-enters preparation.
 
-**Required end state.** `select-target-size` loads and validates the prepared generation, constructs only P3 execution/runtime state that belongs to selection, and then runs/resumes the screen.
+**Required end state.** Selection loads/validates the prepared generation, constructs only P3-owned runtime state, and runs/resumes the screen.
 
-**Acceptance boundary.** The real `execute_current_select_target_size -> build_screen_context -> initialize/reconcile screen` path must execute. Expensive TRAIN2/inference may be replaced below the P3 owner for bounded testing, but the prepared-state loader may not be patched to return a desired object.
+**Acceptance boundary.** Execute the real `execute_current_select_target_size -> build_screen_context -> initialize/reconcile screen` production path. Expensive TRAIN2/numerical inference may be replaced below the P3 semantic owners; the prepared loader itself may not be patched to return desired state.
 
-**Acceptance.** Ordinary start and resume after successful prepare perform zero DATA4 sharded restores and zero calls to the prepare-only scientific builders listed in §6.1.
+**Acceptance.** Ordinary start/resume after successful prepare has zero DATA4 restore and zero prepare-only builders listed in §6.1.
 
-### P4-STAGE-D — cut terminal/current exposure over to the same prepared generation
+### P4-STAGE-D — cut terminal/current exposure to prepared generation
 
-**Concern.** Terminal currentness currently reconstructs P1/P2/P3 from source every time a current result is loaded/reported.
+**Concern.** Current terminal loading reconstructs P1/P2/P3 from source inputs.
 
-**Required end state.** Current terminal exposure authenticates CampaignStore currentness, exact prepared-generation identity/integrity, P3 immutable head/reducer evidence, and terminal projection without re-entering preparation.
+**Required end state.** Current terminal exposure authenticates CampaignStore currentness, prepared-generation integrity, P3 head/reducer evidence, and terminal projection without preparation reconstruction.
 
-**Acceptance boundary.** Exercise the real public/current terminal loader/writer/reporter and P5-facing current-result seam. Do not replace those owners with a fixture formatter.
+**Acceptance boundary.** Exercise real public/current terminal loader/writer/reporter and P5-facing current-result seam.
 
-**Acceptance.** Repeated current terminal load/write/report performs no DATA4 restore, no live P1 source authentication, and no P1/P2/common rebuild, while stale revision, corrupt prepared component, corrupt immutable P3 evidence, and projection mismatch still fail closed.
+**Acceptance.** Repeated current terminal load/write/report performs no DATA4 restore, live P1 authentication, or P1/P2/common rebuild while stale revision, corrupt prepared state, corrupt P3 evidence, and projection mismatch still fail closed.
 
-### P4-STAGE-E — reconcile storage lifetime
+### P4-STAGE-E — make direct EVAL2 resource-safe without scientific change
 
-**Concern.** Stage separation is defeated if storage cleanup removes the normalized frame payload while active downstream consumers still require it, forcing hidden regeneration.
+**Concern.** The real direct-EVAL2 owner authenticates an exact-M artifact but then submits all M frames to one native MACE batch, causing CUDA OOM on the supplied production workload.
 
-**Required end state.** Owner-driven storage retention protects exactly the hot prepared-generation representations still required by active/current P3/P5/P7 consumers. DATA4 may be cold and need not be loaded by those consumers.
+**Required end state.** The exact-M role is evaluated in deterministic ordered device batches bounded by the accepted candidate `optimizer_policy.valid_batch_size`. The same authenticated provider/model state is reused for all chunks. Existing prediction evidence and EVAL2 reduction consume the concatenated exact-order predictions exactly as before.
 
-**Acceptance.** Safe cleanup cannot make an otherwise valid active prepared generation require hidden DATA4/P1 reconstruction. If cache-policy eviction remains allowed during that lifetime, the owning design must provide a direct equivalent prepared restore without live-source reconstruction; otherwise retain the cache until the last required consumer closes.
+**Acceptance boundary.** Execute the real `run_target_size_direct_boundary_inference(...)` owner, including role/evaluation/checkpoint/provider authentication and its chunk orchestration. A test fake may replace the expensive numerical forward **per chunk** but may not replace the chunking owner or receive the whole M-frame list.
 
-### P4-STAGE-F — remove obsolete reconstruction-currentness doctrine
+**Acceptance.** For `M > valid_batch_size`, observed provider calls are all `<= valid_batch_size`, cover every frame exactly once in original order, produce exactly M predictions, and never submit one full-M native batch. Real GPU smoke on representative MACE/LTA-like geometry succeeds without OOM.
 
-**Concern.** Documentation/tests currently encode “nothing persisted is trusted; rebuild P1/P2 on every load” as if that implementation strategy were the product invariant.
+### P4-STAGE-F — close direct-inference sibling variants
 
-**Required end state.** Documentation distinguishes:
+**Concern.** The same full-list `provider.predict_batch(atoms_list)` pattern exists or may exist in post-selection/direct-evaluation consumers; fixing one call site would leave the same failure class downstream.
 
-- CampaignStore current revision authority;
-- immutable generation-scoped prepared scientific state;
-- live-source authentication during `prepare` creation/rebuild;
-- prepared-artifact integrity during downstream consumption;
-- P3 immutable-evidence authentication during screening/terminal exposure.
+**Required end state.** All current production direct MACE evaluation consumers in the bounded target-size/post-selection family obey the same ordered bounded-batch memory contract or use one minimal canonical helper.
 
-Remove tests/docs that require downstream reconstruction merely because the old implementation did it. Preserve tests for the actual scientific/currentness outcomes.
+**Delegated solution space.** Small shared helper if it replaces duplicate orchestration; otherwise equivalent local use of an existing compatible primitive. No new batching policy class/database/state machine.
+
+**Acceptance.** Bounded caller census shows no affected production direct-evaluation path that submits an entire scientific evaluation population to a native MACE batch when it exceeds its accepted batch bound.
+
+### P4-STAGE-G — reconcile storage lifetime and obsolete doctrine
+
+**Concern.** Stage separation fails if cleanup removes normalized frame data while active consumers still need it; documentation/tests also encode reconstruction as currentness doctrine.
+
+**Required end state.** Owner-driven retention preserves exactly the hot representation required by active/current consumers. Documentation distinguishes CampaignStore current authority, immutable prepared scientific state, prepare-time live-source authentication, downstream prepared-artifact integrity, and P3 immutable-evidence authentication.
+
+**Acceptance.** Safe cleanup cannot force hidden DATA4/P1 reconstruction for a valid active generation. Tests/docs no longer require downstream reconstruction merely because the old implementation did it.
 
 ---
 
 ## 6. Task-specific acceptance
 
-### 6.1 Exact no-reconstruction downstream assertions
+### 6.1 Zero preparation reconstruction downstream
 
-After one successful `prepare`, instrument the real production path. A normal `select-target-size` start and resume must make **zero** calls to all of the following preparation-only operations:
+After one successful `prepare`, instrument the real production path. Normal `select-target-size` start/resume must make **zero** calls to preparation-only operations semantically equivalent to:
 
 ```text
-read_data4_sharded_record(...)              # DATA4 restore
+read_data4_sharded_record(...)
 build_source_authority_from_data2_catalog(...)
 authenticate_vasp_source_authority(...)
 build_canonical_frame_authority(...)
@@ -424,25 +529,25 @@ build_target_size_common_preparation(...)
 read_vasp_frames(...)
 ```
 
-If implementation legitimately renames/replaces one of these delegated owners, remap the assertions to the final real prepare-only owner. The semantic claim is zero preparation reconstruction, not preservation of function names.
+If implementation renames/replaces a delegated owner, remap the assertion to the final real prepare-only owner. The semantic claim is zero reconstruction, not preservation of function names.
 
-The same zero-reconstruction assertion applies to current terminal reload/write/report and the P5-facing current terminal result seam.
+Apply the same zero-reconstruction claim to current terminal reload/write/report and P5-facing current-result loading.
 
 ### 6.2 DATA4 I/O acceptance
 
 Required cases:
 
-1. **Cold prepare that constructs DATA4:** after DATA4 construction/persistence, no immediate sharded DATA4 restore is performed solely to continue P1/P2/P3 preparation when the validated in-memory object is already available.
-2. **Warm select after prepare:** zero DATA4 restore.
-3. **Select resume:** zero DATA4 restore.
-4. **Terminal reload/report:** zero DATA4 restore.
-5. **Prepared-state corruption:** fail closed before selection/report; do not restore DATA4 as an automatic repair path.
+1. Cold prepare constructing DATA4: no immediate sharded restore solely to continue preparation while the validated object is already in memory.
+2. Warm select after prepare: zero DATA4 restore.
+3. Select resume: zero DATA4 restore.
+4. Terminal reload/report: zero DATA4 restore.
+5. Prepared-state corruption: fail closed; no DATA4 auto-repair fallback.
 
-Record DATA4 restore count explicitly in bounded integration evidence.
+Record DATA4 restore count in bounded integration evidence.
 
-### 6.3 Scientific identity equivalence
+### 6.3 Prepared scientific identity equivalence
 
-On a bounded real multi-run corpus, compare the pre-repair builder result with the newly published prepared generation. Require equality of every still-binding scientific identity:
+On a bounded real multi-run corpus, compare pre-repair construction with the published prepared generation. Require exact equality of still-binding scientific identities including:
 
 - frame authority;
 - neutral statistical base;
@@ -451,111 +556,145 @@ On a bounded real multi-run corpus, compare the pre-repair builder result with t
 - experiment definition;
 - aggregate;
 - common preparation;
-- P3 execution context when built from the same downstream configuration;
+- P3 execution context for the same downstream configuration;
 - initial screen window/schedule identity.
 
-Persistence/load round-trip must preserve those identities exactly.
+Persistence/load round-trip preserves these identities exactly.
 
 ### 6.4 Snapshot mutation semantics
 
-Required regression:
+Regression:
 
 ```text
-prepare -> generation g1 prepared snapshot
-mutate one live source/control/companion file after prepare
+prepare -> g1
+mutate one live source/control/companion file
 select-target-size g1
 ```
 
-`select-target-size` must continue to consume the exact g1 prepared snapshot and must not silently reconstruct/reinterpret it from the changed live source tree.
+Selection continues to consume exact g1 prepared state and does not reinterpret it from the changed source tree.
 
-Then run `prepare` again. It must detect the preparation-owned source identity change through the accepted preparation input-currentness mechanism, perform the required fresh authentication/rebuild, and advance to fresh generation `g2` before any g2 screen is opened.
+Then run `prepare` again. It detects the preparation-owned input identity change, performs required fresh authentication/rebuild, and advances to fresh `g2` before a g2 screen opens.
 
-This establishes the correct boundary: source mutation affects the next preparation, not an already-frozen experiment.
+### 6.5 Existing-generation compatibility
 
-### 6.5 Existing-generation compatibility regression
+For an old current generation with CampaignStore digests but no repaired prepared artifacts:
 
-Construct or load a current generation in the old representation that has CampaignStore scientific digests but lacks the new prepared-generation artifacts.
+- `select-target-size` refuses with explicit `prepare` guidance;
+- no live-source reconstruction retrofits the old generation;
+- explicit `prepare` binds a fresh complete generation;
+- old immutable execution evidence remains historical;
+- new screen uses the new generation root;
+- no immutable `screen.json` overwrite/collision occurs.
 
-`select-target-size` must refuse it with actionable guidance to run `prepare`. It must **not** reconstruct missing prepared state from live sources and attach it to the old generation.
-
-After `prepare`, prove:
-
-- a fresh generation is bound;
-- the new generation has complete prepared artifacts;
-- old immutable execution evidence/root remains historical;
-- a new screen uses the new generation root;
-- no immutable `screen.json` collision/overwrite occurs.
-
-### 6.6 Corruption and partial-publication regressions
+### 6.6 Corruption/partial publication
 
 Test at least:
 
 - missing prepared component;
-- corrupt prepared component bytes/payload;
-- prepared component digest mismatch;
-- publish prepared component then crash before CampaignStore adoption;
-- current CampaignStore revision pointing to incomplete/corrupt prepared state must be rejected;
-- stale historical prepared generation cannot be loaded as current by changing only a convenience path/pointer.
+- corrupt prepared component;
+- digest mismatch;
+- published component followed by crash before CampaignStore adoption;
+- current revision pointing to incomplete/corrupt prepared state;
+- stale historical prepared generation cannot become current through a convenience alias.
 
-No case may fall back to reconstructing upstream science in a downstream command.
+No case falls back to upstream reconstruction.
 
 ### 6.7 Currentness negatives remain closed
 
-Preserve failure of:
+Preserve failure for:
 
 - stale expected CampaignStore revision;
 - changed generation;
 - wrong execution-context digest;
-- missing/corrupt P3 execution root evidence;
+- missing/corrupt P3 root evidence;
 - adopted head mismatch;
 - reducer mismatch;
 - terminal projection mismatch;
 - stale current-result publication attempts already covered by P4-E4.
 
-The repair changes **how prepared scientific currentness is established**, not the requirement that stale/historical terminal evidence cannot be exposed as current.
+### 6.8 Direct-EVAL2 bounded-batch unit/property acceptance
 
-### 6.8 Structural absence/uniqueness
+Use a deterministic provider fake **below** the real direct-inference owner. For representative cases including `M=1`, `M=batch`, `M=batch+1`, and multiple batches:
 
-After implementation, inspect the final production call graph and structurally verify:
+- every forward call has `1 <= len(chunk) <= optimizer_policy.valid_batch_size`;
+- concatenated observed frame identities equal the exact role order with no loss/duplication/reordering;
+- exactly M prediction entries are returned;
+- reference per-frame or bounded-batch predictions and chunked predictions produce the accepted same numerical result under the project's required tolerance/exactness contract;
+- prediction-evidence role/model/evaluation ancestry is unchanged;
+- reduction/M1/M2/M3 outcome is unchanged for identical predictions.
 
-1. exactly one prepare-only scientific substrate builder path;
-2. exactly one current prepared-generation loader/owner path or one semantically equivalent canonical owner;
-3. `select-target-size`, terminal current exposure, and P5-facing current result consumption do not call the prepare builder;
-4. no second DATA4/frame cache or freshness/currentness registry was introduced;
-5. no downstream fallback calls live-source P1 reconstruction when prepared load fails;
-6. CampaignStore remains the sole current generation/revision authority;
-7. generation-scoped prepared artifacts are immutable after adoption.
+The fake must record chunk widths so a test cannot pass if chunking is never exercised.
 
-Use semantic caller/reference inspection and a focused structural scan when available. Text search alone is not sufficient for dynamic/exported call paths, but it remains a useful cross-check.
+### 6.9 Direct-EVAL2 real-provider integration
 
-### 6.9 Performance/resource evidence
+Exercise one real authenticated MACE provider/checkpoint through the production direct-EVAL2 owner with an evaluation population larger than `valid_batch_size`.
 
-This repair is structurally performance-motivated; no universal wall-time speedup percentage is required because filesystem/cache conditions vary.
+Required evidence:
 
-Measure bounded before/after startup for:
+- provider/model authentication executes once for the role;
+- more than one bounded forward occurs when `M > valid_batch_size`;
+- no full-M native batch is materialized;
+- output count/order and evidence validation pass;
+- device/dtype/forces/stress semantics remain unchanged.
 
-- unchanged repeated `prepare`;
-- first `select-target-size` after prepare;
+A reduced scientific fixture is acceptable if it crosses the real provider/state/chunk owner.
+
+### 6.10 GPU resource regression for the supplied failure class
+
+Because the blocker is CUDA VRAM, run a real CUDA smoke on representative target hardware when available. Prefer the same MACE architecture/dtype and LTA-like cell size as the failing run; full long TRAIN2 is unnecessary because the acceptance claim is direct inference.
+
+Record:
+
+- GPU/device identity and total/free memory before evaluation;
+- configured `valid_batch_size`;
+- maximum observed chunk width;
+- peak allocated/reserved VRAM when practical;
+- success/failure.
+
+The corrected path must complete without OOM for the representative workload with the accepted batch bound. If the exact previously failing boundary artifact is readily available, rerun it as strong qualification evidence; this is valuable but does not replace regression/integration tests.
+
+Do not accept allocator tuning as substitute evidence.
+
+### 6.11 Sibling direct-inference census
+
+Use semantic caller/reference inspection plus focused structural search where available. Verify affected current production direct-evaluation paths do not retain the semantic pattern:
+
+```text
+scientific evaluation population -> one provider.predict_batch(full_population)
+```
+
+At minimum inspect target-size EVAL2 and current post-selection direct evaluation. Validate any structural query against a known positive/negative example before treating zero findings as acceptance evidence.
+
+### 6.12 Structural ownership/absence
+
+After implementation verify:
+
+1. one prepare-only scientific substrate builder path;
+2. one canonical current prepared-generation loader/owner;
+3. selection/terminal/P5 current-result consumers do not call the prepare builder;
+4. no second DATA4/frame cache or freshness/currentness registry;
+5. no downstream fallback to live-source P1 reconstruction;
+6. CampaignStore remains sole current generation/revision authority;
+7. generation-scoped prepared artifacts are immutable after adoption;
+8. direct EVAL2 cannot bypass its bounded batch owner on the production provider path;
+9. no new EVAL2 batch-size policy duplicates `MaceOptimizerPolicy.valid_batch_size`.
+
+### 6.13 Performance/resource evidence
+
+No universal speedup percentage is required. Measure bounded before/after startup for:
+
+- unchanged repeated prepare;
+- first select after prepare;
 - select resume;
 - terminal reload/report.
 
-Record at minimum:
+Record at minimum wall time, DATA4 restore count, source-frame read count, P1 authentication count, preparation-builder invocation count, and bytes read/peak RSS when practical.
 
-- wall time;
-- DATA4 restore count;
-- source-frame read count;
-- P1 authentication count;
-- preparation-builder invocation count;
-- bytes read when practical;
-- peak RSS when material.
-
-Structural elimination of upstream replay is mandatory even if a tiny synthetic corpus has noisy wall time.
+For direct EVAL2 record maximum chunk width and peak VRAM when practical. Structural elimination of full-M device batching is mandatory even if a tiny fixture does not OOM.
 
 ---
 
 ## 7. Expected affected surface
-
-Initially inspect and reconcile at least:
 
 ### Runtime/orchestration
 
@@ -565,11 +704,11 @@ Initially inspect and reconcile at least:
   - `execute_current_prepare`
   - `build_screen_context`
   - `execute_current_select_target_size`
-  - current terminal reporting seam
+  - `_execute_candidate_cell` only as needed to preserve the real EVAL2 owner boundary
 - `mdstats/training_data/campaign_target_size_cutover.py`
-  - authority binding/generation advance/publication ordering
+  - generation binding/adoption/publication ordering
 - `mdstats/training_data/campaign_target_size_state.py`
-  - only if prepared-state binding requires a state-schema field; avoid schema growth if existing bound component digests plus deterministic generation ownership are sufficient
+  - only if prepared binding truly needs a field; avoid schema growth when existing digests/generation ownership suffice
 - `mdstats/training_data/campaign_target_size_terminal.py`
   - `ValidatedTargetSizeTerminalResult`
   - `load_validated_target_size_terminal_result`
@@ -577,36 +716,48 @@ Initially inspect and reconcile at least:
   - current exposure consumers if loader contract changes
 - `mdstats/training_data/_campaign_cli_core.py`
   - `_prepare_catalog`
-  - CampaignStore prepared-component serialization/load path
-  - preparation config/input reuse checks
+  - prepared-component serialization/load path
+  - preparation input reuse checks
 - `mdstats/training_data/frame_cache.py`
-  - only if retention/identity ownership requires adjustment; do not create another cache
+  - only if retention ownership requires adjustment
+
+### Direct inference / model execution
+
+- `mdstats/training_data/target_size_execution/evaluation.py`
+  - `run_target_size_direct_boundary_inference`
+  - exact-M byte validation/parse must remain intact
+  - ordered bounded forward orchestration
+- `mdstats/training_data/model_features.py`
+  - `MaceCalculatorProvider.predict_batch` only if a smaller canonical batching seam is required; do not move policy ownership here unless justified
+- `mdstats/training_data/protocol.py`
+  - normally no schema change; existing `valid_batch_size` is the accepted bound
+- `mdstats/training_data/target_size_execution/context.py`
+  - normally no schema change; verify existing optimizer-policy identity already binds the batch parameter
+- `mdstats/training_data/post_selection_execution.py`
+  - inspect direct full-list inference sibling and repair only if present in current candidate
+- shared authenticated provider/checkpoint owner only if a minimal common ordered-batch helper belongs there cleanly
 
 ### Scientific objects
 
-- P1/P2/P3 `to_dict/from_dict` or existing serialization boundaries for only those prepared objects actually persisted;
-- neutral/canonical/aggregate/common owners only as needed to support lossless round-trip; do not change scientific definitions.
-
-### Storage
-
-- current storage owner inventory/retention policy for normalized frame payload and prepared generation artifacts;
-- cleanup tests proving active prepared state remains restartable without hidden upstream rebuild.
+Only P1/P2/P3 serialization boundaries required for lossless prepared-state round-trip. Do not change scientific definitions.
 
 ### Tests
 
 At minimum rederive impact over:
 
-- P1 neutral scientific substrate tests;
+- P1 neutral/canonical authority tests;
 - DATA4 sharded persistence/restore tests;
 - frame-cache integrity/lifetime tests;
-- P4-A through P4-G state/cutover/runtime/terminal/integration suites;
+- P4 state/cutover/runtime/terminal/integration suites;
+- P3 direct EVAL2 authentication/evidence/reducer tests;
 - P3 execution/restart/immutable publication suites;
-- P5 current-result consumer tests;
-- P6/STOR retention tests affected by artifact classification;
-- P7 current-generation consumers if they load target-size prepared state;
-- the post-DATA4 authority-reconstruction I/O tests, whose expected ownership must be revised from “fast downstream reconstruction” to “reconstruction occurs only in prepare.”
+- target-size MACE real-provider integration tests;
+- P5 current-result consumer and direct-evaluation tests if sibling batching is affected;
+- resource/parallelism tests, including existing adaptive-batching tests only as reference rather than authority;
+- storage retention tests affected by artifact classification;
+- post-DATA4 authority-reconstruction I/O tests, whose ownership expectation changes from fast downstream reconstruction to reconstruction only in prepare.
 
-Final affected surface must be re-derived after implementation rather than copied mechanically from this list.
+Final affected surface must be re-derived from the assembled implementation.
 
 ---
 
@@ -614,7 +765,7 @@ Final affected surface must be re-derived after implementation rather than copie
 
 ### Stage 1 — persist/load one prepared generation
 
-Implement the generation-scoped prepared-state publication and canonical loader first. Establish lossless round-trip and crash/currentness behavior before changing downstream callers.
+Implement generation-scoped prepared-state publication and canonical loading first.
 
 Stage-local closure:
 
@@ -623,48 +774,59 @@ Stage-local closure:
 - missing/corrupt/partial publication negatives;
 - no second currentness authority.
 
-### Stage 2 — make prepare reuse and remove same-invocation DATA4 bounce
+### Stage 2 — make prepare reuse and remove DATA4 bounce
 
-Route newly created DATA4/frame payload directly into the prepare builder; add/reconcile unchanged-prepare reuse through preparation-owned input identity.
+Route newly created DATA4/frame payload directly into the builder and support unchanged-prepare reuse through existing exact input identity.
 
 Stage-local closure:
 
-- cold prepare has no DATA4 immediate read-back solely for builder continuation;
+- no immediate DATA4 read-back solely for continuation;
 - repeated unchanged prepare does not rebuild P1/P2/P3-common;
-- changed preparation input produces fresh generation.
+- changed preparation input creates fresh generation.
 
-### Stage 3 — cut select-target-size to prepared consumption
+### Stage 3 — cut selection startup to prepared consumption
 
-Remove prepare-builder invocation from `build_screen_context`/selection startup and consume the exact current prepared generation.
+Remove prepare-builder invocation from selection startup and consume the current prepared generation.
 
 Stage-local closure:
 
-- zero DATA4/P1/P2/P3 reconstruction on start and resume;
-- same screen/aggregate/context identities;
-- existing-generation-without-snapshot rejection;
-- immutable screen collision reproducer closes through fresh-generation ownership, not overwrite.
+- zero DATA4/P1/P2/P3 reconstruction on start/resume;
+- same aggregate/context/screen identities;
+- old-generation-without-snapshot rejection;
+- immutable-screen collision closes through fresh generation ownership.
 
-### Stage 4 — cut terminal/current-result and downstream consumers
+### Stage 4 — repair direct EVAL2 memory ownership
 
-Replace terminal live-source reconstruction with prepared-generation loading while preserving real P3/currentness validation.
+Keep exact-M artifact/state authentication, then introduce deterministic ordered bounded batching using the accepted `valid_batch_size` before native graph/device materialization. Close the bounded post-selection sibling if present.
+
+Stage-local closure:
+
+- chunk-owner focused tests including non-divisible M;
+- real production owner with per-chunk fake forward;
+- real MACE provider integration;
+- CUDA smoke on representative geometry/hardware when available;
+- no scientific/evidence identity drift;
+- no new batching policy/state machine.
+
+### Stage 5 — cut terminal/current-result and downstream consumers
+
+Replace terminal live-source reconstruction with prepared loading while preserving P3/currentness validation.
 
 Stage-local closure:
 
 - zero upstream reconstruction on current terminal load/write/report;
 - stale/currentness/corruption negatives remain closed;
-- P5-facing seam uses same current prepared generation.
+- P5-facing current-result seam uses same prepared generation.
 
-### Stage 5 — reconcile storage retention and final assembled acceptance
+### Stage 6 — reconcile retention and final assembled acceptance
 
-Update owner-driven storage retention only as necessary, rederive final affected surface, run full affected regression/integration, and record bounded startup/I/O evidence.
+Update storage retention only as necessary, rederive final affected surface, run complete affected regression/integration, and record bounded startup/I/O/VRAM evidence.
 
 ---
 
 ## 9. Simplification triggers and forbidden repair patterns
 
-This defect is already a simplification trigger: repeated reconstruction was introduced to avoid persisting prepared objects, then performance machinery was added to make the repeated reconstruction cheaper. Do not add another optimization layer around that repetition.
-
-### Required simplification direction
+The stage-boundary defect already triggered simplification: repeated reconstruction led to performance machinery to make unnecessary repetition cheaper. The EVAL2 OOM is likewise caused by a simple ownership conflation—scientific population size was passed directly to a resource-level batch API. Repair the cause rather than layering workarounds around it.
 
 Prefer:
 
@@ -672,35 +834,41 @@ Prefer:
 one prepare builder
 + one immutable prepared generation
 + one prepared loader
-+ one current CampaignStore generation authority
++ one CampaignStore current authority
++ one bounded direct-inference batch contract
 ```
 
-rather than:
+not:
 
 ```text
 rebuild upstream science in every command
-+ cache those rebuilds
-+ freshness flags
-+ skip-validation switches
-+ more parallelism
-+ more reconciliation
++ caches/freshness switches around rebuilds
++ full-M GPU batches
++ OOM retries / allocator flags / CPU fallbacks
++ duplicate batch-size configuration
 ```
 
-### Forbidden patterns
+Forbidden closure patterns include:
 
-Do not close this workplan by:
+- retaining downstream reconstruction and merely making it faster;
+- in-process memoization as the cross-command fix;
+- second prepared/frame cache;
+- trust/skip-auth/fast bypass flags;
+- accepting DATA4 restore because it is faster than recomputation;
+- auto-rebuilding missing prepared state inside select/terminal;
+- binding fresh reconstruction to old immutable generation evidence;
+- weakening immutable screen publication;
+- copying P1 authentication into a second verifier;
+- mtime-only scientific identity;
+- result-view/prepared alias authoritative over CampaignStore;
+- lowering scientific M to fit VRAM;
+- changing required EVAL2 observables/precision/device to fit VRAM;
+- allocator tuning or `empty_cache()` as the main OOM fix;
+- hidden retry of a full-M native batch;
+- a new EVAL2 resource-policy object when existing `valid_batch_size` is sufficient;
+- importing DATA6 restart/adaptive-batching machinery wholesale into P3.
 
-- retaining downstream P1/P2/P3 reconstruction and merely making it faster;
-- adding an in-process memoization cache that disappears between CLI invocations;
-- adding a second prepared-state cache beside the existing normalized frame cache when generation-scoped persistence is the real missing capability;
-- adding `fast`, `trust_cache`, `trust_prepared`, `skip_auth`, or similar bypass modes;
-- treating DATA4 restore progress as acceptable merely because it is faster than recomputation;
-- automatically rebuilding a missing prepared generation inside `select-target-size` or terminal load;
-- binding freshly reconstructed objects to an old generation that already owns immutable P3 evidence;
-- weakening immutable publication to allow a changed `screen.json` to overwrite the old one;
-- copying the P1 authentication checklist into a second currentness verifier;
-- making source filesystem mtimes alone scientific identity;
-- making a result-view file or prepared convenience alias authoritative over CampaignStore.
+If implementation finds multiple tiny copies of ordered bounded direct inference, consolidate them only when one small canonical helper genuinely reduces total complexity. Do not generalize beyond the bounded family.
 
 ---
 
@@ -708,57 +876,70 @@ Do not close this workplan by:
 
 ### Frozen
 
-- V7 scientific model and P1/P2/P3 scientific identities.
-- `prepare` is the sole creation/advance boundary for the target-size scientific substrate.
+- V7 P1/P2/P3 scientific model and identities.
+- `prepare` is sole creation/advance boundary for target-size prepared scientific state.
 - Successful prepare defines one immutable generation-scoped prepared snapshot.
-- `select-target-size`, resume, terminal current exposure, and downstream target-size consumers load that snapshot rather than reconstructing it from live upstream inputs.
-- CampaignStore remains the sole current generation/revision/lifecycle authority.
-- Live source mutation affects a future `prepare`/generation, not an already-prepared generation.
-- Missing/corrupt prepared state fails closed; no downstream reconstruction fallback.
-- No DATA4 restore solely for ordinary downstream currentness/reconstruction.
-- No weakening of immutable P3 evidence or generation-root identity.
-- Existing normalized frame payload machinery is reused; no second frame cache.
+- selection/resume/terminal/current downstream consumers load that snapshot rather than reconstruct it from live upstream inputs.
+- CampaignStore remains sole current generation/revision/lifecycle authority.
+- live source mutation affects a future prepare/generation, not an already prepared generation.
+- missing/corrupt prepared state fails closed without downstream reconstruction fallback.
+- no DATA4 restore solely for ordinary downstream currentness/reconstruction.
+- immutable P3 evidence and generation-root identity remain strict.
+- existing normalized frame representation is reused; no second frame cache.
+- scientific EVAL2 population `M` remains exact and unchanged.
+- direct EVAL2 device execution is partitioned deterministically before native batch/device materialization, with each chunk bounded by the accepted `optimizer_policy.valid_batch_size`.
+- the same authenticated provider/model state evaluates every chunk of one role.
+- exact role order/count, required observables, dtype/device/model-state, evidence, metrics, and reducer semantics are preserved.
+- no hidden scientific-policy mutation or allocator workaround substitutes for bounded batching.
 
 ### Delegated
 
-- Exact prepared snapshot class/record names.
-- Whether prepared components are individual generation-scoped CampaignStore records or one compact canonical manifest over existing records.
-- Exact private helper factoring and function names.
-- Whether `CurrentTargetSizeAuthorities` is renamed, split, or removed.
-- Exact serialization layout for prepared components.
-- Exact cheap source-byte-currentness implementation used by repeated `prepare`, provided it relies on exact content identity/integrity rather than mtimes alone and does not create a second authority database.
-- Exact storage classification enum/name for active normalized frame payload, provided downstream restartability and no-hidden-rebuild semantics hold.
+- exact prepared snapshot class/record names and serialization layout;
+- individual prepared records versus compact manifest;
+- private helper factoring and function names;
+- whether `CurrentTargetSizeAuthorities` is renamed/split/removed;
+- exact source-byte-currentness implementation using existing exact identities/receipts;
+- exact storage classification name;
+- whether ordered bounded direct inference is implemented directly in each final owner or through one minimal shared helper, provided there is no duplicate policy/state authority;
+- progress/diagnostic wording for chunked EVAL2;
+- optional non-authoritative resource telemetry.
 
 ### Reopen only on evidence
 
-Reopen this design only if implementation evidence proves one of the following:
+Reopen only the affected surface if evidence proves:
 
-1. a downstream scientific consumer genuinely requires DATA4 content itself, not merely objects previously derived from DATA4;
-2. a required prepared object cannot be persisted/reloaded losslessly without an unacceptable resource footprint and no simpler equivalent representation exists;
-3. retaining normalized frame payload for active downstream consumers violates a demonstrated storage budget and a different direct prepared representation is required;
-4. a governed external compatibility contract requires live-source reinterpretation between `prepare` and `select-target-size` rather than snapshot semantics.
+1. a downstream scientific consumer genuinely requires DATA4 content itself;
+2. a required prepared object cannot be persisted/reloaded losslessly within acceptable resource bounds and no simpler representation exists;
+3. retaining normalized frame payload violates a demonstrated storage budget and another direct prepared representation is necessary;
+4. a governed compatibility contract requires live-source reinterpretation between prepare and select rather than snapshot semantics;
+5. the accepted `optimizer_policy.valid_batch_size` cannot safely bound direct EVAL2 on supported target hardware even at 1, in which case the device/model workload itself exceeds the supported hardware envelope;
+6. deterministic batching at the accepted bound is demonstrated to alter a governed scientific result beyond accepted numerical tolerance, requiring a bounded reconsideration of execution-identity/numerical policy.
 
-If any trigger fires, reopen only the affected representation/ownership surface. Do not reopen V7 target-size science by convenience.
+Do not reopen target-size science merely because a more elaborate batching/autotuning framework could be built.
 
 ---
 
 ## 11. Closure criteria
 
-This amendment closes only when all of the following are true on one assembled candidate:
+This amendment closes only when one assembled candidate satisfies all of the following:
 
 - `prepare` owns expensive preparation creation and publishes restartable prepared state;
 - cold prepare does not immediately restore newly created DATA4 solely because of an internal API boundary;
-- unchanged repeated prepare reuses the prepared generation without rebuilding P1/P2/P3-common;
+- unchanged repeated prepare reuses prepared state without rebuilding P1/P2/P3-common;
 - select start/resume performs zero DATA4 restore and zero preparation reconstruction;
 - terminal current load/write/report performs zero DATA4 restore and zero preparation reconstruction;
-- downstream P5/current consumers use the same current prepared generation;
+- downstream P5/current-result consumers use the same current prepared generation;
 - prepared-load corruption fails closed without live-source fallback;
 - source mutation after prepare cannot mutate/reinterpret an in-progress generation;
-- a subsequent prepare detects changed preparation inputs and advances generation;
-- legacy/current generations lacking prepared artifacts require explicit fresh prepare rather than retroactive reconstruction;
-- immutable old screen evidence is never overwritten under a changed preparation identity;
-- scientific digests match the accepted pre-refactor construction;
-- final affected regression and real-owner bounded integration pass;
-- no second cache/currentness/generation/freshness machinery was introduced.
+- subsequent prepare detects changed preparation inputs and advances generation;
+- old generations lacking prepared artifacts require explicit fresh prepare rather than retroactive reconstruction;
+- immutable old screen evidence is never overwritten under changed preparation identity;
+- prepared scientific digests match accepted construction;
+- direct target-size EVAL2 never submits a scientific population larger than `valid_batch_size` as one native MACE batch;
+- exact-M membership/order/model-state/observables/evidence/reduction are preserved across chunking;
+- real-provider integration passes and representative CUDA execution no longer reproduces the supplied OOM class;
+- bounded sibling direct-inference paths are closed rather than leaving the same full-list pattern downstream;
+- final affected regression and real-owner integration pass;
+- no second cache/currentness/generation/freshness/batching-policy machinery was introduced.
 
-A system that is scientifically correct but still replays DATA4/P1/P2/P3 across command boundaries is **not** accepted. A system that avoids the replay by weakening authentication/currentness or by trusting mutable aliases is also **not** accepted. The required end state is one immutable prepared scientific generation, one current CampaignStore authority, and downstream consumption without reconstruction.
+A system that is scientifically correct but still replays DATA4/P1/P2/P3 across command boundaries is not accepted. A system that avoids replay by weakening currentness is not accepted. A system that keeps exact science but sends the full evaluation population to one derivative-bearing GPU batch is also not accepted. The required end state is one immutable prepared generation, one CampaignStore current authority, downstream consumption without reconstruction, and resource-bounded direct evaluation that preserves the exact scientific experiment.
