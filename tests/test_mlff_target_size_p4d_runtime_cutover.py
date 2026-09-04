@@ -23,6 +23,7 @@ import mdstats
 from mdstats.training_data._common import digest
 import tests.test_mlff_target_size_execution_p3c as p3c
 import tests.test_mlff_target_size_execution_p3d as p3d
+import tests.test_mlff_neutral_scientific_substrate as neutral_fixtures
 from tests.test_mlff_neutral_scientific_substrate import _data4_bundle
 
 from mdstats.training_data import _campaign_cli_core as cli
@@ -33,6 +34,7 @@ from mdstats.training_data.campaign_target_size_cutover import (
 )
 from mdstats.training_data.campaign_target_size_runtime import (
     MaceTargetSizeBoundaryTrainer,
+    build_current_target_size_authorities,
     TargetSizeRungRequest,
     mace_run_configuration,
 )
@@ -464,6 +466,149 @@ class _BoundedNumericalHarness:
                 )
             )
         return predictions
+
+
+_ORDER_DIVERGENT_CONFIG = _CONFIG.replace(
+    "evaluation_size_powers = [0, 1, 2]", "evaluation_size_powers = [1, 2, 3]"
+)
+
+
+def _order_divergent_fixture_campaign(tmp_path: Path) -> tuple[Path, Path]:
+    """A real two-condition campaign whose P_train and pi_train orders differ.
+
+    ``pi_train`` is condition-balanced round robin, so on multi-condition data
+    it is not a subsequence of the stored ``P_train``.  This is the shape the
+    production LTA dataset has and the single-run fixtures never produced.
+    """
+
+    training_root = tmp_path / "sources"
+    training_root.mkdir(parents=True, exist_ok=True)
+    for run_id, tebeg in (("runA", 650), ("runB", 900)):
+        neutral_fixtures._write(
+            training_root, run_id, ("Li", "O"), n_frames=64, tebeg=tebeg
+        )
+    manifest = mdstats.TrainingDataManifest(
+        dataset_id="neutral-p1",
+        system_profile="generic",
+        runs=tuple(
+            mdstats.TrainingDataRunSpec(
+                run_id=run_id,
+                vasprun=f"{run_id}/vasprun.xml",
+                reference_group="bulk",
+                assertions=(("regime", "production"),),
+            )
+            for run_id in ("runA", "runB")
+        ),
+    )
+    sources = mdstats.build_training_data_source_catalog(
+        manifest, base_directory=training_root
+    )
+    frames, data4 = mdstats.build_vasp_data4_feature_bundle(
+        sources,
+        base_directory=training_root,
+        event_policy=mdstats.EventDetectionPolicy(
+            pre_frames=1,
+            post_frames=1,
+            force_norm_max_threshold_ev_per_angstrom=2.0,
+        ),
+        partition_role_budget=neutral_fixtures._data4_role_budget(),
+    )
+
+    workspace = tmp_path / "campaign"
+    config = tmp_path / "campaign.toml"
+    config.write_text(
+        _ORDER_DIVERGENT_CONFIG.format(
+            workspace=str(workspace), training_root=str(training_root)
+        ),
+        encoding="utf-8",
+    )
+    _cfg, paths = cli._load_config(config)
+    paths.manifest.parent.mkdir(parents=True, exist_ok=True)
+    paths.manifest.write_text(
+        json.dumps(manifest.to_dict(), sort_keys=True), encoding="utf-8"
+    )
+    store = CampaignStore(paths.state_db)
+    store.set_meta("approved_manifest_digest", manifest.content_digest)
+    store.put_record(
+        "acceleration_realization",
+        mdstats.AccelerationRealizationRecord(
+            requested_backend="e3nn",
+            resolved_kernel_mode="e3nn",
+            training_kernel_mode="e3nn",
+            device="cpu",
+            dtype="float32",
+            foundation_inference_identity_digest=digest({"fixture": "foundation"}),
+            mace_version="0.3.16",
+            qualified=True,
+        ),
+    )
+    store.put_record("source_catalog", sources)
+    store.put_record("frame_catalog", frames)
+    store.put_record("data4", data4)
+    store.put_record("data5", {"schema": "data5-placeholder"})
+    cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "fixture")
+    store.close()
+    return config, workspace
+
+
+def test_p4d_req2_select_target_size_accepts_condition_balanced_candidates(
+    tmp_path: Path,
+):
+    """Assembled current screen on data where T_N is not a P_train subsequence.
+
+    Nothing below `select-target-size` is patched: the real screen context,
+    candidate cell, trajectory owner, and candidate projection all execute.
+    """
+
+    config, workspace = _order_divergent_fixture_campaign(tmp_path)
+    assert _run(config, "prepare") == 0
+
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        authorities = build_current_target_size_authorities(cfg, paths, store)
+    finally:
+        store.close()
+    aggregate = authorities.aggregate
+    training = aggregate.split.training_frame_uids
+    order = aggregate.definition.training_order.frame_uids
+    assert set(order) == set(training)
+    assert tuple(order) != tuple(training)
+    position = {uid: index for index, uid in enumerate(training)}
+    divergent = [
+        size
+        for size in aggregate.definition.qualified_candidate_sizes
+        if [
+            position[uid] for uid in aggregate.definition.candidate_membership(size)
+        ]
+        != sorted(
+            position[uid]
+            for uid in aggregate.definition.candidate_membership(size)
+        )
+    ]
+    assert divergent, "fixture no longer exercises the order-divergent projection"
+
+    harness = _BoundedNumericalHarness()
+    assert (
+        _run(
+            config,
+            "select-target-size",
+            _external_boundary_trainer=harness.train,
+            _external_inference_evaluator=harness.evaluate,
+        )
+        == 0
+    )
+    assert harness.rungs, "no candidate rung reached the TRAIN2 boundary"
+    # The candidate sizes whose T_N is not a P_train subsequence were executed.
+    assert set(divergent) & {size for size, _seed, _epoch in harness.rungs}
+
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        revision = load_target_size_campaign_revision(store)
+        assert revision.state.execution_root is not None
+        assert revision.state.adopted_execution_head_digest is not None
+    finally:
+        store.close()
 
 
 def test_p4d_req2_select_target_size_reaches_p1_p2_p3_owners(tmp_path: Path):

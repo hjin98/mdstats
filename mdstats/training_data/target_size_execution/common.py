@@ -1022,15 +1022,15 @@ def project_target_size_candidate_preparation(
         raise TrainingDataInputError(
             "Candidate membership does not match the P2 membership digest."
         )
-    common_order = {uid: position for position, uid in enumerate(common.common_membership)}
-    if any(uid not in common_order for uid in membership):
+    # ``T_N`` is the exact P2 ``pi_train`` prefix.  ``pi_train`` is a separate
+    # condition-balanced order over the same frames as ``P_train``, so the
+    # candidate is a subset of the common membership but is not in general a
+    # subsequence of its storage order.  Containment is the whole requirement:
+    # fitted values are selected by frame UID, never by position.
+    common_members = set(common.common_membership)
+    if any(uid not in common_members for uid in membership):
         raise TrainingDataInputError(
             "Candidate membership is not contained in the common preparation membership."
-        )
-    positions = [common_order[uid] for uid in membership]
-    if positions != sorted(positions):
-        raise TrainingDataInputError(
-            "Candidate membership is not an exact ordered projection of the common membership."
         )
     weight_by_uid = {item.frame_uid: item for item in common.fitted_frame_weights}
     projected_weights = tuple(

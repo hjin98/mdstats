@@ -464,3 +464,198 @@ def test_p3a_frozen_eval2_metric_policy_identity_is_stable() -> None:
             "unit_conversion": "ev_per_angstrom_to_mev_per_angstrom_x_1000",
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Order divergence: pi_train is a separate order over the same P_train frames
+# ---------------------------------------------------------------------------
+
+
+def _order_divergent_policy() -> mdstats.ResolvedTargetSizePolicy:
+    """Same shape as ``_policy`` with an M3 the two-run fixture can allocate."""
+
+    return mdstats.resolve_target_size_policy(
+        target_size_power_min=1,
+        target_size_power_max=3,
+        evaluation_size_powers=(1, 2, 3),
+        fidelity_epochs=(1, 3, 10),
+        optimizer_seeds=(1, 2),
+        practical_equivalence_mev_per_a=1.0,
+    )
+
+
+def _order_divergent_manifest(tmp_path: Path) -> mdstats.TrainingDataManifest:
+    """Two runs at different temperatures, so P2 sees two conditions."""
+
+    for run_id, tebeg in (("runA", 650), ("runB", 900)):
+        neutral_fixtures._write(
+            tmp_path, run_id, ("Li", "O"), n_frames=64, tebeg=tebeg
+        )
+    return mdstats.TrainingDataManifest(
+        dataset_id="p3a-order-divergence",
+        system_profile="generic",
+        runs=tuple(
+            mdstats.TrainingDataRunSpec(
+                run_id=run_id,
+                vasprun=f"{run_id}/vasprun.xml",
+                reference_group="bulk",
+                assertions=(("regime", "production"),),
+            )
+            for run_id in ("runA", "runB")
+        ),
+    )
+
+
+def order_divergent_environment(tmp_path: Path):
+    """Real P1/P2/P3 chain whose ``pi_train`` is not a P_train subsequence.
+
+    Divergence is forced through the accepted P2 input rather than left to
+    accidental UID ordering: each training frame's priority is its own
+    position in ``P_train``, and ``_condition_balanced_order`` sorts by
+    descending priority, so every condition bucket is deliberately reversed
+    relative to the split's storage order.
+    """
+
+    manifest = _order_divergent_manifest(tmp_path)
+    _source, frame_authority, _features, neutral_base = _build_full_neutral_chain(
+        manifest, tmp_path, partition_policy=_neutral_policy()
+    )
+    policy = _order_divergent_policy()
+    baseline = mdstats.build_target_size_statistical_aggregate(
+        frame_authority, neutral_base, policy=policy
+    )
+    priority = {
+        uid: float(position)
+        for position, uid in enumerate(baseline.split.training_frame_uids)
+    }
+    aggregate = mdstats.build_target_size_statistical_aggregate(
+        frame_authority,
+        neutral_base,
+        policy=policy,
+        training_priority_evidence=priority,
+    )
+    frames, frame_data_by_run, index = _frame_arrays(tmp_path, manifest)
+    common = build_target_size_common_preparation(
+        aggregate,
+        frame_catalog=frames,
+        frame_data_by_run=frame_data_by_run,
+        frame_array_index=index,
+    )
+    return {
+        "manifest": manifest,
+        "frame_authority": frame_authority,
+        "aggregate": aggregate,
+        "common": common,
+        "frames": frames,
+        "frame_data_by_run": frame_data_by_run,
+        "index": index,
+    }
+
+
+def _first_non_subsequence_size(aggregate) -> int:
+    """The smallest qualified N whose T_N is not a P_train subsequence."""
+
+    position = {
+        uid: index
+        for index, uid in enumerate(aggregate.split.training_frame_uids)
+    }
+    for size in aggregate.definition.qualified_candidate_sizes:
+        positions = [
+            position[uid] for uid in aggregate.definition.candidate_membership(size)
+        ]
+        if positions != sorted(positions):
+            return size
+    raise AssertionError("Fixture failed to force an order-divergent candidate.")
+
+
+def test_p3a_fixture_forces_pi_train_to_diverge_from_p_train_order(
+    tmp_path: Path,
+) -> None:
+    env = order_divergent_environment(tmp_path)
+    aggregate = env["aggregate"]
+    training = aggregate.split.training_frame_uids
+    order = aggregate.definition.training_order.frame_uids
+    assert set(order) == set(training)
+    assert tuple(order) != tuple(training)
+    # The common preparation is still bound to exact P_train, not to pi_train.
+    assert env["common"].common_membership == tuple(training)
+
+
+def test_p3a_projection_accepts_a_candidate_that_is_not_a_p_train_subsequence(
+    tmp_path: Path,
+) -> None:
+    """``T_N`` is the exact P2 ``pi_train`` prefix, never a P_train subsequence.
+
+    The projector previously required the candidate's positions in the stored
+    ``P_train`` tuple to increase, which rejects every valid condition-balanced
+    candidate on real multi-condition data.
+    """
+
+    env = order_divergent_environment(tmp_path)
+    aggregate, common = env["aggregate"], env["common"]
+    definition = aggregate.definition
+    size = _first_non_subsequence_size(aggregate)
+
+    projection = project_target_size_candidate_preparation(common, definition, size)
+
+    membership = definition.candidate_membership(size)
+    assert projection.candidate_membership == tuple(membership)
+    assert projection.candidate_membership_digest == (
+        definition.training_order.candidate_digest(size)
+    )
+    assert set(membership) <= set(common.common_membership)
+    # Selection only: every projected weight is the common fitted weight.
+    common_weight_by_uid = {
+        item.frame_uid: item for item in common.fitted_frame_weights
+    }
+    assert {item.frame_uid for item in projection.projected_frame_weights} == set(
+        membership
+    )
+    for item in projection.projected_frame_weights:
+        assert item.to_dict() == common_weight_by_uid[item.frame_uid].to_dict()
+    assert projection.common_preparation_digest == common.content_digest
+    assert projection.projected_atomic_reference_digest == (
+        common.fitted_atomic_references.content_digest
+    )
+
+
+def test_p3a_order_divergent_projection_still_rejects_foreign_authority(
+    tmp_path: Path,
+) -> None:
+    """Removing the false order gate must not weaken the real gates."""
+
+    env = order_divergent_environment(tmp_path)
+    aggregate, common = env["aggregate"], env["common"]
+    definition = aggregate.definition
+    size = _first_non_subsequence_size(aggregate)
+
+    with pytest.raises(mdstats.TrainingDataInputError):
+        project_target_size_candidate_preparation(common, definition, size + 1)
+
+    foreign = replace(common, experiment_definition_digest=digest({"foreign": True}))
+    with pytest.raises(mdstats.TrainingDataInputError):
+        project_target_size_candidate_preparation(foreign, definition, size)
+
+    # A self-consistent common preparation whose P_train excludes part of T_N
+    # is still refused by the projector's containment gate.
+    dropped = set(definition.candidate_membership(size))
+    reduced = tuple(uid for uid in common.common_membership if uid not in dropped)
+    reduced_weights = tuple(
+        item for item in common.fitted_frame_weights if item.frame_uid not in dropped
+    )
+    harness = tuple(
+        uid for uid in common.harness_validation_membership if uid not in dropped
+    )
+    truncated = replace(
+        common,
+        common_membership=reduced,
+        common_membership_digest=digest({"frame_uids": list(reduced)}),
+        fitted_frame_weights=reduced_weights,
+        fitted_weights_digest=digest(
+            {"frame_weights": [item.to_dict() for item in reduced_weights]}
+        ),
+        harness_validation_membership=harness,
+        harness_validation_membership_digest=digest({"frame_uids": list(harness)}),
+    )
+    with pytest.raises(mdstats.TrainingDataInputError):
+        project_target_size_candidate_preparation(truncated, definition, size)
