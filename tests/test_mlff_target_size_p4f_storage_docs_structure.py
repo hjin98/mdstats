@@ -490,7 +490,7 @@ def test_p4f_req4_no_reverse_nested_lock_or_transaction_path():
         "commit_target_size_boundary_batch",
         "record_candidate_boundary_outcome",
         "resolve_target_size_candidate_for_resume",
-        "_remove_durably",
+        "remove_planned_target",
         "durable_unlink",
         "deduplicate",
         "create_cold_archive",

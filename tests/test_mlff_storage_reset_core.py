@@ -278,30 +278,51 @@ def _policy(**kwargs):
     return resolve_storage_policy({}, **kwargs)
 
 
-def _certified(container: Path, **kwargs):
-    """Drive the certified-subtree removal with the bindings a real plan supplies.
+def _certification(container: Path, nodes=None, **kwargs):
+    """The whole-unit owner authority a real cleanup view would carry.
 
-    IR17-1A/1B made the campaign anchor and the plan's own target identity
-    required arguments of the production owner, because a consequential caller
-    may never reach an unbound removal mode. These unit cases exercise the owner
-    directly, so they supply the same two bindings a `PlannedAction` carries;
-    the anchor rule itself is accepted through the real inventory/planning/
-    executor path in the integration suite.
+    ``nodes=None`` models the exclusive-writer owner (storage's own staging
+    area): everything a plain-file/directory tree can hold is this owner's.  A
+    mapping models the typed-proof owner (a released P7 member, a certified
+    CampaignStore orphan record).
     """
 
-    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage.removal import Certification
+
+    return Certification(nodes=nodes, exclusive=nodes is None, **kwargs)
+
+
+def _certified(container: Path, *, nodes=None, certification=None, **kwargs):
+    """Drive the canonical destructive owner with the bindings a real plan supplies.
+
+    The campaign anchor and the plan's own target identity are required
+    arguments of the production owner, because a consequential caller may never
+    reach an unbound removal mode. These unit cases exercise the owner directly,
+    so they supply the same two bindings a `PlannedAction` carries; the anchor
+    rule itself is accepted through the real inventory/planning/executor path in
+    the integration suite.
+    """
+
+    from mdstats.training_data.storage.removal import remove_planned_target
     from mdstats.training_data.storage_reclamation import filesystem_identity
 
-    kwargs.setdefault("anchor", container.parent)
-    if "planned_identity" not in kwargs:
+    anchor = kwargs.pop("anchor", container.parent)
+    if "planned_identity" in kwargs:
+        identity = kwargs.pop("planned_identity")
+    else:
         try:
-            kwargs["planned_identity"] = filesystem_identity(container)
+            identity = filesystem_identity(container)
         except OSError:
-            kwargs["planned_identity"] = {
+            identity = {
                 "schema": "mdstats.mlff-filesystem-identity.v1",
                 "kind": "absent",
             }
-    return remove_certified_subtree(container, **kwargs)
+    if certification is None:
+        certification = _certification(container, nodes, **kwargs)
+    else:
+        assert not kwargs, kwargs
+    action = SimpleNamespace(path=container, filesystem_identity=identity)
+    return remove_planned_target(action, anchor=anchor, certification=certification)
 
 
 
@@ -1036,21 +1057,33 @@ def test_a_descendant_added_after_planning_refuses_the_action(campaign) -> None:
 
 
 def test_no_consequential_recursive_path_equates_containment_with_ownership() -> None:
-    """Structural: every recursive action goes through authorized_members."""
+    """Structural: recursion always spends an owner's whole-unit certification.
+
+    Read-only member resolution (archive membership, dedup candidacy) uses
+    `authorized_members`.  Consequential cleanup does not: it carries the
+    owner's typed certification into the destructive walk and re-checks every
+    node live, so containment never becomes authority at either moment.
+    """
 
     root = Path(cli.__file__).parent / "storage"
     inventory = (root / "inventory.py").read_text(encoding="utf-8")
     assert "def authorized_members" in inventory
     assert "SubtreeCoverage.CLOSED" in inventory
-    for module in ("archive.py", "dedup.py", "commands.py"):
+    for module in ("archive.py", "dedup.py"):
         text = (root / module).read_text(encoding="utf-8")
         assert "authorized_members" in text, module
-    # The consequential recursions do not delegate to `shutil.rmtree` at all;
-    # they descend no-follow through directory descriptors. The one surviving
-    # `rmtree` call belongs to the legacy non-consequential `remove_durably`
-    # utility, which the guard below names explicitly rather than counting.
-    executor = (root / "executor.py").read_text(encoding="utf-8")
-    assert "def remove_certified_subtree" in executor
+
+    commands = (root / "commands.py").read_text(encoding="utf-8")
+    assert "authorized_members" not in commands, (
+        "cleanup resolves a member list ahead of the mutation again"
+    )
+    assert "cleanup_certification(" in commands
+
+    # The one recursive owner descends no-follow through directory descriptors
+    # and refuses every node the certification does not cover.
+    removal = (root / "removal.py").read_text(encoding="utf-8")
+    assert "shutil" not in removal
+    assert "certification.certifies(" in removal
 
 
 # ---------------------------------------------------------------------------
@@ -2137,6 +2170,7 @@ def test_a_refused_cleanup_does_not_maintain_the_database(campaign) -> None:
         plan,
         trigger="test:stale",
         synchronization=synchronization_for(plan, snapshot),
+        engine=storage_commands._cleanup_engine(context, policy),
     )
     assert result.status == "refused"
     assert not any(
@@ -3893,23 +3927,26 @@ def test_a_symlinked_completion_proof_grants_no_authority_and_is_not_followed(
 
 
 def test_recursive_deletion_is_symlink_attack_resistant() -> None:
-    """The capability the *consequential* recursions actually rest on.
+    """The capability the consequential recursion actually rests on.
 
-    `shutil.rmtree.avoids_symlink_attacks` describes `rmtree`'s implementation.
-    It is the right guarantee to assert for the legacy `remove_durably` utility,
-    which delegates to it - and no protection whatsoever for a separate walker.
-    The cleanup recursions descend through directory descriptors, so the
-    capability that protects them is the dir-fd primitive set.
+    `shutil.rmtree.avoids_symlink_attacks` describes `rmtree`'s implementation
+    and is no protection whatsoever for a separate walker. The one cleanup
+    recursion descends through directory descriptors, so the capability that
+    protects it is the dir-fd primitive set - and it refuses rather than
+    widening to a pathname walk when that set is unavailable.
     """
 
     from mdstats.training_data.storage.trust import dir_fd_mutation_supported
 
     assert dir_fd_mutation_supported(), (
         "this platform cannot provide no-follow directory-descriptor removal; "
-        "the storage executor must refuse recursive removal here"
+        "the canonical destructive owner must refuse recursive removal here"
     )
-    assert shutil.rmtree.avoids_symlink_attacks, (
-        "the legacy remove_durably utility delegates recursion to shutil.rmtree"
+    removal = (
+        Path(cli.__file__).parent / "storage" / "removal.py"
+    ).read_text(encoding="utf-8")
+    assert "shutil" not in removal, (
+        "the canonical destructive owner delegates its recursion to rmtree"
     )
 
 
@@ -4230,24 +4267,31 @@ def test_no_p7_consumer_converts_root_bound_certification_into_path_authority() 
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef) and node.name == "authorized_members"
     )
-    delegated = [
-        node
-        for node in ast.walk(resolver)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "authorize_released_attempt_member"
-    ]
-    assert delegated, "the common resolver still resolves released P7 members itself"
-    assert "P7_RELEASED_ATTEMPT_AUTHORIZER" in inventory_source
+    del resolver
+    # Released P7 members are never resolved here at all: their owner keeps the
+    # authority and hands its authenticated descriptor to the canonical
+    # destructive owner, so no pathname re-walk exists to be redirected.
+    assert "authorize_released_attempt_member" not in inventory_source
+    assert "remove_certified_unit" in (
+        Path(cli.__file__).parent / "qualification" / "store.py"
+    ).read_text(encoding="utf-8")
+    assert "attempt_fd" in (
+        Path(cli.__file__).parent / "qualification" / "store.py"
+    ).read_text(encoding="utf-8")
 
     # The last mutation seam re-observes the certified root.
-    assert "root_identity" in executor_source
-    removal = next(
+    removal_source = (storage_root / "removal.py").read_text(encoding="utf-8")
+    assert "root_identity" in removal_source
+    certification = next(
         node
-        for node in ast.walk(ast.parse(executor_source))
-        if isinstance(node, ast.FunctionDef) and node.name == "remove_certified_subtree"
+        for node in ast.walk(ast.parse(removal_source))
+        if isinstance(node, ast.ClassDef) and node.name == "Certification"
     )
-    accepted = {argument.arg for argument in removal.args.kwonlyargs}
+    accepted = {
+        node.target.id
+        for node in certification.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+    }
     assert {"root_identity", "authority_identity"} <= accepted, (
         "the recursive removal cannot be told which objects it was authorized on"
     )
@@ -4260,6 +4304,7 @@ def test_no_p7_consumer_converts_root_bound_certification_into_path_authority() 
     assert "authority_identity=view.root_identity" in commands_source, (
         "the cleanup engine drops the certified authority root before removing"
     )
+    del executor_source
 
     # And an identity change - of either - stales an unapplied plan.
     assert "view.root_identity" in plan_source and "view.path_identity" in plan_source
@@ -4381,17 +4426,17 @@ def test_every_cleanup_removal_owner_reports_a_terminal_outcome() -> None:
     from mdstats.training_data.qualification.store import (
         remove_released_attempt_member,
     )
-    from mdstats.training_data.storage.executor import (
-        record_removal,
-        remove_certified_subtree,
-        remove_durably_outcome,
-    )
+    from mdstats.training_data.storage.executor import record_removal
     from mdstats.training_data.storage.outcome import MutationOutcome
+    from mdstats.training_data.storage.removal import (
+        remove_certified_unit,
+        remove_planned_target,
+    )
 
     for owner in (
         remove_released_attempt_member,
-        remove_certified_subtree,
-        remove_durably_outcome,
+        remove_certified_unit,
+        remove_planned_target,
     ):
         annotation = _inspect.signature(owner).return_annotation
         assert "MutationOutcome" in str(annotation), (owner.__name__, annotation)
@@ -4445,36 +4490,33 @@ def test_a_partial_removal_never_credits_the_planned_size() -> None:
     assert partial.succeeded is False
 
 
-def test_the_common_certified_subtree_reports_partial_when_it_half_empties(
+def test_the_canonical_owner_reports_partial_when_it_half_empties(
     tmp_path: Path,
 ) -> None:
-    """R28-D: the shared helper's partial branch is a partial, not a refusal.
+    """A contradiction after a certified sibling is a partial, not a refusal.
 
-    `remove_certified_subtree` retains the container when some descendant was
-    not owner-certified, but it still unlinks the members that were. Reporting
-    that as `refused_no_change` would describe a directory that no longer holds
-    what it held; reporting it as `removed` would claim a container that is
-    still there.
+    The walk removes what the owner certified and stops at the first node it did
+    not. Reporting that as `refused_no_change` would describe a directory that
+    no longer holds what it held; reporting it as `removed` would claim a
+    container that is still there.
     """
 
-    from mdstats.training_data.storage.executor import remove_certified_subtree
     from mdstats.training_data.storage.outcome import (
         OUTCOME_PARTIAL_CHANGE_REFUSED,
         OUTCOME_REFUSED_NO_CHANGE,
     )
 
-    container = tmp_path / "container"
-    container.mkdir()
+    container = tmp_path / "campaign" / "container"
+    container.mkdir(parents=True)
     authorized = container / "authorized.bin"
     authorized.write_bytes(b"x" * 64)
     foreign = container / "foreign.bin"
     foreign.write_bytes(b"not ours")
 
+    # Entries are walked in name order, so the certified member goes first and
+    # the unrecorded one stops the action.
     outcome = _certified(
-        container,
-        # Typed, because an untyped member authorizes no deletion at all.
-        members=[_typed(authorized, "file")],
-        refusals=[(foreign, "this owner did not record it")],
+        container, nodes={"authorized.bin": "file"}, anchor=container.parent
     )
     assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
     assert outcome.mutated is True and outcome.succeeded is False
@@ -4485,16 +4527,12 @@ def test_the_common_certified_subtree_reports_partial_when_it_half_empties(
     assert foreign.read_bytes() == b"not ours"
     assert container.is_dir()
 
-    # And with nothing authorized to remove, the same contradiction is a clean
+    # And with nothing certified to remove, the same contradiction is a clean
     # no-change refusal rather than a partial.
-    only_foreign = tmp_path / "only-foreign"
-    only_foreign.mkdir()
+    only_foreign = tmp_path / "campaign" / "only-foreign"
+    only_foreign.mkdir(parents=True)
     (only_foreign / "foreign.bin").write_bytes(b"not ours")
-    outcome = _certified(
-        only_foreign,
-        members=[],
-        refusals=[(only_foreign / "foreign.bin", "this owner did not record it")],
-    )
+    outcome = _certified(only_foreign, nodes={}, anchor=only_foreign.parent)
     assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, outcome
     assert outcome.mutated is False
     assert outcome.credited_bytes(1_000_000) == 0
@@ -4515,6 +4553,44 @@ def _recorded_tree(root: Path) -> dict[str, str]:
     return recorded
 
 
+def _certified_unit(parent_fd: int, container: Path, recorded, **kwargs):
+    """Drive the canonical destructive owner exactly as the P7 session does.
+
+    The session authenticates the attempt directory and hands its descriptor to
+    the one canonical remover, along with the proof's typed node map keyed
+    relative to that attempt root.  These unit cases supply the same two things.
+    """
+
+    from mdstats.training_data.storage.removal import (
+        Certification,
+        remove_certified_unit,
+    )
+    from mdstats.training_data.storage_reclamation import filesystem_identity
+
+    name = kwargs.pop("name", container.name)
+    identity = kwargs.pop("planned_identity", None)
+    if identity is None:
+        try:
+            identity = filesystem_identity(container)
+        except OSError:
+            identity = {
+                "schema": "mdstats.mlff-filesystem-identity.v1",
+                "kind": "absent",
+            }
+    return remove_certified_unit(
+        parent_fd,
+        name,
+        container,
+        planned_identity=identity,
+        certification=Certification(
+            nodes=recorded,
+            prefix=f"{name}/",
+            root_kind=recorded.get(name),
+            **kwargs,
+        ),
+    )
+
+
 def test_recursive_partial_mutation_reports_exact_action_local_bytes(
     tmp_path: Path,
 ) -> None:
@@ -4528,10 +4604,7 @@ def test_recursive_partial_mutation_reports_exact_action_local_bytes(
 
     import os as _os
 
-    from mdstats.training_data.qualification.store import (
-        _remove_certified_directory,
-        dir_fd_mutation_supported,
-    )
+    from mdstats.training_data.qualification.store import dir_fd_mutation_supported
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
     assert dir_fd_mutation_supported()
@@ -4549,9 +4622,7 @@ def test_recursive_partial_mutation_reports_exact_action_local_bytes(
 
     parent_fd = _os.open(tmp_path, _os.O_RDONLY | _os.O_DIRECTORY)
     try:
-        outcome = _remove_certified_directory(
-            parent_fd, "member", container, recorded, "member/", seen=set()
-        )
+        outcome = _certified_unit(parent_fd, container, recorded)
     finally:
         _os.close(parent_fd)
 
@@ -4575,7 +4646,6 @@ def test_recursive_byte_accounting_deduplicates_hard_links(tmp_path: Path) -> No
 
     import os as _os
 
-    from mdstats.training_data.qualification.store import _remove_certified_directory
     from mdstats.training_data.storage.plan import _tree_bytes
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
@@ -4592,9 +4662,7 @@ def test_recursive_byte_accounting_deduplicates_hard_links(tmp_path: Path) -> No
 
     parent_fd = _os.open(tmp_path, _os.O_RDONLY | _os.O_DIRECTORY)
     try:
-        outcome = _remove_certified_directory(
-            parent_fd, "member", container, recorded, "member/", seen=set()
-        )
+        outcome = _certified_unit(parent_fd, container, recorded)
     finally:
         _os.close(parent_fd)
 
@@ -4610,7 +4678,6 @@ def test_a_clean_recursive_removal_measures_what_the_planner_would(
 
     import os as _os
 
-    from mdstats.training_data.qualification.store import _remove_certified_directory
     from mdstats.training_data.storage.plan import _tree_bytes
     from mdstats.training_data.storage.outcome import OUTCOME_REMOVED
 
@@ -4623,9 +4690,7 @@ def test_a_clean_recursive_removal_measures_what_the_planner_would(
 
     parent_fd = _os.open(tmp_path, _os.O_RDONLY | _os.O_DIRECTORY)
     try:
-        outcome = _remove_certified_directory(
-            parent_fd, "member", container, recorded, "member/", seen=set()
-        )
+        outcome = _certified_unit(parent_fd, container, recorded)
     finally:
         _os.close(parent_fd)
 
@@ -4645,9 +4710,7 @@ def test_the_final_target_check_is_no_weaker_than_plan_revalidation() -> None:
 
     import ast
 
-    from mdstats.training_data.qualification.store import (
-        TARGET_IDENTITY_DIMENSIONS,
-    )
+    from mdstats.training_data.storage.removal import TARGET_IDENTITY_DIMENSIONS
 
     plan_source = (Path(cli.__file__).parent / "storage" / "plan.py").read_text(
         encoding="utf-8"
@@ -4700,6 +4763,7 @@ def test_a_spent_capability_is_rejected_before_any_descriptor_syscall() -> None:
             and isinstance(node.value, ast.Constant)
             and isinstance(node.value.value, str)
         )
+        and not isinstance(node, (ast.Import, ast.ImportFrom))
     ]
     guard_index = next(
         index
@@ -4711,7 +4775,7 @@ def test_a_spent_capability_is_rejected_before_any_descriptor_syscall() -> None:
         for index, node in enumerate(statements)
         if any(
             name in ast.dump(node)
-            for name in ("dir_fd", "_unlink_certified_file", "_remove_certified_directory")
+            for name in ("remove_certified_unit", "attempt_fd")
         )
     )
     assert guard_index < syscall_index, (guard_index, syscall_index)
@@ -4758,17 +4822,8 @@ def test_the_cleanup_engine_withholds_the_rest_of_a_contradicted_attempt() -> No
         if isinstance(node, ast.FunctionDef) and node.name == "record_or_reraise"
     )
     recorded = ast.dump(recorder)
-    # One recorder, owned by the executor: the CLI engine and the default
-    # engine must not be able to drift into different truths again.
+    # One recorder, owned by the executor, reached by the one cleanup path.
     assert "record_or_reraise" in commands_source
-    default_engine = next(
-        node
-        for node in ast.walk(ast.parse(executor_source))
-        if isinstance(node, ast.FunctionDef) and node.name == "_execute_actions"
-    )
-    assert "record_or_reraise" in ast.dump(default_engine), (
-        "the default executor still records removals without the shared boundary"
-    )
     assert "PartialMutationError" in recorded and "record_removal" in recorded
     assert "Raise" in recorded, "the failure is swallowed instead of propagating"
 
@@ -4783,8 +4838,7 @@ def test_a_failed_unlink_does_not_inflate_the_partial_figure(tmp_path: Path) -> 
 
     import os as _os
 
-    from mdstats.training_data.qualification import store as qstore
-    from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
+    from mdstats.training_data.storage.outcome import PartialMutationError
 
     container = tmp_path / "member"
     container.mkdir()
@@ -4792,28 +4846,36 @@ def test_a_failed_unlink_does_not_inflate_the_partial_figure(tmp_path: Path) -> 
     (container / "b-stays.bin").write_bytes(b"y" * 900)
     recorded = _recorded_tree(container)
 
-    real_unlink = qstore._unlink_certified_file
-    seen_names: list[str] = []
+    from mdstats.training_data.storage import removal as removal_mod
 
-    def fail_on_second(parent_fd, name):
-        seen_names.append(name)
-        if len(seen_names) > 1:
-            raise OSError(13, "injected unlink failure")
-        return real_unlink(parent_fd, name)
+    real_unlink = removal_mod.unlink_certified_entry
+    seen: list[str] = []
 
-    qstore._unlink_certified_file = fail_on_second
+    def fail_on_second(parent_fd, name, display, stats, ledger):
+        seen.append(str(name))
+        if len(seen) > 1:
+            raise ledger.failure(
+                OSError(13, "injected unlink failure"),
+                f"{display} could not be removed",
+            )
+        return real_unlink(parent_fd, name, display, stats, ledger)
+
+    removal_mod.unlink_certified_entry = fail_on_second
     parent_fd = _os.open(tmp_path, _os.O_RDONLY | _os.O_DIRECTORY)
+    raised: BaseException | None = None
     try:
-        outcome = qstore._remove_certified_directory(
-            parent_fd, "member", container, recorded, "member/", seen=set()
-        )
+        _certified_unit(parent_fd, container, recorded)
+    except BaseException as exc:  # noqa: BLE001 - the propagation is the contract
+        raised = exc
     finally:
+        removal_mod.unlink_certified_entry = real_unlink
         _os.close(parent_fd)
-        qstore._unlink_certified_file = real_unlink
 
-    assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
+    # A failing unlink is an I/O failure, not an owner contradiction, so it
+    # propagates carrying the exact bytes already gone.
+    assert isinstance(raised, PartialMutationError), raised
     # Only the 40 bytes that really went; never the 900 that are still there.
-    assert outcome.removed_bytes == 40, outcome
+    assert raised.outcome.removed_bytes == 40, raised.outcome
     assert (container / "b-stays.bin").stat().st_size == 900
     assert not (container / "a-goes.bin").exists()
 
@@ -4867,17 +4929,17 @@ def test_a_generic_partial_directory_removal_records_exact_bytes(
     action mutated or by how much.
     """
 
-    from mdstats.training_data.storage.executor import remove_durably_outcome
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
-    tree = tmp_path / "tree"
+    root = tmp_path / "campaign"
+    tree = root / "tree"
     (tree / "sub").mkdir(parents=True)
     (tree / "a.bin").write_bytes(b"a" * 10)
     (tree / "sub" / "locked.bin").write_bytes(b"b" * 20)
     os.chmod(tree / "sub", 0o500)  # its child cannot be unlinked
     try:
         payload, raised = _drive_removal(
-            tmp_path, tree, lambda: remove_durably_outcome(tree)
+            tmp_path, tree, lambda: _certified(tree, anchor=root)
         )
     finally:
         os.chmod(tree / "sub", 0o700)
@@ -4900,29 +4962,30 @@ def test_a_generic_durability_failure_after_unlink_records_the_removal(
 ) -> None:
     """R31-2 case 1: unlink succeeds, durability fails, action is partial."""
 
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage import removal as removal_mod
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
-    victim = tmp_path / "lonely.bin"
+    root = tmp_path / "campaign"
+    root.mkdir()
+    victim = root / "lonely.bin"
     victim.write_bytes(b"x" * 64)
-    real = executor_mod.durable_unlink
+    real = removal_mod.persist_entry_removal
 
-    def unlink_then_fail(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
-        # The transition really crosses, and it is reported the way the real
-        # primitive reports it, before the durability step fails.
-        Path(path).unlink()
-        if on_unlinked is not None:
-            on_unlinked()
-        raise OSError(5, "injected durability failure")
+    def fail_durability(parent_fd, display, ledger):
+        # The unlink really crossed; only the durability step that follows it
+        # fails, so the action is partial rather than a no-op.
+        raise ledger.failure(
+            OSError(5, "injected durability failure"),
+            f"{display} was removed but the removal could not be made durable",
+        )
 
-    executor_mod.durable_unlink = unlink_then_fail
+    removal_mod.persist_entry_removal = fail_durability
     try:
         payload, raised = _drive_removal(
-            tmp_path, victim, lambda: remove_durably_outcome(victim)
+            tmp_path, victim, lambda: _certified(victim, anchor=root)
         )
     finally:
-        executor_mod.durable_unlink = real
+        removal_mod.persist_entry_removal = real
 
     assert isinstance(raised, OSError), raised
     entry = payload["refused_actions"][0]
@@ -4937,16 +5000,16 @@ def test_a_certified_subtree_durability_failure_records_the_removal(
 ) -> None:
     """R31-2 case 3: the fully certified branch keeps its account too."""
 
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage import removal as removal_mod
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
-    container = tmp_path / "certified"
-    container.mkdir()
+    root = tmp_path / "campaign"
+    container = root / "certified"
+    container.mkdir(parents=True)
     (container / "one.bin").write_bytes(b"a" * 30)
-    # IR17-1D: durability is now the retained parent capability's own step, so
-    # the injection point is that step rather than a pathname re-resolution.
-    real = executor_mod._persist_entry_removal
+    # Durability is the retained parent capability's own step, so the injection
+    # point is that step rather than a pathname re-resolution.
+    real = removal_mod.persist_entry_removal
 
     def fail_durability(parent_fd, display, ledger):
         raise ledger.failure(
@@ -4954,15 +5017,13 @@ def test_a_certified_subtree_durability_failure_records_the_removal(
             f"{display} was removed but the removal could not be made durable",
         )
 
-    executor_mod._persist_entry_removal = fail_durability
+    removal_mod.persist_entry_removal = fail_durability
     try:
         payload, raised = _drive_removal(
-            tmp_path,
-            container,
-            lambda: _certified(container, members=[], refusals=[]),
+            tmp_path, container, lambda: _certified(container, anchor=root)
         )
     finally:
-        executor_mod._persist_entry_removal = real
+        removal_mod.persist_entry_removal = real
 
     assert isinstance(raised, OSError), raised
     entry = payload["refused_actions"][0]
@@ -4977,12 +5038,12 @@ def test_an_authorized_member_failure_keeps_the_earlier_members_bytes(
 ) -> None:
     """R31-2 case 4: an earlier success survives a later pre-mutation failure."""
 
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage import removal as removal_mod
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
-    container = tmp_path / "mixed"
-    container.mkdir()
+    root = tmp_path / "campaign"
+    container = root / "mixed"
+    container.mkdir(parents=True)
     first = container / "a-first.bin"
     first.write_bytes(b"a" * 11)
     second = container / "b-second.bin"
@@ -4990,28 +5051,31 @@ def test_an_authorized_member_failure_keeps_the_earlier_members_bytes(
     foreign = container / "zz-foreign.bin"
     foreign.write_bytes(b"not ours")
 
-    real = executor_mod.durable_unlink
+    real = removal_mod.unlink_certified_entry
     done: list[str] = []
 
-    def fail_on_second(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
+    def fail_on_second(parent_fd, name, display, stats, ledger):
         if done:
-            raise OSError(13, "injected pre-mutation failure")
-        done.append(str(path))
-        return real(path, dir_fd=dir_fd, missing_ok=missing_ok, on_unlinked=on_unlinked)
+            raise ledger.failure(
+                OSError(13, "injected pre-mutation failure"),
+                f"{display} could not be removed",
+            )
+        done.append(str(name))
+        return real(parent_fd, name, display, stats, ledger)
 
-    executor_mod.durable_unlink = fail_on_second
+    removal_mod.unlink_certified_entry = fail_on_second
     try:
         payload, raised = _drive_removal(
             tmp_path,
             container,
             lambda: _certified(
                 container,
-                members=[_typed(first, "file"), _typed(second, "file")],
-                refusals=[(foreign, "this owner did not record it")],
+                nodes={"a-first.bin": "file", "b-second.bin": "file"},
+                anchor=root,
             ),
         )
     finally:
-        executor_mod.durable_unlink = real
+        removal_mod.unlink_certified_entry = real
 
     assert isinstance(raised, OSError), raised
     entry = payload["refused_actions"][0]
@@ -5027,23 +5091,27 @@ def test_a_generic_failure_before_any_mutation_credits_nothing(
 ) -> None:
     """R31-2 case 5: no first destructive transition, no fabricated mutation."""
 
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage import removal as removal_mod
 
-    victim = tmp_path / "untouched.bin"
+    root = tmp_path / "campaign"
+    root.mkdir()
+    victim = root / "untouched.bin"
     victim.write_bytes(b"x" * 40)
-    real = executor_mod.durable_unlink
+    real = removal_mod.unlink_certified_entry
 
-    def never(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
-        raise OSError(13, "injected pre-mutation failure")
+    def never(parent_fd, name, display, stats, ledger):
+        raise ledger.failure(
+            OSError(13, "injected pre-mutation failure"),
+            f"{display} could not be removed",
+        )
 
-    executor_mod.durable_unlink = never
+    removal_mod.unlink_certified_entry = never
     try:
         payload, raised = _drive_removal(
-            tmp_path, victim, lambda: remove_durably_outcome(victim)
+            tmp_path, victim, lambda: _certified(victim, anchor=root)
         )
     finally:
-        executor_mod.durable_unlink = real
+        removal_mod.unlink_certified_entry = real
 
     assert isinstance(raised, OSError), raised
     assert payload["mutated"] is False, payload
@@ -5059,13 +5127,18 @@ def test_the_p7_recursion_retains_a_file_it_cannot_measure(tmp_path: Path) -> No
     outcome would even read as "nothing changed".
     """
 
-    from mdstats.training_data.qualification import store as qstore
     from mdstats.training_data.storage.outcome import (
         OUTCOME_PARTIAL_CHANGE_REFUSED,
         OUTCOME_REFUSED_NO_CHANGE,
     )
 
+    from mdstats.training_data.storage import removal as removal_mod
+
     real_scandir = os.scandir
+    # Patching `os.scandir` also defeats the platform capability probe, which
+    # reads `os.scandir in os.supports_fd`. The probe's real answer is captured
+    # first so the injection stays confined to the measurement it is testing.
+    assert removal_mod.dir_fd_mutation_supported()
 
     class _UnmeasurableEntry:
         def __init__(self, entry):
@@ -5095,18 +5168,14 @@ def test_the_p7_recursion_retains_a_file_it_cannot_measure(tmp_path: Path) -> No
         recorded[f"member-{scenario}/{blind_name}"] = "file"
 
         os.scandir = scandir_with_blind_spot
+        real_probe = removal_mod.dir_fd_mutation_supported
+        removal_mod.dir_fd_mutation_supported = lambda: True
         parent_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
         try:
-            outcome = qstore._remove_certified_directory(
-                parent_fd,
-                container.name,
-                container,
-                recorded,
-                f"{container.name}/",
-                seen=set(),
-            )
+            outcome = _certified_unit(parent_fd, container, recorded)
         finally:
             os.scandir = real_scandir
+            removal_mod.dir_fd_mutation_supported = real_probe
             os.close(parent_fd)
 
         # In both cases the file nobody could measure is still there.
@@ -5140,14 +5209,14 @@ def test_the_recursive_owners_descend_no_follow_and_never_by_pathname() -> None:
     import ast
 
     storage = Path(cli.__file__).parent / "storage"
-    executor_source = (storage / "executor.py").read_text(encoding="utf-8")
-    tree = ast.parse(executor_source)
+    removal_source = (storage / "removal.py").read_text(encoding="utf-8")
+    tree = ast.parse(removal_source)
 
     recursions = [
         node
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef)
-        and node.name in ("_remove_tree_tracked", "_remove_tree_contents")
+        and node.name in ("descend_to_parent", "_empty_certified_directory")
     ]
     assert len(recursions) == 2, [node.name for node in recursions]
     bodies = {node.name: ast.dump(node) for node in recursions}
@@ -5164,18 +5233,15 @@ def test_the_recursive_owners_descend_no_follow_and_never_by_pathname() -> None:
         )
 
     # Child mutation is descriptor-relative, not by absolute pathname.
-    contents = bodies["_remove_tree_contents"]
-    assert "dir_fd" in contents
+    assert "dir_fd" in bodies["_empty_certified_directory"]
 
     # And the capability guard names the primitive the recursion really uses.
-    assert "dir_fd_mutation_supported" in executor_source
+    assert "dir_fd_mutation_supported" in removal_source
 
-    # One owner for the primitive: the storage executor must not reach into the
-    # P7 owner for it, and the P7 owner must not keep a private copy.
-    assert "qualification" not in executor_source.replace(
-        "qualification/store.py", ""
-    ) or "from ..qualification" not in executor_source, (
-        "the storage executor imports the P7 owner"
+    # One owner for the primitive: the destructive owner must not reach into
+    # the P7 owner for it, and the P7 owner must not keep a private copy.
+    assert "from ..qualification" not in removal_source, (
+        "the canonical destructive owner imports the P7 owner"
     )
     store_source = (
         Path(cli.__file__).parent / "qualification" / "store.py"
@@ -5203,14 +5269,14 @@ def test_a_swapped_child_directory_is_never_followed_out_of_the_tree(
     """
 
     from mdstats.training_data.storage import trust
-    from mdstats.training_data.storage.executor import remove_durably_outcome
 
     external = tmp_path / "external"
     external.mkdir()
     sentinel = external / "sentinel.bin"
     sentinel.write_bytes(b"someone else's bytes")
 
-    tree = tmp_path / "tree"
+    root = tmp_path / "campaign"
+    tree = root / "tree"
     (tree / "victim").mkdir(parents=True)
     (tree / "victim" / "inner.bin").write_bytes(b"x" * 5)
 
@@ -5227,12 +5293,15 @@ def test_a_swapped_child_directory_is_never_followed_out_of_the_tree(
 
     trust.open_directory_nofollow = racing_open
     try:
-        with pytest.raises(OSError):
-            remove_durably_outcome(tree)
+        outcome = _certified(tree, anchor=root)
     finally:
         trust.open_directory_nofollow = real_open
 
     assert swapped, "the race never fired"
+    # The swapped child is refused rather than followed; nothing outside the
+    # authorized tree is touched.
+    assert outcome.refused, outcome
+    assert "victim" in outcome.detail, outcome.detail
     assert sentinel.read_bytes() == b"someone else's bytes"
     assert external.is_dir()
 
@@ -5248,7 +5317,6 @@ def test_a_zero_byte_removal_is_a_mutation_even_though_it_frees_nothing(
     and skips the durability step the caller owes for entries that really went.
     """
 
-    from mdstats.training_data.qualification import store as qstore
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
     for scenario in ("zero-byte-file", "empty-directory", "extra-hard-link"):
@@ -5272,9 +5340,7 @@ def test_a_zero_byte_removal_is_a_mutation_even_though_it_frees_nothing(
 
         parent_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
         try:
-            outcome = qstore._remove_certified_directory(
-                parent_fd, scenario, container, recorded, f"{scenario}/", seen=set()
-            )
+            outcome = _certified_unit(parent_fd, container, recorded)
         finally:
             os.close(parent_fd)
 
@@ -5295,7 +5361,6 @@ def test_a_zero_credit_mutation_still_owes_its_durability_step(
     were also never made durable.
     """
 
-    from mdstats.training_data.qualification import store as qstore
     from mdstats.training_data.storage.outcome import MutationLedger
 
     fsynced: list[int] = []
@@ -5313,9 +5378,7 @@ def test_a_zero_credit_mutation_still_owes_its_durability_step(
     os.fsync = watched_fsync
     parent_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        outcome = qstore._remove_certified_directory(
-            parent_fd, "member", container, recorded, "member/", seen=set()
-        )
+        outcome = _certified_unit(parent_fd, container, recorded)
     finally:
         os.close(parent_fd)
         os.fsync = real_fsync
@@ -5396,10 +5459,11 @@ def test_r35_canonical_opened_descriptor_mount_trust(tmp_path: Path) -> None:
 def test_r35_single_file_transition_aware_replacement_survives(tmp_path: Path) -> None:
     """R35-2A: single file unlink succeeds, replacement installed before fsync fails."""
     from unittest import mock
-    from mdstats.training_data.storage.executor import remove_durably_outcome
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED, PartialMutationError
 
-    victim = tmp_path / "victim.bin"
+    root = tmp_path / "campaign"
+    root.mkdir()
+    victim = root / "victim.bin"
     victim.write_bytes(b"ORIGINAL_BYTES" * 8)
     original_size = victim.stat().st_size
     replacement_content = b"REPLACEMENT_DATA" * 4
@@ -5410,7 +5474,7 @@ def test_r35_single_file_transition_aware_replacement_survives(tmp_path: Path) -
 
     with mock.patch("os.fsync", side_effect=fsync_interceptor):
         with pytest.raises(PartialMutationError) as exc_info:
-            remove_durably_outcome(victim)
+            _certified(victim, anchor=root)
 
     exc = exc_info.value
     assert exc.outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED
@@ -5422,23 +5486,24 @@ def test_r35_single_file_transition_aware_replacement_survives(tmp_path: Path) -
 
 def test_r35_single_file_unlink_not_occurring_no_mutation(tmp_path: Path) -> None:
     """R35-2A: single file unlink does not occur; no mutation or bytes attributed."""
-    from mdstats.training_data.storage.executor import remove_durably_outcome
     from mdstats.training_data.storage.outcome import OUTCOME_ALREADY_ABSENT
 
-    nonexistent = tmp_path / "never_existed.bin"
-    outcome = remove_durably_outcome(nonexistent)
+    root = tmp_path / "campaign"
+    root.mkdir()
+    nonexistent = root / "never_existed.bin"
+    outcome = _certified(nonexistent, anchor=root)
     assert outcome.outcome == OUTCOME_ALREADY_ABSENT
     assert outcome.mutated is False
     assert outcome.removed_bytes is None or outcome.removed_bytes == 0
 
 
 def test_r35_common_member_swapped_to_symlink_or_dir_retained(tmp_path: Path) -> None:
-    """R35-2B: authorized regular file swapped to symlink or directory is retained untouched."""
-    from mdstats.training_data.storage.executor import remove_certified_subtree
+    """R35-2B: a certified file swapped to a symlink or directory is retained untouched."""
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
-    container = tmp_path / "common_container"
-    container.mkdir()
+    root = tmp_path / "campaign"
+    container = root / "common_container"
+    container.mkdir(parents=True)
     f_sym = container / "victim_sym.bin"
     f_sym.write_bytes(b"S" * 40)
     f_dir = container / "victim_dir.bin"
@@ -5449,22 +5514,20 @@ def test_r35_common_member_swapped_to_symlink_or_dir_retained(tmp_path: Path) ->
     external_sentinel = tmp_path / "external_sentinel.bin"
     external_sentinel.write_bytes(b"SENTINEL_CONTENT")
 
-    members = [f_sym, f_dir, f_ord]
-    member_authorities = {f_sym: "file", f_dir: "file", f_ord: "file"}
-
     f_sym.unlink()
     f_sym.symlink_to(external_sentinel)
     f_dir.unlink()
     f_dir.mkdir()
     (f_dir / "nested.bin").write_bytes(b"nested")
 
+    # The owner certified three plain files. Sorted enumeration reaches the
+    # surviving ordinary file first, then the substituted ones.
     outcome = _certified(
         container,
-        members=members,
-        refusals=[(container / "unauthorized_retained.txt", "not authorized")],
+        nodes={"ordinary.bin": "file", "victim_dir.bin": "file", "victim_sym.bin": "file"},
+        anchor=root,
         root_identity={"device": int(container.stat().st_dev), "inode": int(container.stat().st_ino)},
-        authority_identity={"device": int(container.parent.stat().st_dev), "inode": int(container.parent.stat().st_ino)},
-        member_authorities=member_authorities,
+        authority_identity={"device": int(root.stat().st_dev), "inode": int(root.stat().st_ino)},
     )
 
     assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED
@@ -5625,31 +5688,6 @@ def test_r35_dedup_and_maintenance_mutation_truth(tmp_path: Path) -> None:
     assert res2.completed[0]["events_pruned"] == 5
 
 
-def test_r35_remove_durably_is_thin_wrapper(tmp_path: Path) -> None:
-    """R35-6: remove_durably is a thin wrapper over remove_durably_outcome."""
-    from unittest import mock
-    from mdstats.training_data.storage.executor import remove_durably
-    from mdstats.training_data.storage.outcome import MutationOutcome, OUTCOME_PARTIAL_CHANGE_REFUSED, PartialMutationError
-
-    source = inspect.getsource(remove_durably)
-    assert "rmtree" not in source
-    assert "remove_durably_outcome" in source
-
-    target = tmp_path / "test.txt"
-    target.write_text("hello")
-    assert remove_durably(target) is True
-    assert not target.exists()
-
-    assert remove_durably(tmp_path / "missing.txt") is False
-
-    with mock.patch(
-        "mdstats.training_data.storage.executor.remove_durably_outcome",
-        side_effect=PartialMutationError(MutationOutcome(OUTCOME_PARTIAL_CHANGE_REFUSED, "detail", removed_bytes=10), cause=OSError()),
-    ):
-        with pytest.raises(PartialMutationError):
-            remove_durably(tmp_path / "some.txt")
-
-
 def test_every_patched_production_name_is_one_the_product_actually_reads() -> None:
     """R32-7/R37-4: a failpoint on a name nobody calls must fail loudly.
 
@@ -5672,6 +5710,8 @@ def test_every_patched_production_name_is_one_the_product_actually_reads() -> No
 
     aliases = {
         "executor_mod": "mdstats.training_data.storage.executor",
+        "removal_mod": "mdstats.training_data.storage.removal",
+        "commands_mod": "mdstats.training_data.storage.commands",
         "storage_commands": "mdstats.training_data.storage.commands",
         "archive_mod": "mdstats.training_data.storage.archive",
         "durability_mod": "mdstats.training_data.storage.durability",
@@ -5844,23 +5884,27 @@ def test_a_failed_unlink_never_inherits_another_actors_removal(
     yes and hand this execution a mutation and a byte credit it never earned.
     """
 
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage import removal as removal_mod
 
-    victim = tmp_path / "contended.bin"
+    root = tmp_path / "campaign"
+    root.mkdir()
+    victim = root / "contended.bin"
     victim.write_bytes(b"x" * 128)
     fired = {"n": 0}
 
-    def unlink_fails_then_vanishes(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
+    def unlink_fails_then_vanishes(parent_fd, name, display, stats, ledger):
         fired["n"] += 1
-        failure = OSError(13, "injected unlink failure")
         # Another actor, between our failed syscall and our error handling.
-        Path(path).unlink()
-        raise failure
+        Path(display).unlink()
+        raise ledger.failure(
+            OSError(13, "injected unlink failure"), f"{display} could not be removed"
+        )
 
-    monkeypatch.setattr(executor_mod, "durable_unlink", unlink_fails_then_vanishes)
+    monkeypatch.setattr(
+        removal_mod, "unlink_certified_entry", unlink_fails_then_vanishes
+    )
     payload, raised = _drive_removal(
-        tmp_path, victim, lambda: remove_durably_outcome(victim)
+        tmp_path, victim, lambda: _certified(victim, anchor=root)
     )
 
     assert fired["n"] == 1, "the injected unlink seam never fired"
@@ -5875,29 +5919,27 @@ def test_an_unlink_then_a_replacement_and_a_durability_failure_is_exact(
 ) -> None:
     """R37-1A case 3: the replacement survives and the partial is still exact."""
 
-    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage import removal as removal_mod
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
-    victim = tmp_path / "reappearing.bin"
+    root = tmp_path / "campaign"
+    root.mkdir()
+    victim = root / "reappearing.bin"
     victim.write_bytes(b"x" * 200)
-
-    from mdstats.training_data.storage import durability as durability_mod
-
-    real = durability_mod.fsync_parent_directory
     fired = {"n": 0}
 
-    def guarded(path):
-        target = Path(path)
-        if target == victim:
-            fired["n"] += 1
-            # Another actor repopulates the name before we handle the failure.
-            target.write_bytes(b"someone else's file")
-            raise OSError(5, "injected durability failure")
-        return real(target)
+    def fail_durability(parent_fd, display, ledger):
+        fired["n"] += 1
+        # Another actor repopulates the name before we handle the failure.
+        Path(display).write_bytes(b"someone else's file")
+        raise ledger.failure(
+            OSError(5, "injected durability failure"),
+            f"{display} was removed but the removal could not be made durable",
+        )
 
-    monkeypatch.setattr(durability_mod, "fsync_parent_directory", guarded)
+    monkeypatch.setattr(removal_mod, "persist_entry_removal", fail_durability)
     payload, raised = _drive_removal(
-        tmp_path, victim, lambda: remove_durably_outcome(victim)
+        tmp_path, victim, lambda: _certified(victim, anchor=root)
     )
 
     assert fired["n"] == 1, "the injected durability seam never fired"
@@ -6190,43 +6232,46 @@ def test_the_terminal_restore_journal_phase_survives_a_later_failure(
 
 
 def _certified_container(tmp_path: Path) -> tuple[Path, Path, Path]:
-    """A container the owner only partly certifies, so members go individually."""
+    """A container with a nested certified member and one node nobody recorded.
 
-    container = tmp_path / "container"
+    ``zz-foreign.bin`` sorts after ``nested``, so the walk reaches the certified
+    subtree first and the contradiction afterwards.
+    """
+
+    container = tmp_path / "campaign" / "container"
     (container / "nested").mkdir(parents=True)
     member = container / "nested" / "owned.bin"
     member.write_bytes(b"m" * 64)
-    foreign = container / "foreign.bin"
+    foreign = container / "zz-foreign.bin"
     foreign.write_bytes(b"not ours")
     return container, member, foreign
 
 
-def _typed(path: Path, kind: str):
-    from mdstats.training_data.storage.inventory import AuthorizedPath
+def _container_nodes(**extra: str) -> dict[str, str]:
+    nodes = {"nested": "directory", "nested/owned.bin": "file"}
+    nodes.update(extra)
+    return nodes
 
-    return AuthorizedPath.create(path, kind)
 
-
-def test_an_untyped_member_grants_no_deletion_authority(tmp_path: Path) -> None:
+def test_an_unrecorded_member_grants_no_deletion_authority(tmp_path: Path) -> None:
     """R37-2B: the absence of a certified kind is not permission to delete.
 
-    Defaulting an untyped member to "file" lets a caller that simply forgot to
-    carry the owner's kind evidence delete by pathname - the one substitution no
-    later check can catch, because there is nothing left to compare against.
+    Defaulting an unrecorded node to "file" lets an owner that simply never
+    wrote it be deleted anyway - the one substitution no later check can catch,
+    because there is nothing left to compare against.
     """
-
-    from mdstats.training_data.storage.executor import remove_certified_subtree
 
     container, member, foreign = _certified_container(tmp_path)
     outcome = _certified(
         container,
-        members=[Path(member)],  # a bare path: no owner-certified kind
-        refusals=[(foreign, "this owner did not record it")],
+        nodes={"nested": "directory"},  # the nested member itself is unrecorded
+        anchor=container.parent,
     )
     assert outcome.refused, outcome
     assert outcome.mutated is False, outcome
-    assert "no owner-certified kind" in outcome.detail, outcome.detail
-    assert member.is_file(), "an untyped member was deleted anyway"
+    assert "did not record" in outcome.detail, outcome.detail
+    assert member.is_file(), "an unrecorded member was deleted anyway"
+    assert foreign.is_file()
 
 
 @pytest.mark.parametrize("substitute", ["symlink", "directory", "fifo"])
@@ -6241,8 +6286,6 @@ def test_a_typed_member_is_removed_and_a_substituted_one_is_not(
     same-name object of another kind is not that object.
     """
 
-    from mdstats.training_data.storage.executor import remove_certified_subtree
-
     container, member, foreign = _certified_container(tmp_path)
     swapped = container / "nested" / "swapped.bin"
     if substitute == "symlink":
@@ -6255,8 +6298,8 @@ def test_a_typed_member_is_removed_and_a_substituted_one_is_not(
 
     outcome = _certified(
         container,
-        members=[_typed(member, "file"), _typed(swapped, "file")],
-        refusals=[(foreign, "this owner did not record it")],
+        nodes=_container_nodes(**{"nested/swapped.bin": "file"}),
+        anchor=container.parent,
     )
     assert outcome.mutated is True, outcome
     assert int(outcome.removed_bytes or 0) == 64, outcome
@@ -6279,7 +6322,6 @@ def test_a_nested_mount_under_an_individually_authorized_member_stops_the_descen
     rather than being walked through on the way to an authorized leaf.
     """
 
-    from mdstats.training_data.storage.executor import remove_certified_subtree
     from mdstats.training_data.storage.trust import (
         MountIdentityResolver,
         set_mount_resolver,
@@ -6293,9 +6335,7 @@ def test_a_nested_mount_under_an_individually_authorized_member_stops_the_descen
     )
     try:
         outcome = _certified(
-            container,
-            members=[_typed(member, "file")],
-            refusals=[(foreign, "this owner did not record it")],
+            container, nodes=_container_nodes(), anchor=container.parent
         )
     finally:
         set_mount_resolver(None)
@@ -6311,7 +6351,6 @@ def test_an_unavailable_mount_resolver_stops_the_authorized_descent(
 ) -> None:
     """R37-2B: ambiguity retains. A same-device bind mount cannot be ruled out."""
 
-    from mdstats.training_data.storage.executor import remove_certified_subtree
     from mdstats.training_data.storage.trust import (
         MountIdentityResolver,
         set_mount_resolver,
@@ -6321,9 +6360,7 @@ def test_an_unavailable_mount_resolver_stops_the_authorized_descent(
     set_mount_resolver(MountIdentityResolver(mount_points=frozenset(), available=False))
     try:
         outcome = _certified(
-            container,
-            members=[_typed(member, "file")],
-            refusals=[(foreign, "this owner did not record it")],
+            container, nodes=_container_nodes(), anchor=container.parent
         )
     finally:
         set_mount_resolver(None)
@@ -6336,16 +6373,14 @@ def test_an_unavailable_mount_resolver_stops_the_authorized_descent(
 def test_a_known_prefix_survives_a_later_contradiction(tmp_path: Path) -> None:
     """R37-2B: earlier successful members keep their exact account."""
 
-    from mdstats.training_data.storage.executor import remove_certified_subtree
-
     container, member, foreign = _certified_container(tmp_path)
-    later = container / "nested" / "later.bin"
+    later = container / "nested" / "zz-later.bin"
     later.write_bytes(b"l" * 7)
 
+    # `zz-later.bin` is present but unrecorded, so it stops the walk after the
+    # certified member has already gone.
     outcome = _certified(
-        container,
-        members=[_typed(member, "file"), Path(later)],
-        refusals=[(foreign, "this owner did not record it")],
+        container, nodes=_container_nodes(), anchor=container.parent
     )
     assert outcome.mutated is True, outcome
     assert outcome.refused, outcome
@@ -6385,9 +6420,8 @@ def test_a_directory_replaced_before_its_final_rmdir_is_refused(
     against a different filesystem object.
     """
 
-    from mdstats.training_data.storage.executor import remove_durably_outcome
-
-    root = tmp_path / "tree"
+    anchor = tmp_path / "campaign"
+    root = anchor / "tree"
     (root / "sub").mkdir(parents=True)
     (root / "sub" / "child.bin").write_bytes(b"c" * 12)
 
@@ -6398,11 +6432,11 @@ def test_a_directory_replaced_before_its_final_rmdir_is_refused(
 
     fired = _swap_before_the_final_check(monkeypatch, "sub", replace)
     payload, raised = _drive_removal(
-        tmp_path, root, lambda: remove_durably_outcome(root)
+        tmp_path, root, lambda: _certified(root, anchor=anchor)
     )
 
     assert fired["n"] == 1, "the final identity check never ran"
-    assert raised is not None, payload
+    assert raised is None, raised
     assert payload["mutated"] is True, payload
     assert int(payload["reclaimed_bytes"]) == 12, payload
     assert (root / "sub" / "impostor.bin").read_bytes() == b"planted"
@@ -6414,12 +6448,11 @@ def test_a_directory_swapped_for_a_symlink_before_its_rmdir_is_refused(
 ) -> None:
     """R37-2A: a substituted final component is seen as the symlink it is."""
 
-    from mdstats.training_data.storage.executor import remove_durably_outcome
-
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "external.bin").write_bytes(b"someone else's bytes")
-    root = tmp_path / "tree"
+    anchor = tmp_path / "campaign"
+    root = anchor / "tree"
     (root / "sub").mkdir(parents=True)
     (root / "sub" / "child.bin").write_bytes(b"c" * 9)
 
@@ -6429,41 +6462,14 @@ def test_a_directory_swapped_for_a_symlink_before_its_rmdir_is_refused(
 
     fired = _swap_before_the_final_check(monkeypatch, "sub", replace)
     payload, raised = _drive_removal(
-        tmp_path, root, lambda: remove_durably_outcome(root)
+        tmp_path, root, lambda: _certified(root, anchor=anchor)
     )
 
     assert fired["n"] == 1, "the final identity check never ran"
-    assert raised is not None, payload
+    assert raised is None, raised
+    assert payload["mutated"] is True, payload
     assert (outside / "external.bin").read_bytes() == b"someone else's bytes"
     assert (root / "sub").is_symlink()
-
-
-def test_a_certified_subtree_directory_replacement_is_refused_too(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """R37-2A: the fully-certified common recursion shares the same boundary."""
-
-    from mdstats.training_data.storage.executor import remove_certified_subtree
-
-    root = tmp_path / "closed"
-    (root / "sub").mkdir(parents=True)
-    (root / "sub" / "child.bin").write_bytes(b"c" * 21)
-
-    def replace(display: Path) -> None:
-        display.rename(display.parent / "aside")
-        display.mkdir()
-
-    fired = _swap_before_the_final_check(monkeypatch, "sub", replace)
-    payload, raised = _drive_removal(
-        tmp_path,
-        root,
-        lambda: _certified(root, members=[], refusals=[]),
-    )
-    assert fired["n"] == 1, "the final identity check never ran"
-    assert raised is not None, payload
-    assert payload["mutated"] is True, payload
-    assert int(payload["reclaimed_bytes"]) == 21, payload
-    assert (root / "sub").is_dir() and (root / "aside").is_dir()
 
 
 def _fail_close_of(monkeypatch, predicate):
@@ -6504,16 +6510,16 @@ def test_a_close_failure_after_mutation_is_an_exact_partial(
 ) -> None:
     """R37-3: a close that fails alone, after bytes went, is a partial."""
 
-    from mdstats.training_data.storage.executor import remove_durably_outcome
     from mdstats.training_data.storage.outcome import OUTCOME_PARTIAL_CHANGE_REFUSED
 
-    root = tmp_path / "tree"
+    anchor = tmp_path / "campaign"
+    root = anchor / "tree"
     (root / "sub").mkdir(parents=True)
     (root / "sub" / "child.bin").write_bytes(b"c" * 33)
 
     fired = _fail_close_of(monkeypatch, lambda name: name == "sub")
     payload, raised = _drive_removal(
-        tmp_path, root, lambda: remove_durably_outcome(root)
+        tmp_path, root, lambda: _certified(root, anchor=anchor)
     )
 
     assert fired["n"] == 1, "the injected close seam never fired"
@@ -6528,12 +6534,11 @@ def test_a_close_failure_before_any_mutation_claims_no_mutation(
 ) -> None:
     """R37-3: the same failure, before anything went, is not a partial.
 
-    The descent refuses at the untyped member, so nothing has been removed when
-    the container descriptor fails to close. Reporting that as a partial would
-    claim a mutation; suppressing it would hide a real failure.
+    The walk refuses at the unrecorded member, so nothing has been removed when
+    the container descriptor fails to close. The refusal is the product answer
+    and stays primary; the close failure is logged as secondary evidence rather
+    than being turned into a mutation this action never made.
     """
-
-    from mdstats.training_data.storage.executor import remove_certified_subtree
 
     container, member, foreign = _certified_container(tmp_path)
     fired = _fail_close_of(monkeypatch, lambda name: name == container.name)
@@ -6541,15 +6546,14 @@ def test_a_close_failure_before_any_mutation_claims_no_mutation(
         tmp_path,
         container,
         lambda: _certified(
-            container,
-            members=[Path(member)],
-            refusals=[(foreign, "this owner did not record it")],
+            container, nodes={"nested": "directory"}, anchor=container.parent
         ),
     )
 
     assert fired["n"] == 1, "the injected close seam never fired"
-    assert isinstance(raised, OSError), raised
-    assert "injected close failure" in str(raised), raised
+    assert raised is None, raised
+    entry = payload["refused_actions"][0]
+    assert entry["outcome"] == "refused_no_change", entry
     assert payload["mutated"] is False, payload
     assert int(payload["reclaimed_bytes"]) == 0, payload
     assert member.is_file()
@@ -6560,29 +6564,29 @@ def test_a_primary_failure_survives_a_close_failure_behind_it(
 ) -> None:
     """R37-3: the failure that carries the mutation truth is the one reported."""
 
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage.executor import remove_durably_outcome
+    from mdstats.training_data.storage import removal as removal_mod
 
-    root = tmp_path / "tree"
+    anchor = tmp_path / "campaign"
+    root = anchor / "tree"
     (root / "sub").mkdir(parents=True)
     (root / "sub" / "child.bin").write_bytes(b"c" * 5)
 
     fired = _fail_close_of(monkeypatch, lambda name: name == "sub")
-    real_contents = executor_mod._remove_tree_contents
+    real_contents = removal_mod._empty_certified_directory
     primary_fired = {"n": 0}
 
-    def fail_inside(handle, display, ledger):
-        outcome = real_contents(handle, display, ledger)
+    def fail_inside(handle, display, certification, prefix, ledger):
+        stopped = real_contents(handle, display, certification, prefix, ledger)
         if display.name == "sub":
             primary_fired["n"] += 1
             raise ledger.failure(
                 OSError(13, "injected primary failure"), f"{display} stopped"
             )
-        return outcome
+        return stopped
 
-    monkeypatch.setattr(executor_mod, "_remove_tree_contents", fail_inside)
+    monkeypatch.setattr(removal_mod, "_empty_certified_directory", fail_inside)
     payload, raised = _drive_removal(
-        tmp_path, root, lambda: remove_durably_outcome(root)
+        tmp_path, root, lambda: _certified(root, anchor=anchor)
     )
 
     assert primary_fired["n"] == 1 and fired["n"] == 1, (primary_fired, fired)
@@ -6600,8 +6604,6 @@ def test_repeated_contradictions_do_not_accumulate_descriptors(tmp_path: Path) -
     count is the evidence.
     """
 
-    from mdstats.training_data.storage.executor import remove_certified_subtree
-
     def open_descriptor_count() -> int:
         return len(os.listdir("/proc/self/fd"))
 
@@ -6609,9 +6611,7 @@ def test_repeated_contradictions_do_not_accumulate_descriptors(tmp_path: Path) -
 
     def once() -> None:
         outcome = _certified(
-            container,
-            members=[Path(member)],
-            refusals=[(foreign, "this owner did not record it")],
+            container, nodes={"nested": "directory"}, anchor=container.parent
         )
         assert outcome.refused, outcome
 
@@ -6640,82 +6640,72 @@ def _mounted_at(points) -> None:
     )
 
 
-@pytest.mark.parametrize("owner", ["generic", "certified"])
+@pytest.mark.parametrize("nodes", ["exclusive", "typed"])
 @pytest.mark.parametrize("where", ["top", "nested"])
-def test_a_mount_stops_every_recursive_removal_owner(
-    tmp_path: Path, owner: str, where: str
+def test_a_mount_stops_the_recursive_removal_owner(
+    tmp_path: Path, nodes: str, where: str
 ) -> None:
-    """R37-2A: the two recursive owners share one mount decision, at both depths.
+    """R37-2A: one mount decision, at both depths and under either certification.
 
     A same-device bind mount is indistinguishable by device number alone, so the
     mount table is what decides - and it decides on the descriptor that is about
     to be enumerated, not on a pathname checked earlier.
     """
 
-    from mdstats.training_data.storage.executor import (
-        remove_certified_subtree,
-        remove_durably_outcome,
-    )
     from mdstats.training_data.storage.trust import set_mount_resolver
 
-    root = tmp_path / "tree"
+    anchor = tmp_path / "campaign"
+    root = anchor / "tree"
     nested = root / "sub"
     nested.mkdir(parents=True)
     (nested / "foreign.bin").write_bytes(b"someone else's bytes")
+    certified = (
+        None if nodes == "exclusive" else {"sub": "directory", "sub/foreign.bin": "file"}
+    )
 
     _mounted_at([root if where == "top" else nested])
     try:
         payload, raised = _drive_removal(
-            tmp_path,
-            root,
-            (
-                (lambda: remove_durably_outcome(root))
-                if owner == "generic"
-                else (lambda: _certified(root, members=[], refusals=[]))
-            ),
+            tmp_path, root, lambda: _certified(root, nodes=certified, anchor=anchor)
         )
     finally:
         set_mount_resolver(None)
 
-    assert raised is not None, payload
+    assert raised is None, raised
     assert payload["mutated"] is False, payload
+    entry = payload["refused_actions"][0]
+    assert "campaign-owned" in entry["refusal"], entry
     assert (nested / "foreign.bin").read_bytes() == b"someone else's bytes"
 
 
-@pytest.mark.parametrize("owner", ["generic", "certified"])
-def test_an_unavailable_resolver_stops_every_recursive_removal_owner(
-    tmp_path: Path, owner: str
+@pytest.mark.parametrize("nodes", ["exclusive", "typed"])
+def test_an_unavailable_resolver_stops_the_recursive_removal_owner(
+    tmp_path: Path, nodes: str
 ) -> None:
-    """R37-2A: ambiguity retains at every shared destructive mechanism."""
+    """R37-2A: ambiguity retains at the one shared destructive mechanism."""
 
-    from mdstats.training_data.storage.executor import (
-        remove_certified_subtree,
-        remove_durably_outcome,
-    )
     from mdstats.training_data.storage.trust import (
         MountIdentityResolver,
         set_mount_resolver,
     )
 
-    root = tmp_path / "tree"
+    anchor = tmp_path / "campaign"
+    root = anchor / "tree"
     (root / "sub").mkdir(parents=True)
     (root / "sub" / "child.bin").write_bytes(b"c" * 4)
+    certified = (
+        None if nodes == "exclusive" else {"sub": "directory", "sub/child.bin": "file"}
+    )
 
     set_mount_resolver(MountIdentityResolver(mount_points=frozenset(), available=False))
     try:
         payload, raised = _drive_removal(
-            tmp_path,
-            root,
-            (
-                (lambda: remove_durably_outcome(root))
-                if owner == "generic"
-                else (lambda: _certified(root, members=[], refusals=[]))
-            ),
+            tmp_path, root, lambda: _certified(root, nodes=certified, anchor=anchor)
         )
     finally:
         set_mount_resolver(None)
 
-    assert raised is not None, payload
+    assert raised is None, raised
     assert payload["mutated"] is False, payload
     assert (root / "sub" / "child.bin").is_file()
 
@@ -6839,6 +6829,7 @@ def _destructive_sources() -> dict[str, str]:
     storage = Path(cli.__file__).parent / "storage"
     qualification = Path(cli.__file__).parent / "qualification"
     return {
+        "removal.py": (storage / "removal.py").read_text(encoding="utf-8"),
         "executor.py": (storage / "executor.py").read_text(encoding="utf-8"),
         "archive.py": (storage / "archive.py").read_text(encoding="utf-8"),
         "durability.py": (storage / "durability.py").read_text(encoding="utf-8"),
@@ -6907,7 +6898,7 @@ def test_every_consequential_rmdir_keeps_parent_authority_and_rechecks() -> None
 
     sources = _destructive_sources()
     sites = 0
-    for name in ("executor.py", "store.py"):
+    for name in ("removal.py",):
         tree = ast.parse(sources[name])
         for call in ast.walk(tree):
             if not (
@@ -6922,10 +6913,13 @@ def test_every_consequential_rmdir_keeps_parent_authority_and_rechecks() -> None
             ), f"{name}: a consequential rmdir does not name its parent descriptor"
         # And the comparison is what guards it.
         assert "verify_final_directory_identity(" in sources[name], name
-    assert sites == 2, sites
+    assert sites == 1, sites
 
-    # The generic recursion no longer removes a root by absolute pathname.
-    assert "os.rmdir(root)" not in sources["executor.py"]
+    # There is one such site in the product, and the P7 owner delegates to it
+    # rather than keeping a second one.
+    assert "rmdir" not in sources["store.py"], (
+        "the P7 owner regained its own directory removal"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -7035,12 +7029,8 @@ def test_a_mount_refusal_close_failure_never_bypasses_the_ledger(
     already-removed prefix would never reach the audit.
     """
 
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage.outcome import (
-        OUTCOME_PARTIAL_CHANGE_REFUSED,
-        MutationLedger,
-        PartialMutationError,
-    )
+    from mdstats.training_data.storage import removal as removal_mod
+    from mdstats.training_data.storage.outcome import MutationLedger
     from mdstats.training_data.storage.trust import (
         MountIdentityResolver,
         set_mount_resolver,
@@ -7068,15 +7058,16 @@ def test_a_mount_refusal_close_failure_never_bypasses_the_ledger(
     handle = os.open(str(root), os.O_RDONLY | os.O_DIRECTORY)
     try:
         monkeypatch.setattr(os, "close", refusing_close)
-        with pytest.raises(PartialMutationError) as caught:
-            executor_mod._remove_tree_contents(handle, root, ledger)
+        stopped = removal_mod._empty_certified_directory(
+            handle, root, _certification(root), "", ledger
+        )
     finally:
         monkeypatch.undo()
         set_mount_resolver(None)
         os.close(handle)
 
-    outcome = caught.value.outcome
-    assert outcome.outcome == OUTCOME_PARTIAL_CHANGE_REFUSED, outcome
+    outcome = ledger.stop(stopped)
+    assert outcome.outcome == "partial_change_refused", outcome
     # The mount refusal remains primary and the earlier prefix is exact.
     assert "not campaign-owned" in outcome.detail, outcome.detail
     assert outcome.removed_bytes == 7, outcome
@@ -7137,18 +7128,19 @@ def test_no_direct_close_before_a_structured_outcome_remains() -> None:
 
 
 def test_consequential_removal_is_anchored_bound_and_same_parent_durable() -> None:
-    """IR17-4 structural closure for the destructive authority family.
+    """Structural closure for the one destructive authority family.
 
     Source/absence evidence for the claims no counterfactual can establish on
-    its own: that there is no *other* way through the consequential owners.
+    its own: that there is no *other* way through the consequential owner.
     """
 
     import ast
 
     package = Path(cli.__file__).parent
-    executor_source = (package / "storage" / "executor.py").read_text(encoding="utf-8")
+    removal_source = (package / "storage" / "removal.py").read_text(encoding="utf-8")
     commands_source = (package / "storage" / "commands.py").read_text(encoding="utf-8")
-    executor_tree = ast.parse(executor_source)
+    store_source = (package / "qualification" / "store.py").read_text(encoding="utf-8")
+    removal_tree = ast.parse(removal_source)
 
     def _function(tree, name):
         return next(
@@ -7162,7 +7154,7 @@ def test_consequential_removal_is_anchored_bound_and_same_parent_durable() -> No
     #    below it is componentwise from an already-authenticated descriptor -
     #    never a fresh absolute/multi-component open whose last component
     #    happened to be no-follow.
-    descent = _function(executor_tree, "_descend_to_parent")
+    descent = _function(removal_tree, "descend_to_parent")
     dumped = ast.dump(descent)
     assert "relative_to" in dumped, "the descent does not root itself in the anchor"
     acquisitions = [
@@ -7185,76 +7177,70 @@ def test_consequential_removal_is_anchored_bound_and_same_parent_durable() -> No
     assert "verify_opened_directory_trust" in dumped, (
         "an intermediate hop escapes the opened-descriptor mount decision"
     )
-    for owner in ("remove_planned_outcome", "remove_certified_subtree"):
-        assert "_descend_to_parent" in ast.dump(_function(executor_tree, owner)), owner
+    assert "descend_to_parent" in ast.dump(
+        _function(removal_tree, "remove_planned_target")
+    )
     assert "anchor=plan.workspace" in commands_source, (
         "the production cleanup engine no longer supplies the campaign anchor"
     )
-    assert "anchor=plan.workspace" in executor_source, (
-        "the default executor no longer supplies the campaign anchor"
+    # The P7 entry point needs no descent: its live session already
+    # authenticated the parent, and that descriptor is what it hands over.
+    assert "descend_to_parent" not in ast.dump(
+        _function(removal_tree, "remove_certified_unit")
     )
+    assert "session.attempt_fd" in store_source
 
     # 2. The opened target is compared with the plan's own binding, and the
     #    owner's identities remain independently enforced.
-    spend = ast.dump(_function(executor_tree, "_spend_planned_capability"))
-    assert spend.count("_identity_contradiction") >= 2, (
-        "the entry and the opened descriptor are not both compared"
+    spend = ast.dump(_function(removal_tree, "_spend_certified_unit"))
+    assert spend.count("identity_contradiction") >= 3, (
+        "the entry, the opened descriptor and the owner root are not all compared"
     )
-    certified = ast.dump(_function(executor_tree, "remove_certified_subtree"))
-    assert "_identity_contradiction" in certified and (
-        "_owner_identity_contradiction" in certified
-    ), "plan identity and owner identity are no longer independent constraints"
+    assert "owner_identity_contradiction" in spend, (
+        "plan identity and owner identity are no longer independent constraints"
+    )
+    for name in ("remove_planned_target", "remove_certified_unit"):
+        accepted = {
+            argument.arg
+            for argument in _function(removal_tree, name).args.kwonlyargs
+        }
+        assert "certification" in accepted, name
     assert "planned_identity" in {
         argument.arg
-        for argument in _function(executor_tree, "remove_certified_subtree").args.kwonlyargs
+        for argument in _function(removal_tree, "remove_certified_unit").args.kwonlyargs
     }
     assert "anchor" in {
         argument.arg
-        for argument in _function(executor_tree, "remove_certified_subtree").args.kwonlyargs
+        for argument in _function(removal_tree, "remove_planned_target").args.kwonlyargs
     }
 
-    # 3. No consequential caller reaches the unbound compatibility remover.
-    assert "remove_durably_outcome" not in commands_source, (
-        "the production cleanup engine can still reach the unbound removal mode"
-    )
-    default_engine = ast.dump(_function(executor_tree, "_execute_actions"))
-    assert "remove_planned_outcome" in default_engine, default_engine[:200]
-    assert "remove_durably_outcome" not in default_engine, (
-        "the default executor can still reach the unbound removal mode"
-    )
-    # The compatibility mode survives only behind the thin public remover.
-    assert "remove_durably_outcome" in ast.dump(_function(executor_tree, "remove_durably"))
-
-    # 4. Once the plan-bound parent capability exists the single-file path
+    # 3. Once the plan-bound parent capability exists the single-file path
     #    cannot fall back to an absolute unlink.
     unlink_calls = [
         node
-        for node in ast.walk(_function(executor_tree, "_spend_planned_capability"))
+        for node in ast.walk(_function(removal_tree, "_spend_certified_unit"))
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id == "_unlink_measured_file"
+        and node.func.id == "unlink_certified_entry"
     ]
     assert unlink_calls, "the single-file boundary disappeared"
     assert all(
-        any(keyword.arg == "dir_fd" for keyword in call.keywords)
+        isinstance(call.args[0], ast.Name) and call.args[0].id == "parent_fd"
         for call in unlink_calls
     ), "a consequential single-file unlink no longer names its parent descriptor"
 
-    # 5. Directory-entry durability spends the retained parent capability; the
-    #    pathname re-resolution is gone from the executor entirely.
-    assert "fsync_parent_directory" not in executor_source, (
-        "the executor can still re-resolve a parent pathname for durability"
+    # 4. Directory-entry durability spends the retained parent capability; a
+    #    pathname re-resolution does not exist in the destructive owner at all.
+    assert "fsync_parent_directory" not in removal_source, (
+        "the destructive owner can still re-resolve a parent pathname"
     )
-    persist = ast.dump(_function(executor_tree, "_persist_entry_removal"))
+    persist = ast.dump(_function(removal_tree, "persist_entry_removal"))
     assert "fsync" in persist and "parent_fd" in persist, persist[:200]
-    for owner in ("_spend_planned_capability", "_remove_tree_from_parent"):
-        body = ast.dump(_function(executor_tree, owner))
-        assert "_persist_entry_removal" in body, owner
-    assert "_persist_entry_removal" in certified, (
-        "the certified recursion no longer persists through its own parent"
+    assert "persist_entry_removal" in spend, (
+        "the destructive owner no longer persists through its own parent"
     )
 
-    # 6. No post-failure disappearance inference or signature-incompatible
+    # 5. No post-failure disappearance inference or signature-incompatible
     #    unlink fallback has returned, and publication truth stays at the
     #    atomic replace.
     durability_source = (package / "storage" / "durability.py").read_text(
@@ -7271,75 +7257,185 @@ def test_consequential_removal_is_anchored_bound_and_same_parent_durable() -> No
 
 
 # ---------------------------------------------------------------------------
-# IR18-1 - one canonical cleanup semantic classification, fail-closed default
+# R38 - one cleanup semantic path, one canonical destructive owner
 # ---------------------------------------------------------------------------
 #
-# Caller/API census recorded for this closure (IR18-1 "Caller and compatibility
-# census"), taken over the whole repository:
+# Caller/API census recorded for this closure, taken over the whole repository:
 #
 #   * `StorageExecutor.run` is called from five production sites, all in
 #     `storage/commands.py`, and every one of them supplies a specialized
 #     engine: cleanup, archive create, archive reclaim, archive restore, dedup.
-#     No production caller uses `engine=None`.
-#   * The only maintained `engine=None` uses are tests: a stale-plan refusal
-#     case in this file and the default-engine action-recorder case in the
-#     integration suite. Both are internal, and neither requires the default
-#     engine to perform owner-specific recursive, P7, or maintenance work.
-#   * `StorageExecutor` is exported from `mdstats.training_data.storage`, but no
-#     maintained document or test states that its optional engine executes
-#     owner-scoped cleanup. The storage specification describes the opposite:
-#     one destructive implementation reached through the owning semantic owner.
-#
-# So the default domain is narrowed to the positive generic-leaf class rather
-# than an unsafe compatibility fallback being preserved.
+#     The engine argument is now required, so there is no default destructive
+#     route at all and nothing for a routing domain to keep in step.
+#   * The only cleanup destructive implementation is `storage/removal.py`.
+#     Ordinary cleanup enters it through `remove_planned_target`, and the P7
+#     released-attempt owner enters it through `remove_certified_unit` with the
+#     descriptor its live session already authenticated.
+#   * `remove_durably` / `remove_durably_outcome` / `remove_certified_subtree`
+#     had no production consumer once the default engine was removed; the
+#     supported contract they were reachable through is the canonical path
+#     above, so the second algorithm was deleted rather than wrapped.
 
 
-def _classifier_snapshot(views):
-    """The one thing `classify_cleanup_action` reads from a snapshot.
-
-    This is a focused unit of the classifier itself, not a stand-in for a
-    semantic owner: no owner decision is proxied here, and every claim that
-    depends on a real owner is accepted through real planning and the real
-    executor elsewhere in this file and in the integration suite.
-    """
-
-    def view(artifact_id: str):
-        return next((item for item in views if item.artifact_id == artifact_id), None)
-
-    return SimpleNamespace(view=view)
-
-
-def _cleanup_action(*, action, path, artifact_id, view=None, **kwargs):
-    from mdstats.training_data.storage.plan import planned_action
-
-    return planned_action(
-        action=action,
-        path=path,
-        artifact_id=artifact_id,
-        reason="ir18 fixture",
-        owner_state_identity=(view.state_identity if view is not None else ""),
-        **kwargs,
+def _cleanup_context(campaign, cfg=None):
+    return storage_commands.StorageCommandContext(
+        cfg if cfg is not None else campaign.cfg,
+        campaign.paths,
+        campaign.store,
+        campaign.boundary,
     )
 
 
-def test_an_unrecognized_exact_authorizer_is_never_classified_generic(tmp_path: Path):
-    """IR18-1 case 8: a future authorizer is unsupported, not generic.
+def _run_cleanup(
+    campaign,
+    *,
+    cfg=None,
+    tier="safe",
+    plan_actions=None,
+    invoked_as=None,
+):
+    """Real planning, real revalidation, real `StorageExecutor.run`, real audit.
 
-    The whole point of the positive domain is that a field the classifier has
-    never seen cannot become a recursive delete by not matching anything.
+    ``plan_actions(actions, snapshot)`` may narrow or extend the *real* cleanup
+    plan; nothing below the executor is substituted, and the plan is always
+    rebuilt against the real snapshot it will be revalidated with.
+
+    ``invoked_as`` resolves the apply policy under a *different* action family
+    while the plan still carries real cleanup actions. Ordinary revalidation is
+    satisfied in that case - policy identity, action equality, owner binding,
+    protection closure and per-action filesystem identity all hold - so nothing
+    before the cleanup family gate would refuse the execution.
     """
 
-    from mdstats.training_data.storage.cleanup_domain import (
-        CLASS_EXACT_AUTHORIZER,
-        CLASS_GENERIC_LEAF,
-        CLASS_INVALID,
-        classify_cleanup_action,
+    context = _cleanup_context(campaign, cfg)
+    cleanup_policy = resolve_storage_policy(
+        cfg if cfg is not None else {}, action=ACTION_CLEANUP, tier=tier, apply=True
     )
+    context.consequential_plane(cleanup_policy)
+    plan, snapshot = storage_commands.build_cleanup_plan(
+        context, cleanup_policy.for_apply(apply=False)
+    )
+    actions = list(plan.actions)
+    if plan_actions is not None:
+        actions = list(plan_actions(actions, snapshot))
+    policy = (
+        cleanup_policy
+        if invoked_as is None
+        else resolve_storage_policy(
+            cfg if cfg is not None else {}, action=invoked_as, tier=tier, apply=True
+        )
+    )
+    apply_plan = build_storage_plan(
+        snapshot,
+        policy,
+        actions,
+        refusals=plan.refusals,
+        created_utc=plan.created_utc,
+    )
+    if invoked_as is not None:
+        revalidate_plan(apply_plan, snapshot, policy)
+    raised: BaseException | None = None
+    result = None
+    try:
+        result = context.executor(policy).run(
+            apply_plan,
+            trigger="test:r38",
+            synchronization=synchronization_for(apply_plan, snapshot),
+            engine=storage_commands._cleanup_engine(context, policy),
+        )
+    except BaseException as exc:  # noqa: BLE001 - propagation is the contract
+        raised = exc
+    return result, raised, apply_plan
+
+
+def _owner_scoped_container(campaign, *, contradiction: bool = True) -> Path:
+    """A real reclaimable owner-scoped container, optionally contradicted.
+
+    `.mdstats/storage/staging/<identity>` is the storage owner's own
+    exclusive-writer scratch: a real closed-subtree artifact whose whole-unit
+    authority covers exactly what that owner could have written. A symlink is
+    something it never writes, so its presence contradicts the certification.
+    """
+
+    root = campaign.control_plane.staging_root_for("f" * 32)
+    (root / "dedup").mkdir(parents=True, exist_ok=True)
+    (root / "dedup" / "authorized.bin").write_bytes(b"a" * 24)
+    sentinel = root / "dedup" / "foreign.link"
+    if contradiction and not sentinel.is_symlink():
+        sentinel.symlink_to(campaign.paths.state_db)
+    return root
+
+
+def _generic_leaf(campaign, name: str = "aaaa.bin") -> Path:
+    """A real leaf cleanup target: uncataloged archive publication residue."""
+
+    campaign.control_plane.archive_root.mkdir(parents=True, exist_ok=True)
+    residue = campaign.control_plane.archive_root / name
+    residue.write_bytes(b"r" * 40)
+    return residue
+
+
+def _last_audit(campaign):
+    records = campaign.control_plane.read_audit()
+    return dict(records[-1]) if records else None
+
+
+def _refusal_details(result) -> str:
+    return "\n".join(str(item.get("refusal", "")) for item in result.refused)
+
+
+def _assert_action_refused(campaign, result, raised, *, fragment):
+    """The action was refused, nothing mutated, and the truth was audited."""
+
+    assert raised is None, raised
+    assert result is not None, result
+    detail = _refusal_details(result)
+    assert fragment in detail, detail
+    assert result.mutated is False, result.to_dict()
+    assert int(result.reclaimed_bytes) == 0, result.to_dict()
+    assert result.completed == [], result.completed
+    audit = _last_audit(campaign)
+    assert audit is not None, "the refused truth was never published"
+    assert audit["status"] == "refused", audit
+    assert audit["mutated"] is False, audit
+    assert int(audit["reclaimed_bytes"]) == 0, audit
+    assert "re-plan" not in audit["detail"], audit["detail"]
+    return detail
+
+
+def _assert_wrong_family_refusal(campaign, result, raised, *, action):
+    """Refused, non-mutating, zero-byte, durably audited - and for this reason."""
+
+    from mdstats.training_data.storage.executor import StorageAuthorizationError
+
+    assert isinstance(raised, StorageAuthorizationError), raised
+    detail = str(raised)
+    assert action in detail, detail
+    assert "cleanup" in detail and "action family" in detail, detail
+    assert result is None, "a wrong-family execution must not settle a result"
+    audit = _last_audit(campaign)
+    assert audit is not None, "the refused truth was never published"
+    assert audit["status"] == "refused", audit
+    assert audit["mutated"] is False, audit
+    assert int(audit["reclaimed_bytes"]) == 0, audit
+    assert audit["completed_actions"] == [], audit
+    assert "re-plan" not in audit["detail"], audit["detail"]
+    return detail
+
+
+def test_an_unrecognized_exact_authorizer_is_never_generic(tmp_path: Path):
+    """A future authorizer is unsupported, not generic.
+
+    The point of a positive authority gate is that a field it has never seen
+    cannot become a removal by failing to match anything.
+    """
+
+    from mdstats.training_data.storage.commands import cleanup_action_authority
     from mdstats.training_data.storage.owners import (
         ArtifactClass,
         P7_RELEASED_ATTEMPT_AUTHORIZER,
     )
-    from mdstats.training_data.storage.plan import ACTION_REMOVE
+    from mdstats.training_data.storage.plan import ACTION_REMOVE, planned_action
 
     target = tmp_path / "leaf.bin"
     target.write_bytes(b"x" * 32)
@@ -7356,68 +7452,62 @@ def test_an_unrecognized_exact_authorizer_is_never_classified_generic(tmp_path: 
             exact_authorizer=authorizer,
         )
 
-    action = _cleanup_action(
-        action=ACTION_REMOVE, path=target, artifact_id="future:leaf"
+    action = planned_action(
+        action=ACTION_REMOVE,
+        path=target,
+        artifact_id="future:leaf",
+        reason="r38 fixture",
     )
 
-    unknown = classify_cleanup_action(
-        action, _classifier_snapshot([_view("p9.some-future-authorizer.v1")]), policy
+    def _snapshot(view):
+        return SimpleNamespace(view=lambda artifact_id: view)
+
+    _, why = cleanup_action_authority(
+        action, _snapshot(_view("p9.some-future-authorizer.v1")), policy
     )
-    assert unknown.semantic_class == CLASS_INVALID, unknown
-    assert unknown.semantic_class != CLASS_GENERIC_LEAF
-    assert "unrecognized authorizer" in unknown.detail, unknown.detail
+    assert "unrecognized authorizer" in why, why
 
-    # The recognized one still routes to its owner, so the guard is a domain
-    # boundary rather than a blanket refusal of every authorizer.
-    known = classify_cleanup_action(
-        action,
-        _classifier_snapshot([_view(P7_RELEASED_ATTEMPT_AUTHORIZER)]),
-        policy,
+    # The recognized one still passes the gate, so this is a domain boundary
+    # rather than a blanket refusal of every authorizer.
+    view, why = cleanup_action_authority(
+        action, _snapshot(_view(P7_RELEASED_ATTEMPT_AUTHORIZER)), policy
     )
-    assert known.semantic_class == CLASS_EXACT_AUTHORIZER, known
+    assert why == "", why
+    assert view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER
 
-    # And with no authorizer at all it is the generic leaf it looks like.
-    generic = classify_cleanup_action(
-        action, _classifier_snapshot([_view("")]), policy
-    )
-    assert generic.semantic_class == CLASS_GENERIC_LEAF, generic
+    # And with no authorizer at all it is the ordinary released leaf it looks like.
+    _, why = cleanup_action_authority(action, _snapshot(_view("")), policy)
+    assert why == "", why
 
 
-def test_a_directory_shaped_evictable_cache_is_owner_scoped_not_generic(
+def test_a_directory_shaped_evictable_cache_is_removed_as_a_certified_unit(
     tmp_path: Path, campaign
 ):
-    """IR18-1 case 5: a cache artifact is not generic just because it is cache.
+    """A cache artifact is not a leaf unlink just because it is cache.
 
     Census result first: no owner in this product currently publishes a
     `cache_evictable` view at all - the SHA receipt store and the P1 frame cache
     both retain, the latter because P1 exposes no consumer-liveness seam - so a
     `cache` tier cleanup is legitimately a no-op today and there is no
     maintained directory-shaped production eviction target to drive. Rather than
-    invent a fake production owner, the classifier itself is covered directly
-    for the shape such an owner would produce.
+    invent a fake production owner, the authority derivation the real engine
+    uses is covered directly for the shape such an owner would produce.
     """
 
-    from mdstats.training_data.storage.cleanup_domain import (
-        CLASS_GENERIC_LEAF,
-        CLASS_INVALID,
-        CLASS_OWNER_SUBTREE,
-        classify_cleanup_action,
-    )
+    from mdstats.training_data.storage.commands import cleanup_certification
     from mdstats.training_data.storage.owners import ArtifactClass
-    from mdstats.training_data.storage.plan import ACTION_EVICT_CACHE
 
     # The census claim itself, through the real owners and the real inventory.
     snapshot = campaign.snapshot()
     assert not [view for view in snapshot.views if view.cache_evictable], (
         "an evictable cache family appeared; this case must now be driven "
-        "through that real production owner instead of the classifier fixture"
+        "through that real production owner instead of the view fixture"
     )
     assert not [item for item in cache_candidates(snapshot) if item.eligible]
 
     root = tmp_path / "derived-cache"
     (root / "shard").mkdir(parents=True)
     (root / "shard" / "a.bin").write_bytes(b"a" * 16)
-    cache_policy = _policy(action=ACTION_CLEANUP, tier="cache")
 
     directory_view = OwnerArtifactView(
         owner="p1",
@@ -7428,479 +7518,131 @@ def test_a_directory_shaped_evictable_cache_is_owner_scoped_not_generic(
         cache_reconstructible=True,
         cache_evictable=True,
         coverage=SubtreeCoverage.CLOSED,
-        certified_nodes=(CertifiedNode(path="shard/a.bin", kind="file"),),
+        certified_nodes=(
+            CertifiedNode(path="shard", kind="directory"),
+            CertifiedNode(path="shard/a.bin", kind="file"),
+        ),
     )
-    action = _cleanup_action(
-        action=ACTION_EVICT_CACHE,
-        path=root,
-        artifact_id="p1:derived_cache",
-        view=directory_view,
-    )
-    classification = classify_cleanup_action(
-        action, _classifier_snapshot([directory_view]), cache_policy
-    )
-    assert classification.semantic_class == CLASS_OWNER_SUBTREE, classification
-    assert classification.semantic_class != CLASS_GENERIC_LEAF
+    certification = cleanup_certification(directory_view)
+    assert certification is not None
+    assert certification.exclusive is False
+    assert certification.nodes == {"shard": "directory", "shard/a.bin": "file"}
 
-    # A file-shaped evictable cache with no subtree authority is a real generic
-    # leaf, so the refusal above is about the semantics and not about the tier.
-    leaf = tmp_path / "index.sqlite3"
-    leaf.write_bytes(b"i" * 8)
+    # A file-shaped evictable cache with no subtree authority carries no
+    # whole-unit certification, and the canonical owner spends only the plan's
+    # own target identity on it.
     leaf_view = OwnerArtifactView(
         owner="p1",
         artifact_id="p1:derived_index",
-        path=leaf,
+        path=tmp_path / "index.sqlite3",
         artifact_class=ArtifactClass.REUSABLE_CACHE_INDEX,
         detail="owner-certified reconstructible index file",
         cache_reconstructible=True,
         cache_evictable=True,
     )
-    leaf_action = _cleanup_action(
-        action=ACTION_EVICT_CACHE,
-        path=leaf,
-        artifact_id="p1:derived_index",
-        view=leaf_view,
+    assert cleanup_certification(leaf_view) is None
+
+    # A container the owner does not close is never recursive authority.
+    container_view = OwnerArtifactView(
+        owner="p1",
+        artifact_id="p1:derived_container",
+        path=root,
+        artifact_class=ArtifactClass.REUSABLE_CACHE_INDEX,
+        detail="an open container",
+        cache_reconstructible=True,
+        cache_evictable=True,
+        coverage=SubtreeCoverage.CONTAINER,
+        certified_nodes=(CertifiedNode(path="shard/a.bin", kind="file"),),
     )
-    assert (
-        classify_cleanup_action(
-            leaf_action, _classifier_snapshot([leaf_view]), cache_policy
-        ).semantic_class
-        == CLASS_GENERIC_LEAF
+    assert cleanup_certification(container_view) is None
+
+
+def test_an_open_container_is_never_recursive_destructive_authority(tmp_path: Path):
+    """A directory with no whole-unit authority is retained, not half-emptied."""
+
+    root = tmp_path / "campaign" / "container"
+    (root / "inside").mkdir(parents=True)
+    (root / "inside" / "keep.bin").write_bytes(b"k" * 8)
+
+    from mdstats.training_data.storage.removal import remove_planned_target
+    from mdstats.training_data.storage_reclamation import filesystem_identity
+
+    outcome = remove_planned_target(
+        SimpleNamespace(path=root, filesystem_identity=filesystem_identity(root)),
+        anchor=root.parent,
+        certification=None,
     )
-
-    # The same evictable index under the safe tier is not an eviction target at
-    # all: action-kind eligibility includes the policy context that grants it.
-    assert (
-        classify_cleanup_action(
-            leaf_action,
-            _classifier_snapshot([leaf_view]),
-            _policy(action=ACTION_CLEANUP, tier="safe"),
-        ).semantic_class
-        == CLASS_INVALID
-    )
+    assert outcome.outcome == "refused_no_change", outcome
+    assert "whole-unit authority" in outcome.detail, outcome.detail
+    assert (root / "inside" / "keep.bin").is_file()
 
 
-def _generic_remover_findings(source: str) -> list[str]:
-    """Consequential `remove_planned_outcome` references that are not dominated.
+@pytest.mark.parametrize("kind", ["symlink", "unrecorded", "wrong-kind"])
+def test_an_uncertified_descendant_retains_the_whole_container(tmp_path: Path, kind):
+    """A node the owner never certified stops the removal instead of widening it."""
 
-    A call is *dominated* only when every path from its enclosing function's
-    entry to the call passes through a positive test on ``CLASS_GENERIC_LEAF``.
-    Lexical nesting inside that branch's body is what this checks, which is the
-    conservative direction: a correctly dominated call is nested, and a call
-    reached by falling out of earlier owner-specific tests is not.
+    root = tmp_path / "campaign" / "unit"
+    root.mkdir(parents=True)
+    (root / "recorded.bin").write_bytes(b"r" * 8)
+    nodes = {"recorded.bin": "file"}
+    if kind == "symlink":
+        (root / "recorded.bin").with_name("link").symlink_to(root / "recorded.bin")
+        nodes["link"] = "file"
+    elif kind == "unrecorded":
+        (root / "surprise.bin").write_bytes(b"s" * 4)
+    else:
+        (root / "wrong").mkdir()
+        nodes["wrong"] = "file"
 
-    Function-level co-occurrence is deliberately *not* accepted. A dispatcher
-    that legitimately classifies and preflights its plan and then also contains
-    one undominated generic call is exactly the shape this family exists to
-    catch, and a co-occurrence rule reports it as clean.
-
-    A bare reference to the remover that is not an immediate call is reported
-    too: aliasing it into a variable or a handler table would move the mutation
-    out of this analysis' reach.
-
-    Scope/limits: one module's own source. Dominance through ``match``
-    statements, decorators, or a call made by another module on this module's
-    behalf is not modelled; the census in
-    `test_every_production_storage_execution_supplies_an_explicit_engine` and
-    the executed counterfactual tests cover what this cannot see. A zero-finding
-    result is a claim about the scanned modules only.
-    """
-
-    import ast as _ast
-
-    target = "remove_planned_outcome"
-
-    def _is_generic_guard(test) -> bool:
-        if isinstance(test, _ast.Compare):
-            if not all(isinstance(op, _ast.Eq) for op in test.ops):
-                return False
-            return any(
-                isinstance(operand, _ast.Name) and operand.id == "CLASS_GENERIC_LEAF"
-                for operand in (test.left, *test.comparators)
-            )
-        if isinstance(test, _ast.BoolOp) and isinstance(test.op, _ast.And):
-            return any(_is_generic_guard(value) for value in test.values)
-        return False
-
-    findings: list[str] = []
-    #: (enclosing function, dominated by the generic class, is an immediate call)
-    seen: list[tuple[str, bool, bool]] = []
-
-    def _walk(node, function: str, guarded: bool) -> None:
-        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-            if node.name == target:
-                return  # the remover's own definition, not a call site
-            for child in node.body:
-                _walk(child, node.name, False)
-            return
-        if isinstance(node, _ast.If):
-            _walk(node.test, function, guarded)
-            inner = guarded or _is_generic_guard(node.test)
-            for child in node.body:
-                _walk(child, function, inner)
-            for child in node.orelse:
-                _walk(child, function, guarded)
-            return
-        if isinstance(node, _ast.Call):
-            name = getattr(node.func, "id", getattr(node.func, "attr", ""))
-            if name == target:
-                seen.append((function, guarded, True))
-                for child in [*node.args, *(kw.value for kw in node.keywords)]:
-                    _walk(child, function, guarded)
-                return
-        if isinstance(node, _ast.Name) and node.id == target:
-            seen.append((function, guarded, False))
-            return
-        for child in _ast.iter_child_nodes(node):
-            _walk(child, function, guarded)
-
-    for node in _ast.parse(source).body:
-        _walk(node, "<module>", False)
-
-    for function, guarded, is_call in seen:
-        if function == "<module>":
-            continue  # module-level `__all__` strings and re-exports
-        if not is_call:
-            findings.append(f"{function}: aliased reference to {target}")
-        elif not guarded:
-            findings.append(f"{function}: undominated call to {target}")
-    return findings
+    outcome = _certified(root, nodes=nodes, anchor=root.parent)
+    assert outcome.refused, outcome
+    assert "container is retained" in outcome.detail, outcome.detail
+    assert root.is_dir(), "the contradicted container was removed anyway"
 
 
-def test_no_cleanup_branch_falls_through_to_the_generic_remover():
-    """IR18-1 case 11 / IR19-C3: every generic removal is dominated by its class.
-
-    The rule is validated against a known-bad and a known-good construct before
-    its zero-finding result over the real modules is relied on. The known-bad
-    case is specifically the false negative IR19 identified: a function that
-    does legitimate classification and preflight work *and also* contains an
-    undominated generic removal.
-    """
-
-    package = Path(cli.__file__).parent
-
-    classifier_present_but_undominated = (
-        "def bad(plan, snapshot, policy):\n"
-        "    items = classify_cleanup_plan(plan, snapshot, policy)\n"
-        "    require_supported_domain(items, engine='x', supported=(CLASS_GENERIC_LEAF,))\n"
-        "    for item in items:\n"
-        "        if item.semantic_class == CLASS_MAINTENANCE:\n"
-        "            continue\n"
-        "        remove_planned_outcome(item.action, anchor=plan.workspace)\n"
-    )
-    negative_fallthrough = (
-        "def worse(plan, snapshot):\n"
-        "    for action in plan.actions:\n"
-        "        if action.kind == 'p7':\n"
-        "            continue\n"
-        "        remove_planned_outcome(action, anchor=plan.workspace)\n"
-    )
-    aliased = (
-        "def sneaky(plan, snapshot, policy):\n"
-        "    items = classify_cleanup_plan(plan, snapshot, policy)\n"
-        "    for item in items:\n"
-        "        if item.semantic_class == CLASS_GENERIC_LEAF:\n"
-        "            handler = remove_planned_outcome\n"
-        "            handler(item.action, anchor=plan.workspace)\n"
-    )
-    dominated_with_closed_residual = (
-        "def good(plan, snapshot, policy):\n"
-        "    items = classify_cleanup_plan(plan, snapshot, policy)\n"
-        "    require_supported_domain(items, engine='x', supported=DOMAIN)\n"
-        "    for item in items:\n"
-        "        if item.semantic_class == CLASS_GENERIC_LEAF:\n"
-        "            record_or_reraise(\n"
-        "                result,\n"
-        "                item.action,\n"
-        "                lambda action=item.action: remove_planned_outcome(\n"
-        "                    action, anchor=plan.workspace\n"
-        "                ),\n"
-        "            )\n"
-        "            continue\n"
-        "        raise StorageEngineDomainError('no handler')\n"
-    )
-
-    assert _generic_remover_findings(classifier_present_but_undominated) == [
-        "bad: undominated call to remove_planned_outcome"
-    ], "the rule accepts the exact false negative IR19 identified"
-    assert _generic_remover_findings(negative_fallthrough) == [
-        "worse: undominated call to remove_planned_outcome"
-    ]
-    assert _generic_remover_findings(aliased) == [
-        "sneaky: aliased reference to remove_planned_outcome"
-    ]
-    assert _generic_remover_findings(dominated_with_closed_residual) == [], (
-        "the rule rejects a correctly dominated generic removal"
-    )
-
-    # Scope: the two consequential cleanup dispatch modules.
-    for name in ("executor.py", "commands.py"):
-        source = (package / "storage" / name).read_text(encoding="utf-8")
-        assert _generic_remover_findings(source) == [], name
-
-    # Exactly one canonical classifier owns the decision, and both consequential
-    # cleanup paths consume it rather than maintaining a second definition.
-    domain = (package / "storage" / "cleanup_domain.py").read_text(encoding="utf-8")
-    import ast as _ast
-
-    definitions = [
-        node.name
-        for node in _ast.walk(_ast.parse(domain))
-        if isinstance(node, _ast.FunctionDef) and node.name == "classify_cleanup_action"
-    ]
-    assert definitions == ["classify_cleanup_action"], definitions
-    for name in ("executor.py", "commands.py"):
-        source = (package / "storage" / name).read_text(encoding="utf-8")
-        assert "classify_cleanup_plan(" in source, name
-        assert "require_supported_domain(" in source, name
-        # No second semantic definition of the owner-specific classes.
-        assert "P7_RELEASED_ATTEMPT_AUTHORIZER" not in source, (
-            f"{name} still classifies the P7 authorizer itself"
-        )
-
-
-def _ir18_context(campaign, cfg=None):
-    return storage_commands.StorageCommandContext(
-        cfg if cfg is not None else campaign.cfg,
-        campaign.paths,
-        campaign.store,
-        campaign.boundary,
-    )
-
-
-def _ir18_run(campaign, *, default_engine, cfg=None, tier="safe", plan_actions=None):
-    """Real planning, real revalidation, real `StorageExecutor.run`, real audit.
-
-    ``plan_actions(actions, snapshot)`` may narrow or extend the *real* cleanup
-    plan; nothing below the executor is substituted, and the plan is always
-    rebuilt against the real snapshot it will be revalidated with.
-    """
-
-    context = _ir18_context(campaign, cfg)
-    policy = resolve_storage_policy(
-        cfg if cfg is not None else {}, action=ACTION_CLEANUP, tier=tier, apply=True
-    )
-    context.consequential_plane(policy)
-    plan, snapshot = storage_commands.build_cleanup_plan(
-        context, policy.for_apply(apply=False)
-    )
-    actions = list(plan.actions)
-    if plan_actions is not None:
-        actions = list(plan_actions(actions, snapshot))
-    apply_plan = build_storage_plan(
-        snapshot,
-        policy,
-        actions,
-        refusals=plan.refusals,
-        created_utc=plan.created_utc,
-    )
-    engine = None if default_engine else storage_commands._cleanup_engine(context, policy)
-    raised: BaseException | None = None
-    result = None
-    try:
-        result = context.executor(policy).run(
-            apply_plan,
-            trigger="test:ir18",
-            synchronization=synchronization_for(apply_plan, snapshot),
-            engine=engine,
-        )
-    except BaseException as exc:  # noqa: BLE001 - propagation is the contract
-        raised = exc
-    return result, raised, apply_plan
-
-
-def _owner_scoped_container(campaign) -> Path:
-    """A real reclaimable owner-scoped container with a retained contradiction.
-
-    `.mdstats/storage/staging/<identity>` is the storage owner's own
-    exclusive-writer scratch: a real closed-subtree artifact whose members are
-    decided by `authorized_members()`, which retains the symlink below rather
-    than sweeping it away with the tree.
-    """
-
-    root = campaign.control_plane.staging_root_for("f" * 32)
-    (root / "dedup").mkdir(parents=True, exist_ok=True)
-    (root / "dedup" / "authorized.bin").write_bytes(b"a" * 24)
-    sentinel = root / "dedup" / "foreign.link"
-    if not sentinel.is_symlink():
-        sentinel.symlink_to(campaign.paths.state_db)
-    return root
-
-
-def _generic_leaf(campaign, name: str = "aaaa.bin") -> Path:
-    """A real generic-leaf cleanup target: uncataloged archive publication residue."""
-
-    campaign.control_plane.archive_root.mkdir(parents=True, exist_ok=True)
-    residue = campaign.control_plane.archive_root / name
-    residue.write_bytes(b"r" * 40)
-    return residue
-
-
-def _domain_refusal(raised) -> str:
-    from mdstats.training_data.storage.cleanup_domain import StorageEngineDomainError
-
-    assert isinstance(raised, StorageEngineDomainError), raised
-    return str(raised)
-
-
-def _last_audit(campaign):
-    records = campaign.control_plane.read_audit()
-    return dict(records[-1]) if records else None
-
-
-def _assert_refused_nonmutating(campaign, result, raised):
-    detail = _domain_refusal(raised)
-    assert result is None, "a refused-domain execution must not return a settled result"
-    audit = _last_audit(campaign)
-    assert audit is not None, "the refused truth was never published"
-    assert audit["status"] == "refused", audit
-    assert audit["mutated"] is False, audit
-    assert int(audit["reclaimed_bytes"]) == 0, audit
-    assert audit["completed_actions"] == [], audit
-    # The guard that fired must be the engine/domain one, not stale-plan
-    # rejection and not an owner's refusal of a particular target.
-    assert "cannot execute this plan" in audit["detail"], audit["detail"]
-    assert "re-plan" not in audit["detail"], audit["detail"]
-    return detail
-
-
-def test_the_default_engine_refuses_an_owner_scoped_container_plan(campaign):
-    """IR18-1 case 1: a common-container plan never reaches generic removal."""
-
-    from mdstats.training_data.storage import executor as executor_mod
-
-    container = _owner_scoped_container(campaign)
-    before = sorted(str(item) for item in container.rglob("*"))
-    assert before, "the container fixture is empty"
-
-    calls: list[str] = []
-    real = executor_mod.remove_planned_outcome
-    executor_mod.remove_planned_outcome = lambda action, **kw: calls.append(
-        str(action.path)
-    )
-    try:
-        result, raised, plan = _ir18_run(campaign, default_engine=True)
-    finally:
-        executor_mod.remove_planned_outcome = real
-
-    assert any(item.path == container for item in plan.actions), (
-        "the real planner never released the owner-scoped container"
-    )
-    detail = _assert_refused_nonmutating(campaign, result, raised)
-    assert "owner_subtree" in detail, detail
-    assert calls == [], calls
-    # Both the authorized member and the retained contradiction survive.
-    assert sorted(str(item) for item in container.rglob("*")) == before
-
-
-def test_the_default_engine_refuses_a_maintenance_sibling_before_the_leaf(campaign):
-    """IR18-1 case 4: maintenance makes the *whole* plan out of domain."""
-
-    campaign.historical_run()
-    for index in range(4000):
-        campaign.store.event("info", "fixture", "x" * 256)
-    cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}}
-    leaf = _generic_leaf(campaign)
-
-    result, raised, plan = _ir18_run(campaign, default_engine=True, cfg=cfg)
-    kinds = {item.action for item in plan.actions}
-    assert "prune_campaign_events" in kinds, kinds
-    assert leaf in {item.path for item in plan.actions}, "the leaf was never planned"
-
-    detail = _assert_refused_nonmutating(campaign, result, raised)
-    assert "maintenance" in detail, detail
-    assert leaf.exists(), "a generic leaf was spent before the plan was refused"
-
-
-@pytest.mark.parametrize("unsupported_first", [True, False])
-def test_a_mixed_plan_is_refused_plan_wide_in_either_order(
-    campaign, unsupported_first
+def test_a_wholly_certified_unit_is_removed_through_the_canonical_owner(
+    tmp_path: Path,
 ):
-    """IR18-1 case 3: no convenient prefix is spent before the incompatibility."""
+    """The positive path is live, not merely restrictive."""
 
-    container = _owner_scoped_container(campaign)
-    leaf = _generic_leaf(campaign)
-    before = sorted(str(item) for item in container.rglob("*"))
+    root = tmp_path / "campaign" / "unit"
+    (root / "nested").mkdir(parents=True)
+    (root / "nested" / "a.bin").write_bytes(b"a" * 10)
+    (root / "b.bin").write_bytes(b"b" * 6)
 
-    def _order(actions, _snapshot):
-        owner_scoped = [item for item in actions if item.path == container]
-        generic = [item for item in actions if item.path == leaf]
-        assert owner_scoped and generic, (owner_scoped, generic)
-        return owner_scoped + generic if unsupported_first else generic + owner_scoped
-
-    result, raised, _plan = _ir18_run(
-        campaign, default_engine=True, plan_actions=_order
+    outcome = _certified(
+        root,
+        nodes={"nested": "directory", "nested/a.bin": "file", "b.bin": "file"},
+        anchor=root.parent,
     )
-    _assert_refused_nonmutating(campaign, result, raised)
-    assert leaf.exists(), "the generic leaf was spent before the refusal"
-    assert sorted(str(item) for item in container.rglob("*")) == before
+    assert outcome.outcome == "removed", outcome
+    assert int(outcome.removed_bytes) == 16, outcome
+    assert not root.exists()
 
 
-@pytest.mark.parametrize("default_engine", [True, False])
-def test_a_mismatched_action_view_binding_is_refused_before_mutation(
-    campaign, default_engine
-):
-    """IR18-1 case 6: an `artifact_id` may not camouflage a different target.
+@pytest.mark.parametrize("shape", ["mismatched-binding", "owner-ineligible"])
+def test_a_malformed_or_ineligible_cleanup_action_never_mutates(campaign, shape):
+    """Path authorization alone cannot rescue an action the owner did not release.
 
-    The malformed action is built deliberately, because executor rejection of a
-    malformed semantic binding *is* the claim. Everything else - the snapshot,
-    the identity binding, revalidation, execution and the audit - is real.
+    `artifact_id` is a name, not authority, and `p1:data7-cache` is a real owner
+    view for a historical derived cache with no certified reconstruction:
+    unprotected and physically campaign-owned, and released by its owner for
+    neither safe reclamation nor cache eviction.
     """
 
     from mdstats.training_data.storage.plan import ACTION_REMOVE, planned_action
 
     named = _generic_leaf(campaign, "aaaa.bin")
     decoy = _generic_leaf(campaign, "bbbb.bin")
+    ineligible = campaign.paths.internal / "data7-cache"
+    ineligible.mkdir(parents=True, exist_ok=True)
+    (ineligible / "old.bin").write_bytes(b"o" * 12)
 
-    def _camouflage(actions, snapshot):
-        view = next(
-            item for item in snapshot.views if item.path == named
-        )
-        # A valid artifact id, a real owner state identity, a genuine plan-bound
-        # filesystem identity - pointed at a different campaign-owned path.
-        return [
-            planned_action(
-                action=ACTION_REMOVE,
-                path=decoy,
-                artifact_id=view.artifact_id,
-                reason="ir18 mismatched binding",
-                owner_state_identity=view.state_identity,
-            )
-        ]
-
-    result, raised, _plan = _ir18_run(
-        campaign, default_engine=default_engine, plan_actions=_camouflage
-    )
-    detail = _assert_refused_nonmutating(campaign, result, raised)
-    assert "may not name one owner artifact and mutate another" in detail, detail
-    assert decoy.exists(), "the camouflaged target was removed"
-    assert named.exists()
-
-
-@pytest.mark.parametrize("default_engine", [True, False])
-def test_an_owner_ineligible_cleanup_action_is_refused_before_mutation(
-    campaign, default_engine
-):
-    """IR18-1 case 7: path authorization alone cannot rescue an ineligible action.
-
-    `p1:data7-cache` is a real owner view for a historical derived cache with no
-    certified reconstruction: unprotected and physically campaign-owned, and
-    released by its owner for neither safe reclamation nor cache eviction.
-    """
-
-    from mdstats.training_data.storage.plan import (
-        ACTION_EVICT_CACHE,
-        ACTION_REMOVE,
-        planned_action,
-    )
-
-    target = campaign.paths.internal / "data7-cache"
-    target.mkdir(parents=True, exist_ok=True)
-    (target / "old.bin").write_bytes(b"o" * 12)
-
-    for kind, tier in ((ACTION_REMOVE, "safe"), (ACTION_EVICT_CACHE, "cache")):
-
-        def _ineligible(actions, snapshot, kind=kind):
+    def _malform(actions, snapshot):
+        if shape == "mismatched-binding":
+            view = next(item for item in snapshot.views if item.path == named)
+            target = decoy
+        else:
             view = next(
                 item for item in snapshot.views if item.artifact_id == "p1:data7-cache"
             )
@@ -7909,299 +7651,148 @@ def test_an_owner_ineligible_cleanup_action_is_refused_before_mutation(
             assert not protected, "the fixture target is protected, not merely ineligible"
             authorized, why = campaign.boundary.destructive_authorization(view.path)
             assert authorized, why
-            return [
-                planned_action(
-                    action=kind,
-                    path=view.path,
-                    artifact_id=view.artifact_id,
-                    reason="ir18 owner-ineligible action",
-                    owner_state_identity=view.state_identity,
-                )
-            ]
+            target = view.path
+        # A valid artifact id, a real owner state identity, and a genuine
+        # plan-bound filesystem identity.
+        return [
+            planned_action(
+                action=ACTION_REMOVE,
+                path=target,
+                artifact_id=view.artifact_id,
+                reason=f"r38 {shape}",
+                owner_state_identity=view.state_identity,
+            )
+        ]
 
-        result, raised, _plan = _ir18_run(
-            campaign,
-            default_engine=default_engine,
-            tier=tier,
-            plan_actions=_ineligible,
-        )
-        detail = _assert_refused_nonmutating(campaign, result, raised)
-        assert "p1:data7-cache" in detail, detail
-        assert (target / "old.bin").exists(), kind
-
-
-def test_a_generic_leaf_plan_executes_through_the_default_engine(campaign):
-    """IR18-1 case 9: the positive domain is live, not merely restrictive."""
-
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage_reclamation import filesystem_identity
-
-    leaf = _generic_leaf(campaign)
-    size = leaf.stat().st_size
-    identity = filesystem_identity(leaf)
-    observed: list[dict] = []
-
-    real_unlink = executor_mod._unlink_measured_file
-
-    def watch(*args, **kwargs):
-        observed.append({"args": args, "kwargs": kwargs})
-        return real_unlink(*args, **kwargs)
-
-    executor_mod._unlink_measured_file = watch
-    try:
-        result, raised, plan = _ir18_run(
-            campaign,
-            default_engine=True,
-            plan_actions=lambda actions, _s: [
-                item for item in actions if item.path == leaf
-            ],
-        )
-    finally:
-        executor_mod._unlink_measured_file = real_unlink
-
-    assert raised is None, raised
-    assert result is not None and result.status == "complete", result
-    assert result.mutated is True
-    assert int(result.reclaimed_bytes) == size, (result.reclaimed_bytes, size)
-    assert not leaf.exists()
-    assert observed, "the generic leaf never reached the measured fd-relative unlink"
-    # The mutation was bound to the identity the plan carried, through the
-    # authenticated parent descriptor rather than a re-resolved pathname.
-    assert plan.actions[0].filesystem_identity["inode"] == identity["inode"]
-    unlink_dir_fd = observed[0]["kwargs"].get("dir_fd")
-    assert isinstance(unlink_dir_fd, int) and unlink_dir_fd >= 0, observed[0]
-    # The object unlinked is the exact one the plan bound, observed through the
-    # authenticated parent descriptor rather than a re-resolved pathname.
-    observed_stats = observed[0]["args"][1]
-    assert int(observed_stats.st_ino) == int(identity["inode"]), (
-        observed_stats,
-        identity,
+    result, raised, _plan = _run_cleanup(campaign, plan_actions=_malform)
+    fragment = (
+        "may not name one owner artifact and mutate another"
+        if shape == "mismatched-binding"
+        else "p1:data7-cache"
     )
-    audit = _last_audit(campaign)
-    assert audit is not None and audit["status"] == "complete", audit
-    assert int(audit["reclaimed_bytes"]) == size, audit
+    _assert_action_refused(campaign, result, raised, fragment=fragment)
+    assert named.exists() and decoy.exists()
+    assert (ineligible / "old.bin").exists()
 
 
-def test_production_cleanup_still_routes_every_class_to_its_owner(campaign):
-    """IR18-1 case 10 (non-P7 classes): the live path keeps its owners.
+def test_production_cleanup_routes_every_owner_to_the_canonical_destructive_owner(
+    campaign,
+):
+    """The live path keeps its owners and has exactly one destructive owner.
 
     The released-P7 half of this claim needs a real qualified campaign and is
     accepted in the integration suite.
     """
 
     from mdstats.training_data.storage import commands as commands_mod
-    from mdstats.training_data.storage import executor as executor_mod
 
     campaign.historical_run()
     for index in range(4000):
         campaign.store.event("info", "fixture", "x" * 256)
     cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}}
-    container = _owner_scoped_container(campaign)
+    container = _owner_scoped_container(campaign, contradiction=False)
+    contents = sorted(str(item) for item in container.rglob("*"))
+    assert contents, "the container fixture is empty"
     leaf = _generic_leaf(campaign)
 
-    subtree: list[str] = []
-    generic: list[str] = []
-    real_subtree = commands_mod.remove_certified_subtree
-    real_generic = commands_mod.remove_planned_outcome
+    observed: list[tuple[str, bool]] = []
+    real = commands_mod.remove_planned_target
 
-    def watch_subtree(path, **kwargs):
-        subtree.append(str(path))
-        return real_subtree(path, **kwargs)
+    def watch(action, *, anchor, certification=None):
+        observed.append((str(action.path), certification is not None))
+        return real(action, anchor=anchor, certification=certification)
 
-    def watch_generic(action, **kwargs):
-        generic.append(str(action.path))
-        return real_generic(action, **kwargs)
-
-    commands_mod.remove_certified_subtree = watch_subtree
-    commands_mod.remove_planned_outcome = watch_generic
+    commands_mod.remove_planned_target = watch
     try:
-        result, raised, plan = _ir18_run(campaign, default_engine=False, cfg=cfg)
+        result, raised, plan = _run_cleanup(campaign, cfg=cfg)
     finally:
-        commands_mod.remove_certified_subtree = real_subtree
-        commands_mod.remove_planned_outcome = real_generic
+        commands_mod.remove_planned_target = real
 
     assert raised is None, raised
     assert result is not None, result
-    assert subtree == [str(container)], subtree
-    assert generic == [str(leaf)], generic
-    assert not leaf.exists(), "the generic leaf was not removed by production cleanup"
-    # The owner-scoped container kept its retained contradiction rather than
-    # being swept generically.
-    assert (container / "dedup" / "foreign.link").is_symlink()
+    # One destructive owner, entered with whole-unit authority for the container
+    # and with the plan's own binding alone for the leaf.
+    assert (str(container), True) in observed, observed
+    assert (str(leaf), False) in observed, observed
+    assert not leaf.exists(), "the released leaf was not removed by production cleanup"
+    assert not container.exists(), "the wholly certified container was retained"
     assert any(
         item["action"] == "prune_campaign_events" for item in result.completed
     ), result.completed
 
 
-# ---------------------------------------------------------------------------
-# IR19 / IR19 plan closure: cleanup action-family totality and positive dispatch
-#
-# IR18 closed *who* may mutate one cleanup action. IR19 closes the two ways that
-# answer could still be reached from outside a cleanup invocation:
-#
-#   IR19-C1  `StorageExecutor.run` and `_cleanup_engine` are generic shells.
-#            `revalidate_plan()` proves the executor policy and the plan policy
-#            agree with each other; it never proves the actions they agree on
-#            belong to the action family that authorized the invocation. So an
-#            archive/dedup/restore/report invocation could carry an owner-
-#            released `remove` and spend cleanup deletion authority - and an
-#            *empty* wrong-family plan could settle `complete`, reporting that
-#            an engine executed an operation it never implements.
-#
-#   IR19-C2  Production cleanup named its owner-specific classes and then let
-#            the residual branch mean "generic destructive removal". That is the
-#            negative-fallthrough shape IR18 exists to remove, one level up.
-# ---------------------------------------------------------------------------
+def test_an_uncertified_container_is_retained_while_its_siblings_proceed(campaign):
+    """O3: an open/contradicted container is refused, not selectively emptied."""
+
+    container = _owner_scoped_container(campaign, contradiction=True)
+    before = sorted(str(item) for item in container.rglob("*"))
+    leaf = _generic_leaf(campaign)
+
+    result, raised, plan = _run_cleanup(campaign)
+    assert raised is None, raised
+    assert any(item.path == container for item in plan.actions), (
+        "the real planner never released the owner-scoped container"
+    )
+    assert not leaf.exists(), "an independently authorized sibling was withheld"
+    # The container itself is retained, and so is the node its owner could not
+    # have written; the removal stops there rather than negotiating a member set.
+    assert container.is_dir(), "an uncertified container was removed anyway"
+    assert (container / "dedup" / "foreign.link").is_symlink()
+    assert campaign.paths.state_db.exists(), "the symlink target was followed"
+    refusal = _refusal_details(result)
+    assert "container is retained" in refusal, refusal
+    del before
 
 
-def _ir19_wrong_family_run(
-    campaign,
-    *,
-    default_engine,
-    action,
-    cfg=None,
-    tier="safe",
-    plan_actions=None,
+@pytest.mark.parametrize(
+    "invoked_as", [ACTION_ARCHIVE, ACTION_DEDUPLICATE, ACTION_RESTORE]
+)
+def test_a_non_cleanup_invocation_can_never_spend_cleanup_deletion(
+    campaign, invoked_as
 ):
-    """A real apply plan deliberately built under a *non-cleanup* policy.
+    """The cleanup family gate is plan-level and total.
 
-    Everything below the policy is real: real owners, real planning, real
-    `build_storage_plan`, real `StorageExecutor.run`, real audit. The only
-    malformation is the one under test - the invocation's action family.
+    `revalidate_plan` proves the executor policy and the plan policy agree with
+    *each other*; it never proves the actions they agree on belong to the family
+    that authorized the invocation. The plan below carries the real,
+    owner-released leaf the cleanup planner produced, and revalidation succeeds.
     """
 
-    context = _ir18_context(campaign, cfg)
-    cleanup_policy = resolve_storage_policy(
-        cfg if cfg is not None else {}, action=ACTION_CLEANUP, tier=tier, apply=True
-    )
-    context.consequential_plane(cleanup_policy)
-    cleanup_plan, snapshot = storage_commands.build_cleanup_plan(
-        context, cleanup_policy.for_apply(apply=False)
-    )
-    actions = list(cleanup_plan.actions)
-    if plan_actions is not None:
-        actions = list(plan_actions(actions, snapshot))
-    wrong_policy = resolve_storage_policy(
-        cfg if cfg is not None else {}, action=action, tier=tier, apply=True
-    )
-    apply_plan = build_storage_plan(
-        snapshot,
-        wrong_policy,
-        actions,
-        refusals=cleanup_plan.refusals,
-        created_utc=cleanup_plan.created_utc,
-    )
-    # The point of the counterfactual: ordinary revalidation is *satisfied*.
-    # Policy identity, action equality, owner binding, protection closure, and
-    # per-action filesystem identity all hold, so nothing before the cleanup
-    # family gate would have refused this execution.
-    revalidate_plan(apply_plan, snapshot, wrong_policy)
-
-    engine = (
-        None
-        if default_engine
-        else storage_commands._cleanup_engine(context, wrong_policy)
-    )
-    raised: BaseException | None = None
-    result = None
-    try:
-        result = context.executor(wrong_policy).run(
-            apply_plan,
-            trigger="test:ir19",
-            synchronization=synchronization_for(apply_plan, snapshot),
-            engine=engine,
-        )
-    except BaseException as exc:  # noqa: BLE001 - propagation is the contract
-        raised = exc
-    return result, raised, apply_plan
-
-
-def _assert_wrong_family_refusal(campaign, result, raised, *, action):
-    """Refused, non-mutating, zero-byte, durably audited - and for this reason."""
-
-    from mdstats.training_data.storage.cleanup_domain import StorageEngineDomainError
-
-    assert isinstance(raised, StorageEngineDomainError), raised
-    detail = str(raised)
-    assert action in detail, detail
-    assert "cleanup" in detail and "action family" in detail, detail
-    assert result is None, "a wrong-family execution must not settle a result"
-    audit = _last_audit(campaign)
-    assert audit is not None, "the refused truth was never published"
-    assert audit["status"] == "refused", audit
-    assert audit["mutated"] is False, audit
-    assert int(audit["reclaimed_bytes"]) == 0, audit
-    assert audit["completed_actions"] == [], audit
-    assert "re-plan" not in audit["detail"], audit["detail"]
-    return detail
-
-
-def test_the_default_engine_refuses_a_non_cleanup_policy_carrying_a_removal(campaign):
-    """IR19-C1 case A: an archive invocation cannot spend cleanup deletion.
-
-    The plan is built under a real archive policy but carries the real,
-    owner-released generic leaf the cleanup planner produced. Revalidation
-    succeeds; the plan-level cleanup family gate is what refuses, and the leaf
-    survives byte for byte.
-    """
-
-    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage import commands as commands_mod
 
     leaf = _generic_leaf(campaign)
     before = leaf.read_bytes()
-
     calls: list[str] = []
-    real = executor_mod.remove_planned_outcome
-    executor_mod.remove_planned_outcome = lambda action, **kw: calls.append(
+    real = commands_mod.remove_planned_target
+    commands_mod.remove_planned_target = lambda action, **kw: calls.append(
         str(action.path)
     )
     try:
-        result, raised, plan = _ir19_wrong_family_run(
+        result, raised, plan = _run_cleanup(
             campaign,
-            default_engine=True,
-            action=ACTION_ARCHIVE,
+            invoked_as=invoked_as,
             plan_actions=lambda actions, snapshot: [
                 item for item in actions if item.path == leaf
             ],
         )
     finally:
-        executor_mod.remove_planned_outcome = real
+        commands_mod.remove_planned_target = real
 
     assert [item.action for item in plan.actions] == ["remove"], plan.actions
-    _assert_wrong_family_refusal(campaign, result, raised, action=ACTION_ARCHIVE)
+    _assert_wrong_family_refusal(campaign, result, raised, action=invoked_as)
     assert calls == [], calls
     assert leaf.exists() and leaf.read_bytes() == before
 
 
-def test_the_default_engine_refuses_an_empty_non_cleanup_plan(campaign):
-    """IR19-C1 case B: the family gate is plan-level, not per-action.
+@pytest.mark.parametrize("shape", ["empty", "maintenance"])
+def test_the_family_gate_is_plan_level_rather_than_per_action(campaign, shape):
+    """An empty or maintenance-only wrong-family plan is refused identically.
 
-    An empty plan has no action to classify, so a per-action family test would
-    let this settle `complete` - falsely reporting that the default cleanup
-    engine executed the requested archive operation.
+    An empty plan has no action to inspect, so a per-action family test would
+    let this settle `complete` - falsely reporting that cleanup executed the
+    requested archive operation. Maintenance is exactly as out of domain as
+    removal once the invocation is not a cleanup.
     """
-
-    _generic_leaf(campaign)
-    result, raised, plan = _ir19_wrong_family_run(
-        campaign,
-        default_engine=True,
-        action=ACTION_DEDUPLICATE,
-        plan_actions=lambda actions, snapshot: [],
-    )
-    assert plan.actions == (), plan.actions
-    _assert_wrong_family_refusal(campaign, result, raised, action=ACTION_DEDUPLICATE)
-
-
-@pytest.mark.parametrize("shape", ["generic_leaf", "maintenance"])
-def test_production_cleanup_refuses_a_non_cleanup_plan(campaign, shape):
-    """IR19-C1 case C: the production engine consumes the same plan-level gate.
-
-    Both a removal-shaped and a maintenance-shaped wrong-family plan are refused
-    before owner dispatch: maintenance is exactly as out of domain as removal
-    once the invocation is not a cleanup.
-    """
-
-    from mdstats.training_data.storage import commands as commands_mod
 
     campaign.historical_run()
     for index in range(4000):
@@ -8209,116 +7800,27 @@ def test_production_cleanup_refuses_a_non_cleanup_plan(campaign, shape):
     cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}}
     leaf = _generic_leaf(campaign)
 
-    generic: list[str] = []
-    subtree: list[str] = []
-    real_generic = commands_mod.remove_planned_outcome
-    real_subtree = commands_mod.remove_certified_subtree
-    commands_mod.remove_planned_outcome = lambda action, **kw: generic.append(
-        str(action.path)
-    )
-    commands_mod.remove_certified_subtree = lambda path, **kw: subtree.append(str(path))
-
     def _select(actions, snapshot):
-        if shape == "generic_leaf":
-            return [item for item in actions if item.path == leaf]
-        return [item for item in actions if item.action in ("prune_campaign_events",)]
+        if shape == "empty":
+            return []
+        return [item for item in actions if item.action == "prune_campaign_events"]
 
-    try:
-        result, raised, plan = _ir19_wrong_family_run(
-            campaign,
-            default_engine=False,
-            action=ACTION_RESTORE,
-            cfg=cfg,
-            plan_actions=_select,
-        )
-    finally:
-        commands_mod.remove_planned_outcome = real_generic
-        commands_mod.remove_certified_subtree = real_subtree
-
-    assert plan.actions, f"the {shape} fixture produced no action to carry"
-    _assert_wrong_family_refusal(campaign, result, raised, action=ACTION_RESTORE)
-    assert generic == [] and subtree == [], (generic, subtree)
+    result, raised, plan = _run_cleanup(
+        campaign, cfg=cfg, invoked_as=ACTION_DEDUPLICATE, plan_actions=_select
+    )
+    if shape == "empty":
+        assert plan.actions == (), plan.actions
+    else:
+        assert plan.actions, "the maintenance fixture produced no action to carry"
+    _assert_wrong_family_refusal(campaign, result, raised, action=ACTION_DEDUPLICATE)
     assert leaf.exists()
 
 
-def test_the_exported_classifier_never_positively_classifies_a_wrong_family(
-    tmp_path: Path,
-):
-    """IR19-C1 case D: the exported single-action classifier is family-bound.
+def test_a_genuinely_empty_cleanup_plan_is_a_valid_no_op(campaign):
+    """`empty` never means `refuse`; wrong-family does."""
 
-    `classify_cleanup_action` is public. A consumer that reaches it directly
-    must not be able to obtain `generic_leaf`, `maintenance`, `owner_subtree`,
-    or `exact_authorizer` under an archive/dedup/restore/report policy, or the
-    family gate would exist only on the plan-level path.
-    """
-
-    from mdstats.training_data.storage.cleanup_domain import (
-        CLASS_GENERIC_LEAF,
-        CLASS_INVALID,
-        CLASS_MAINTENANCE,
-        classify_cleanup_action,
-    )
-    from mdstats.training_data.storage.owners import ArtifactClass
-    from mdstats.training_data.storage.plan import ACTION_PRUNE_EVENTS, ACTION_REMOVE
-
-    leaf = tmp_path / "residue.bin"
-    leaf.write_bytes(b"r" * 16)
-    view = OwnerArtifactView(
-        owner="storage",
-        artifact_id="storage:residue",
-        path=leaf,
-        artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
-        detail="released orphan record",
-        safe_reclaimable=True,
-    )
-    action = _cleanup_action(
-        action=ACTION_REMOVE, path=leaf, artifact_id="storage:residue", view=view
-    )
-    snapshot = _classifier_snapshot([view])
-
-    # The control: under a genuine cleanup policy this is exactly generic leaf.
-    assert (
-        classify_cleanup_action(
-            action, snapshot, _policy(action=ACTION_CLEANUP, tier="safe")
-        ).semantic_class
-        == CLASS_GENERIC_LEAF
-    )
-
-    maintenance_action = _cleanup_action(
-        action=ACTION_PRUNE_EVENTS, path=leaf, artifact_id="campaign:state"
-    )
-    assert (
-        classify_cleanup_action(
-            maintenance_action, snapshot, _policy(action=ACTION_CLEANUP, tier="safe")
-        ).semantic_class
-        == CLASS_MAINTENANCE
-    )
-
-    for wrong in (ACTION_ARCHIVE, ACTION_DEDUPLICATE, ACTION_RESTORE, ACTION_REPORT):
-        wrong_policy = _policy(action=wrong, tier="safe")
-        for candidate in (action, maintenance_action):
-            classification = classify_cleanup_action(candidate, snapshot, wrong_policy)
-            assert classification.semantic_class == CLASS_INVALID, (
-                wrong,
-                candidate.action,
-                classification,
-            )
-            assert not classification.valid
-            assert "action family" in classification.detail, classification.detail
-
-
-@pytest.mark.parametrize("default_engine", [True, False])
-def test_a_genuinely_empty_cleanup_plan_is_a_valid_no_op(campaign, default_engine):
-    """IR19-C1 case E: `empty` never means `refuse`; wrong-family does.
-
-    The gate distinguishes an empty *cleanup* invocation - a legitimate,
-    successful, non-mutating outcome - from an empty wrong-family one.
-    """
-
-    result, raised, plan = _ir18_run(
-        campaign,
-        default_engine=default_engine,
-        plan_actions=lambda actions, snapshot: [],
+    result, raised, plan = _run_cleanup(
+        campaign, plan_actions=lambda actions, snapshot: []
     )
     assert raised is None, raised
     assert plan.actions == (), plan.actions
@@ -8331,181 +7833,122 @@ def test_a_genuinely_empty_cleanup_plan_is_a_valid_no_op(campaign, default_engin
     assert int(audit["reclaimed_bytes"]) == 0, audit
 
 
-def _ir19_engine_dispatch_sources():
-    """The two consequential cleanup dispatchers and their declared domains."""
+def test_exactly_one_consequential_cleanup_destructive_implementation_exists():
+    """R38 structural reduction: no second remover and no alternate route.
 
-    package = Path(cli.__file__).parent / "storage"
-    return (
-        ("executor.py", "_execute_actions", "DEFAULT_CLEANUP_DOMAIN"),
-        ("commands.py", "_engine", "PRODUCTION_CLEANUP_DOMAIN"),
-    ), package
+    Scope: the whole `mdstats` package source. The rule is a positive census of
+    the syscalls that actually destroy a campaign-owned directory entry, so a
+    reintroduced recursion is found by the syscall it must use rather than by a
+    name it could choose freely.
 
-
-def _ir19_handled_classes(function_node) -> set[str]:
-    """Semantic-class names this dispatcher explicitly branches on."""
-
-    import ast as _ast
-
-    handled: set[str] = set()
-    for node in _ast.walk(function_node):
-        if not isinstance(node, _ast.Compare):
-            continue
-        if not all(isinstance(op, _ast.Eq) for op in node.ops):
-            continue
-        for operand in (node.left, *node.comparators):
-            if isinstance(operand, _ast.Name) and operand.id.startswith("CLASS_"):
-                handled.add(operand.id)
-    return handled
-
-
-def test_each_cleanup_engine_declares_exactly_the_classes_it_dispatches():
-    """IR19-C2 case A: supported domain and handler set are one closed set.
-
-    A defensive residual raise keeps a domain/handler mismatch from mutating,
-    but two silently divergent lists still recreate the routing debt IR18 was
-    opened for. This is the completeness half: the set each engine preflights as
-    supported must equal the set it explicitly branches on.
+    Limits: `durable_unlink` is the shared publication/reclamation primitive and
+    is counted at its definition; archive hot reclamation, restore staging, the
+    control plane's own records, and dedup's own staged replacement link
+    legitimately unlink their own bytes and are named explicitly here.
     """
 
     import ast as _ast
 
-    from mdstats.training_data.storage import cleanup_domain as domain_mod
-    from mdstats.training_data.storage import commands as commands_mod
-    from mdstats.training_data.storage import executor as executor_mod
+    root = Path(cli.__file__).parent
+    destructive = {"rmdir", "unlink", "rmtree", "removedirs"}
+    #: Modules whose own transformation/recovery semantics own their unlinks.
+    allowed = {
+        "storage/removal.py",  # the canonical cleanup destructive owner
+        "storage/durability.py",  # the shared durable-unlink primitive
+        "storage/archive.py",  # staged bytes and authenticated hot reclamation
+        "storage/control_plane.py",  # storage's own catalog/journal state
+        "storage/dedup.py",  # its own staged replacement link, never a member
+    }
+    sites: dict[str, list[str]] = {}
+    # Scope: the storage and qualification packages. Owners elsewhere in the
+    # campaign (staging areas, view caches, capsules) manage their own private
+    # files and are not campaign-owned cleanup targets.
+    scanned = [root / "storage", root / "qualification"]
+    for source_path in sorted(
+        item for base in scanned for item in base.rglob("*.py")
+    ):
+        relative = source_path.relative_to(root).as_posix()
+        tree = _ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Call):
+                continue
+            name = getattr(node.func, "attr", getattr(node.func, "id", ""))
+            if name in destructive:
+                sites.setdefault(relative, []).append(f"{name}:{node.lineno}")
 
-    modules = {"executor.py": executor_mod, "commands.py": commands_mod}
-    targets, package = _ir19_engine_dispatch_sources()
-    for filename, function_name, domain_name in targets:
-        tree = _ast.parse((package / filename).read_text(encoding="utf-8"))
-        functions = [
-            node
-            for node in _ast.walk(tree)
-            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef))
-            and node.name == function_name
-        ]
-        assert len(functions) == 1, (filename, function_name, len(functions))
-        handled = {
-            getattr(domain_mod, name) for name in _ir19_handled_classes(functions[0])
-        }
-        declared = set(getattr(modules[filename], domain_name))
-        assert declared, (filename, domain_name)
-        assert declared == handled, (filename, sorted(declared), sorted(handled))
-        # And the declared domain is a subset of what the canonical classifier
-        # can actually return, so a typo cannot widen an engine silently.
-        assert declared <= set(domain_mod.CLEANUP_SEMANTIC_CLASSES), filename
+    #: Owners of their own private staging/scratch, which is never a
+    #: campaign-owned cleanup target and never reached recursively from one.
+    private = {
+        "qualification/store.py": {"unlink"},  # its own atomic-write staging file
+        "qualification/runtime.py": {"rmtree"},  # its own LAMMPS worker sandbox
+    }
+    unexpected = {
+        path: found
+        for path, found in sites.items()
+        if path not in allowed
+        and not set(item.split(":")[0] for item in found) <= private.get(path, set())
+    }
+    # Nothing outside those owners destroys a campaign directory entry, and the
+    # qualification package no longer owns a cleanup deletion algorithm at all.
+    assert unexpected == {}, unexpected
+    store_sites = {item.split(":")[0] for item in sites.get("qualification/store.py", ())}
+    assert "rmdir" not in store_sites, store_sites
 
-    # Every positively classifiable class has a home in production cleanup.
-    assert set(commands_mod.PRODUCTION_CLEANUP_DOMAIN) == set(
-        domain_mod.CLEANUP_SEMANTIC_CLASSES
-    )
-
-    # IR19-C1: both engines reach per-action semantics only through the one
-    # canonical entry point, and that entry point runs the plan-level cleanup
-    # family gate unconditionally, before any action is classified.
-    plan_classifier = next(
-        node
-        for node in _ast.walk(_ast.parse((package / "cleanup_domain.py").read_text("utf-8")))
-        if isinstance(node, _ast.FunctionDef) and node.name == "classify_cleanup_plan"
-    )
-    statements = [
-        node
-        for node in plan_classifier.body
-        if not (
-            isinstance(node, _ast.Expr)
-            and isinstance(node.value, _ast.Constant)
-            and isinstance(node.value.value, str)
+    # One recursive walk, in one module, reached from exactly two entry points.
+    removal = (root / "storage" / "removal.py").read_text(encoding="utf-8")
+    recursions = [
+        node.name
+        for node in _ast.walk(_ast.parse(removal))
+        if isinstance(node, (_ast.FunctionDef,))
+        and any(
+            isinstance(inner, _ast.Call)
+            and getattr(inner.func, "id", "") == node.name
+            for inner in _ast.walk(node)
         )
     ]
-    gate = next(
-        index
-        for index, node in enumerate(statements)
-        if "require_cleanup_family" in _ast.dump(node)
-    )
-    classification = next(
-        index
-        for index, node in enumerate(statements)
-        if "classify_cleanup_action" in _ast.dump(node)
-    )
-    assert gate < classification, "the family gate does not precede classification"
-    assert not any(
-        isinstance(node, (_ast.If, _ast.Try)) for node in statements[: gate + 1]
-    ), "the family gate is conditional"
+    assert recursions == ["_empty_certified_directory"], recursions
 
-
-@pytest.mark.parametrize("default_engine", [True, False])
-def test_an_unhandled_semantic_class_fails_closed_instead_of_mutating(
-    campaign, default_engine
-):
-    """IR19-C2 case B: the residual branch raises; it never removes.
-
-    The domain is widened with a class no dispatcher implements - exactly what a
-    future owner class would look like on the day it is added to the accepted
-    domain but not to the dispatch. The preflight therefore admits it, and the
-    only thing standing between it and `remove_planned_outcome` is the residual
-    branch under test.
-    """
-
-    from mdstats.training_data.storage import commands as commands_mod
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage.cleanup_domain import (
-        CleanupClassification,
-        StorageEngineDomainError,
-    )
-
-    leaf = _generic_leaf(campaign)
-    module = executor_mod if default_engine else commands_mod
-    domain_name = "DEFAULT_CLEANUP_DOMAIN" if default_engine else "PRODUCTION_CLEANUP_DOMAIN"
-    real_domain = getattr(module, domain_name)
-    real_classify = module.classify_cleanup_plan
-    real_generic = module.remove_planned_outcome
-    calls: list[str] = []
-
-    def future_classify(plan, snapshot, policy=None, **kwargs):
-        items = real_classify(plan, snapshot, policy, **kwargs)
-        return tuple(
-            CleanupClassification(
-                item.action, "future_owner_class", item.view, "an unimplemented class"
-            )
-            for item in items
+    # And no cleanup path can reach a destructive transition without owner
+    # authority: the ordinary entry point takes the plan's binding, and the
+    # unit walker takes the owner's certification.
+    commands_source = (root / "storage" / "commands.py").read_text(encoding="utf-8")
+    assert "remove_planned_target(" in commands_source
+    executor_source = (root / "storage" / "executor.py").read_text(encoding="utf-8")
+    for token in ("remove_planned_target", "remove_certified_unit", "os.unlink", "os.rmdir"):
+        assert token not in executor_source, (
+            f"the common execution envelope regained a destructive path ({token})"
         )
 
-    setattr(module, domain_name, tuple(real_domain) + ("future_owner_class",))
-    module.classify_cleanup_plan = future_classify
-    module.remove_planned_outcome = lambda action, **kw: calls.append(str(action.path))
-    try:
-        result, raised, plan = _ir18_run(
-            campaign,
-            default_engine=default_engine,
-            plan_actions=lambda actions, snapshot: [
-                item for item in actions if item.path == leaf
-            ],
-        )
-    finally:
-        setattr(module, domain_name, real_domain)
-        module.classify_cleanup_plan = real_classify
-        module.remove_planned_outcome = real_generic
 
-    assert plan.actions, "the generic-leaf fixture produced no action"
-    assert isinstance(raised, StorageEngineDomainError), raised
-    assert "no handler" in str(raised), raised
-    assert "future_owner_class" in str(raised), raised
-    assert calls == [], calls
-    assert result is None
-    assert leaf.exists(), "a class with no handler reached a destructive path"
-    audit = _last_audit(campaign)
-    assert audit["status"] == "refused", audit
-    assert audit["mutated"] is False, audit
-    assert int(audit["reclaimed_bytes"]) == 0, audit
+def test_mutation_truth_is_never_inferred_after_the_transition():
+    """F7: no pathname/byte/signature inference survives in the removal owner."""
+
+    import ast as _ast
+
+    root = Path(cli.__file__).parent
+    removal = (root / "storage" / "removal.py").read_text(encoding="utf-8")
+    tree = _ast.parse(removal)
+    for forbidden in (".exists()", "is_symlink()", "shutil."):
+        assert forbidden not in removal, forbidden
+    # Every credit happens inside the primitive that observed the syscall, and
+    # the ledger is the only thing that decides `mutated`.
+    assert removal.count("os.unlink(") == 1, "a second unlink site appeared"
+    assert removal.count("ledger.credit(") == 1, removal.count("ledger.credit(")
+    assert "def observed_identity" in removal
+    # The P7 owner delegates its filesystem mechanics rather than repeating them.
+    store = (root / "qualification" / "store.py").read_text(encoding="utf-8")
+    assert "remove_certified_unit" in store
+    for token in ("os.rmdir(", "os.unlink("):
+        assert token not in store, f"the P7 owner regained a deletion algorithm ({token})"
+    del tree
 
 
 def test_every_production_storage_execution_supplies_an_explicit_engine():
-    """IR19-C3 census: no production `StorageExecutor.run` relies on `engine=None`.
+    """No production `StorageExecutor.run` can rely on a default engine.
 
-    Scan scope: `mdstats/training_data/storage/commands.py`, the only module in
-    the package that calls `StorageExecutor.run`. That claim is itself checked
-    below over the whole `mdstats` package, so the narrow scope is established
-    rather than assumed. Tests deliberately drive `engine=None`; they are not
-    production callers and are outside this scope.
+    Scan scope: the whole `mdstats` package. `run` itself now requires the
+    argument, so this census is the structural half of the same claim: it also
+    establishes that `storage/commands.py` is the only module that calls it.
     """
 
     import ast as _ast
@@ -8533,10 +7976,14 @@ def test_every_production_storage_execution_supplies_an_explicit_engine():
             )
             assert not (
                 isinstance(engine.value, _ast.Constant) and engine.value.value is None
-            ), (
-                f"{relative}:{node.lineno} runs a production plan on the default "
-                "cleanup engine"
-            )
+            ), f"{relative}:{node.lineno} runs a production plan on no engine"
     assert callers, "the census found no StorageExecutor.run call at all"
     assert set(callers) == {"training_data/storage/commands.py"}, sorted(set(callers))
     assert len(callers) == 5, callers
+
+    # The signature itself carries the requirement, so a future caller cannot
+    # reintroduce a default destructive route by omission.
+    from mdstats.training_data.storage.executor import StorageExecutor
+
+    parameter = inspect.signature(StorageExecutor.run).parameters["engine"]
+    assert parameter.default is inspect.Parameter.empty, parameter

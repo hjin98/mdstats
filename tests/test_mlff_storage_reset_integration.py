@@ -44,6 +44,7 @@ from mdstats.training_data.qualification.store import (
     release_attempt_reference,
 )
 from mdstats.training_data.storage import commands as storage_commands
+from mdstats.training_data.storage import removal as removal_mod
 from mdstats.training_data.storage.archive import (
     list_archives,
     read_manifest,
@@ -912,14 +913,11 @@ def test_interrupted_multi_action_cleanup_is_truthful_and_re_plans(tmp_path: Pat
         assert len(targets) >= 3, targets
 
         # The failpoint has to sit on the removal owners the engine actually
-        # calls. Neither `remove_durably` nor the unbound `remove_durably_outcome`
-        # is one of them any more - IR17-1C made the consequential default path
-        # the plan-bound `remove_planned_outcome` - so this patches that owner
-        # and the certified-container helper, and asserts each was invoked.
+        # calls: the one canonical destructive owner and the P7 session member
+        # remover that delegates to it. Each is asserted to have been invoked.
         from mdstats.training_data.qualification import store as qstore
 
-        real_generic = executor_mod.remove_planned_outcome
-        real_subtree = executor_mod.remove_certified_subtree
+        real_canonical = storage_commands.remove_planned_target
         real_released = qstore.remove_released_attempt_member
         removed: list[Path] = []
         owners_used: set[str] = set()
@@ -928,17 +926,11 @@ def test_interrupted_multi_action_cleanup_is_truthful_and_re_plans(tmp_path: Pat
             if len(removed) >= 2:
                 raise RuntimeError("injected interruption after a strict subset")
 
-        def failing_generic(action, **kwargs):
-            owners_used.add("generic")
+        def failing_canonical(action, **kwargs):
+            owners_used.add("canonical")
             _interrupt_after_two()
             removed.append(Path(action.path))
-            return real_generic(action, **kwargs)
-
-        def failing_subtree(path, **kwargs):
-            owners_used.add("subtree")
-            _interrupt_after_two()
-            removed.append(Path(path))
-            return real_subtree(path, **kwargs)
+            return real_canonical(action, **kwargs)
 
         def failing_released(session, member_name, **kwargs):
             owners_used.add("released")
@@ -946,10 +938,7 @@ def test_interrupted_multi_action_cleanup_is_truthful_and_re_plans(tmp_path: Pat
             removed.append(Path(session.attempt_root) / member_name)
             return real_released(session, member_name, **kwargs)
 
-        executor_mod.remove_planned_outcome = failing_generic
-        storage_commands.remove_planned_outcome = failing_generic
-        executor_mod.remove_certified_subtree = failing_subtree
-        storage_commands.remove_certified_subtree = failing_subtree
+        storage_commands.remove_planned_target = failing_canonical
         qstore.remove_released_attempt_member = failing_released
         try:
             with pytest.raises(RuntimeError, match="injected interruption"):
@@ -960,10 +949,7 @@ def test_interrupted_multi_action_cleanup_is_truthful_and_re_plans(tmp_path: Pat
                     engine=storage_commands._cleanup_engine(context, policy),
                 )
         finally:
-            executor_mod.remove_planned_outcome = real_generic
-            storage_commands.remove_planned_outcome = real_generic
-            executor_mod.remove_certified_subtree = real_subtree
-            storage_commands.remove_certified_subtree = real_subtree
+            storage_commands.remove_planned_target = real_canonical
             qstore.remove_released_attempt_member = real_released
 
         # Proven, not inferred from a surviving-target count: a failpoint on a
@@ -2717,18 +2703,15 @@ def test_the_p7_owner_view_never_rediscovers_the_attempt_hierarchy() -> None:
     engine_body = "".join(
         commands.splitlines(keepends=True)[engine.lineno - 1 : engine.end_lineno]
     )
-    # IR18-1: routing is by the canonical cleanup semantic class, so the
-    # released-attempt dispatch is keyed on `CLASS_EXACT_AUTHORIZER` rather than
-    # on a hand-rolled authorizer comparison, and the generic remover is reached
-    # only after that class has been excluded by the classifier.
-    released = engine_body.index("CLASS_EXACT_AUTHORIZER")
-    # IR17-1C: the consequential default removal is the plan-bound owner.
-    generic = engine_body.index("remove_planned_outcome(")
-    assert released < generic, (
-        "a released P7 action can reach the generic path removal first"
+    # R38: routing is by the owner's own exact authorizer, and the canonical
+    # destructive owner is reached only after that branch has been excluded.
+    released = engine_body.index("view.exact_authorizer")
+    ordinary = engine_body.index("_remove_owner_authorized_target(")
+    assert released < ordinary, (
+        "a released P7 action can reach the ordinary removal path first"
     )
-    assert "classify_cleanup_plan(" in engine_body, (
-        "production cleanup no longer consumes the canonical classification"
+    assert "cleanup_action_authority(" in engine_body, (
+        "production cleanup no longer consumes the one fresh current-owner gate"
     )
 
 
@@ -3033,13 +3016,15 @@ def test_a_root_swap_after_certification_transfers_no_authority(
     """
 
     import shutil as _shutil
+    from types import SimpleNamespace
 
-    from mdstats.training_data.storage.executor import remove_certified_subtree
+    from mdstats.training_data.storage.commands import cleanup_certification
+    from mdstats.training_data.storage.removal import remove_planned_target
 
     config, _workspace, _harness = _released_attempt_campaign(tmp_path)
     snapshot, _paths, view = _released_scratch_view(config)
-    members, refusals = snapshot.authorized_members(view)
-    assert members and not refusals, (members, refusals)
+    certification = cleanup_certification(view)
+    assert certification is not None and certification.nodes, certification
 
     attempt = view.path.parent
     # The plan's own binding, taken before the swap, exactly as a real plan
@@ -3064,24 +3049,13 @@ def test_a_root_swap_after_certification_transfers_no_authority(
         # The owner re-derives its own view honestly; what must not happen is
         # the *old* accepted authority being spent on the new object.
         pass
-    members_after, refusals_after = snapshot.authorized_members(view)
-    assert members_after == (), members_after
-    assert refusals_after, "a replaced root produced no refusal"
-    assert any(
-        "different filesystem object" in why or "unresolved" in why
-        for _path, why in refusals_after
-    ), refusals_after
-
-    # And the last seam refuses independently, with the originally authorized
-    # member list still in hand - reporting a *no-change* refusal, not a
-    # boolean that could be mistaken for a completed action.
-    outcome = remove_certified_subtree(
-        view.path,
-        members=members,
-        refusals=(),
+    # The last seam refuses independently, with the accepted certification
+    # still in hand - reporting a *no-change* refusal, not a boolean that could
+    # be mistaken for a completed action.
+    outcome = remove_planned_target(
+        SimpleNamespace(path=view.path, filesystem_identity=planned_identity),
         anchor=attempt.parent,
-        planned_identity=planned_identity,
-        root_identity=view.root_identity,
+        certification=certification,
     )
     assert outcome.outcome == OUTCOME_REFUSED_NO_CHANGE, outcome
     assert outcome.mutated is False
@@ -3298,8 +3272,6 @@ def test_a_nested_mount_under_released_scratch_is_never_traversed(tmp_path: Path
         # reclaimable at all.
         assert not target.safe_reclaimable, target.detail
         assert "mount" in target.detail, target.detail
-        members, refusals = fresh.authorized_members(target)
-        assert all("mounted" not in str(item) for item in members), members
         # And the real cleanup retains rather than emptying the mounted tree.
         assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
     finally:
@@ -3420,31 +3392,31 @@ def test_an_apply_time_root_swap_transfers_no_authority(tmp_path: Path, swap: st
     # open, and these are the two destructive transitions that remain.
     outcomes: list[tuple[str, bool, str]] = []
     real_member = qstore.remove_released_attempt_member
-    real_unlink = qstore._unlink_certified_file
-    real_remove_directory = qstore._remove_certified_directory
+    real_unlink = removal_mod.unlink_certified_entry
+    real_empty = removal_mod._empty_certified_directory
 
     def observed_member(session, member_name, **kwargs):
         result = real_member(session, member_name, **kwargs)
         outcomes.append((member_name, result.succeeded, result.detail))
         return result
 
-    def raced_unlink(parent_fd, name):
+    def raced_unlink(*args, **kwargs):
         perform_swap()
-        return real_unlink(parent_fd, name)
+        return real_unlink(*args, **kwargs)
 
-    def raced_remove_directory(*args, **kwargs):
+    def raced_empty(*args, **kwargs):
         perform_swap()
-        return real_remove_directory(*args, **kwargs)
+        return real_empty(*args, **kwargs)
 
     qstore.remove_released_attempt_member = observed_member
-    qstore._unlink_certified_file = raced_unlink
-    qstore._remove_certified_directory = raced_remove_directory
+    removal_mod.unlink_certified_entry = raced_unlink
+    removal_mod._empty_certified_directory = raced_empty
     try:
         assert p4d._run(config, "storage", "cleanup", "--tier", "safe", "--apply") == 0
     finally:
         qstore.remove_released_attempt_member = real_member
-        qstore._unlink_certified_file = real_unlink
-        qstore._remove_certified_directory = real_remove_directory
+        removal_mod.unlink_certified_entry = real_unlink
+        removal_mod._empty_certified_directory = real_empty
 
     assert fired, "the race never fired"
     assert outcomes, "no released action reached the P7 mutation boundary"
@@ -3707,8 +3679,8 @@ def test_certification_and_mutation_hold_one_live_capability(tmp_path: Path):
     events: list[tuple[str, int]] = []
     real_open = qstore.open_released_attempt_session
     real_close = qstore.ReleasedAttemptSession.close
-    real_unlink = qstore._unlink_certified_file
-    real_directory = qstore._remove_certified_directory
+    real_unlink = removal_mod.unlink_certified_entry
+    real_empty = removal_mod._empty_certified_directory
     live: dict[str, object] = {}
 
     def observed_open(*args, **kwargs):
@@ -3722,31 +3694,31 @@ def test_certification_and_mutation_hold_one_live_capability(tmp_path: Path):
         events.append(("closed", id(self)))
         return real_close(self)
 
-    def observed_unlink(parent_fd, name):
+    def observed_unlink(*args, **kwargs):
         session = live.get("session")
         events.append(("mutate", id(session)))
         assert session is not None and session.closed is False, (
             "the certifying capability was closed before the destructive call"
         )
-        return real_unlink(parent_fd, name)
+        return real_unlink(*args, **kwargs)
 
-    def observed_directory(*args, **kwargs):
+    def observed_empty(*args, **kwargs):
         session = live.get("session")
         events.append(("mutate", id(session)))
         assert session is not None and session.closed is False
-        return real_directory(*args, **kwargs)
+        return real_empty(*args, **kwargs)
 
     qstore.open_released_attempt_session = observed_open
     qstore.ReleasedAttemptSession.close = observed_close
-    qstore._unlink_certified_file = observed_unlink
-    qstore._remove_certified_directory = observed_directory
+    removal_mod.unlink_certified_entry = observed_unlink
+    removal_mod._empty_certified_directory = observed_empty
     try:
         execution = _apply_cleanup(config)
     finally:
         qstore.open_released_attempt_session = real_open
         qstore.ReleasedAttemptSession.close = real_close
-        qstore._unlink_certified_file = real_unlink
-        qstore._remove_certified_directory = real_directory
+        removal_mod.unlink_certified_entry = real_unlink
+        removal_mod._empty_certified_directory = real_empty
 
     assert execution["status"] == "complete", execution
     kinds = [kind for kind, _ident in events]
@@ -3950,8 +3922,8 @@ def test_the_certified_recursion_reports_partial_change_with_measured_bytes(
     """
 
     from mdstats.training_data.qualification.store import (
-        _remove_certified_directory,
         open_released_attempt_session,
+        remove_released_attempt_member,
     )
 
     config, _workspace, _harness = _released_attempt_campaign(tmp_path)
@@ -3978,13 +3950,11 @@ def test_the_certified_recursion_reports_partial_change_with_measured_bytes(
         expected_freed = sum(item.stat().st_size for item in certified_files)
         (deepest / "zz-someone-elses.bin").write_bytes(b"not P7's")
 
-        outcome = _remove_certified_directory(
-            session.attempt_fd,
+        outcome = remove_released_attempt_member(
+            session,
             view.path.name,
-            view.path,
-            session.recorded,
-            f"{view.path.name}/",
-            seen=set(),
+            expected_kind="directory",
+            planned_identity=filesystem_identity(view.path),
         )
     finally:
         session.close()
@@ -4217,26 +4187,26 @@ def test_a_mutation_time_contradiction_withholds_the_rest_of_that_attempt(
         return session, outcome
 
     destructive: list[str] = []
-    real_unlink = qstore._unlink_certified_file
-    real_directory = qstore._remove_certified_directory
+    real_unlink = removal_mod.unlink_certified_entry
+    real_empty = removal_mod._empty_certified_directory
 
-    def watched_unlink(parent_fd, name):
+    def watched_unlink(parent_fd, name, *args, **kwargs):
         destructive.append(name)
-        return real_unlink(parent_fd, name)
+        return real_unlink(parent_fd, name, *args, **kwargs)
 
-    def watched_directory(*args, **kwargs):
-        destructive.append(str(args[1]))
-        return real_directory(*args, **kwargs)
+    def watched_empty(handle, display, *args, **kwargs):
+        destructive.append(str(display))
+        return real_empty(handle, display, *args, **kwargs)
 
     qstore.open_released_attempt_session = contradict_first_target
-    qstore._unlink_certified_file = watched_unlink
-    qstore._remove_certified_directory = watched_directory
+    removal_mod.unlink_certified_entry = watched_unlink
+    removal_mod._empty_certified_directory = watched_empty
     try:
         execution = _apply_cleanup(config)
     finally:
         qstore.open_released_attempt_session = real_open
-        qstore._unlink_certified_file = real_unlink
-        qstore._remove_certified_directory = real_directory
+        removal_mod.unlink_certified_entry = real_unlink
+        removal_mod._empty_certified_directory = real_empty
 
     assert fired, "the contradiction never fired"
     refused = {item["path"]: item for item in execution["refused_actions"]}
@@ -4360,11 +4330,11 @@ def test_a_post_mutation_durability_failure_is_recorded_before_it_propagates(
 
     real_fsync = _os.fsync
     unlinked: list[str] = []
-    real_unlink = qstore._unlink_certified_file
+    real_unlink = removal_mod.unlink_certified_entry
 
-    def note_unlink(parent_fd, name):
+    def note_unlink(parent_fd, name, *args, **kwargs):
         unlinked.append(name)
-        return real_unlink(parent_fd, name)
+        return real_unlink(parent_fd, name, *args, **kwargs)
 
     def failing_fsync(fd):
         if unlinked:
@@ -4372,13 +4342,13 @@ def test_a_post_mutation_durability_failure_is_recorded_before_it_propagates(
         return real_fsync(fd)
 
     _os.fsync = failing_fsync
-    qstore._unlink_certified_file = note_unlink
+    removal_mod.unlink_certified_entry = note_unlink
     try:
         with pytest.raises(OSError, match="injected durability failure"):
             _apply_cleanup(config)
     finally:
         _os.fsync = real_fsync
-        qstore._unlink_certified_file = real_unlink
+        removal_mod.unlink_certified_entry = real_unlink
 
     assert unlinked, "nothing was unlinked before the injected failure"
     # The action boundary recorded the partial truth before the failure left.
@@ -4416,12 +4386,12 @@ def test_a_pre_mutation_failure_fabricates_no_mutation(tmp_path: Path):
     assert released
     before = {path: sorted(str(item) for item in path.rglob("*")) for path in released}
 
-    real_unlink = qstore._unlink_certified_file
+    real_unlink = removal_mod.unlink_certified_entry
 
-    def never_gets_there(parent_fd, name):
+    def never_gets_there(parent_fd, name, *args, **kwargs):
         raise OSError(5, "injected pre-mutation failure")
 
-    qstore._unlink_certified_file = never_gets_there
+    removal_mod.unlink_certified_entry = never_gets_there
     try:
         try:
             execution = _apply_cleanup(config)
@@ -4429,7 +4399,7 @@ def test_a_pre_mutation_failure_fabricates_no_mutation(tmp_path: Path):
             assert "injected pre-mutation failure" in str(exc)
             execution = None
     finally:
-        qstore._unlink_certified_file = real_unlink
+        removal_mod.unlink_certified_entry = real_unlink
 
     if execution is not None:
         assert execution["mutated"] is False, execution
@@ -4678,11 +4648,11 @@ def test_the_post_mutation_partial_records_the_exact_byte_amount(tmp_path: Path)
     assert measured
 
     real_fsync = _os.fsync
-    real_unlink = qstore._unlink_certified_file
+    real_unlink = removal_mod.unlink_certified_entry
     unlinked: list[str] = []
 
-    def note_unlink(parent_fd, name):
-        result = real_unlink(parent_fd, name)
+    def note_unlink(parent_fd, name, *args, **kwargs):
+        result = real_unlink(parent_fd, name, *args, **kwargs)
         unlinked.append(name)
         return result
 
@@ -4692,13 +4662,13 @@ def test_the_post_mutation_partial_records_the_exact_byte_amount(tmp_path: Path)
         return real_fsync(fd)
 
     _os.fsync = fail_once_something_went
-    qstore._unlink_certified_file = note_unlink
+    removal_mod.unlink_certified_entry = note_unlink
     try:
         with pytest.raises(OSError, match="injected durability failure"):
             _apply_cleanup(config)
     finally:
         _os.fsync = real_fsync
-        qstore._unlink_certified_file = real_unlink
+        removal_mod.unlink_certified_entry = real_unlink
 
     # The substantiated amount is the pre-run size of exactly the entries that
     # went, deduplicated by inode as the planner's own metric does. Computed
@@ -4874,7 +4844,7 @@ def test_an_incomplete_plan_identity_reaches_no_syscall(
     assert session is not None
     touched: list[str] = []
     real_stat, real_open_dir = _os.stat, qstore._open_directory_nofollow
-    real_unlink = qstore._unlink_certified_file
+    real_unlink = removal_mod.unlink_certified_entry
 
     def watched_stat(*args, **kwargs):
         if kwargs.get("dir_fd") is not None:
@@ -4895,12 +4865,12 @@ def test_an_incomplete_plan_identity_reaches_no_syscall(
     else:
         candidates = [
             {key: value for key, value in complete.items() if key != dimension}
-            for dimension in qstore.TARGET_IDENTITY_DIMENSIONS
+            for dimension in removal_mod.TARGET_IDENTITY_DIMENSIONS
         ]
 
     _os.stat = watched_stat
     qstore._open_directory_nofollow = watched_open
-    qstore._unlink_certified_file = watched_unlink
+    removal_mod.unlink_certified_entry = watched_unlink
     try:
         for identity in candidates:
             outcome = qstore.remove_released_attempt_member(
@@ -4912,7 +4882,7 @@ def test_an_incomplete_plan_identity_reaches_no_syscall(
     finally:
         _os.stat = real_stat
         qstore._open_directory_nofollow = real_open_dir
-        qstore._unlink_certified_file = real_unlink
+        removal_mod.unlink_certified_entry = real_unlink
         session.close()
 
     assert touched == [], touched
@@ -4925,16 +4895,14 @@ def test_an_incomplete_plan_identity_reaches_no_syscall(
 # ---------------------------------------------------------------------------
 
 
-def _run_real_cleanup(config: Path, *, engine: bool = True, select=None):
+def _run_real_cleanup(config: Path, *, select=None):
     """Plan and apply through the real executor, returning the result or failure.
 
     Authorization, planning, `StorageExecutor.run`, action recording, settlement,
     finalization and the durable audit are all production code; only the
     low-level filesystem transition is ever instrumented by the callers below.
 
-    ``select`` may narrow the *real* plan to a subset of its own actions, which
-    is how a default-engine case is given a plan inside that engine's positive
-    generic-leaf domain without inventing an action.
+    ``select`` may narrow the *real* plan to a subset of its own actions.
     """
 
     context, store = _context(config)
@@ -4967,9 +4935,7 @@ def _run_real_cleanup(config: Path, *, engine: bool = True, select=None):
                 apply_plan,
                 trigger="test:r32",
                 synchronization=synchronization_for(apply_plan, snapshot),
-                engine=(
-                    storage_commands._cleanup_engine(context, policy) if engine else None
-                ),
+                engine=storage_commands._cleanup_engine(context, policy),
             )
         except BaseException as exc:  # noqa: BLE001 - propagation is the contract
             raised = exc
@@ -5057,34 +5023,35 @@ def test_a_post_mutation_interruption_remains_audited_as_partial(tmp_path: Path)
     assert int(audit["reclaimed_bytes"]) == int(entry["reclaimed_bytes"]), audit
 
 
-def test_the_default_engine_records_a_post_mutation_failure(tmp_path: Path):
-    """R32-3 case 1: `engine=None` shares the action-boundary recorder.
+def test_a_leaf_post_mutation_failure_reaches_the_action_boundary_recorder(
+    tmp_path: Path,
+):
+    """R32-3 case 1: the one cleanup path shares the action-boundary recorder.
 
-    IR18-1 narrowed the default engine to its positive generic-leaf domain, so
-    this case is driven on a real generic leaf. Driving it on the released-P7
-    plan would now be answered by the domain preflight before any transition,
-    which would make the recorder claim vacuous rather than prove it.
+    Driven on a real released leaf, with the injection at the durability step
+    that follows the unlink - so the transition really crossed and the failure
+    that follows it must carry that fact.
     """
-
-    from mdstats.training_data.storage import executor as executor_mod
 
     config, _workspace, _harness = _released_attempt_campaign(tmp_path)
     leaf = _p7_generic_leaf(config, "cccc.bin")
-    real = executor_mod.durable_unlink
+    real = removal_mod.persist_entry_removal
     unlinked: list[str] = []
 
-    def unlink_then_fail(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
-        real(path, dir_fd=dir_fd, missing_ok=missing_ok, on_unlinked=on_unlinked)
-        unlinked.append(str(path))
-        raise OSError(5, "injected durability failure")
+    def fail_durability(parent_fd, display, ledger):
+        unlinked.append(str(display))
+        raise ledger.failure(
+            OSError(5, "injected durability failure"),
+            f"{display} was removed but the removal could not be made durable",
+        )
 
-    executor_mod.durable_unlink = unlink_then_fail
+    removal_mod.persist_entry_removal = fail_durability
     try:
         _execution, raised, _plan = _run_real_cleanup(
-            config, engine=False, select=lambda action: action.path == leaf
+            config, select=lambda action: action.path == leaf
         )
     finally:
-        executor_mod.durable_unlink = real
+        removal_mod.persist_entry_removal = real
 
     assert [Path(item).name for item in unlinked] == [leaf.name], unlinked
     assert isinstance(raised, OSError), raised
@@ -5101,12 +5068,11 @@ def test_the_default_engine_records_a_post_mutation_failure(tmp_path: Path):
     assert all(int(item["reclaimed_bytes"]) >= 0 for item in partials)
 
 
-def test_the_generic_recursive_partial_is_recorded_by_the_real_executor(
+def test_the_recursive_partial_is_recorded_by_the_real_executor(
     tmp_path: Path,
 ):
     """R32-3 case 2: a subset goes, the container survives, the audit says so."""
 
-    from mdstats.training_data.storage import executor as executor_mod
     from mdstats.training_data.storage.control_plane import (
         open_storage_control_plane_readonly,
     )
@@ -5120,25 +5086,25 @@ def test_the_generic_recursive_partial_is_recorded_by_the_real_executor(
     (residue / "a.bin").write_bytes(b"a" * 10)
     (residue / "sub" / "locked.bin").write_bytes(b"b" * 20)
 
-    real_contents = executor_mod._remove_tree_contents
+    real_contents = removal_mod._empty_certified_directory
     fired: list[str] = []
 
-    def fail_inside_the_subdirectory(handle, display, ledger):
+    def fail_inside_the_subdirectory(handle, display, certification, prefix, ledger):
         if display.name == "sub":
             fired.append(display.name)
             raise ledger.failure(
                 OSError(13, "injected removal failure"),
                 f"{display} could not be emptied",
             )
-        return real_contents(handle, display, ledger)
+        return real_contents(handle, display, certification, prefix, ledger)
 
-    executor_mod._remove_tree_contents = fail_inside_the_subdirectory
+    removal_mod._empty_certified_directory = fail_inside_the_subdirectory
     try:
         _execution, raised, _plan = _run_real_cleanup(config)
     finally:
-        executor_mod._remove_tree_contents = real_contents
+        removal_mod._empty_certified_directory = real_contents
 
-    assert fired, "the generic recursion was never reached"
+    assert fired, "the canonical recursion was never reached"
     assert isinstance(raised, OSError), raised
     audit = _read_last_audit(config)
     assert audit is not None and audit["status"] == "partial", audit
@@ -5375,8 +5341,8 @@ def test_a_p7_directory_replaced_before_its_final_rmdir_is_refused(
     """
 
     from mdstats.training_data.qualification.store import (
-        _remove_certified_directory,
         open_released_attempt_session,
+        remove_released_attempt_member,
     )
     from mdstats.training_data.storage import trust as trust_mod
 
@@ -5406,13 +5372,11 @@ def test_a_p7_directory_replaced_before_its_final_rmdir_is_refused(
     )
     assert session is not None
     try:
-        outcome = _remove_certified_directory(
-            session.attempt_fd,
+        outcome = remove_released_attempt_member(
+            session,
             view.path.name,
-            view.path,
-            session.recorded,
-            f"{view.path.name}/",
-            seen=set(),
+            expected_kind="directory",
+            planned_identity=filesystem_identity(view.path),
         )
     finally:
         session.close()
@@ -5837,7 +5801,7 @@ def test_a_pre_acquisition_replacement_never_inherits_the_plan(
     )
     staging_root = target.parent
 
-    real_descent = executor_mod._descend_to_parent
+    real_descent = removal_mod.descend_to_parent
     fired: list[str] = []
 
     def swap_then_descend(anchor, path, scope):
@@ -5849,7 +5813,7 @@ def test_a_pre_acquisition_replacement_never_inherits_the_plan(
             (victim / "sentinel.bin").write_bytes(b"s" * 5)
         return real_descent(anchor, path, scope)
 
-    monkeypatch.setattr(executor_mod, "_descend_to_parent", swap_then_descend)
+    monkeypatch.setattr(removal_mod, "descend_to_parent", swap_then_descend)
     try:
         execution, raised, _plan = _run_real_cleanup(config)
     finally:
@@ -5930,10 +5894,10 @@ def test_the_default_single_file_cleanup_spends_the_plan_identity(
     config, _workspace, _harness = _released_attempt_campaign(tmp_path)
     orphan, _staging = _plant_generic_residue(config)
 
-    real_spend = executor_mod._spend_planned_capability
+    real_spend = removal_mod._spend_certified_unit
     fired: list[str] = []
 
-    def change_then_spend(parent_fd, name, display, expected, ledger, scope):
+    def change_then_spend(parent_fd, name, display, expected, certification, ledger, scope):
         if Path(display) == orphan and not fired:
             fired.append(name)
             if change == "replaced_inode":
@@ -5941,9 +5905,11 @@ def test_the_default_single_file_cleanup_spends_the_plan_identity(
                 orphan.write_bytes(b"o" * 24)
             else:
                 orphan.write_bytes(b"o" * 48)
-        return real_spend(parent_fd, name, display, expected, ledger, scope)
+        return real_spend(
+            parent_fd, name, display, expected, certification, ledger, scope
+        )
 
-    monkeypatch.setattr(executor_mod, "_spend_planned_capability", change_then_spend)
+    monkeypatch.setattr(removal_mod, "_spend_certified_unit", change_then_spend)
     try:
         execution, raised, _plan = _run_real_cleanup(config)
     finally:
@@ -6057,7 +6023,7 @@ def test_directory_entry_durability_uses_the_same_authenticated_parent(
             os, "supports_dir_fd", set(os.supports_dir_fd) | {swap_after_unlink}
         )
     else:
-        real_finalize = executor_mod._finalize_directory_removal
+        real_finalize = removal_mod._finalize_directory_removal
 
         def swap_after_rmdir(parent_fd, name, handle, display, ledger):
             result = real_finalize(parent_fd, name, handle, display, ledger)
@@ -6066,7 +6032,7 @@ def test_directory_entry_durability_uses_the_same_authenticated_parent(
             return result
 
         monkeypatch.setattr(
-            executor_mod, "_finalize_directory_removal", swap_after_rmdir
+            removal_mod, "_finalize_directory_removal", swap_after_rmdir
         )
 
     try:
@@ -6178,7 +6144,7 @@ def test_a_generic_close_only_failure_after_a_mutation_is_an_exact_partial(
     acquired = _executor_descriptors(monkeypatch)
     state: dict = {}
     real_close = os.close
-    real_finalize = executor_mod._finalize_directory_removal
+    real_finalize = removal_mod._finalize_directory_removal
 
     def arm_after_rmdir(parent_fd, name, handle, display, ledger):
         result = real_finalize(parent_fd, name, handle, display, ledger)
@@ -6193,7 +6159,7 @@ def test_a_generic_close_only_failure_after_a_mutation_is_an_exact_partial(
             raise OSError(5, "injected descriptor close failure")
         return real_close(handle)
 
-    monkeypatch.setattr(executor_mod, "_finalize_directory_removal", arm_after_rmdir)
+    monkeypatch.setattr(removal_mod, "_finalize_directory_removal", arm_after_rmdir)
     monkeypatch.setattr(os, "close", failing_close)
     try:
         _execution, raised, _plan = _run_real_cleanup(config)
@@ -6236,7 +6202,9 @@ def test_a_close_failure_behind_a_mount_refusal_fabricates_no_mutation(
     real_close = os.close
 
     def failing_close(handle):
-        if "fired" not in state and int(handle) in acquired:
+        # Only the refused container's own descriptor, so the injection lands on
+        # the removal owner rather than on an unrelated owner's teardown.
+        if "fired" not in state and acquired.get(int(handle)) == target.name:
             state["fired"] = int(handle)
             real_close(handle)
             raise OSError(5, "injected descriptor close failure")
@@ -6255,14 +6223,14 @@ def test_a_close_failure_behind_a_mount_refusal_fabricates_no_mutation(
         set_mount_resolver(None)
 
     assert state.get("fired") is not None, "the close seam never fired"
-    # The mount refusal is what propagates; the close failure was logged as
+    # The mount refusal is the product answer; the close failure was logged as
     # secondary evidence and did not replace it.
-    from mdstats.training_data.storage.trust import MountBoundaryError
-
-    assert isinstance(raised, MountBoundaryError), raised
-    assert "mount point" in str(raised), raised
-    assert "injected descriptor close failure" not in str(raised), raised
+    assert raised is None, raised
     audit = _read_last_audit(config)
+    entry = _outcome_for(audit, target)
+    assert entry["outcome"] == OUTCOME_REFUSED_NO_CHANGE, entry
+    assert "campaign-owned" in entry["refusal"], entry
+    assert "injected descriptor close failure" not in entry["refusal"], entry
     assert audit is not None, "no durable audit was published"
     # The refused container contributes no mutation and no bytes of its own,
     # and the aggregate is exactly the sum of what the actions each recorded -
@@ -6314,12 +6282,10 @@ def test_a_mount_refusal_after_a_removed_prefix_keeps_the_exact_partial(
             raise OSError(5, "injected refused-child close failure")
         return real_close(handle)
 
-    # Planning sees an ordinary closed subtree, so the fully-certified recursion
-    # is the owner that runs; the nested mount appears at mutation time, which
-    # is the window the opened-descriptor decision exists for.
-    from mdstats.training_data.storage import executor as executor_mod
-
-    real_descent = executor_mod._descend_to_parent
+    # Planning sees an ordinary closed subtree, so the whole-unit recursion is
+    # what runs; the nested mount appears at mutation time, which is the window
+    # the opened-descriptor decision exists for.
+    real_descent = removal_mod.descend_to_parent
 
     def mount_then_descend(anchor, path, scope):
         if Path(path) == target:
@@ -6334,7 +6300,7 @@ def test_a_mount_refusal_after_a_removed_prefix_keeps_the_exact_partial(
     set_mount_resolver(
         MountIdentityResolver(mount_points=frozenset(), available=True)
     )
-    monkeypatch.setattr(executor_mod, "_descend_to_parent", mount_then_descend)
+    monkeypatch.setattr(removal_mod, "descend_to_parent", mount_then_descend)
     monkeypatch.setattr(os, "close", failing_close)
     try:
         _execution, raised, _plan = _run_real_cleanup(config)
@@ -6342,18 +6308,16 @@ def test_a_mount_refusal_after_a_removed_prefix_keeps_the_exact_partial(
         monkeypatch.undo()
         set_mount_resolver(None)
 
-    from mdstats.training_data.storage.trust import MountBoundaryError
-
     assert state.get("fired") is not None, "the close seam never fired"
-    assert isinstance(raised, MountBoundaryError), raised
-    assert "mount point" in str(raised), raised
-    assert "injected refused-child close failure" not in str(raised), (
-        "a secondary close failure replaced the primary mount refusal"
-    )
+    assert raised is None, raised
     audit = _read_last_audit(config)
     assert audit is not None and audit["mutated"] is True, audit
     entry = _outcome_for(audit, target)
     assert entry["outcome"] == OUTCOME_PARTIAL_CHANGE_REFUSED, entry
+    assert "campaign-owned" in entry["refusal"], entry
+    assert "injected refused-child close failure" not in entry["refusal"], (
+        "a secondary close failure replaced the primary mount refusal"
+    )
     # `a.bin` really went; the externally owned subtree did not.
     assert int(entry["reclaimed_bytes"]) == 10, entry
     assert (external / "locked.bin").exists(), "external bytes were removed"
@@ -6377,60 +6341,49 @@ def _p7_generic_leaf(config: Path, name: str = "aaaa.bin") -> Path:
     return residue
 
 
-def test_a_released_p7_plan_is_refused_by_the_default_engine(tmp_path: Path):
-    """IR18-1 case 2: released P7 scratch is mutated only by its live owner.
+def test_released_p7_scratch_is_mutated_only_by_its_live_owner(tmp_path: Path):
+    """R38: released P7 scratch never reaches the ordinary destructive entry.
 
-    The plan is a real, freshly revalidated released-attempt cleanup plan with no
-    post-plan owner mutation, so the refusal cannot be stale-plan rejection in
-    disguise.
+    The plan is a real, freshly revalidated released-attempt cleanup plan with
+    no post-plan owner mutation, so the routing claim cannot be stale-plan
+    rejection in disguise: the P7 branch is taken because the owner names its
+    exact authorizer, and the ordinary entry point is never called for it.
     """
 
-    from mdstats.training_data.qualification import store as qstore
-    from mdstats.training_data.storage import executor as executor_mod
-    from mdstats.training_data.storage.cleanup_domain import StorageEngineDomainError
+    from mdstats.training_data.storage import commands as commands_mod
 
     config, _workspace, _harness = _released_attempt_campaign(tmp_path)
     snapshot, _paths = _snapshot(config)
-    released = [
+    released = {
         view.path
         for view in snapshot.views
         if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
-    ]
+    }
     assert released, "the fixture released no P7 attempt scratch"
-    before = {path: sorted(str(item) for item in path.rglob("*")) for path in released}
 
-    touched: list[str] = []
-    real_generic = executor_mod.remove_planned_outcome
-    real_session = qstore.open_released_attempt_session
-    real_member = qstore.remove_released_attempt_member
-    executor_mod.remove_planned_outcome = lambda action, **kw: touched.append(
-        f"generic:{action.path}"
-    )
-    qstore.open_released_attempt_session = lambda *a, **k: touched.append("session")
-    qstore.remove_released_attempt_member = lambda *a, **k: touched.append("member")
+    ordinary: list[str] = []
+    real_ordinary = commands_mod.remove_planned_target
+
+    def watch_ordinary(action, **kwargs):
+        ordinary.append(str(action.path))
+        return real_ordinary(action, **kwargs)
+
+    commands_mod.remove_planned_target = watch_ordinary
     try:
-        _execution, raised, plan = _run_real_cleanup(config, engine=False)
+        execution, raised, plan = _run_real_cleanup(config)
     finally:
-        executor_mod.remove_planned_outcome = real_generic
-        qstore.open_released_attempt_session = real_session
-        qstore.remove_released_attempt_member = real_member
+        commands_mod.remove_planned_target = real_ordinary
 
-    assert any(item.path in set(released) for item in plan.actions), (
+    assert raised is None, raised
+    assert any(item.path in released for item in plan.actions), (
         "the real planner released no P7 attempt member"
     )
-    assert isinstance(raised, StorageEngineDomainError), raised
-    assert "exact_authorizer" in str(raised), str(raised)
-    assert touched == [], touched
-    audit = _read_last_audit(config)
-    assert audit is not None, "the refused truth was never published"
-    assert audit["status"] == "refused", audit
-    assert audit["mutated"] is False, audit
-    assert int(audit["reclaimed_bytes"]) == 0, audit
-    # The audit names the engine/domain incompatibility, not a stale plan.
-    assert "cannot execute this plan" in audit["detail"], audit["detail"]
-    assert "re-plan" not in audit["detail"], audit["detail"]
-    for path in released:
-        assert sorted(str(item) for item in path.rglob("*")) == before[path]
+    # Every released member went through its owner's live session, and not one
+    # of them reached the ordinary anchored entry point.
+    assert not (released & {Path(item) for item in ordinary}), ordinary
+    assert execution is not None and execution["status"] in ("complete", "partial"), (
+        execution
+    )
 
 
 def test_production_cleanup_still_routes_released_p7_through_its_session(
@@ -6452,7 +6405,7 @@ def test_production_cleanup_still_routes_released_p7_through_its_session(
     members: list[str] = []
     generic: list[str] = []
     real_member = qstore.remove_released_attempt_member
-    real_generic = commands_mod.remove_planned_outcome
+    real_generic = commands_mod.remove_planned_target
 
     def watch_member(session, member_name, **kwargs):
         members.append(member_name)
@@ -6463,12 +6416,12 @@ def test_production_cleanup_still_routes_released_p7_through_its_session(
         return real_generic(action, **kwargs)
 
     qstore.remove_released_attempt_member = watch_member
-    commands_mod.remove_planned_outcome = watch_generic
+    commands_mod.remove_planned_target = watch_generic
     try:
         execution, raised, plan = _run_real_cleanup(config)
     finally:
         qstore.remove_released_attempt_member = real_member
-        commands_mod.remove_planned_outcome = real_generic
+        commands_mod.remove_planned_target = real_generic
 
     assert raised is None, raised
     assert execution is not None and execution["status"] in ("complete", "partial"), (
