@@ -1176,7 +1176,17 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
 def post_selection_mace_run_configuration(
     config: Mapping[str, Any]
 ) -> dict[str, Any]:
-    """Rename the frozen post-selection configuration into MACE's argument names."""
+    """Project the frozen post-selection configuration into MACE arguments.
+
+    Renaming, explicit architecture projection, and the pinned parser's
+    scalar-literal spelling all happen here; the canonical configuration and its
+    digests are untouched.
+    """
+
+    from .mace_compatibility import (
+        encode_mace_executable_configuration,
+        project_mace_architecture_arguments,
+    )
 
     if config.get("schema") != POST_SELECTION_MACE_CONFIG_SCHEMA:
         raise PostSelectionExecutionError(
@@ -1233,9 +1243,19 @@ def post_selection_mace_run_configuration(
                 f"{target_head_name!r} and {replay_head_name!r}."
             )
         result["heads"] = dict(heads)
-    for key, value in dict(config.get("mace_architecture") or {}).items():
-        result.setdefault(str(key), value)
-    return result
+    for key, value in project_mace_architecture_arguments(
+        config.get("mace_architecture")
+    ).items():
+        # The internal architecture head list is mdstats metadata and must never
+        # become MACE's dataset-head argument; only the P5 multihead mapping can
+        # set ``heads``.
+        result.setdefault(key, value)
+    try:
+        return encode_mace_executable_configuration(result)
+    except TrainingDataInputError as exc:
+        raise PostSelectionExecutionError(
+            f"Post-selection MACE configuration cannot be spelled for MACE: {exc}"
+        ) from exc
 
 
 def post_selection_runtime_plan(

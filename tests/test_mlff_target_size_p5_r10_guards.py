@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -353,7 +355,10 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
     assert executable["multiheads_finetuning"] is True
     assert executable["pt_train_file"] == "replay-train.extxyz"
     assert executable["pt_valid_file"] == "replay-monitor.extxyz"
-    assert set(executable["heads"]) == {
+    # MACE's parser declares --heads as a scalar type=str action and reads it
+    # with ast.literal_eval, so the executable spelling is one literal.
+    assert isinstance(executable["heads"], str)
+    assert set(ast.literal_eval(executable["heads"])) == {
         POST_SELECTION_TARGET_HEAD_NAME,
         POST_SELECTION_REPLAY_HEAD_NAME,
     }

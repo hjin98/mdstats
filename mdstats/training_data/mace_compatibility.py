@@ -1055,3 +1055,226 @@ def mace_runtime_warning_handled(operation: str):
         return wrapped
 
     return decorator
+
+
+# ---------------------------------------------------------------------------
+# Canonical configuration -> pinned MACE executable configuration
+# ---------------------------------------------------------------------------
+#
+# mdstats stores candidate/post-selection configuration as typed JSON-safe
+# scientific data: ``atomic_numbers`` is a list of integers, ``E0s`` and the P5
+# ``heads`` mapping are dictionaries, and ``radial_MLP`` is a list.  The pinned
+# MACE 0.3.16 parser declares every one of those options as a scalar
+# ``type=str`` action and interprets the string itself later with
+# ``ast.literal_eval``.  Handing configargparse a YAML list or mapping fails
+# before MACE training logic runs.
+#
+# These helpers are the one representation boundary between the canonical typed
+# values and that external syntax.  They never change a canonical value or its
+# digest; they only decide how it is spelled in the generated ``--config`` file.
+
+#: Canonical architecture fields that are mdstats metadata and must never reach
+#: the MACE command line.  ``heads`` here is the internal architecture head list
+#: (``["target_head"]``); MACE's ``--heads`` is an unrelated dataset-head
+#: mapping owned by the P5 multihead configuration.
+MACE_ARCHITECTURE_INTERNAL_KEYS = frozenset({"schema", "heads"})
+
+#: Canonical architecture fields that are real MACE training arguments.
+MACE_ARCHITECTURE_EXTERNAL_KEYS = frozenset(
+    {
+        "model",
+        "r_max",
+        "num_radial_basis",
+        "num_cutoff_basis",
+        "max_ell",
+        "interaction",
+        "interaction_first",
+        "num_interactions",
+        "hidden_irreps",
+        "edge_irreps",
+        "num_channels",
+        "max_L",
+        "MLP_irreps",
+        "radial_MLP",
+        "radial_type",
+        "pair_repulsion",
+        "distance_transform",
+        "apply_cutoff",
+        "correlation",
+        "gate",
+        "use_reduced_cg",
+        "use_so3",
+        "use_edge_irreps_first",
+        "use_agnostic_product",
+        "use_embedding_readout",
+        "use_last_readout_only",
+        "embedding_specs",
+        "avg_num_neighbors",
+        "scaling",
+        "mean",
+        "std",
+        "loss",
+    }
+)
+
+#: Architecture fields whose canonical value is structured and whose pinned
+#: parser action is scalar ``type=str``.
+MACE_ARCHITECTURE_LITERAL_KEYS = frozenset({"radial_MLP"})
+
+#: Top-level configuration fields whose pinned parser action is scalar
+#: ``type=str`` while the canonical value is structured.
+MACE_EXECUTABLE_LITERAL_KEYS = ("atomic_numbers", "E0s", "heads")
+
+
+def mace_atomic_numbers_literal(value: Any) -> str:
+    """Spell a canonical atomic-number sequence for MACE's ``ast.literal_eval``."""
+
+    try:
+        numbers = sorted({int(item) for item in value})
+    except (TypeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            "MACE atomic_numbers must be a sequence of integers."
+        ) from exc
+    if not numbers:
+        raise TrainingDataInputError("MACE atomic_numbers must be non-empty.")
+    return repr(numbers)
+
+
+def mace_e0s_literal(value: Any) -> str:
+    """Spell a canonical E0 mapping for MACE's ``ast.literal_eval``.
+
+    MACE indexes the evaluated mapping by the integer atomic numbers of its own
+    ``AtomicNumberTable``, so the emitted literal is keyed by ``int`` even
+    though the canonical JSON-safe mapping is keyed by the decimal string.
+    """
+
+    if isinstance(value, str):
+        # ``average``/``foundation``/``estimated`` and JSON paths are already
+        # the scalar spelling MACE expects.
+        return value
+    if not isinstance(value, Mapping):
+        raise TrainingDataInputError("MACE E0s must be a mapping or a MACE keyword.")
+    try:
+        energies = {int(key): float(item) for key, item in value.items()}
+    except (TypeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            "MACE E0s must map atomic numbers to finite energies."
+        ) from exc
+    if not energies:
+        raise TrainingDataInputError("MACE E0s must be non-empty.")
+    return repr({z: energies[z] for z in sorted(energies)})
+
+
+def mace_scalar_sequence_literal(value: Any, *, name: str) -> str:
+    """Spell a canonical scalar sequence (e.g. ``radial_MLP``) as a literal."""
+
+    if isinstance(value, str):
+        return value
+    try:
+        items = list(value)
+    except TypeError as exc:
+        raise TrainingDataInputError(f"MACE {name} must be a sequence.") from exc
+    for item in items:
+        if not isinstance(item, (int, float, str)) or isinstance(item, bool):
+            raise TrainingDataInputError(
+                f"MACE {name} must contain only numeric or string literals."
+            )
+    return repr(items)
+
+
+def mace_heads_literal(value: Any) -> str:
+    """Spell the canonical MACE dataset-head mapping as one scalar literal.
+
+    MACE evaluates ``--heads`` with ``ast.literal_eval`` and then consumes each
+    head's ``atomic_numbers``/``E0s`` exactly as it consumes the top-level ones,
+    so those nested values are scalar literals too.
+    """
+
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, Mapping):
+        raise TrainingDataInputError("MACE heads must be a mapping.")
+    heads: dict[str, dict[str, Any]] = {}
+    for head_name in sorted(str(key) for key in value):
+        head = value[head_name]
+        if not isinstance(head, Mapping):
+            raise TrainingDataInputError(
+                f"MACE head {head_name!r} must be a mapping."
+            )
+        encoded: dict[str, Any] = {}
+        for field_name in sorted(str(key) for key in head):
+            field_value = head[field_name]
+            if field_name == "atomic_numbers":
+                encoded[field_name] = mace_atomic_numbers_literal(field_value)
+            elif field_name == "E0s":
+                encoded[field_name] = mace_e0s_literal(field_value)
+            else:
+                encoded[field_name] = field_value
+        heads[head_name] = encoded
+    if not heads:
+        raise TrainingDataInputError("MACE heads must be non-empty.")
+    return repr(heads)
+
+
+def project_mace_architecture_arguments(
+    architecture: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Project a canonical MACE architecture into MACE command-line arguments.
+
+    Only fields that are genuine MACE training arguments are emitted; internal
+    mdstats metadata is dropped by name rather than by accident.  A canonical
+    ``None`` means "no override", which the pinned parser expresses through its
+    own default, so those fields are omitted instead of feeding a YAML null to a
+    scalar action.  An unrecognized architecture field fails here rather than
+    leaking into the dependency.
+    """
+
+    if not architecture:
+        return {}
+    if not isinstance(architecture, Mapping):
+        raise TrainingDataInputError("MACE architecture must be a mapping.")
+    unknown = sorted(
+        str(key)
+        for key in architecture
+        if str(key) not in MACE_ARCHITECTURE_EXTERNAL_KEYS
+        and str(key) not in MACE_ARCHITECTURE_INTERNAL_KEYS
+    )
+    if unknown:
+        raise TrainingDataInputError(
+            "MACE architecture carries fields with no declared executable "
+            f"projection: {unknown}."
+        )
+    projected: dict[str, Any] = {}
+    for key in sorted(str(key) for key in architecture):
+        if key in MACE_ARCHITECTURE_INTERNAL_KEYS:
+            continue
+        value = architecture[key]
+        if value is None:
+            continue
+        if key in MACE_ARCHITECTURE_LITERAL_KEYS:
+            projected[key] = mace_scalar_sequence_literal(value, name=key)
+        else:
+            projected[key] = value
+    return projected
+
+
+def encode_mace_executable_configuration(
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Spell the structured top-level fields of a MACE run configuration.
+
+    Values that are already scalars pass through untouched; only the fields the
+    pinned parser declares as scalar ``type=str`` while mdstats keeps them
+    structured are re-spelled.
+    """
+
+    encoded = dict(config)
+    if "atomic_numbers" in encoded:
+        encoded["atomic_numbers"] = mace_atomic_numbers_literal(
+            encoded["atomic_numbers"]
+        )
+    if "E0s" in encoded:
+        encoded["E0s"] = mace_e0s_literal(encoded["E0s"])
+    if "heads" in encoded:
+        encoded["heads"] = mace_heads_literal(encoded["heads"])
+    return encoded

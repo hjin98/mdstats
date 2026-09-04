@@ -338,11 +338,16 @@ def mace_run_configuration(target_size_config: Mapping[str, Any]) -> dict[str, A
 
     P3 owns the scientific description of a candidate run - exact membership
     files, the common E0 mapping, the frozen optimizer policy, and the
-    architecture.  MACE's command line expects its own key names, so this
-    adapter renames and flattens without deciding anything: no value here is
-    computed, defaulted, or overridden.
+    architecture.  MACE's command line expects its own key names and its own
+    scalar-literal spelling, so this adapter renames, projects, and re-spells
+    without deciding anything: no value here is computed, defaulted, or
+    overridden, and the canonical configuration is left untouched.
     """
 
+    from .mace_compatibility import (
+        encode_mace_executable_configuration,
+        project_mace_architecture_arguments,
+    )
     from .target_size_execution import TARGET_SIZE_MACE_CONFIG_SCHEMA
 
     if target_size_config.get("schema") != TARGET_SIZE_MACE_CONFIG_SCHEMA:
@@ -356,12 +361,18 @@ def mace_run_configuration(target_size_config: Mapping[str, Any]) -> dict[str, A
     }
     config["train_file"] = target_size_config["target_train_file"]
     config["valid_file"] = target_size_config["target_valid_file"]
-    architecture = target_size_config.get("mace_architecture") or {}
-    for key, value in dict(architecture).items():
+    for key, value in project_mace_architecture_arguments(
+        target_size_config.get("mace_architecture")
+    ).items():
         # The architecture is canonicalized by the model-feature owner; it never
         # overrides an optimizer or data key the candidate configuration set.
-        config.setdefault(str(key), value)
-    return config
+        config.setdefault(key, value)
+    try:
+        return encode_mace_executable_configuration(config)
+    except TrainingDataInputError as exc:
+        raise TargetSizeRuntimeError(
+            f"Candidate MACE configuration cannot be spelled for MACE: {exc}"
+        ) from exc
 
 
 @dataclass(frozen=True, slots=True)

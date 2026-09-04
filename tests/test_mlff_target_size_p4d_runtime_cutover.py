@@ -13,6 +13,7 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -720,11 +721,132 @@ def test_p4d_req4_only_select_target_size_can_schedule_the_screen(tmp_path: Path
     assert not ({"train", "evaluate", "materialize", "preflight"} & set(choices))
 
 
+_REAL_PARSER_TRAIN_WRAPPER = """#!{python}
+import argparse
+import ast
+import json
+import os
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+sys.path.insert(0, {source_root!r})
+
+probe = argparse.ArgumentParser(add_help=False)
+probe.add_argument('--config', required=True)
+probe.add_argument('--model_dir', required=True)
+probe.add_argument('--checkpoints_dir', required=True)
+probe.add_argument('--log_dir', required=True)
+probe.add_argument('--results_dir', required=True)
+probe.add_argument('--restart_latest', action='store_true')
+known, _rest = probe.parse_known_args()
+
+# The exact pinned MACE parser is the compatibility authority for the config
+# this production trainer wrote.  Only MACE's numerics are substituted below it.
+from mace.tools import build_default_arg_parser
+from mdstats.training_data.train2_runtime import (
+    TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE,
+    Train2RuntimePlan,
+)
+import tests.test_mlff_target_size_execution_p3c as p3c
+
+args = build_default_arg_parser().parse_args(['--config', known.config])
+with Path({record!r}).open('a', encoding='utf-8') as handle:
+    handle.write(json.dumps({{
+        'cwd': str(Path.cwd()),
+        'atomic_numbers': ast.literal_eval(args.atomic_numbers),
+        'E0s': ast.literal_eval(args.E0s),
+        'radial_MLP': ast.literal_eval(args.radial_MLP),
+        'heads': args.heads,
+        'keys': sorted(json.loads(Path(known.config).read_text(encoding='utf-8'))),
+    }}, sort_keys=True) + '\\n')
+
+plan = Train2RuntimePlan.from_dict(json.loads(os.environ[TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE]))
+# The rung geometry is derived from the real plan and the parsed config, the
+# same way the P3 realization owner derives it.
+updates_per_epoch = -(-int(plan.structures_per_epoch) // int(args.batch_size))
+start_epoch = 0
+if known.restart_latest:
+    from mdstats.training_data.train2_runtime import load_train2_runtime_summary
+
+    start_epoch = int(load_train2_runtime_summary(Path(known.checkpoints_dir)).completed_epochs)
+p3c._run_rung(
+    plan,
+    Path(known.checkpoints_dir),
+    start_epoch=start_epoch,
+    updates_per_epoch=updates_per_epoch,
+    seed=int(args.seed),
+)
+"""
+
+
+def test_p4d_req5_assembled_boundary_one_config_passes_the_real_mace_parser(
+    tmp_path: Path, monkeypatch
+):
+    """Boundary 1 reaches MACE argument parsing instead of exiting status 2.
+
+    The production `MaceTargetSizeBoundaryTrainer` is *not* substituted: the
+    real screen writes the real `--config` file and launches the real wrapper
+    argv, and the wrapper runs the exact pinned MACE parser before handing the
+    rung to the bounded TRAIN2 numerical stand-in.
+    """
+
+    config, workspace = _fixture_campaign(tmp_path)
+    assert _run(config, "prepare") == 0
+
+    record = tmp_path / "parsed-configs.jsonl"
+    wrapper = tmp_path / "mdstats-mace-train"
+    wrapper.write_text(
+        _REAL_PARSER_TRAIN_WRAPPER.format(
+            python=sys.executable,
+            source_root=str(Path(mdstats.__file__).resolve().parents[1]),
+            record=str(record),
+        ),
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setattr(
+        cli,
+        "_ensure_local_wrappers",
+        lambda paths: {"mdstats-mace-train": wrapper},
+    )
+
+    harness = _BoundedNumericalHarness()
+    assert (
+        _run(
+            config,
+            "select-target-size",
+            _external_inference_evaluator=harness.evaluate,
+        )
+        == 0
+    )
+
+    assert record.is_file(), "no candidate rung reached the pinned MACE parser"
+    parsed = [
+        json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()
+    ]
+    assert parsed
+    for item in parsed:
+        assert item["atomic_numbers"] == sorted(item["atomic_numbers"])
+        assert all(isinstance(z, int) for z in item["atomic_numbers"])
+        # JSON stringifies the int keys the MACE literal carried.
+        assert {int(z) for z in item["E0s"]} == set(item["atomic_numbers"])
+        assert item["radial_MLP"] == [64, 64, 64]
+        # Scratch target-size runs carry no MACE dataset heads.
+        assert item["heads"] is None
+        assert "schema" not in item["keys"]
+        assert "heads" not in item["keys"]
+
+
 def test_p4d_req5_mace_run_configuration_is_translation_only():
+    from mdstats.training_data.model_features import (
+        mace_candidate_architecture_defaults,
+    )
     from mdstats.training_data.target_size_execution import (
         TARGET_SIZE_MACE_CONFIG_SCHEMA,
     )
 
+    architecture = mace_candidate_architecture_defaults()
     source = {
         "schema": TARGET_SIZE_MACE_CONFIG_SCHEMA,
         "name": "target-size-n8-seed1",
@@ -741,20 +863,35 @@ def test_p4d_req5_mace_run_configuration_is_translation_only():
         "max_num_epochs": 10,
         "default_dtype": "float64",
         "device": "cpu",
-        "mace_architecture": {"num_channels": 16, "batch_size": 999},
+        "mace_architecture": architecture,
     }
     translated = mace_run_configuration(source)
     assert translated["train_file"] == "target_train.xyz"
     assert translated["valid_file"] == "harness_validation.xyz"
     assert translated["seed"] == 1
-    assert translated["num_channels"] == 16
-    # The architecture never overrides an optimizer or data key.
+    assert translated["num_channels"] == architecture["num_channels"]
+    # The architecture never overrides an optimizer or data key: the projected
+    # architecture keys and the candidate passthrough keys are disjoint.
     assert translated["batch_size"] == 4
     assert "schema" not in translated
     assert "target_train_file" not in translated
+    # Canonical typed values are untouched by the derived executable spelling.
+    assert source["atomic_numbers"] == [3, 8]
+    assert source["E0s"] == {"3": -1.0, "8": -2.0}
+    assert source["mace_architecture"] is architecture
 
     with pytest.raises(Exception):
         mace_run_configuration({**source, "schema": "retired"})
+
+    # An architecture field with no declared executable projection fails here
+    # rather than leaking into the pinned dependency.
+    with pytest.raises(Exception):
+        mace_run_configuration(
+            {
+                **source,
+                "mace_architecture": {**architecture, "batch_size": 999},
+            }
+        )
 
 
 def test_p4d_req6_no_version_prefixed_production_names():
