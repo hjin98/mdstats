@@ -27,10 +27,19 @@ qualification status | qualification run | qualification activate-locked
 ```
 
 `storage` is an orthogonal artifact-management command whose eligibility comes
-from the real owners, not from pathnames. `status` reports the
-training lifecycle, and `advance` chooses the next safe owner from that
-lifecycle; neither introduces another scientific state machine, and `advance`
-never runs qualification or opens locked evidence.
+from the real owners, not from pathnames. `status` reports the whole lifecycle
+through qualification, so a frozen but unqualified product is never described as
+a finished campaign, and `advance` chooses the next safe owner from that
+lifecycle. Neither introduces another scientific state machine. `advance` may
+run ordinary `qualification run`; it can never open locked evidence, because
+that disclosure is irreversible and stays an explicit operator command.
+
+`status` and `qualification status` are observational in the strict sense: they
+resolve paths without creating them, open the campaign database read-only, and
+report what durable evidence says. They construct no trainer, provider, session,
+or evidence directory, so running them repeatedly leaves the workspace
+byte-identical. What they cannot know cheaply they say plainly rather than
+computing it - a full re-authentication is the consequential command's job.
 
 ## 1. Create a configuration
 
@@ -411,7 +420,13 @@ alone is not enough. The normalized frame cache is reported as exactly
 reconstructible - rebuilding costs one source read per DATA2 run and reproduces
 the identical authenticated cache - but P1 exposes no liveness seam that could
 prove no reader is using it at this instant, so it is retained by both tiers and
-reported as `cache_reconstructible = true, cache_evictable = false`. The SHA-256
+reported as `cache_reconstructible = true, cache_evictable = false`. Its members
+are also content-addressed and shared: two prepared generations that differ in
+one run reference the same bytes for every run the change did not touch, so a
+member is protected while *any* prepared generation still needs it, never merely
+because of the directory it sits in. The immutable prepared substrate under
+`.mdstats/prepared` is reported the same way, as restart state the current
+generation requires. The SHA-256
 receipt store is likewise accounted as a cache and retained. Anything no owner
 can certify is retained, so a `cache` run today is legitimately a no-op on most
 campaigns.

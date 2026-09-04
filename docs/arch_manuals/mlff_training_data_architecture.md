@@ -1034,7 +1034,13 @@ The current lifecycle, including configuration initialization, is exactly:
 init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
 ```
 
-`prepare` reconstructs the current substrate and cannot select a size. `select-target-size` is the only command that trains candidates and decides `N`. `cross-validate` is the only command that accepts the method. `train-production` is the only command that publishes a fresh production model. `status` and `advance` project this lifecycle from the owning authorities rather than from stage markers.
+`prepare` constructs the current substrate and cannot select a size. `select-target-size` is the only command that trains candidates and decides `N`. `cross-validate` is the only command that accepts the method. `train-production` is the only command that publishes a fresh production model. `qualification run` qualifies the frozen product; `qualification activate-locked` is the only path that opens locked evidence and is never reached automatically.
+
+`prepare` is also the sole construction boundary. A successful preparation publishes an immutable, content-addressed prepared generation - manifest, source catalog, frame catalog, source authority, canonical frame authority, neutral feature evidence and statistical base, split exclusion, target-size aggregate, common preparation, and the exact normalized frame members - and `CampaignStore` then compare-and-sets that manifest's identity onto the canonical generation. Publication completes before adoption, so an interruption leaves unreachable content rather than a current generation with a missing dependency.
+
+Every later command loads exactly that published generation and authenticates it against the identities the store binds. No downstream command reconstructs P1/P2/P3-common from live inputs, restores DATA4 to establish currentness, or retrofits a generation that predates immutable publication; a missing, corrupt, or configuration-mismatched substrate fails closed with guidance to run one explicit `prepare`. The prepared generation also fixes what a configuration change can invalidate: the partition and target-size policy projections are bound into it, so changing them requires a fresh generation, while cross-validation, production, qualification, and execution-scheduling settings cannot touch it.
+
+`status` and `advance` project this lifecycle from the persisted owner state alone - the campaign-store revision plus the small pointer records P5 and P7 publish - and construct no session, trainer, provider, or evidence root. Observation is a capability boundary, not a convention: an observational invocation resolves paths without creating them and opens the campaign database read-only, so describing a campaign cannot change it. Routing is advisory; the command `advance` dispatches to still performs its own full admission.
 
 # Part VI - Bounded execution, restart, and performance architecture
 
@@ -1158,6 +1164,35 @@ affinity, local stealing, and bounded cross-node stealing are valid execution
 extensions after measurement; they cannot change canonical membership or
 reduction order.
 
+## Scientific population versus execution batch
+
+An evaluation population and an accelerator batch are different things. `M1`,
+`M2`, `M3`, fold monitor and outer populations, replay populations, and
+qualification cohorts are scientific membership; the width of one device forward
+is execution realization. Every direct model evaluation therefore passes through
+an explicit partition boundary *before* native graph or device materialization:
+
+```text
+exact population in canonical order
+  -> deterministic contiguous chunks, each <= the accepted batch bound
+  -> one authenticated provider/model state for every chunk
+  -> exact-order concatenation
+  -> unchanged prediction evidence and reduction
+```
+
+The bound is the already accepted `MaceOptimizerPolicy.valid_batch_size` of the
+candidate's execution policy; there is no separate evaluation-batch setting,
+because that would express the same accepted quantity twice. Membership, order,
+model state, dtype/device, requested observables, and the reducer input are
+unaffected by chunk width, so partitioning can never change what was measured -
+only how much of it is resident at once. `valid_batch_size` is consequently an
+accepted execution-policy identity, not transient resource pressure: changing it
+follows the P3/P5 execution-owner invalidation rules, while free VRAM and worker
+availability remain non-identity runtime observations. An oversized configured
+batch fails as a resource error naming that bound; it is never repaired by
+reducing `M`, dropping forces or stress, changing precision or device, or
+retrying the same full-population batch.
+
 ## Staged evaluation and provider lifetime
 
 Current staged evaluation uses bounded CPU preparation, one admitted accelerator
@@ -1206,18 +1241,27 @@ replay indexes, and frame caches are reconstructible only when their content
 and recipe identities authenticate. A cache hit is never a substitute for the
 selected binding or another scientific authority.
 
-The normalized frame cache is the worked example of that boundary. Fresh source
-authentication and normalized-payload acquisition are separate operations with
-separate owners: every reconstruction of current target-size authority re-proves
+The normalized frame cache is the worked example of that boundary, and it is
+owned by `prepare` alone. Fresh source authentication and normalized-payload
+acquisition are separate operations with separate owners: `prepare` re-proves
 source identity, control interpretation, companion bindings, the ensemble
 certificate and its reconstructed value, and the selected energy channel's
 name/units/semantic role against the actual files, reading no frame payload to
-do so. The payload itself is then acquired **once per command** - from the
-authenticated frame cache when it is valid, otherwise by reading each source at
-most once and republishing that cache - and the same normalized mapping feeds
-canonical-frame construction and the common preparation. A valid cache
-therefore removes redundant I/O and never removes a check; a stale or corrupt
-one rebuilds or fails closed, and can never mask an authentication failure.
+do so. The payload itself is then acquired **once** - from the authenticated
+frame cache when it is valid, otherwise by reading each source at most once and
+publishing it - and the same normalized mapping feeds canonical-frame
+construction and the common preparation.
+
+Because an adopted generation binds those members as a restart dependency, the
+cache is append-only and content-addressed rather than keyed by run identity. A
+later `prepare` publishes new normalized content beside the members an already
+adopted generation still requires; it never replaces or deletes them. Two
+generations that differ in one run therefore share every member the change did
+not touch, which is what keeps repeated preparation from copying the dataset,
+and reclaiming a historical generation is a question about owner reachability
+rather than about which pathname a member happens to sit under. The top-level
+`frame-cache.json` remains a convenience locator for the most recently
+finalized catalog and is never the authority for a prepared generation.
 
 ## Memory, storage, and scratch admission
 

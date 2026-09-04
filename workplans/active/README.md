@@ -2,6 +2,11 @@
 
 Active workplans are temporary engineering coordination and do not define current mdstats behavior by themselves.
 
+Assembled integration progress is recorded in
+`MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_IMPLEMENTATION_PROGRESS.md`. The
+assembled P1-P7 + CampaignStore + Storage product remains NO-PASS /
+integration-reopened.
+
 There are two active MLFF implementation workplans:
 
 - `mlff-storage-io-reset/AUTHORITY.md` — owner-driven MLFF storage/I-O reset. The Revision-30 final-apply design remains closed, but independent review of executable `3295bc4...` found bounded blocking gaps in exact per-action byte evidence, generic/common post-mutation failure truth, P7 measurement-before-delete handling, mandatory final target identity, and real-owner/candidate-bound acceptance. Implementation is reopened under Revision 31 without reopening P1-P7 science/currentness or the accepted storage architecture.

@@ -304,7 +304,12 @@ def test_p4f_req3_user_guide_does_not_claim_a_retired_lifecycle():
     assert (
         "never selects a different seed, checkpoint, or committee member" in text
     )
-    assert "advance` never runs qualification or opens locked evidence" in text
+    # The public campaign runs through qualification, so the guide must say that
+    # `advance` may reach ordinary qualification -- and that it can never open
+    # locked evidence, which is the irreversible part.
+    assert "`advance` may" in text
+    assert "run ordinary `qualification run`" in text
+    assert "can never open locked evidence" in text
 
 
 def test_p4f_req3_parser_help_describes_the_current_commands():

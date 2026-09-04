@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -1036,6 +1037,17 @@ def _execute_candidate_cell(
             / trajectory.content_digest
             / f"boundary_{int(boundary)}"
         )
+        # The first rung has no accepted predecessor: before the first
+        # authenticated boundary exists there is no continuation authority at
+        # all, and this directory is uncommitted owner-local attempt scratch.
+        # Whatever a previously interrupted attempt left behind is scratch too,
+        # and it must not be able to authenticate as this attempt's durable
+        # boundary state -- a partial checkpoint or a stale runtime summary is
+        # not science because of where it sits. Accepted evidence lives in the
+        # immutable snapshot root, which this never touches, and later rungs
+        # continue from there rather than from here.
+        if checkpoint_directory.exists():
+            shutil.rmtree(checkpoint_directory)
         checkpoint_directory.mkdir(parents=True, exist_ok=True)
         start_epoch = 0
         predecessor_continuation = None

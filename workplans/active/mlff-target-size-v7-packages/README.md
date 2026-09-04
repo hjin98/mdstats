@@ -14,6 +14,11 @@ Current assembled integration authority is the composition of:
 4. `P4_PREPARED_GENERATION_STAGE_BOUNDARY_REPAIR.md` for the active prepared-generation and direct-EVAL2 prerequisite;
 5. `../mlff-storage-io-reset/AUTHORITY.md` plus Storage Revision 38 for the current storage implementation/review state.
 
+Executable progress against that composed authority is recorded in
+`../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_IMPLEMENTATION_PROGRESS.md`. That
+record is progress, not closure: it names what is implemented and, explicitly,
+which composed obligations remain unsatisfied.
+
 The integration reopen is principally about prepared-generation persistence/currentness, generation-safe normalized-frame lifetime, exact P3 interruption/restart semantics, direct inference resource realization, stale-writer/currentness races, read-only lifecycle/status behavior, P7 inclusion in the public campaign lifecycle, storage interleavings, and assembled acceptance boundaries. It is **not** a reopening of the parent target-size scientific question, P5 CV/final-production science, or P7 qualification science.
 
 The final convergence pass explicitly preserves the earlier `select-target-size` checkpoint-recovery invariant: interruption before the first authenticated exact boundary means **no checkpoint authority yet** and retries fresh, while a claimed durable continuation whose required checkpoint/runtime/companion bytes are missing or corrupt fails closed. Current V7 exact-boundary state owns this behavior; obsolete `CandidateCheckpointCatalog`, REPAIR2/label-domain, development-complement, and target-only/replay authorization machinery must not be reintroduced merely to preserve the historical repair.
