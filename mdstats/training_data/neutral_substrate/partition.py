@@ -30,7 +30,6 @@ from ..partition import (
     _merge_intervals_for_events,
     _neighbor_unit_ids,
     _raw_observable,
-    _regime_label,
     _spaced_indices,
     _split_intervals_by_condition,
     _temperature_label,
@@ -483,6 +482,26 @@ class NeutralUnitCatalog:
         return result
 
 
+def _neutral_regime_label(
+    source: Any, frame_uid: str, override: Mapping[str, str] | None
+) -> str:
+    """Resolve the current neutral regime category for one frame.
+
+    Only current neutral authority is consulted: a per-frame override, then the
+    source's explicit ``regime`` assertion.  A current `SourceRecord` carries no
+    legacy qualification state, so the absence of a current regime fact is
+    represented explicitly as ``"unresolved"`` rather than fabricated.
+    """
+
+    if override is not None and frame_uid in override:
+        value = str(override[frame_uid]).strip()
+        if value:
+            return value
+    assertions = dict(source.assertions)
+    value = str(assertions.get("regime", "")).strip()
+    return value or "unresolved"
+
+
 def build_neutral_unit_catalog(
     source_authority: SourceAuthority,
     frame_authority: CanonicalFrameAuthority,
@@ -547,7 +566,7 @@ def build_neutral_unit_catalog(
             reduced_formula=source.reduced_formula,
             temperature_condition=_temperature_label(temp),
             strain_class=strain.tensor_class.value,
-            regime=_regime_label(source, frame.frame_uid, regime_by_frame_uid),
+            regime=_neutral_regime_label(source, frame.frame_uid, regime_by_frame_uid),
             user_labels=labels,
         )
 

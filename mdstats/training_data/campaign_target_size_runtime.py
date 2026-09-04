@@ -463,6 +463,7 @@ def execute_current_prepare(args: Any) -> int:
         CampaignStore,
         StageState,
         _atomic_json,
+        _ensure_manifest,
         _load_config,
         _mark_stage,
         _ok,
@@ -476,6 +477,27 @@ def execute_current_prepare(args: Any) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     _require_stage_complete(store, paths, "doctor")
+    refresh_inferences = bool(getattr(args, "refresh_inferences", False))
+    if bool(getattr(args, "approve_manifest", False)):
+        # Approval is an operator gate on the exact reviewed manifest digest and
+        # is recorded here, before any preparation stage is opened.  Continuing
+        # in the same invocation is the explicit `--continue-after-approval`
+        # opt-in; otherwise this returns without constructing P1/P2 authorities.
+        _print_header("Approving the reviewed training manifest")
+        manifest = _ensure_manifest(
+            cfg, paths, approve=True, refresh_inferences=refresh_inferences
+        )
+        _ok(
+            f"approved manifest {paths.manifest} "
+            f"({len(manifest.runs)} runs; digest {manifest.content_digest[:12]}...)"
+        )
+        if not bool(getattr(args, "continue_after_approval", False)):
+            print(
+                "Approval recorded. Next: run `prepare` (no flags) to build the "
+                "current target-size scientific substrate.",
+                flush=True,
+            )
+            return 0
     _print_header("Preparing the current target-size scientific substrate")
     _mark_stage(
         store,
@@ -490,8 +512,8 @@ def execute_current_prepare(args: Any) -> int:
                 cfg,
                 paths,
                 store,
-                approve_manifest=bool(getattr(args, "approve_manifest", False)),
-                refresh_inferences=bool(getattr(args, "refresh_inferences", False)),
+                approve_manifest=False,
+                refresh_inferences=refresh_inferences,
             )
         else:
             _ok(

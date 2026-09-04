@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+
 import inspect
 import json
 from copy import deepcopy
@@ -250,7 +252,14 @@ def _data4_role_budget() -> mdstats.PartitionRoleBudgetPolicy:
     )
 
 
-def _data4_bundle(tmp_path: Path, *, n_frames: int = 48, tebeg: int = 700, sub_dir: str = "run"):
+def _data4_bundle(
+    tmp_path: Path,
+    *,
+    n_frames: int = 48,
+    tebeg: int = 700,
+    sub_dir: str = "run",
+    regime: str | None = "production",
+):
     _write(
         tmp_path,
         sub_dir,
@@ -267,7 +276,7 @@ def _data4_bundle(tmp_path: Path, *, n_frames: int = 48, tebeg: int = 700, sub_d
                 run_id=sub_dir,
                 vasprun=f"{sub_dir}/vasprun.xml",
                 reference_group="bulk",
-                assertions=(("regime", "production"),),
+                assertions=() if regime is None else (("regime", regime),),
             ),
         ),
     )
@@ -2751,3 +2760,84 @@ def test_p1e_runtime_isolation_proof(tmp_path: Path) -> None:
     assert "neutral_substrate" not in public
 
 
+
+
+# =========================================================================
+# Current neutral regime resolution: override -> assertion -> unresolved
+# =========================================================================
+
+
+def _regime_manifest(sub_dir: str, assertions) -> mdstats.TrainingDataManifest:
+    return mdstats.TrainingDataManifest(
+        dataset_id="neutral-p1",
+        system_profile="generic",
+        runs=(
+            mdstats.TrainingDataRunSpec(
+                run_id=sub_dir,
+                vasprun=f"{sub_dir}/vasprun.xml",
+                reference_group="bulk",
+                assertions=assertions,
+            ),
+        ),
+    )
+
+
+def test_neutral_regime_without_annotation_is_unresolved(tmp_path: Path) -> None:
+    """A current `SourceRecord` carries no legacy production-assessment state.
+
+    Reaching the real neutral owners with a source that asserts no regime must
+    construct the explicit unresolved category instead of raising.
+    """
+
+    _write(tmp_path, "run", ("Li", "O"), n_frames=32, tebeg=650)
+    manifest = _regime_manifest("run", ())
+    source_auth, frame_auth, feature_ev, stat_base = _build_full_neutral_chain(
+        manifest, tmp_path, partition_policy=_neutral_policy()
+    )
+    assert not hasattr(source_auth.source("run"), "production_status")
+    catalog = build_neutral_unit_catalog(source_auth, frame_auth, feature_ev)
+    regimes = {unit.condition.regime for unit in catalog.units}
+    assert regimes == {"unresolved"}
+    assert stat_base.content_digest
+
+
+def test_neutral_regime_precedence_assertion_then_override(tmp_path: Path) -> None:
+    _write(tmp_path, "run", ("Li", "O"), n_frames=32, tebeg=650)
+    manifest = _regime_manifest("run", (("regime", "production"),))
+    source_auth, frame_auth, feature_ev, _ = _build_full_neutral_chain(
+        manifest, tmp_path, partition_policy=_neutral_policy()
+    )
+    asserted = build_neutral_unit_catalog(source_auth, frame_auth, feature_ev)
+    assert {unit.condition.regime for unit in asserted.units} == {"production"}
+
+    overridden = build_neutral_unit_catalog(
+        source_auth,
+        frame_auth,
+        feature_ev,
+        regime_by_frame_uid={
+            frame.frame_uid: "equilibration" for frame in frame_auth.frames
+        },
+    )
+    assert {unit.condition.regime for unit in overridden.units} == {"equilibration"}
+
+
+def test_neutral_partition_owner_does_not_use_legacy_regime_helper() -> None:
+    """The current neutral path may not depend on legacy `production_status`."""
+
+    source = Path(ns_partition.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    assert "_regime_label" not in imported
+    called = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "_regime_label" not in called
+    assert "production_status" not in source
+    assert not hasattr(ns_partition, "_regime_label")

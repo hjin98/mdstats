@@ -90,7 +90,9 @@ practical_equivalence_mev_per_a = 1.0
 """
 
 
-def _fixture_campaign(tmp_path: Path) -> tuple[Path, Path]:
+def _fixture_campaign(
+    tmp_path: Path, *, regime: str | None = "production", approve: bool = True
+) -> tuple[Path, Path]:
     """A real campaign workspace whose lower-level inputs are already built.
 
     DATA2-DATA5 ingestion is target-size neutral and is deliberately reused
@@ -101,7 +103,7 @@ def _fixture_campaign(tmp_path: Path) -> tuple[Path, Path]:
 
     training_root = tmp_path / "sources"
     training_root.mkdir(parents=True, exist_ok=True)
-    manifest, sources, frames, data4 = _data4_bundle(training_root)
+    manifest, sources, frames, data4 = _data4_bundle(training_root, regime=regime)
 
     workspace = tmp_path / "campaign"
     config = tmp_path / "campaign.toml"
@@ -117,7 +119,8 @@ def _fixture_campaign(tmp_path: Path) -> tuple[Path, Path]:
     store = CampaignStore(paths.state_db)
     # Manifest approval and the doctor-frozen acceleration realization are
     # operator/runtime-qualification state, not part of the cutover.
-    store.set_meta("approved_manifest_digest", manifest.content_digest)
+    if approve:
+        store.set_meta("approved_manifest_digest", manifest.content_digest)
     store.put_record(
         "acceleration_realization",
         mdstats.AccelerationRealizationRecord(
@@ -184,6 +187,84 @@ def test_p4d_req1_prepare_binds_current_authorities_and_selects_nothing(
 
     captured = capsys.readouterr().out
     assert "does not select a target size" in captured
+
+
+def _manifest_digest(config: Path) -> str:
+    _cfg, paths = cli._load_config(config)
+    return mdstats.TrainingDataManifest.load(paths.manifest).content_digest
+
+
+def test_p4d_req1_prepare_approve_manifest_only_records_and_returns(
+    tmp_path: Path, capsys
+):
+    """`--approve-manifest` is approval-and-return, not a preparation trigger."""
+
+    config, workspace = _fixture_campaign(tmp_path, approve=False)
+    assert _run(config, "prepare", "--approve-manifest") == 0
+
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        assert store.get_meta("approved_manifest_digest") == _manifest_digest(config)
+        # No current target-size authority was constructed or advanced.
+        assert load_target_size_campaign_revision(store) is None
+        state, _message = store.stage("prepare")
+        assert state is cli.StageState.NOT_STARTED
+    finally:
+        store.close()
+
+    captured = capsys.readouterr().out
+    assert "does not select a target size" not in captured
+    assert "`prepare`" in captured
+
+
+def test_p4d_req1_prepare_continue_after_approval_prepares_in_one_invocation(
+    tmp_path: Path,
+):
+    config, workspace = _fixture_campaign(tmp_path, approve=False)
+    assert (
+        _run(config, "prepare", "--approve-manifest", "--continue-after-approval") == 0
+    )
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        assert store.get_meta("approved_manifest_digest") == _manifest_digest(config)
+        revision = load_target_size_campaign_revision(store)
+        assert revision.state.lifecycle is TargetSizeLifecycle.AUTHORITIES_BOUND
+        assert store.stage("prepare")[0] is cli.StageState.COMPLETE
+    finally:
+        store.close()
+
+
+def test_p4d_req1_plain_prepare_after_approval_only_prepares(tmp_path: Path):
+    config, workspace = _fixture_campaign(tmp_path, approve=False)
+    assert _run(config, "prepare", "--approve-manifest") == 0
+    assert _run(config, "prepare") == 0
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        revision = load_target_size_campaign_revision(store)
+        assert revision.state.generation == 1
+        assert store.stage("prepare")[0] is cli.StageState.COMPLETE
+    finally:
+        store.close()
+
+
+def test_p4d_req1_prepare_accepts_a_source_without_a_regime_assertion(tmp_path: Path):
+    """The real P4 prepare owner must reach the real P1 neutral owners.
+
+    Fixtures that assert ``regime`` masked the current no-annotation path, so
+    this exercises the same production orchestration with no regime fact.
+    """
+
+    config, workspace = _fixture_campaign(tmp_path, regime=None)
+    assert _run(config, "prepare") == 0
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        revision = load_target_size_campaign_revision(store)
+        assert revision.state.regime is TargetSizeRegime.CURRENT
+        assert revision.state.neutral_statistical_base_digest is not None
+        assert revision.state.terminal is None
+        assert not store.has_record("target_size_study")
+    finally:
+        store.close()
 
 
 def test_p4d_req1_prepare_is_idempotent_and_keeps_one_generation(tmp_path: Path):
