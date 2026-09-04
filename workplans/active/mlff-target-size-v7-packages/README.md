@@ -10,10 +10,13 @@ Current assembled integration authority is the composition of:
 
 1. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_WORKPLAN.md`;
 2. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_SECOND_PASS_AMENDMENT.md`, with precedence only where it explicitly tightens/corrects the parent integration plan;
-3. `P4_PREPARED_GENERATION_STAGE_BOUNDARY_REPAIR.md` for the active prepared-generation and direct-EVAL2 prerequisite;
-4. `../mlff-storage-io-reset/AUTHORITY.md` plus Storage Revision 38 for the current storage implementation/review state.
+3. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_FINAL_CONVERGENCE_AMENDMENT.md`, which is the final Design convergence amendment and folds the earlier exact-boundary checkpoint-recovery bug contract into current V7 acceptance without restoring retired V5 machinery;
+4. `P4_PREPARED_GENERATION_STAGE_BOUNDARY_REPAIR.md` for the active prepared-generation and direct-EVAL2 prerequisite;
+5. `../mlff-storage-io-reset/AUTHORITY.md` plus Storage Revision 38 for the current storage implementation/review state.
 
-The integration reopen is principally about prepared-generation persistence/currentness, generation-safe normalized-frame lifetime, direct inference resource realization, read-only lifecycle/status behavior, P7 inclusion in the public campaign lifecycle, storage interleavings, and assembled acceptance boundaries. It is **not** a reopening of the parent target-size scientific question, P5 CV/final-production science, or P7 qualification science.
+The integration reopen is principally about prepared-generation persistence/currentness, generation-safe normalized-frame lifetime, exact P3 interruption/restart semantics, direct inference resource realization, stale-writer/currentness races, read-only lifecycle/status behavior, P7 inclusion in the public campaign lifecycle, storage interleavings, and assembled acceptance boundaries. It is **not** a reopening of the parent target-size scientific question, P5 CV/final-production science, or P7 qualification science.
+
+The final convergence pass explicitly preserves the earlier `select-target-size` checkpoint-recovery invariant: interruption before the first authenticated exact boundary means **no checkpoint authority yet** and retries fresh, while a claimed durable continuation whose required checkpoint/runtime/companion bytes are missing or corrupt fails closed. Current V7 exact-boundary state owns this behavior; obsolete `CandidateCheckpointCatalog`, REPAIR2/label-domain, development-complement, and target-only/replay authorization machinery must not be reintroduced merely to preserve the historical repair.
 
 P6 remains a completed predecessor package. It is not a runtime stage inserted between P5 and P7; its accepted cleanup/compatibility guarantees are preservation constraints, while the current owner-driven storage successor is `CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1` Revision 38.
 
