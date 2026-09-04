@@ -73,6 +73,19 @@ class _PoisonEvaluator:
         raise AssertionError("Zero inference evaluations may execute during terminal reload.")
 
 
+class _CeilingSuperiorHarness(p4d._BoundedNumericalHarness):
+    """A harness in which the configured ceiling is materially superior.
+
+    Terminal *scientific failure* is the reducer's verdict when the largest
+    configured ``N`` still beats every other finalist by more than practical
+    equivalence.  The fixture constructs that outcome from the candidate size
+    rather than depending on where a candidate digest happens to fall.
+    """
+
+    def _offset(self) -> float:
+        return 1.0e-3 / float(max(1, self._current_target_size))
+
+
 def _terminal_campaign(tmp_path: Path):
     """Drive the real production screen to a terminal P2 outcome."""
 
@@ -709,7 +722,7 @@ def _terminal_failure_campaign(tmp_path: Path):
     store.close()
 
     assert p4d._run(config, "prepare") == 0
-    harness = p4d._BoundedNumericalHarness()
+    harness = _CeilingSuperiorHarness()
     assert (
         p4d._run(
             config,

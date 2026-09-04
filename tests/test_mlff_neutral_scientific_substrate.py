@@ -110,7 +110,7 @@ def _vasprun(
     calculations: list[str] = []
     for index in range(n_frames):
         shift = position_offset + 0.001 * index
-        positions = [(0.1 + shift, 0.1, 0.1), (0.5, 0.5, 0.5)][: len(elements)]
+        positions = [(0.1 + shift, 0.1, 0.1), (0.35, 0.35, 0.35)][: len(elements)]
         while len(positions) < len(elements):
             positions.append((0.2 * len(positions), 0.2, 0.2))
         if catastrophic_force:
@@ -205,7 +205,7 @@ def _identity_kwargs(**overrides):
         "atomic_numbers": np.asarray([3, 8], dtype=np.int64),
         "pbc": np.asarray([True, True, True]),
         "cell": np.eye(3) * 10.0,
-        "fractional_positions": np.asarray([[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]),
+        "fractional_positions": np.asarray([[0.1, 0.1, 0.1], [0.35, 0.35, 0.35]]),
         "selected_energy_channel": "e_fr_energy",
         "energy_semantic_role": "free_energy",
         "energy_units": "eV",
@@ -781,7 +781,7 @@ def test_p1c_build_canonical_frame_identity_required_label_contract() -> None:
     numbers = [3, 8]
     pbc = [True, True, True]
     cell = 10.0 * np.eye(3)
-    positions = [[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]
+    positions = [[0.1, 0.1, 0.1], [0.35, 0.35, 0.35]]
     forces = [[0.1, 0.0, 0.0], [-0.1, 0.0, 0.0]]
     stress = -100.0 * np.eye(3)
     es_digest = _digest()
@@ -1554,8 +1554,8 @@ def test_p1c_required_label_ordering_and_authority_precedence(tmp_path: Path) ->
     # Frame 0: valid energy (-10.0), Frame 1: missing energy (None)
     # Set identical fractional positions so geometry fingerprints match exactly
     positions = np.zeros((2, 2, 3), dtype=np.float64)
-    positions[0] = [[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]
-    positions[1] = [[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]
+    positions[0] = [[0.1, 0.1, 0.1], [0.35, 0.35, 0.35]]
+    positions[1] = [[0.1, 0.1, 0.1], [0.35, 0.35, 0.35]]
 
     energies_partial = np.asarray([-10.0, np.nan], dtype=np.float64)  # NaN for frame 1
     # FrameData with stresses=None (to test optional vs required stress)
@@ -2363,7 +2363,7 @@ def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> Non
         atomic_numbers=[3, 8],
         pbc=[True, True, True],
         cell=10.0 * np.eye(3),
-        fractional_positions=[[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]],
+        fractional_positions=[[0.1, 0.1, 0.1], [0.35, 0.35, 0.35]],
         selected_energy_channel="e_fr_energy",
         energy_semantic_role="free_energy",
         energy_units="eV",
@@ -2386,7 +2386,7 @@ def test_p1e_assembled_numerical_change_sensitivity_proof(tmp_path: Path) -> Non
         atomic_numbers=[3, 8],
         pbc=[True, True, True],
         cell=10.0 * np.eye(3),
-        fractional_positions=[[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]],
+        fractional_positions=[[0.1, 0.1, 0.1], [0.35, 0.35, 0.35]],
         selected_energy_channel="e_fr_energy",
         energy_semantic_role="free_energy",
         energy_units="eV",

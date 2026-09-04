@@ -368,7 +368,6 @@ def _run_direct_inference_test(
         optimizer_policy=optimizer_policy,
         extxyz_policy=env["authority"].extxyz_policy,
         frame_array_index=env["index"],
-        mace_architecture=_small_architecture(),
     )
     config_payload = json.loads(
         (

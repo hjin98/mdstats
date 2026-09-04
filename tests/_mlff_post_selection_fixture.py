@@ -10,6 +10,7 @@ for artifacts real owners exported and authenticated.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -21,6 +22,9 @@ import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
 
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data._campaign_cli_core import CampaignStore
+from mdstats.training_data.campaign_target_size_state import (
+    load_target_size_campaign_revision,
+)
 
 #: A production horizon deliberately different from the screening ladder's n3
 #: (10), so every acceptance run proves the two are independent rather than
@@ -43,13 +47,49 @@ seeds = [5]
 def fixture_config_text(**overrides: str) -> str:
     """The P4 fixture campaign plus a resolved post-selection configuration."""
 
-    text = p4d._CONFIG.replace(
-        "seeds = [1, 2]",
-        f"seeds = [1, 2]\nmax_num_epochs = {PRODUCTION_MAX_NUM_EPOCHS}",
-    ) + POST_SELECTION_CONFIG
+    text = (
+        p4d._CONFIG.replace(
+            "seeds = [1, 2]",
+            f"seeds = [1, 2]\nmax_num_epochs = {PRODUCTION_MAX_NUM_EPOCHS}",
+        )
+        # Post-selection cross-validation needs a ``T_selected`` spanning enough
+        # independent split-exclusion components for its outer folds, and the
+        # configured ceiling can never itself be the selected size (a ceiling
+        # that wins materially is a typed scientific failure, and a ceiling
+        # inside the practical-equivalence band loses to the smaller size).  The
+        # fixture therefore screens one rung beyond the size it intends to
+        # select.
+        .replace("target_size_power_max = 3", "target_size_power_max = 4")
+        + POST_SELECTION_CONFIG
+    )
     for old, new in overrides.items():
         text = text.replace(old.replace("__", " "), new)
     return text
+
+
+#: The candidate size this fixture drives the screen to select.  Post-selection
+#: cross-validation needs a ``T_selected`` with enough independent
+#: split-exclusion components to support its outer folds, so the selected size
+#: has to be an intended property of the fixture rather than wherever a
+#: candidate digest happens to fall.
+SELECTED_TARGET_SIZE = 8
+
+
+class _SelectedSizeScreenHarness(p4d._BoundedNumericalHarness):
+    """A screen whose reducer outcome is constructed, not incidental.
+
+    The substituted per-candidate force error is smallest at
+    ``SELECTED_TARGET_SIZE`` and materially worse on either side, so the
+    accepted P2 reducer -- which still owns the decision -- reaches a terminal
+    *selection* at that size: the configured ceiling is not materially superior
+    (which would be a typed scientific failure) and no smaller size is inside
+    the practical-equivalence band (which would prefer the smaller one).
+    """
+
+    def _offset(self) -> float:
+        size = max(1, int(self._current_target_size))
+        distance = abs(math.log2(size) - math.log2(SELECTED_TARGET_SIZE))
+        return 1.0e-3 * (1.0 + 3.0 * distance)
 
 
 def build_selected_campaign(
@@ -61,7 +101,7 @@ def build_selected_campaign(
     with patch.object(p4d, "_CONFIG", template):
         config, workspace = p4d._fixture_campaign(tmp_path)
     assert p4d._run(config, "prepare") == 0
-    screen = p4d._BoundedNumericalHarness()
+    screen = _SelectedSizeScreenHarness()
     assert (
         p4d._run(
             config,
@@ -71,6 +111,19 @@ def build_selected_campaign(
         )
         == 0
     )
+    # The fixture's contract is a *selected* terminal result at a CV-feasible
+    # size; a screen that merely finished is not what post-selection needs.
+    store = CampaignStore(p4d.cli._load_config(config)[1].state_db)
+    try:
+        revision = load_target_size_campaign_revision(store)
+        terminal = revision.state.terminal
+        assert terminal is not None and terminal.is_selection, (
+            "post-selection fixture requires a terminal selection, got "
+            f"{revision.state.lifecycle}"
+        )
+        assert terminal.selected_target_size == SELECTED_TARGET_SIZE
+    finally:
+        store.close()
     return config, workspace
 
 

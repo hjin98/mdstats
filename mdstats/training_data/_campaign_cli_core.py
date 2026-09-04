@@ -4095,6 +4095,7 @@ def _resolve_feature_worker_count(
     estimated_bytes_per_worker: int,
     reserved_bytes: int = 0,
     startup_sensitive: bool = False,
+    maximum_workers: int | None = None,
 ) -> tuple[int, Any]:
     """Resolve process-level run concurrency within CPU and RAM budgets.
 
@@ -4115,6 +4116,7 @@ def _resolve_feature_worker_count(
             requested=requested,
             estimated_bytes_per_worker=estimated_bytes_per_worker,
             reserved_bytes=max(0, int(reserved_bytes)),
+            maximum_workers=maximum_workers,
         )
     except ValueError as exc:
         raise CampaignCliError(str(exc)) from exc

@@ -32,6 +32,7 @@ code in every invocation.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
@@ -39,6 +40,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 from ._common import TrainingDataError, TrainingDataInputError
 from .campaign_target_size_paths import (
@@ -149,6 +151,47 @@ def resolve_neutral_partition_policy(cfg: Mapping[str, Any]) -> Any:
     )
 
 
+#: Canonical-frame construction runs in one-shot worker processes, so it pays a
+#: roughly fixed interpreter/task-serialization cost before any per-run work.
+#: Measured on the repository benchmark
+#: (``benchmarks/benchmark_mlff_p4_authority_reconstruction.py``) that cost only
+#: repays itself once the corpus is materially larger than this; below it the
+#: parallel plan is a real slowdown, so small campaigns stay serial.
+CANONICAL_FRAME_PARALLEL_ATOM_FRAME_FLOOR = 8192
+
+
+def _canonical_frame_worker_ceiling(atom_frames: int) -> int | None:
+    """Bound canonical-frame workers by the work actually available."""
+
+    if int(atom_frames) < CANONICAL_FRAME_PARALLEL_ATOM_FRAME_FLOOR:
+        return 1
+    return None
+
+
+@contextmanager
+def _authority_stage(label: str) -> Any:
+    """Report begin/end of one post-DATA4 authority-construction stage.
+
+    Purely diagnostic.  Nothing emitted here participates in any scientific
+    digest, persisted campaign state, generation identity, replay identity, or
+    result schema; it exists so the expensive phase after DATA4 restoration is
+    observable rather than silent.
+    """
+
+    from .progress_timing import format_progress_time
+
+    print(f"[authority] {label}; status=start", flush=True)
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        print(
+            f"[authority] {label}; status=complete; "
+            f"elapsed={format_progress_time(time.monotonic() - started)}",
+            flush=True,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class CurrentTargetSizeAuthorities:
     """One reconstructed current P1/P2/P3 authority bundle.
@@ -199,14 +242,17 @@ def build_current_target_size_authorities(
         _ensure_manifest,
         _load_or_rebuild_frame_data,
         _path_cfg,
+        _resolve_feature_worker_count,
     )
     from ._frame_access import build_frame_array_index
     from .neutral_substrate import (
+        authenticate_vasp_source_authority,
+        authenticated_vasp_temperature_targets,
+        build_canonical_frame_authority,
         build_neutral_feature_evidence_from_data4_bundle,
         build_neutral_split_exclusion_evidence,
         build_neutral_statistical_base,
         build_source_authority_from_data2_catalog,
-        build_vasp_canonical_frame_authority,
     )
     from .target_size_execution import build_target_size_common_preparation
     from .target_size_experiment import (
@@ -226,37 +272,84 @@ def build_current_target_size_authorities(
     data4 = store.get_record("data4", mdstats.Data4FeatureBundle)
     frame_catalog = store.get_record("frame_catalog", mdstats.TrainingFrameCatalog)
 
-    source_authority = build_source_authority_from_data2_catalog(
-        source_catalog, manifest=manifest
-    )
-    frame_authority = build_vasp_canonical_frame_authority(
-        source_authority, base_directory=training_root
-    )
-    feature_evidence = build_neutral_feature_evidence_from_data4_bundle(
-        source_authority, frame_authority, data4
-    )
-    neutral_base = build_neutral_statistical_base(
-        source_authority,
-        frame_authority,
-        feature_evidence,
-        policy=resolve_neutral_partition_policy(cfg),
-    )
-    split_exclusion = build_neutral_split_exclusion_evidence(
-        frame_authority, neutral_base
-    )
-    aggregate = build_target_size_statistical_aggregate(
-        frame_authority,
-        neutral_base,
-        policy=resolve_target_size_policy_from_config(cfg),
-    )
-    frame_data_by_run = _load_or_rebuild_frame_data(cfg, paths, source_catalog)
-    frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
-    common = build_target_size_common_preparation(
-        aggregate,
-        frame_catalog=frame_catalog,
-        frame_data_by_run=frame_data_by_run,
-        frame_array_index=frame_array_index,
-    )
+    with _authority_stage("P1 source authority"):
+        source_authority = build_source_authority_from_data2_catalog(
+            source_catalog, manifest=manifest
+        )
+    # Fresh P1 authentication is mandatory and independent of how the
+    # normalized payload is acquired: it re-proves source identity, control
+    # interpretation, companion bindings, the ensemble certificate and its
+    # value, and the selected energy channel name/units/semantic role against
+    # the actual files, without reading a single frame.
+    with _authority_stage("P1 source authentication"):
+        authenticated = authenticate_vasp_source_authority(
+            source_authority, base_directory=training_root
+        )
+    # One normalized-frame acquisition per invocation.  Canonical-frame
+    # construction and common preparation both consume this exact mapping, so
+    # a warm cache performs no source frame read at all and a rebuild performs
+    # exactly one read per source.
+    with _authority_stage("normalized frame data"):
+        frame_data_by_run = _load_or_rebuild_frame_data(cfg, paths, source_catalog)
+    with _authority_stage("P1 canonical frame authority"):
+        canonical_atom_frames = sum(
+            int(data.n_frames) * int(data.n_atoms)
+            for data in frame_data_by_run.values()
+        )
+        canonical_workers, canonical_resources = _resolve_feature_worker_count(
+            cfg,
+            run_count=len(frame_data_by_run),
+            estimated_bytes_per_worker=384 * 1024**2,
+            reserved_bytes=sum(
+                int(data.n_frames) for data in frame_data_by_run.values()
+            )
+            * 8192,
+            startup_sensitive=True,
+            maximum_workers=_canonical_frame_worker_ceiling(canonical_atom_frames),
+        )
+        print(
+            f"[canonical frames] resource plan: {canonical_workers} isolated run "
+            f"worker(s); {canonical_resources.summary()}",
+            flush=True,
+        )
+        frame_authority = build_canonical_frame_authority(
+            source_authority,
+            frame_data_by_run,
+            temperature_targets_by_run=authenticated_vasp_temperature_targets(
+                authenticated
+            ),
+            parallel_workers=canonical_workers,
+            progress_callback=lambda message: print(
+                f"[canonical frames] {message}", flush=True
+            ),
+        )
+    with _authority_stage("neutral statistical substrate"):
+        feature_evidence = build_neutral_feature_evidence_from_data4_bundle(
+            source_authority, frame_authority, data4
+        )
+        neutral_base = build_neutral_statistical_base(
+            source_authority,
+            frame_authority,
+            feature_evidence,
+            policy=resolve_neutral_partition_policy(cfg),
+        )
+        split_exclusion = build_neutral_split_exclusion_evidence(
+            frame_authority, neutral_base
+        )
+    with _authority_stage("P2 target-size aggregate"):
+        aggregate = build_target_size_statistical_aggregate(
+            frame_authority,
+            neutral_base,
+            policy=resolve_target_size_policy_from_config(cfg),
+        )
+    with _authority_stage("P3 common preparation"):
+        frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
+        common = build_target_size_common_preparation(
+            aggregate,
+            frame_catalog=frame_catalog,
+            frame_data_by_run=frame_data_by_run,
+            frame_array_index=frame_array_index,
+        )
     return CurrentTargetSizeAuthorities(
         manifest=manifest,
         source_catalog=source_catalog,
@@ -330,7 +423,12 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "clip_grad",
     "default_dtype",
     "device",
+    "compute_avg_num_neighbors",
 )
+
+#: The one canonical P3 dataset-head namespace.  It is the name of the model
+#: head MACE actually builds, so real TRAIN2 and EVAL2 reconstruction agree.
+TARGET_SIZE_MACE_HEAD_NAME = "target_head"
 
 
 def mace_run_configuration(target_size_config: Mapping[str, Any]) -> dict[str, Any]:
@@ -361,6 +459,33 @@ def mace_run_configuration(target_size_config: Mapping[str, Any]) -> dict[str, A
     }
     config["train_file"] = target_size_config["target_train_file"]
     config["valid_file"] = target_size_config["target_valid_file"]
+    if bool(target_size_config.get("multiheads_finetuning")):
+        raise TargetSizeRuntimeError(
+            "P3 target-size screening is one-head scratch training; multihead "
+            "fine-tuning is not an admissible candidate configuration."
+        )
+    if config.get("compute_avg_num_neighbors") is not False:
+        raise TargetSizeRuntimeError(
+            "Candidate MACE configuration must disable MACE's candidate-local "
+            "average-neighbor recomputation; the common preparation owns that "
+            "normalization."
+        )
+    # Without an explicit dataset-head mapping pinned MACE falls back to its
+    # own ``Default`` namespace and builds a differently named head from the
+    # one the canonical configuration reconstructs.  The mapping projected here
+    # is the canonical P3 target dataset mapping itself, not the internal
+    # architecture head list.
+    multi_head = target_size_config.get("multi_head")
+    if not isinstance(multi_head, Mapping) or set(multi_head) != {
+        TARGET_SIZE_MACE_HEAD_NAME
+    }:
+        raise TargetSizeRuntimeError(
+            "Candidate MACE configuration must expose exactly the "
+            f"{TARGET_SIZE_MACE_HEAD_NAME!r} target dataset head."
+        )
+    config["heads"] = {
+        name: dict(head) for name, head in multi_head.items()
+    }
     for key, value in project_mace_architecture_arguments(
         target_size_config.get("mace_architecture")
     ).items():
@@ -776,6 +901,7 @@ def _execute_candidate_cell(
             optimizer_policy=optimizer,
             extxyz_policy=screen.extxyz_policy,
             frame_array_index=authorities.frame_array_index,
+            mace_architecture=authorities.common.realized_mace_architecture,
         )
         checkpoint_directory = (
             screen.authority.bulk_root("train2")

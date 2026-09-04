@@ -963,6 +963,10 @@ One `TargetSizeCommonPreparation` identity is frozen before any candidate trajec
 
 It MUST NOT derive from `M1`, `M2`, `M3`, held-out evidence, calibration evidence, locked evidence, or any cross-validation plan. A change to the common preparation is a change to the target-size scientific identity and produces a new generation rather than an in-place edit.
 
+Every fitted quantity that reaches candidate training is frozen here, and that includes **model construction**, not only data preparation. The common preparation carries one realized MACE architecture: the seed-neutral, `N`-neutral architecture template with the one common neighbor normalization (`avg_num_neighbors`) fitted once over the exact `P_train` under the pinned MACE cutoff/neighbourhood semantics. Candidate materialization copies that realized architecture and never resolves or refits its own, because a model-construction input that varied with `N` would make `N` control more than training-set cardinality.
+
+The executable configuration therefore tells MACE both halves of that contract - the common value *and* `compute_avg_num_neighbors = false` - and supplies the canonical P3 target dataset head explicitly, so the model real training builds is `target_head` with the common normalization rather than MACE's own `Default` fallback with a normalization derived from that candidate's loader. EVAL2 reconstructs from the same canonical configuration, and the weight-independent execution-architecture digest of the real trained model must equal the digest of the reconstruction before any checkpoint state may reach inference.
+
 ## The paired optimizer-seed screen
 
 For every candidate size `N`, the screen runs the same ordered optimizer-seed set - by current policy the two seeds `[1, 2]` - through the same fidelity ladder:
@@ -1201,6 +1205,19 @@ membership copy per target-size rung. Descriptor shards, fixed-file views,
 replay indexes, and frame caches are reconstructible only when their content
 and recipe identities authenticate. A cache hit is never a substitute for the
 selected binding or another scientific authority.
+
+The normalized frame cache is the worked example of that boundary. Fresh source
+authentication and normalized-payload acquisition are separate operations with
+separate owners: every reconstruction of current target-size authority re-proves
+source identity, control interpretation, companion bindings, the ensemble
+certificate and its reconstructed value, and the selected energy channel's
+name/units/semantic role against the actual files, reading no frame payload to
+do so. The payload itself is then acquired **once per command** - from the
+authenticated frame cache when it is valid, otherwise by reading each source at
+most once and republishing that cache - and the same normalized mapping feeds
+canonical-frame construction and the common preparation. A valid cache
+therefore removes redundant I/O and never removes a check; a stale or corrupt
+one rebuilds or fails closed, and can never mask an authentication failure.
 
 ## Memory, storage, and scratch admission
 

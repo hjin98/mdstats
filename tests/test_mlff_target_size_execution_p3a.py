@@ -88,6 +88,39 @@ def _frame_arrays(tmp_path: Path, manifest):
     return frames, frame_data_by_run, index
 
 
+def fixture_mace_architecture() -> dict:
+    """A MACE architecture template whose cutoff describes the P1 fixture.
+
+    The shared neutral fixture is a two-atom 10 A cell, so the pinned 5 A
+    parser default sees no neighbourhood at all and the common MACE neighbor
+    normalization is genuinely undefined for it.  P3 model construction needs
+    a cutoff that actually describes the corpus, and one wide enough that the
+    fitted normalization is distinguishable from MACE's own parser default.
+    """
+
+    from mdstats.training_data.model_features import (
+        mace_candidate_architecture_defaults,
+    )
+
+    architecture = mace_candidate_architecture_defaults()
+    architecture.update(
+        {
+            "r_max": 9.0,
+            "num_radial_basis": 4,
+            "num_cutoff_basis": 4,
+            "max_ell": 1,
+            "num_interactions": 2,
+            "num_channels": 8,
+            "max_L": 1,
+            "hidden_irreps": "8x0e + 8x1o",
+            "MLP_irreps": "4x0e",
+            "radial_MLP": [4, 4],
+            "correlation": 2,
+        }
+    )
+    return architecture
+
+
 def _common(tmp_path: Path, *, policy: TargetSizeCommonTrainingPolicy | None = None):
     manifest, frame_authority, neutral_base, aggregate = _aggregate_chain(tmp_path)
     frames, frame_data_by_run, index = _frame_arrays(tmp_path, manifest)
@@ -97,6 +130,7 @@ def _common(tmp_path: Path, *, policy: TargetSizeCommonTrainingPolicy | None = N
         frame_data_by_run=frame_data_by_run,
         policy=policy,
         frame_array_index=index,
+        mace_architecture=fixture_mace_architecture(),
     )
     return manifest, frame_authority, neutral_base, aggregate, common, index
 
@@ -127,6 +161,7 @@ def test_p3a_one_common_preparation_digest_across_all_n_and_seeds(
         frame_data_by_run=frame_data_by_run,
         policy=TargetSizeCommonTrainingPolicy(),
         frame_array_index=index,
+        mace_architecture=fixture_mace_architecture(),
     )
     assert common2.content_digest == common.content_digest
     assert common2.fitted_weights_digest == common.fitted_weights_digest
@@ -540,6 +575,7 @@ def order_divergent_environment(tmp_path: Path):
         frame_catalog=frames,
         frame_data_by_run=frame_data_by_run,
         frame_array_index=index,
+        mace_architecture=fixture_mace_architecture(),
     )
     return {
         "manifest": manifest,

@@ -398,20 +398,47 @@ def _control_value(run_controls: Any, name: str) -> Any:
     return run_controls.explicit_value(name) if value is None else value
 
 
-def build_vasp_canonical_frame_authority(
+@dataclass(frozen=True, slots=True)
+class AuthenticatedVaspSource:
+    """One freshly authenticated P1 VASP source, without any frame payload.
+
+    Authentication and normalized frame-payload acquisition are two different
+    operations.  Every consumer that needs the eight P1 source/control/
+    ensemble/energy facts re-established against the real files obtains them
+    here; how the normalized arrays themselves are acquired (a direct
+    ``vasprun.xml`` read or the authenticated normalized frame cache) is a
+    separate decision that this record deliberately does not make.
+    """
+
+    run_id: str
+    source_path: Path
+    companion_paths: Mapping[str, Path]
+    controls: Any
+    energy_channel: Any
+    temperature_target: TemperatureTargetEvidence
+
+
+def authenticate_vasp_source_authority(
     source_authority: SourceAuthority,
     *,
     base_directory: str | Path = ".",
-    strict: bool = True,
-    **kwargs: Any,
-) -> CanonicalFrameAuthority:
-    """Build CanonicalFrameAuthority directly from VASP sources bound by SourceAuthority."""
-    from mdstats.io import read_vasp_frames, read_vasp_run_controls
+) -> dict[str, AuthenticatedVaspSource]:
+    """Re-establish the eight P1 source facts against the actual VASP files.
+
+    This is the single implementation of fresh P1 authentication.  It reads
+    only the source/control metadata required to prove identity, control
+    interpretation, companion bindings, the ensemble certificate and its
+    reconstructed value, and the selected energy channel name/units/semantic
+    role.  It never reads the frame payload, and it never accepts cache
+    metadata, a timestamp, or a previously validated object in place of a
+    check.
+    """
+
+    from mdstats.io import read_vasp_run_controls
     from mdstats.io.vasp_ensemble import certify_vasp_simulation_controls
 
-    frame_data: dict[str, FrameData] = {}
-    targets: dict[str, TemperatureTargetEvidence] = {}
     base = Path(base_directory)
+    authenticated: dict[str, AuthenticatedVaspSource] = {}
     for source in source_authority.sources:
         path = Path(source.source_locator)
         if not path.is_absolute():
@@ -459,34 +486,92 @@ def build_vasp_canonical_frame_authority(
                 f"Selected energy channel semantic_role mismatch for {source.run_id!r}: "
                 f"reparsed={channel.semantic_role!r} != persisted={source.selected_energy_semantic_role!r}"
             )
+        tebeg = _control_value(bundle.run_controls, "TEBEG")
+        teend = _control_value(bundle.run_controls, "TEEND")
+        authenticated[source.run_id] = AuthenticatedVaspSource(
+            run_id=source.run_id,
+            source_path=path,
+            companion_paths=dict(companion_paths),
+            controls=bundle,
+            energy_channel=channel,
+            temperature_target=TemperatureTargetEvidence(
+                target_start_kelvin=None if tebeg is None else float(tebeg),
+                target_end_kelvin=None if teend is None else float(teend),
+                evidence="VASP effective/explicit TEBEG and TEEND",
+            ),
+        )
+    return authenticated
+
+
+def authenticated_vasp_temperature_targets(
+    authenticated: Mapping[str, AuthenticatedVaspSource],
+) -> dict[str, TemperatureTargetEvidence]:
+    """Project the temperature-target evidence canonical construction needs."""
+
+    return {
+        run_id: record.temperature_target
+        for run_id, record in authenticated.items()
+    }
+
+
+def read_authenticated_vasp_frame_data(
+    authenticated: Mapping[str, AuthenticatedVaspSource],
+    *,
+    strict: bool = True,
+) -> dict[str, FrameData]:
+    """Read the normalized frame payload of already authenticated sources."""
+
+    from mdstats.io import read_vasp_frames
+
+    frame_data: dict[str, FrameData] = {}
+    for run_id, record in authenticated.items():
         collection = read_vasp_frames(
-            path,
+            record.source_path,
             strict=strict,
             assess_quality=False,
             assess_stationarity=False,
             assess_admissibility=False,
         )
-        frame_data[source.run_id] = FrameData.from_collection(
+        frame_data[run_id] = FrameData.from_collection(
             collection,
             source_frame_indices=np.arange(collection.n_frames, dtype=np.int64),
-            energies_ev=channel.as_array(),
-            scf_iteration_limit_reached=bundle.numerical_quality_controls.scf_iteration_limit_reached,
+            energies_ev=record.energy_channel.as_array(),
+            scf_iteration_limit_reached=(
+                record.controls.numerical_quality_controls.scf_iteration_limit_reached
+            ),
         )
-        tebeg = _control_value(bundle.run_controls, "TEBEG")
-        teend = _control_value(bundle.run_controls, "TEEND")
-        targets[source.run_id] = TemperatureTargetEvidence(
-            target_start_kelvin=None if tebeg is None else float(tebeg),
-            target_end_kelvin=None if teend is None else float(teend),
-            evidence="VASP effective/explicit TEBEG and TEEND",
-        )
+    return frame_data
+
+
+def build_vasp_canonical_frame_authority(
+    source_authority: SourceAuthority,
+    *,
+    base_directory: str | Path = ".",
+    strict: bool = True,
+    **kwargs: Any,
+) -> CanonicalFrameAuthority:
+    """Build CanonicalFrameAuthority directly from VASP sources bound by SourceAuthority.
+
+    This composes the same three owners the current runtime composes -- fresh
+    P1 authentication, normalized frame acquisition, and canonical-frame
+    construction -- and differs only in acquiring the payload straight from the
+    sources instead of from the authenticated normalized frame cache.
+    """
+
     if "temperature_targets_by_run" in kwargs:
         raise TrainingDataInputError(
             "build_vasp_canonical_frame_authority derives temperature targets from VASP controls."
         )
+    authenticated = authenticate_vasp_source_authority(
+        source_authority, base_directory=base_directory
+    )
+    frame_data = read_authenticated_vasp_frame_data(authenticated, strict=strict)
     return build_canonical_frame_authority(
         source_authority,
         frame_data,
-        temperature_targets_by_run=targets,
+        temperature_targets_by_run=authenticated_vasp_temperature_targets(
+            authenticated
+        ),
         **kwargs,
     )
 

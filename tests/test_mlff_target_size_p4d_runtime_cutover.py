@@ -404,6 +404,18 @@ class _BoundedNumericalHarness:
         self.rungs: list[tuple[int, int, int]] = []
         self.inferences: list[str] = []
         self._current = "0"
+        self._current_target_size = 0
+
+    def _offset(self) -> float:
+        """Per-candidate synthetic force error.
+
+        Derived from the candidate identity so the substituted predictions vary
+        per cell and the accepted P2 reducer -- not this harness -- decides the
+        ranking.  Fixtures that need one specific reducer terminal state
+        override this rather than relying on how a digest happens to fall.
+        """
+
+        return 1.0e-3 * (1 + int(self._current[:4], 16) % 7)
 
     def train(self, request: TargetSizeRungRequest):
         self.rungs.append(
@@ -414,6 +426,7 @@ class _BoundedNumericalHarness:
             )
         )
         self._current = str(request.trajectory.content_digest)
+        self._current_target_size = int(request.trajectory.target_size)
         # The real materialization owner must have written a usable candidate
         # configuration before any rung can run.
         config_path = (
@@ -438,7 +451,7 @@ class _BoundedNumericalHarness:
 
         policy = MaceExtxyzPolicy()
         self.inferences.append(self._current)
-        offset = 1.0e-3 * (1 + int(self._current[:4], 16) % 7)
+        offset = self._offset()
         predictions = []
         for atoms in atoms_list:
             forces = (
@@ -757,7 +770,9 @@ with Path({record!r}).open('a', encoding='utf-8') as handle:
         'atomic_numbers': ast.literal_eval(args.atomic_numbers),
         'E0s': ast.literal_eval(args.E0s),
         'radial_MLP': ast.literal_eval(args.radial_MLP),
-        'heads': args.heads,
+        'heads': sorted(ast.literal_eval(args.heads)),
+        'avg_num_neighbors': args.avg_num_neighbors,
+        'compute_avg_num_neighbors': args.compute_avg_num_neighbors,
         'keys': sorted(json.loads(Path(known.config).read_text(encoding='utf-8'))),
     }}, sort_keys=True) + '\\n')
 
@@ -821,6 +836,14 @@ def test_p4d_req5_assembled_boundary_one_config_passes_the_real_mace_parser(
         == 0
     )
 
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        authorities = build_current_target_size_authorities(cfg, paths, store)
+    finally:
+        store.close()
+    expected_avg_num_neighbors = authorities.common.common_avg_num_neighbors
+
     assert record.is_file(), "no candidate rung reached the pinned MACE parser"
     parsed = [
         json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()
@@ -832,10 +855,16 @@ def test_p4d_req5_assembled_boundary_one_config_passes_the_real_mace_parser(
         # JSON stringifies the int keys the MACE literal carried.
         assert {int(z) for z in item["E0s"]} == set(item["atomic_numbers"])
         assert item["radial_MLP"] == [64, 64, 64]
-        # Scratch target-size runs carry no MACE dataset heads.
-        assert item["heads"] is None
+        # The pinned parser receives the canonical P3 target dataset head, so
+        # real MACE builds ``target_head`` rather than its ``Default``
+        # fallback, and it is told not to recompute the common normalization.
+        assert item["heads"] == ["target_head"]
+        assert item["compute_avg_num_neighbors"] is False
+        assert item["avg_num_neighbors"] == pytest.approx(
+            expected_avg_num_neighbors
+        )
         assert "schema" not in item["keys"]
-        assert "heads" not in item["keys"]
+        assert "multi_head" not in item["keys"]
 
 
 def test_p4d_req5_mace_run_configuration_is_translation_only():
@@ -863,13 +892,32 @@ def test_p4d_req5_mace_run_configuration_is_translation_only():
         "max_num_epochs": 10,
         "default_dtype": "float64",
         "device": "cpu",
+        "compute_avg_num_neighbors": False,
         "mace_architecture": architecture,
+        "multi_head": {
+            "target_head": {
+                "train_file": "target_train.xyz",
+                "valid_file": "harness_validation.xyz",
+                "atomic_numbers": [3, 8],
+                "E0s": {"3": -1.0, "8": -2.0},
+                "energy_key": "REF_energy",
+                "forces_key": "REF_forces",
+                "stress_key": "REF_stress",
+            }
+        },
     }
     translated = mace_run_configuration(source)
     assert translated["train_file"] == "target_train.xyz"
     assert translated["valid_file"] == "harness_validation.xyz"
     assert translated["seed"] == 1
     assert translated["num_channels"] == architecture["num_channels"]
+    # The canonical P3 target dataset head is projected deliberately, so real
+    # MACE builds ``target_head`` instead of falling back to its own
+    # ``Default`` namespace, and it never recomputes the common normalization.
+    assert "'target_head'" in translated["heads"]
+    assert "Default" not in translated["heads"]
+    assert translated["compute_avg_num_neighbors"] is False
+    assert translated["avg_num_neighbors"] == architecture["avg_num_neighbors"]
     # The architecture never overrides an optimizer or data key: the projected
     # architecture keys and the candidate passthrough keys are disjoint.
     assert translated["batch_size"] == 4
@@ -882,6 +930,23 @@ def test_p4d_req5_mace_run_configuration_is_translation_only():
 
     with pytest.raises(Exception):
         mace_run_configuration({**source, "schema": "retired"})
+
+    # Leaving MACE's candidate-local average-neighbor recomputation enabled is
+    # not an admissible P3 executable configuration.
+    with pytest.raises(Exception):
+        mace_run_configuration({**source, "compute_avg_num_neighbors": True})
+    with pytest.raises(Exception):
+        translation_source = dict(source)
+        translation_source.pop("compute_avg_num_neighbors")
+        mace_run_configuration(translation_source)
+
+    # The internal architecture head list is never the dataset-head argument.
+    with pytest.raises(Exception):
+        mace_run_configuration({**source, "multi_head": {"Default": {}}})
+    with pytest.raises(Exception):
+        translation_source = dict(source)
+        translation_source.pop("multi_head")
+        mace_run_configuration(translation_source)
 
     # An architecture field with no declared executable projection fails here
     # rather than leaking into the pinned dependency.

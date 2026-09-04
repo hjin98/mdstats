@@ -56,7 +56,7 @@ from .schedule import TargetSizeScreenSchedule
 TARGET_SIZE_REALIZATION_SCHEMA = "mdstats.target-size.candidate-realization.v1"
 TARGET_SIZE_TRAJECTORY_SCHEMA = "mdstats.target-size.candidate-trajectory.v1"
 TARGET_SIZE_MATERIALIZATION_SCHEMA = "mdstats.target-size.candidate-materialization.v1"
-TARGET_SIZE_MACE_CONFIG_SCHEMA = "mdstats.target-size.mace-config.v1"
+TARGET_SIZE_MACE_CONFIG_SCHEMA = "mdstats.target-size.mace-config.v2"
 
 
 def _positive_int(value: Any, *, name: str) -> int:
@@ -748,6 +748,20 @@ def _mace_config_for_candidate(
 ) -> dict[str, Any]:
     from ..model_features import canonicalize_mace_candidate_architecture
 
+    # The candidate never resolves its own model-construction identity.  The
+    # realized architecture -- including the one common fitted neighbor
+    # normalization -- belongs to the common preparation, and a caller-supplied
+    # architecture is admissible only when it is exactly that one.
+    realized_architecture = canonicalize_mace_candidate_architecture(
+        common.realized_mace_architecture
+    )
+    if mace_architecture is not None and canonicalize_mace_candidate_architecture(
+        mace_architecture
+    ) != realized_architecture:
+        raise TrainingDataInputError(
+            "Candidate MACE architecture must be the realized common-preparation "
+            "architecture; candidate-local model construction is not permitted."
+        )
     fitted_e0s = {
         int(z): float(value)
         for z, value in common.fitted_atomic_references.reference_energies_ev
@@ -787,9 +801,13 @@ def _mace_config_for_candidate(
         "foundation_model": None,
         "foundation_head": None,
         "multiheads_finetuning": False,
-        "mace_architecture": canonicalize_mace_candidate_architecture(
-            mace_architecture
-        ),
+        # MACE recomputes ``avg_num_neighbors`` from the candidate training
+        # loader unless told not to.  That would make a model-construction
+        # input a function of T_N, which P3 forbids, so the executable
+        # configuration disables the recomputation and supplies the common
+        # fitted value through the architecture instead.
+        "compute_avg_num_neighbors": False,
+        "mace_architecture": realized_architecture,
         "multi_head": {
             "target_head": {
                 "train_file": target_train.relative_path,
