@@ -7,8 +7,8 @@ status: planned
 current_authority_pointer: STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md
 current_workplan: STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md
 accepted_design: STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md
-baseline_executable_commit: 7aa938d71361d2cb2ce6e370165a9a12566669f3
-baseline_executable_tree: 5fd91f30672fb7d9a2be89d6e0fdc261619509aa
+reviewed_current_executable_commit: 38b37f6761d30c66ec29e27abf8f2ee3a311f804
+reviewed_current_executable_tree: c5918d5db992c42b144b7770d100c160f9d417f7
 review_verdict: DESIGN-RESET / IMPLEMENTATION-PENDING
 ---
 
@@ -20,30 +20,33 @@ This is the sole canonical navigation/status entrypoint for `CODE-MLFF-CAMPAIGN-
 
 Implementation uses this supplied current authority set:
 
-- `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — broader owner-driven storage architecture and product non-goals;
-- `STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md` — current snapshot-complete storage architecture and implementation contract;
-- `docs/specs/training_data/mlff_storage_management_spec.md` — current storage product behavior/contract, to be reconciled where implementation-topology wording conflicts with Revision 38;
-- current source/tests — repository evidence of the implementation state to simplify.
+- `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — original owner-driven storage architecture, engineering envelope and non-goals;
+- `STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md` — current snapshot-complete architecture-reduction and implementation contract;
+- `docs/specs/training_data/mlff_storage_management_spec.md` — current behavioral storage contract; implementation-topology wording that conflicts with Revision 38 is explicitly scheduled for reconciliation by Revision 38;
+- current source/tests — evidence of the pre-consolidation implementation to reduce.
 
-Revision 30-37 and IR review/reopen files are historical provenance. They do not define the current implementation topology and are not required normative input for implementation of Revision 38.
+Revision 30-37 and implementation-review/reopen artifacts are historical provenance. They do not define the current implementation topology and are not required normative input for Revision 38.
+
+The reviewed current executable is commit `38b37f6761d30c66ec29e27abf8f2ee3a311f804`, tree `c5918d5db992c42b144b7770d100c160f9d417f7`. Later branch changes through activation of Revision 38 are documentation/workplan/PDF-only and do not change the executable implementation reviewed by the reduction plan.
 
 ## Architecture invariant
 
-The storage subsystem is now governed by the simplicity invariant:
+The storage subsystem is governed by:
 
 > **one semantic authority, one explicit operation path, one persistent-transition owner.**
 
-For cleanup specifically:
+For cleanup this now means concretely:
 
-- `StorageExecutor` is an authorization/transaction/audit shell, not a destructive cleanup engine;
-- there is exactly one production cleanup engine;
-- there is exactly one consequential cleanup filesystem mutation kernel;
-- cleanup mutation is either an exact leaf or an owner-certified closed tree;
-- P7 owns release/proof/root/target authority and delegates deletion mechanics to the shared kernel;
-- persistent mutation truth is recorded at the actual state-changing transition and is never inferred later from pathname disappearance or byte totals;
-- superseded wrappers, fallbacks, duplicate recursion, classifier/domain synchronization machinery, and layered finalization logic are deleted rather than preserved behind new facades.
+- `StorageExecutor` owns common apply authorization, storage/owner synchronization, fresh resnapshot, plan revalidation, admission, settlement and audit; it has no destructive default cleanup implementation;
+- existing `StoragePlan`/`revalidate_plan` becomes the canonical action-to-owner/path/current-eligibility gate instead of a second cleanup classifier;
+- there is exactly one production cleanup engine and no cleanup semantic-class/domain state machine;
+- cleanup recursively mutates only owner-certified `CLOSED` trees; `CONTAINER` is not a selective recursive cleanup mode;
+- there is exactly one consequential cleanup filesystem mutation kernel shared by ordinary and P7 cleanup;
+- P7 retains release/proof/root/target/session authority but delegates unlink/rmdir mechanics to that kernel;
+- persistent mutation truth is recorded at the actual transition and never inferred later from pathname disappearance or byte totals;
+- duplicate recursion, default-engine routing, classifier/domain synchronization, mixed `members/refusals` mutation, obsolete destructive compatibility wrappers and layered cleanup finalization are deleted rather than preserved behind new facades.
 
-Archive, restore, deduplication, and CampaignStore maintenance remain specialized only where their algorithms and persistence/recovery semantics are genuinely distinct.
+Archive, restore, deduplication and CampaignStore maintenance remain specialized only where their algorithms and persistence/recovery semantics are genuinely distinct. The existing exact atomic-publication callback may remain because it is one shared mechanism that closes several genuine replace-before-fsync/readback failure windows; Revision 38 does not require replacing necessary shared machinery merely to reduce line count.
 
 ## Preservation
 
@@ -53,12 +56,12 @@ Python `>=3.10`, the accepted descriptor-pinned POSIX threat boundary, and the p
 
 ## Revision discipline
 
-This Revision 38 consolidation is the bounded Design reconsideration triggered by repeated same-family failures and accumulated machinery.
+Revision 38 is the bounded Design reconsideration required by repeated same-family failure and accumulated implementation machinery.
 
-After implementation, ordinary defects that remain governed by the frozen invariant are fixed in the canonical owner/kernel under the same architecture. Concrete new failure sites, tests, or implementation mistakes do **not** create new numbered storage authority revisions. A future normative revision is warranted only by evidence that a frozen Revision-38 architectural decision is itself insufficient or incompatible with a required supported contract.
+After implementation, an ordinary defect still governed by these frozen invariants is fixed in the surviving canonical owner/kernel under the same authority. A new site, failing test, race example or implementation mistake does **not** create another numbered storage revision. Reopen Design only when evidence shows that a frozen Revision-38 architectural decision itself is insufficient or incompatible with a required supported contract.
 
 ## Disposition
 
-**Design/workplan:** **CLOSED / implementation-ready under Revision 38 simplicity consolidation.**
+**Design/workplan:** **CLOSED / implementation-ready under the concrete Revision-38 simplicity-consolidation plan.**
 
-**Implementation:** **PENDING.** The current executable baseline remains evidence of the pre-consolidation implementation and is not accepted as the target architecture.
+**Implementation:** **PENDING.** The reviewed executable commit/tree above is the pre-consolidation implementation to reduce and is not accepted as the target architecture.
