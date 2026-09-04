@@ -199,6 +199,24 @@ Recursive cleanup, archive collection and hot reclamation, dedup enumeration, an
 
 One narrow exception exists and is named explicitly: a directory the storage subsystem is the *sole writer* of - its own `.mdstats/storage/staging` scratch - is closed by that exclusivity rather than by an enumerated member set, because enumerating a set from the very tree in question would be circular. It never applies to a directory another component writes into.
 
+## 5c. Cleanup semantic classes and the default execution domain
+
+Cleanup is not one destructive operation. Removing a released P7 attempt member spends a live attempt session's proof, release, and root binding; emptying an owner-scoped container spends typed member certification, retained members, and the owner's root/path identity; unlinking an orphan record file spends nothing beyond the plan's own target identity. Those are different authorities, so *which* implementation may act is a semantic decision, and it is made in exactly one place.
+
+Every cleanup action resolves, from the **fresh post-revalidation snapshot while the storage-operation lease and every touched owner's activity/publication barrier are still held**, to exactly one class:
+
+- **exact authorizer** - the owner names its own authorizer, and only that owner's implementation may mutate the artifact. An authorizer no implementation exists for is unsupported, never generic;
+- **owner-scoped subtree** - a directory artifact whose removal spends typed member, retained-member, and owner root/path authority;
+- **generic leaf** - a non-directory leaf whose current owner view exactly matches the action's artifact and path, whose action kind that owner still grants, and whose mutation needs nothing beyond the plan-bound target identity and the synchronization already held;
+- **maintenance** - campaign-state maintenance, realized by its own owner engine;
+- **invalid** - anything that cannot be positively established as one of the above.
+
+The domain is **positive**. A new owner field, coverage mode, or authorizer does not become a recursive delete by failing to match an earlier branch; it becomes invalid, and invalid never mutates. That negative-fallthrough shape is precisely how owner authority disappears silently, so no cleanup path is permitted to define these classes a second time: the production cleanup engine and the executor's optional default engine consume the same classification and differ only in which classes they implement.
+
+An action is also bound back to owner semantics rather than to a path alone. Its `artifact_id` must resolve to an owner view at exactly the path it targets, and the current view must still grant that action kind - safe reclamation for a removal, and certified reconstructibility plus owner evictability under the cache tier for an eviction. A valid artifact identity, a passing physical ownership boundary, and a valid plan-bound filesystem identity are independent constraints and none of them substitutes for this binding.
+
+`StorageExecutor.run` without an engine has the **generic-leaf class as its entire destructive domain**. Engine/domain incompatibility is decided over the **whole plan before the first transition** and is independent of action order, so no convenient prefix of a plan is spent before an unsupported later action is noticed. Such a plan completes no action: it is non-mutating, credits zero bytes, and is published in the durable audit as a refused execution naming the engine/domain incompatibility - which is distinct both from a stale plan and from an owner refusing a particular target at its mutation boundary. Ordinary per-action refusal at the mutation boundary keeps its existing settlement semantics.
+
 ## 6. Resolved storage policy
 
 One canonical resolved policy is shared by every CLI, config, and API entry point. It normalizes aliases before hashing, so equivalent spellings produce one identity, and it binds the requested action and tier, storage and scratch safety reserve, cache eviction limits, SQLite compaction thresholds, archive codec/level/expansion bounds, dedup realization and minimum file size, I/O worker limits, deep-audit bounds, lease timeout, and audit retention.

@@ -39,6 +39,12 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .admission import revalidate_admission
+from .cleanup_domain import (
+    CLASS_GENERIC_LEAF,
+    StorageEngineDomainError,
+    classify_cleanup_plan,
+    require_supported_domain,
+)
 from .control_plane import StorageControlPlane
 from .durability import durable_unlink
 from .inventory import StorageInventorySnapshot
@@ -54,10 +60,6 @@ from .outcome import (
     removed,
 )
 from .plan import (
-    ACTION_EVICT_CACHE,
-    MAINTENANCE_ACTIONS,
-    ACTION_REMOVE,
-    EXECUTOR_ACTIONS,
     StoragePlan,
     StoragePlanStaleError,
     revalidate_plan,
@@ -240,6 +242,21 @@ class StorageExecutor:
                             self._execute_actions(plan, snapshot, result)
                         else:
                             engine(plan, snapshot, result)
+                    except StorageEngineDomainError as exc:
+                        # The plan asked an engine for authority it does not
+                        # have. That is a construction failure of the execution
+                        # itself, discovered before the first transition, so the
+                        # truth is a refused, non-mutating, zero-byte operation -
+                        # not a stale plan, and not an owner refusing a target.
+                        # It is materialized and durably published here, and only
+                        # then does the typed failure continue to the caller.
+                        result.status = STATUS_REFUSED
+                        result.detail = (
+                            "the plan was refused before any action was attempted "
+                            f"because the selected engine cannot execute it: {exc}"
+                        )
+                        self._finalize(result, trigger=trigger)
+                        raise
                     except BaseException as exc:
                         # An interruption is reported from what the action
                         # recorder actually captured, not from the fact that
@@ -335,31 +352,28 @@ class StorageExecutor:
         snapshot: StorageInventorySnapshot,
         result: StorageExecutionResult,
     ) -> None:
-        for action in plan.actions:
-            if action.action in MAINTENANCE_ACTIONS:
-                # Owner maintenance is realized by its own engine; a plan that
-                # reaches the default executor with one is a construction error.
-                result.refused.append(
-                    {
-                        **action.to_dict(),
-                        "refusal": "campaign-state maintenance needs its owner engine",
-                    }
-                )
-                continue
+        """The default engine: positively classified generic leaves, only.
+
+        Its destructive domain is one *positive* class, established from the
+        fresh post-revalidation snapshot while the lease and every touched
+        owner's barrier are still held. Everything else - an exact authorizer,
+        an owner-scoped directory, maintenance, a special node, or a malformed
+        action/owner binding - is outside this engine's authority, and the whole
+        plan is refused before the first transition rather than after a
+        convenient prefix of it has already been spent.
+        """
+
+        classifications = classify_cleanup_plan(plan, snapshot, self.policy)
+        require_supported_domain(
+            classifications,
+            engine="default cleanup engine",
+            supported=(CLASS_GENERIC_LEAF,),
+        )
+        for item in classifications:
+            action = item.action
             authorized, detail = self.authorize_path(action.path, snapshot)
             if not authorized:
                 result.refused.append({**action.to_dict(), "refusal": detail})
-                continue
-            if action.action not in (ACTION_REMOVE, ACTION_EVICT_CACHE):
-                result.refused.append(
-                    {
-                        **action.to_dict(),
-                        "refusal": (
-                            f"action {action.action!r} is not executed by the cleanup "
-                            "engine; it belongs to the archive, dedup, or restore engine"
-                        ),
-                    }
-                )
                 continue
             record_or_reraise(
                 result,

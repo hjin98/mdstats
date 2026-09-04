@@ -46,6 +46,14 @@ from .archive import (
     select_archive_roots,
     verify_cold_archive,
 )
+from .cleanup_domain import (
+    CLASS_EXACT_AUTHORIZER,
+    CLASS_GENERIC_LEAF,
+    CLASS_MAINTENANCE,
+    CLASS_OWNER_SUBTREE,
+    classify_cleanup_plan,
+    require_supported_domain,
+)
 from .control_plane import (
     StorageControlPlane,
     open_storage_control_plane,
@@ -74,7 +82,7 @@ from .maintenance import (
     campaign_state_maintenance_engine,
     plan_campaign_state_maintenance,
 )
-from .owners import P7_RELEASED_ATTEMPT_AUTHORIZER, SubtreeCoverage
+from .owners import SubtreeCoverage
 from .plan import (
     ACTION_EVICT_CACHE,
     ACTION_REMOVE,
@@ -471,20 +479,37 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
         # verification and use.
         sessions: dict[str, Any] = {}
         primary: BaseException | None = None
+        # The same canonical classification the default engine uses, derived
+        # from this fresh post-revalidation snapshot while the lease and every
+        # touched owner's barrier are still held. Production implements more
+        # classes than the default engine does, but it does not get a second
+        # semantic definition of what those classes *are*, and an action whose
+        # semantics cannot be positively established refuses the whole plan
+        # before anything mutates rather than falling through to generic
+        # removal.
+        classifications = classify_cleanup_plan(plan, snapshot, policy)
+        require_supported_domain(
+            classifications,
+            engine="production cleanup engine",
+            supported=(
+                CLASS_EXACT_AUTHORIZER,
+                CLASS_OWNER_SUBTREE,
+                CLASS_GENERIC_LEAF,
+                CLASS_MAINTENANCE,
+            ),
+        )
         try:
-            for action in plan.actions:
-                if action.action not in (ACTION_REMOVE, ACTION_EVICT_CACHE):
+            for item in classifications:
+                action = item.action
+                if item.semantic_class == CLASS_MAINTENANCE:
                     maintenance(action, snapshot, result)
                     continue
                 authorized, detail = executor.authorize_path(action.path, snapshot)
                 if not authorized:
                     result.refused.append({**action.to_dict(), "refusal": detail})
                     continue
-                view = snapshot.view(action.artifact_id)
-                if (
-                    view is not None
-                    and view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER
-                ):
+                view = item.view
+                if item.semantic_class == CLASS_EXACT_AUTHORIZER:
                     _apply_released_member(
                         result,
                         action,
@@ -495,7 +520,7 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                         remove_released_attempt_member,
                     )
                     continue
-                if view is not None and view.path == action.path and action.path.is_dir():
+                if item.semantic_class == CLASS_OWNER_SUBTREE:
                     members, refusals = snapshot.authorized_members(view)
                     member_authorities = {
                         (view.path / node.path): node.kind
@@ -518,9 +543,10 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                         ),
                     )
                     continue
-                # The plan's own target binding, spent at the mutation boundary.
-                # A consequential cleanup never reaches an unbound removal mode
-                # while `PlannedAction.filesystem_identity` exists.
+                # CLASS_GENERIC_LEAF. The plan's own target binding, spent at
+                # the mutation boundary. A consequential cleanup never reaches
+                # an unbound removal mode while
+                # `PlannedAction.filesystem_identity` exists.
                 record_or_reraise(
                     result,
                     action,

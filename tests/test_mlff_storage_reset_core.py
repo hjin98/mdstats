@@ -7268,3 +7268,677 @@ def test_consequential_removal_is_anchored_bound_and_same_parent_durable() -> No
         "publication truth no longer fires at the atomic replace"
     )
     assert "exists()" not in ast.dump(_function(ast.parse(durability_source), "durable_unlink"))
+
+
+# ---------------------------------------------------------------------------
+# IR18-1 - one canonical cleanup semantic classification, fail-closed default
+# ---------------------------------------------------------------------------
+#
+# Caller/API census recorded for this closure (IR18-1 "Caller and compatibility
+# census"), taken over the whole repository:
+#
+#   * `StorageExecutor.run` is called from five production sites, all in
+#     `storage/commands.py`, and every one of them supplies a specialized
+#     engine: cleanup, archive create, archive reclaim, archive restore, dedup.
+#     No production caller uses `engine=None`.
+#   * The only maintained `engine=None` uses are tests: a stale-plan refusal
+#     case in this file and the default-engine action-recorder case in the
+#     integration suite. Both are internal, and neither requires the default
+#     engine to perform owner-specific recursive, P7, or maintenance work.
+#   * `StorageExecutor` is exported from `mdstats.training_data.storage`, but no
+#     maintained document or test states that its optional engine executes
+#     owner-scoped cleanup. The storage specification describes the opposite:
+#     one destructive implementation reached through the owning semantic owner.
+#
+# So the default domain is narrowed to the positive generic-leaf class rather
+# than an unsafe compatibility fallback being preserved.
+
+
+def _classifier_snapshot(views):
+    """The one thing `classify_cleanup_action` reads from a snapshot.
+
+    This is a focused unit of the classifier itself, not a stand-in for a
+    semantic owner: no owner decision is proxied here, and every claim that
+    depends on a real owner is accepted through real planning and the real
+    executor elsewhere in this file and in the integration suite.
+    """
+
+    def view(artifact_id: str):
+        return next((item for item in views if item.artifact_id == artifact_id), None)
+
+    return SimpleNamespace(view=view)
+
+
+def _cleanup_action(*, action, path, artifact_id, view=None, **kwargs):
+    from mdstats.training_data.storage.plan import planned_action
+
+    return planned_action(
+        action=action,
+        path=path,
+        artifact_id=artifact_id,
+        reason="ir18 fixture",
+        owner_state_identity=(view.state_identity if view is not None else ""),
+        **kwargs,
+    )
+
+
+def test_an_unrecognized_exact_authorizer_is_never_classified_generic(tmp_path: Path):
+    """IR18-1 case 8: a future authorizer is unsupported, not generic.
+
+    The whole point of the positive domain is that a field the classifier has
+    never seen cannot become a recursive delete by not matching anything.
+    """
+
+    from mdstats.training_data.storage.cleanup_domain import (
+        CLASS_EXACT_AUTHORIZER,
+        CLASS_GENERIC_LEAF,
+        CLASS_INVALID,
+        classify_cleanup_action,
+    )
+    from mdstats.training_data.storage.owners import (
+        ArtifactClass,
+        P7_RELEASED_ATTEMPT_AUTHORIZER,
+    )
+    from mdstats.training_data.storage.plan import ACTION_REMOVE
+
+    target = tmp_path / "leaf.bin"
+    target.write_bytes(b"x" * 32)
+    policy = _policy(action=ACTION_CLEANUP, tier="safe")
+
+    def _view(authorizer: str):
+        return OwnerArtifactView(
+            owner="p9",
+            artifact_id="future:leaf",
+            path=target,
+            artifact_class=ArtifactClass.TEMPORARY_SCRATCH,
+            detail="a future owner released this leaf",
+            safe_reclaimable=True,
+            exact_authorizer=authorizer,
+        )
+
+    action = _cleanup_action(
+        action=ACTION_REMOVE, path=target, artifact_id="future:leaf"
+    )
+
+    unknown = classify_cleanup_action(
+        action, _classifier_snapshot([_view("p9.some-future-authorizer.v1")]), policy
+    )
+    assert unknown.semantic_class == CLASS_INVALID, unknown
+    assert unknown.semantic_class != CLASS_GENERIC_LEAF
+    assert "unrecognized authorizer" in unknown.detail, unknown.detail
+
+    # The recognized one still routes to its owner, so the guard is a domain
+    # boundary rather than a blanket refusal of every authorizer.
+    known = classify_cleanup_action(
+        action,
+        _classifier_snapshot([_view(P7_RELEASED_ATTEMPT_AUTHORIZER)]),
+        policy,
+    )
+    assert known.semantic_class == CLASS_EXACT_AUTHORIZER, known
+
+    # And with no authorizer at all it is the generic leaf it looks like.
+    generic = classify_cleanup_action(
+        action, _classifier_snapshot([_view("")]), policy
+    )
+    assert generic.semantic_class == CLASS_GENERIC_LEAF, generic
+
+
+def test_a_directory_shaped_evictable_cache_is_owner_scoped_not_generic(
+    tmp_path: Path, campaign
+):
+    """IR18-1 case 5: a cache artifact is not generic just because it is cache.
+
+    Census result first: no owner in this product currently publishes a
+    `cache_evictable` view at all - the SHA receipt store and the P1 frame cache
+    both retain, the latter because P1 exposes no consumer-liveness seam - so a
+    `cache` tier cleanup is legitimately a no-op today and there is no
+    maintained directory-shaped production eviction target to drive. Rather than
+    invent a fake production owner, the classifier itself is covered directly
+    for the shape such an owner would produce.
+    """
+
+    from mdstats.training_data.storage.cleanup_domain import (
+        CLASS_GENERIC_LEAF,
+        CLASS_INVALID,
+        CLASS_OWNER_SUBTREE,
+        classify_cleanup_action,
+    )
+    from mdstats.training_data.storage.owners import ArtifactClass
+    from mdstats.training_data.storage.plan import ACTION_EVICT_CACHE
+
+    # The census claim itself, through the real owners and the real inventory.
+    snapshot = campaign.snapshot()
+    assert not [view for view in snapshot.views if view.cache_evictable], (
+        "an evictable cache family appeared; this case must now be driven "
+        "through that real production owner instead of the classifier fixture"
+    )
+    assert not [item for item in cache_candidates(snapshot) if item.eligible]
+
+    root = tmp_path / "derived-cache"
+    (root / "shard").mkdir(parents=True)
+    (root / "shard" / "a.bin").write_bytes(b"a" * 16)
+    cache_policy = _policy(action=ACTION_CLEANUP, tier="cache")
+
+    directory_view = OwnerArtifactView(
+        owner="p1",
+        artifact_id="p1:derived_cache",
+        path=root,
+        artifact_class=ArtifactClass.REUSABLE_CACHE_INDEX,
+        detail="owner-certified reconstructible derived cache",
+        cache_reconstructible=True,
+        cache_evictable=True,
+        coverage=SubtreeCoverage.CLOSED,
+        certified_nodes=(CertifiedNode(path="shard/a.bin", kind="file"),),
+    )
+    action = _cleanup_action(
+        action=ACTION_EVICT_CACHE,
+        path=root,
+        artifact_id="p1:derived_cache",
+        view=directory_view,
+    )
+    classification = classify_cleanup_action(
+        action, _classifier_snapshot([directory_view]), cache_policy
+    )
+    assert classification.semantic_class == CLASS_OWNER_SUBTREE, classification
+    assert classification.semantic_class != CLASS_GENERIC_LEAF
+
+    # A file-shaped evictable cache with no subtree authority is a real generic
+    # leaf, so the refusal above is about the semantics and not about the tier.
+    leaf = tmp_path / "index.sqlite3"
+    leaf.write_bytes(b"i" * 8)
+    leaf_view = OwnerArtifactView(
+        owner="p1",
+        artifact_id="p1:derived_index",
+        path=leaf,
+        artifact_class=ArtifactClass.REUSABLE_CACHE_INDEX,
+        detail="owner-certified reconstructible index file",
+        cache_reconstructible=True,
+        cache_evictable=True,
+    )
+    leaf_action = _cleanup_action(
+        action=ACTION_EVICT_CACHE,
+        path=leaf,
+        artifact_id="p1:derived_index",
+        view=leaf_view,
+    )
+    assert (
+        classify_cleanup_action(
+            leaf_action, _classifier_snapshot([leaf_view]), cache_policy
+        ).semantic_class
+        == CLASS_GENERIC_LEAF
+    )
+
+    # The same evictable index under the safe tier is not an eviction target at
+    # all: action-kind eligibility includes the policy context that grants it.
+    assert (
+        classify_cleanup_action(
+            leaf_action,
+            _classifier_snapshot([leaf_view]),
+            _policy(action=ACTION_CLEANUP, tier="safe"),
+        ).semantic_class
+        == CLASS_INVALID
+    )
+
+
+def test_no_cleanup_branch_falls_through_to_the_generic_remover():
+    """IR18-1 case 11: every generic removal is dominated by its class.
+
+    The rule is validated on a known-positive and a known-negative construct
+    before its zero-finding result over the real modules is relied on, because a
+    structural check that silently matches nothing proves nothing.
+    """
+
+    import ast as _ast
+
+    package = Path(cli.__file__).parent
+
+    def _generic_calls_not_dominated(source: str) -> list[str]:
+        """Calls to `remove_planned_outcome` not guarded by the classification.
+
+        A call is dominated when the enclosing function establishes the
+        canonical classification and the call site is not reachable from a
+        branch that merely failed to match earlier owner-specific tests.
+        """
+
+        tree = _ast.parse(source)
+        findings: list[str] = []
+        for node in _ast.walk(tree):
+            if not isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                continue
+            if node.name == "remove_planned_outcome":
+                # The generic remover's own definition; it is the implementation
+                # being dominated, not a call site.
+                continue
+            calls = any(
+                isinstance(child, _ast.Call)
+                and getattr(child.func, "id", getattr(child.func, "attr", ""))
+                == "remove_planned_outcome"
+                for child in _ast.walk(node)
+            )
+            if not calls:
+                continue
+            body = _ast.dump(node)
+            classified = (
+                "classify_cleanup_plan" in body or "classify_cleanup_action" in body
+            )
+            guarded = "CLASS_GENERIC_LEAF" in body or "require_supported_domain" in body
+            if not (classified and guarded):
+                findings.append(node.name)
+        return findings
+
+    positive = (
+        "def bad(plan, snapshot):\n"
+        "    for action in plan.actions:\n"
+        "        if action.kind == 'p7':\n"
+        "            continue\n"
+        "        remove_planned_outcome(action, anchor=plan.workspace)\n"
+    )
+    negative = (
+        "def good(plan, snapshot):\n"
+        "    items = classify_cleanup_plan(plan, snapshot, policy)\n"
+        "    require_supported_domain(items, engine='x', supported=(CLASS_GENERIC_LEAF,))\n"
+        "    for item in items:\n"
+        "        remove_planned_outcome(item.action, anchor=plan.workspace)\n"
+    )
+    assert _generic_calls_not_dominated(positive) == ["bad"], (
+        "the structural rule cannot see an undominated generic removal"
+    )
+    assert _generic_calls_not_dominated(negative) == [], (
+        "the structural rule rejects a correctly dominated generic removal"
+    )
+
+    for name in ("executor.py", "commands.py"):
+        source = (package / "storage" / name).read_text(encoding="utf-8")
+        assert _generic_calls_not_dominated(source) == [], name
+
+    # Exactly one canonical classifier owns the decision, and both consequential
+    # cleanup paths consume it rather than maintaining a second definition.
+    domain = (package / "storage" / "cleanup_domain.py").read_text(encoding="utf-8")
+    definitions = [
+        node.name
+        for node in _ast.walk(_ast.parse(domain))
+        if isinstance(node, _ast.FunctionDef) and node.name == "classify_cleanup_action"
+    ]
+    assert definitions == ["classify_cleanup_action"], definitions
+    for name in ("executor.py", "commands.py"):
+        source = (package / "storage" / name).read_text(encoding="utf-8")
+        assert "classify_cleanup_plan(" in source, name
+        assert "require_supported_domain(" in source, name
+        # No second semantic definition of the owner-specific classes.
+        assert "P7_RELEASED_ATTEMPT_AUTHORIZER" not in source, (
+            f"{name} still classifies the P7 authorizer itself"
+        )
+
+
+def _ir18_context(campaign, cfg=None):
+    return storage_commands.StorageCommandContext(
+        cfg if cfg is not None else campaign.cfg,
+        campaign.paths,
+        campaign.store,
+        campaign.boundary,
+    )
+
+
+def _ir18_run(campaign, *, default_engine, cfg=None, tier="safe", plan_actions=None):
+    """Real planning, real revalidation, real `StorageExecutor.run`, real audit.
+
+    ``plan_actions(actions, snapshot)`` may narrow or extend the *real* cleanup
+    plan; nothing below the executor is substituted, and the plan is always
+    rebuilt against the real snapshot it will be revalidated with.
+    """
+
+    context = _ir18_context(campaign, cfg)
+    policy = resolve_storage_policy(
+        cfg if cfg is not None else {}, action=ACTION_CLEANUP, tier=tier, apply=True
+    )
+    context.consequential_plane(policy)
+    plan, snapshot = storage_commands.build_cleanup_plan(
+        context, policy.for_apply(apply=False)
+    )
+    actions = list(plan.actions)
+    if plan_actions is not None:
+        actions = list(plan_actions(actions, snapshot))
+    apply_plan = build_storage_plan(
+        snapshot,
+        policy,
+        actions,
+        refusals=plan.refusals,
+        created_utc=plan.created_utc,
+    )
+    engine = None if default_engine else storage_commands._cleanup_engine(context, policy)
+    raised: BaseException | None = None
+    result = None
+    try:
+        result = context.executor(policy).run(
+            apply_plan,
+            trigger="test:ir18",
+            synchronization=synchronization_for(apply_plan, snapshot),
+            engine=engine,
+        )
+    except BaseException as exc:  # noqa: BLE001 - propagation is the contract
+        raised = exc
+    return result, raised, apply_plan
+
+
+def _owner_scoped_container(campaign) -> Path:
+    """A real reclaimable owner-scoped container with a retained contradiction.
+
+    `.mdstats/storage/staging/<identity>` is the storage owner's own
+    exclusive-writer scratch: a real closed-subtree artifact whose members are
+    decided by `authorized_members()`, which retains the symlink below rather
+    than sweeping it away with the tree.
+    """
+
+    root = campaign.control_plane.staging_root_for("f" * 32)
+    (root / "dedup").mkdir(parents=True, exist_ok=True)
+    (root / "dedup" / "authorized.bin").write_bytes(b"a" * 24)
+    sentinel = root / "dedup" / "foreign.link"
+    if not sentinel.is_symlink():
+        sentinel.symlink_to(campaign.paths.state_db)
+    return root
+
+
+def _generic_leaf(campaign, name: str = "aaaa.bin") -> Path:
+    """A real generic-leaf cleanup target: uncataloged archive publication residue."""
+
+    campaign.control_plane.archive_root.mkdir(parents=True, exist_ok=True)
+    residue = campaign.control_plane.archive_root / name
+    residue.write_bytes(b"r" * 40)
+    return residue
+
+
+def _domain_refusal(raised) -> str:
+    from mdstats.training_data.storage.cleanup_domain import StorageEngineDomainError
+
+    assert isinstance(raised, StorageEngineDomainError), raised
+    return str(raised)
+
+
+def _last_audit(campaign):
+    records = campaign.control_plane.read_audit()
+    return dict(records[-1]) if records else None
+
+
+def _assert_refused_nonmutating(campaign, result, raised):
+    detail = _domain_refusal(raised)
+    assert result is None, "a refused-domain execution must not return a settled result"
+    audit = _last_audit(campaign)
+    assert audit is not None, "the refused truth was never published"
+    assert audit["status"] == "refused", audit
+    assert audit["mutated"] is False, audit
+    assert int(audit["reclaimed_bytes"]) == 0, audit
+    assert audit["completed_actions"] == [], audit
+    # The guard that fired must be the engine/domain one, not stale-plan
+    # rejection and not an owner's refusal of a particular target.
+    assert "cannot execute this plan" in audit["detail"], audit["detail"]
+    assert "re-plan" not in audit["detail"], audit["detail"]
+    return detail
+
+
+def test_the_default_engine_refuses_an_owner_scoped_container_plan(campaign):
+    """IR18-1 case 1: a common-container plan never reaches generic removal."""
+
+    from mdstats.training_data.storage import executor as executor_mod
+
+    container = _owner_scoped_container(campaign)
+    before = sorted(str(item) for item in container.rglob("*"))
+    assert before, "the container fixture is empty"
+
+    calls: list[str] = []
+    real = executor_mod.remove_planned_outcome
+    executor_mod.remove_planned_outcome = lambda action, **kw: calls.append(
+        str(action.path)
+    )
+    try:
+        result, raised, plan = _ir18_run(campaign, default_engine=True)
+    finally:
+        executor_mod.remove_planned_outcome = real
+
+    assert any(item.path == container for item in plan.actions), (
+        "the real planner never released the owner-scoped container"
+    )
+    detail = _assert_refused_nonmutating(campaign, result, raised)
+    assert "owner_subtree" in detail, detail
+    assert calls == [], calls
+    # Both the authorized member and the retained contradiction survive.
+    assert sorted(str(item) for item in container.rglob("*")) == before
+
+
+def test_the_default_engine_refuses_a_maintenance_sibling_before_the_leaf(campaign):
+    """IR18-1 case 4: maintenance makes the *whole* plan out of domain."""
+
+    campaign.historical_run()
+    for index in range(4000):
+        campaign.store.event("info", "fixture", "x" * 256)
+    cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}}
+    leaf = _generic_leaf(campaign)
+
+    result, raised, plan = _ir18_run(campaign, default_engine=True, cfg=cfg)
+    kinds = {item.action for item in plan.actions}
+    assert "prune_campaign_events" in kinds, kinds
+    assert leaf in {item.path for item in plan.actions}, "the leaf was never planned"
+
+    detail = _assert_refused_nonmutating(campaign, result, raised)
+    assert "maintenance" in detail, detail
+    assert leaf.exists(), "a generic leaf was spent before the plan was refused"
+
+
+@pytest.mark.parametrize("unsupported_first", [True, False])
+def test_a_mixed_plan_is_refused_plan_wide_in_either_order(
+    campaign, unsupported_first
+):
+    """IR18-1 case 3: no convenient prefix is spent before the incompatibility."""
+
+    container = _owner_scoped_container(campaign)
+    leaf = _generic_leaf(campaign)
+    before = sorted(str(item) for item in container.rglob("*"))
+
+    def _order(actions, _snapshot):
+        owner_scoped = [item for item in actions if item.path == container]
+        generic = [item for item in actions if item.path == leaf]
+        assert owner_scoped and generic, (owner_scoped, generic)
+        return owner_scoped + generic if unsupported_first else generic + owner_scoped
+
+    result, raised, _plan = _ir18_run(
+        campaign, default_engine=True, plan_actions=_order
+    )
+    _assert_refused_nonmutating(campaign, result, raised)
+    assert leaf.exists(), "the generic leaf was spent before the refusal"
+    assert sorted(str(item) for item in container.rglob("*")) == before
+
+
+@pytest.mark.parametrize("default_engine", [True, False])
+def test_a_mismatched_action_view_binding_is_refused_before_mutation(
+    campaign, default_engine
+):
+    """IR18-1 case 6: an `artifact_id` may not camouflage a different target.
+
+    The malformed action is built deliberately, because executor rejection of a
+    malformed semantic binding *is* the claim. Everything else - the snapshot,
+    the identity binding, revalidation, execution and the audit - is real.
+    """
+
+    from mdstats.training_data.storage.plan import ACTION_REMOVE, planned_action
+
+    named = _generic_leaf(campaign, "aaaa.bin")
+    decoy = _generic_leaf(campaign, "bbbb.bin")
+
+    def _camouflage(actions, snapshot):
+        view = next(
+            item for item in snapshot.views if item.path == named
+        )
+        # A valid artifact id, a real owner state identity, a genuine plan-bound
+        # filesystem identity - pointed at a different campaign-owned path.
+        return [
+            planned_action(
+                action=ACTION_REMOVE,
+                path=decoy,
+                artifact_id=view.artifact_id,
+                reason="ir18 mismatched binding",
+                owner_state_identity=view.state_identity,
+            )
+        ]
+
+    result, raised, _plan = _ir18_run(
+        campaign, default_engine=default_engine, plan_actions=_camouflage
+    )
+    detail = _assert_refused_nonmutating(campaign, result, raised)
+    assert "may not name one owner artifact and mutate another" in detail, detail
+    assert decoy.exists(), "the camouflaged target was removed"
+    assert named.exists()
+
+
+@pytest.mark.parametrize("default_engine", [True, False])
+def test_an_owner_ineligible_cleanup_action_is_refused_before_mutation(
+    campaign, default_engine
+):
+    """IR18-1 case 7: path authorization alone cannot rescue an ineligible action.
+
+    `p1:data7-cache` is a real owner view for a historical derived cache with no
+    certified reconstruction: unprotected and physically campaign-owned, and
+    released by its owner for neither safe reclamation nor cache eviction.
+    """
+
+    from mdstats.training_data.storage.plan import (
+        ACTION_EVICT_CACHE,
+        ACTION_REMOVE,
+        planned_action,
+    )
+
+    target = campaign.paths.internal / "data7-cache"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "old.bin").write_bytes(b"o" * 12)
+
+    for kind, tier in ((ACTION_REMOVE, "safe"), (ACTION_EVICT_CACHE, "cache")):
+
+        def _ineligible(actions, snapshot, kind=kind):
+            view = next(
+                item for item in snapshot.views if item.artifact_id == "p1:data7-cache"
+            )
+            assert not view.safe_reclaimable and not view.cache_evictable, view
+            protected, _why = snapshot.path_protection(view.path)
+            assert not protected, "the fixture target is protected, not merely ineligible"
+            authorized, why = campaign.boundary.destructive_authorization(view.path)
+            assert authorized, why
+            return [
+                planned_action(
+                    action=kind,
+                    path=view.path,
+                    artifact_id=view.artifact_id,
+                    reason="ir18 owner-ineligible action",
+                    owner_state_identity=view.state_identity,
+                )
+            ]
+
+        result, raised, _plan = _ir18_run(
+            campaign,
+            default_engine=default_engine,
+            tier=tier,
+            plan_actions=_ineligible,
+        )
+        detail = _assert_refused_nonmutating(campaign, result, raised)
+        assert "p1:data7-cache" in detail, detail
+        assert (target / "old.bin").exists(), kind
+
+
+def test_a_generic_leaf_plan_executes_through_the_default_engine(campaign):
+    """IR18-1 case 9: the positive domain is live, not merely restrictive."""
+
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage_reclamation import filesystem_identity
+
+    leaf = _generic_leaf(campaign)
+    size = leaf.stat().st_size
+    identity = filesystem_identity(leaf)
+    observed: list[dict] = []
+
+    real_unlink = executor_mod._unlink_measured_file
+
+    def watch(*args, **kwargs):
+        observed.append({"args": args, "kwargs": kwargs})
+        return real_unlink(*args, **kwargs)
+
+    executor_mod._unlink_measured_file = watch
+    try:
+        result, raised, plan = _ir18_run(
+            campaign,
+            default_engine=True,
+            plan_actions=lambda actions, _s: [
+                item for item in actions if item.path == leaf
+            ],
+        )
+    finally:
+        executor_mod._unlink_measured_file = real_unlink
+
+    assert raised is None, raised
+    assert result is not None and result.status == "complete", result
+    assert result.mutated is True
+    assert int(result.reclaimed_bytes) == size, (result.reclaimed_bytes, size)
+    assert not leaf.exists()
+    assert observed, "the generic leaf never reached the measured fd-relative unlink"
+    # The mutation was bound to the identity the plan carried, through the
+    # authenticated parent descriptor rather than a re-resolved pathname.
+    assert plan.actions[0].filesystem_identity["inode"] == identity["inode"]
+    unlink_dir_fd = observed[0]["kwargs"].get("dir_fd")
+    assert isinstance(unlink_dir_fd, int) and unlink_dir_fd >= 0, observed[0]
+    # The object unlinked is the exact one the plan bound, observed through the
+    # authenticated parent descriptor rather than a re-resolved pathname.
+    observed_stats = observed[0]["args"][1]
+    assert int(observed_stats.st_ino) == int(identity["inode"]), (
+        observed_stats,
+        identity,
+    )
+    audit = _last_audit(campaign)
+    assert audit is not None and audit["status"] == "complete", audit
+    assert int(audit["reclaimed_bytes"]) == size, audit
+
+
+def test_production_cleanup_still_routes_every_class_to_its_owner(campaign):
+    """IR18-1 case 10 (non-P7 classes): the live path keeps its owners.
+
+    The released-P7 half of this claim needs a real qualified campaign and is
+    accepted in the integration suite.
+    """
+
+    from mdstats.training_data.storage import commands as commands_mod
+    from mdstats.training_data.storage import executor as executor_mod
+
+    campaign.historical_run()
+    for index in range(4000):
+        campaign.store.event("info", "fixture", "x" * 256)
+    cfg = {**campaign.cfg, "storage": {"sqlite_compaction_maximum_events": 10}}
+    container = _owner_scoped_container(campaign)
+    leaf = _generic_leaf(campaign)
+
+    subtree: list[str] = []
+    generic: list[str] = []
+    real_subtree = commands_mod.remove_certified_subtree
+    real_generic = commands_mod.remove_planned_outcome
+
+    def watch_subtree(path, **kwargs):
+        subtree.append(str(path))
+        return real_subtree(path, **kwargs)
+
+    def watch_generic(action, **kwargs):
+        generic.append(str(action.path))
+        return real_generic(action, **kwargs)
+
+    commands_mod.remove_certified_subtree = watch_subtree
+    commands_mod.remove_planned_outcome = watch_generic
+    try:
+        result, raised, plan = _ir18_run(campaign, default_engine=False, cfg=cfg)
+    finally:
+        commands_mod.remove_certified_subtree = real_subtree
+        commands_mod.remove_planned_outcome = real_generic
+
+    assert raised is None, raised
+    assert result is not None, result
+    assert subtree == [str(container)], subtree
+    assert generic == [str(leaf)], generic
+    assert not leaf.exists(), "the generic leaf was not removed by production cleanup"
+    # The owner-scoped container kept its retained contradiction rather than
+    # being swept generically.
+    assert (container / "dedup" / "foreign.link").is_symlink()
+    assert any(
+        item["action"] == "prune_campaign_events" for item in result.completed
+    ), result.completed

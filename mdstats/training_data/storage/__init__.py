@@ -95,6 +95,17 @@ from .durability import (
     parallel_digests,
     sha256_file,
 )
+from .cleanup_domain import (
+    CLASS_EXACT_AUTHORIZER,
+    CLASS_GENERIC_LEAF,
+    CLASS_INVALID,
+    CLASS_MAINTENANCE,
+    CLASS_OWNER_SUBTREE,
+    CleanupClassification,
+    StorageEngineDomainError,
+    classify_cleanup_action,
+    classify_cleanup_plan,
+)
 from .executor import (
     STATUS_COMPLETE,
     STATUS_PARTIAL,
@@ -191,6 +202,15 @@ from .trust import (
 
 __all__ = [
     "ACTION_ARCHIVE",
+    "CLASS_EXACT_AUTHORIZER",
+    "CLASS_GENERIC_LEAF",
+    "CLASS_INVALID",
+    "CLASS_MAINTENANCE",
+    "CLASS_OWNER_SUBTREE",
+    "CleanupClassification",
+    "StorageEngineDomainError",
+    "classify_cleanup_action",
+    "classify_cleanup_plan",
     "ACTION_ARCHIVE_MEMBER",
     "ACTION_AUDIT",
     "ACTION_CLEANUP",

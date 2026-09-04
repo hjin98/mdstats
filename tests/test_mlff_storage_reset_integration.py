@@ -2717,11 +2717,18 @@ def test_the_p7_owner_view_never_rediscovers_the_attempt_hierarchy() -> None:
     engine_body = "".join(
         commands.splitlines(keepends=True)[engine.lineno - 1 : engine.end_lineno]
     )
-    released = engine_body.index("P7_RELEASED_ATTEMPT_AUTHORIZER")
+    # IR18-1: routing is by the canonical cleanup semantic class, so the
+    # released-attempt dispatch is keyed on `CLASS_EXACT_AUTHORIZER` rather than
+    # on a hand-rolled authorizer comparison, and the generic remover is reached
+    # only after that class has been excluded by the classifier.
+    released = engine_body.index("CLASS_EXACT_AUTHORIZER")
     # IR17-1C: the consequential default removal is the plan-bound owner.
     generic = engine_body.index("remove_planned_outcome(")
     assert released < generic, (
         "a released P7 action can reach the generic path removal first"
+    )
+    assert "classify_cleanup_plan(" in engine_body, (
+        "production cleanup no longer consumes the canonical classification"
     )
 
 
@@ -4918,12 +4925,16 @@ def test_an_incomplete_plan_identity_reaches_no_syscall(
 # ---------------------------------------------------------------------------
 
 
-def _run_real_cleanup(config: Path, *, engine: bool = True):
+def _run_real_cleanup(config: Path, *, engine: bool = True, select=None):
     """Plan and apply through the real executor, returning the result or failure.
 
     Authorization, planning, `StorageExecutor.run`, action recording, settlement,
     finalization and the durable audit are all production code; only the
     low-level filesystem transition is ever instrumented by the callers below.
+
+    ``select`` may narrow the *real* plan to a subset of its own actions, which
+    is how a default-engine case is given a plan inside that engine's positive
+    generic-leaf domain without inventing an action.
     """
 
     context, store = _context(config)
@@ -4937,10 +4948,15 @@ def _run_real_cleanup(config: Path, *, engine: bool = True):
         )
         from mdstats.training_data.storage.plan import build_storage_plan
 
+        actions = (
+            tuple(item for item in plan.actions if select(item))
+            if select is not None
+            else plan.actions
+        )
         apply_plan = build_storage_plan(
             snapshot,
             policy,
-            plan.actions,
+            actions,
             refusals=plan.refusals,
             created_utc=plan.created_utc,
         )
@@ -5042,44 +5058,47 @@ def test_a_post_mutation_interruption_remains_audited_as_partial(tmp_path: Path)
 
 
 def test_the_default_engine_records_a_post_mutation_failure(tmp_path: Path):
-    """R32-3 case 1: `engine=None` shares the action-boundary recorder."""
+    """R32-3 case 1: `engine=None` shares the action-boundary recorder.
+
+    IR18-1 narrowed the default engine to its positive generic-leaf domain, so
+    this case is driven on a real generic leaf. Driving it on the released-P7
+    plan would now be answered by the domain preflight before any transition,
+    which would make the recorder claim vacuous rather than prove it.
+    """
 
     from mdstats.training_data.storage import executor as executor_mod
 
     config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    leaf = _p7_generic_leaf(config, "cccc.bin")
     real = executor_mod.durable_unlink
     unlinked: list[str] = []
 
     def unlink_then_fail(path, *, dir_fd=None, missing_ok=True, on_unlinked=None):
-        Path(path).unlink()
-        if on_unlinked is not None:
-            on_unlinked()
+        real(path, dir_fd=dir_fd, missing_ok=missing_ok, on_unlinked=on_unlinked)
         unlinked.append(str(path))
         raise OSError(5, "injected durability failure")
 
     executor_mod.durable_unlink = unlink_then_fail
     try:
-        _execution, raised, _plan = _run_real_cleanup(config, engine=False)
+        _execution, raised, _plan = _run_real_cleanup(
+            config, engine=False, select=lambda action: action.path == leaf
+        )
     finally:
         executor_mod.durable_unlink = real
 
+    assert [Path(item).name for item in unlinked] == [leaf.name], unlinked
+    assert isinstance(raised, OSError), raised
     audit = _read_last_audit(config)
     assert audit is not None, "no audit was published"
-    if unlinked:
-        assert isinstance(raised, OSError), raised
-        assert audit["status"] == "partial", audit
-        assert audit["mutated"] is True, audit
-        partials = [
-            item
-            for item in audit["refused_actions"]
-            if item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
-        ]
-        assert partials, audit["refused_actions"]
-        assert all(int(item["reclaimed_bytes"]) >= 0 for item in partials)
-    else:
-        # The default engine refused every P7 action before mutating; that is
-        # still a truthful terminal state and never a fabricated partial.
-        assert audit["mutated"] is False, audit
+    assert audit["status"] == "partial", audit
+    assert audit["mutated"] is True, audit
+    partials = [
+        item
+        for item in audit["refused_actions"]
+        if item.get("outcome") == OUTCOME_PARTIAL_CHANGE_REFUSED
+    ]
+    assert partials, audit["refused_actions"]
+    assert all(int(item["reclaimed_bytes"]) >= 0 for item in partials)
 
 
 def test_the_generic_recursive_partial_is_recorded_by_the_real_executor(
@@ -6340,3 +6359,123 @@ def test_a_mount_refusal_after_a_removed_prefix_keeps_the_exact_partial(
     assert (external / "locked.bin").exists(), "external bytes were removed"
     assert not (target / "dedup" / "a.bin").exists()
     _assert_aggregate_matches_actions(audit)
+
+
+# ---------------------------------------------------------------------------
+# IR18-1 - the released-P7 half of the canonical cleanup domain, at real owners
+# ---------------------------------------------------------------------------
+
+
+def _p7_generic_leaf(config: Path, name: str = "aaaa.bin") -> Path:
+    """Uncataloged archive publication residue: a real generic-leaf target."""
+
+    _cfg, paths = cli._load_config(config)
+    plane = open_storage_control_plane_readonly(paths)
+    plane.archive_root.mkdir(parents=True, exist_ok=True)
+    residue = plane.archive_root / name
+    residue.write_bytes(b"r" * 40)
+    return residue
+
+
+def test_a_released_p7_plan_is_refused_by_the_default_engine(tmp_path: Path):
+    """IR18-1 case 2: released P7 scratch is mutated only by its live owner.
+
+    The plan is a real, freshly revalidated released-attempt cleanup plan with no
+    post-plan owner mutation, so the refusal cannot be stale-plan rejection in
+    disguise.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage import executor as executor_mod
+    from mdstats.training_data.storage.cleanup_domain import StorageEngineDomainError
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    snapshot, _paths = _snapshot(config)
+    released = [
+        view.path
+        for view in snapshot.views
+        if view.artifact_id.startswith("p7:attempt_scratch:") and view.safe_reclaimable
+    ]
+    assert released, "the fixture released no P7 attempt scratch"
+    before = {path: sorted(str(item) for item in path.rglob("*")) for path in released}
+
+    touched: list[str] = []
+    real_generic = executor_mod.remove_planned_outcome
+    real_session = qstore.open_released_attempt_session
+    real_member = qstore.remove_released_attempt_member
+    executor_mod.remove_planned_outcome = lambda action, **kw: touched.append(
+        f"generic:{action.path}"
+    )
+    qstore.open_released_attempt_session = lambda *a, **k: touched.append("session")
+    qstore.remove_released_attempt_member = lambda *a, **k: touched.append("member")
+    try:
+        _execution, raised, plan = _run_real_cleanup(config, engine=False)
+    finally:
+        executor_mod.remove_planned_outcome = real_generic
+        qstore.open_released_attempt_session = real_session
+        qstore.remove_released_attempt_member = real_member
+
+    assert any(item.path in set(released) for item in plan.actions), (
+        "the real planner released no P7 attempt member"
+    )
+    assert isinstance(raised, StorageEngineDomainError), raised
+    assert "exact_authorizer" in str(raised), str(raised)
+    assert touched == [], touched
+    audit = _read_last_audit(config)
+    assert audit is not None, "the refused truth was never published"
+    assert audit["status"] == "refused", audit
+    assert audit["mutated"] is False, audit
+    assert int(audit["reclaimed_bytes"]) == 0, audit
+    # The audit names the engine/domain incompatibility, not a stale plan.
+    assert "cannot execute this plan" in audit["detail"], audit["detail"]
+    assert "re-plan" not in audit["detail"], audit["detail"]
+    for path in released:
+        assert sorted(str(item) for item in path.rglob("*")) == before[path]
+
+
+def test_production_cleanup_still_routes_released_p7_through_its_session(
+    tmp_path: Path,
+):
+    """IR18-1 case 10: the live production path keeps every semantic owner.
+
+    A single real cleanup carries both a released-P7 exact-authorizer action and
+    a generic leaf; each reaches its own implementation and neither reaches the
+    other's.
+    """
+
+    from mdstats.training_data.qualification import store as qstore
+    from mdstats.training_data.storage import commands as commands_mod
+
+    config, _workspace, _harness = _released_attempt_campaign(tmp_path)
+    leaf = _p7_generic_leaf(config)
+
+    members: list[str] = []
+    generic: list[str] = []
+    real_member = qstore.remove_released_attempt_member
+    real_generic = commands_mod.remove_planned_outcome
+
+    def watch_member(session, member_name, **kwargs):
+        members.append(member_name)
+        return real_member(session, member_name, **kwargs)
+
+    def watch_generic(action, **kwargs):
+        generic.append(str(action.path))
+        return real_generic(action, **kwargs)
+
+    qstore.remove_released_attempt_member = watch_member
+    commands_mod.remove_planned_outcome = watch_generic
+    try:
+        execution, raised, plan = _run_real_cleanup(config)
+    finally:
+        qstore.remove_released_attempt_member = real_member
+        commands_mod.remove_planned_outcome = real_generic
+
+    assert raised is None, raised
+    assert execution is not None and execution["status"] in ("complete", "partial"), (
+        execution
+    )
+    assert members, "no released-attempt member reached the P7 session owner"
+    assert generic == [str(leaf)], generic
+    assert not leaf.exists(), "the generic leaf was not reclaimed"
+    planned = {str(item.path) for item in plan.actions}
+    assert str(leaf) in planned, planned
