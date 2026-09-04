@@ -2,678 +2,399 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1-R38
 parent_workplan_id: CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1
-protocol_version: 5.12.0
+protocol_version: 5.14.0
 status: planned
 reviewed_date: 2026-09-04
 reviewed_current_executable_commit: 38b37f6761d30c66ec29e27abf8f2ee3a311f804
 reviewed_current_executable_tree: c5918d5db992c42b144b7770d100c160f9d417f7
-reviewed_branch_head_at_design: 3c7160b82b8b32e21d79872e2bbaaab0f62890de
 supersedes_current_handoff: Revision 37 / IR19 and its plan-closure refinement
-scope: concrete reduction of the current storage cleanup/execution topology while preserving owner authority, plan revalidation, filesystem trust, P7 release semantics, transition truth, archive/restore integrity, and truthful audit outcomes
+scope: bounded architectural reduction of the current storage cleanup/execution realization while preserving owner authority, apply-time safety, P7 release semantics, truthful persistence outcomes, recovery, and supported storage behavior
 ---
 
 # Storage/I-O simplicity consolidation — Revision 38
 
-## Objective and disposition
+## Objective / problem invariants / non-goals
 
-The storage reset has crossed the convergence boundary where another local repair would be the wrong engineering method. The original storage problem remains valid, but the implementation has accumulated mechanisms whose primary purpose is now to keep other mechanisms synchronized. The next implementation pass therefore **reduces the architecture first** and fixes remaining defects by altering the surviving canonical owners rather than adding another wrapper, classifier, fallback, compatibility path, state machine, or recursive remover.
+### Original product problem
 
-The governing simplicity rule is:
+The storage subsystem must safely manage campaign-owned persistent representation after the P1-P7 architectural reset. Storage must be able to report, clean up, evict reconstructible caches, deduplicate, archive, restore, and maintain storage-owned/campaign-owned operational state without becoming a second scientific/currentness authority and without losing restart-equivalent product state.
 
-> **One semantic authority, one explicit operation path, one persistent-transition owner.**
-
-For a proposed repair, implementation must first ask whether the defect disappears by deleting, merging, narrowing, or altering an existing mechanism. New machinery is justified only when repository evidence shows that no existing owner can satisfy a required product invariant cleanly. Any new helper/type/module must replace more consequential complexity than it adds; a new abstraction that merely mediates between existing abstractions is nonconforming.
-
-This is a **design consolidation**, not a weakening of the storage safety model. The accepted owner/currentness, P7 release, filesystem trust, durability/recovery, and truthful-outcome requirements remain binding.
-
-## 1. Original problem versus the implementation we actually built
-
-The parent workplan's original problem was straightforward:
-
-1. retire stale STOR-era pathname/lifecycle policy;
-2. ask the real P1-P7/CampaignStore/cache owners what exists, what is current/restartable, and what is disposable or transformable;
-3. form an immutable owner-bound plan;
-4. revalidate owners, policy, protection closure, and filesystem identity immediately before consequence under storage/owner synchronization;
-5. perform safe cleanup/cache eviction or the genuinely different archive/dedup/restore operation;
-6. report what actually changed and preserve restart-equivalent product state.
-
-The parent workplan explicitly required the **minimum justified number of policies/state machines** and forbade storage from reimplementing P3/P5/P7 currentness semantics. The architecture it asked for was essentially:
+The durable product flow remains:
 
 ```text
-real owners
- -> owner-driven inventory
- -> policy
- -> immutable owner-bound plan
- -> synchronized fresh revalidation
- -> consequential operation
- -> truthful bounded audit
+real semantic owners
+  -> owner-driven storage inventory
+  -> resolved storage policy
+  -> immutable owner-bound plan
+  -> synchronized fresh reauthentication/revalidation
+  -> consequential storage operation
+  -> truthful bounded result/audit
 ```
 
-The current implementation satisfies much of the semantic side of that design, but the cleanup execution side became over-engineered.
-
-| Original requirement | Current realization | Revision-38 decision |
-| --- | --- | --- |
-| Real owners are semantic authority | `owners.py` + `inventory.py` expose current owner views, dependencies, typed nodes, P7 exact authorizer, state/root/path identities | **Preserve.** This is the correct authority layer. Do not create another cleanup authority model. |
-| Immutable plan + fresh apply-time revalidation | `plan.py` binds policy identity, owner-state digest, protection closure, coverage, typed certified nodes, root/path identities, exact authorizer and target filesystem identity | **Preserve and slightly strengthen.** Move the remaining cleanup action/view eligibility checks here instead of re-deriving them later. |
-| One common execution envelope | `StorageExecutor.run` correctly owns lease/barriers, resnapshot, revalidation, admission, settlement and audit, but also owns a default destructive cleanup engine | **Delete the default destructive engine.** `StorageExecutor` becomes shell-only and every consequence supplies an explicit engine. |
-| Cleanup dispatch must fail closed | A separate `cleanup_domain.py` now contains family gate, classification objects, semantic classes, supported-domain sets and dispatcher preflight because default and production cleanup drifted | **Delete the parallel state machine.** The problem it solves disappears with one cleanup engine and stronger existing plan revalidation. |
-| Safe recursive deletion | Generic planned removal, certified-subtree removal, and P7 released-directory removal each implement overlapping recursion, mount checks, descriptor lifetime, final `rmdir`, durability and mutation accounting | **Collapse to one cleanup mutation kernel.** Keep one recursion and delete the other algorithms. |
-| P7 released scratch requires owner-specific authority | `ReleasedAttemptSession`, authenticated state/proof/root identity, proof-as-upper-bound and same-attempt invalidation are real requirements, but P7 also owns its own filesystem deletion implementation | **Keep P7 authority acquisition; delete P7 deletion mechanics.** P7 supplies a live capability and proof to the shared cleanup kernel. |
-| Partial/open containers must not become blanket ownership | `authorized_members()` plus `remove_certified_subtree(... members, refusals ...)` supports selective recursive cleanup at mutation time | **Delete selective recursive cleanup.** Current reclaimable owners already expose safe children as independent views or expose a `CLOSED` tree. `CONTAINER` remains non-recursive for cleanup. |
-| Mutation truth must survive post-transition failure | Cleanup uses transition callbacks/fallback history while archive/restore use the centralized atomic-publication callback to expose `os.replace` before later fsync/readback failures | **Differentiate necessary from accidental machinery.** Cleanup owns unlink/rmdir directly and needs no callback. Retain the single durable-publication callback where it closes several genuine archive/restore post-`replace` windows with one mechanism. |
-| Compatibility only where product requires it | `remove_durably`, classifier symbols and mutation helpers are exported; maintained repository uses are overwhelmingly implementation/tests | **Census then remove.** Tests do not justify preserving a destructive public compatibility surface. |
+### Tier-1A product invariants
 
-The central diagnosis is therefore:
+The following are intrinsic product/problem requirements and remain binding independently of the current implementation:
 
-> The difficult requirements are owner authority, no-follow/mount-safe destructive access, P7 release proof, apply-time revalidation, and truthful partial mutation. The excessive complexity comes from implementing those requirements several times and then inventing classification, compatibility, and test machinery to keep the copies aligned.
+- P1-P7/CampaignStore/cache owners, not storage pathname heuristics, own scientific identity, currentness, restartability, publication/qualification state, and transform/reclaim eligibility.
+- External user/source/reference inputs are never destructively consumed by campaign storage.
+- Current, restartable, in-flight, ambiguous, unreadable, or owner-unresolved state fails toward retention/refusal rather than guessed cleanup.
+- An inspected/authorized consequential plan does not silently retarget itself after owner/currentness/policy/filesystem state changes; current authority is re-established before mutation under the required storage/owner synchronization.
+- Storage authority does not transfer to a replacement filesystem object, symlink target, or different mount merely because a pathname is unchanged.
+- Recursive destruction requires real owner authority over the whole traversed destructive unit; lexical containment is not ownership.
+- P7 released scratch is reclaimable only under authentic released-state/proof/generation/root/target authority, with proof semantics remaining a monotonic-shrink upper bound rather than a license to absorb newly appearing content.
+- Persistent transition truth belongs to this execution and is recorded from the actual state-changing transition, not reconstructed later from pathname disappearance, byte totals, or another actor's state.
+- Already-absent, no-change refusal, successful mutation, and partial mutation after a later failure remain distinguishable; exact substantiated reclaimed-byte accounting, zero-byte namespace mutation, and hard-link de-duplication remain truthful.
+- Archive/restore/dedup/maintenance preserve their existing owner, integrity, recovery, durability, and transition-truth contracts.
+- Storage admission, scratch/inode/I/O limits, bounded report/audit behavior, Python >=3.10, and the accepted POSIX threat/portability boundary remain unchanged.
+- No new persistent descriptor/inode/release/retry registry or second storage scientific/currentness authority is introduced.
 
-## 2. Frozen target architecture
+### Non-goals
 
-The target product path is:
+- No change to target-size science, post-selection science, publication membership, qualification algorithms, calibration, or locked-test semantics.
+- No resurrection of retired STOR1-STOR5 lifecycle authority.
+- No intentionally lossy history-pruning feature.
+- No speculative distributed/object/cloud storage architecture.
+- No package-wide API cleanup unrelated to the affected storage topology.
+- No production-scale DFT/GPU/HPC qualification requirement for this refactor.
+- No line-count target. Simplicity is total justified product/system complexity, not textual minimization.
 
-```text
-owner adapters
-  -> StorageInventorySnapshot
-  -> StoragePolicy
-  -> StoragePlan
-  -> StorageExecutor.run(explicit_engine)
-       storage-operation lease
-       owner barriers
-       fresh resnapshot
-       revalidate_plan
-       admission revalidation
-       explicit engine
-       settlement + audit
-  -> operation engine
-       cleanup -> one cleanup engine -> one cleanup mutation kernel
-       archive -> archive engine
-       restore -> restore engine
-       dedup -> dedup engine
-       maintenance -> existing owner maintenance path
-```
+## Current implementation diagnosis — evidence, not authority
 
-### 2.1 `StorageExecutor` is a transaction/revalidation/audit shell
+The current executable contains legitimate safety semantics but realizes them through too many cooperating Tier-2 mechanisms. In particular, the current tree contains or recently required:
 
-`StorageExecutor.run` owns only common execution concerns:
+- a production cleanup path and a destructive default `StorageExecutor` path;
+- a separate cleanup family gate, semantic classifier, class set, supported-domain preflight, and dispatcher completeness machinery created to keep those paths aligned;
+- multiple consequential recursive deletion implementations across generic/common/P7 cleanup;
+- runtime selective `members + refusals` recursive cleanup machinery;
+- mutation-truth callbacks/fallback history where a helper hides the state-changing syscall from the component that must report it;
+- P7 filesystem deletion mechanics layered on top of genuinely P7-specific release/proof/session authority;
+- tests and exported helpers whose main purpose is preserving or reconciling those implementation seams.
 
-- invocation-local apply authorization;
-- storage-operation serialization;
-- owner activity/publication barriers;
-- fresh owner resnapshot;
-- `revalidate_plan`;
-- admission revalidation when applicable;
-- exception-to-terminal-status settlement from explicit mutation truth;
-- bounded audit publication/retention.
+Those are Tier-2 facts. Their existence, tests, documentation, previous review closure, or internal consumers do not make them product invariants.
 
-It does **not** own cleanup classification or filesystem deletion.
+The root problem is therefore not that the current abstractions need more guards. It is that one product invariant is represented by multiple authorities and multiple destructive implementations, after which extra machinery is required to prove those copies agree.
 
-The `engine` argument becomes mandatory for consequential execution. Remove the `engine=None` destructive behavior rather than trying to make it safer. Current production command paths already pass explicit cleanup/archive/reclaim/restore/dedup engines, so the default path is compatibility/test surface rather than required product architecture.
+Protocol 5.14 active simplification is triggered. Before any additive durable repair, implementation must first remove, narrow, alter, consolidate, or replace the Tier-2 cause of the intermediate problem. Net-new machinery is justified only when a Tier-1/Frozen capability remains genuinely missing, or when one canonical mechanism demonstrably replaces broader existing machinery and reduces total system complexity.
 
-Operation-specific physical ownership checks stay with the explicit operation engine where they already differ materially. Do not invent a universal authorization registry inside `StorageExecutor` merely to make every engine look symmetric.
+## Frozen high-level architecture and engineering envelope
 
-### 2.2 `revalidate_plan` is the canonical action-to-owner binding gate
+Only the following solution decisions are deliberately Frozen for this implementation cycle.
 
-The current plan already binds the information `cleanup_domain.py` later re-derives: owner state identity, `safe_reclaimable`, cache flags/class, coverage, typed nodes, retained members, exact authorizer, root/path identities, protection closure, policy identity and target filesystem identity.
+### F1. Owner-driven semantic authority remains singular
 
-Alter the existing `revalidate_plan` cleanup path so it closes the remaining malformed-plan cases directly:
+The existing owner-driven architecture remains the semantic source of truth. Storage consumes owner facts; it does not create a second cleanup/currentness model.
 
-- for `ACTION_REMOVE` and `ACTION_EVICT_CACHE`, the action's `artifact_id` must resolve to a fresh `OwnerArtifactView`;
-- that view's canonical `path` must equal the action target exactly;
-- `ACTION_REMOVE` requires the fresh view to remain `safe_reclaimable`;
-- `ACTION_EVICT_CACHE` requires the cache tier plus `REUSABLE_CACHE_INDEX`, exact reconstructibility and owner evictability;
-- the existing owner-binding digest, owner-state identity, protection closure and target filesystem identity checks remain authoritative;
-- if any of those facts changed, the plan is stale/refused before the engine mutates anything.
+A consequential remove/evict action must still be authorized by the fresh current owner representation of the exact artifact it will affect. Which internal function performs that check is delegated.
 
-Do this in `plan.py`; do **not** create another cleanup validator/classifier to call from it.
+### F2. Plan then synchronized fresh authority check before consequence
 
-### 2.3 One cleanup engine; no semantic-class framework
+Consequential operations continue to use an immutable owner/policy/filesystem-bound plan plus fresh under-synchronization reauthentication/revalidation immediately before mutation. The current `StoragePlan`/`StorageExecutor` realization is the expected base, but exact helper/function ownership is Tier 2.
 
-The cleanup engine has one small direct dispatch over already-revalidated product facts. Equivalent exact syntax is delegated, but the logic is frozen:
+There must be one common consequential execution envelope for serialization, owner synchronization, fresh authority checking, applicable admission revalidation, settlement, and audit. That envelope must not contain a hidden alternate cleanup algorithm.
 
-```text
-require plan.policy.action == cleanup before action iteration
+### F3. Cleanup has one canonical semantic operation path
 
-for action in plan order:
-    maintenance action
-        -> existing CampaignStore maintenance owner
+There is one canonical production cleanup operation path after common revalidation. No parallel default cleanup path and no parallel semantic classifier/domain state machine survive merely to keep multiple cleanup paths synchronized.
 
-    remove / evict action
-        -> get the already-revalidated owner view
-        -> apply the ordinary physical ownership boundary
+This freezes singular ownership, not an exact callable count or module name. An implementation with one engine function, one command-owned operation object, or an equivalent simpler realization is acceptable if it preserves the same singular authority and introduces no parallel route.
 
-        P7 exact authorizer
-            -> acquire/reuse live P7 attempt capability
-            -> shared cleanup mutation kernel
+### F4. Cleanup has one canonical destructive filesystem implementation family
 
-        unknown non-empty exact authorizer
-            -> fail closed; no generic fallback
+Ordinary cleanup and P7 cleanup share one canonical consequential unlink/rmdir implementation family and one mutation-truth model. There is no second generic remover, second certified-subtree remover, or P7-owned recursive deletion algorithm with overlapping filesystem responsibilities.
 
-        planned leaf (regular file or symlink entry)
-            -> shared cleanup mutation kernel
+The canonical destructive owner must preserve the accepted safety envelope: no-follow/anchored destructive access, mount/ownership protection, plan/owner target identity at the destructive boundary, safe directory descent/removal, exact transition truth, durability, descriptor/resource cleanup, and partial-mutation transport. Exact helper decomposition and syscall-wrapper layout are delegated.
 
-        planned directory + SubtreeCoverage.CLOSED
-            -> shared cleanup mutation kernel
+### F5. Recursive cleanup authority is whole-unit owner authority
 
-        anything else, including SubtreeCoverage.CONTAINER
-            -> refuse/fail closed; no recursive cleanup
-```
+An owner-known open container is not recursive cleanup authority. Cleanup may recurse only through a destructive unit for which the real owner grants whole-tree authority under the accepted closed/exclusive semantics.
 
-There is no `CleanupClassification`, no `CLASS_*`, no supported-domain registry, and no default-versus-production domain alignment test. A short local wrong-action guard is sufficient because there is only one cleanup engine.
+If only selected children are reclaimable, those children must be represented as independently owner-authorized destructive units before cleanup acts. The current owner-view model already supports this for the affected product. Runtime recursive negotiation of `members + refusals` is not part of the target architecture.
 
-Unknown action kinds must be rejected before the first destructive transition of the plan. Implement this as a small direct preflight in the cleanup engine or an equivalent simpler source shape; do not create a handler registry solely to prove dispatch completeness.
+The exact enum/type names (`SubtreeCoverage`, `CertifiedNode`, etc.) remain delegated.
 
-### 2.4 `CONTAINER` is not a cleanup mutation mode
+### F6. P7 owns release semantics, not a second deletion algorithm
 
-The current owner topology removes the need for runtime selective recursion:
+P7 remains the sole authority for released-attempt state/proof/generation/root/release/target semantics, live authority acquisition, monotonic-shrink proof behavior, spent capability protection, same-attempt invalidation, and independent-attempt isolation.
 
-- P7 released attempt scratch is already emitted as one reclaimable owner view per top-level released member; directory members are `CLOSED` and carry exact P7 authority;
-- a CampaignStore orphan directory is `safe_reclaimable` only when the owner has certified it closed;
-- abandoned storage-owned restore staging is `CLOSED + owner_exclusive`;
-- P3/P4/P5/P7 generation/root/container views that are merely `CONTAINER` are retained/reporting/dependency surfaces and are not blanket cleanup authority.
+P7 delegates filesystem deletion mechanics to the canonical cleanup destructive owner. Exact session/capability representation, caching, context-manager shape, and source placement are Tier 2.
 
-Therefore cleanup never calls `authorized_members(view)` to obtain `members + refusals` and never selectively mutates inside an open container.
+### F7. Persistent transition truth is local to the transition owner
 
-If a future owner wants some children of a `CONTAINER` to be reclaimable, the default solution is to expose those children as independent owner views using the existing owner model, not to reintroduce a selective recursive cleanup framework. Reopen Design only if a real owner cannot express the required product behavior that way.
+The component that owns a state-changing transition must make the execution's mutation truth available before later fallible durability/verification work can erase that fact.
 
-`StorageInventorySnapshot.authorized_members()` may remain for archive/dedup read-only member collection where a complete member set is genuinely part of those operations. Its P7 exact-authorizer branch and `qualification.store.authorize_released_attempt_member()` should be deleted if the final maintained-consumer census confirms, as the current product model indicates, that no archive/dedup operation can select P7 released scratch. In all cases, they leave the cleanup mutation path.
+Post-hoc pathname disappearance, reclaimed-byte inference, signature fallback, or manually fabricated transition notification are forbidden because they cannot establish which execution caused the transition.
 
-## 3. One cleanup filesystem mutation kernel
+The exact mechanism is delegated. A direct ledger update, a narrow exact callback at an atomic `replace`, or an equivalent typed mechanism may be used when it is the lowest-complexity solution. No callback/function identity is Frozen.
 
-Revision 38 authorizes exactly one consequential cleanup implementation for unlink/rmdir recursion.
+### F8. Necessary specialization remains where the product semantics are materially different
 
-### 3.1 Reuse the strongest existing code; do not build a fourth remover
+Archive creation/reclamation, restore, deduplication, and CampaignStore maintenance may remain specialized because their data transformations, recovery obligations, and persistence semantics differ materially from cleanup.
 
-Use the current plan-bound descriptor logic in `storage/executor.py` as the primary mechanical base:
+Do not force them through a universal cleanup/action framework merely for symmetry. Conversely, current helper/module boundaries inside those features are Tier 2 and may be reduced if affected by the consolidation.
 
-- anchored componentwise no-follow descent;
-- plan-bound target identity;
-- opened-descriptor mount trust;
-- descriptor-relative child operations;
-- final name-versus-opened-descriptor identity comparison before `rmdir`;
-- action-local `MutationLedger`;
-- structured `PartialMutationError` transport.
+## Delegated solution space
 
-Merge into that one implementation the P7-specific **typed proof constraint**, not the P7 recursive algorithm itself.
+Everything below the Frozen decisions above remains replaceable. In particular, implementation may alter, merge, move, rename, consolidate, or delete:
 
-Do not write a fresh recursive walker beside the existing three and migrate callers gradually. The consolidation stage must move callers and delete superseded recursion in the same stage so there is no shadow fallback.
+- the exact `StorageExecutor.run` signature and whether an explicit engine argument is how F2/F3 are realized;
+- whether cleanup action-to-owner eligibility is checked in `revalidate_plan`, the canonical cleanup path immediately after it, or another single existing owning boundary;
+- `cleanup_domain.py` versus `cleanup.py` versus folding the remaining code into an existing module;
+- `CLASS_*`, `CleanupClassification`, supported-domain sets, family-gate helpers, and dispatcher/preflight objects;
+- exact leaf/tree helper boundaries and private function names;
+- current generic/common/P7 recursive-removal functions;
+- `remove_durably`, `remove_durably_outcome`, `remove_planned_outcome`, `remove_certified_subtree`, and other internal convenience surfaces after maintained-consumer reconciliation;
+- exact P7 session-cache representation, invalidation representation, finalization shape, and descriptor ownership helpers;
+- the current atomic-publication callback versus an equivalent simpler exact transition mechanism;
+- `durable_unlink` retention or inlining for archive hot reclamation;
+- `authorized_members()` implementation details and the P7 planning-only authorization branch where no maintained non-cleanup consumer requires it;
+- placement of result-recording helpers;
+- test organization and structural-analysis technique.
 
-### 3.2 Kernel inputs are existing authority, not a new policy object
+No detail in this section becomes Frozen because the implementation or tests currently depend on it.
 
-Do not create another cleanup action/capability class. The kernel needs only existing data:
+## Implementation obligations
 
-- an authenticated parent descriptor plus entry name, or an anchored ordinary path from which that parent is acquired;
-- `PlannedAction.filesystem_identity` for the target entry;
-- optional owner-certified typed descendant map for a `CLOSED` tree;
-- `owner_exclusive=True` for the one accepted closed-tree case where exclusivity itself is the owner's ownership statement;
-- the existing `MutationLedger`/`MutationOutcome` semantics.
+### O1. Remove duplicated cleanup authority rather than hardening it
 
-Suggested low-complexity shape, not frozen names:
+**Concern / rationale:** the default cleanup path and the production cleanup path created a solution-level problem: keeping their routing domains synchronized. The classifier/domain layer is a repair for that duplicated realization, not a product requirement.
 
-```text
-ordinary cleanup:
-    no-follow open parent from plan.workspace
-    -> remove leaf or closed tree from parent fd
+**Required end state:** one production cleanup semantic path exists after the common execution envelope. No second destructive default route and no separate classifier/domain synchronization state machine are needed to make duplicate paths agree.
 
-P7 cleanup:
-    borrow session.attempt_fd
-    -> remove the same leaf or closed tree from parent fd
-```
+**Delegated solution space:** exact executor/engine APIs and location of the small operation-family/owner/path checks.
 
-The P7 attempt descriptor is borrowed, never closed by the kernel. Every descriptor the kernel opens itself is owned and closed exactly once by the kernel.
+**Suggested realization:** remove destructive `engine=None` behavior; keep the common executor as shell; strengthen the existing plan/current-owner check; make production cleanup the only cleanup path. This is suggested because current production commands already use explicit operation engines and it deletes machinery rather than adding it.
 
-### 3.3 Leaf behavior
+**Acceptance evidence:** runtime production cleanup and wrong-operation controls plus structural/reference evidence that no alternate consequential cleanup route or classifier/domain state machine remains. Do not preserve classifier-specific tests merely to satisfy this obligation.
 
-For one file/symlink entry:
+### O2. Consolidate cleanup mutation into one destructive owner
 
-1. no-follow observe the entry relative to the authenticated parent;
-2. compare the required plan identity immediately before mutation;
-3. if absent, return `already_absent` with zero mutation/bytes;
-4. if kind/identity contradicts the plan, return `refused_no_change`;
-5. measure accountable bytes before unlink;
-6. call `os.unlink(name, dir_fd=parent_fd)`;
-7. immediately after successful unlink, update the ledger/mutation truth;
-8. fsync the same authenticated parent;
-9. a post-unlink fsync/close failure carries the already-recorded partial mutation.
+**Concern / rationale:** multiple recursive removers independently own no-follow descent, mount checks, identity, durability, close behavior, partial mutation, and byte accounting. Repeated defects arose from those copies drifting.
 
-Cleanup must not call `durable_unlink(... on_unlinked=...)`; the cleanup kernel itself owns both the syscall and the ledger and therefore needs no callback to rediscover its own transition.
+**Required end state:** one canonical cleanup destructive implementation family owns consequential leaf/tree unlink/rmdir behavior for ordinary and P7 cleanup.
 
-### 3.4 Closed-tree behavior
+**Delegated solution space:** which existing remover supplies the best code base, module/function boundaries, iterative versus recursive traversal, local helper layout, and exact result helper names.
 
-The single recursion must preserve these accepted rules:
+**Suggested realization:** reuse the strongest current plan-bound descriptor-relative implementation and merge only the P7 typed-proof constraint into it; migrate all callers and delete superseded recursion in the same coherent stage. Do not create a fourth remover for staged migration.
 
-- acquire every child directory no-follow relative to its authenticated parent;
-- apply the canonical opened-descriptor mount/ownership test before descent;
-- never follow a symlink or cross an unresolved/nested mount;
-- for owner-certified topology, every live descendant must be present in the certified map with the same kind;
-- missing certified descendants are allowed monotonic shrink and grant no new authority/bytes;
-- an unexpected descendant, kind change, symlink, special node or mount contradiction stops/refuses using the running ledger;
-- for `owner_exclusive` closed storage staging, plain files/directories are owner-owned by construction; symlink/special/mount ambiguity still reduces authority;
-- measure before unlink and credit only after successful unlink;
-- hard-link identity is de-duplicated action-wide under the existing metric;
-- removing an empty/zero-byte namespace entry still marks mutation even when credited bytes are zero;
-- fsync the directory whose entries changed;
-- keep the authenticated child descriptor live through the final directory-removal boundary;
-- immediately before `os.rmdir(name, dir_fd=parent_fd)`, compare the no-follow entry identity with the still-open descriptor;
-- only the accepted irreducible POSIX race after that final comparison remains outside the guarantee;
-- descriptor close failure never erases a primary mutation failure and is never silently converted to success when it is the only failure.
+**Acceptance evidence:** structural uniqueness/absence evidence plus real-owner ordinary/P7 behavioral tests covering successful removal, replacement/symlink/mount contradiction, partial prefix, zero-byte mutation, hard links, durability failure, and final directory identity safety.
 
-There is exactly one recursive implementation of these rules in the final tree.
+### O3. Remove selective open-container recursive cleanup
 
-## 4. P7 reduction: keep authority, delete filesystem duplication
+**Concern / rationale:** runtime `members + refusals` recursion exists to compensate for an over-broad destructive unit. The current owner topology already exposes reclaimable P7 top-level members independently, certifies reclaimable CampaignStore orphan trees before marking them reclaimable, and treats storage-owned staging as whole-tree exclusive scratch.
 
-P7 is the strongest evidence that specialization and duplication are different things.
+**Required end state:** recursive cleanup never derives destructive authority from an open/container root. A selectively reclaimable child is a first-class owner-authorized action target before mutation.
 
-### 4.1 Preserve the genuinely P7-specific pieces
+**Delegated solution space:** exact owner-view representation and whether any now-dead read-only member helper remains for archive/dedup.
 
-Keep in `qualification/store.py`:
+**Acceptance evidence:** real owner inventory/plan tests proving open containers are retained/non-recursive while independently released children and whole-tree-certified artifacts remain reclaimable; structural absence of runtime selective-recursive cleanup authority.
 
-- authenticated attempt-state and released-proof reading;
-- generation/attempt/release-authority binding;
-- proof-as-monotonic-shrink upper-bound semantics;
-- strict no-follow attempt-root acquisition;
-- plan-bound root/release verification;
-- ephemeral `ReleasedAttemptSession` capability;
-- read-only authenticated proof lookup on the session;
-- one-way close / spent-capability protection;
-- same-attempt contradiction invalidation and independent-attempt isolation.
+### O4. Preserve P7 authority while deleting P7 filesystem duplication
 
-These are owner semantics and cannot be inferred by storage.
+**Concern / rationale:** P7 specialization is necessary for owner semantics but not for generic filesystem deletion mechanics.
 
-### 4.2 Delete the P7-specific deletion implementation
+**Required end state:** authentic P7 release/proof/root/target authority remains required and live through mutation, but P7 does not own a separate recursive unlink/rmdir algorithm.
 
-Delete after migration:
+**Delegated solution space:** exact session/capability representation and lifetime implementation.
 
-- `remove_released_attempt_member` as a filesystem-mutation owner;
-- `_unlink_certified_file`;
-- `_fsync_after_mutation` if it becomes mutation-only dead code;
-- `_remove_certified_directory`;
-- `_empty_and_remove_certified_directory`;
-- `_close_owner_descriptor` where it exists only for the deleted recursive remover;
-- duplicated target-identity/mutation helpers that the shared kernel now owns.
+**Suggested realization:** retain the existing authenticated released-attempt acquisition/session semantics, pass its authenticated ancestry/typed authority into the canonical cleanup destructive owner, and remove P7-only deletion helpers that become redundant.
 
-The cleanup engine verifies/acquires the P7 session and supplies the session's authenticated proof/topology plus `attempt_fd` to the same kernel used by ordinary cleanup.
+**Acceptance evidence:** real P7 owner -> plan -> current production cleanup path -> canonical destructive owner for file and tree cases; release reseal mismatch, root/target replacement, proof monotonic shrink, live addition/kind contradiction, spent capability, same-attempt invalidation, independent-attempt isolation, partial mutation, and close/finalization ranking.
 
-### 4.3 Do not invent a P7 session manager
+### O5. Make transition truth exact without building a transition framework
 
-The current per-attempt session dictionary is sufficient state for two real requirements: proof lookup reuse and same-attempt invalidation. Simplify it rather than replacing it with another class/framework.
+**Concern / rationale:** cleanup had to recover mutation truth because the component reporting the action did not always own the state-changing syscall. Archive/restore legitimately have atomic publication followed by fallible postchecks.
 
-Target lifetime:
+**Required end state:** each consequential transition is attributed exactly to this execution before later failure can hide it. No post-hoc or fabricated inference remains.
 
-- one cached live session or cached acquisition refusal per attempt for the execution;
-- later same-attempt actions do no filesystem work after invalidation;
-- one final session-close site in the cleanup engine;
-- one primary-versus-secondary close ranking rule;
-- no nested finalizer framework and no blanket close suppression.
+**Delegated solution space:** direct ledger updates, narrow exact callbacks, typed transition results/errors, or equivalent simpler mechanisms.
 
-If a kernel outcome is `refused_no_change`/`partial_change_refused` because P7 authority was contradicted, invalidate that attempt before later same-attempt work. If a `PartialMutationError` escapes, record the current action first, invalidate the attempt, preserve the original mutation cause, then let `StorageExecutor` settle/audit the execution.
+**Suggested realization:** cleanup directly owns unlink/rmdir and updates its ledger immediately. Retain the current `on_published` atomic-publication callback only if it remains the smallest shared solution for archive/restore replace-before-fsync/readback failures after consolidation. This callback is not Frozen and may be replaced by an equivalent simpler mechanism.
 
-## 5. Transition truth: delete accidental plumbing, retain the one justified shared mechanism
+**Acceptance evidence:** failpoint/liveness tests through the real transition owner for cleanup, archive blob/manifest/catalog, restore journal/member/container, hot reclaim, dedup replace, maintenance, and audit degradation where affected.
 
-The first R38 draft treated callbacks too broadly. Current source review shows an important distinction.
+### O6. Delete obsolete compatibility/export/test machinery unless a real contract requires it
 
-### 5.1 Cleanup transition truth becomes direct
+**Concern / rationale:** internal helpers and tests can accidentally turn previous implementation seams into pseudo-APIs.
 
-Because the single cleanup kernel performs `os.unlink`/`os.rmdir` itself, it records the `MutationLedger` immediately after each successful syscall. Remove from cleanup:
+**Required end state:** the final runtime/export/test surface reflects the surviving product architecture. Obsolete destructive helpers, classifier symbols, dual-route tests, and compatibility adapters are removed unless a concrete maintained supported contract requires them.
 
-- `durable_unlink` callback use;
-- post-hoc pathname disappearance inference;
-- any `TypeError` signature fallback or manually replayed mutation callback;
-- any decision that equates `reclaimed_bytes > 0` with `mutated=True`.
+**Delegated solution space:** exact migration of maintained internal callers and final public export list.
 
-### 5.2 Keep the atomic-publication callback where it is the simplest sufficient mechanism
+**Acceptance evidence:** maintained-consumer census; package/export references; affected tests. Repository tests or historical workplans alone do not establish a compatibility obligation. If a supported external/public contract is discovered, preserve the contract through the simplest canonical implementation rather than preserving its old algorithm.
 
-`durable_publish_bytes/json` performs `os.replace` and then performs fallible parent-fsync/readback/authentication. If a later step raises, a normal return value cannot tell the caller that the replace already happened. The current `on_published` callback solves this same real problem for archive blob, manifest, catalog and restore-journal publication with one centralized mechanism.
+### O7. Reconcile specification language with stable contract authority
 
-Therefore **do not replace it merely for stylistic purity**. Retain one exact callback contract if it remains the smallest implementation after cleanup reduction:
+**Concern / rationale:** current storage-spec section 5c describes cleanup semantic classes and a default executor domain. Those are current implementation details and conflict with the reduction target.
 
-- fires if and only if this invocation's atomic replace succeeded;
-- fires immediately after replace, before any later failure;
-- all archive/restore phase truth uses that one contract;
-- no compatibility fallback fabricates it;
-- acceptance-critical tests prove the callback/failpoint is live through the real engine.
+**Required end state:** durable specification describes stable owner authority, plan/apply revalidation, recursive authority, filesystem safety, and truthful outcomes without freezing classifier/default-engine machinery.
 
-Likewise, after cleanup stops using `durable_unlink`, retain `durable_unlink(on_unlinked=...)` only if archive hot reclamation remains its real maintained consumer and centralizing unlink+parent durability is smaller than inlining equivalent logic there. Do not create a new universal transition event framework.
+Until the specification is reconciled, Revision 38 supersedes section 5c's implementation-topology clauses (`CLASS_*`, classifier/domain sets, dual cleanup engines, default `engine=None` semantics) while preserving the behavioral safety claims they were intended to protect.
 
-Dedup and maintenance already record their own state-changing transitions directly; preserve that rather than routing them through cleanup machinery.
+**Acceptance evidence:** source/spec alignment review plus regenerated/validated derived storage-spec PDF before final implementation closure.
 
-## 6. Concrete file-by-file repair instructions
+## Expected current simplification surface — non-normative symbol map
 
-### `mdstats/training_data/storage/plan.py`
+The following current symbols/files are high-probability deletion/consolidation targets. This list guides implementation intake; it is not a Frozen proof script. Equivalent simpler realization may change the exact symbol set while preserving O1-O7.
 
-- Preserve `StoragePlan`, `PlannedAction`, owner-binding digest and existing target revalidation.
-- Add the small cleanup remove/evict action-to-owner/path/current-eligibility checks described in §2.2 inside existing plan revalidation.
-- Remove `EXECUTOR_ACTIONS` or comments implying `StorageExecutor` itself performs cleanup if no maintained consumer remains.
-- Do not add a policy-family registry or new action-class hierarchy.
+- `storage/cleanup_domain.py`: `CLASS_*`, `CleanupClassification`, family/domain/preflight helpers and supported-domain sets.
+- `storage/executor.py`: default destructive cleanup branch, cleanup-domain imports, `_execute_actions`, duplicate generic/certified recursive removal, obsolete destructive convenience APIs, and cleanup-specific authorization/result machinery that moves or disappears with singular ownership.
+- `storage/commands.py`: production class/domain dispatch, duplicated cleanup authorization objects, P7-specific filesystem routing after canonicalization.
+- `qualification/store.py`: P7-specific unlink/rmdir recursion and mutation-only helpers after authority is delegated to the canonical destructive owner.
+- `storage/inventory.py`: cleanup use of selective `authorized_members`; P7 planning-only exact-authorizer branch if no maintained archive/dedup consumer requires it.
+- `storage/__init__.py`: exports for removed classifier/destructive internals.
+- tests: default-engine/classifier/domain-equality tests and seam-patching tests that no longer represent a product claim.
 
-### `mdstats/training_data/storage/executor.py`
+If implementation discovers additional callers/consumers, that expands the affected surface; it does not automatically create a new product requirement or freeze the current helper.
 
-Reduce this module to common execution concerns.
-
-Delete/move out of it:
-
-- `DEFAULT_CLEANUP_DOMAIN`;
-- cleanup-domain imports;
-- `engine=None` destructive branch;
-- `_execute_actions`;
-- cleanup-only engine-domain exception handling made obsolete by the deleted classifier;
-- `remove_durably` / `remove_durably_outcome` after consumer migration;
-- `remove_planned_outcome` as a public/general remover;
-- `remove_certified_subtree`;
-- generic/parallel recursive deletion functions;
-- selective-member `_DescriptorScope` modes needed only by `members/refusals` cleanup;
-- cleanup-specific `record_or_reraise` / `record_removal` placement (move with the one cleanup engine if still useful);
-- `authorize_path` if final references confirm it exists only for cleanup; perform the ordinary physical boundary check directly in the cleanup engine instead of constructing a second executor object inside that engine.
-
-Keep:
-
-- `StorageExecutionResult`;
-- operation identity;
-- common run/lease/barrier/resnapshot/revalidation/admission flow;
-- settlement/audit/retention behavior;
-- `synchronization_for` if it remains the canonical owner-barrier derivation.
-
-Make the engine callable mandatory and invoke it directly after successful common revalidation.
-
-### `mdstats/training_data/storage/cleanup_domain.py`
-
-The current classifier/domain module is superseded.
-
-Preferred realization: replace/rename this module into the **single cleanup implementation** rather than adding another cleanup module. Module count must not increase merely because architecture is being simplified.
-
-Delete:
-
-- `CLASS_EXACT_AUTHORIZER`, `CLASS_OWNER_SUBTREE`, `CLASS_GENERIC_LEAF`, `CLASS_MAINTENANCE`, `CLASS_INVALID`;
-- `CLEANUP_SEMANTIC_CLASSES`;
-- `CleanupClassification`;
-- `StorageEngineDomainError` if no non-classifier consumer remains;
-- `require_cleanup_family` as a separate abstraction;
-- `classify_cleanup_action` / `classify_cleanup_plan`;
-- `require_supported_domain` and supported-domain sets.
-
-Replace with only the one cleanup engine plus its private canonical mutation helpers. If retaining the filename avoids pointless import churn, keeping the filename is acceptable; do not preserve classifier semantics for compatibility.
-
-### `mdstats/training_data/storage/commands.py`
-
-- Keep CLI/policy/context/plan orchestration.
-- `storage_cleanup` continues to pass an explicit cleanup engine to `StorageExecutor.run`.
-- Remove `PRODUCTION_CLEANUP_DOMAIN`, `_view_node_kind`, local class dispatch and the duplicated `context.executor(policy)` instance used only for `authorize_path`.
-- Remove `_apply_released_member` from commands once P7 dispatch is owned by the one cleanup engine.
-- Keep `build_cleanup_plan` simple and strict: every eligible decision must resolve back to its owner view; do not silently emit empty owner-state identity when the view is absent.
-- Do not add a command-layer router to replace the deleted classifier.
-
-### `mdstats/training_data/storage/inventory.py`
-
-- Preserve cross-owner protection closure and read-only owner inventory.
-- Cleanup stops using `authorized_members()` as a mutation authorization API.
-- Preserve the generic read-only member enumeration only where archive/dedup genuinely consume it.
-- Remove the P7 `authorize_released_attempt_member` branch if the final maintained runtime census confirms no archive/dedup feature selects P7 released scratch.
-- Do not introduce a cleanup-specific inventory/capability type.
-
-### `mdstats/training_data/storage/owners.py`
-
-Preserve the existing semantic vocabulary; it is already sufficient:
-
-- `safe_reclaimable` / cache/archive/dedup eligibility;
-- `SubtreeCoverage.CLOSED`, `CONTAINER`, `NOT_APPLICABLE`;
-- typed `certified_nodes`;
-- `owner_exclusive`;
-- `exact_authorizer` for P7;
-- state/root/path identity.
-
-Do not add a new cleanup enum. If selective cleanup is ever needed, first express the reclaimable child as another owner view.
-
-### `mdstats/training_data/qualification/store.py`
-
-- Preserve P7 authentication/session/proof code from §4.1.
-- Delete the duplicate P7 filesystem remover family from §4.2 after migration.
-- Remove `authorize_released_attempt_member` if the final non-cleanup consumer census shows it is dead.
-- Do not duplicate shared cleanup target-identity, mount, close or mutation-ledger helpers here after consolidation.
-
-### `mdstats/training_data/storage/outcome.py`
-
-Preserve `MutationOutcome`, `MutationLedger`, `PartialMutationError` and the four dispositions. They represent real product states and replace ambiguous booleans/prose. Consolidation should reduce their callers, not weaken them.
-
-### `mdstats/training_data/storage/trust.py`
-
-Keep one canonical implementation for no-follow directory acquisition, opened-descriptor mount trust and final directory identity verification. The cleanup kernel and P7 authority acquisition reuse it. Do not copy these rules into another module.
-
-### `mdstats/training_data/storage/durability.py`
-
-- Keep the crash-durable publication owner.
-- Preserve the exact `on_published` transition callback if it remains the lowest-complexity solution for the archive/restore replace-before-fsync failure window.
-- Cleanup no longer uses `durable_unlink` to learn mutation truth.
-- Remove compatibility/fallback behavior rather than supporting multiple callback signatures.
-
-### `mdstats/training_data/storage/archive.py`, `dedup.py`, `maintenance.py`
-
-Do not redesign these merely because cleanup is being simplified. Preserve their genuinely distinct algorithms and recovery semantics.
-
-Only touch them where needed to:
-
-- remove dead cleanup/shared imports;
-- preserve exact transition truth;
-- migrate an internal helper whose old cleanup compatibility API is deleted.
-
-### `mdstats/training_data/storage/__init__.py`
-
-Remove public exports for implementation machinery that ceases to exist, including classifier/domain symbols and destructive convenience helpers. Do not keep a compatibility export merely because repository tests imported it.
-
-Limit API cleanup to the affected storage internals; do not turn R38 into an unrelated package-wide API redesign.
-
-### Tests
-
-Delete or rewrite tests whose only product is the superseded machinery, including tests centered on:
-
-- default cleanup engine domains;
-- `CLASS_*` / exported cleanup classifier behavior;
-- supported-domain/handler equality;
-- `remove_durably` compatibility behavior as an API;
-- monkeypatching generic/certified/P7 removers separately simply to prove which duplicate path was reached.
-
-Preserve the behavioral claim behind a test when it is real. Examples:
-
-- the old symlink-removal test should exercise the real cleanup path or the one canonical kernel, not force retention of `remove_durably`;
-- a P4/cross-store test that used `remove_durably` merely as fixture manipulation should use ordinary test filesystem operations rather than a product compatibility API;
-- wrong-family safety needs one real explicit-cleanup-engine guard test, not a matrix proving both a deleted default engine and a deleted classifier agree.
-
-## 7. Required acceptance: prove reduction and behavior together
-
-### 7.1 Structural reduction acceptance
-
-Final source must establish all of the following:
-
-- `StorageExecutor.run` has no destructive default/fallback engine;
-- no production consequential apply call uses `engine=None`;
-- one production cleanup engine exists;
-- `cleanup_domain` semantic classes/classifier/domain sets are absent;
-- one and only one consequential cleanup recursive unlink/rmdir implementation exists;
-- no P7 recursive deletion implementation remains;
-- no generic recursive directory-removal compatibility path remains;
-- no cleanup mutation accepts `members + refusals` and decides selective ownership while walking;
-- cleanup never recursively deletes a `SubtreeCoverage.CONTAINER`;
-- no consequential fallback from unknown/owner-specific authority to generic deletion exists;
-- no post-hoc pathname disappearance inference or mutation-from-byte-total inference exists;
-- no signature-incompatible `TypeError` fallback fabricates transition truth;
-- P7 and ordinary cleanup reuse the same filesystem mutation kernel;
-- mutation/trust helpers removed from the architecture are also removed from `storage.__init__`;
-- no new storage module/state machine/registry was added solely to replace deleted routing machinery.
-
-Use references plus Semgrep/AST/Serena when available. Any custom structural rule used for acceptance must be proven live against one known-bad and one known-good construct and state its scan scope.
-
-Net line count is not itself a correctness metric, but the named mechanism deletion is mandatory. If the combined production cleanup topology (`executor.py`, cleanup implementation, `commands.py`, P7 removal surface, affected exports) grows materially instead of shrinking, implementation must stop and explain which required invariant forced the growth before review; wrapper relocation is not closure.
-
-### 7.2 Real-owner behavioral acceptance
-
-All safety claims that cross an owner boundary must traverse the real owner -> plan -> `StorageExecutor` -> explicit cleanup engine -> shared kernel path.
-
-Required representative cases:
-
-**Ordinary leaf**
-
-- successful file removal and exact bytes;
-- already absent -> completed terminal state, zero mutation/bytes;
-- symlink entry removal never touches its target;
-- kind/device/inode/size/mtime replacement contradiction survives;
-- zero-byte file removal still sets mutation truth;
-- unlink succeeds then parent fsync fails -> exact partial outcome/audit.
-
-**Certified/owner-exclusive closed tree**
-
-- complete normal removal;
-- unexpected descendant, kind substitution, symlink, special node or mount boundary refuses/stops;
-- missing recorded node is tolerated only where monotonic shrink is part of that owner's contract;
-- earlier prefix removed then later contradiction/failure -> exact partial bytes/mutation;
-- hard-link accounting follows the existing metric;
-- directory replacement after opened-descriptor acceptance but before final `rmdir` survives;
-- nested/root descriptor close failure preserves primary mutation truth and a close-only failure remains visible.
-
-**P7**
-
-- release authority reseal mismatch;
-- attempt-root replacement;
-- top-level target identity replacement for both file and directory;
-- proof monotonic shrink / interrupted retry;
-- live addition and kind change refusal;
-- spent/closed session cannot reach a filesystem syscall;
-- mutation-time contradiction invalidates later same-attempt actions;
-- an independent attempt remains independent;
-- P7 file and directory removals demonstrably execute the same kernel as ordinary cleanup;
-- post-mutation kernel failure plus session-close failure retains the original primary cause and exact partial action evidence.
-
-**Cross-operation preservation**
-
-- archive blob/manifest/catalog post-`replace` failures retain exact publication phase/mutation truth;
-- restore staging/terminal journal and destination transitions remain truthful;
-- archive hot reclaim unlink-before-durability failure remains exact;
-- dedup alias replacement and maintenance prune/VACUUM transition truth remain intact;
-- audit publication failure still degrades audit status without pretending to roll back a mutation.
-
-### 7.3 Exact-candidate final evidence
-
-After the final executable/test edit:
-
-1. record exact executable commit and tree;
-2. re-derive the affected surface from the final diff and references;
-3. run focused reduction/kernel/P7/transition tests;
-4. run complete `tests/test_mlff_storage_reset_core.py` and `tests/test_mlff_storage_reset_integration.py`;
-5. run maintained P7 and owner regressions, including the existing P4F storage/docs, P6 destructive-closure, P7 R11/R12/R13 and campaign CLI suites where they remain maintained;
-6. include every final-census-discovered maintained caller of `StorageExecutor`, cleanup, archive reclaim, restore, dedup, maintenance, P7 session/proof, or affected durability primitives;
-7. run `pytest --collect-only -q`;
-8. run changed-module compile/import checks, `git diff --check`, repository-required static checks and conflict-marker scan;
-9. rerun the structural/absence checks in §7.1 on the exact final tree;
-10. validate affected Markdown and regenerate/validate the committed storage-spec PDF derivative;
-11. rerun the complete affected-surface regression/integration set after all executable/test changes are assembled.
-
-External DFT, long GPU production and environment-specific HPC/shared-filesystem qualification remain deferred and nonblocking: R38 changes storage control/mutation topology, not scientific algorithms or production-scale performance policy.
-
-## 8. Implementation sequence
-
-### Stage A — make the plan/executor architecture truthful
-
-1. Change `StorageExecutor.run` to require an explicit engine.
-2. Remove default cleanup execution and its domain/error handling.
-3. Strengthen existing `revalidate_plan` with exact cleanup action/view/path/eligibility checks.
-4. Convert/remove tests that exist only for the deleted default engine/classifier boundary.
-5. Run stage-local executor/plan/command affected regression.
-
-**Stage-A exit condition:** there is one production cleanup engine and no default destructive execution path; malformed cleanup action authority is closed by existing plan revalidation rather than a classifier layer.
-
-### Stage B — collapse cleanup routing and recursion in one edit set
-
-1. Replace/delete `cleanup_domain.py` classifier contents and establish the one cleanup implementation without increasing storage module count.
-2. Remove class/domain routing from `commands.py` and move the one cleanup engine to its canonical home.
-3. Consolidate generic/closed-tree descriptor recursion into one kernel using current plan-bound mechanics.
-4. Route ordinary leaf/CLOSED cleanup through it.
-5. Route P7 live-session actions through the same kernel.
-6. Delete generic compatibility recursion, certified-subtree recursion and P7 recursive removal in the same stage.
-7. Remove cleanup use of `authorized_members(... members, refusals ...)` and refuse `CONTAINER` recursion.
-8. Run real-owner ordinary/P7/tree race/failure regression before continuing.
-
-**Stage-B exit condition:** source inspection can point to one recursive cleanup implementation and one cleanup engine; there is no fallback path waiting for a later cleanup stage.
-
-### Stage C — reduce lifetime/transition/API debris
-
-1. Simplify P7 session handling to one per-attempt cache/refusal plus one close-ranking site; do not add a manager class.
-2. Remove cleanup transition callbacks/fallbacks; direct kernel syscalls own ledger truth.
-3. Preserve the one justified durable-publication callback for archive/restore unless an actually smaller equivalent is demonstrated.
-4. Remove dead `remove_durably`/classifier/destructive helper exports and migrate tests/fixtures.
-5. Remove P7 planning/member-authorizer traversal if the final real-consumer census proves it dead outside superseded cleanup/tests.
-6. Run stage-local P7 lifetime, archive/restore transition and package import regression.
-
-### Stage D — reconcile current specification and delete implementation-shaped tests
-
-Update `docs/specs/training_data/mlff_storage_management_spec.md` so current normative prose describes:
-
-- one explicit cleanup engine;
-- one cleanup mutation kernel;
-- plan revalidation as the action-to-owner binding gate;
-- `CONTAINER` as non-recursive cleanup authority;
-- P7 as authority provider to the shared kernel;
-- one justified atomic-publication transition callback rather than a universal transition framework.
-
-Delete prose that freezes the obsolete default engine, cleanup semantic classes, parallel supported-domain sets, or three recursive deletion paths. Preserve behavioral trust/P7/outcome/durability guarantees.
-
-Regenerate the PDF derivative and run documentation checks.
-
-### Final assembled closure
-
-Perform final accepted-contract reconciliation, structural reduction proof, affected-surface derivation, complete affected regression/integration and exact-candidate audit. Close/archive the storage reset only if the resulting code both preserves the hard semantics and materially reduces the number of consequential mechanisms.
-
-## 9. Implementation authority
+## Implementation authority
 
 ### Frozen
 
-- The original product goal: owner-driven safe storage transformation with truthful persistent outcomes.
-- One semantic authority, one explicit operation path, one persistent-transition owner.
-- `StorageExecutor` is common transaction/revalidation/audit shell only; no default cleanup engine.
-- `revalidate_plan` is the canonical cleanup action-to-owner/path/current-eligibility gate.
-- One production cleanup engine; no parallel cleanup classifier/domain state machine.
-- Cleanup recursively mutates only owner-authorized `CLOSED` trees; `CONTAINER` is never blanket/selective recursive cleanup authority.
-- One consequential cleanup unlink/rmdir recursion shared by ordinary and P7 cleanup.
-- P7 owns release/proof/root/currentness/session semantics and does not own a second filesystem deletion algorithm.
-- Existing four cleanup outcomes and exact mutation/byte semantics.
-- No-follow descriptor-relative mutation, mount trust and final directory identity rules.
-- Persistent transition truth is established at the transition, never inferred from later pathname state or byte totals.
-- The existing atomic-publication callback may remain because evidence shows it closes several real replace-before-postcheck failure windows with one mechanism; do not replace it with more machinery without a demonstrated simplification.
-- Archive/dedup/restore/maintenance remain specialized only where their algorithms/recovery semantics are materially distinct.
-- No new persistent authority/control plane, handler registry, cleanup state machine, compatibility framework or temporary parallel remover.
-- Tests/historical workplans are not compatibility authority for obsolete internal destructive APIs.
-- Future ordinary defects governed by these invariants are implementation fixes in the surviving owner/kernel, not grounds for another numbered architecture revision.
+- Tier-1A product invariants listed above.
+- F1 owner-driven semantic authority.
+- F2 immutable plan plus synchronized fresh authority check before consequence and one common non-destructive execution envelope.
+- F3 one canonical production cleanup semantic path with no hidden alternate destructive route.
+- F4 one canonical cleanup destructive filesystem implementation family shared by ordinary and P7 cleanup.
+- F5 whole-unit owner authority for recursive cleanup; open/container ownership alone is not recursive destructive authority.
+- F6 P7 owns release/proof/root/currentness semantics and delegates generic filesystem deletion mechanics.
+- F7 exact transition truth at the transition owner; no later pathname/byte/fallback inference.
+- F8 specialization only where materially required by distinct archive/restore/dedup/maintenance semantics.
+- Existing supported storage behavior, durability/recovery/security/compatibility envelope, and prohibition on a new persistent storage scientific/currentness authority.
 
 ### Delegated
 
-- Exact final filename of the single cleanup implementation (`cleanup_domain.py` repurposed versus one-for-one rename to `cleanup.py`). Do not increase module count merely for cleanliness.
-- Exact private function names and whether leaf/tree entry points are two small functions over one private recursion or one function with a simple branch.
-- Exact source placement of cleanup result-recording helpers.
-- Whether `durable_unlink` is retained solely for archive hot reclamation or inlined there, based on smaller total implementation while preserving exact transition truth.
-- Removal of `authorize_released_attempt_member` after the required final real-consumer census.
-- Local exception wording and test organization.
+- Exact filenames, classes, functions, enum names, helper counts, callable signatures, engine-argument mechanics, result-helper placement, session-cache representation, callback identity, private traversal structure, and test organization.
+- Whether current `revalidate_plan` is the exact location of all cleanup current-owner checks, provided there remains one fresh authoritative gate before mutation.
+- Whether `cleanup_domain.py` is deleted, renamed, or repurposed.
+- Which existing recursive implementation is used as the consolidation base.
+- Whether `durable_unlink` or `on_published` survive as the minimum justified realization.
+- Exact compatibility facades retained for any real supported consumer discovered during implementation.
+- Structural-analysis tool choice and rule shape.
 
 ### Reopen only on evidence
 
-Reopen only the affected design surface if implementation establishes one of these facts:
+Reopen only the affected Frozen surface if evidence establishes one of the following:
 
-1. a maintained supported external/public consumer truly requires destructive `StorageExecutor.run(engine=None)` and cannot be migrated safely;
-2. a current owner must safely reclaim a strict subset of a `CONTAINER`, cannot expose those children as independent owner views, and refusing the operation would violate a required product behavior;
-3. P7 cannot spend its authenticated live capability through the shared kernel without weakening release/root/target/proof semantics;
-4. a materially distinct filesystem/platform requirement makes one shared cleanup recursion less safe/supportable than justified specialization;
-5. atomic publication transition truth cannot be preserved by the existing callback without a demonstrably simpler replacement.
+1. the owner-driven plan/fresh-revalidation architecture cannot express a required current storage operation without a materially different authority model;
+2. a real current owner must safely reclaim selected descendants that cannot be represented as independent owner-authorized destructive units and refusing them violates a required product capability;
+3. P7 cannot delegate filesystem deletion to one canonical destructive owner without weakening its release/proof/root/target guarantees;
+4. a supported filesystem/platform within the product contract requires materially different destructive semantics that make one canonical cleanup implementation family unsafe or unmaintainable;
+5. the common consequential execution envelope itself must own materially different cleanup semantics to satisfy a real product contract;
+6. a concrete supported external compatibility contract requires an otherwise removed behavior and cannot be preserved through the canonical path without changing Frozen architecture.
 
-Old tests, historical review language, implementation inconvenience, code-size aesthetics, or absence of optional Serena/Semgrep/Hypothesis tooling are not redesign evidence.
+Implementation inconvenience, old tests, historical workplans, current helper dependencies, code-size aesthetics, or a new failure site under already-binding semantics are not redesign evidence.
 
-## 10. Handoff closure
+## Affected surface and task-specific acceptance
 
-This Revision-38 file is the complete current architectural-reduction contract. Revision 30-37 and IR review/reopen documents remain historical evidence only and are not required to implement this target.
+### Provisional affected surface
 
-The supplied current handoff is:
+At minimum re-derive and inspect:
 
-- `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — original owner-driven product architecture and non-goals;
-- this Revision-38 plan — concrete current reduction architecture and repair obligations;
-- `docs/specs/training_data/mlff_storage_management_spec.md` — behavioral storage contract, with obsolete implementation-topology wording to be reconciled by Stage D;
-- current source/tests — evidence of the implementation to reduce.
+- `mdstats/training_data/storage/{plan,executor,commands,inventory,owners,outcome,trust,durability,__init__}.py`;
+- current cleanup implementation/classifier module;
+- `mdstats/training_data/qualification/store.py`;
+- archive hot-reclamation and any shared durability consumer affected by destructive-helper cleanup;
+- dedup/maintenance only where shared transition/result APIs change;
+- campaign CLI/storage entry points and every maintained `StorageExecutor`/cleanup caller;
+- storage core/integration tests plus maintained P7/owner/campaign regressions discovered from final references;
+- current storage specification and generated PDF derivative.
 
-Snapshot-loss counterfactual: with Git history, prior chats, and R30-R37/IR files removed, this set still recovers the original problem, protected semantics, mechanisms that must survive, mechanisms that must be deleted, exact reduction topology, acceptance boundaries and genuine redesign triggers.
+This surface is provisional. Final Implementation must re-derive it from the assembled candidate. Affected-surface expansion does not expand product requirements or freeze newly discovered Tier-2 machinery.
 
-**Design/workplan disposition: CLOSED / implementation-ready under Revision 38.**
+### Structural reduction claims
 
-**Implementation disposition: PENDING. The reviewed current executable is `38b37f6761d30c66ec29e27abf8f2ee3a311f804`, tree `c5918d5db992c42b144b7770d100c160f9d417f7`; it is the pre-consolidation implementation to reduce, not the accepted target architecture.**
+Final source must establish, by source/reference/structural evidence appropriate to the final realization:
+
+- no alternate consequential cleanup path bypasses the canonical cleanup semantic owner;
+- no independent classifier/domain state machine exists merely to reconcile parallel cleanup paths;
+- only one canonical consequential cleanup recursive unlink/rmdir implementation family remains;
+- P7 has no separate recursive filesystem deletion algorithm;
+- open/container ownership is not converted into runtime selective recursive cleanup authority;
+- unknown/owner-specific authority cannot fall through to generic deletion;
+- mutation truth is not inferred from later pathname disappearance, reclaimed bytes, or signature fallback;
+- obsolete destructive compatibility routes do not preserve a second algorithm;
+- no new abstraction/state/registry was added unless it satisfies the Protocol-5.14 justified-abstraction rule by protecting an identified Tier-1/Frozen capability or replacing broader existing complexity.
+
+A net-growing refactor is not automatically wrong, but it triggers an explicit conformance challenge: identify the Tier-1/Frozen capability the added machinery protects and show what broader complexity it replaces. Growth whose purpose is only to mediate surviving old machinery is nonconforming.
+
+### Real-boundary behavioral acceptance
+
+Acceptance binds to product/Frozen claims, not to current Tier-2 function names. In the current realization the path is approximately owner -> plan -> common executor envelope -> cleanup operation -> destructive owner; if implementation legitimately relocates delegated owners, remap acceptance to the new real production path and invalidate/rerun owner-specific evidence.
+
+For owner-authority and cleanup-safety claims, tests must execute the real current semantic owner and the real production cleanup operation. Doubles/failpoints may sit below the semantic owner/destructive transition boundary to simulate filesystem failure, durability failure, or expensive dependencies. Do not monkeypatch the owner/cleanup dispatcher itself to manufacture the accepted decision.
+
+Representative required cases:
+
+- ordinary leaf: success, already absent, symlink entry safety, plan/target replacement contradiction, zero-byte mutation, post-unlink durability failure;
+- whole-tree owner authority: normal removal, unexpected descendant, kind/symlink/special/mount contradiction, monotonic missing recorded node where owner contract permits it, partial prefix, hard links, final directory replacement, descriptor close/finalization failure;
+- P7: release/proof/root/target mismatch, monotonic shrink, live addition/kind contradiction, spent authority, same-attempt invalidation, independent-attempt isolation, file/tree cleanup through the canonical destructive owner, post-mutation plus finalization failure ranking;
+- cross-operation preservation: archive/restore/dedup/maintenance transition truth and audit degradation on affected shared code.
+
+Exact current helper identity is not an acceptance invariant unless a real supported contract makes it so.
+
+### Final functional acceptance
+
+After all material executable/test edits:
+
+1. reconcile the assembled implementation against Tier-1A + Frozen F1-F8;
+2. re-derive final affected surface and maintained consumers;
+3. run focused cleanup/P7/transition checks;
+4. run stage-local affected regression after each coherent executable stage;
+5. run complete storage core/integration suites and every final-census maintained affected owner/CLI/consumer regression;
+6. run repository-required collection/import/static/conflict/diff checks;
+7. establish structural reduction claims on the exact assembled candidate;
+8. reconcile Markdown specification and regenerate/validate its PDF derivative;
+9. rerun final complete affected-surface regression/integration after all material executable edits;
+10. record exact final commit/tree and any genuinely unavailable blocking check.
+
+External DFT, long GPU production, and environment-specific HPC/shared-filesystem qualification remain deferred/nonblocking because this work changes storage control/mutation topology rather than scientific algorithms or production-scale performance policy.
+
+## Implementation sequence and simplification triggers
+
+### Stage A — remove duplicate cleanup authority
+
+Coherently remove the alternate/default destructive cleanup route and the classifier/domain reconciliation machinery it necessitated. Preserve the common consequential envelope and one fresh authoritative remove/evict gate. Update affected tests in the same stage.
+
+**Stage exit:** one canonical cleanup semantic path remains; wrong-operation/malformed authority fails before mutation without a second semantic state machine.
+
+### Stage B — collapse destructive filesystem ownership
+
+Move ordinary and P7 cleanup onto one canonical destructive implementation family, eliminate runtime selective open-container recursion, and delete superseded generic/common/P7 recursion in the same coherent stage. Preserve P7 owner semantics and exact mutation truth.
+
+**Stage exit:** one canonical destructive owner serves ordinary/P7 cleanup; no shadow fallback remains.
+
+### Stage C — remove compatibility/finalization/transition residue
+
+Reconcile maintained consumers; delete obsolete destructive exports/wrappers; simplify P7 lifetime/finalization and cleanup transition plumbing; retain or replace archive/restore transition signaling only according to the minimum justified realization.
+
+**Stage exit:** no remaining helper/state exists primarily to preserve a removed cleanup architecture.
+
+### Stage D — specification and assembled closure
+
+Reconcile the storage specification to stable behavior/authority rather than implementation classes; perform final accepted-contract reconciliation, affected-surface derivation, structural reduction proof, final regression/integration, and exact-candidate evidence.
+
+### Active simplification trigger during implementation
+
+If implementation encounters another defect whose proposed fix adds a wrapper, fallback, classifier, state bit, compatibility path, retry, session layer, or second representation, stop before making it durable and ask:
+
+1. Which Tier-1A or Frozen F1-F8 requirement does the proposed machinery protect?
+2. Is the problem created only by surviving Tier-2 machinery?
+3. Can deleting/narrowing/altering/consolidating that machinery make the problem disappear?
+4. If a new abstraction is still needed, what broader mechanisms does it replace so total system complexity decreases?
+
+If no Tier-1/Frozen justification exists, additive preservation is not an acceptable repair.
+
+## Handoff closure
+
+Current supplied authority is:
+
+- `STORAGE_IO_MANAGEMENT_RESET_WORKPLAN.md` — original product problem, owner-driven architecture, engineering envelope, and non-goals;
+- this Revision-38 plan — current Protocol-5.14 Frozen architecture, delegated solution space, reduction obligations, acceptance boundaries, and redesign triggers;
+- `docs/specs/training_data/mlff_storage_management_spec.md` — stable behavioral contract, except that section 5c's classifier/default-engine implementation topology is immediately superseded by Revision 38 and must be reconciled before final closure;
+- current source/tests — evidence of the Tier-2 realization to reduce, not authority for preserving it.
+
+Snapshot-loss counterfactual: with Git history, prior chats, R30-R37/IR artifacts, and implementation-created invariants removed, the supplied set still recovers the original product problem, Tier-1 requirements, Frozen high-level architecture, delegated solution freedom, expected reduction, task-specific acceptance, and genuine Design-reopen triggers.
+
+**Design/workplan disposition: CLOSED / implementation-ready under Protocol 5.14.0 Revision 38.**
+
+**Implementation disposition: PENDING. The reviewed current executable is `38b37f6761d30c66ec29e27abf8f2ee3a311f804`, tree `c5918d5db992c42b144b7770d100c160f9d417f7`; it is evidence of the pre-consolidation Tier-2 realization, not the target architecture.**
