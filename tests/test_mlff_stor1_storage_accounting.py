@@ -273,7 +273,10 @@ def test_cleanup_does_not_traverse_an_external_records_symlink(tmp_path: Path) -
 def test_executor_unlinks_a_campaign_symlink_without_touching_its_target(
     tmp_path: Path,
 ) -> None:
-    from mdstats.training_data.storage.executor import remove_durably
+    from types import SimpleNamespace
+
+    from mdstats.training_data.storage.removal import remove_planned_target
+    from mdstats.training_data.storage_reclamation import filesystem_identity
 
     config = _write_config(tmp_path)
     cfg, paths = campaign_cli._load_config(config)
@@ -292,7 +295,13 @@ def test_executor_unlinks_a_campaign_symlink_without_touching_its_target(
     )
     authorized, _detail = boundary.destructive_authorization(link)
     assert authorized
-    assert remove_durably(link)
+    outcome = remove_planned_target(
+        SimpleNamespace(path=link, filesystem_identity=filesystem_identity(link)),
+        anchor=paths.workspace,
+    )
+    assert outcome.outcome == "removed", outcome
+    # The link entry went; its target's bytes are neither removed nor credited.
+    assert int(outcome.removed_bytes or 0) == 0, outcome
     assert victim.read_bytes() == b"keep"
     assert not link.exists() and not link.is_symlink()
 

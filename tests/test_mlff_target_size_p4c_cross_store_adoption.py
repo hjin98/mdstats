@@ -571,7 +571,7 @@ def test_p4c_no_target_size_transaction_body_nests_reconciliation_or_cleanup():
         "reconcile_and_adopt_target_size_head",
         "commit_target_size_boundary_batch",
         "record_candidate_boundary_outcome",
-        "remove_durably",
+        "remove_planned_target",
         "durable_unlink",
         "deduplicate",
         "create_cold_archive",
@@ -760,6 +760,46 @@ def test_p4c_fence_never_grants_authority_outside_the_workspace(tmp_path: Path):
         store.close()
 
 
+def _remove_authorized_candidate(candidate) -> None:
+    """Remove one boundary-authorized path through the canonical storage owner.
+
+    These cases are about the *ownership boundary*'s answer, not about cleanup
+    planning, so the removal is driven directly - but through the one
+    consequential destructive owner, bound to the candidate's own live identity
+    and anchored at the campaign workspace, exactly as production cleanup binds
+    it.
+    """
+
+    from pathlib import Path as _Path
+    from types import SimpleNamespace
+
+    from mdstats.training_data.storage.removal import (
+        Certification,
+        remove_planned_target,
+    )
+    from mdstats.training_data.storage_reclamation import filesystem_identity
+
+    target = _Path(candidate)
+    remove_planned_target(
+        SimpleNamespace(path=target, filesystem_identity=filesystem_identity(target)),
+        anchor=_workspace_anchor(target),
+        certification=Certification(exclusive=True) if target.is_dir() else None,
+    )
+
+
+def _workspace_anchor(target):
+    """The campaign workspace root above one candidate path."""
+
+    from pathlib import Path as _Path
+
+    current = _Path(target).parent
+    while current != current.parent:
+        if (current / ".mdstats").is_dir():
+            return current
+        current = current.parent
+    return _Path(target).parent
+
+
 def _cleanup_production_race_child(
     workspace_text: str,
     targets: list[str],
@@ -775,8 +815,6 @@ def _cleanup_production_race_child(
         _campaign_ownership_boundary,
         _load_config,
     )
-    from mdstats.training_data.storage.executor import remove_durably
-
     workspace = Path(workspace_text)
     if config_path_text is not None:
         cfg, paths = _load_config(Path(config_path_text))
@@ -812,7 +850,7 @@ def _cleanup_production_race_child(
             if not authorized:
                 skipped_messages.append(f"cleanup authority denied for {candidate}: {detail}")
                 continue
-            remove_durably(candidate)
+            _remove_authorized_candidate(candidate)
             removed_paths.append(str(candidate))
         if return_list:
             queue.put(removed_paths)
@@ -892,8 +930,6 @@ def test_p4c_production_cleanup_owner_consumes_the_retention_fence(tmp_path: Pat
         CampaignPaths,
         _campaign_ownership_boundary,
     )
-    from mdstats.training_data.storage.executor import remove_durably
-
     env = _env(tmp_path, root_name="screen_production_cleanup")
     store, revision = _campaign(tmp_path, env)
     try:
@@ -921,7 +957,7 @@ def test_p4c_production_cleanup_owner_consumes_the_retention_fence(tmp_path: Pat
             _os.utime(path, (old, old))
             authorized, detail = boundary.destructive_authorization(path)
             if authorized:
-                remove_durably(path)
+                _remove_authorized_candidate(path)
                 removed.append(path)
             else:
                 denials.append(detail)

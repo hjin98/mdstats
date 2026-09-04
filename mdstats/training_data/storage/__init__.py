@@ -26,6 +26,7 @@ Modules:
 ``admission``     conservative peak byte/inode admission before any mutation
 ``lease``         storage serialization plus owner activity/publication seams
 ``executor``      the one authorization contract every engine runs inside
+``removal``       the one consequential cleanup destructive implementation
 ``archive``       bounded, immutable, owner-bound cold archive v2
 ``dedup``         direct owner-certified hardlink aliasing, no persistent store
 ``maintenance``   benefit-gated CampaignStore maintenance as its own action
@@ -104,10 +105,9 @@ from .executor import (
     StorageExecutionResult,
     StorageExecutor,
     operation_identity,
-    remove_certified_subtree,
-    remove_durably,
     synchronization_for,
 )
+from .removal import Certification, remove_certified_unit, remove_planned_target
 from .inventory import (
     STORAGE_INVENTORY_SCHEMA,
     EligibilityDecision,
@@ -191,6 +191,7 @@ from .trust import (
 
 __all__ = [
     "ACTION_ARCHIVE",
+    "Certification",
     "ACTION_ARCHIVE_MEMBER",
     "ACTION_AUDIT",
     "ACTION_CLEANUP",
@@ -295,8 +296,8 @@ __all__ = [
     "qualification_publication_barrier",
     "read_manifest",
     "read_restore_journal",
-    "remove_certified_subtree",
-    "remove_durably",
+    "remove_certified_unit",
+    "remove_planned_target",
     "representation_identity",
     "resolve_inside_root",
     "resolve_storage_policy",

@@ -23,6 +23,7 @@ truthful terminal audit.  The engines differ; the authorization does not.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -58,10 +59,9 @@ from .executor import (
     StorageExecutor,
     record_or_reraise,
     record_removal,
-    remove_certified_subtree,
-    remove_durably_outcome,
     synchronization_for,
 )
+from .removal import Certification, remove_planned_target
 from .inventory import (
     StorageInventorySnapshot,
     archive_candidates,
@@ -73,10 +73,20 @@ from .maintenance import (
     campaign_state_maintenance_engine,
     plan_campaign_state_maintenance,
 )
-from .owners import P7_RELEASED_ATTEMPT_AUTHORIZER, SubtreeCoverage
+from .owners import (
+    NODE_ABSENT,
+    NODE_DIRECTORY,
+    ArtifactClass,
+    OwnerArtifactView,
+    P7_RELEASED_ATTEMPT_AUTHORIZER,
+    SubtreeCoverage,
+    observed_node_kind,
+)
 from .plan import (
     ACTION_EVICT_CACHE,
     ACTION_REMOVE,
+    MAINTENANCE_ACTIONS,
+    PlannedAction,
     StoragePlan,
     build_storage_plan,
     planned_action,
@@ -94,6 +104,11 @@ from .policy import (
     resolve_storage_policy,
 )
 from .report import build_deep_storage_audit, build_owner_storage_report
+
+
+#: Secondary close failures are logged rather than raised, so they stay
+#: visible without displacing a primary failure's mutation truth.
+_LOGGER = logging.getLogger(__name__)
 
 
 def _format_bytes(value: int | None) -> str:
@@ -442,6 +457,112 @@ def _view_node_kind(view: Any) -> str:
     return "directory" if view.coverage is SubtreeCoverage.CLOSED else "file"
 
 
+def require_cleanup_invocation(policy: StoragePolicy, plan: StoragePlan) -> None:
+    """Refuse a whole plan whose invocation is not the cleanup action family.
+
+    Deliberately *total* and plan-level: it runs before any action is inspected,
+    so an empty plan, a maintenance-only plan, and a plan carrying an
+    owner-released leaf are all refused identically under an
+    archive/dedup/restore/report policy. ``revalidate_plan`` proves the executor
+    policy and the plan policy agree with *each other*; it cannot prove that the
+    actions they agree on belong to the family that authorized the invocation.
+
+    A genuinely empty ``cleanup`` plan is untouched and remains a valid no-op.
+    """
+
+    for candidate in (policy, plan.policy):
+        if candidate.action != ACTION_CLEANUP:
+            raise StorageAuthorizationError(
+                f"cleanup may only execute the {ACTION_CLEANUP!r} action family, but "
+                f"this plan was resolved under the {candidate.action!r} action; "
+                "cleanup deletion authority is invocation-local and is never spent "
+                "by another storage action; no action was inspected and nothing "
+                "was attempted"
+            )
+
+
+def cleanup_action_authority(
+    action: PlannedAction,
+    snapshot: StorageInventorySnapshot,
+    policy: StoragePolicy,
+) -> tuple[OwnerArtifactView | None, str]:
+    """The one fresh current-owner gate a cleanup mutation passes through.
+
+    ``snapshot`` is the fresh, already-revalidated inventory taken while the
+    storage-operation lease and every touched owner's activity/publication
+    barrier are held; ``policy`` is the resolved policy the plan was authorized
+    under. This decides whether the *current* owner still releases this exact
+    artifact for this exact action kind - a different question from
+    ``revalidate_plan``'s "did anything move", and the one a malformed or
+    drifted plan gets wrong.
+
+    Returns ``(view, "")`` when the owner authorizes the action, or
+    ``(view_or_None, why)`` when it does not. A refusal is per-action and
+    non-mutating: no second semantic state machine decides which implementation
+    may act, because after consolidation there is only one.
+    """
+
+    view = snapshot.view(action.artifact_id)
+    if view is None:
+        return None, (
+            f"no current owner view reports artifact {action.artifact_id!r}, so no "
+            "owner authorizes this action"
+        )
+    if view.path != action.path:
+        # An `artifact_id` is a name, not authority. Without this the plan could
+        # name a legitimately reclaimable artifact and point the mutation at an
+        # entirely different campaign-owned path that happens to pass the
+        # physical boundary.
+        return view, (
+            f"the owner view for {action.artifact_id!r} is at {view.path}, but this "
+            f"action targets {action.path}; a cleanup action may not name one owner "
+            "artifact and mutate another"
+        )
+    if view.exact_authorizer and view.exact_authorizer != P7_RELEASED_ATTEMPT_AUTHORIZER:
+        # An owner naming an authorizer no implementation exists for is
+        # unsupported, never generic: the absence of a known authority never
+        # becomes permission, and a field this gate has never seen cannot
+        # become a recursive delete by failing to match anything.
+        return view, (
+            f"the owner names the exact authorizer {view.exact_authorizer!r}, for "
+            "which no owner implementation exists here; an unrecognized authorizer "
+            "is never treated as generic removal"
+        )
+    if action.action == ACTION_REMOVE:
+        if not view.safe_reclaimable:
+            return view, (
+                f"the current {view.owner} view does not release "
+                f"{action.artifact_id!r} for safe reclamation: {view.detail}"
+            )
+        return view, ""
+    if action.action != ACTION_EVICT_CACHE:
+        return view, (
+            f"action {action.action!r} is not a cleanup action; it belongs to the "
+            "archive, dedup, or restore engine and is not executable here"
+        )
+    if policy.tier != TIER_CACHE:
+        return view, (
+            f"cache eviction is not authorized under the {policy.tier!r} tier this "
+            "plan was resolved for"
+        )
+    if view.artifact_class is not ArtifactClass.REUSABLE_CACHE_INDEX:
+        return view, (
+            f"{action.artifact_id!r} is classified {view.artifact_class.value}, not a "
+            "reusable cache/index, so it is not an eviction target"
+        )
+    if not view.cache_reconstructible:
+        return view, (
+            f"the current {view.owner} view no longer certifies an exact "
+            f"reconstruction of {action.artifact_id!r}: {view.detail}"
+        )
+    if not view.cache_evictable:
+        return view, (
+            f"the current {view.owner} view retains {action.artifact_id!r} in the "
+            f"cache tier: {view.detail}"
+        )
+    return view, ""
+
+
 def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
     """Cleanup removals plus the separately planned owner maintenance."""
 
@@ -464,20 +585,32 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
         # through it, so the authority is verified once and never lapses between
         # verification and use.
         sessions: dict[str, Any] = {}
+        primary: BaseException | None = None
+        # The cleanup action family authorized this invocation, checked once for
+        # the whole plan before any action is inspected.
+        require_cleanup_invocation(policy, plan)
         try:
             for action in plan.actions:
-                if action.action not in (ACTION_REMOVE, ACTION_EVICT_CACHE):
+                if action.action in MAINTENANCE_ACTIONS:
+                    # Campaign-state maintenance is the owner acting on its own
+                    # artifact through its own engine; it removes no bytes.
                     maintenance(action, snapshot, result)
                     continue
+                # The one fresh current-owner gate, derived from this
+                # post-revalidation snapshot while the lease and every touched
+                # owner's barrier are still held.
+                view, why = cleanup_action_authority(action, snapshot, policy)
+                if why:
+                    result.refused.append({**action.to_dict(), "refusal": why})
+                    continue
+                assert view is not None
                 authorized, detail = executor.authorize_path(action.path, snapshot)
                 if not authorized:
                     result.refused.append({**action.to_dict(), "refusal": detail})
                     continue
-                view = snapshot.view(action.artifact_id)
-                if (
-                    view is not None
-                    and view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER
-                ):
+                if view.exact_authorizer:
+                    # The only exact authorizer with an owner implementation;
+                    # `cleanup_action_authority` already refused every other.
                     _apply_released_member(
                         result,
                         action,
@@ -488,48 +621,126 @@ def _cleanup_engine(context: StorageCommandContext, policy: StoragePolicy):
                         remove_released_attempt_member,
                     )
                     continue
-                if view is not None and view.path == action.path and action.path.is_dir():
-                    members, refusals = snapshot.authorized_members(view)
-                    member_authorities = {
-                        (view.path / node.path): node.kind
-                        for node in view.certified_nodes
-                    } if view.certified_nodes else {}
-                    record_or_reraise(
-                        result,
-                        action,
-                        lambda members=members, refusals=refusals, view=view, action=action, member_authorities=member_authorities: (
-                            remove_certified_subtree(
-                                action.path,
-                                members=members,
-                                refusals=refusals,
-                                root_identity=view.path_identity,
-                                authority_identity=view.root_identity,
-                                member_authorities=member_authorities,
-                            )
-                        ),
+                _remove_owner_authorized_target(result, action, view, plan)
+        except BaseException as exc:  # noqa: BLE001 - re-raised after cleanup
+            primary = exc
+        # Sessions are released on every path, and a close that fails is never
+        # quietly dropped. It is only ranked: behind a primary product failure
+        # it is secondary evidence, because the primary carries what this
+        # execution already removed; alone it is the failure, and the executor
+        # settles it as partial or refused from the recorded mutation truth.
+        close_failure: BaseException | None = None
+        for session, _why in sessions.values():
+            if session is None:
+                continue
+            try:
+                session.close()
+            except Exception as exc:
+                if primary is not None:
+                    _LOGGER.warning(
+                        "storage: releasing the released-attempt capability for "
+                        "%s failed after a primary failure (%s); the primary "
+                        "failure is preserved",
+                        getattr(session, "attempt_root", "?"),
+                        exc,
                     )
-                    continue
-                record_or_reraise(
-                    result,
-                    action,
-                    lambda action=action: remove_durably_outcome(action.path),
-                )
-        finally:
-            import sys
-            close_exc: Exception | None = None
-            for session, _why in sessions.values():
-                if session is not None:
-                    try:
-                        session.close()
-                    except Exception as exc:
-                        if close_exc is None:
-                            close_exc = exc
-            if close_exc is not None and sys.exc_info()[0] is None:
-                raise close_exc
+                elif close_failure is None:
+                    close_failure = exc
+        if primary is not None:
+            raise primary
+        if close_failure is not None:
+            raise close_failure
 
     return _engine
 
 
+
+
+def _remove_owner_authorized_target(
+    result: StorageExecutionResult,
+    action: PlannedAction,
+    view: OwnerArtifactView,
+    plan: StoragePlan,
+) -> None:
+    """Spend one owner-authorized cleanup action on the canonical destructive owner.
+
+    The destructive unit is whatever the plan bound: a leaf carries only the
+    plan's own target identity, while a directory additionally spends the
+    owner's whole-tree certification. Both go to the same implementation family,
+    so there is no second recursive remover for a routing decision to choose
+    between.
+    """
+
+    kind = observed_node_kind(action.path)
+    if kind == NODE_ABSENT:
+        # Already-absent is the outcome the action wanted, and `revalidate_plan`
+        # deliberately permits it. Route from the identity the plan bound so a
+        # disappeared directory is still not treated as a leaf.
+        kind = str(action.filesystem_identity.get("kind", "")) or NODE_ABSENT
+
+    certification = (
+        cleanup_certification(view) if kind == NODE_DIRECTORY else None
+    )
+    if kind == NODE_DIRECTORY and certification is None:
+        # An open container is not recursive destructive authority. Without
+        # whole-unit owner authority the directory is retained; a selectively
+        # reclaimable child is planned as its own owner-authorized action.
+        result.refused.append(
+            {
+                **action.to_dict(),
+                "refusal": (
+                    f"the current {view.owner} view grants no whole-unit authority "
+                    f"over {action.artifact_id!r}, so this container is retained "
+                    "rather than recursively removed"
+                ),
+            }
+        )
+        return
+
+    # The plan's own target binding plus, for a directory, the owner's
+    # whole-tree certification - both spent at the one canonical destructive
+    # boundary. A consequential cleanup never reaches an unbound removal mode
+    # while `PlannedAction.filesystem_identity` exists.
+    record_or_reraise(
+        result,
+        action,
+        lambda: remove_planned_target(
+            action, anchor=plan.workspace, certification=certification
+        ),
+    )
+
+
+def cleanup_certification(view: OwnerArtifactView) -> Certification | None:
+    """The whole-unit destructive authority this owner grants over a container.
+
+    ``None`` means the owner grants none, and the container is retained.  An
+    owner that names typed nodes authorizes exactly those; an owner that is the
+    exclusive writer of the area authorizes whatever it could have written.
+
+    A ``CLOSED`` view that also names retained members grants no cleanup
+    authority through this path: those members are not in the typed node set, so
+    the walk would refuse them anyway, and failing closed here says so plainly
+    rather than half-emptying the container.
+    """
+
+    if view.coverage is not SubtreeCoverage.CLOSED or view.retained_members:
+        return None
+    if view.owner_exclusive and not view.certified_nodes:
+        # A private scratch area whose only writer is the owner itself.
+        # Enumerating a member set would be circular; exclusivity is the
+        # ownership statement, and a symlink or special node is still refused.
+        return Certification(
+            exclusive=True,
+            root_identity=view.path_identity,
+            authority_identity=view.root_identity,
+        )
+    if not view.certified_nodes:
+        return None
+    return Certification(
+        nodes={item.path: item.kind for item in view.certified_nodes},
+        root_identity=view.path_identity,
+        authority_identity=view.root_identity,
+    )
 
 
 def _apply_released_member(
@@ -590,8 +801,15 @@ def _apply_released_member(
         record_removal(result, action, exc.outcome)
         try:
             session.invalidate(exc.outcome.detail)
-        except Exception:
-            pass
+        except Exception as close_exc:
+            # The capability is already withdrawn; this close failure is
+            # secondary to the post-mutation failure that carries the bytes.
+            _LOGGER.warning(
+                "storage: withdrawing the capability for %s failed after a "
+                "post-mutation failure (%s); the primary failure is preserved",
+                attempt_root,
+                close_exc,
+            )
         sessions[key] = (session, exc.outcome)
         raise (exc.cause or exc) from exc
     record_removal(result, action, outcome)

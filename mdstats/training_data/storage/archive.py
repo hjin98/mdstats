@@ -115,6 +115,31 @@ BOUNDARY_AFTER_STAGING = "after_staging_before_install"
 BOUNDARY_DURING_INSTALL = "during_restore_install"
 BOUNDARY_BEFORE_RECEIPT = "after_install_before_receipt"
 
+#: Publication phases of one archive creation, in the order their atomic
+#: replaces happen. The phase names the last replace that *actually crossed*,
+#: which is not the same as the last helper that returned: parent fsync,
+#: read-back and reparse all run after the canonical name already resolves to
+#: the new bytes, and any of them can fail while the publication stands.
+ARCHIVE_PHASE_BLOB_PUBLISHED = "blob_published"
+ARCHIVE_PHASE_MANIFEST_PUBLISHED = "manifest_published"
+ARCHIVE_PHASE_CATALOG_PUBLISHED = "catalog_published"
+ARCHIVE_PUBLICATION_PHASE_ORDER = (
+    ARCHIVE_PHASE_BLOB_PUBLISHED,
+    ARCHIVE_PHASE_MANIFEST_PUBLISHED,
+    ARCHIVE_PHASE_CATALOG_PUBLISHED,
+)
+
+#: Restore publishes a durable nonterminal recovery journal before it stages or
+#: installs anything, and replaces it with the terminal record at the end. Both
+#: are retained recovery authority, so both are execution mutations in their own
+#: right even when no destination member has changed.
+RESTORE_PHASE_JOURNAL_STAGING_PUBLISHED = "journal_staging_published"
+RESTORE_PHASE_JOURNAL_TERMINAL_PUBLISHED = "journal_terminal_published"
+RESTORE_PUBLICATION_PHASE_ORDER = (
+    RESTORE_PHASE_JOURNAL_STAGING_PUBLISHED,
+    RESTORE_PHASE_JOURNAL_TERMINAL_PUBLISHED,
+)
+
 Failpoint = Callable[[str], None]
 
 
@@ -835,6 +860,46 @@ def archive_create_engine(
         blob = control_plane.resolve_archive_blob(str(manifest["archive_locator"]))
         manifest_path = control_plane.manifest_path(identity)
 
+        crossed_phase = ""
+
+        def _advance(phase: str) -> None:
+            """Record one atomic publication the instant it crosses.
+
+            Called from inside the durability primitive, immediately after its
+            ``os.replace`` and before the parent fsync, read-back or reparse
+            that can still raise. Everything an operator needs to find the
+            half-published archive is written here rather than after the helper
+            returns, because a failure in between would otherwise escape with
+            the execution claiming it changed nothing.
+
+            Phase evidence only moves forward: a later failure never regresses a
+            transition that really happened.
+            """
+
+            nonlocal crossed_phase
+            if ARCHIVE_PUBLICATION_PHASE_ORDER.index(
+                phase
+            ) < ARCHIVE_PUBLICATION_PHASE_ORDER.index(crossed_phase or phase):
+                return
+            crossed_phase = phase
+            result.mutated = True
+            result.payload = {
+                "schema": "mdstats.mlff-storage-archive-result.v2",
+                "archive_identity": identity,
+                "representation_identity": identity,
+                "logical_identity": str(manifest["logical_identity"]),
+                "archive_locator": manifest["archive_locator"],
+                "publication_phase": phase,
+                "member_count": int(manifest["member_count"]),
+                "represented_artifact_ids": list(manifest["represented_artifact_ids"]),
+                "reclaimed_hot_paths": [],
+                "remaining_hot_paths": [
+                    item.path for item in members if item.kind == "file"
+                ],
+                "hot_reclamation_state": "pending" if reclaim_hot else "not_requested",
+                "grants_scientific_authority": False,
+            }
+
         # An identical representation that is already cataloged is reused, never
         # rewritten: re-encoding must not disturb retained authority.
         if control_plane.catalog_entry_path(identity).is_file():
@@ -847,7 +912,11 @@ def archive_create_engine(
             control_plane.require_operation_lease("publish an archive blob/manifest")
             failpoint(BOUNDARY_BEFORE_BLOB)
             archive_sha, archive_size = _publish_archive_blob(
-                blob, workspace, members, policy
+                blob,
+                workspace,
+                members,
+                policy,
+                on_published=lambda: _advance(ARCHIVE_PHASE_BLOB_PUBLISHED),
             )
             failpoint(BOUNDARY_AFTER_BLOB)
             manifest = _seal_manifest(
@@ -858,24 +927,15 @@ def archive_create_engine(
                     "created_utc": _utc_now(),
                 }
             )
-            result.mutated = True
+            # Only now is the amount substantiated. Mutation truth was already
+            # established at the replace; byte credit is a separate claim and
+            # waits for evidence.
             result.created_bytes += int(archive_size)
-            result.payload = {
-                "schema": "mdstats.mlff-storage-archive-result.v2",
-                "archive_identity": identity,
-                "representation_identity": identity,
-                "logical_identity": str(manifest["logical_identity"]),
-                "archive_locator": manifest["archive_locator"],
-                "publication_phase": "blob_published",
-                "member_count": int(manifest["member_count"]),
-                "represented_artifact_ids": list(manifest["represented_artifact_ids"]),
-                "reclaimed_hot_paths": [],
-                "remaining_hot_paths": [item.path for item in members if item.kind == "file"],
-                "hot_reclamation_state": "pending" if reclaim_hot else "not_requested",
-                "grants_scientific_authority": False,
-            }
-            durable_publish_json(manifest_path, manifest)
-            result.payload["publication_phase"] = "manifest_published"
+            durable_publish_json(
+                manifest_path,
+                manifest,
+                on_published=lambda: _advance(ARCHIVE_PHASE_MANIFEST_PUBLISHED),
+            )
             failpoint(BOUNDARY_AFTER_MANIFEST)
             _verify_blob_against_manifest(blob, manifest, policy)
             control_plane.publish_catalog_entry(
@@ -891,9 +951,9 @@ def archive_create_engine(
                     "total_expanded_bytes": int(manifest["total_expanded_bytes"]),
                     "created_utc": _utc_now(),
                     "hot_reclamation_state": "pending" if reclaim_hot else "not_requested",
-                }
+                },
+                on_published=lambda: _advance(ARCHIVE_PHASE_CATALOG_PUBLISHED),
             )
-            result.payload["publication_phase"] = "catalog_published"
         failpoint(BOUNDARY_AFTER_CATALOG)
 
         reclaimed: list[str] = []
@@ -917,13 +977,21 @@ def archive_create_engine(
             if reclaim_hot and not remaining
             else ("not_requested" if not reclaim_hot else "partial")
         )
+
+        def _status_published() -> None:
+            # Republishing the operational status is itself an atomic
+            # publication of retained catalog authority, including on the reuse
+            # path where nothing else was written this execution.
+            result.mutated = True
+
         control_plane.publish_catalog_entry(
             {
                 "archive_identity": identity,
                 "hot_reclamation_state": state,
                 "remaining_hot_members": sorted(remaining),
                 "updated_utc": _utc_now(),
-            }
+            },
+            on_published=_status_published,
         )
         result.payload = {
             "schema": "mdstats.mlff-storage-archive-result.v2",
@@ -937,13 +1005,19 @@ def archive_create_engine(
             "remaining_hot_paths": sorted(remaining),
             "hot_reclamation_state": state,
             "grants_scientific_authority": False,
+            **({"publication_phase": crossed_phase} if crossed_phase else {}),
         }
 
     return _engine
 
 
 def _publish_archive_blob(
-    blob: Path, workspace: Path, members: Sequence[ArchiveMember], policy: StoragePolicy
+    blob: Path,
+    workspace: Path,
+    members: Sequence[ArchiveMember],
+    policy: StoragePolicy,
+    *,
+    on_published: Any = None,
 ) -> tuple[str, int]:
     mode = _WRITE_MODES[policy.archive_codec]
 
@@ -968,7 +1042,7 @@ def _publish_archive_blob(
                     with source.open("rb") as handle:
                         tar.addfile(info, handle)
 
-    return durable_publish_bytes(blob, _write)
+    return durable_publish_bytes(blob, _write, on_published=on_published)
 
 
 def _reclaim_planned_members(
@@ -1019,11 +1093,10 @@ def _reclaim_planned_members(
             result.completed.append({**action.to_dict(), "reclaimed": True})
             result.reclaimed_bytes += size
 
-        try:
-            durable_unlink(action.path, missing_ok=False, on_unlinked=_on_reclaimed)
-        except TypeError:
-            durable_unlink(action.path)
-            _on_reclaimed()
+        # No fallback and no post-hoc lookup: the callback is the only evidence
+        # that this execution removed the member, so an unlink that failed
+        # cannot inherit credit from a name someone else made disappear.
+        durable_unlink(action.path, missing_ok=False, on_unlinked=_on_reclaimed)
     return reclaimed, remaining
 
 
@@ -1224,13 +1297,20 @@ def archive_reclaim_engine(
                 if item.get("kind") == "file" and (workspace / str(item["path"])).exists()
             }
         )
+        def _catalog_published() -> None:
+            # Republishing the reclamation status is an atomic publication of
+            # retained catalog authority in its own right, and it is durable
+            # from its replace - not from this helper's return.
+            result.mutated = True
+
         control_plane.publish_catalog_entry(
             {
                 "archive_identity": identity,
                 "hot_reclamation_state": "complete" if not still_hot else "partial",
                 "remaining_hot_members": still_hot,
                 "updated_utc": _utc_now(),
-            }
+            },
+            on_published=_catalog_published,
         )
         result.payload = {
             "schema": "mdstats.mlff-storage-archive-reclaim.v1",
@@ -1498,6 +1578,42 @@ def archive_restore_engine(
                 f"restore staging root is not campaign-owned: {detail}"
             )
 
+        restore_phase = ""
+
+        def _advance_restore(phase: str) -> None:
+            """Record one journal publication the instant its replace crosses.
+
+            A nonterminal journal is durable recovery authority: once it is
+            canonical, a later process discovers an operation in flight and acts
+            on it, whether or not this execution ever installs a member. So the
+            replace - not the helper's return, and not any destination change -
+            is where a restore stops being a no-op. Phase evidence only moves
+            forward.
+            """
+
+            nonlocal restore_phase
+            if RESTORE_PUBLICATION_PHASE_ORDER.index(
+                phase
+            ) < RESTORE_PUBLICATION_PHASE_ORDER.index(restore_phase or phase):
+                return
+            restore_phase = phase
+            result.mutated = True
+
+        def _journal_staging_published() -> None:
+            _advance_restore(RESTORE_PHASE_JOURNAL_STAGING_PUBLISHED)
+            # Zero restored bytes is the honest figure here, and it does not
+            # make the transition any less real.
+            result.payload = {
+                "schema": COLD_ARCHIVE_RESTORE_JOURNAL_SCHEMA,
+                "archive_identity": identity,
+                "archive_locator": str(manifest_now["archive_locator"]),
+                "restore_phase": RESTORE_PHASE_JOURNAL_STAGING_PUBLISHED,
+                "state": "staging",
+                "member_count": int(manifest_now["member_count"]),
+                "promotes_currentness": False,
+                "grants_scientific_authority": False,
+            }
+
         durable_publish_json(
             journal,
             {
@@ -1507,6 +1623,7 @@ def archive_restore_engine(
                 "state": "staging",
                 "member_count": int(manifest_now["member_count"]),
             },
+            on_published=_journal_staging_published,
         )
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True, exist_ok=True)
@@ -1547,6 +1664,15 @@ def archive_restore_engine(
                 "promotes_currentness": False,
                 "grants_scientific_authority": False,
             }
+            def _journal_terminal_published() -> None:
+                _advance_restore(RESTORE_PHASE_JOURNAL_TERMINAL_PUBLISHED)
+                # The receipt becomes claimable exactly when its replacement
+                # crossed, never because the helper that follows it returned.
+                result.payload = {
+                    **receipt,
+                    "restore_phase": RESTORE_PHASE_JOURNAL_TERMINAL_PUBLISHED,
+                }
+
             durable_publish_json(
                 journal,
                 {
@@ -1556,8 +1682,8 @@ def archive_restore_engine(
                     "state": "terminal",
                     "receipt": receipt,
                 },
+                on_published=_journal_terminal_published,
             )
-            result.payload = receipt
         finally:
             shutil.rmtree(staging, ignore_errors=True)
 
@@ -1770,10 +1896,17 @@ __all__ = [
     "representation_authority",
     "verify_parent_chain",
     "BOUNDARY_AFTER_BLOB",
+    "ARCHIVE_PHASE_BLOB_PUBLISHED",
+    "ARCHIVE_PHASE_CATALOG_PUBLISHED",
+    "ARCHIVE_PHASE_MANIFEST_PUBLISHED",
+    "ARCHIVE_PUBLICATION_PHASE_ORDER",
     "BOUNDARY_AFTER_CATALOG",
     "BOUNDARY_AFTER_MANIFEST",
     "BOUNDARY_AFTER_STAGING",
     "BOUNDARY_BEFORE_BLOB",
+    "RESTORE_PHASE_JOURNAL_STAGING_PUBLISHED",
+    "RESTORE_PHASE_JOURNAL_TERMINAL_PUBLISHED",
+    "RESTORE_PUBLICATION_PHASE_ORDER",
     "BOUNDARY_BEFORE_RECEIPT",
     "BOUNDARY_DURING_INSTALL",
     "BOUNDARY_DURING_RECLAMATION",

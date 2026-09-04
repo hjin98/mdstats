@@ -22,6 +22,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence
 import json
 import errno
+import logging
 import stat
 import os
 import tempfile
@@ -39,6 +40,11 @@ from ..campaign_post_selection import (
 )
 from ..post_selection_store import PostSelectionPublicationConflictError
 from .errors import QualificationError, QualificationLineageError
+
+#: Close failures that arrive behind a primary product failure are logged
+#: rather than raised, so they stay visible without displacing the failure
+#: that carries this action's mutation truth.
+_LOGGER = logging.getLogger(__name__)
 
 QUALIFICATION_ROOT_NAME = "qualification"
 QUALIFICATION_ATTEMPT_STATE_SCHEMA = "mdstats.qualification-attempt-state.v1"
@@ -1322,20 +1328,31 @@ class ReleasedAttemptSession:
             )
 
     def invalidate(self, reason: str) -> None:
-        """Withdraw the capability and close its descriptor, once."""
+        """Withdraw the capability and close its descriptor, once.
+
+        The withdrawal is recorded and the descriptor released before anything
+        can fail, so the capability is unspendable from here on whatever the
+        kernel says about the close. A close failure is then raised to the
+        caller, because only the caller knows whether a primary product failure
+        is already in flight and therefore whether this is the failure that
+        should be reported or secondary evidence behind one. Deciding that here
+        by inspecting the ambient exception state would make a genuine
+        close-only failure invisible whenever anything else happened to be
+        propagating.
+        """
 
         if not self.invalidation_reason:
             self.invalidation_reason = reason or "withdrawn"
-        try:
-            self.close()
-        except Exception:
-            import sys
-            if sys.is_finalizing() or sys.exc_info()[0] is not None:
-                pass
-            else:
-                raise
+        self.close()
 
     def close(self) -> None:
+        """Spend this capability, once and irreversibly.
+
+        The session is marked closed and the descriptor number cleared *before*
+        the kernel close, so a close that fails cannot leave a session that
+        still looks live holding a descriptor number the kernel may reissue.
+        """
+
         if not self.closed:
             self.closed = True
             fd = self.attempt_fd
@@ -1381,86 +1398,127 @@ def open_released_attempt_session(
     generation = parse_canonical_generation(root.parent.parent.name)
     attempt_fd, why = open_attempt_namespace(paths, root)
     if attempt_fd is None or generation is None:
+        namespace_refusal = refused_no_change(
+            f"the attempt namespace is unresolved: {why}"
+        )
         if attempt_fd is not None:
-            os.close(attempt_fd)
-        return None, refused_no_change(f"the attempt namespace is unresolved: {why}")
-    session: ReleasedAttemptSession | None = None
+            # The namespace/generation refusal is already decided; releasing the
+            # descriptor cannot be allowed to replace it with an `OSError`.
+            release_descriptor_behind(attempt_fd, root, namespace_refusal)
+        return None, namespace_refusal
+
+    # The outcome is materialized first, the descriptor is ranked and released
+    # second, and only then does this function return. A `finally: os.close(...)`
+    # around the returns below would let a close failure cancel an owner,
+    # root-identity, release-authority, state/proof or topology refusal that had
+    # already been decided - the one classification the caller records.
     try:
-        identity = _descriptor_identity(attempt_fd)
-        if expected_root_identity is not None and (
-            int(identity["device"]) != int(expected_root_identity["device"])
-            or int(identity["inode"]) != int(expected_root_identity["inode"])
-        ):
-            return None, refused_no_change(
-                "the attempt root is a different filesystem object than the one this "
-                "action was authorized against; nothing was removed"
-            )
-        authority = _authenticate_attempt_from_descriptor(root, attempt_fd, generation)
-        if authority.state is None:
-            return None, refused_no_change(
-                f"the released attempt state is no longer authentic: {authority.reason}"
-            )
-        certified, certify_why, nodes, proof = _certify_attempt_from_descriptor(
-            attempt_fd, root, generation, authority.state
-        )
-        if not certified or proof is None:
-            return None, refused_no_change(
-                f"the released attempt is no longer certified: {certify_why}"
-            )
-        release_authority = released_authority_identity(
+        session, outcome = _authenticate_released_attempt(
+            paths,
+            root,
+            attempt_fd,
             generation,
-            authority.state.attempt_identity,
-            authority.state.content_digest,
-            str(proof["content_digest"]),
+            expected_root_identity=expected_root_identity,
+            expected_release_authority=expected_release_authority,
         )
-        if expected_release_authority and release_authority != expected_release_authority:
-            return None, refused_no_change(
-                "the released authority behind this attempt changed after planning; "
-                "the state and proof now confer a different release, so the plan no "
-                "longer authorizes it"
-            )
-        session = ReleasedAttemptSession(
-            attempt_fd=attempt_fd,
-            attempt_root=root,
-            generation=generation,
-            state=authority.state,
-            proof=proof,
-            certified_nodes=nodes,
-            root_identity=identity,
-            release_authority=release_authority,
+    except BaseException as exc:
+        release_descriptor_behind(attempt_fd, root, exc)
+        raise
+    if session is None:
+        release_descriptor_behind(attempt_fd, root, outcome)
+        return None, outcome
+    # Ownership transferred exactly once: from here the session owns the
+    # descriptor and this acquisition never closes it.
+    return session, outcome
+
+
+def release_descriptor_behind(
+    handle: int, display: Any, primary: Any
+) -> None:
+    """Close one still-owned descriptor once, behind an already-decided primary.
+
+    Every failed acquisition path releases what it acquired, and exactly once.
+    A close that fails while a namespace, root-identity, release-authority,
+    state/proof, topology or authentication refusal is already decided is
+    secondary evidence: raising it would replace the classification the caller
+    records and, on a mutating path, the mutation truth that travels with it.
+    """
+
+    try:
+        os.close(handle)
+    except OSError:
+        _LOGGER.warning(
+            "qualification: releasing the attempt descriptor for %s failed while "
+            "a primary outcome (%s) was already decided; the primary outcome is "
+            "preserved",
+            display,
+            getattr(primary, "detail", primary),
         )
-        return session, refused_no_change("authenticated")
-    finally:
-        if session is None:
-            os.close(attempt_fd)
 
 
-#: The bounded filesystem-identity dimensions the storage plan already
-#: revalidates a target on.  The final P7 boundary observes the same ones, no
-#: fewer: if plan revalidation later strengthens its identity, this must not
-#: silently become the weaker of the two checks.
-TARGET_IDENTITY_DIMENSIONS = ("kind", "device", "inode", "size_bytes", "mtime_ns")
+def _authenticate_released_attempt(
+    paths: Any,
+    root: Path,
+    attempt_fd: int,
+    generation: int,
+    *,
+    expected_root_identity: Mapping[str, int] | None,
+    expected_release_authority: str,
+) -> tuple["ReleasedAttemptSession | None", "MutationOutcomeT"]:
+    """Decide this acquisition's outcome without ever closing the descriptor.
 
+    Separating the decision from the release is what makes the ranking in
+    :func:`open_released_attempt_session` possible: this returns either a live
+    session that has taken ownership of ``attempt_fd`` or a refusal that the
+    caller records, and it never competes with either by closing.
+    """
 
-def _observed_target_identity(entry_stat: os.stat_result) -> dict[str, Any]:
-    """The plan's identity dimensions, from a no-follow descriptor-relative stat."""
+    from ..storage.outcome import refused_no_change
 
-    mode = entry_stat.st_mode
-    if stat.S_ISLNK(mode):
-        kind = "symlink"
-    elif stat.S_ISREG(mode):
-        kind = "file"
-    elif stat.S_ISDIR(mode):
-        kind = "directory"
-    else:
-        kind = "other"
-    return {
-        "kind": kind,
-        "device": int(entry_stat.st_dev),
-        "inode": int(entry_stat.st_ino),
-        "size_bytes": int(entry_stat.st_size),
-        "mtime_ns": int(entry_stat.st_mtime_ns),
-    }
+    identity = _descriptor_identity(attempt_fd)
+    if expected_root_identity is not None and (
+        int(identity["device"]) != int(expected_root_identity["device"])
+        or int(identity["inode"]) != int(expected_root_identity["inode"])
+    ):
+        return None, refused_no_change(
+            "the attempt root is a different filesystem object than the one this "
+            "action was authorized against; nothing was removed"
+        )
+    authority = _authenticate_attempt_from_descriptor(root, attempt_fd, generation)
+    if authority.state is None:
+        return None, refused_no_change(
+            f"the released attempt state is no longer authentic: {authority.reason}"
+        )
+    certified, certify_why, nodes, proof = _certify_attempt_from_descriptor(
+        attempt_fd, root, generation, authority.state
+    )
+    if not certified or proof is None:
+        return None, refused_no_change(
+            f"the released attempt is no longer certified: {certify_why}"
+        )
+    release_authority = released_authority_identity(
+        generation,
+        authority.state.attempt_identity,
+        authority.state.content_digest,
+        str(proof["content_digest"]),
+    )
+    if expected_release_authority and release_authority != expected_release_authority:
+        return None, refused_no_change(
+            "the released authority behind this attempt changed after planning; "
+            "the state and proof now confer a different release, so the plan no "
+            "longer authorizes it"
+        )
+    session = ReleasedAttemptSession(
+        attempt_fd=attempt_fd,
+        attempt_root=root,
+        generation=generation,
+        state=authority.state,
+        proof=proof,
+        certified_nodes=nodes,
+        root_identity=identity,
+        release_authority=release_authority,
+    )
+    return session, refused_no_change("authenticated")
 
 
 def remove_released_attempt_member(
@@ -1472,14 +1530,18 @@ def remove_released_attempt_member(
 ) -> "MutationOutcomeT":
     """Remove one proof-certified released member through a live session.
 
-    The member and everything beneath it are opened, unlinked, and removed
-    relative to the session's descriptor. No ancestor is ever named again after
-    the session authenticated it.
+    P7 owns the *authority*: the authenticated released state, the validated
+    proof, the generation-scoped root binding, and the exact typed topology all
+    live on the descriptor this session holds. It does not own a second
+    filesystem deletion algorithm. The member and everything beneath it are
+    removed by the canonical storage destructive owner, entered through this
+    session's descriptor, so no ancestor is ever named again after the session
+    authenticated it and ordinary and P7 cleanup cannot drift apart.
 
     ``planned_identity`` is the filesystem identity the immutable plan bound to
-    this exact target, and it is **required**. It is compared here, immediately
-    before the mutation and through the retained descriptor, because ordinary
-    plan revalidation happened earlier and by pathname: an object swapped in
+    this exact target, and it is **required**. It is compared immediately before
+    the mutation and through the retained descriptor, because ordinary plan
+    revalidation happened earlier and by pathname: an object swapped in
     afterwards under the same name and kind would otherwise inherit the plan's
     permission to delete it. Making the comparison optional would make the
     boundary a convention every future caller could forget; a missing or
@@ -1490,10 +1552,15 @@ def remove_released_attempt_member(
     that the kernel unlinks a directory entry only if its inode still matches an
     earlier observation - POSIX offers no such primitive, and pretending
     otherwise would misdescribe the boundary. Only the irreducible race after
-    this final check is outside it.
+    the final check is outside it.
     """
 
-    from ..storage.outcome import already_absent, refused_no_change, removed
+    from ..storage.outcome import refused_no_change
+    from ..storage.removal import (
+        TARGET_IDENTITY_DIMENSIONS,
+        Certification,
+        remove_certified_unit,
+    )
 
     # Before any syscall: a spent capability may hold a descriptor number the
     # kernel has since reissued to something else.
@@ -1513,406 +1580,34 @@ def remove_released_attempt_member(
             "against any specific object; nothing was removed"
         )
 
-    attempt_fd = session.attempt_fd
     recorded = session.recorded
-    if expected_kind and recorded.get(member_name) != expected_kind:
+    owner_kind = recorded.get(member_name)
+    if owner_kind is None:
         return refused_no_change(
-            f"this owner now records {recorded.get(member_name)!r} at that name, not "
+            "this owner's authenticated proof records no node at that name, so "
+            "nothing authorizes removing it"
+        )
+    if expected_kind and owner_kind != expected_kind:
+        return refused_no_change(
+            f"this owner now records {owner_kind!r} at that name, not "
             f"the {expected_kind!r} the plan targeted"
         )
-    try:
-        entry_stat = os.stat(member_name, dir_fd=attempt_fd, follow_symlinks=False)
-    except FileNotFoundError:
-        # Monotonic absence: an earlier action in this cleanup, or an interrupted
-        # prior one, already removed it. Terminally satisfied, but this execution
-        # reclaimed nothing and must not claim the planned bytes.
-        return already_absent("the certified member was already gone")
-    except OSError as exc:
-        return refused_no_change(f"the certified member could not be observed: {exc}")
 
-    observed = _observed_target_identity(entry_stat)
-    differing = [
-        key
-        for key in TARGET_IDENTITY_DIMENSIONS
-        if observed[key] != planned_identity[key]
-    ]
-    if differing:
-        return refused_no_change(
-            "the target is no longer the object this action was planned against "
-            f"({', '.join(differing)} differ); nothing was removed"
-        )
-
-    if stat.S_ISREG(entry_stat.st_mode):
-        if recorded.get(member_name) != "file":
-            return refused_no_change("this owner did not record a file at that name")
-        size = int(entry_stat.st_size)
-        _unlink_certified_file(attempt_fd, member_name)
-        # The entry is gone from here on: any failure below is partial mutation,
-        # never a refusal that claims nothing happened.
-        _fsync_after_mutation(attempt_fd, removed_bytes=size, what=member_name)
-        return removed("removed relative to the authenticated attempt directory")
-    if not stat.S_ISDIR(entry_stat.st_mode):
-        return refused_no_change(
-            "the certified member is neither a plain file nor a plain directory; "
-            "it is retained"
-        )
-    if recorded.get(member_name) != "directory":
-        return refused_no_change("this owner did not record a directory at that name")
-    outcome = _remove_certified_directory(
-        attempt_fd,
+    return remove_certified_unit(
+        session.attempt_fd,
         member_name,
         session.attempt_root / member_name,
-        recorded,
-        f"{member_name}/",
-        seen=set(),
+        planned_identity=planned_identity,
+        # The proof is keyed relative to the attempt root the session
+        # authenticated, so the member's own contents carry that prefix. Handing
+        # the canonical owner a re-keyed copy would be a second representation
+        # of the same authority.
+        certification=Certification(
+            nodes=recorded,
+            prefix=f"{member_name}/",
+            root_kind=owner_kind,
+        ),
     )
-    # Gated on mutation, never on the byte total: a recursion that unlinked a
-    # zero-byte file or removed an empty directory changed the namespace and
-    # owes the same durability step as one that freed a gigabyte.
-    if outcome.mutated:
-        _fsync_after_mutation(
-            attempt_fd,
-            removed_bytes=int(outcome.removed_bytes or 0),
-            what=member_name,
-        )
-    return outcome
-
-
-def _fsync_after_mutation(handle: int, *, removed_bytes: int, what: str) -> None:
-    """Persist a directory-entry removal, or say exactly what was already lost.
-
-    ``removed_bytes`` names entries whose removal has already happened in the
-    live namespace. If the fsync that was meant to make that durable fails, the
-    action is not ``removed`` - but neither is it a no-op, and the executor has
-    to be told which of the two it is before the failure propagates.
-    """
-
-    from ..storage.outcome import PartialMutationError, partial_change_refused
-
-    try:
-        os.fsync(handle)
-    except OSError as exc:
-        raise PartialMutationError(
-            partial_change_refused(
-                f"{what} was removed but the removal could not be made durable: {exc}",
-                removed_bytes=removed_bytes,
-            ),
-            exc,
-        ) from exc
-
-
-def _unlink_certified_file(parent_fd: int, name: str) -> None:
-    """Unlink one certified regular file relative to its authenticated parent.
-
-    The single destructive transition for a top-level released file, kept
-    separate for the same reason the directory recursion is: this is the exact
-    point where the owner's authority becomes a syscall, and it names only the
-    entry - never an ancestor.
-    """
-
-    os.unlink(name, dir_fd=parent_fd)
-
-
-def _remove_certified_directory(
-    parent_fd: int,
-    name: str,
-    display: Path,
-    recorded: Mapping[str, str],
-    prefix: str,
-    *,
-    seen: set[tuple[int, int]] | None = None,
-    ledger: "MutationLedgerT | None" = None,
-) -> "MutationOutcomeT":
-    """Recursively remove one certified directory, descriptor-relative.
-
-    Depth-first, entering each child through a no-follow open on the descriptor
-    of the parent that was just authenticated. Anything the proof did not record
-    with this exact kind - and anything on the far side of a mount boundary -
-    stops the removal instead of widening it, and the partially emptied
-    container is retained rather than forced.
-
-    Stopping part-way is a real outcome, not a failure to report: by the time a
-    contradiction appears, earlier certified children of this container may
-    already be unlinked. The ledger answers two *different* questions - whether
-    anything was destroyed, and how many bytes that accounted for - because they
-    genuinely come apart. Unlinking a zero-byte file, removing an empty
-    directory, or dropping one more hard link to an already-counted inode all
-    change the namespace while crediting nothing. Deciding "did this mutate?"
-    from the byte total would report those as no change, and would also skip the
-    durability step the caller owes for entries that really went.
-
-    ``seen`` carries ``(device, inode)`` across the whole action so a file with
-    several hard links is counted once, matching the planner's own tree metric.
-    """
-
-    from ..storage.outcome import (
-        MutationLedger,
-        PartialMutationError,
-        already_absent,
-        removed as removed_outcome,
-    )
-    from ..storage.trust import (
-        crosses_mount_boundary_at,
-        verify_opened_directory_trust,
-    )
-
-    if ledger is None:
-        ledger = MutationLedger()
-    if seen is not None:
-        # Callers that pre-seed the dedup set keep it authoritative.
-        ledger.adopt_seen(seen)
-
-    def stop(detail: str) -> "MutationOutcomeT":
-        return ledger.stop(detail)
-
-    try:
-        handle = _open_directory_nofollow(name, dir_fd=parent_fd)
-    except FileNotFoundError:
-        return already_absent("already gone")
-    except NamespaceAmbiguity as exc:
-        return stop(f"{display}: {exc}")
-
-    crossed, detail = verify_opened_directory_trust(parent_fd, handle, display)
-    if crossed:
-        os.close(handle)
-        return stop(detail)
-
-    try:
-        try:
-            entries = sorted(os.scandir(handle), key=lambda item: item.name)
-        except OSError as exc:
-            return stop(f"{display} could not be enumerated: {exc}")
-        for entry in entries:
-            child_relative = f"{prefix}{entry.name}"
-            child_display = display / entry.name
-            expected = recorded.get(child_relative)
-            try:
-                is_sym = entry.is_symlink()
-                is_dir = entry.is_dir(follow_symlinks=False)
-                is_file = entry.is_file(follow_symlinks=False)
-            except OSError as exc:
-                return stop(f"{child_display} could not be observed: {exc}")
-            if is_sym:
-                return stop(f"{child_display} is a symlink; the container is retained")
-            if is_dir:
-                if expected != "directory":
-                    return stop(
-                        f"{child_display} is a directory this owner did not record"
-                        if expected is None
-                        else f"{child_display} was recorded as a {expected}"
-                    )
-                crossed, detail = crosses_mount_boundary_at(
-                    handle, entry.name, child_display
-                )
-                if crossed:
-                    return stop(detail)
-                nested = _remove_certified_directory(
-                    handle,
-                    entry.name,
-                    child_display,
-                    recorded,
-                    f"{child_relative}/",
-                    ledger=ledger,
-                )
-                if not nested.succeeded:
-                    return stop(nested.detail)
-                continue
-            if not is_file:
-                return stop(
-                    f"{child_display} is a special node; the container is retained"
-                )
-            if expected != "file":
-                return stop(
-                    f"{child_display} is a file this owner did not record"
-                    if expected is None
-                    else f"{child_display} was recorded as a {expected}"
-                )
-            # Measured before the unlink, because afterwards there is nothing
-            # left to measure - but credited only once the entry has actually
-            # gone, so a failed unlink cannot inflate the figure.
-            #
-            # An unmeasurable file is *retained*. Deleting it and crediting zero
-            # would put bytes beyond recovery that this action can never account
-            # for, and if nothing else had been removed yet the outcome would
-            # even read as "nothing changed".
-            try:
-                child_stat = entry.stat(follow_symlinks=False)
-            except OSError as exc:
-                return stop(f"{child_display} could not be measured: {exc}")
-            try:
-                _unlink_certified_file(handle, entry.name)
-            except OSError as exc:
-                return stop(f"{child_display} could not be removed: {exc}")
-            ledger.credit(
-                int(child_stat.st_size),
-                (int(child_stat.st_dev), int(child_stat.st_ino)),
-            )
-        try:
-            os.fsync(handle)
-        except OSError as exc:
-            raise ledger.failure(
-                exc,
-                f"{display} was emptied but the removal could not be made durable: {exc}",
-            ) from exc
-    except BaseException:
-        try:
-            os.close(handle)
-        except Exception:
-            pass
-        raise
-    else:
-        try:
-            os.close(handle)
-        except OSError as exc:
-            if ledger.mutated:
-                raise ledger.failure(
-                    exc,
-                    f"{display} was emptied but descriptor close failed: {exc}",
-                ) from exc
-            return stop(f"{display} descriptor close failed: {exc}")
-    try:
-        os.rmdir(name, dir_fd=parent_fd)
-    except OSError as exc:
-        return stop(f"{display} could not be removed: {exc}")
-    # An emptied directory that is now gone is a destructive transition even
-    # though a directory entry credits no bytes under the planner's metric.
-    ledger.note_mutation()
-    return removed_outcome("removed", removed_bytes=ledger.removed_bytes)
-
-
-def authorize_released_attempt_member(
-    paths: Any,
-    attempt_root: str | os.PathLike[str],
-    member_name: str,
-    *,
-    expected_root_identity: Mapping[str, int] | None,
-    certified_nodes: Sequence[Mapping[str, str]],
-) -> tuple[tuple[Path, ...], tuple[tuple[Path, str], ...]]:
-    """Authorize one released-attempt member through the continuous descent.
-
-    This exists because typed node *names* do not say which directory they were
-    certified beneath. Handing them to a generic pathname walk would re-enter
-    exactly the resolution the strict P7 acquisition just closed, one level
-    later: the certification would have been done on one directory and the
-    removal on whatever now answers to that name.
-
-    So the attempt namespace is re-acquired no-follow from the accepted campaign
-    parent, the attempt root's ``(device, inode)`` is required to be the one the
-    certification observed, and the member subtree is walked descriptor-relative
-    from there. Nested mounts, symlinks, special nodes, and unrecorded or
-    wrong-kind nodes reduce authority exactly as they do elsewhere.
-    """
-
-    from ..storage.inventory import AuthorizedPath
-    from ..storage.trust import crosses_mount_boundary
-
-    root = Path(attempt_root)
-    member_path = root / member_name
-    refused: list[tuple[Path, str]] = []
-    attempt_fd, why = open_attempt_namespace(paths, root)
-    if attempt_fd is None:
-        return (), ((member_path, f"the attempt namespace is unresolved: {why}"),)
-    try:
-        identity = _descriptor_identity(attempt_fd)
-        if expected_root_identity is not None and (
-            int(identity["device"]) != int(expected_root_identity["device"])
-            or int(identity["inode"]) != int(expected_root_identity["inode"])
-        ):
-            return (), (
-                (
-                    root,
-                    "the attempt root is a different filesystem object than the one "
-                    "this certification was performed on",
-                ),
-            )
-        recorded = {item["path"]: item["kind"] for item in certified_nodes}
-        try:
-            member_fd = _open_directory_nofollow(member_name, dir_fd=attempt_fd)
-        except FileNotFoundError:
-            return (), ()
-        except NamespaceAmbiguity as exc:
-            return (), ((member_path, str(exc)),)
-        try:
-            members: list[Path] = []
-            stack: list[tuple[int, str]] = [(member_fd, "")]
-            owned: list[int] = []
-            try:
-                while stack:
-                    handle, relative = stack.pop()
-                    try:
-                        entries = sorted(
-                            os.scandir(handle), key=lambda item: item.name
-                        )
-                    except OSError as exc:
-                        refused.append(
-                            (
-                                member_path / relative if relative else member_path,
-                                f"could not be enumerated: {exc}",
-                            )
-                        )
-                        continue
-                    for entry in entries:
-                        child_relative = (
-                            f"{relative}/{entry.name}" if relative else entry.name
-                        )
-                        child_path = member_path / child_relative
-                        crossed, detail = crosses_mount_boundary(root, child_path)
-                        if crossed:
-                            refused.append((child_path, detail))
-                            continue
-                        expected_kind = recorded.get(child_relative)
-                        if entry.is_symlink():
-                            refused.append(
-                                (child_path, "symlink members are never collected")
-                            )
-                            continue
-                        if entry.is_dir(follow_symlinks=False):
-                            if expected_kind != "directory":
-                                refused.append(
-                                    (
-                                        child_path,
-                                        "a directory this owner did not record"
-                                        if expected_kind is None
-                                        else f"the owner recorded a {expected_kind} here",
-                                    )
-                                )
-                                continue
-                            try:
-                                child_fd = _open_directory_nofollow(
-                                    entry.name, dir_fd=handle
-                                )
-                            except (FileNotFoundError, NamespaceAmbiguity) as exc:
-                                refused.append((child_path, f"{exc}"))
-                                continue
-                            owned.append(child_fd)
-                            stack.append((child_fd, child_relative))
-                            continue
-                        if not entry.is_file(follow_symlinks=False):
-                            refused.append(
-                                (child_path, "a special node is never an owned member")
-                            )
-                            continue
-                        if expected_kind != "file":
-                            refused.append(
-                                (
-                                    child_path,
-                                    "a file this owner did not record"
-                                    if expected_kind is None
-                                    else f"the owner recorded a {expected_kind} here",
-                                )
-                            )
-                            continue
-                        members.append(AuthorizedPath.create(child_path, "file"))
-            finally:
-                for handle in owned:
-                    os.close(handle)
-            return tuple(sorted(members)), tuple(refused)
-        finally:
-            os.close(member_fd)
-    finally:
-        os.close(attempt_fd)
-
-
 
 
 def read_attempt_state_at(
@@ -2616,19 +2311,26 @@ def open_attempt_namespace(
         internal_fd = _open_directory_nofollow(str(internal))
     except (FileNotFoundError, NamespaceAmbiguity) as exc:
         return None, f"campaign internal root is unavailable: {exc}"
+    outcome: str = "authenticated"
     try:
         family_fd = _open_directory_nofollow(QUALIFICATION_ROOT_NAME, dir_fd=internal_fd)
         generation_fd = _open_directory_nofollow(root.parent.parent.name, dir_fd=family_fd)
         attempts_fd = _open_directory_nofollow("attempts", dir_fd=generation_fd)
         return _open_directory_nofollow(root.name, dir_fd=attempts_fd), "authenticated"
     except FileNotFoundError:
-        return None, "the attempt namespace no longer exists"
+        outcome = "the attempt namespace no longer exists"
+        return None, outcome
     except NamespaceAmbiguity as exc:
-        return None, str(exc)
+        outcome = str(exc)
+        return None, outcome
     finally:
+        # The ancestors are scaffolding for one descent: each is released
+        # exactly once, and a close failure here is secondary to whatever this
+        # acquisition already decided - the authenticated attempt descriptor it
+        # is handing back, or the namespace refusal the caller will record.
         for handle in (attempts_fd, generation_fd, family_fd, internal_fd):
             if handle is not None:
-                os.close(handle)
+                release_descriptor_behind(handle, root, outcome)
 
 
 def _internal_root(workspace_or_paths: Any) -> Path:
@@ -3106,7 +2808,6 @@ __all__ = [
     "released_authority_identity",
     "remove_released_attempt_member",
     "dir_fd_mutation_supported",
-    "authorize_released_attempt_member",
     "canonical_generation_name",
     "open_attempt_namespace",
     "parse_canonical_generation",

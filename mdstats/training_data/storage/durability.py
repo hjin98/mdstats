@@ -133,6 +133,7 @@ def durable_publish_bytes(
     writer: Callable[[Any], None],
     *,
     expected_sha256: str | None = None,
+    on_published: Callable[[], None] | None = None,
 ) -> tuple[str, int]:
     """Stage, flush, fsync, atomically publish, and authenticate opaque bytes.
 
@@ -141,6 +142,15 @@ def durable_publish_bytes(
     published bytes are re-read from their canonical path afterwards: a digest
     computed only from what was written cannot detect a filesystem that lost or
     altered the publication.
+
+    The atomic replace is the moment the canonical name starts resolving to the
+    new bytes; everything after it - parent fsync, re-read, digest comparison -
+    can fail while that transition stands.  A caller cannot recover the fact
+    afterwards either: the target may have pre-existed, or another actor may
+    have republished it, so *observing* a file there proves nothing about this
+    invocation.  ``on_published`` is therefore invoked exactly once, immediately
+    after this call's ``os.replace`` succeeds and before any later step can
+    raise, and never at all if the replace did not happen.
     """
 
     target = Path(destination)
@@ -156,6 +166,8 @@ def durable_publish_bytes(
             os.fsync(stream.fileno())
         os.replace(staging, target)
         staging = None  # type: ignore[assignment]
+        if on_published is not None:
+            on_published()
         fsync_parent_directory(target)
     finally:
         if staging is not None:
@@ -169,13 +181,21 @@ def durable_publish_bytes(
 
 
 def durable_publish_json(
-    destination: str | os.PathLike[str], payload: Mapping[str, Any]
+    destination: str | os.PathLike[str],
+    payload: Mapping[str, Any],
+    *,
+    on_published: Callable[[], None] | None = None,
 ) -> str:
     """Durably publish one storage-native JSON record and authenticate it.
 
     The record is re-read and re-parsed from its canonical path before this
     function returns, so a caller that publishes a dependent terminal receipt
     afterwards knows the record it depends on is durable and readable.
+
+    That reparse is one more step that can fail *after* the record is already
+    canonical, so this forwards the lower-level publication signal rather than
+    hiding it behind its own success: ``on_published`` fires at the atomic
+    replace, not at return.
     """
 
     body = dict(payload)
@@ -186,7 +206,7 @@ def durable_publish_json(
     def _write(stream: Any) -> None:
         stream.write(encoded)
 
-    durable_publish_bytes(destination, _write)
+    durable_publish_bytes(destination, _write, on_published=on_published)
     target = Path(destination)
     reloaded = json.loads(target.read_text(encoding="utf-8"))
     if reloaded != body:
@@ -236,8 +256,13 @@ def durable_unlink(
     Hot reclamation after an authenticated archive is a recovery-relevant
     deletion: the promise that a restart observes either the hot member or the
     catalog's account of it depends on the removal reaching the directory.
-    When ``on_unlinked`` is supplied, it is invoked immediately after the unlink
-    syscall succeeds and before parent directory fsync.
+
+    ``on_unlinked`` reports one fact and only one: *this* call's unlink syscall
+    succeeded.  It fires immediately afterwards, before the parent fsync that
+    can still fail, and it does not fire for a target that was already absent
+    under ``missing_ok`` - a name that was gone before this call was never
+    removed by it, and crediting the caller for it would attribute someone
+    else's deletion to this execution.
     """
 
     target = Path(path)
@@ -247,24 +272,20 @@ def durable_unlink(
         except FileNotFoundError:
             if not missing_ok:
                 raise
-        if on_unlinked is not None:
-            on_unlinked()
+        else:
+            if on_unlinked is not None:
+                on_unlinked()
         os.fsync(dir_fd)
     else:
-        target.unlink(missing_ok=missing_ok)
-        if on_unlinked is not None:
-            on_unlinked()
+        try:
+            target.unlink()
+        except FileNotFoundError:
+            if not missing_ok:
+                raise
+        else:
+            if on_unlinked is not None:
+                on_unlinked()
         fsync_parent_directory(target)
-
-
-def durable_unlink_tracked(
-    path: str | os.PathLike[str],
-    *,
-    on_unlinked: Callable[[], None] | None = None,
-) -> None:
-    """Unlink one file and persist the directory entry removal with transition tracking."""
-
-    durable_unlink(path, missing_ok=False, on_unlinked=on_unlinked)
 
 
 __all__ = [
@@ -277,7 +298,6 @@ __all__ = [
     "durable_publish_bytes",
     "durable_publish_json",
     "durable_unlink",
-    "durable_unlink_tracked",
     "parallel_digests",
     "sha256_file",
 ]

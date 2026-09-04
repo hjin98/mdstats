@@ -29,7 +29,6 @@ from ..storage_accounting import ProtectedInputPath
 from .control_plane import StorageControlPlane, open_storage_control_plane_readonly
 from .owners import (
     NODE_ABSENT,
-    P7_RELEASED_ATTEMPT_AUTHORIZER,
     NODE_DIRECTORY,
     NODE_FILE,
     observed_node_kind,
@@ -202,12 +201,18 @@ class StorageInventorySnapshot:
                 + "\n  - ".join(self.integrity_failures)
             )
 
-    # -- recursive authorization ------------------------------------------
+    # -- read-only member authorization -----------------------------------
 
     def authorized_members(
         self, view: OwnerArtifactView
     ) -> tuple[tuple[Path, ...], tuple[tuple[Path, str], ...]]:
         """The files this owner actually certifies, and what was refused.
+
+        This is a *read-only* member resolver for archive membership and dedup
+        candidacy. It grants no destructive authority: consequential cleanup
+        removes whole owner-authorized units and re-checks every node's typed
+        certification live, at the mutation boundary, rather than acting on a
+        member list resolved earlier.
 
         Lexical containment beneath an owner root is not semantic ownership. A
         ``CLOSED`` subtree may be walked, because its owner certified that every
@@ -229,21 +234,6 @@ class StorageInventorySnapshot:
 
         refused: list[tuple[Path, str]] = []
         root = view.path
-        if view.exact_authorizer == P7_RELEASED_ATTEMPT_AUTHORIZER:
-            # The P7 owner authenticated this subtree through a continuous
-            # no-follow descent. Re-deriving it here from `root` would throw that
-            # away and re-enter the pathname resolution the owner just closed, so
-            # the owner decides its own members and proves the root is still the
-            # same filesystem object it certified.
-            from ..qualification.store import authorize_released_attempt_member
-
-            return authorize_released_attempt_member(
-                self.campaign_paths,
-                root.parent,
-                root.name,
-                expected_root_identity=view.root_identity,
-                certified_nodes=[item.to_dict() for item in view.certified_nodes],
-            )
         root_kind = observed_node_kind(root)
         if root_kind == NODE_FILE:
             return (AuthorizedPath.create(root, "file"),), ()
