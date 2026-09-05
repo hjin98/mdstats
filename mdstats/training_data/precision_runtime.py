@@ -30,6 +30,10 @@ PRECISION_STAGE_TRANSITION_SCHEMA = "mdstats.mace-precision-stage-transition.v1"
 PRECISION_RUNTIME_COMPANION_NAME = ".mdstats-precision-latest.state"
 PRECISION_TRANSITION_PREFIX = "mdstats-precision-transition-epoch-"
 SUPPORTED_STAGED_MACE_VERSION = "0.3.16"
+# The one key by which a launcher tells the qualified wrapper which raw
+# (zero-based) MACE checkpoint epoch a ``--restart_latest`` run is expected to
+# resume from.  Consumers verify it fail-closed; they never default it.
+MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE = "MDSTATS_MACE_RESTART_EPOCH"
 
 
 def _dtype_name(dtype: Any) -> str:
@@ -385,10 +389,12 @@ def configure_precision_runtime_from_argv(argv: list[str]) -> PrecisionRuntimePl
         return plan
     if checkpoint_value is None:
         raise TrainingDataInputError("Staged MACE execution requires an explicit checkpoints directory.")
-    restart_value = os.environ.get("MDSTATS_MACE_RESTART_EPOCH")
+    restart_value = os.environ.get(MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE)
     if "--restart_latest" in argv:
         if restart_value is None:
-            raise TrainingDataInputError("Staged restart requires MDSTATS_MACE_RESTART_EPOCH.")
+            raise TrainingDataInputError(
+                f"Staged restart requires {MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE}."
+            )
         expected_epoch = int(restart_value)
         payload = _load_companion(companion_path(checkpoint_value), plan=plan, map_location="cpu")
         if int(payload["epoch"]) != expected_epoch:

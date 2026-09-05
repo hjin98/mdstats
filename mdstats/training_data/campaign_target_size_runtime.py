@@ -49,6 +49,7 @@ from .campaign_target_size_paths import (
     target_size_execution_root,
     target_size_execution_root_locator,
 )
+from .precision_runtime import MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE
 
 
 class TargetSizeRuntimeError(TrainingDataError):
@@ -667,6 +668,19 @@ class MaceTargetSizeBoundaryTrainer:
             request.plan.to_dict(), sort_keys=True, separators=(",", ":")
         )
         environment["PYTHONHASHSEED"] = str(int(request.trajectory.optimizer_seed))
+        # The qualified wrapper verifies the raw checkpoint epoch MACE actually
+        # loaded against the epoch this launcher intended to continue from, so
+        # that intent has to travel with the launch.  ``start_epoch`` is the
+        # authenticated *completed*-epoch predecessor boundary supplied by P3,
+        # while TRAIN2's raw MACE checkpoint epochs are zero-based; hence the
+        # -1.  A fresh rung has no predecessor continuation authority at all, so
+        # an ambient or injected value is cleared rather than inherited.
+        if request.start_epoch > 0:
+            environment[MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE] = str(
+                int(request.start_epoch) - 1
+            )
+        else:
+            environment.pop(MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE, None)
         command = [
             str(self.wrapper_path),
             "--config",
