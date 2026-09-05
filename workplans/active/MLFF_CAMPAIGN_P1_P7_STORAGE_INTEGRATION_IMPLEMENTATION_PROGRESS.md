@@ -95,7 +95,22 @@ publication completes before adoption.
 - the first rung discards its uncommitted attempt workspace before fresh
   execution, so partial bytes from an interrupted attempt can never authenticate
   as that attempt's boundary state;
-- stale-P3-writer fencing is established through the real CAS transition.
+- stale-P3-writer fencing is established through the real CAS transition;
+- the full interruption matrix now runs through the assembled campaign. With one
+  boundary accepted and a continuation rung open, each required predecessor
+  component - raw checkpoint, TRAIN2 runtime summary, continuation companion - is
+  deleted and corrupted in turn, and a foreign candidate's summary is swapped in.
+  Every case fails closed with the reducer, adopted head and generation exactly
+  unchanged, and, decisively, **no continuation rung ever restarts from epoch
+  zero**: a silent fresh start would be a different trajectory wearing the same
+  identity. An ordinary interruption resumes into the same experiment, reusing
+  the accepted boundary rather than recomputing it.
+
+That matrix also found a real defect: corrupting the durable TRAIN2 runtime
+summary surfaced a bare `json.decoder.JSONDecodeError` instead of the typed
+corruption error every other component raises, so a caller distinguishing
+"absent" from "corrupt" would have missed it. The summary loader now reports
+unreadable durable state as serialization corruption.
 
 ### Assembled lifecycle, property coverage, GPU and cost evidence
 
@@ -143,6 +158,7 @@ doubles strictly below them:
 - `tests/test_mlff_campaign_observation_purity.py`
 - `tests/test_mlff_campaign_currentness_races.py`
 - `tests/test_mlff_target_size_first_boundary_interruption.py`
+- `tests/test_mlff_target_size_continuation_corruption.py`
 - `tests/test_mlff_campaign_storage_composition.py`
 - `tests/test_mlff_campaign_stateful_properties.py`
 - `tests/test_mlff_campaign_assembled_lifecycle.py`
@@ -180,11 +196,6 @@ progress should be read as closing them:
 - the tail of root section 6.1 - supplying the authenticated reference bundle,
   completing nonlocked qualification, explicit locked activation, and a terminal
   release verdict - is blocked by the P7 fixture defect below;
-- FINAL-A cases 4-7: each required predecessor continuation component deleted or
-  corrupted after a committed boundary, exercised through the campaign path. The
-  first-rung half of the distinction is closed and the corrupt-predecessor half
-  is covered at the same owner by the existing P3A4/P3A7 restart negatives, but
-  not through the assembled campaign;
 - R2-F archive verify and restore against the prepared representation: no owner
   in the bounded campaign declares cold-replaceable bulk, so `archive create`
   catalogs nothing and there is no archive to verify or restore. Every other
