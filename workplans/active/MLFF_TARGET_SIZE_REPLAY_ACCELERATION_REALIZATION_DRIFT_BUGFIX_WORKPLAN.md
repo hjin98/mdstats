@@ -1,12 +1,51 @@
 ---
 kind: implementation-workplan
 workplan_id: CODE-MLFF-TARGET-SIZE-REPLAY-ACCELERATION-REALIZATION-DRIFT-BUGFIX
-protocol_version: 5.8.0
+protocol_version: 5.15.0
 status: active
 parent_workplan_id: CODE-MLFF-TARGET-SIZE-PARTIAL-BOUNDARY-RESUME-BUGFIX
 ---
 
 # MLFF target-size replay acceleration-realization drift bug-fix workplan
+
+## 0. Protocol binding and inherited authority
+
+### 0.1 Current protocol binding
+
+This is a newly authored repair workplan and is governed by the current remote software-development protocol, **5.15.0**.
+
+The older V7/P3/P4 target-size authorities and the parent partial-boundary-resume workplan retain the protocol versions they explicitly declare. Their still-binding product/scientific requirements and Frozen high-level architecture remain inherited authority for this repair. Binding this new workplan to 5.15.0 does **not** silently reinterpret or upgrade those older workplans.
+
+Accordingly:
+
+```text
+explicit user/task requirements
+ -> still-binding target-size product/scientific contracts and Frozen parent architecture
+ -> this repair workplan under Protocol 5.15.0
+ -> delegated implementation-local realization
+```
+
+Protocol 5.15.0 governs the generic Design -> Implementation methodology, active-simplicity discipline, language engineering profile, relation-first tool routing, stage-local/final regression, real-owner integration, proxy-proof acceptance, and final affected-surface re-derivation for this repair.
+
+### 0.2 Protocol 5.15 reconciliation for this repair
+
+The affected executable surface is Python. Implementation must therefore follow the current Python engineering profile while preserving the shared scientific, persistence/restart, orchestration, and testing owners. In particular:
+
+- prefer one clear Python-native replay/policy owner over wrapper hierarchies, parallel policy objects, or duplicated field plumbing;
+- treat the existing current-vs-historical policy ambiguity as a Tier-2 simplification target before adding durable machinery;
+- do not introduce a native/C++ boundary, custom kernel, new accelerator backend, or extra runtime layer for this correctness repair;
+- use relation-first repository tooling when it materially improves the claim: semantic symbol/caller/reference questions should use Serena when available/current/supported; structural absence/duplicate-path claims may use Semgrep when appropriate; broad combinatorial Python state invariants may use Hypothesis when materially useful; unavailable tooling never weakens the engineering claim;
+- keep acceptance proxy-proof: bounded trainer/evaluator doubles are allowed below the production restart/orchestration owner, but tests must execute the real trajectory replay, recovery/reconciliation/continuation, batch/head, and CampaignStore transition paths whose behavior is under acceptance;
+- after each material executable stage, run focused checks plus stage-local affected regression; after all executable edits, re-derive the affected surface and run complete affected regression plus assembled real-owner integration;
+- production-scale GPU qualification remains separate and deferred; Protocol 5.15 does not convert implementation regression into full target-machine qualification.
+
+### 0.3 Snapshot-complete relationship to older target-size authority
+
+This workplan carries the repair-specific product invariants, Frozen decisions, non-goals, acceptance boundaries, and redesign triggers needed for implementation. It intentionally relies on the supplied repository's older V7/P3/P4 authorities only for their still-binding target-size scientific architecture and governed contracts; their historical Tier-2 realization is not automatically preserved.
+
+If a 5.15 generic methodology rule appears to conflict with an explicitly Frozen target-size scientific decision from the parent authority, the scientific/Frozen decision remains the product constraint and the implementation method must adapt around it. If evidence shows that Frozen decision itself is invalid, reopen only that bounded Design surface rather than silently reinterpreting it through the newer protocol.
+
+---
 
 ## 1. Objective / problem invariants / non-goals
 
@@ -686,7 +725,8 @@ Close with:
 - focused P3-B replay matrix;
 - true stale geometry/precision negatives;
 - historical acceleration tamper negatives;
-- stage-local affected candidate/context/coordinator regression.
+- stage-local affected candidate/context/coordinator regression;
+- a Python-native simplicity check confirming the change consolidated current/historical replay meaning rather than adding parallel wrapper/state machinery.
 
 Do not proceed with runtime-specific patches while the canonical replay owner remains semantically wrong.
 
@@ -698,7 +738,7 @@ Exercise the corrected shared replay path through:
 - committed-head/root reconciliation;
 - later-rung continuation resolution.
 
-Close with the fresh-process/bounded campaign integration scenarios above and affected P3/P4 regression.
+Close with the fresh-process/bounded campaign integration scenarios above and affected P3/P4 regression. The integration evidence must execute the real production semantic owners; doubles may remain only below the expensive TRAIN2/EVAL2 boundary.
 
 ### Stage C — final assembled closure
 
@@ -707,15 +747,19 @@ After all executable edits:
 1. reconcile implementation against this workplan and the still-binding parent partial-boundary-resume workplan;
 2. confirm no recovery-specific weak validation path or duplicate historical policy authority was introduced;
 3. confirm no schema/migration/destructive cleanup was added without redesign evidence;
-4. re-derive final affected surface;
-5. run complete affected regression plus bounded real-owner integration on the assembled candidate;
-6. confirm immutable conflict, exact P2 order, and current-new-work behavior remain intact.
+4. confirm the assembled realization remains Python-native and no new language/runtime/accelerator layer was introduced without product need;
+5. re-derive final affected surface from the assembled candidate, including callers/consumers of every refactored shared replay/policy owner;
+6. run complete affected regression plus bounded real-owner integration on the assembled candidate;
+7. confirm immutable conflict, exact P2 order, current-new-work behavior, and historical replay semantics remain intact;
+8. use structural/semantic tooling where material to prove absence of a duplicate replay/policy path; tool absence does not waive the underlying uniqueness/simplicity claim.
 
 ### Active simplification trigger
 
 If implementation starts accumulating separate “current policy,” “restart policy,” “recovery policy,” and “continuation policy” wrappers containing duplicated field reconstruction, stop and consolidate around one canonical seed-neutral template plus trajectory-aware historical realization owner.
 
 This bug occurs because current and historical meanings are already being conflated. The repair should reduce that ambiguity, not institutionalize it with more parallel helpers.
+
+Protocol 5.15 makes this an active Tier-2 simplification requirement: repeated wrappers, duplicated reconstruction, or synchronized representations around the same replay identity are not acceptable merely because they can be made to pass tests.
 
 ### Genuine redesign trigger
 
@@ -740,10 +784,12 @@ The following do not satisfy this workplan:
 - declare acceleration realization execution-only without validating its scientific/provider consequences;
 - accept old acceleration metadata without cross-checking materialization/checkpoint/provider/prediction evidence;
 - create a recovery-only alternate optimizer-policy constructor;
+- create parallel current/restart/recovery/continuation policy wrappers instead of consolidating the canonical owner;
 - weaken immutable progress conflict detection;
 - make current runtime state the authority for historical checkpoint/provider identity;
 - change P2 ranking or fidelity policy to route around the restart failure;
-- require the user to restart the whole target-size campaign from scratch as the normal fix.
+- require the user to restart the whole target-size campaign from scratch as the normal fix;
+- weaken or proxy around the real production restart/reconciliation owner merely to make bounded tests pass.
 
 ---
 
@@ -753,6 +799,6 @@ The following do not satisfy this workplan:
 
 The previous partial-boundary scheduler repair correctly exposed already-published cells to deep authentication, but the shared trajectory replay owner incorrectly re-derives historical candidate realization using the mutable current acceleration realization. That rejects potentially valid durable evidence before recovery can reuse it.
 
-**This workplan: PASS / implementation-ready.**
+**This workplan: PASS / implementation-ready under Protocol 5.15.0.**
 
-The defect is bounded to historical candidate execution-realization replay under the existing P3 architecture. No target-size scientific-policy redesign, persistence migration, new restart architecture, or weakening of lineage validation is currently justified.
+The defect is bounded to historical candidate execution-realization replay under the existing P3 architecture. No target-size scientific-policy redesign, persistence migration, new restart architecture, or weakening of lineage validation is currently justified. Protocol 5.15 strengthens how the repair is implemented and accepted—especially active simplicity, Python-native realization, relation-first tool use, stage-local/final affected regression, and proxy-proof real-owner integration—without altering the inherited target-size scientific architecture.
