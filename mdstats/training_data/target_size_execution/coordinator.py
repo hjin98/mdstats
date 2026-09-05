@@ -2246,118 +2246,199 @@ def _resolve_publication_parent_graph(
     }
 
 
-def _reverify_published_parent_graph(
+def authenticate_boundary_cell_completion_record(
     authority: TargetSizeRestartAuthority,
-    completion_record: TargetSizeCellCompletionRecord,
-) -> None:
-    """Run the same replay/scientific authorities before completion publication."""
+    record: TargetSizeCellCompletionRecord,
+    *,
+    window: TargetSizeScreenWindow,
+) -> BoundaryOutcome:
+    """Authenticate one completion record against its complete durable parent graph.
+
+    This is the single scientific replay owner for any completion record that a
+    caller claims is accepted evidence.  Publication uses it before a new
+    completion/progress pair may exist, restart reconciliation uses it for every
+    record in a committed or crash-left batch, and partial-boundary recovery
+    uses it before an already published cell may be treated as work that no
+    longer has to run.  There is deliberately no weaker variant: file presence,
+    JSON parsing, and internal self-consistency are not evidence.
+
+    The reconstructed outcome is returned so callers that rebuild a batch use the
+    replayed value rather than the stored one.
+    """
+
+    import hashlib
+
+    from .evaluation import (
+        run_target_size_eval2_reduction,
+        target_size_boundary_metric_from_eval2_record,
+        translate_target_size_eval2_failure,
+    )
+    from .execution import translate_target_size_train2_failure
+    from ..eval2 import Eval2NumericalEvaluationError
+    from ..train2_runtime import Train2NumericalFailureRecord
+
+    resolver = authority.resolver
+    definition = authority.aggregate.definition
+    fidelity_epochs = tuple(definition.policy.fidelity_epochs)
+    if record.boundary_epoch not in fidelity_epochs:
+        raise TrainingDataInputError(
+            "Completion record boundary epoch is not a configured screen boundary."
+        )
+    boundary_index = fidelity_epochs.index(record.boundary_epoch)
+    expected_membership = definition.evaluation_order.membership_digest(
+        int(definition.policy.evaluation_sizes[boundary_index])
+    )
+    if (
+        record.window_digest != window.content_digest
+        or record.experiment_definition_digest != definition.content_digest
+        or record.execution_context_digest != authority.context.content_digest
+        or record.common_preparation_digest != authority.common.content_digest
+        or record.outcome.boundary_epoch != record.boundary_epoch
+        or record.outcome.evaluation_membership_digest != expected_membership
+    ):
+        raise TrainingDataInputError(
+            "Completion record carries foreign screen, P1/P2, or boundary identity."
+        )
 
     trajectory, optimizer_policy, _projection, materialization = (
-        _validate_replayed_candidate_lineage(authority, completion_record)
+        _validate_replayed_candidate_lineage(authority, record)
     )
+    if (
+        trajectory.target_size != record.target_size
+        or trajectory.optimizer_seed != record.optimizer_seed
+        or trajectory.content_digest != record.trajectory_digest
+    ):
+        raise TrainingDataInputError(
+            "Completion record cell key does not match its authenticated trajectory."
+        )
+    if materialization.content_digest != record.materialization_digest:
+        raise TrainingDataInputError(
+            "Completion record materialization digest changed during replay."
+        )
     planned_rung, _predecessor = _load_and_validate_replayed_rung_ancestry(
-        authority, completion_record, trajectory
+        authority, record, trajectory
     )
-    if completion_record.kind == "success":
-        from .evaluation import target_size_boundary_metric_from_eval2_record
 
-        snapshot, _eval_data, role, _prediction, _view, metric = (
+    if record.kind == "success":
+        snapshot, eval_data, role, prediction, view, metric = (
             _validate_replayed_eval2_parents(
-                authority,
-                completion_record,
-                trajectory,
-                optimizer_policy,
-                materialization,
+                authority, record, trajectory, optimizer_policy, materialization
             )
         )
         if snapshot.rung_plan_digest != planned_rung.content_digest:
             raise TrainingDataInputError(
-                "Published success snapshot does not bind the exact planned rung."
+                "Replay snapshot does not bind the exact planned rung."
             )
         if metric is None:
             raise TrainingDataInputError(
-                "Success completion replay did not resolve its EVAL2 metric parent."
+                "Success completion record has no authenticated EVAL2 metric parent."
             )
-        derived = target_size_boundary_metric_from_eval2_record(role, metric)
-        if derived.content_digest != completion_record.outcome.content_digest:
+        recomputed_metric = run_target_size_eval2_reduction(
+            role,
+            eval_data,
+            prediction,
+            view=view,
+            root_directory=_evaluation_bulk_root_for_artifact(authority, eval_data),
+        )
+        if recomputed_metric.content_digest != metric.content_digest:
             raise TrainingDataInputError(
-                "Published success outcome differs from its authenticated replay metric."
+                "Replayed EVAL2 metric differs from the persisted metric record."
             )
-    elif completion_record.kind == "eval2_failure":
-        from .evaluation import translate_target_size_eval2_failure
-        from ..eval2 import Eval2NumericalEvaluationError
+        derived_outcome = target_size_boundary_metric_from_eval2_record(role, metric)
+        if record.failure_evidence_digest is not None:
+            raise TrainingDataInputError(
+                "Success completion record carries failure evidence."
+            )
 
+    elif record.kind == "train2_failure":
+        if record.failure_record_digest is None:
+            raise TrainingDataInputError(
+                "TRAIN2 failure completion record is missing its raw failure parent."
+            )
+        raw_fail = resolver.load_raw_failure(record.failure_record_digest)
+        if not isinstance(raw_fail, Train2NumericalFailureRecord):
+            raise TrainingDataInputError(
+                "TRAIN2 failure completion references a non-TRAIN2 raw failure."
+            )
+        failure_root = _path_within_declared_root(
+            resolver.failure_bulk_directory(raw_fail.content_digest),
+            authority.bulk_root("train2"),
+            name="TRAIN2 failure bulk directory",
+        )
+        raw_checkpoint = failure_root / raw_fail.raw_checkpoint_name
+        if (
+            not raw_checkpoint.is_file()
+            or raw_fail.raw_checkpoint_sha256 is None
+            or hashlib.sha256(raw_checkpoint.read_bytes()).hexdigest()
+            != raw_fail.raw_checkpoint_sha256
+        ):
+            raise TrainingDataInputError(
+                "Authenticated TRAIN2 raw checkpoint bytes are missing or changed."
+            )
+        derived_outcome = translate_target_size_train2_failure(
+            raw_fail,
+            trajectory=trajectory,
+            definition=definition,
+            schedule=authority.schedule,
+            scheduled_boundary_epoch=record.boundary_epoch,
+        )
+        if (
+            record.failure_evidence_digest
+            != derived_outcome.classification_evidence_digest
+        ):
+            raise TrainingDataInputError(
+                "TRAIN2 failure evidence digest differs from raw failure translation."
+            )
+
+    elif record.kind == "eval2_failure":
         snapshot, _eval_data, role, prediction, _view, metric = (
             _validate_replayed_eval2_parents(
-                authority,
-                completion_record,
-                trajectory,
-                optimizer_policy,
-                materialization,
+                authority, record, trajectory, optimizer_policy, materialization
             )
         )
         if snapshot.rung_plan_digest != planned_rung.content_digest:
             raise TrainingDataInputError(
-                "Published EVAL2 failure snapshot does not bind the exact planned rung."
+                "Replay snapshot does not bind the exact planned rung."
             )
         if metric is not None:
             raise TrainingDataInputError(
-                "EVAL2 failure completion replay unexpectedly resolved a metric parent."
+                "EVAL2 failure completion record carries a successful metric parent."
             )
-        failure = authority.resolver.load_raw_failure(
-            completion_record.failure_record_digest or ""
-        )
-        if not isinstance(failure, Eval2NumericalEvaluationError):
+        if record.failure_record_digest is None:
             raise TrainingDataInputError(
-                "EVAL2 failure replay did not resolve its raw error parent."
+                "EVAL2 failure completion record is missing its raw failure parent."
             )
-        if failure.prediction_digest != prediction.prediction_payload_digest:
+        raw_error = resolver.load_raw_failure(record.failure_record_digest)
+        if not isinstance(raw_error, Eval2NumericalEvaluationError):
             raise TrainingDataInputError(
-                "EVAL2 failure replay error/prediction linkage is foreign."
+                "EVAL2 failure completion references a non-EVAL2 raw failure."
             )
-        derived = translate_target_size_eval2_failure(role, failure)
-        if derived.content_digest != completion_record.outcome.content_digest:
+        if (
+            raw_error.target_role_digest != role.content_digest
+            or raw_error.prediction_digest != prediction.prediction_payload_digest
+        ):
             raise TrainingDataInputError(
-                "Published EVAL2 failure outcome differs from its raw replay evidence."
+                "EVAL2 raw numerical error does not bind the replayed role/prediction."
             )
-    else:
-        from .execution import translate_target_size_train2_failure
-        from ..train2_runtime import Train2NumericalFailureRecord
+        derived_outcome = translate_target_size_eval2_failure(role, raw_error)
+        if (
+            record.failure_evidence_digest
+            != derived_outcome.classification_evidence_digest
+        ):
+            raise TrainingDataInputError(
+                "EVAL2 failure evidence digest differs from raw failure translation."
+            )
 
-        failure = authority.resolver.load_raw_failure(
-            completion_record.failure_record_digest or ""
+    else:  # pragma: no cover - TargetSizeCellCompletionRecord rejects this
+        raise TrainingDataInputError(
+            f"Unknown cell completion kind {record.kind!r}."
         )
-        if not isinstance(failure, Train2NumericalFailureRecord):
-            raise TrainingDataInputError(
-                "TRAIN2 failure replay did not resolve its raw failure parent."
-            )
-        raw_name = str(failure.raw_checkpoint_name)
-        raw_path = authority.resolver.failure_bulk_directory(
-            failure.content_digest
-        ) / raw_name
-        if not raw_path.is_file():
-            raise TrainingDataInputError(
-                "TRAIN2 failure replay is missing its raw checkpoint bulk parent."
-            )
-        import hashlib
 
-        if failure.raw_checkpoint_sha256 is None or hashlib.sha256(
-            raw_path.read_bytes()
-        ).hexdigest() != failure.raw_checkpoint_sha256:
-            raise TrainingDataInputError(
-                "TRAIN2 failure replay raw checkpoint bytes do not match the raw failure record."
-            )
-        derived = translate_target_size_train2_failure(
-            failure,
-            trajectory=trajectory,
-            definition=authority.aggregate.definition,
-            schedule=authority.schedule,
-            scheduled_boundary_epoch=completion_record.boundary_epoch,
+    if derived_outcome.content_digest != record.outcome_digest:
+        raise TrainingDataInputError(
+            "Reconstructed scientific outcome does not match completion outcome digest."
         )
-        if derived.content_digest != completion_record.outcome.content_digest:
-            raise TrainingDataInputError(
-                "Published TRAIN2 failure outcome differs from its raw replay evidence."
-            )
+    return derived_outcome
 
 
 def record_candidate_boundary_outcome(
@@ -2584,7 +2665,9 @@ def record_candidate_boundary_outcome(
     # candidate-lineage, rung-ancestry, EVAL2/provider, bulk, and raw-failure
     # validators used during restart before exposing either authoritative
     # completion or logical progress.
-    _reverify_published_parent_graph(restart_authority, completion_record)
+    authenticate_boundary_cell_completion_record(
+        restart_authority, completion_record, window=durable_window
+    )
 
     progress = TargetSizeCandidateOutcome(
         window_digest=window.content_digest,
@@ -2648,17 +2731,26 @@ def collect_boundary_cell_completion_records(
     *,
     boundary_epoch: int,
 ) -> tuple[TargetSizeCellCompletionRecord, ...]:
-    """Collect all cell completion records for the active boundary in size-major/seed-minor order."""
+    """Load every durable cell completion for one boundary in P2 matrix order.
+
+    This is the structural half of recovery: the progress pointer is loaded
+    through its typed owner, so its deterministic cell key must match its own
+    filename, and the completion it references must exist, hash to the
+    referenced digest, and agree with the pointer about the logical cell it
+    describes.  It deliberately proves nothing scientific -- use
+    :func:`recover_authenticated_boundary_progress` before treating a record as
+    accepted evidence that a cell no longer has to run.
+    """
 
     root_path = Path(root)
-    progress_dir = root_path / "progress" / str(boundary_epoch)
+    resolver = TargetSizeExecutionResolver(root_path)
+    progress_dir = root_path / "progress" / str(int(boundary_epoch))
     if not progress_dir.is_dir():
         return ()
     completions: list[TargetSizeCellCompletionRecord] = []
+    seen: set[tuple[int, int]] = set()
     for p_path in sorted(progress_dir.glob("*.json")):
-        prog = TargetSizeCandidateOutcome.from_dict(
-            json.loads(p_path.read_text(encoding="utf-8"))
-        )
+        prog = resolver.load_progress(p_path)
         if prog.window_digest != window.content_digest:
             raise TrainingDataInputError(
                 "Progress record belongs to a different screen window."
@@ -2667,26 +2759,79 @@ def collect_boundary_cell_completion_records(
             raise TrainingDataInputError(
                 "Progress record belongs to a different boundary epoch."
             )
-        c_path = (
-            root_path
-            / "completions"
-            / str(boundary_epoch)
-            / f"{prog.completion_record_digest}.json"
-        )
-        if not c_path.is_file():
+        cell = (prog.outcome.target_size, prog.outcome.optimizer_seed)
+        if cell in seen:
             raise TrainingDataInputError(
-                f"Missing cell completion record for progress: {c_path}"
+                "Duplicate durable progress records exist for one logical cell."
             )
-        rec = TargetSizeCellCompletionRecord.from_dict(
-            json.loads(c_path.read_text(encoding="utf-8"))
+        seen.add(cell)
+        rec = resolver.load_typed_content_addressed(
+            resolver.completion_path(
+                int(boundary_epoch), prog.completion_record_digest
+            ),
+            prog.completion_record_digest,
+            TargetSizeCellCompletionRecord.from_dict,
         )
-        if rec.content_digest != prog.completion_record_digest:
+        if (
+            rec.window_digest != prog.window_digest
+            or rec.boundary_epoch != prog.boundary_epoch
+            or rec.trajectory_digest != prog.trajectory_digest
+            or rec.target_size != prog.outcome.target_size
+            or rec.optimizer_seed != prog.outcome.optimizer_seed
+            or rec.outcome_digest != prog.outcome.content_digest
+        ):
             raise TrainingDataInputError(
-                "Completion record digest does not match progress reference."
+                "Progress pointer and its completion record describe different cells."
             )
         completions.append(rec)
     completions.sort(key=lambda item: (item.target_size, item.optimizer_seed))
     return tuple(completions)
+
+
+def recover_authenticated_boundary_progress(
+    root: str | Path,
+    window: TargetSizeScreenWindow,
+    authority: TargetSizeRestartAuthority,
+    *,
+    boundary_epoch: int,
+    active_keys: Sequence[tuple[int, int]],
+) -> dict[tuple[int, int], TargetSizeCellCompletionRecord]:
+    """Recover the durably completed cells of one partially executed boundary.
+
+    A boundary that was interrupted before its complete matrix existed leaves
+    accepted per-cell evidence behind while the P2 reducer correctly stays at
+    its pre-boundary state.  On restart the whole boundary is therefore still
+    *active*, which is not the same claim as *not yet executed*: re-running an
+    accepted cell would recompute expensive science and then collide with the
+    immutable progress slot that already holds it.
+
+    Every recovered cell is authenticated through
+    :func:`authenticate_boundary_cell_completion_record`, so reuse rests on the
+    same replay owner that publication and reconciliation use, and it must also
+    belong to the exact active P2 key set.  Absence is not corruption: an active
+    key with no progress record is simply work that remains to be done.  A
+    current-boundary record that does not authenticate, or that describes a cell
+    P2 is not asking for, is contradictory durable evidence and fails closed.
+    """
+
+    keys = tuple((int(size), int(seed)) for size, seed in active_keys)
+    active = set(keys)
+    records = collect_boundary_cell_completion_records(
+        root, window, boundary_epoch=int(boundary_epoch)
+    )
+    recovered: dict[tuple[int, int], TargetSizeCellCompletionRecord] = {}
+    for record in records:
+        cell = (record.target_size, record.optimizer_seed)
+        if cell not in active:
+            raise TrainingDataInputError(
+                "Durable current-boundary progress exists for a cell outside the "
+                f"exact active P2 matrix: {cell}."
+            )
+        authenticate_boundary_cell_completion_record(
+            authority, record, window=window
+        )
+        recovered[cell] = record
+    return {key: recovered[key] for key in keys if key in recovered}
 
 
 def collect_boundary_candidate_outcomes(
@@ -3646,27 +3791,15 @@ def _reconcile_target_size_screen_root_locked(
     from .candidate import (
         TargetSizeCandidateMaterialization,
         TargetSizeCandidateTrajectory,
-        validate_target_size_candidate_trajectory,
-        validate_target_size_materialization,
     )
-    from .evaluation import (
-        TargetSizeEval2Role,
-        TargetSizePredictionEvidence,
-        target_size_boundary_metric_from_eval2_record,
-        translate_target_size_eval2_failure,
-    )
+    from .evaluation import TargetSizeEval2Role, TargetSizePredictionEvidence
     from .execution import (
         TargetSizeBoundarySnapshot,
         TargetSizeContinuationRequest,
-        translate_target_size_train2_failure,
-        validate_target_size_boundary_snapshot,
     )
-    from .export import (
-        TargetSizeEvaluationArtifact,
-        validate_target_size_evaluation_artifact,
-    )
-    from ..eval2 import Eval2NumericalEvaluationError, Eval2TargetMetricRecord
-    from ..train2_runtime import Train2NumericalFailureRecord, Train2RuntimePlan
+    from .export import TargetSizeEvaluationArtifact
+    from ..eval2 import Eval2TargetMetricRecord
+    from ..train2_runtime import Train2RuntimePlan
 
     # 2. Check for content-addressed stems across artifact directories
     scan_configs = (
@@ -3927,9 +4060,9 @@ def _reconcile_target_size_screen_root_locked(
     # 4. Deterministic scientific replay of every committed or candidate batch.
     # The replay function is shared by the current head chain and by a batch
     # left durable after a crash, so an uncommitted batch cannot bypass the
-    # exact parent/provenance checks merely because it has no head yet.
-    from .evaluation import run_target_size_eval2_reduction
-    import hashlib
+    # exact parent/provenance checks merely because it has no head yet.  Each
+    # record is authenticated by the one completion-record replay owner that
+    # publication and partial-boundary recovery also use.
 
     def _replay_batch(
         batch: TargetSizeCompleteBoundaryBatch,
@@ -3965,177 +4098,16 @@ def _reconcile_target_size_screen_root_locked(
             record = active_resolver.load_typed_content_addressed(
                 comp_file, comp_digest, TargetSizeCellCompletionRecord.from_dict
             )
-            observed_key = (record.target_size, record.optimizer_seed)
-            observed_keys.append(observed_key)
-            if (
-                record.window_digest != window.content_digest
-                or record.experiment_definition_digest != definition.content_digest
-                or record.execution_context_digest != auth.context.content_digest
-                or record.common_preparation_digest != auth.common.content_digest
-                or record.boundary_epoch != expected_boundary
-                or record.outcome.boundary_epoch != expected_boundary
-                or record.outcome.evaluation_membership_digest != expected_membership
-            ):
+            observed_keys.append((record.target_size, record.optimizer_seed))
+            if record.boundary_epoch != expected_boundary:
                 raise TrainingDataInputError(
                     "Completion record carries foreign screen, P1/P2, or boundary identity."
                 )
-
-            trajectory, optimizer_policy, _projection, materialization = (
-                _validate_replayed_candidate_lineage(auth, record)
+            recomputed_outcomes.append(
+                authenticate_boundary_cell_completion_record(
+                    auth, record, window=window
+                )
             )
-            if (
-                trajectory.target_size != record.target_size
-                or trajectory.optimizer_seed != record.optimizer_seed
-                or trajectory.content_digest != record.trajectory_digest
-            ):
-                raise TrainingDataInputError(
-                    "Completion record cell key does not match its authenticated trajectory."
-                )
-            if materialization.content_digest != record.materialization_digest:
-                raise TrainingDataInputError(
-                    "Completion record materialization digest changed during replay."
-                )
-            planned_rung, _predecessor = _load_and_validate_replayed_rung_ancestry(
-                auth, record, trajectory
-            )
-
-            if record.kind == "success":
-                (
-                    snapshot,
-                    eval_data,
-                    role,
-                    prediction,
-                    view,
-                    metric,
-                ) = _validate_replayed_eval2_parents(
-                    auth, record, trajectory, optimizer_policy, materialization
-                )
-                if snapshot.rung_plan_digest != planned_rung.content_digest:
-                    raise TrainingDataInputError(
-                        "Replay snapshot does not bind the exact planned rung."
-                    )
-                if metric is None:
-                    raise TrainingDataInputError(
-                        "Success completion record has no authenticated EVAL2 metric parent."
-                    )
-                eval_root = _evaluation_bulk_root_for_artifact(auth, eval_data)
-                recomputed_metric = run_target_size_eval2_reduction(
-                    role,
-                    eval_data,
-                    prediction,
-                    view=view,
-                    root_directory=eval_root,
-                )
-                if recomputed_metric.content_digest != metric.content_digest:
-                    raise TrainingDataInputError(
-                        "Replayed EVAL2 metric differs from the persisted metric record."
-                    )
-                derived_outcome = target_size_boundary_metric_from_eval2_record(
-                    role, metric
-                )
-                if record.failure_evidence_digest is not None:
-                    raise TrainingDataInputError(
-                        "Success completion record carries failure evidence."
-                    )
-
-            elif record.kind == "train2_failure":
-                if record.failure_record_digest is None:
-                    raise TrainingDataInputError(
-                        "TRAIN2 failure completion record is missing its raw failure parent."
-                    )
-                raw_fail = active_resolver.load_raw_failure(
-                    record.failure_record_digest
-                )
-                if not isinstance(raw_fail, Train2NumericalFailureRecord):
-                    raise TrainingDataInputError(
-                        "TRAIN2 failure completion references a non-TRAIN2 raw failure."
-                    )
-                failure_root = _path_within_declared_root(
-                    active_resolver.failure_bulk_directory(raw_fail.content_digest),
-                    auth.bulk_root("train2"),
-                    name="TRAIN2 failure bulk directory",
-                )
-                raw_checkpoint = failure_root / raw_fail.raw_checkpoint_name
-                if (
-                    not raw_checkpoint.is_file()
-                    or hashlib.sha256(raw_checkpoint.read_bytes()).hexdigest()
-                    != raw_fail.raw_checkpoint_sha256
-                ):
-                    raise TrainingDataInputError(
-                        "Authenticated TRAIN2 raw checkpoint bytes are missing or changed."
-                    )
-                derived_outcome = translate_target_size_train2_failure(
-                    raw_fail,
-                    trajectory=trajectory,
-                    definition=definition,
-                    schedule=auth.schedule,
-                    scheduled_boundary_epoch=batch.boundary_epoch,
-                )
-                if (
-                    record.failure_evidence_digest
-                    != derived_outcome.classification_evidence_digest
-                ):
-                    raise TrainingDataInputError(
-                        "TRAIN2 failure evidence digest differs from raw failure translation."
-                    )
-
-            elif record.kind == "eval2_failure":
-                (
-                    snapshot,
-                    _eval_data,
-                    role,
-                    prediction,
-                    _view,
-                    metric,
-                ) = _validate_replayed_eval2_parents(
-                    auth, record, trajectory, optimizer_policy, materialization
-                )
-                if snapshot.rung_plan_digest != planned_rung.content_digest:
-                    raise TrainingDataInputError(
-                        "Replay snapshot does not bind the exact planned rung."
-                    )
-                if metric is not None:
-                    raise TrainingDataInputError(
-                        "EVAL2 failure completion record carries a successful metric parent."
-                    )
-                if record.failure_record_digest is None:
-                    raise TrainingDataInputError(
-                        "EVAL2 failure completion record is missing its raw failure parent."
-                    )
-                raw_error = active_resolver.load_raw_failure(
-                    record.failure_record_digest
-                )
-                if not isinstance(raw_error, Eval2NumericalEvaluationError):
-                    raise TrainingDataInputError(
-                        "EVAL2 failure completion references a non-EVAL2 raw failure."
-                    )
-                if (
-                    raw_error.target_role_digest != role.content_digest
-                    or raw_error.prediction_digest != prediction.prediction_payload_digest
-                ):
-                    raise TrainingDataInputError(
-                        "EVAL2 raw numerical error does not bind the replayed role/prediction."
-                    )
-                derived_outcome = translate_target_size_eval2_failure(
-                    role, raw_error
-                )
-                if (
-                    record.failure_evidence_digest
-                    != derived_outcome.classification_evidence_digest
-                ):
-                    raise TrainingDataInputError(
-                        "EVAL2 failure evidence digest differs from raw failure translation."
-                    )
-            else:  # pragma: no cover - TargetSizeCellCompletionRecord rejects this
-                raise TrainingDataInputError(
-                    f"Unknown cell completion kind {record.kind!r}."
-                )
-
-            if derived_outcome.content_digest != record.outcome_digest:
-                raise TrainingDataInputError(
-                    "Reconstructed scientific outcome does not match completion outcome digest."
-                )
-            recomputed_outcomes.append(derived_outcome)
 
         if tuple(observed_keys) != tuple(expected_keys):
             raise TrainingDataInputError(
@@ -4330,6 +4302,7 @@ __all__ = [
     "build_target_size_eval2_failure_cell_completion_record",
     "build_target_size_success_cell_completion_record",
     "build_target_size_train2_failure_cell_completion_record",
+    "authenticate_boundary_cell_completion_record",
     "collect_boundary_candidate_outcomes",
     "collect_boundary_cell_completion_records",
     "commit_target_size_boundary_batch",
@@ -4339,6 +4312,7 @@ __all__ = [
     "load_target_size_boundary_batch",
     "persist_complete_boundary_batch",
     "prepare_target_size_evaluation_artifact",
+    "recover_authenticated_boundary_progress",
     "reconcile_target_size_screen_root",
     "record_candidate_boundary_outcome",
     "resolve_target_size_candidate_for_resume",
