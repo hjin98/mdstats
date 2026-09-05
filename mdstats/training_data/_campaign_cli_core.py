@@ -4353,6 +4353,92 @@ def _run_source_ingestion_workers(
     return completed_results
 
 
+def _partition_policies(cfg: Mapping[str, Any]) -> tuple[Any, Any]:
+    """Translate the campaign ``[partition]`` namespace for the DATA4/DATA5 owners.
+
+    The same operator namespace already configures the neutral P1 partition
+    policy.  Reading only two of its keys here made DATA5 construction disagree
+    with the substrate that consumes it -- a campaign whose configured block
+    length or role minimums differ from the library defaults would build a
+    partition it had not asked for, and fail feasibility for a reason that is
+    nowhere in its configuration.  Every unset key keeps the accepted owner
+    default, so this remains translation and decides nothing.
+    """
+
+    import mdstats
+
+    defaults = mdstats.PartitionRoleBudgetPolicy()
+    block_defaults = mdstats.CompleteFrameBlockPolicy()
+    explicit_block = _cfg(cfg, "partition", "explicit_block_length_frames", None)
+    role_budget = mdstats.PartitionRoleBudgetPolicy(
+        development_minimum_independent_units=int(
+            _cfg(
+                cfg,
+                "partition",
+                "development_minimum_independent_units",
+                defaults.development_minimum_independent_units,
+            )
+        ),
+        outer_monitor_minimum_independent_units=int(
+            _cfg(
+                cfg,
+                "partition",
+                "outer_monitor_minimum_independent_units",
+                defaults.outer_monitor_minimum_independent_units,
+            )
+        ),
+        calibration_minimum_independent_units=int(
+            _cfg(
+                cfg,
+                "partition",
+                "calibration_minimum_independent_units",
+                defaults.calibration_minimum_independent_units,
+            )
+        ),
+        locked_interpolation_test_minimum_independent_units=int(
+            _cfg(
+                cfg,
+                "partition",
+                "locked_interpolation_test_minimum_independent_units",
+                defaults.locked_interpolation_test_minimum_independent_units,
+            )
+        ),
+        purge_units_between_roles=int(
+            _cfg(
+                cfg,
+                "partition",
+                "purge_units_between_roles",
+                defaults.purge_units_between_roles,
+            )
+        ),
+        allow_calibration_deferral=bool(
+            _cfg(
+                cfg,
+                "partition",
+                "allow_calibration_deferral",
+                defaults.allow_calibration_deferral,
+            )
+        ),
+    )
+    partition_policy = mdstats.PartitionPolicy(
+        role_budget=role_budget,
+        block_policy=mdstats.CompleteFrameBlockPolicy(
+            minimum_block_frames=int(
+                _cfg(
+                    cfg,
+                    "partition",
+                    "minimum_block_frames",
+                    block_defaults.minimum_block_frames,
+                )
+            ),
+            explicit_block_length_frames=(
+                None if explicit_block is None else int(explicit_block)
+            ),
+        ),
+    )
+    return role_budget, partition_policy
+
+
 def _prepare_catalog(
     cfg: Mapping[str, Any],
     paths: CampaignPaths,
@@ -4466,15 +4552,7 @@ def _prepare_catalog(
     del worker_results, worker_payloads, source_by_run, cache_records
     gc.collect()
 
-    role_budget = mdstats.PartitionRoleBudgetPolicy(
-        purge_units_between_roles=int(_cfg(cfg, "partition", "purge_units_between_roles", 1)),
-    )
-    partition_policy = mdstats.PartitionPolicy(
-        role_budget=role_budget,
-        block_policy=mdstats.CompleteFrameBlockPolicy(
-            minimum_block_frames=int(_cfg(cfg, "partition", "minimum_block_frames", 32))
-        ),
-    )
+    role_budget, partition_policy = _partition_policies(cfg)
 
     stage_start = time.monotonic()
     _print_header("DATA3 frame identity, eligibility, and strain")

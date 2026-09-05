@@ -50,6 +50,10 @@ class QualificationObservation:
     verdict_reason: str | None
     release_evidence_digest: str | None
     blocked_detail: str | None = None
+    #: Set when a terminal record exists on disk but no longer binds the
+    #: currently configured qualification specification.  Its verdict is
+    #: historical evidence, so ``verdict`` stays ``None``.
+    superseded_detail: str | None = None
 
     @property
     def started(self) -> bool:
@@ -75,10 +79,40 @@ def _object(root: Path, content_digest: str) -> Mapping[str, Any] | None:
     return _read_json(root / "objects" / content_digest[:2] / f"{content_digest}.json")
 
 
+def _authenticated_record(root: Path, content_digest: str) -> Any | None:
+    """Load the terminal record through its own owner, or report nothing.
+
+    A verdict is the one field of this projection that an operator acts on, so
+    it is never read out of parseable bytes: the record is deserialized by its
+    accepted owner and must reproduce the digest the pointer names.
+    """
+
+    from .record import ProductionQualificationRecord
+    from .store import QualificationEvidenceStore
+
+    try:
+        return QualificationEvidenceStore(root=root).get(
+            content_digest, ProductionQualificationRecord.from_dict
+        )
+    except Exception:  # noqa: BLE001 - reported as a blocked observation
+        return None
+
+
 def observe_current_qualification(
-    paths: Any, store: Any, binding: Any
+    paths: Any,
+    store: Any,
+    binding: Any,
+    *,
+    specification_digest: str | None = None,
 ) -> QualificationObservation:
-    """Read the current qualification state for ``binding`` without touching it."""
+    """Read the current qualification state for ``binding`` without touching it.
+
+    ``specification_digest`` is the currently configured qualification policy
+    identity -- a pure configuration projection, so supplying it costs nothing.
+    A published record that binds a different specification is historical
+    evidence: `qualification run` would not accept it as current, and status
+    must not report its verdict as if it were.
+    """
 
     from .runtime import COMPONENT_POSITION_DIRECTORY
 
@@ -148,15 +182,26 @@ def observe_current_qualification(
 
     verdict = None
     verdict_reason = None
+    superseded = None
     if record_digest is not None:
-        record = _object(root, record_digest)
+        record = _authenticated_record(root, record_digest)
         if record is None:
             blocked.append(
-                f"the terminal qualification record {record_digest[:12]}... is missing"
+                f"the terminal qualification record {record_digest[:12]}... is "
+                "missing, unreadable, or does not reproduce its own identity"
+            )
+        elif (
+            specification_digest is not None
+            and str(record.specification_digest) != str(specification_digest)
+        ):
+            superseded = (
+                "the published terminal record binds qualification specification "
+                f"{str(record.specification_digest)[:12]}..., but "
+                f"{str(specification_digest)[:12]}... is configured now"
             )
         else:
-            verdict = str(record.get("verdict", "")) or None
-            verdict_reason = str(record.get("reason_code", "")) or None
+            verdict = str(record.verdict.value) or None
+            verdict_reason = str(record.reason_code) or None
 
     return QualificationObservation(
         generation=int(binding.campaign_generation),
@@ -171,6 +216,7 @@ def observe_current_qualification(
         verdict_reason=verdict_reason,
         release_evidence_digest=release_digest,
         blocked_detail="; ".join(blocked) if blocked else None,
+        superseded_detail=superseded,
     )
 
 

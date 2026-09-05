@@ -66,8 +66,15 @@ from .schedule import TargetSizeScreenSchedule
 
 TARGET_SIZE_EVAL2_ROLE_SCHEMA = "mdstats.target-size.eval2-role.v1"
 TARGET_SIZE_EVAL2_PREDICTION_SCHEMA = "mdstats.target-size.eval2-prediction.v1"
+#: Revision 2 removes the ``batch_size`` field.  It recorded the *scientific*
+#: population `M` under an execution name, which is exactly the conflation the
+#: bounded-inference owner exists to remove: the deterministic execution
+#: partition is `M` together with the accepted execution policy's
+#: ``valid_batch_size``, and that policy is already inside the candidate
+#: trajectory identity this evidence binds.  A derivable field is not
+#: provenance, and a wrong one is worse than none.
 TARGET_SIZE_PREDICTION_EVIDENCE_SCHEMA = (
-    "mdstats.target-size.prediction-evidence.v1"
+    "mdstats.target-size.prediction-evidence.v2"
 )
 
 # Authenticated EVAL2 failure-code translation (lossless mapping).
@@ -719,7 +726,6 @@ class TargetSizePredictionEvidence:
     default_dtype: str
     execution_architecture: str
     backend_policy: str
-    batch_size: int
     _content_digest_cache: str = field(
         default="", init=False, repr=False, compare=False
     )
@@ -773,10 +779,6 @@ class TargetSizePredictionEvidence:
             self, "execution_architecture", str(self.execution_architecture)
         )
         object.__setattr__(self, "backend_policy", str(self.backend_policy))
-        bs = int(self.batch_size)
-        if bs <= 0:
-            raise TrainingDataInputError("Batch size must be positive.")
-        object.__setattr__(self, "batch_size", bs)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -796,7 +798,6 @@ class TargetSizePredictionEvidence:
             "default_dtype": self.default_dtype,
             "execution_architecture": self.execution_architecture,
             "backend_policy": self.backend_policy,
-            "batch_size": self.batch_size,
             "predictions": [item.to_dict() for item in self.predictions],
         }
 
@@ -846,7 +847,6 @@ class TargetSizePredictionEvidence:
             default_dtype=str(payload["default_dtype"]),
             execution_architecture=str(payload["execution_architecture"]),
             backend_policy=str(payload["backend_policy"]),
-            batch_size=int(payload["batch_size"]),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -1228,7 +1228,6 @@ def run_target_size_direct_boundary_inference(
         default_dtype=provider.default_dtype,
         execution_architecture=str(arch_digest),
         backend_policy=provider.backend_policy,
-        batch_size=len(atoms_list),
     )
 
 

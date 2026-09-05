@@ -741,6 +741,11 @@ def test_p7_deployment_divergence_rejects_the_exact_publication(tmp_path: Path):
 
 def test_p7_dynamics_instability_rejects_and_never_reselects(tmp_path: Path):
     config, workspace, harness = _campaign(tmp_path)
+    _cfg, _paths, store, session = fx.load_session(config, harness)
+    try:
+        selected_before = session.context.selected.binding
+    finally:
+        store.close()
     harness.dynamics_overrides = {"minimum_pair_distance_angstrom": 0.05}
     with pytest.raises(QualificationError, match="rejected the exact frozen publication"):
         _qualify_nonlocked(config, harness)
@@ -751,8 +756,10 @@ def test_p7_dynamics_instability_rejects_and_never_reselects(tmp_path: Path):
         evidence = session.completed_component(COMPONENT_DYNAMICS)
         reasons = evidence.payload["members"][0]["reason_codes"]
         assert any("minimum_pair_distance_below_safety_bound" in item for item in reasons)
-        # The selected binding and CV acceptance are entirely unchanged.
-        assert session.context.selected.binding.n_selected == 4
+        # The selected binding and CV acceptance are entirely unchanged: a
+        # rejected qualification never reopens selection.  The claim is that
+        # the binding is the *same* one, not that it holds some literal size.
+        assert session.context.selected.binding == selected_before
     finally:
         store.close()
 
@@ -1218,15 +1225,18 @@ def test_p7d_relaxation_divergence_rejects_the_exact_publication(tmp_path: Path)
     assert _run_to_waiting(config, harness) == 0
     _cfg, _paths, store, session = fx.load_session(config, harness)
     try:
-        # The reference relaxations are produced by a materially softer
-        # potential, so its relaxed geometry is somewhere the frozen product
-        # does not go.  (A different equilibrium distance alone would not do
-        # it: the label anchoring cancels r0 from the restoring force.)
-        reference_harness = fx.QualificationHarness(
-            potential=fx.AnalyticPairPotential(stiffness=0.05)
+        # Pointwise reference energies and forces stay the ones the product
+        # reproduces exactly; only the reference *relaxed geometry* comes from
+        # an independent, materially softer model.  Its label anchoring passes
+        # through the same labelled point with the same force, so the two
+        # models agree locally, but its tether is an order of magnitude softer
+        # and puts its minimum an order of magnitude further from the canonical
+        # geometry -- somewhere the frozen product does not go.
+        relaxation_harness = fx.QualificationHarness(tether_stiffness=1.0)
+        fx.attach_labels(relaxation_harness, config)
+        fx.supply_analytic_reference_bundle(
+            session, harness, relaxation_harness=relaxation_harness
         )
-        fx.attach_labels(reference_harness, config)
-        fx.supply_analytic_reference_bundle(session, reference_harness)
     finally:
         store.close()
     with pytest.raises(QualificationError, match="rejected the exact frozen publication"):

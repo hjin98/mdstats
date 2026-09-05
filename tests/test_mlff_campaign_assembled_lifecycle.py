@@ -37,6 +37,11 @@ from mdstats.training_data.campaign_target_size_state import (
     TargetSizeLifecycle,
     load_target_size_campaign_revision,
 )
+from mdstats.training_data.qualification import (
+    QualificationError,
+    resolve_current_locked_activation,
+)
+from mdstats.training_data.qualification.store import read_locked_reveal
 
 _REPO = Path(__file__).resolve().parents[1]
 
@@ -213,24 +218,120 @@ def test_the_public_campaign_runs_end_to_end_with_restart_at_every_boundary(
     assert "qualification" in completed.stdout
     assert "activate-locked" not in completed.stdout
 
-    # Nothing across the whole campaign regressed the current revision, and the
-    # generation never moved after preparation.
-    revisions = [item[2] for item in observer.seen if item[2] is not None]
-    collapsed = [
-        value
-        for index, value in enumerate(revisions)
-        if index == 0 or value != revisions[index - 1]
-    ]
-    # A revision the campaign has moved past never comes back as current.
-    assert len(collapsed) == len(set(collapsed)), collapsed
-    assert observer.revision().state.generation == 1
+    # --- 20-21. supply the authenticated reference; nonlocked qualification --
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        fx.supply_analytic_reference_bundle(session, harness)
+    finally:
+        store.close()
+    assert fx.run_qualification_command(config, "run", harness=harness) == 0
+    nonlocked = observer.observe("after qualification run (nonlocked)")
+    qualification = nonlocked.step("post_production_qualification")
+    # A passing nonlocked run is still not a qualified product: the reserved
+    # cohort has not been opened, and routing must never propose opening it.
+    assert qualification.state == LifecycleObservationState.WAITING, (
+        qualification.message
+    )
+    assert nonlocked.terminal_step is None
+    assert nonlocked.next_command == "qualification run"
+    assert _current_locked_activation(config, harness) is None
+    _storage_is_safe_here(config)
+
+    # --- 22-23. the explicit, irreversible locked activation ---------------
+    with pytest.raises(QualificationError, match="irreversible"):
+        fx.run_qualification_command(config, "activate-locked", harness=harness)
+    assert (
+        fx.run_qualification_command(
+            config, "activate-locked", harness=harness, confirm=True
+        )
+        == 0
+    )
+    released = observer.observe("after locked activation")
+    terminal = released.step("post_production_qualification")
+    assert terminal.state == LifecycleObservationState.COMPLETE, terminal.message
+    assert "release_qualified" in terminal.message
+    assert released.next_command is None
+
+    # --- 24. exact terminal reauthentication across a process boundary -----
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "tools/mdstats-mlff-campaign.py",
+            "--config",
+            str(config),
+            "qualification",
+            "status",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO),
+        check=True,
+    )
+    assert "release_qualified" in completed.stdout
+    _storage_is_safe_here(config)
+
+    # --- 25. the reveal is a fact about the world, not about a generation --
+    activation, cohort_identity, binding = _locked_disclosure(config, harness)
+    assert activation is not None
+    assert read_locked_reveal(paths, binding, cohort_identity) is not None
+
+    # A preparation-owned policy change is the ordinary way a campaign advances
+    # its canonical generation, and it invalidates every descendant verdict.
+    p5.rewrite_config(
+        config,
+        "purge_units_between_roles = 0",
+        "purge_units_between_roles = 0\n"
+        "minimum_units_per_condition_for_full_outer_roles = 6",
+    )
+    assert p4d._run(config, "prepare") == 0
+    advanced = observer.revision()
+    assert advanced.state.generation == 2
+    _storage_is_safe_here(config)
+    assert (
+        cli.main(
+            [
+                "--config",
+                str(config),
+                "storage",
+                "cleanup",
+                "--tier",
+                "safe",
+                "--apply",
+            ]
+        )
+        == 0
+    )
+
+    # The verdict is historical now, but the cohort stays revealed: neither a
+    # fresh generation nor a storage transformation can make it unseen.
+    assert read_locked_reveal(paths, binding, cohort_identity) is not None
 
     with capsys.disabled():
         print("\n[assembled lifecycle] observed next-command at each boundary:")
         for label, next_command, _revision in observer.seen:
             print(f"  {label:<38} -> {next_command}")
-        print(
-            "  NOTE: supplying the reference bundle and reaching a terminal "
-            "release verdict is blocked by the P7 bounded-fixture relaxation "
-            "defect recorded in the integration progress note."
+
+
+def _current_locked_activation(config: Path, harness):
+    """Resolve the locked activation, if any, through the real P7 resolver."""
+
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        return resolve_current_locked_activation(store, paths, session.context)
+    finally:
+        store.close()
+
+
+def _locked_disclosure(config: Path, harness):
+    """The activation record, its cohort identity, and the binding that made it."""
+
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        activation = resolve_current_locked_activation(store, paths, session.context)
+        return (
+            activation,
+            activation.cohort_generation_identity,
+            session.context.selected.binding,
         )
+    finally:
+        store.close()

@@ -21,7 +21,10 @@ written once and shared by every generation that binds it, which is what keeps
 repeated ``prepare`` from duplicating the dataset and what makes a shared
 component survive the retirement of an older generation that also referenced it.
 Nothing published here is ever overwritten or deleted in place, so constructing
-a future generation cannot damage a dependency of the current one.
+a future generation cannot damage a dependency of the current one.  Reuse is
+create-or-verify rather than create-or-trust: an object that already carries an
+expected content identity is read back and must match before this generation may
+be adopted, because a pathname proves only what bytes *should* be there.
 
 This is not a second currentness authority.  ``CampaignStore`` remains the sole
 owner of which generation is current; a prepared manifest is inert content that
@@ -94,10 +97,41 @@ def _encode(payload: Mapping[str, Any]) -> bytes:
     return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
-def _publish_bytes(path: Path, encoded: bytes) -> None:
-    """Write immutable content exactly once; an existing identity is reused."""
+def _publish_bytes(path: Path, encoded: bytes, *, name: str) -> None:
+    """Create immutable content once, or verify what already carries its name.
+
+    A content-addressed pathname states what bytes *should* be there; it does
+    not prove what is. Publication is therefore create-or-verify: an existing
+    object is read back and must equal the exact bytes this generation would
+    have written, which is the strongest available check -- it is byte
+    equality with an owner-produced serialization, so it subsumes reparsing
+    the file through the component type.
+
+    Conflicting content fails here, before ``CampaignStore`` can be asked to
+    make the generation current. The existing object is never overwritten to
+    make its own name true again: another adopted generation may still depend
+    on whatever is actually on disk, and destroying a protected dependency to
+    repair a digest is exactly the damage the immutable substrate exists to
+    prevent.
+    """
 
     if path.is_file():
+        try:
+            existing = path.read_bytes()
+        except OSError as exc:
+            raise PreparedGenerationError(
+                f"Published prepared {name} {path.name[:12]}... cannot be read back "
+                "for verification; the prepared substrate is corrupt. Nothing was "
+                "adopted."
+            ) from exc
+        if existing != encoded:
+            raise PreparedGenerationError(
+                f"Published prepared {name} {path.name[:12]}... does not contain the "
+                "bytes its content identity names. This is durable-state corruption: "
+                "no campaign generation is advanced onto it, and it is not "
+                "overwritten, because another prepared generation may still depend "
+                "on the object that is actually there."
+            )
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
@@ -281,7 +315,7 @@ def publish_prepared_generation(
     for name in PREPARED_COMPONENT_NAMES:
         encoded = _encode(components[name].to_dict())
         digest_value = hashlib.sha256(encoded).hexdigest()
-        _publish_bytes(_object_path(root, digest_value), encoded)
+        _publish_bytes(_object_path(root, digest_value), encoded, name=f"component {name!r}")
         digests[name] = digest_value
     manifest = PreparedGenerationManifest(
         component_digests=digests,
@@ -291,7 +325,9 @@ def publish_prepared_generation(
         preparation_configuration=dict(preparation_configuration),
     )
     _publish_bytes(
-        _manifest_path(root, manifest.content_digest), _encode(manifest.to_dict())
+        _manifest_path(root, manifest.content_digest),
+        _encode(manifest.to_dict()),
+        name="generation manifest",
     )
     return manifest
 

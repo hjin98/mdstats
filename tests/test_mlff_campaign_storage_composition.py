@@ -206,10 +206,37 @@ def test_archive_verify_and_restore_keep_the_generation_authoritative(
         str(item["archive_identity"]) for item in catalog.get("archives", ())
     ]
     if not identities:
-        pytest.skip(
-            "no owner in this bounded campaign declared cold-replaceable bulk, so "
-            "there is no cataloged archive to verify or restore"
+        # An empty archive plan is a real owner result, not a gap to be filled.
+        # The prepared substrate and the normalized frame cache are declared
+        # restart-required and hot-path-required by their own owners, so there
+        # is nothing cold-replaceable to catalog. What closure requires is that
+        # the operation *refused* rather than silently transformed them: the
+        # protected bytes are untouched and the next command still consumes
+        # them without reaching a preparation owner.
+        from mdstats.training_data.storage.owners import build_owner_views
+
+        store = CampaignStore(paths.state_db, create=False)
+        try:
+            with cli.observational_campaign_state():
+                views = {
+                    view.artifact_id: view
+                    for view in build_owner_views(cfg, paths, store).views
+                }
+        finally:
+            store.close()
+        for artifact_id in ("p1:frame_cache", "p4:prepared_generations"):
+            view = views.get(artifact_id)
+            assert view is not None, artifact_id
+            assert not view.archive_eligible, artifact_id
+        protected = prepared_generation_protected_paths(
+            paths, [_revision(paths).state.prepared_manifest_digest]
         )
+        assert protected
+        assert all(path.exists() for path in protected)
+        guard = _NoReconstruction(monkeypatch)
+        _consume(cfg, paths)
+        assert guard.reached == []
+        return
 
     before = _revision(paths)
     for identity in identities:

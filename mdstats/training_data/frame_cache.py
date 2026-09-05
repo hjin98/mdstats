@@ -165,6 +165,26 @@ def frame_cache_entry_relative_path(entry_identity: str) -> str:
     return f"{FRAME_CACHE_ENTRY_DIRECTORY}/{entry_identity}/arrays.json"
 
 
+def authenticate_frame_data_cache_entry(
+    entry_manifest_path: Path, run_id: str, entry_identity: str
+) -> None:
+    """Prove an already published entry still *is* what its identity names.
+
+    The entry identity is the SHA-256 of the entry manifest's own canonical
+    bytes, and that manifest names every member with its hash, shape, and
+    dtype.  Authenticating the manifest and then loading it through the same
+    verifying reader downstream uses is therefore complete member validation,
+    and it reuses that reader rather than restating its rules here.
+    """
+
+    if _sha256_file(entry_manifest_path) != entry_identity:
+        raise TrainingDataSerializationError(
+            f"Published frame-cache entry {entry_identity[:12]}... for {run_id!r} "
+            "does not contain the manifest its content identity names."
+        )
+    _load_v2_entry(entry_manifest_path, {"run_id": run_id}, verify_hashes=True)
+
+
 def write_frame_data_cache_entry(
     run_id: str,
     source: Any,
@@ -228,16 +248,27 @@ def write_frame_data_cache_entry(
         identity = _entry_identity(entry_manifest)
         destination = entries_root / identity
         if (destination / "arrays.json").is_file():
-            # The identical normalized content is already published. Reuse it
-            # rather than replacing bytes another generation may depend on.
+            # Content that already carries this identity is reused rather than
+            # replaced, because another adopted generation may depend on it --
+            # but only after it is *authenticated*, not merely found. An entry
+            # manifest can be intact while one of the NPY members it names has
+            # rotted, and a prepared generation that binds such an entry would
+            # not fail until a downstream command loaded it.
+            authenticate_frame_data_cache_entry(
+                destination / "arrays.json", run_id, identity
+            )
             shutil.rmtree(temporary, ignore_errors=True)
         else:
             try:
                 os.replace(temporary, destination)
             except OSError:
-                # A concurrent publisher won the race with identical content.
+                # A concurrent publisher won the race; its content must still
+                # authenticate before this one adopts it.
                 if not (destination / "arrays.json").is_file():
                     raise
+                authenticate_frame_data_cache_entry(
+                    destination / "arrays.json", run_id, identity
+                )
                 shutil.rmtree(temporary, ignore_errors=True)
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
@@ -596,6 +627,7 @@ __all__ = [
     "FRAME_CACHE_LEGACY_SCHEMA",
     "FRAME_CACHE_ENTRY_SCHEMA",
     "FRAME_CACHE_ENTRY_DIRECTORY",
+    "authenticate_frame_data_cache_entry",
     "finalize_frame_data_cache",
     "frame_cache_entry_relative_path",
     "load_frame_data_cache",

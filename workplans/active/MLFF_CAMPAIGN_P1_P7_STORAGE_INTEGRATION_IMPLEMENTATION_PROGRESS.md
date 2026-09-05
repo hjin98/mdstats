@@ -252,3 +252,135 @@ Separately, running `prepare` again on a campaign whose generation is already
 terminal fails inside the result-view writer, which refuses to write terminal
 state. This predates the work here and is a genuine defect in `prepare`
 idempotence for terminal generations.
+
+---
+
+# Review-reopen repair (amendment `..._IMPLEMENTATION_REVIEW_REOPEN.md`)
+
+This section records the repair of the six blocking findings raised by the
+independent implementation review. Nothing above is retracted; the items the
+previous section recorded as *not implemented* are closed here.
+
+## IR1 -- publication is create-or-verify
+
+`campaign_prepared_generation._publish_bytes` no longer returns on pathname
+existence. An object that already carries an expected content identity is read
+back and must equal the exact bytes this generation would have written; that is
+byte equality against an owner-produced serialization, so it subsumes reparsing
+the file through the component type. Conflicting content raises before
+`CampaignStore` adoption and is never overwritten, because another adopted
+generation may depend on whatever is actually on disk.
+
+`frame_cache.write_frame_data_cache_entry` gained the same discipline for the
+normalized entry it reuses, through a new
+`authenticate_frame_data_cache_entry`: the entry manifest must reproduce the
+identity that names it, and the manifest is then loaded through the existing
+verifying reader, which checks every NPY member's hash, shape, and dtype. No
+second validator was written.
+
+## IR2 -- `prepare` owns changed-source detection and terminal idempotence
+
+`_changed_preparation_inputs` compares two identities the campaign already
+persisted: the approved manifest digest the DATA2 catalog was built from, and
+each source's own byte-identity and control signatures, through a new
+`changed_vasp_source_identities` that lives beside `authenticate_vasp_source_authority`
+and shares its locator resolution. A material change routes into the existing
+`_prepare_catalog` owner and commits a fresh generation; no rebuild flag, no
+freshness database, no mtime heuristic, and no downstream fallback.
+
+Reaching that path exposed a real defect in `_prepare_catalog`: it read two of
+the `[partition]` keys and silently ignored the rest, so DATA5 construction
+disagreed with the neutral partition policy the substrate consumes. The
+translation now covers the whole namespace (`_partition_policies`).
+
+Terminal idempotence is fixed at the view owner rather than in campaign state:
+a terminal revision is rendered by `write_current_target_size_result_view`, a
+nonterminal one by the nonterminal writer. The double write of the same payload
+that was there before is gone.
+
+## IR3 -- adoption is fenced to the token the build started from
+
+`execute_current_prepare` captures `TargetSizeCampaignRevision.expectation()`
+before construction and passes it to `ensure_current_target_size_authorities`
+as `expected_start`. Identical concurrent prepares converge (the loser adopts
+nothing because the winner published exactly what it would have); a snapshot
+built against superseded state raises `TargetSizeStalePreparationError`. The
+fence is a comparison: no campaign transaction or writer exclusion is held
+across P1/P2 construction, which is what the two-writer acceptance test
+demonstrates by running an entire competing prepare while the loser sits inside
+publication.
+
+## IR4 -- observation is one coherent, authenticated read
+
+`project_campaign_lifecycle` takes one deferred SQLite read transaction
+spanning the target-size head and every P5/P7 pointer row, and derives the
+binding inside it. The old re-read-and-retry loop is deleted: it could not have
+worked, because pointer publication moves `meta` without moving the target-size
+revision. Each compact record is then loaded through its accepted read-only
+typed store (`PostSelectionEvidenceStore`, `QualificationEvidenceStore`) and
+must reproduce the digest the pointer named before `accepted` or a verdict is
+read; missing, unparseable, and misidentified all map to `BLOCKED`.
+
+The same integrity rule was applied to `qualification status`, whose
+observation additionally now refuses to report a verdict whose record binds a
+superseded qualification specification.
+
+## IR5 -- `M` is not a batch size, including in durable evidence
+
+`batch_size` is removed from `TargetSizePredictionEvidence` and its schema is
+`mdstats.target-size.prediction-evidence.v2`. The deterministic execution
+partition is `M` together with the accepted execution policy's
+`valid_batch_size`, which is already inside the candidate trajectory identity
+the evidence binds, so the field was derivable at best and false at worst. The
+replay provenance check drops the `batch_size == evaluation_size` comparison
+and authenticates the partition policy through the same owner the run used.
+
+## IR6 -- the bounded P7 model is a real potential energy surface
+
+The fixture's per-frame constant *force* offset alongside a constant *energy*
+offset was not the derivative of anything, so the model had no PES and
+production relaxation truthfully refused to converge. It is replaced by a
+harmonic tether:
+
+```text
+E(x) = E_pair(x) + k/2 * sum_i |x_i - a_i|^2 + c
+F(x) = F_pair(x) - k * (x - a)
+```
+
+with `a` and `c` solved per frame so the model still reproduces that frame's
+authenticated energy and forces exactly at its canonical geometry. The tether
+is coercive in all `3N` modes, including the translational ones the pair term
+cannot bind, so a minimum exists and lies within `|F_label - F_pair(x0)| / k`
+of the canonical geometry. Measured over the fixture's frames and displaced
+modes, FIRE converges in 2-6 steps of the configured 25-step budget. No
+production threshold, budget, or owner was changed.
+
+Two negative-direction tests were reconciled with the repaired model: the
+relaxation-divergence test now supplies the reference *relaxed geometry* from
+an independently softer relaxor while keeping the pointwise reference labels
+the product reproduces, and the dynamics-instability test asserts the selected
+binding is unchanged rather than asserting a stale literal size.
+
+## New acceptance
+
+- `tests/test_mlff_campaign_prepare_boundary.py` -- preseeded/corrupt component,
+  manifest, and NPY member; changed-source rebuild to a fresh generation;
+  unchanged and unchanged-terminal no-ops; identical and stale concurrent
+  prepares.
+- `tests/test_mlff_campaign_observation_coherence.py` -- missing, malformed, and
+  misidentified P5/P7 records reported as `BLOCKED` with no managed byte or DB
+  row changed; non-hybrid answers across a real prepare adoption and across P5
+  and P7 pointer publication.
+- `tests/test_mlff_bounded_direct_inference.py` -- durable evidence records the
+  population and not the device batch for `M > valid_batch_size`; retired
+  full-batch evidence is not current authority.
+- `tests/test_mlff_campaign_assembled_lifecycle.py` now runs the whole public
+  campaign through reference supply, passing nonlocked qualification, explicit
+  locked activation, the terminal `release_qualified` verdict, exact terminal
+  reauthentication across a process boundary, a canonical generation advance,
+  and an applied storage cleanup -- after which the locked cohort is still
+  recorded as revealed.
+- `tests/test_mlff_campaign_storage_composition.py` -- the empty archive plan is
+  asserted as an owner result (`p1:frame_cache` and `p4:prepared_generations`
+  are not archive-eligible, their bytes are untouched, and consumption still
+  reaches no preparation owner) instead of being skipped.

@@ -180,8 +180,15 @@ class QualificationHarness:
         dynamics_overrides: dict | None = None,
         deployed_stress_members_without: set[str] | None = None,
         model_stress_members_without: set[str] | None = None,
+        tether_stiffness: float = 40.0,
     ) -> None:
         self.potential = potential or AnalyticPairPotential()
+        #: Stiffness of the per-frame harmonic tether that anchors the bounded
+        #: model to each frame's own labels.  It is a real term of the model's
+        #: one potential-energy expression, not a correction applied to forces.
+        self.tether_stiffness = float(tether_stiffness)
+        if self.tether_stiffness <= 0.0:
+            raise ValueError("The bounded model tether must be positive.")
         self.deployed_potential = deployed_potential or self.potential
         self.member_bias = dict(member_bias or {})
         self.checkpoint_force_bias = dict(checkpoint_force_bias or {})
@@ -190,6 +197,7 @@ class QualificationHarness:
         # Values are member-id/run-identity tokens.  The provider owner exposes
         # the authenticated checkpoint locator, which includes the run identity.
         self.model_stress_members_without = set(model_stress_members_without or ())
+        #: frame_uid -> (constant energy offset, harmonic tether centre).
         self.labels: dict[str, tuple[float, np.ndarray]] = {}
         #: When set, a per-member bias applies only to these frames, so a test
         #: can make two committee members differ on one evidence role without
@@ -212,17 +220,38 @@ class QualificationHarness:
     def attach_labels(self, context) -> None:
         """Anchor the analytic potential to each frame's own labels.
 
-        The bounded model is ``analytic + constant offset per frame``, where the
-        offset is chosen so the model reproduces that frame's authenticated
-        first-principles energy and forces exactly at its canonical geometry.
-        A constant offset cancels in every central difference, so local
-        stiffness and energy curvature remain the analytic potential's real,
-        positive values while the locked and calibration comparisons run against
-        genuine reference labels.
+        The bounded model is one conservative potential-energy expression:
+
+        .. code-block:: text
+
+            E(x) = E_pair(x) + k/2 * sum_i |x_i - a_i|^2 + c
+            F(x) = -dE/dx = F_pair(x) - k * (x - a)
+
+        The tether centre ``a`` and the constant ``c`` are solved per frame so
+        that at that frame's canonical geometry ``x0`` the model reproduces its
+        authenticated first-principles energy and forces exactly:
+
+        .. code-block:: text
+
+            a = x0 + (F_label - F_pair(x0)) / k
+            c = E_label - E_pair(x0) - k/2 * sum_i |x0_i - a_i|^2
+
+        An earlier fixture added a *constant force* offset while adding only a
+        constant *energy* offset.  Those two are not derivatives of one
+        expression, so the model had no potential-energy surface at all: the net
+        force never vanished, and production relaxation truthfully refused to
+        converge.  The harmonic tether replaces that offset with a real term.
+        It also makes the model coercive in every one of the 3N modes -- the
+        translational modes included, which the pair term alone cannot bind --
+        so a minimum exists, is unique for a sufficiently stiff tether, and lies
+        within ``|F_label - F_pair(x0)| / k`` of the canonical geometry.  The
+        pair term keeps its own real curvature, so local stiffness and the
+        restoring-sign checks remain genuine mathematics.
         """
 
         from mdstats.training_data._frame_access import ase_atoms_for_frame
 
+        stiffness = self.tether_stiffness
         for frame_uid, (record, frame_data, local_index) in (
             context.selected.authorities.frame_array_index.items()
         ):
@@ -232,19 +261,30 @@ class QualificationHarness:
                 continue
             atoms = ase_atoms_for_frame(record, frame_data, local_index)
             base_energy, base_forces = self.potential.evaluate(atoms)
+            positions = np.asarray(atoms.get_positions(), dtype=np.float64)
+            label_energy = float(np.asarray(energies, dtype=np.float64)[local_index])
+            label_forces = np.asarray(forces, dtype=np.float64)[local_index]
+            centre = positions + (label_forces - base_forces) / stiffness
+            offset = positions - centre
             self.labels[str(frame_uid)] = (
-                float(np.asarray(energies, dtype=np.float64)[local_index]) - base_energy,
-                np.asarray(forces, dtype=np.float64)[local_index] - base_forces,
+                label_energy
+                - base_energy
+                - 0.5 * stiffness * float(np.sum(offset * offset)),
+                centre,
             )
 
     def evaluate_atoms(self, atoms) -> tuple[float, np.ndarray]:
         """The exact bounded model, without any member-specific bias."""
 
         energy, forces = self.potential.evaluate(atoms)
-        offset = self.labels.get(str(atoms.info.get("frame_uid", "")))
-        if offset is not None:
-            energy = energy + offset[0]
-            forces = forces + offset[1]
+        anchor = self.labels.get(str(atoms.info.get("frame_uid", "")))
+        if anchor is not None:
+            constant, centre = anchor
+            delta = np.asarray(atoms.get_positions(), dtype=np.float64) - centre
+            energy = energy + constant + 0.5 * self.tether_stiffness * float(
+                np.sum(delta * delta)
+            )
+            forces = forces - self.tether_stiffness * delta
         return float(energy), np.asarray(forces, dtype=np.float64)
 
     def _checkpoint_bias(self, provider) -> float:
@@ -594,8 +634,21 @@ def load_session(config: Path, harness=None, **overrides):
     return cfg, paths, store, session
 
 
-def supply_analytic_reference_bundle(session, harness: QualificationHarness) -> Path:
-    """Fulfil the exact frozen reference request with the analytic potential."""
+def supply_analytic_reference_bundle(
+    session,
+    harness: QualificationHarness,
+    *,
+    relaxation_harness: "QualificationHarness | None" = None,
+) -> Path:
+    """Fulfil the exact frozen reference request with the analytic potential.
+
+    ``relaxation_harness`` supplies the reference *relaxed geometry* alone. An
+    external reference is a set of independent observations: pointwise energies
+    and forces at requested geometries, and separately a relaxed structure. A
+    product can reproduce the first and still minimize somewhere else, and that
+    is exactly what the relaxation component exists to detect, so the two are
+    allowed to come from different bounded models.
+    """
 
     from mdstats.training_data.qualification.geometry import (
         atoms_for_frame,
@@ -636,12 +689,17 @@ def supply_analytic_reference_bundle(session, harness: QualificationHarness) -> 
         energy, forces = harness.evaluate_atoms(atoms)
         relaxed = None
         if item.mode == RELAXED_MODE:
+            # The reference is an external oracle, not the product path: it
+            # is relaxed to the same force convergence under a budget generous
+            # enough that the answer is the model's actual minimum. The
+            # product's own budget stays the configured qualification policy.
             outcome = relax_fixed_cell(
                 atoms,
-                harness.evaluate_atoms,
-                maximum_steps=25,
+                (relaxation_harness or harness).evaluate_atoms,
+                maximum_steps=500,
                 force_convergence=0.05,
             )
+            assert outcome.converged, outcome.reason
             relaxed = np.asarray(outcome.relaxed.get_positions(), dtype=np.float64)
         stress = (
             harness.potential.virial_stress(atoms)

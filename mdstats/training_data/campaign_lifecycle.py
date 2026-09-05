@@ -29,27 +29,28 @@ snapshot that was already stale when it was read cannot authorize work.
 
 Reads are taken as one coherent snapshot.  A concurrent writer may make status
 report the state before or after a transition, but never a hybrid: the target
-revision is re-read after the descendant pointers and the projection is retaken
-if it moved.
+revision and every P5/P7 pointer row this answer depends on are read inside one
+SQLite read transaction, so the ancestry reported is an ancestry that actually
+existed.  Re-reading the target revision afterwards would not have been enough:
+publishing a P5 or P7 pointer mutates ``meta`` without moving the target-size
+state revision at all.
+
+Integrity is separate from coherence and equally required.  A pointer names a
+content digest, and the compact record it names is loaded through its accepted
+read-only typed store, which reproduces that digest before any field is read.
+Cheap observation may skip re-authenticating models and sources; it may not
+report ``accepted`` or a release verdict out of bytes that merely parse.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
-from pathlib import Path
 from typing import Any, Mapping
 
 from .campaign_target_size_state import (
     TargetSizeLifecycle,
     TargetSizeRegime,
-    load_target_size_campaign_revision,
 )
-
-#: How many times a moving campaign is re-observed before the projection gives
-#: up on a quiet snapshot.  A writer that keeps committing this fast is itself
-#: worth reporting, and the last read is still a coherent single-revision view.
-_COHERENCE_ATTEMPTS = 4
 
 
 class LifecycleObservationState:
@@ -107,21 +108,85 @@ class CampaignLifecycleSnapshot:
         return None
 
 
-def _meta(store: Any, key: str) -> str | None:
-    with store._connect() as db:  # noqa: SLF001 - the store owns its pool
-        row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
-    return None if row is None else str(row[0])
+def _pointer_prefixes(binding: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Every pointer row one lifecycle answer reads, grouped by namespace."""
+
+    from .post_selection_store import (
+        POINTER_CV_ACCEPTANCE,
+        POINTER_CV_PLAN,
+        POINTER_FINAL_PLAN,
+        POINTER_FINAL_PUBLICATION,
+    )
+    from .qualification.store import (
+        POINTER_LOCKED_ACTIVATION,
+        POINTER_QUALIFICATION_PLAN,
+        POINTER_QUALIFICATION_RECORD,
+        POINTER_RELEASE_EVIDENCE,
+    )
+
+    return (
+        (
+            f"post_selection:{binding.content_digest}:",
+            (
+                POINTER_CV_PLAN,
+                POINTER_CV_ACCEPTANCE,
+                POINTER_FINAL_PLAN,
+                POINTER_FINAL_PUBLICATION,
+            ),
+        ),
+        (
+            f"qualification:{binding.content_digest}:",
+            (
+                POINTER_QUALIFICATION_PLAN,
+                POINTER_QUALIFICATION_RECORD,
+                POINTER_LOCKED_ACTIVATION,
+                POINTER_RELEASE_EVIDENCE,
+            ),
+        ),
+    )
 
 
-def _read_object(root: Path, content_digest: str) -> Mapping[str, Any] | None:
-    """Read one immutable evidence object without creating anything."""
+def _owner_snapshot(store: Any) -> tuple[Any, Any, dict[str, str | None]]:
+    """Read the target revision and every descendant pointer atomically.
 
-    path = root / "objects" / content_digest[:2] / f"{content_digest}.json"
-    if not path.is_file():
-        return None
+    One deferred read transaction spans the campaign-state head and the P5/P7
+    pointer rows.  The binding is derived inside it because it is a pure
+    function of the revision, so the pointer namespace this answer reads is the
+    namespace that revision actually owned.
+    """
+
+    from .campaign_target_size_state import _load_head
+
+    db = store._connect()  # noqa: SLF001 - the store owns its connection pool
+    db.execute("BEGIN")
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        revision = _load_head(db)
+        binding = None if revision is None else _binding_for(revision)
+        pointers: dict[str, str | None] = {}
+        if binding is not None:
+            for prefix, kinds in _pointer_prefixes(binding):
+                for kind in kinds:
+                    row = db.execute(
+                        "SELECT value FROM meta WHERE key=?", (prefix + kind,)
+                    ).fetchone()
+                    pointers[prefix + kind] = None if row is None else str(row[0])
+    finally:
+        db.rollback()
+    return revision, binding, pointers
+
+
+def _authenticated(store: Any, content_digest: str, deserializer: Any) -> Any | None:
+    """Load one compact record through its owner, or report nothing.
+
+    ``None`` means missing, unreadable, or not reproducing the digest the
+    pointer named -- three different accidents with the same consequence for an
+    observer: the referenced fact cannot be believed, so it is reported as
+    blocked rather than interpreted.
+    """
+
+    try:
+        return store.get(content_digest, deserializer)
+    except Exception:  # noqa: BLE001 - every failure is one blocked observation
         return None
 
 
@@ -276,14 +341,16 @@ def _screen_step(state: Any, prepare_complete: bool) -> LifecycleStep:
 
 
 def _post_selection_steps(
-    paths: Any, store: Any, binding: Any
+    paths: Any, binding: Any, pointers: Mapping[str, str | None]
 ) -> tuple[LifecycleStep, LifecycleStep]:
+    from .post_selection_cv_acceptance import CvCampaignAcceptance
+    from .post_selection_publication import FinalProductionPublicationDecision
     from .post_selection_store import (
         POINTER_CV_ACCEPTANCE,
         POINTER_CV_PLAN,
         POINTER_FINAL_PLAN,
         POINTER_FINAL_PUBLICATION,
-        post_selection_root,
+        open_post_selection_store,
     )
 
     if binding is None:
@@ -307,23 +374,29 @@ def _post_selection_steps(
             ),
         )
 
-    root = post_selection_root(paths, binding.campaign_generation)
     prefix = f"post_selection:{binding.content_digest}:"
-    plan_digest = _meta(store, prefix + POINTER_CV_PLAN)
-    acceptance_digest = _meta(store, prefix + POINTER_CV_ACCEPTANCE)
-    final_plan_digest = _meta(store, prefix + POINTER_FINAL_PLAN)
-    publication_digest = _meta(store, prefix + POINTER_FINAL_PUBLICATION)
+    plan_digest = pointers.get(prefix + POINTER_CV_PLAN)
+    acceptance_digest = pointers.get(prefix + POINTER_CV_ACCEPTANCE)
+    final_plan_digest = pointers.get(prefix + POINTER_FINAL_PLAN)
+    publication_digest = pointers.get(prefix + POINTER_FINAL_PUBLICATION)
+    # Observational open: describing a campaign must never bring an evidence
+    # root into existence, or "no evidence" and "an empty store" stop being
+    # distinguishable afterwards.
+    store = open_post_selection_store(paths, binding, create=False)
 
     if acceptance_digest is not None:
-        payload = _read_object(root, acceptance_digest)
-        if payload is None:
+        acceptance = _authenticated(
+            store, acceptance_digest, CvCampaignAcceptance.from_dict
+        )
+        if acceptance is None:
             cv_state = LifecycleObservationState.BLOCKED
             cv_message = (
                 "the current cross-validation acceptance pointer names an object "
-                f"that is missing or unreadable ({_short(acceptance_digest)}); this "
-                "is durable-state corruption, not an unstarted stage"
+                f"that is missing, unreadable, or does not reproduce its own "
+                f"identity ({_short(acceptance_digest)}); this is durable-state "
+                "corruption, not an unstarted stage"
             )
-        elif bool(payload.get("accepted")):
+        elif bool(acceptance.accepted):
             cv_state = LifecycleObservationState.COMPLETE
             cv_message = (
                 "the frozen method passed every required fold of every required CV seed"
@@ -353,11 +426,17 @@ def _post_selection_steps(
             f"({_short(final_plan_digest)}); required final production run(s) are "
             "incomplete"
         )
-    elif _read_object(root, publication_digest) is None:
+    elif (
+        _authenticated(
+            store, publication_digest, FinalProductionPublicationDecision.from_dict
+        )
+        is None
+    ):
         production_state = LifecycleObservationState.BLOCKED
         production_message = (
             "the current final-production publication pointer names an object that "
-            f"is missing or unreadable ({_short(publication_digest)})"
+            f"is missing, unreadable, or does not reproduce its own identity "
+            f"({_short(publication_digest)})"
         )
     else:
         production_state = LifecycleObservationState.COMPLETE
@@ -387,7 +466,10 @@ def _post_selection_steps(
 
 
 def _qualification_step(
-    paths: Any, store: Any, binding: Any, production_complete: bool
+    paths: Any,
+    binding: Any,
+    production_complete: bool,
+    pointers: Mapping[str, str | None],
 ) -> LifecycleStep:
     """Compact P7 projection.
 
@@ -398,44 +480,57 @@ def _qualification_step(
     """
 
     description = "post-production qualification of the frozen final publication"
-    if not production_complete or binding is None:
+
+    def step(state: str, message: str, *, terminal: bool = False) -> LifecycleStep:
         return LifecycleStep(
             "post_production_qualification",
             "qualification run",
             "qualification",
             description,
+            state,
+            message,
+            terminal=terminal,
+        )
+
+    if not production_complete or binding is None:
+        return step(
             LifecycleObservationState.NOT_STARTED,
             "no final-production publication has been frozen yet",
         )
 
+    from .qualification.record import ProductionQualificationRecord
     from .qualification.store import (
         POINTER_LOCKED_ACTIVATION,
         POINTER_QUALIFICATION_PLAN,
         POINTER_QUALIFICATION_RECORD,
         POINTER_RELEASE_EVIDENCE,
+        QualificationEvidenceStore,
         qualification_root,
     )
 
-    root = qualification_root(paths, binding.campaign_generation)
+    # ``QualificationEvidenceStore`` is a pure path holder; naming a root does
+    # not create one.
+    store = QualificationEvidenceStore(
+        root=qualification_root(paths, binding.campaign_generation)
+    )
     prefix = f"qualification:{binding.content_digest}:"
-    plan_digest = _meta(store, prefix + POINTER_QUALIFICATION_PLAN)
-    record_digest = _meta(store, prefix + POINTER_QUALIFICATION_RECORD)
-    locked_digest = _meta(store, prefix + POINTER_LOCKED_ACTIVATION)
-    release_digest = _meta(store, prefix + POINTER_RELEASE_EVIDENCE)
+    plan_digest = pointers.get(prefix + POINTER_QUALIFICATION_PLAN)
+    record_digest = pointers.get(prefix + POINTER_QUALIFICATION_RECORD)
+    locked_digest = pointers.get(prefix + POINTER_LOCKED_ACTIVATION)
+    release_digest = pointers.get(prefix + POINTER_RELEASE_EVIDENCE)
 
     if record_digest is not None:
-        payload = _read_object(root, record_digest)
-        if payload is None:
-            return LifecycleStep(
-                "post_production_qualification",
-                "qualification run",
-                "qualification",
-                description,
+        record = _authenticated(
+            store, record_digest, ProductionQualificationRecord.from_dict
+        )
+        if record is None:
+            return step(
                 LifecycleObservationState.BLOCKED,
                 "the current qualification record pointer names an object that is "
-                f"missing or unreadable ({_short(record_digest)})",
+                f"missing, unreadable, or does not reproduce its own identity "
+                f"({_short(record_digest)})",
             )
-        verdict = str(payload.get("verdict", "")) or "unknown"
+        verdict = str(record.verdict.value) or "unknown"
         release = "release evidence published" if release_digest else "no release index"
         # Only `rejected` and `release_qualified` are terminal verdicts.
         # `waiting_for_reference` and `incomplete` are truthful *nonterminal*
@@ -443,40 +538,24 @@ def _qualification_step(
         # cannot finish yet. Reporting either as a completed stage would tell an
         # operator the campaign is done when the product is still unqualified.
         if verdict == "rejected":
-            return LifecycleStep(
-                "post_production_qualification",
-                "qualification run",
-                "qualification",
-                description,
+            return step(
                 LifecycleObservationState.COMPLETE,
                 f"terminal qualification verdict: rejected ({release})",
                 terminal=True,
             )
         if verdict == "release_qualified":
-            return LifecycleStep(
-                "post_production_qualification",
-                "qualification run",
-                "qualification",
-                description,
+            return step(
                 LifecycleObservationState.COMPLETE,
                 f"terminal qualification verdict: release_qualified ({release})",
             )
         if verdict == "waiting_for_reference":
-            return LifecycleStep(
-                "post_production_qualification",
-                "qualification run",
-                "qualification",
-                description,
+            return step(
                 LifecycleObservationState.WAITING,
                 "qualification is waiting for independent external reference "
                 "evidence; supply the requested bundle and rerun "
                 "`qualification run`",
             )
-        return LifecycleStep(
-            "post_production_qualification",
-            "qualification run",
-            "qualification",
-            description,
+        return step(
             LifecycleObservationState.WAITING,
             f"qualification is incomplete (verdict: {verdict}); rerun "
             "`qualification run`. Locked evidence, when required, is activated "
@@ -484,11 +563,7 @@ def _qualification_step(
         )
 
     if plan_digest is None:
-        return LifecycleStep(
-            "post_production_qualification",
-            "qualification run",
-            "qualification",
-            description,
+        return step(
             LifecycleObservationState.NOT_STARTED,
             "the frozen publication has not been qualified; run `qualification run`",
         )
@@ -497,11 +572,7 @@ def _qualification_step(
         if locked_digest
         else "locked cohort not activated (explicit `qualification activate-locked` only)"
     )
-    return LifecycleStep(
-        "post_production_qualification",
-        "qualification run",
-        "qualification",
-        description,
+    return step(
         LifecycleObservationState.WAITING,
         f"qualification plan is current ({_short(plan_digest)}); no terminal verdict "
         f"has been published yet; {locked}",
@@ -513,41 +584,26 @@ def project_campaign_lifecycle(
 ) -> CampaignLifecycleSnapshot:
     """Project the public lifecycle from persisted owner state, coherently."""
 
-    for _attempt in range(_COHERENCE_ATTEMPTS):
-        revision = load_target_size_campaign_revision(store)
-        state = None if revision is None else revision.state
-        steps: list[LifecycleStep] = [_doctor_step(store, paths)]
-        prepare = _prepare_step(state)
-        steps.append(prepare)
-        prepare_complete = prepare.state == LifecycleObservationState.COMPLETE
-        screen = _screen_step(state, prepare_complete)
-        steps.append(screen)
-        binding = (
-            None
-            if revision is None or not prepare_complete
-            else _binding_for(revision)
+    steps: list[LifecycleStep] = [_doctor_step(store, paths)]
+    revision, binding, pointers = _owner_snapshot(store)
+    state = None if revision is None else revision.state
+    prepare = _prepare_step(state)
+    steps.append(prepare)
+    prepare_complete = prepare.state == LifecycleObservationState.COMPLETE
+    steps.append(_screen_step(state, prepare_complete))
+    if not prepare_complete:
+        binding = None
+    cv_step, production_step = _post_selection_steps(paths, binding, pointers)
+    steps.append(cv_step)
+    steps.append(production_step)
+    steps.append(
+        _qualification_step(
+            paths,
+            binding,
+            production_step.state == LifecycleObservationState.COMPLETE,
+            pointers,
         )
-        cv_step, production_step = _post_selection_steps(paths, store, binding)
-        steps.append(cv_step)
-        steps.append(production_step)
-        steps.append(
-            _qualification_step(
-                paths,
-                store,
-                binding,
-                production_step.state == LifecycleObservationState.COMPLETE,
-            )
-        )
-        after = load_target_size_campaign_revision(store)
-        moved = (None if after is None else after.state_revision) != (
-            None if revision is None else revision.state_revision
-        )
-        if not moved:
-            return CampaignLifecycleSnapshot(
-                state_revision=None if revision is None else revision.state_revision,
-                generation=None if state is None else state.generation,
-                steps=tuple(steps),
-            )
+    )
     return CampaignLifecycleSnapshot(
         state_revision=None if revision is None else revision.state_revision,
         generation=None if state is None else state.generation,

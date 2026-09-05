@@ -418,6 +418,56 @@ class AuthenticatedVaspSource:
     temperature_target: TemperatureTargetEvidence
 
 
+def _resolved_source_paths(source: Any, base: Path) -> tuple[Path, dict[str, Path]]:
+    """Resolve one P1 source locator and its companions against ``base``."""
+
+    path = Path(source.source_locator)
+    if not path.is_absolute():
+        path = base / path
+    companion_paths = {
+        role: (base / locator if not Path(locator).is_absolute() else Path(locator))
+        for role, locator in source.companion_files
+    }
+    return path, companion_paths
+
+
+def changed_vasp_source_identities(
+    source_authority: SourceAuthority,
+    *,
+    base_directory: str | Path = ".",
+) -> tuple[str, ...]:
+    """Run IDs whose live source/companion bytes no longer match P1 record.
+
+    This answers one question and decides nothing: *are the inputs this
+    campaign was prepared from still the inputs on disk?*  It reads exactly
+    the identity facts :func:`authenticate_vasp_source_authority` proves, and
+    compares only the two byte-level signatures -- source identity and control
+    interpretation -- so a source whose bytes are unchanged can never be
+    reported as changed.
+
+    A source that cannot be read at all is *not* reported here.  "Unreadable"
+    is not "changed": it is a failure that belongs to full authentication,
+    which produces the accurate message.
+    """
+
+    from mdstats.io import read_vasp_run_controls
+
+    base = Path(base_directory)
+    changed: list[str] = []
+    for source in source_authority.sources:
+        path, companion_paths = _resolved_source_paths(source, base)
+        try:
+            bundle = read_vasp_run_controls(path, companion_files=companion_paths)
+        except Exception:  # noqa: BLE001 - the authenticator owns this diagnosis
+            continue
+        if (
+            bundle.source_identity.signature != source.source_identity_signature
+            or bundle.signature != source.source_control_digest
+        ):
+            changed.append(str(source.run_id))
+    return tuple(sorted(changed))
+
+
 def authenticate_vasp_source_authority(
     source_authority: SourceAuthority,
     *,
@@ -440,13 +490,7 @@ def authenticate_vasp_source_authority(
     base = Path(base_directory)
     authenticated: dict[str, AuthenticatedVaspSource] = {}
     for source in source_authority.sources:
-        path = Path(source.source_locator)
-        if not path.is_absolute():
-            path = base / path
-        companion_paths = {
-            role: (base / locator if not Path(locator).is_absolute() else Path(locator))
-            for role, locator in source.companion_files
-        }
+        path, companion_paths = _resolved_source_paths(source, base)
         bundle = read_vasp_run_controls(path, companion_files=companion_paths)
         if bundle.source_identity.signature != source.source_identity_signature:
             raise TrainingDataInputError(

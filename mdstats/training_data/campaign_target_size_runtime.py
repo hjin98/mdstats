@@ -705,6 +705,63 @@ class MaceTargetSizeBoundaryTrainer:
 # ---------------------------------------------------------------------------
 
 
+def _changed_preparation_inputs(
+    cfg: Mapping[str, Any], paths: Any, store: Any
+) -> tuple[str, ...]:
+    """Human-readable reasons the stored catalog no longer describes the inputs.
+
+    ``prepare`` owns input change detection because it is the only command
+    permitted to interpret live sources at all.  The comparison is made from
+    identities the campaign already persisted -- the approved manifest digest
+    the DATA2 catalog was built against, and each source's own byte-identity
+    and control signatures -- so nothing here is a second freshness authority,
+    a modification-time heuristic, or a new registry.  An empty result means
+    the stored lower-level catalog may be reused; a non-empty one routes to the
+    existing catalog reconstruction owner, which re-applies every source,
+    quality, and approval rule.
+    """
+
+    import mdstats
+    from ._campaign_cli_core import _ensure_manifest, _path_cfg
+    from .neutral_substrate import (
+        build_source_authority_from_data2_catalog,
+        changed_vasp_source_identities,
+    )
+
+    training_root = _path_cfg(cfg, paths, "training_root")
+    if training_root is None:
+        return ()
+    try:
+        source_catalog = store.get_record(
+            "source_catalog", mdstats.TrainingDataSourceCatalog
+        )
+    except TrainingDataError:
+        # An unreadable catalog is not a source change; the owner that needs it
+        # reports it precisely.
+        return ()
+    manifest = _ensure_manifest(cfg, paths, approve=False)
+    reasons: list[str] = []
+    if source_catalog.manifest_digest != manifest.content_digest:
+        reasons.append(
+            "the approved training manifest is no longer the one DATA2 was built "
+            f"from ({source_catalog.manifest_digest[:12]}... -> "
+            f"{manifest.content_digest[:12]}...)"
+        )
+    else:
+        source_authority = build_source_authority_from_data2_catalog(
+            source_catalog, manifest=manifest
+        )
+        changed = changed_vasp_source_identities(
+            source_authority, base_directory=training_root
+        )
+        if changed:
+            reasons.append(
+                "source or companion bytes changed for "
+                + ", ".join(repr(run_id) for run_id in changed)
+            )
+    return tuple(reasons)
+
+
 def execute_current_prepare(args: Any) -> int:
     """Rebuild the current target-size scientific substrate.
 
@@ -717,7 +774,6 @@ def execute_current_prepare(args: Any) -> int:
     from ._campaign_cli_core import (
         CampaignStore,
         StageState,
-        _atomic_json,
         _ensure_manifest,
         _load_config,
         _mark_stage,
@@ -731,7 +787,11 @@ def execute_current_prepare(args: Any) -> int:
         publish_prepared_generation,
     )
     from .campaign_target_size_cutover import ensure_current_target_size_authorities
-    from .campaign_target_size_view import write_target_size_result_view
+    from .campaign_target_size_state import ensure_target_size_campaign_revision
+    from .campaign_target_size_view import (
+        write_current_target_size_result_view,
+        write_target_size_result_view,
+    )
 
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
@@ -767,6 +827,12 @@ def execute_current_prepare(args: Any) -> int:
     )
     prepared_data4 = None
     try:
+        # The currentness token is captured *before* the expensive construction
+        # whose result depends on it. Adoption is fenced against exactly this
+        # token, so a competing prepare that publishes a different generation
+        # while this one builds cannot be superseded by a stale snapshot that
+        # merely finished later.
+        expected_start = ensure_target_size_campaign_revision(store).expectation()
         if bool(getattr(args, "rebuild_catalog", False)) or not store.has_record("data5"):
             prepared_data4 = _prepare_catalog(
                 cfg,
@@ -776,10 +842,30 @@ def execute_current_prepare(args: Any) -> int:
                 refresh_inferences=refresh_inferences,
             )["data4"]
         else:
-            _ok(
-                "lower-level source, frame, and feature inputs are present and will be "
-                "re-validated by the current P1 owners"
-            )
+            changed = _changed_preparation_inputs(cfg, paths, store)
+            if changed:
+                # `prepare` is the only command that may interpret live inputs,
+                # so it is the only place a genuine input change can be turned
+                # into a fresh generation. Routing it through the existing
+                # catalog owner keeps every source/approval rule in force: a
+                # malformed or unapproved change still fails there.
+                _ok(
+                    "preparation inputs changed ("
+                    + "; ".join(changed)
+                    + "); rebuilding the lower-level catalog through its owner"
+                )
+                prepared_data4 = _prepare_catalog(
+                    cfg,
+                    paths,
+                    store,
+                    approve_manifest=False,
+                    refresh_inferences=refresh_inferences,
+                )["data4"]
+            else:
+                _ok(
+                    "lower-level source, frame, and feature inputs are unchanged and "
+                    "will be re-validated by the current P1 owners"
+                )
         authorities = build_prepared_target_size_substrate(
             cfg, paths, store, data4=prepared_data4
         )
@@ -799,6 +885,7 @@ def execute_current_prepare(args: Any) -> int:
             authorities.identity,
             common_preparation_digest=authorities.common.content_digest,
             prepared_manifest_digest=prepared_manifest.content_digest,
+            expected_start=expected_start,
         )
     except Exception as exc:
         _mark_stage(store, paths, "prepare", StageState.FAILED, str(exc))
@@ -816,12 +903,18 @@ def execute_current_prepare(args: Any) -> int:
         "N is owned by `select-target-size`.",
         flush=True,
     )
-    _atomic_json(
-        paths.results / "target-size-state.json",
-        write_target_size_result_view(
-            paths.results / "target-size-state.json", revision
-        ),
-    )
+    # An unchanged terminal generation is a legitimate no-op, not a failure.
+    # The derived view is a rendering of whatever the campaign state already
+    # says, so it is written by the owner that can render that state -- the
+    # terminal exposure path for a terminal revision, the nonterminal writer
+    # otherwise. Campaign scientific state is never altered to suit a file.
+    view_path = paths.results / "target-size-state.json"
+    if revision.state.terminal is not None:
+        write_current_target_size_result_view(
+            cfg, paths, store, path=view_path, expected_revision=revision
+        )
+    else:
+        write_target_size_result_view(view_path, revision)
     _mark_stage(
         store,
         paths,

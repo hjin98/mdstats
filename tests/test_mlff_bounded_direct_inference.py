@@ -25,7 +25,10 @@ import pytest
 import tests.test_mlff_target_size_execution_p3a as p3a
 import tests.test_mlff_target_size_execution_p3c as p3c
 import tests.test_mlff_target_size_execution_p3d as p3d
-from mdstats.training_data._common import TrainingDataInputError
+from mdstats.training_data._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+)
 from mdstats.training_data.bounded_inference import (
     execution_batch_width,
     run_bounded_inference,
@@ -34,6 +37,7 @@ from mdstats.training_data.mace_export import MaceExtxyzPolicy
 from mdstats.training_data.protocol import MaceOptimizerPolicy
 from mdstats.training_data.target_size_execution import (
     TargetSizePredictionEntry,
+    TargetSizePredictionEvidence,
     build_target_size_candidate_trajectory,
     build_target_size_eval2_role,
     build_target_size_screen_schedule,
@@ -44,6 +48,9 @@ from mdstats.training_data.target_size_execution import (
 )
 from mdstats.training_data.target_size_execution.context import (
     build_target_size_execution_context,
+)
+from mdstats.training_data.target_size_execution.evaluation import (
+    TARGET_SIZE_PREDICTION_EVIDENCE_SCHEMA,
 )
 from mdstats.training_data.neutral_substrate import (
     build_neutral_split_exclusion_evidence,
@@ -319,3 +326,52 @@ def test_bounded_inference_uses_the_provider_when_no_seam_is_supplied():
     result = run_bounded_inference(provider, list(range(7)), batch_width=3)
     assert provider.widths == [3, 3, 1]
     assert len(result) == 7
+
+
+def test_durable_evidence_records_the_population_not_the_device_batch(
+    tmp_path: Path,
+):
+    """`M` is scientific membership; it was never a claim about one forward.
+
+    The runtime defect was repaired at execution, but the durable evidence went
+    on recording ``batch_size = M`` -- asserting, for every later reader and
+    every replay, that the whole population had been one accelerator batch.
+    The field is gone: the deterministic execution partition is `M` together
+    with the accepted execution policy's ``valid_batch_size``, and that policy
+    is already inside the trajectory identity this evidence binds.
+    """
+
+    _env_, _role, _artifact, evidence, forward, evaluation_size = _direct_inference(
+        tmp_path, valid_batch_size=3, boundary=10
+    )
+    assert evaluation_size > 3, "this acceptance needs M > valid_batch_size"
+    assert max(forward.widths) <= 3
+
+    payload = evidence.to_dict()
+    assert payload["schema"] == TARGET_SIZE_PREDICTION_EVIDENCE_SCHEMA
+    assert payload["schema"].endswith(".v2")
+    assert "batch_size" not in payload
+    assert not hasattr(evidence, "batch_size")
+    assert payload["evaluation_size"] == evaluation_size
+    assert payload["prediction_count"] == evaluation_size
+    # The evidence still authenticates itself exactly.
+    assert (
+        TargetSizePredictionEvidence.from_dict(payload).content_digest
+        == evidence.content_digest
+    )
+
+
+def test_retired_full_batch_prediction_evidence_is_not_current_authority(
+    tmp_path: Path,
+):
+    """A record that still claims `batch_size == M` cannot be read as current."""
+
+    _env_, _role, _artifact, evidence, _forward, evaluation_size = _direct_inference(
+        tmp_path, valid_batch_size=3, boundary=10
+    )
+    retired = dict(evidence.to_dict())
+    retired["schema"] = "mdstats.target-size.prediction-evidence.v1"
+    retired["batch_size"] = evaluation_size
+    retired.pop("content_digest", None)
+    with pytest.raises(TrainingDataSerializationError):
+        TargetSizePredictionEvidence.from_dict(retired)

@@ -131,6 +131,7 @@ def execute_qualification_status(args: Any) -> int:
     from ..campaign_lifecycle import _binding_for
     from ..campaign_target_size_state import load_target_size_campaign_revision
     from .observation import observe_current_qualification
+    from .spec import resolve_qualification_spec_identity
 
     with observational_campaign_state():
         cfg, paths = _load_config(args.config, ensure=False)
@@ -145,7 +146,14 @@ def execute_qualification_status(args: Any) -> int:
             if binding is None:
                 _warn(_no_publication_message())
                 return 0
-            observation = observe_current_qualification(paths, store, binding)
+            observation = observe_current_qualification(
+                paths,
+                store,
+                binding,
+                specification_digest=resolve_qualification_spec_identity(
+                    cfg
+                ).content_digest,
+            )
         finally:
             store.close()
 
@@ -177,7 +185,14 @@ def execute_qualification_status(args: Any) -> int:
             "current qualification evidence is incomplete or corrupt: "
             f"{observation.blocked_detail}"
         )
-    if observation.verdict is None:
+    if observation.superseded_detail is not None:
+        _warn(
+            "no current terminal qualification record: "
+            f"{observation.superseded_detail}. The existing record stays "
+            "historical evidence; rerun `qualification run` under the current "
+            "specification."
+        )
+    elif observation.verdict is None:
         _warn("no current terminal qualification record has been published yet")
     else:
         _ok(
