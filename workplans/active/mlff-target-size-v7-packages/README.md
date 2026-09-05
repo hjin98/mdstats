@@ -4,36 +4,67 @@ These files decompose `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_A
 
 ## Current assembled integration status
 
-Package-local closure history remains valid where its own accepted authority says so, but **the assembled P1-P7 + CampaignStore + Storage product is currently NO-PASS / integration-reopened on this branch**. Later integration review discovered cross-package defects that do not invalidate the frozen V7 science but do invalidate a claim that the whole campaign is presently integrated and ready as one product.
+Package-local closure history remains valid where its own accepted authority says so, but **the assembled P1-P7 + CampaignStore + Storage product is currently NO-PASS / implementation-reopened on this branch**. Later integration review discovered cross-package defects that do not invalidate the frozen V7 science but do invalidate a claim that the whole campaign is presently integrated and ready as one product.
 
 Current assembled integration authority is the composition of:
 
 1. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_WORKPLAN.md`;
 2. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_SECOND_PASS_AMENDMENT.md`, with precedence only where it explicitly tightens/corrects the parent integration plan;
-3. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_FINAL_CONVERGENCE_AMENDMENT.md`, which is the final Design convergence amendment and folds the earlier exact-boundary checkpoint-recovery bug contract into current V7 acceptance without restoring retired V5 machinery;
-4. `P4_PREPARED_GENERATION_STAGE_BOUNDARY_REPAIR.md` for the active prepared-generation and direct-EVAL2 prerequisite;
-5. `../mlff-storage-io-reset/AUTHORITY.md` plus Storage Revision 38 for the current storage implementation/review state.
+3. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_FINAL_CONVERGENCE_AMENDMENT.md`, which folds the earlier exact-boundary checkpoint-recovery bug contract into current V7 acceptance without restoring retired V5 machinery;
+4. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_IMPLEMENTATION_REVIEW_REOPEN.md`, the current independent implementation-review authority for the remaining bounded nonconformances at reviewed branch head `919f848d7f301c50c9341c45106dd862239e165d` / executable head `60edb67bb05a49560b2e0201ab2ab940a867b236`;
+5. `P4_PREPARED_GENERATION_STAGE_BOUNDARY_REPAIR.md` for the prepared-generation and direct-EVAL2 prerequisite where non-conflicting with the later integration amendments;
+6. `../mlff-storage-io-reset/AUTHORITY.md` plus Storage Revision 38 for the current storage implementation/review state.
 
 Executable progress against that composed authority is recorded in
 `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_IMPLEMENTATION_PROGRESS.md`. That
-record is progress, not closure: it names what is implemented and, explicitly,
-which composed obligations remain unsatisfied.
+record is progress/evidence, not closure. The independent implementation review
+found additional owner-boundary gaps beyond the progress file's own remaining
+items, so the review-reopen amendment above is the current verdict for assembled
+implementation acceptance.
 
-The integration reopen is principally about prepared-generation persistence/currentness, generation-safe normalized-frame lifetime, exact P3 interruption/restart semantics, direct inference resource realization, stale-writer/currentness races, read-only lifecycle/status behavior, P7 inclusion in the public campaign lifecycle, storage interleavings, and assembled acceptance boundaries. It is **not** a reopening of the parent target-size scientific question, P5 CV/final-production science, or P7 qualification science.
+The remaining implementation blockers are bounded and do **not** justify another
+scientific/high-level redesign. They concern create-or-verify publication before
+adoption, ordinary `prepare` source-change/currentness/idempotence, concurrent
+prepare CAS, coherent and authenticated compact observation, removal of stale
+`M == batch_size` durable P3 semantics, and a conservative bounded P7 acceptance
+potential capable of exercising the real passing qualification path. Repairs are
+to alter/reduce those existing owner boundaries, not add registries, wrappers,
+parallel currentness state, a second cache, or a second batch policy.
 
-The final convergence pass explicitly preserves the earlier `select-target-size` checkpoint-recovery invariant: interruption before the first authenticated exact boundary means **no checkpoint authority yet** and retries fresh, while a claimed durable continuation whose required checkpoint/runtime/companion bytes are missing or corrupt fails closed. Current V7 exact-boundary state owns this behavior; obsolete `CandidateCheckpointCatalog`, REPAIR2/label-domain, development-complement, and target-only/replay authorization machinery must not be reintroduced merely to preserve the historical repair.
+The integration reopen is still **not** a reopening of the parent target-size
+scientific question, P5 CV/final-production science, P7 qualification science,
+CampaignStore's current-authority role, or Storage Revision 38's canonical
+destructive architecture.
 
-P6 remains a completed predecessor package. It is not a runtime stage inserted between P5 and P7; its accepted cleanup/compatibility guarantees are preservation constraints, while the current owner-driven storage successor is `CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1` Revision 38.
+The final convergence contract explicitly preserves the earlier
+`select-target-size` checkpoint-recovery invariant: interruption before the first
+authenticated exact boundary means **no checkpoint authority yet** and retries
+fresh, while a claimed durable continuation whose required
+checkpoint/runtime/companion bytes are missing or corrupt fails closed. Current
+V7 exact-boundary state owns this behavior; obsolete `CandidateCheckpointCatalog`,
+REPAIR2/label-domain, development-complement, and target-only/replay authorization
+machinery must not be reintroduced merely to preserve the historical repair.
+
+P6 remains a completed predecessor package. It is not a runtime stage inserted
+between P5 and P7; its accepted cleanup/compatibility guarantees are preservation
+constraints, while the current owner-driven storage successor is
+`CODE-MLFF-CAMPAIGN-STORAGE-IO-RESET1` Revision 38.
 
 ## Package-local sequencing history
 
-P1-P6 remain accepted/reclosed under their package-local authorities. P7 executable source remains frozen at:
+P1-P6 remain accepted/reclosed under their package-local authorities. P7
+executable source remains frozen at:
 
 - commit `97fa48fc4a8e5be0da8cbcd22ba10248fa37acee`;
 - tree `9e4be0fc9d23c4036413a2ced86dc19d98ad9ed6`;
 - source digest `7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6`.
 
-**P7 revision 13.7 remains CLOSED / PASS for its package-local software implementation and functional acceptance.** That historical closure does not override the later assembled integration reopen above.
+**P7 revision 13.7 remains CLOSED / PASS for its package-local software
+implementation and functional acceptance.** That historical closure does not
+override the later assembled integration reopen above. The current assembled
+review does not alter P7 science; its P7 blocker is that the bounded acceptance
+fixture cannot honestly exercise the passing relaxation path until its test
+energy/force model is made conservative with a reachable minimum.
 
 ### Accepted P7 closure evidence
 
@@ -48,9 +79,15 @@ P1-P6 remain accepted/reclosed under their package-local authorities. P7 executa
 
 ### Production qualification is deferred, not waived
 
-The base P7 package explicitly distinguishes P7 software completion from actual-production scientific qualification. Real external DFT is required when qualifying a real frozen production publication, but it is not required to prove P7 software implementation correctness. Long target-machine production/resource/performance qualification remains deferred to the established final-release phase.
+The base P7 package explicitly distinguishes P7 software completion from
+actual-production scientific qualification. Real external DFT is required when
+qualifying a real frozen production publication, but it is not required to prove
+P7 software implementation correctness. Long target-machine
+production/resource/performance qualification remains deferred to the established
+final-release phase.
 
-After the active assembled integration repair closes, the operational lifecycle remains:
+After the active assembled integration repair closes, the operational lifecycle
+remains:
 
 ```text
 prepare
@@ -61,9 +98,20 @@ prepare
  -> qualification run
 ```
 
-If real DFT is unavailable at that point, `qualification run` should truthfully stop at `waiting_for_reference`. That is an expected product state. When independent DFT is later available, resume the same qualification lineage, complete physical/relaxation/dynamics/calibration evidence, explicitly activate the one-shot locked test, and record `RELEASE_QUALIFIED` or `REJECTED` plus fresh-process reauthentication.
+If real DFT is unavailable at that point, `qualification run` should truthfully
+stop at `waiting_for_reference`. That is an expected product state. When
+independent DFT is later available, resume the same qualification lineage,
+complete physical/relaxation/dynamics/calibration evidence, explicitly activate
+the one-shot locked test, and record `RELEASE_QUALIFIED` or `REJECTED` plus
+fresh-process reauthentication.
 
-The historical P7 successor gate allowed Storage work to proceed. **Current Storage Revision 38 design remains accepted, but its implementation authority is independently reopened/NO-PASS until its current bounded closure blockers and the assembled integration obligations are satisfied.**
+The historical P7 successor gate allowed Storage work to proceed. **Current
+Storage Revision 38 design remains accepted, but assembled storage acceptance is
+still subject to the integration review.** In particular, do not invent
+archive/restore support for current prepared/frame state when the real owner
+correctly declares it hot/restart-required and non-cold-replaceable; applicable
+storage operations must preserve owner capability and remain scientifically
+neutral.
 
 ## Packages
 
@@ -85,4 +133,7 @@ Read P7 package-local semantics in this precedence order:
 4. accepted earlier R13.6/R13.5/R13.4/R13.3/R13.2/R13.1/R13/R12/R11/R10/base-P7 contracts where non-conflicting;
 5. `P7_REVISION_2_STORAGE_SUCCESSOR_PREPARATION_AMENDMENT.md` for the storage-neutral successor boundary.
 
-`P7_REVISION_13_7_REVIEW_EVIDENCE.md` records the independent package-local PASS review. For **current assembled campaign implementation/acceptance**, use the integration authority set at the top of this file; package-local PASS evidence cannot substitute for the reopened cross-package acceptance claim.
+`P7_REVISION_13_7_REVIEW_EVIDENCE.md` records the independent package-local PASS
+review. For **current assembled campaign implementation/acceptance**, use the
+integration authority set at the top of this file; package-local PASS evidence
+cannot substitute for the reopened cross-package acceptance claim.
