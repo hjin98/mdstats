@@ -17,11 +17,12 @@ derives and binds the digest.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
 from .._common import digest, validate_digest
 from .._common import TrainingDataInputError, TrainingDataSerializationError
+from ..acceleration import MaceAccelerationBackend, MaceAccelerationKernelMode
 from ..protocol import MaceOptimizerPolicy
 from ..target_size_experiment import (
     TargetSizeExperimentDefinition,
@@ -85,6 +86,69 @@ def validate_candidate_optimizer_policy(
         raise TrainingDataInputError(
             "Candidate optimizer policy does not carry the authorized optimizer seed."
         )
+
+
+def _accepted_training_kernel_mode(
+    optimizer_policy: MaceOptimizerPolicy,
+) -> str:
+    """The one training kernel mode the accepted backend admits.
+
+    ``resolved_acceleration_kernel_mode`` is not free execution state.  A
+    qualified training realization binds ``e3nn`` for the e3nn backend and the
+    pure-CuEq training kernel for the CuEq backend -- CuEq+OEQ is inference
+    only -- and ``MaceOptimizerPolicy`` itself refuses any other pairing.  The
+    backend lives in ``acceleration_policy``, which the seed-neutral template
+    binds and every replayed trajectory has already been proven to share, so
+    this is derived from accepted authority rather than read back from mutable
+    current runtime state.
+    """
+
+    backend = optimizer_policy.acceleration_policy.backend
+    return (
+        MaceAccelerationKernelMode.E3NN.value
+        if backend is MaceAccelerationBackend.E3NN
+        else MaceAccelerationKernelMode.CUEQ_PURE.value
+    )
+
+
+def bind_candidate_optimizer_policy(
+    optimizer_policy: MaceOptimizerPolicy,
+    *,
+    optimizer_seed: int,
+    acceleration_realization_digest: str | None,
+) -> MaceOptimizerPolicy:
+    """Recombine the seed-neutral template with one candidate's local identity.
+
+    The template excludes exactly ``seed`` and the per-candidate acceleration
+    realization; this is the single place that puts them back.  "Policy for
+    new work" and "policy for replaying already accepted evidence" therefore
+    differ only in which acceleration realization the caller supplies -- the
+    currently authorized one, or the one the persisted trajectory bound --
+    never in how the policy is assembled.
+    """
+
+    if not isinstance(optimizer_policy, MaceOptimizerPolicy):
+        raise TrainingDataInputError(
+            "A candidate optimizer policy requires the accepted MaceOptimizerPolicy template."
+        )
+    realization_digest = (
+        None
+        if acceleration_realization_digest is None
+        else validate_digest(
+            str(acceleration_realization_digest),
+            name="acceleration_realization_digest",
+        )
+    )
+    return replace(
+        optimizer_policy,
+        seed=int(optimizer_seed),
+        acceleration_realization_digest=realization_digest,
+        resolved_acceleration_kernel_mode=(
+            None
+            if realization_digest is None
+            else _accepted_training_kernel_mode(optimizer_policy)
+        ),
+    )
 
 
 def exact_screen_optimizer_seeds(
@@ -367,6 +431,7 @@ def build_target_size_execution_context(
 __all__ = [
     "TARGET_SIZE_EXECUTION_CONTEXT_SCHEMA",
     "TargetSizeExecutionContext",
+    "bind_candidate_optimizer_policy",
     "build_target_size_execution_context",
     "exact_screen_optimizer_seeds",
     "seed_neutral_optimizer_policy_digest",

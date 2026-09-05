@@ -516,17 +516,34 @@ class TargetSizeRestartAuthority:
             name="eval2_policy_digest",
         )
 
-    def optimizer_policy_for_seed(self, optimizer_seed: int) -> MaceOptimizerPolicy:
-        """Derive the only accepted per-seed optimizer policy."""
+    def replay_optimizer_policy_for_trajectory(
+        self, trajectory: Any
+    ) -> MaceOptimizerPolicy:
+        """The accepted optimizer policy of one already published trajectory.
 
-        from dataclasses import replace
+        Restart authenticates historical evidence, so the candidate-local
+        acceleration realization comes from the trajectory that actually
+        executed, not from whichever realization this invocation currently
+        qualifies.  Everything else -- the seed-neutral scientific/training
+        template and the authorized P2 seed -- remains current authority, and
+        every downstream materialization/config/snapshot/provider/EVAL2
+        validator keeps replaying against this one policy.
+        """
 
-        seed = int(optimizer_seed)
+        from .context import bind_candidate_optimizer_policy
+
+        seed = int(trajectory.optimizer_seed)
         if seed not in tuple(self.aggregate.definition.policy.optimizer_seeds):
             raise TrainingDataInputError(
                 "Requested optimizer seed is not in the accepted P2 seed population."
             )
-        return replace(self.seed_neutral_optimizer_policy, seed=seed)
+        return bind_candidate_optimizer_policy(
+            self.seed_neutral_optimizer_policy,
+            optimizer_seed=seed,
+            acceleration_realization_digest=(
+                trajectory.realization.acceleration_realization_digest
+            ),
+        )
 
     def bulk_root(self, name: str) -> Path:
         try:
@@ -3180,7 +3197,7 @@ def _validate_replayed_candidate_lineage(
         record.trajectory_digest,
         TargetSizeCandidateTrajectory.from_dict,
     )
-    optimizer_policy = authority.optimizer_policy_for_seed(trajectory.optimizer_seed)
+    optimizer_policy = authority.replay_optimizer_policy_for_trajectory(trajectory)
     projection = validate_target_size_candidate_trajectory(
         trajectory,
         authority.aggregate.definition,

@@ -15,6 +15,7 @@ from mdstats.training_data._common import digest
 from mdstats.training_data.mace_export import MaceExtxyzPolicy
 from mdstats.training_data.protocol import MaceOptimizerPolicy
 from mdstats.training_data.target_size_execution import (
+    TargetSizeCandidateRealization,
     TargetSizeCandidateTrajectory,
     build_target_size_candidate_trajectory,
     build_target_size_screen_schedule,
@@ -632,3 +633,328 @@ def test_p3b_order_divergent_candidate_materializes_in_exact_p2_order(
         assert table.for_frame(uid).to_dict() == common_weight_by_uid[uid].to_dict()
     # No candidate-specific refit: the bound common state is unchanged.
     assert projection.common_preparation_digest == common.content_digest
+
+
+# ---------------------------------------------------------------------------
+# Historical replay across acceleration-realization turnover
+#
+# The seed-neutral screen identity deliberately excludes the optimizer seed and
+# the acceleration realization, and each trajectory binds its own realization
+# instead.  Replay of an already published cell must therefore authenticate the
+# realization that trajectory actually bound, not whichever one this invocation
+# currently qualifies -- while every consequence the current screen authority
+# still determines stays fail-closed.
+# ---------------------------------------------------------------------------
+
+_ACCEL_A = digest({"training-acceleration-realization": "A"})
+_ACCEL_B = digest({"training-acceleration-realization": "B"})
+
+
+def _accelerated_optimizer(schedule, *, realization_digest, **overrides):
+    return MaceOptimizerPolicy(
+        max_num_epochs=schedule.n3,
+        batch_size=4,
+        acceleration_realization_digest=realization_digest,
+        resolved_acceleration_kernel_mode="e3nn",
+        **overrides,
+    )
+
+
+def _accelerated_env(tmp_path: Path):
+    manifest, fa, nb, aggregate, common, index = p3a._common(tmp_path)
+    schedule = build_target_size_screen_schedule(
+        tuple(aggregate.definition.policy.fidelity_epochs)
+    )
+    optimizer_a = _accelerated_optimizer(schedule, realization_digest=_ACCEL_A)
+    context = _context_for(aggregate, common, schedule, optimizer_policy=optimizer_a)
+    definition = aggregate.definition
+    trajectory = build_target_size_candidate_trajectory(
+        definition,
+        context,
+        common,
+        schedule,
+        target_size=definition.qualified_candidate_sizes[0],
+        optimizer_policy=optimizer_a,
+        optimizer_seed=1,
+    )
+    return {
+        "manifest": manifest,
+        "frame_authority": fa,
+        "aggregate": aggregate,
+        "definition": definition,
+        "common": common,
+        "index": index,
+        "schedule": schedule,
+        "context": context,
+        "optimizer_a": optimizer_a,
+        "trajectory": trajectory,
+    }
+
+
+def _replay(env, trajectory, optimizer_policy):
+    return validate_target_size_candidate_trajectory(
+        trajectory,
+        env["definition"],
+        env["context"],
+        env["common"],
+        env["schedule"],
+        optimizer_policy=optimizer_policy,
+    )
+
+
+def _drifted(trajectory, **realization_overrides):
+    """A trajectory whose realization drifted from the accepted derivation.
+
+    ``replace`` is used deliberately: a serialized tamper is already refused by
+    the realization content digest, and the claim under test is the *replay*
+    comparison, which must reject an internally consistent but non-derivable
+    realization.
+    """
+
+    realization = replace(trajectory.realization, **realization_overrides)
+    return replace(trajectory, realization=realization)
+
+
+def test_p3b_replay_authenticates_the_historical_acceleration_realization(
+    tmp_path: Path,
+) -> None:
+    env = _accelerated_env(tmp_path)
+    trajectory = env["trajectory"]
+    assert trajectory.realization.acceleration_realization_digest == _ACCEL_A
+
+    # A -> A: unchanged realization replays.
+    _replay(env, trajectory, env["optimizer_a"])
+
+    # A -> B: the current invocation qualifies a different acceleration
+    # realization.  The screen-wide seed-neutral identity is unchanged, so the
+    # published cell must still authenticate -- against A, the realization it
+    # actually bound.
+    optimizer_b = _accelerated_optimizer(
+        env["schedule"], realization_digest=_ACCEL_B
+    )
+    assert optimizer_b.policy_digest != env["optimizer_a"].policy_digest
+    from mdstats.training_data.target_size_execution.context import (
+        seed_neutral_optimizer_policy_digest,
+    )
+
+    assert seed_neutral_optimizer_policy_digest(optimizer_b) == (
+        env["context"].seed_neutral_optimizer_policy_digest
+    )
+    _replay(env, trajectory, replace(optimizer_b, seed=1))
+
+    # Nothing about the historical trajectory is rewritten to the current
+    # realization.
+    assert trajectory.realization.acceleration_realization_digest == _ACCEL_A
+
+
+def test_p3b_replay_across_acceleration_turnover_keeps_drift_fail_closed(
+    tmp_path: Path,
+) -> None:
+    env = _accelerated_env(tmp_path)
+    trajectory = env["trajectory"]
+    optimizer_b = replace(
+        _accelerated_optimizer(env["schedule"], realization_digest=_ACCEL_B), seed=1
+    )
+    realization = trajectory.realization
+
+    # Update geometry: a different batch size and its derived update counts.
+    with pytest.raises(mdstats.TrainingDataInputError, match="update geometry"):
+        _replay(
+            env,
+            _drifted(
+                trajectory,
+                batch_size=realization.batch_size * 2,
+                updates_per_epoch=(realization.structures_per_epoch + 7) // 8,
+                planned_updates=((realization.structures_per_epoch + 7) // 8)
+                * env["schedule"].n3,
+            ),
+            optimizer_b,
+        )
+
+    # Validation batch semantics are identity-bound through loader geometry.
+    with pytest.raises(mdstats.TrainingDataInputError, match="loader geometry"):
+        _replay(
+            env,
+            _drifted(
+                trajectory,
+                loader_geometry_digest=digest({"valid_batch_size": "changed"}),
+            ),
+            optimizer_b,
+        )
+
+    # Precision realization.
+    with pytest.raises(mdstats.TrainingDataInputError, match="precision realization"):
+        _replay(env, _drifted(trajectory, default_dtype="float32"), optimizer_b)
+    with pytest.raises(mdstats.TrainingDataInputError, match="precision realization"):
+        _replay(
+            env,
+            _drifted(
+                trajectory,
+                precision_schedule_digest=digest({"precision": "changed"}),
+            ),
+            optimizer_b,
+        )
+
+    # Full-n3 screen horizon.
+    with pytest.raises(mdstats.TrainingDataInputError, match="screen budget"):
+        _replay(
+            env,
+            _drifted(
+                trajectory,
+                max_num_epochs=realization.max_num_epochs + 1,
+                planned_updates=realization.updates_per_epoch
+                * (realization.max_num_epochs + 1),
+                planned_structures_presented=realization.structures_per_epoch
+                * (realization.max_num_epochs + 1),
+            ),
+            optimizer_b,
+        )
+
+    # Exact T_N / candidate membership.
+    other_sizes = [
+        n
+        for n in env["definition"].qualified_candidate_sizes
+        if n != trajectory.target_size
+    ]
+    assert other_sizes
+    with pytest.raises(mdstats.TrainingDataInputError):
+        _replay(env, replace(trajectory, target_size=other_sizes[0]), optimizer_b)
+    with pytest.raises(mdstats.TrainingDataInputError):
+        _replay(
+            env,
+            replace(
+                trajectory,
+                candidate_membership_digest=digest({"membership": "foreign"}),
+            ),
+            optimizer_b,
+        )
+
+    # Unauthorized optimizer seed.
+    unauthorized = max(env["definition"].policy.optimizer_seeds) + 17
+    with pytest.raises(mdstats.TrainingDataInputError):
+        _replay(
+            env,
+            replace(trajectory, optimizer_seed=unauthorized),
+            replace(optimizer_b, seed=unauthorized),
+        )
+
+
+def test_p3b_forged_historical_acceleration_provenance_is_rejected(
+    tmp_path: Path,
+) -> None:
+    env = _accelerated_env(tmp_path)
+    trajectory = env["trajectory"]
+    frames, frame_data_by_run, _idx = p3a._frame_arrays(tmp_path, env["manifest"])
+    projection = project_target_size_candidate_preparation(
+        env["common"], env["definition"], trajectory.target_size
+    )
+    out = tmp_path / "candidate"
+    record = materialize_target_size_candidate(
+        trajectory,
+        projection,
+        env["common"],
+        canonical_frame_authority=env["frame_authority"],
+        frame_catalog=frames,
+        frame_data_by_run=frame_data_by_run,
+        output_directory=out,
+        optimizer_policy=env["optimizer_a"],
+        extxyz_policy=MaceExtxyzPolicy(),
+        frame_array_index=env["index"],
+    )
+
+    # Rewriting the persisted acceleration provenance changes the trajectory's
+    # own content identity, so a serialized forgery cannot even be loaded back.
+    forged_payload = json.loads(json.dumps(trajectory.to_dict()))
+    forged_payload["realization"]["acceleration_realization_digest"] = _ACCEL_B
+    with pytest.raises(
+        (mdstats.TrainingDataInputError, mdstats.TrainingDataSerializationError)
+    ):
+        TargetSizeCandidateTrajectory.from_dict(forged_payload)
+
+    # And a forgery assembled in memory is contradicted by the durable
+    # materialization parent, which binds the real historical trajectory.
+    forged = _drifted(trajectory, acceleration_realization_digest=_ACCEL_B)
+    assert forged.content_digest != trajectory.content_digest
+    with pytest.raises(mdstats.TrainingDataInputError, match="different trajectory"):
+        validate_target_size_materialization(
+            record,
+            forged,
+            canonical_frame_authority=env["frame_authority"],
+            materialization_directory=out,
+            projection=projection,
+            definition=env["definition"],
+            common=env["common"],
+            optimizer_policy=env["optimizer_a"],
+            extxyz_policy=MaceExtxyzPolicy(),
+            frame_catalog=frames,
+            frame_data_by_run=frame_data_by_run,
+            frame_array_index=env["index"],
+        )
+
+
+def test_p3b_every_realization_field_is_classified_for_diagnostics() -> None:
+    """The drift diagnostic must not silently stop naming a new field.
+
+    The digest comparison over the whole canonical payload remains the
+    authority, so an unclassified field still rejects -- but restart
+    diagnostics only stay actionable while every identity-bearing dimension
+    has a class, so a new realization field has to be classified with it.
+    """
+
+    from mdstats.training_data.target_size_execution.candidate import (
+        _REALIZATION_DRIFT_CLASSES,
+    )
+
+    classified = {name for _label, fields in _REALIZATION_DRIFT_CLASSES for name in fields}
+    payload_fields = {
+        name
+        for name in TargetSizeCandidateRealization.__dataclass_fields__
+        if name != "schema"
+    }
+    assert payload_fields - classified == set()
+    assert classified - payload_fields == set()
+
+
+@pytest.mark.parametrize("backend", ["e3nn", "cueq"])
+@pytest.mark.parametrize("realization_digest", [None, _ACCEL_A, _ACCEL_B])
+@pytest.mark.parametrize("seed", [0, 1, 7])
+def test_p3b_candidate_binding_never_moves_the_seed_neutral_identity(
+    backend: str, realization_digest: str | None, seed: int
+) -> None:
+    """The invariant the whole replay repair rests on.
+
+    Recombining the template with a seed and an acceleration realization must
+    change only candidate-local identity.  If it could move the seed-neutral
+    digest, replaying historical provenance would silently redefine the screen
+    -- so this is enumerated over the entire space that space actually has:
+    both backends, both realizations plus the unbound case, and several seeds.
+    """
+
+    from mdstats.training_data.acceleration import MaceAccelerationPolicy
+    from mdstats.training_data.target_size_execution.context import (
+        bind_candidate_optimizer_policy,
+        seed_neutral_optimizer_policy_digest,
+    )
+
+    template = MaceOptimizerPolicy(
+        max_num_epochs=10,
+        batch_size=4,
+        acceleration_policy=MaceAccelerationPolicy(backend=backend),
+    )
+    bound = bind_candidate_optimizer_policy(
+        template,
+        optimizer_seed=seed,
+        acceleration_realization_digest=realization_digest,
+    )
+    assert seed_neutral_optimizer_policy_digest(bound) == (
+        seed_neutral_optimizer_policy_digest(template)
+    )
+    assert bound.seed == seed
+    assert bound.acceleration_realization_digest == realization_digest
+    # The resolved kernel mode is derived from the accepted backend, never
+    # guessed: an unbound realization stays unbound, and a bound one carries
+    # the only training kernel that backend admits.
+    assert bound.resolved_acceleration_kernel_mode == (
+        None if realization_digest is None
+        else ("e3nn" if backend == "e3nn" else "cueq_pure")
+    )
