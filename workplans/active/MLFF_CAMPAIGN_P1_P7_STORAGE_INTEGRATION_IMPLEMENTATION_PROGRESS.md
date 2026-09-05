@@ -579,3 +579,147 @@ authenticated observation"). Only this progress record changed afterwards.
 
 This section records repair and evidence; it does not grant closure. The R2
 amendment's verdict is the reviewer's to change.
+
+---
+
+# R2 residual position-integrity repair (amendment `..._IMPLEMENTATION_REVIEW_R2_POSITION_INTEGRITY_AMENDMENT.md`)
+
+Reviewed head `57f8f40`, reviewed executable head `84868ec`. The amendment kept
+every other R2 conclusion closed and reopened exactly one defect inside the
+shared mutable component-position reader.
+
+## R2P-IR1 -- the representation is discriminated, not inferred from an absence
+
+`read_component_position()` decided which representation it was holding by
+asking whether `position_object` was present. The current publication owner
+always writes `mdstats.qualification-component-position-locator.v1` with both
+`position_object` and `position_object_digest`, so that field is mandatory for
+the current schema. A parseable corruption that deleted only `position_object`
+therefore read as the pre-locator direct payload and was returned without any
+schema or shape authentication, and `observation._component_states()` then
+followed its `evidence_digest`. The evidence object is content-authenticated,
+but unauthenticated coordination bytes had still chosen *which* authentic
+evidence an operator was shown.
+
+The reader now names the two accepted representations explicitly and validates
+each on its own terms:
+
+- **current locator** (`schema == COMPONENT_POSITION_LOCATOR_SCHEMA`): every
+  field of the contract -- `component`, `binding_digest`,
+  `component_input_digest`, `evidence_digest`, `position_object`,
+  `position_object_digest` -- must be a non-empty string; the named object must
+  resolve inside the attempt root, parse as a JSON object, reproduce
+  `position_object_digest`, declare `COMPONENT_POSITION_OBJECT_SCHEMA`, and
+  **agree** with the locator's own component/binding/input/evidence claims
+  before it is returned;
+- **historical direct payload**: recognized by an explicit shape rule -- no
+  `schema` key and exactly the three fields the pre-locator writer emitted
+  (`component`, `binding_digest`, `evidence_digest`), each validated as a
+  non-empty string;
+- anything else, including a current locator with a mandatory field deleted or
+  a near-miss of the historical shape, is a `QualificationLineageError`.
+
+This is a tightening of the one existing reader. `read_component_position`
+remains the single shared reader for both `QualificationSession.completed_component()`
+and `qualification.observation`; `_component_states()` is unchanged and still
+degrades `QualificationLineageError` to `unreadable_position` plus a blocked
+detail. No position registry, CAS promotion, currentness authority, second
+observer, cache, or storage mutation path was added. The publication owner now
+emits its two schema strings from the same two module constants the reader
+validates against, so writer and reader share one authority instead of
+duplicated literals.
+
+## New acceptance
+
+`tests/test_mlff_qualification_status_observation.py`, on the real owners and
+the real public command:
+
+- `test_a_position_that_does_not_satisfy_its_representation_is_unreadable`
+  replaces the single tampered-digest test with a 16-case matrix: missing
+  `position_object`; missing `position_object` **and** its digest; missing
+  `position_object_digest`; missing `evidence_digest`; missing
+  `component_input_digest`; empty and wrongly typed `position_object`; tampered
+  `position_object_digest`; locator-versus-object disagreement on each of
+  component, binding, input and evidence; deleted `schema`; unknown `schema`;
+  and the near-miss legacy shape carrying an extra `component_input_digest`.
+  Each case asserts the shared reader raises, the component state is
+  `unreadable_position`, `qualification status` exits 0 and prints the
+  "incomplete or corrupt" diagnostic, and neither the managed file snapshot nor
+  the campaign database rows change.
+- `test_the_exact_historical_direct_position_still_reads_through_both_owners`
+  proves the retained compatibility form is a validated shape rather than a
+  fallthrough: the exact three-field payload reads through
+  `session.completed_component()` **and** through the public command, with the
+  healthy component status unchanged and no blocked detail.
+- `test_a_near_miss_of_the_historical_direct_position_fails_closed` empties each
+  historical field in turn and requires unreadable/blocked.
+
+**Non-vacuity.** With the repaired reader stashed and the new tests in place,
+13 of the 16 matrix cases fail on the pre-repair reader, including every
+`position_object`-deletion case the amendment names. All 41 tests in the file
+pass on the repaired candidate.
+
+## Structural evidence
+
+Serena caller closure on `read_component_position` after the repair reports the
+same two production consumers as before -- `QualificationSession.completed_component`
+and `observation._component_states` -- plus the test module. A repository search
+for `COMPONENT_POSITION_DIRECTORY` / `component_position_path` / the components
+locator path finds no other production reader, so the tightened contract has no
+bypass.
+
+## Regression on the final candidate
+
+Environment `mace`, 32-core host.
+
+- Required focused suites, run together (`-n 24`): `test_mlff_campaign_observation_coherence.py`,
+  `test_mlff_campaign_observation_purity.py`, `test_mlff_campaign_assembled_lifecycle.py`,
+  `test_mlff_p7_post_production_qualification.py`, and the P7 R11/R12/R13
+  acceptance suites -- **168 passed, 1 skipped** in 3m41s.
+- `test_mlff_qualification_status_observation.py` (`-n 16`): **41 passed**.
+- Affected selection `pytest -k "mlff or storage or campaign" -p no:randomly -n 24`:
+  122 failed, 1941 passed, 15 skipped in 21m50s.
+
+The 122 resolve to the recorded pre-existing families with no new failure:
+
+- 107 are `*_specification.py`, the documented documentation/specification
+  family;
+- of the 15 non-specification failures, 4 were parallelism artifacts of the
+  wider `-n 24` run -- `test_p7_bounded_concurrency_yields_identical_evidence`,
+  `test_r11b5_each_frozen_diagnostic_rejects_independently[overrides5-...]`, and
+  both `test_r12b7_*` resource-observation tests -- all four pass at `-n 4` and
+  all four passed in the dedicated focused run above;
+- the remaining 11 were re-run at `-n 4` in a **detached worktree at `82e9a37`**,
+  the unmodified pre-repair head, with the worktree's own `mdstats` package
+  proven to be the one imported. The baseline failure set is **identical**:
+  the two `test_mlff_data4_raw_features_events.py` tests, three
+  `test_mlff_mace_compatibility.py` warning-domain tests, three
+  `test_mlff_mace_executable_config.py` parser tests,
+  `test_mlff_data9a7d_profile_extension_migration.py::test_lta_is_canonicalized_as_optional_profile_extension`,
+  `test_mlff_observable_validation_bridge.py::test_paired_mlff_validation_records_symmetric_lineage_result_identity_and_runtime`,
+  and `test_mlff_target_size_p5_r9_guards.py::test_r10b_assembled_replay_enabled_non_scratch_real_owner_lifecycle`.
+
+No campaign-lifecycle, qualification-observation, P7, prepare-boundary,
+prepared-generation, storage-composition, currentness, or assembled-lifecycle
+test fails on the candidate.
+
+The earlier R2 deterministic concurrency evidence and the 690-test closure
+selection are reused only where this reader-only change cannot invalidate them;
+every suite that exercises `read_component_position()` or qualification
+observation was rerun above on the final candidate.
+
+No permanent documentation contract changed: no user guide, architecture manual
+or specification names the component-position representation, and no
+`docs/**/*.md` file was touched, so `test_docs_pdf_builder.py` has no new input
+and no PDF republication is due.
+
+## Candidate identity
+
+Every result in this section was produced on the tree committed as `77a8823`,
+whose content is exactly the two-file repair described above. That commit was
+created outside this implementation session; its content was verified to match
+the reviewed working tree byte for byte, but its message does not follow the
+branch's convention and may want amending before review.
+
+This section records repair and evidence; it does not grant closure. The
+amendment's verdict is the reviewer's to change.
