@@ -4,7 +4,7 @@ These files decompose `../MLFF_TARGET_SIZE_TRAINING_PRIORITY_EVALUATION_LADDER_A
 
 ## Current assembled integration status
 
-Package-local closure history remains valid where its own accepted authority says so, but **the assembled P1-P7 + CampaignStore + Storage product remains NO-PASS / implementation-reopened on this branch** after the second independent implementation review.
+Package-local closure history remains valid where its own accepted authority says so, but **the assembled P1-P7 + CampaignStore + Storage product remains NO-PASS / implementation-reopened on this branch** after the latest independent implementation review.
 
 Current assembled integration authority is the composition of:
 
@@ -12,20 +12,18 @@ Current assembled integration authority is the composition of:
 2. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_SECOND_PASS_AMENDMENT.md`, with precedence only where it explicitly tightens/corrects the parent integration plan;
 3. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_FINAL_CONVERGENCE_AMENDMENT.md`, which folds the earlier exact-boundary checkpoint-recovery bug contract into current V7 acceptance without restoring retired V5 machinery;
 4. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_IMPLEMENTATION_REVIEW_REOPEN.md`, the first independent implementation-review reopen for branch head `919f848d7f301c50c9341c45106dd862239e165d` / executable head `60edb67bb05a49560b2e0201ab2ab940a867b236`;
-5. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_IMPLEMENTATION_REVIEW_R2.md`, the current second-review authority for branch head `82164476f647b12d00725ff96be93a622ff801a6` / executable head `e72c93a7e09f6b59bdd3e8aa1789176fc50f4474`;
-6. `P4_PREPARED_GENERATION_STAGE_BOUNDARY_REPAIR.md` for the prepared-generation and direct-EVAL2 prerequisite where non-conflicting with the later integration amendments;
-7. `../mlff-storage-io-reset/AUTHORITY.md` plus Storage Revision 38 for the current storage implementation/review state.
+5. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_IMPLEMENTATION_REVIEW_R2.md`, the second-review authority that identified the qualification-observation consolidation and exact-candidate acceptance gaps;
+6. `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_IMPLEMENTATION_REVIEW_R2_POSITION_INTEGRITY_AMENDMENT.md`, the current residual review authority for branch head `57f8f408d1693f18a891e4209de6af8a62c03a20` / executable head `84868eccd5dec74f07d4aa1917037d57e032249d`;
+7. `P4_PREPARED_GENERATION_STAGE_BOUNDARY_REPAIR.md` for the prepared-generation and direct-EVAL2 prerequisite where non-conflicting with the later integration amendments;
+8. `../mlff-storage-io-reset/AUTHORITY.md` plus Storage Revision 38 for the current storage implementation/review state.
 
 Executable progress against the composed authority is recorded in `../MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_IMPLEMENTATION_PROGRESS.md`. That file is evidence/progress, not closure.
 
-The latest implementation materially closes the first review's create-or-verify publication, ordinary `prepare` source-change/terminal-idempotence, concurrent-prepare CAS, stale `M == batch_size` P3 evidence, and bounded P7 conservative-PES defects. The **main campaign lifecycle** now also uses a coherent typed read-only snapshot.
+The latest implementation closes the R2 qualification-status problem in its main form: both public status paths use the shared coherent CampaignStore snapshot, content-addressed P7 records are typed/authenticated before interpretation, attempt identity comes from the authenticated qualification plan, and the probabilistic combined-pointer race has been replaced by deterministic single-owner transaction races. Exact-candidate acceptance is also recorded on executable `84868ecc...`: the required closure selection is `690 passed, 0 failed, 0 skipped`, and the affected regression has identical baseline/candidate failure sets with the persistent failures mapped outside this integration surface.
 
-The remaining blockers are narrower:
+One narrower blocker remains. The shared mutable component-position reader still treats **any** parseable payload lacking `position_object` as the old direct representation. The current `mdstats.qualification-component-position-locator.v1` writer always emits `position_object` plus its digest, so a malformed current locator can delete that mandatory field and fall through the legacy/direct branch. `qualification status` may then follow its `evidence_digest` and report semantic component state instead of degrading the schema-inconsistent locator to `unreadable_position`.
 
-- the separate public `qualification status` path still reads P7 pointer rows independently and still interprets plan/component/locked/release content through weaker raw-JSON reads instead of the same coherent typed owner boundary; and
-- final closure evidence has not yet been recorded on the exact repaired executable candidate, while one existing P5/P7 pointer race test has a non-live/incorrect before-or-after oracle for a two-transaction sequence.
-
-These are observation-consolidation and acceptance-evidence defects. They do **not** justify reopening the parent target-size scientific question, P5 CV/final-production science, P7 qualification science, CampaignStore's current-authority role, the generation-safe prepared/frame design, or Storage Revision 38's canonical destructive architecture. Repair by reducing duplicate observation logic and making the acceptance interleavings deterministic; do not add registries, wrappers, parallel currentness state, a second cache, a second batch policy, or another storage mutation path.
+The repair is bounded to tightening the existing shared position reader with an explicit current-versus-legacy discriminator and validating the locator/object claims. It does **not** justify reopening the parent target-size scientific question, P5 CV/final-production science, P7 qualification science, CampaignStore's current-authority role, the generation-safe prepared/frame design, or Storage Revision 38's canonical destructive architecture. Do not add a position registry, new CAS authority, second observer, cache, batch policy, or storage mutation path.
 
 The final convergence contract continues to preserve the earlier `select-target-size` checkpoint-recovery invariant: interruption before the first authenticated exact boundary means **no checkpoint authority yet** and retries fresh, while a claimed durable continuation whose required checkpoint/runtime/companion bytes are missing or corrupt fails closed. Current V7 exact-boundary state owns this behavior; obsolete `CandidateCheckpointCatalog`, REPAIR2/label-domain, development-complement, and target-only/replay authorization machinery must not be reintroduced merely to preserve the historical repair.
 
@@ -39,7 +37,7 @@ P1-P6 remain accepted/reclosed under their package-local authorities. P7 executa
 - tree `9e4be0fc9d23c4036413a2ced86dc19d98ad9ed6`;
 - source digest `7772ad5f0329aa1d42f96cf89bbf178252981902e9d4d5468f10ff1312da9ed6`.
 
-**P7 revision 13.7 remains CLOSED / PASS for its package-local software implementation and functional acceptance.** That historical closure does not override the assembled integration reopen. The bounded P7 acceptance model has now been repaired to use one conservative energy/force PES and the assembled lifecycle source covers reference supply, nonlocked completion, explicit locked activation, terminal release, generation advance, and retained reveal history; exact-candidate assembled evidence is still required before integration closure.
+**P7 revision 13.7 remains CLOSED / PASS for its package-local software implementation and functional acceptance.** That historical closure does not override the assembled integration reopen. The bounded P7 acceptance model uses one conservative energy/force PES and the assembled lifecycle evidence covers reference supply, nonlocked completion, explicit locked activation, terminal release, generation advance, and retained reveal history. The remaining assembled blocker is the public observation handling of malformed mutable component-position state, not P7 science or the qualification execution owner.
 
 ### Accepted P7 closure evidence
 
