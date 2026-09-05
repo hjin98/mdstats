@@ -177,16 +177,23 @@ against the same selection run in a clean worktree at the unmodified branch head
 `28b56eb`:
 
 - true baseline: 299 failed, 1562 passed, 15 skipped, 8 errors;
-- the candidate introduced nine failures, each traced and repaired:
-  - one user-guide documentation assertion that encoded the pre-repair "advance
-    never runs qualification" claim, corrected with the lifecycle change;
-  - eight P5 provider-lifetime guards whose `_optimizer_policy_for` stand-in
-    omitted `valid_batch_size`; the accepted execution policy owns that bound,
-    so a stand-in without it was not standing in for the real thing.
+- final candidate: 299 failed, 1698 passed, 16 skipped, 8 errors.
+
+The failure sets are **identical**: no test fails on the candidate that does not
+also fail on the unmodified head, and none that failed there was left unexamined.
+The 136 additional passes are the new acceptance suites above.
+
+Getting there required repairing nine failures this work had introduced:
+
+- one user-guide documentation assertion that encoded the pre-repair "advance
+  never runs qualification" claim, corrected with the lifecycle change;
+- eight P5 provider-lifetime guards whose `_optimizer_policy_for` stand-in
+  omitted `valid_batch_size`; the accepted execution policy owns that bound, so
+  a stand-in without it was not standing in for the real thing.
 
 An earlier comparison in this cycle was run against a baseline that already
-contained the first commit's changes, and so under-reported the introduced
-failures. The comparison above is against the true unmodified head.
+contained the first commit's changes and so under-reported those nine. The
+comparison above is against the true unmodified head, in a clean worktree.
 
 ## Not implemented - the integration remains reopened
 
