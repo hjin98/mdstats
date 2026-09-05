@@ -64,12 +64,12 @@ from mdstats.training_data.target_size_execution.context import (
 from mdstats.training_data.target_size_experiment import ReducerStatus
 
 
-def _env(tmp_path: Path, *, root_name: str = "screen"):
+def _env(tmp_path: Path, *, root_name: str = "screen", batch_size: int = 4):
     manifest, fa, nb, aggregate, common, index = p3a._common(tmp_path)
     frames, fdr, _ = p3a._frame_arrays(tmp_path, manifest)
     schedule = build_target_size_screen_schedule((1, 3, 10))
     optimizer = MaceOptimizerPolicy(
-        max_num_epochs=schedule.n3, batch_size=4, device="cpu"
+        max_num_epochs=schedule.n3, batch_size=batch_size, device="cpu"
     )
     context = build_target_size_execution_context(
         aggregate.definition, common, schedule, seed_neutral_optimizer_policy=optimizer

@@ -135,7 +135,11 @@ def _lifecycle_fixture(
     monkeypatch.setattr(
         runtime,
         "_optimizer_policy_for",
-        lambda *_args, **_kwargs: SimpleNamespace(policy_digest=_digest("9")),
+        # The accepted execution policy also owns the evaluation device-batch
+        # bound; a stand-in that omits it is not standing in for the real thing.
+        lambda *_args, **_kwargs: SimpleNamespace(
+            policy_digest=_digest("9"), valid_batch_size=4
+        ),
     )
     monkeypatch.setattr(
         runtime,

@@ -170,9 +170,23 @@ def _materialization_for(env, tmp_path: Path):
 
 
 def _predictions_evaluator(view, *, epsilon: float = 2.5e-3):
+    """Analytic per-chunk forward.
+
+    The production owner partitions the exact evaluation population into
+    bounded device batches, so this seam is handed one chunk at a time and must
+    answer for exactly the frames it received.  Consuming the reference view
+    with a cursor keeps the returned values identical to the unchunked case
+    while making a fake that silently answers for the whole population -- and so
+    proves nothing about the real chunking owner -- impossible.
+    """
+
+    cursor = {"index": 0}
+
     def _eval(boundary_state, atoms_list):
         predictions = []
-        for frame_index in range(view.configuration_count):
+        for _atoms in atoms_list:
+            frame_index = cursor["index"] % int(view.configuration_count)
+            cursor["index"] += 1
             start = int(view.force_offsets[frame_index])
             stop = int(view.force_offsets[frame_index + 1])
             stress = (

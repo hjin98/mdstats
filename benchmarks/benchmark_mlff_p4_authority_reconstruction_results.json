@@ -1,0 +1,99 @@
+{
+  "cases": [
+    {
+      "atom_frames": 1152,
+      "canonical_frame_authority_digest": [
+        "634f8d16b4579703ef41ef1e99d16a3460738ca5a8986cc44f0d980e83744613"
+      ],
+      "frames_per_run": 96,
+      "measurements": [
+        {
+          "digest": "634f8d16b4579703ef41ef1e99d16a3460738ca5a8986cc44f0d980e83744613",
+          "peak_rss_mib": 215.5,
+          "phase": "before/direct-vasp-rebuild-serial",
+          "seconds": 0.898,
+          "source_frame_reads": 6
+        },
+        {
+          "canonical_workers": 1,
+          "digest": "634f8d16b4579703ef41ef1e99d16a3460738ca5a8986cc44f0d980e83744613",
+          "peak_rss_mib": 215.9,
+          "phase": "after/warm-cache-serial",
+          "seconds": 0.7902,
+          "source_frame_reads": 0
+        },
+        {
+          "canonical_workers": 1,
+          "digest": "634f8d16b4579703ef41ef1e99d16a3460738ca5a8986cc44f0d980e83744613",
+          "peak_rss_mib": 218.0,
+          "phase": "after/warm-cache-planned",
+          "seconds": 0.698,
+          "source_frame_reads": 0
+        },
+        {
+          "canonical_workers": 6,
+          "digest": "634f8d16b4579703ef41ef1e99d16a3460738ca5a8986cc44f0d980e83744613",
+          "peak_rss_mib": 218.0,
+          "phase": "after/warm-cache-unbounded-workers",
+          "seconds": 2.5335,
+          "source_frame_reads": 0
+        },
+        {
+          "canonical_workers": 1,
+          "digest": "634f8d16b4579703ef41ef1e99d16a3460738ca5a8986cc44f0d980e83744613",
+          "peak_rss_mib": 218.0,
+          "phase": "after/cache-rebuild-planned",
+          "seconds": 0.8973,
+          "source_frame_reads": 6
+        }
+      ],
+      "scientific_identity_preserved": true
+    },
+    {
+      "atom_frames": 12288,
+      "canonical_frame_authority_digest": [
+        "d06915b5945f1b25dc49809f8824fbd22ffea3fb4e83bf0ab7f2b912384b2a6c"
+      ],
+      "frames_per_run": 1024,
+      "measurements": [
+        {
+          "digest": "d06915b5945f1b25dc49809f8824fbd22ffea3fb4e83bf0ab7f2b912384b2a6c",
+          "peak_rss_mib": 341.8,
+          "phase": "before/direct-vasp-rebuild-serial",
+          "seconds": 9.8247,
+          "source_frame_reads": 6
+        },
+        {
+          "canonical_workers": 1,
+          "digest": "d06915b5945f1b25dc49809f8824fbd22ffea3fb4e83bf0ab7f2b912384b2a6c",
+          "peak_rss_mib": 345.7,
+          "phase": "after/warm-cache-serial",
+          "seconds": 7.5472,
+          "source_frame_reads": 0
+        },
+        {
+          "canonical_workers": 6,
+          "digest": "d06915b5945f1b25dc49809f8824fbd22ffea3fb4e83bf0ab7f2b912384b2a6c",
+          "peak_rss_mib": 345.7,
+          "phase": "after/warm-cache-planned",
+          "seconds": 5.3287,
+          "source_frame_reads": 0
+        },
+        {
+          "canonical_workers": 6,
+          "digest": "d06915b5945f1b25dc49809f8824fbd22ffea3fb4e83bf0ab7f2b912384b2a6c",
+          "peak_rss_mib": 345.7,
+          "phase": "after/cache-rebuild-planned",
+          "seconds": 7.2121,
+          "source_frame_reads": 6
+        }
+      ],
+      "scientific_identity_preserved": true
+    }
+  ],
+  "parallel_atom_frame_floor": 8192,
+  "resources": "CPU 28/32 threads; RAM 32.7 GiB available / 26.2 GiB budget; GPU device=cpu",
+  "runs": 6,
+  "schema": "mdstats.benchmark.p4-authority-reconstruction.v1",
+  "scientific_identity_preserved": true
+}

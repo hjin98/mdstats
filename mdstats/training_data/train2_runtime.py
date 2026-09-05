@@ -1312,7 +1312,16 @@ def load_train2_runtime_summary(checkpoint_directory: str | Path) -> Train2Runti
     path = Path(checkpoint_directory).resolve() / TRAIN2_RUNTIME_SUMMARY_FILENAME
     if not path.is_file():
         raise TrainingDataInputError(f"TRAIN2 runtime summary is missing: {path}")
-    return Train2RuntimeSummary.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        # A summary that will not parse is durable-state corruption, and it must
+        # arrive at the caller as such: a bare decoder error escapes every
+        # handler that reports a continuation as corrupt rather than absent.
+        raise TrainingDataSerializationError(
+            f"TRAIN2 runtime summary is corrupt and cannot be read: {path}"
+        ) from exc
+    return Train2RuntimeSummary.from_dict(payload)
 
 
 def build_train2_runtime_plan(

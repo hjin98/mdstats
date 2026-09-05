@@ -136,9 +136,37 @@ source/frame/label authority
 
 It selects no target size, trains no candidate, ranks no checkpoint, and
 publishes no final model. It is restartable and idempotent when all current
-inputs and identities match. `--approve-manifest` records the reviewed digest;
+inputs and identities match, including when the current generation is already
+terminal: an unchanged terminal `prepare` is a successful no-op that leaves the
+canonical generation, its terminal evidence, and its derived result view exactly
+as they were.
+
+`prepare` is the sole command permitted to interpret live inputs, so it also
+owns detecting that they changed. Before reusing the stored lower-level
+catalog it compares the approved manifest digest that catalog was built from
+and each source's own byte-identity and control signatures against the files on
+disk. Materially changed valid inputs are routed through the ordinary catalog
+reconstruction path and committed as a fresh canonical generation; malformed or
+unapproved changes still fail under their existing owners. No operator flag is
+required for this. `--approve-manifest` records the reviewed digest;
 `--refresh-inferences` refreshes proposed source metadata before approval;
-`--rebuild-catalog` is an explicit upstream reconstruction request.
+`--rebuild-catalog` remains an explicit unconditional reconstruction request,
+not the mechanism by which ordinary input changes are noticed.
+
+Durable publication is create-or-verify. A prepared component, generation
+manifest, or normalized frame entry whose content identity already exists on
+disk is authenticated against that identity -- for a frame entry, including
+every array member's hash, shape, and dtype -- before this generation may reuse
+it. Conflicting or corrupt content fails before adoption and is never
+overwritten, because another adopted generation may still depend on the bytes
+that are actually there.
+
+Adoption is compare-and-set against the currentness token captured *before* the
+expensive construction began, and no campaign-wide writer lock is held across
+that construction. Two concurrent preparations that produce the same prepared
+identity converge on one generation; a preparation whose snapshot was built
+against superseded state fails closed rather than advancing the newer
+generation.
 
 At the destructive generation boundary, obsolete derived target-size records
 are detected before semantic decoding, quarantined under a namespace no
@@ -185,6 +213,19 @@ generation.
 `advance` dispatches only the next current lifecycle owner. `guide` prints the
 same six-command scientific lifecycle and current configuration/restart
 semantics. Neither command writes a second scientific authority.
+
+Observation is read-only, coherent, and authenticated. One lifecycle answer
+reads the target-size revision and every post-selection/qualification pointer
+row it depends on inside a single campaign-store read transaction, so the
+ancestry it reports is one that existed: pointer publication mutates campaign
+metadata without moving the target-size revision, and an answer may never
+combine a pre-publication view of one stage with a post-publication view of
+another. Each compact record a pointer names is loaded through its accepted
+read-only typed store and must reproduce the identity the pointer named before
+any of its fields -- a cross-validation acceptance, a release verdict --
+influences the report. A missing, unparseable, or misidentified record is
+reported as blocked. Observation creates no evidence root, opens no provider,
+and reconstructs no upstream authority.
 
 ### `storage`
 

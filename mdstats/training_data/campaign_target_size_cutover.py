@@ -29,6 +29,7 @@ from typing import Any, Mapping
 
 from .campaign_target_size_state import (
     TargetSizeCampaignRevision,
+    TargetSizeCasExpectation,
     TargetSizeCampaignState,
     TargetSizeCampaignStateError,
     TargetSizeLifecycle,
@@ -112,6 +113,10 @@ REUSABLE_LOWER_LEVEL_RECORD_KEYS: tuple[str, ...] = (
 
 class TargetSizeCutoverError(TargetSizeCampaignStateError):
     """The campaign cannot run current target-size work in its present regime."""
+
+
+class TargetSizeStalePreparationError(TargetSizeCutoverError):
+    """A prepared substrate was built against campaign state that has moved."""
 
 
 def _is_retired_key(key: str) -> bool:
@@ -251,8 +256,9 @@ def bind_current_target_size_authorities(
     experiment_definition_digest: str,
     aggregate_digest: str,
     common_preparation_digest: str | None = None,
+    prepared_manifest_digest: str | None = None,
 ) -> TargetSizeCampaignRevision:
-    """CAS-bind the reconstructed current P1/P2 authority identities.
+    """CAS-bind the published current P1/P2 authority identities.
 
     The caller must have constructed these through the accepted P1/P2 owners.
     Only stable identities are persisted; the owning loaders revalidate them.
@@ -273,6 +279,7 @@ def bind_current_target_size_authorities(
         policy_digest=policy_digest,
         experiment_definition_digest=experiment_definition_digest,
         aggregate_digest=aggregate_digest,
+        prepared_manifest_digest=prepared_manifest_digest,
         common_preparation_digest=common_preparation_digest,
         disposition="cutover_in_progress",
         disposition_detail=(
@@ -314,6 +321,7 @@ def complete_target_size_cutover(
         policy_digest=revision.state.policy_digest,
         experiment_definition_digest=revision.state.experiment_definition_digest,
         aggregate_digest=revision.state.aggregate_digest,
+        prepared_manifest_digest=revision.state.prepared_manifest_digest,
         common_preparation_digest=revision.state.common_preparation_digest,
     )
     return commit_target_size_campaign_transition(
@@ -357,6 +365,8 @@ def ensure_current_target_size_authorities(
     identity: Mapping[str, str],
     *,
     common_preparation_digest: str | None = None,
+    prepared_manifest_digest: str | None = None,
+    expected_start: TargetSizeCasExpectation | None = None,
 ) -> TargetSizeCampaignRevision:
     """Bring the campaign to the current regime bound to exactly this identity.
 
@@ -366,27 +376,70 @@ def ensure_current_target_size_authorities(
     unchanged; when that identity changes, the old generation is replaced by a
     fresh one rather than being edited in place, because equality of a selected
     integer or a reused record name never proves scientific equivalence.
+
+    ``expected_start`` is the currentness token the caller held *before* it
+    built the substrate it is now offering.  Adoption is fenced against it, so
+    a long build cannot advance a generation that moved underneath it: the
+    campaign state a snapshot was derived from is part of what makes that
+    snapshot meaningful, and last-finisher-wins is not a currentness rule.  The
+    fence is a comparison, not a lock: no campaign transaction and no writer
+    exclusion is held across the expensive construction.
+
+    Two prepares that produced the *same* prepared identity converge: the
+    loser adopts nothing because the winner already published exactly what it
+    would have published.  A loser holding a different snapshot fails closed
+    and must be re-run against current state.
     """
 
     from .campaign_target_size_terminal import classify_target_size_invalidation
 
     revision = ensure_target_size_campaign_revision(store)
+    rebased = (
+        expected_start is not None and revision.expectation() != expected_start
+    )
     fields = dict(identity)
     if revision.state.regime is TargetSizeRegime.CURRENT:
         invalidation = classify_target_size_invalidation(revision.state, fields)
-        unchanged = invalidation.is_current and (
-            common_preparation_digest is None
-            or revision.state.common_preparation_digest == common_preparation_digest
+        unchanged = (
+            invalidation.is_current
+            and (
+                common_preparation_digest is None
+                or revision.state.common_preparation_digest
+                == common_preparation_digest
+            )
+            # A generation that binds a different -- or no -- prepared substrate
+            # is not the same generation, even when every scientific digest
+            # matches: downstream consumption loads the exact published members,
+            # so the binding itself is part of what makes the generation usable.
+            and revision.state.prepared_manifest_digest == prepared_manifest_digest
         )
         if unchanged:
             return revision
+        if rebased:
+            raise TargetSizeStalePreparationError(
+                "This `prepare` built its substrate against campaign state "
+                f"{expected_start.state_revision[:12]}..., but canonical generation "
+                f"{revision.state.generation} is now at "
+                f"{revision.state_revision[:12]}... and binds a different prepared "
+                "identity. The competing preparation won; this one is stale and is "
+                "not advanced onto the newer generation. Re-run `prepare` to build "
+                "against current state."
+            )
         successor = TargetSizeCampaignState(
             regime=TargetSizeRegime.CURRENT,
             generation=revision.state.generation + 1,
             lifecycle=TargetSizeLifecycle.AUTHORITIES_BOUND,
             common_preparation_digest=common_preparation_digest,
+            prepared_manifest_digest=prepared_manifest_digest,
             disposition="scientific_identity_changed",
-            disposition_detail=invalidation.detail,
+            disposition_detail=(
+                invalidation.detail
+                if not invalidation.is_current
+                else (
+                    "The prepared scientific substrate published for this campaign "
+                    "changed; a fresh canonical generation binds it."
+                )
+            ),
             **fields,
         )
         return commit_target_size_campaign_transition(
@@ -396,6 +449,11 @@ def ensure_current_target_size_authorities(
             successor=successor,
         ).revision
 
+    if rebased:
+        raise TargetSizeStalePreparationError(
+            "The campaign target-size regime moved while this `prepare` was building "
+            "its substrate. Re-run `prepare` to build against current state."
+        )
     transitioning = begin_target_size_cutover(store)
     quarantine_retired_target_size_state(
         store, generation=transitioning.state.generation
@@ -404,6 +462,7 @@ def ensure_current_target_size_authorities(
         store,
         transitioning,
         common_preparation_digest=common_preparation_digest,
+        prepared_manifest_digest=prepared_manifest_digest,
         **fields,
     )
     return complete_target_size_cutover(store, bound)
@@ -415,6 +474,7 @@ __all__ = [
     "RETIRED_TARGET_SIZE_RECORD_PREFIXES",
     "REUSABLE_LOWER_LEVEL_RECORD_KEYS",
     "TargetSizeCutoverError",
+    "TargetSizeStalePreparationError",
     "TargetSizeRetiredStateInventory",
     "assert_no_retired_target_size_authority",
     "begin_target_size_cutover",

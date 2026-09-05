@@ -13,6 +13,7 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -23,6 +24,7 @@ import mdstats
 from mdstats.training_data._common import digest
 import tests.test_mlff_target_size_execution_p3c as p3c
 import tests.test_mlff_target_size_execution_p3d as p3d
+import tests.test_mlff_neutral_scientific_substrate as neutral_fixtures
 from tests.test_mlff_neutral_scientific_substrate import _data4_bundle
 
 from mdstats.training_data import _campaign_cli_core as cli
@@ -33,6 +35,7 @@ from mdstats.training_data.campaign_target_size_cutover import (
 )
 from mdstats.training_data.campaign_target_size_runtime import (
     MaceTargetSizeBoundaryTrainer,
+    build_prepared_target_size_substrate,
     TargetSizeRungRequest,
     mace_run_configuration,
 )
@@ -90,7 +93,9 @@ practical_equivalence_mev_per_a = 1.0
 """
 
 
-def _fixture_campaign(tmp_path: Path) -> tuple[Path, Path]:
+def _fixture_campaign(
+    tmp_path: Path, *, regime: str | None = "production", approve: bool = True
+) -> tuple[Path, Path]:
     """A real campaign workspace whose lower-level inputs are already built.
 
     DATA2-DATA5 ingestion is target-size neutral and is deliberately reused
@@ -101,7 +106,7 @@ def _fixture_campaign(tmp_path: Path) -> tuple[Path, Path]:
 
     training_root = tmp_path / "sources"
     training_root.mkdir(parents=True, exist_ok=True)
-    manifest, sources, frames, data4 = _data4_bundle(training_root)
+    manifest, sources, frames, data4 = _data4_bundle(training_root, regime=regime)
 
     workspace = tmp_path / "campaign"
     config = tmp_path / "campaign.toml"
@@ -117,7 +122,8 @@ def _fixture_campaign(tmp_path: Path) -> tuple[Path, Path]:
     store = CampaignStore(paths.state_db)
     # Manifest approval and the doctor-frozen acceleration realization are
     # operator/runtime-qualification state, not part of the cutover.
-    store.set_meta("approved_manifest_digest", manifest.content_digest)
+    if approve:
+        store.set_meta("approved_manifest_digest", manifest.content_digest)
     store.put_record(
         "acceleration_realization",
         mdstats.AccelerationRealizationRecord(
@@ -184,6 +190,84 @@ def test_p4d_req1_prepare_binds_current_authorities_and_selects_nothing(
 
     captured = capsys.readouterr().out
     assert "does not select a target size" in captured
+
+
+def _manifest_digest(config: Path) -> str:
+    _cfg, paths = cli._load_config(config)
+    return mdstats.TrainingDataManifest.load(paths.manifest).content_digest
+
+
+def test_p4d_req1_prepare_approve_manifest_only_records_and_returns(
+    tmp_path: Path, capsys
+):
+    """`--approve-manifest` is approval-and-return, not a preparation trigger."""
+
+    config, workspace = _fixture_campaign(tmp_path, approve=False)
+    assert _run(config, "prepare", "--approve-manifest") == 0
+
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        assert store.get_meta("approved_manifest_digest") == _manifest_digest(config)
+        # No current target-size authority was constructed or advanced.
+        assert load_target_size_campaign_revision(store) is None
+        state, _message = store.stage("prepare")
+        assert state is cli.StageState.NOT_STARTED
+    finally:
+        store.close()
+
+    captured = capsys.readouterr().out
+    assert "does not select a target size" not in captured
+    assert "`prepare`" in captured
+
+
+def test_p4d_req1_prepare_continue_after_approval_prepares_in_one_invocation(
+    tmp_path: Path,
+):
+    config, workspace = _fixture_campaign(tmp_path, approve=False)
+    assert (
+        _run(config, "prepare", "--approve-manifest", "--continue-after-approval") == 0
+    )
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        assert store.get_meta("approved_manifest_digest") == _manifest_digest(config)
+        revision = load_target_size_campaign_revision(store)
+        assert revision.state.lifecycle is TargetSizeLifecycle.AUTHORITIES_BOUND
+        assert store.stage("prepare")[0] is cli.StageState.COMPLETE
+    finally:
+        store.close()
+
+
+def test_p4d_req1_plain_prepare_after_approval_only_prepares(tmp_path: Path):
+    config, workspace = _fixture_campaign(tmp_path, approve=False)
+    assert _run(config, "prepare", "--approve-manifest") == 0
+    assert _run(config, "prepare") == 0
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        revision = load_target_size_campaign_revision(store)
+        assert revision.state.generation == 1
+        assert store.stage("prepare")[0] is cli.StageState.COMPLETE
+    finally:
+        store.close()
+
+
+def test_p4d_req1_prepare_accepts_a_source_without_a_regime_assertion(tmp_path: Path):
+    """The real P4 prepare owner must reach the real P1 neutral owners.
+
+    Fixtures that assert ``regime`` masked the current no-annotation path, so
+    this exercises the same production orchestration with no regime fact.
+    """
+
+    config, workspace = _fixture_campaign(tmp_path, regime=None)
+    assert _run(config, "prepare") == 0
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        revision = load_target_size_campaign_revision(store)
+        assert revision.state.regime is TargetSizeRegime.CURRENT
+        assert revision.state.neutral_statistical_base_digest is not None
+        assert revision.state.terminal is None
+        assert not store.has_record("target_size_study")
+    finally:
+        store.close()
 
 
 def test_p4d_req1_prepare_is_idempotent_and_keeps_one_generation(tmp_path: Path):
@@ -320,6 +404,18 @@ class _BoundedNumericalHarness:
         self.rungs: list[tuple[int, int, int]] = []
         self.inferences: list[str] = []
         self._current = "0"
+        self._current_target_size = 0
+
+    def _offset(self) -> float:
+        """Per-candidate synthetic force error.
+
+        Derived from the candidate identity so the substituted predictions vary
+        per cell and the accepted P2 reducer -- not this harness -- decides the
+        ranking.  Fixtures that need one specific reducer terminal state
+        override this rather than relying on how a digest happens to fall.
+        """
+
+        return 1.0e-3 * (1 + int(self._current[:4], 16) % 7)
 
     def train(self, request: TargetSizeRungRequest):
         self.rungs.append(
@@ -330,6 +426,7 @@ class _BoundedNumericalHarness:
             )
         )
         self._current = str(request.trajectory.content_digest)
+        self._current_target_size = int(request.trajectory.target_size)
         # The real materialization owner must have written a usable candidate
         # configuration before any rung can run.
         config_path = (
@@ -354,7 +451,7 @@ class _BoundedNumericalHarness:
 
         policy = MaceExtxyzPolicy()
         self.inferences.append(self._current)
-        offset = 1.0e-3 * (1 + int(self._current[:4], 16) % 7)
+        offset = self._offset()
         predictions = []
         for atoms in atoms_list:
             forces = (
@@ -383,6 +480,149 @@ class _BoundedNumericalHarness:
                 )
             )
         return predictions
+
+
+_ORDER_DIVERGENT_CONFIG = _CONFIG.replace(
+    "evaluation_size_powers = [0, 1, 2]", "evaluation_size_powers = [1, 2, 3]"
+)
+
+
+def _order_divergent_fixture_campaign(tmp_path: Path) -> tuple[Path, Path]:
+    """A real two-condition campaign whose P_train and pi_train orders differ.
+
+    ``pi_train`` is condition-balanced round robin, so on multi-condition data
+    it is not a subsequence of the stored ``P_train``.  This is the shape the
+    production LTA dataset has and the single-run fixtures never produced.
+    """
+
+    training_root = tmp_path / "sources"
+    training_root.mkdir(parents=True, exist_ok=True)
+    for run_id, tebeg in (("runA", 650), ("runB", 900)):
+        neutral_fixtures._write(
+            training_root, run_id, ("Li", "O"), n_frames=64, tebeg=tebeg
+        )
+    manifest = mdstats.TrainingDataManifest(
+        dataset_id="neutral-p1",
+        system_profile="generic",
+        runs=tuple(
+            mdstats.TrainingDataRunSpec(
+                run_id=run_id,
+                vasprun=f"{run_id}/vasprun.xml",
+                reference_group="bulk",
+                assertions=(("regime", "production"),),
+            )
+            for run_id in ("runA", "runB")
+        ),
+    )
+    sources = mdstats.build_training_data_source_catalog(
+        manifest, base_directory=training_root
+    )
+    frames, data4 = mdstats.build_vasp_data4_feature_bundle(
+        sources,
+        base_directory=training_root,
+        event_policy=mdstats.EventDetectionPolicy(
+            pre_frames=1,
+            post_frames=1,
+            force_norm_max_threshold_ev_per_angstrom=2.0,
+        ),
+        partition_role_budget=neutral_fixtures._data4_role_budget(),
+    )
+
+    workspace = tmp_path / "campaign"
+    config = tmp_path / "campaign.toml"
+    config.write_text(
+        _ORDER_DIVERGENT_CONFIG.format(
+            workspace=str(workspace), training_root=str(training_root)
+        ),
+        encoding="utf-8",
+    )
+    _cfg, paths = cli._load_config(config)
+    paths.manifest.parent.mkdir(parents=True, exist_ok=True)
+    paths.manifest.write_text(
+        json.dumps(manifest.to_dict(), sort_keys=True), encoding="utf-8"
+    )
+    store = CampaignStore(paths.state_db)
+    store.set_meta("approved_manifest_digest", manifest.content_digest)
+    store.put_record(
+        "acceleration_realization",
+        mdstats.AccelerationRealizationRecord(
+            requested_backend="e3nn",
+            resolved_kernel_mode="e3nn",
+            training_kernel_mode="e3nn",
+            device="cpu",
+            dtype="float32",
+            foundation_inference_identity_digest=digest({"fixture": "foundation"}),
+            mace_version="0.3.16",
+            qualified=True,
+        ),
+    )
+    store.put_record("source_catalog", sources)
+    store.put_record("frame_catalog", frames)
+    store.put_record("data4", data4)
+    store.put_record("data5", {"schema": "data5-placeholder"})
+    cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "fixture")
+    store.close()
+    return config, workspace
+
+
+def test_p4d_req2_select_target_size_accepts_condition_balanced_candidates(
+    tmp_path: Path,
+):
+    """Assembled current screen on data where T_N is not a P_train subsequence.
+
+    Nothing below `select-target-size` is patched: the real screen context,
+    candidate cell, trajectory owner, and candidate projection all execute.
+    """
+
+    config, workspace = _order_divergent_fixture_campaign(tmp_path)
+    assert _run(config, "prepare") == 0
+
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        authorities = build_prepared_target_size_substrate(cfg, paths, store)
+    finally:
+        store.close()
+    aggregate = authorities.aggregate
+    training = aggregate.split.training_frame_uids
+    order = aggregate.definition.training_order.frame_uids
+    assert set(order) == set(training)
+    assert tuple(order) != tuple(training)
+    position = {uid: index for index, uid in enumerate(training)}
+    divergent = [
+        size
+        for size in aggregate.definition.qualified_candidate_sizes
+        if [
+            position[uid] for uid in aggregate.definition.candidate_membership(size)
+        ]
+        != sorted(
+            position[uid]
+            for uid in aggregate.definition.candidate_membership(size)
+        )
+    ]
+    assert divergent, "fixture no longer exercises the order-divergent projection"
+
+    harness = _BoundedNumericalHarness()
+    assert (
+        _run(
+            config,
+            "select-target-size",
+            _external_boundary_trainer=harness.train,
+            _external_inference_evaluator=harness.evaluate,
+        )
+        == 0
+    )
+    assert harness.rungs, "no candidate rung reached the TRAIN2 boundary"
+    # The candidate sizes whose T_N is not a P_train subsequence were executed.
+    assert set(divergent) & {size for size, _seed, _epoch in harness.rungs}
+
+    store = CampaignStore(workspace / ".mdstats" / "campaign.sqlite3")
+    try:
+        revision = load_target_size_campaign_revision(store)
+        assert revision.state.execution_root is not None
+        assert revision.state.adopted_execution_head_digest is not None
+    finally:
+        store.close()
 
 
 def test_p4d_req2_select_target_size_reaches_p1_p2_p3_owners(tmp_path: Path):
@@ -494,11 +734,148 @@ def test_p4d_req4_only_select_target_size_can_schedule_the_screen(tmp_path: Path
     assert not ({"train", "evaluate", "materialize", "preflight"} & set(choices))
 
 
+_REAL_PARSER_TRAIN_WRAPPER = """#!{python}
+import argparse
+import ast
+import json
+import os
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+sys.path.insert(0, {source_root!r})
+
+probe = argparse.ArgumentParser(add_help=False)
+probe.add_argument('--config', required=True)
+probe.add_argument('--model_dir', required=True)
+probe.add_argument('--checkpoints_dir', required=True)
+probe.add_argument('--log_dir', required=True)
+probe.add_argument('--results_dir', required=True)
+probe.add_argument('--restart_latest', action='store_true')
+known, _rest = probe.parse_known_args()
+
+# The exact pinned MACE parser is the compatibility authority for the config
+# this production trainer wrote.  Only MACE's numerics are substituted below it.
+from mace.tools import build_default_arg_parser
+from mdstats.training_data.train2_runtime import (
+    TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE,
+    Train2RuntimePlan,
+)
+import tests.test_mlff_target_size_execution_p3c as p3c
+
+args = build_default_arg_parser().parse_args(['--config', known.config])
+with Path({record!r}).open('a', encoding='utf-8') as handle:
+    handle.write(json.dumps({{
+        'cwd': str(Path.cwd()),
+        'atomic_numbers': ast.literal_eval(args.atomic_numbers),
+        'E0s': ast.literal_eval(args.E0s),
+        'radial_MLP': ast.literal_eval(args.radial_MLP),
+        'heads': sorted(ast.literal_eval(args.heads)),
+        'avg_num_neighbors': args.avg_num_neighbors,
+        'compute_avg_num_neighbors': args.compute_avg_num_neighbors,
+        'keys': sorted(json.loads(Path(known.config).read_text(encoding='utf-8'))),
+    }}, sort_keys=True) + '\\n')
+
+plan = Train2RuntimePlan.from_dict(json.loads(os.environ[TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE]))
+# The rung geometry is derived from the real plan and the parsed config, the
+# same way the P3 realization owner derives it.
+updates_per_epoch = -(-int(plan.structures_per_epoch) // int(args.batch_size))
+start_epoch = 0
+if known.restart_latest:
+    from mdstats.training_data.train2_runtime import load_train2_runtime_summary
+
+    start_epoch = int(load_train2_runtime_summary(Path(known.checkpoints_dir)).completed_epochs)
+p3c._run_rung(
+    plan,
+    Path(known.checkpoints_dir),
+    start_epoch=start_epoch,
+    updates_per_epoch=updates_per_epoch,
+    seed=int(args.seed),
+)
+"""
+
+
+def test_p4d_req5_assembled_boundary_one_config_passes_the_real_mace_parser(
+    tmp_path: Path, monkeypatch
+):
+    """Boundary 1 reaches MACE argument parsing instead of exiting status 2.
+
+    The production `MaceTargetSizeBoundaryTrainer` is *not* substituted: the
+    real screen writes the real `--config` file and launches the real wrapper
+    argv, and the wrapper runs the exact pinned MACE parser before handing the
+    rung to the bounded TRAIN2 numerical stand-in.
+    """
+
+    config, workspace = _fixture_campaign(tmp_path)
+    assert _run(config, "prepare") == 0
+
+    record = tmp_path / "parsed-configs.jsonl"
+    wrapper = tmp_path / "mdstats-mace-train"
+    wrapper.write_text(
+        _REAL_PARSER_TRAIN_WRAPPER.format(
+            python=sys.executable,
+            source_root=str(Path(mdstats.__file__).resolve().parents[1]),
+            record=str(record),
+        ),
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setattr(
+        cli,
+        "_ensure_local_wrappers",
+        lambda paths: {"mdstats-mace-train": wrapper},
+    )
+
+    harness = _BoundedNumericalHarness()
+    assert (
+        _run(
+            config,
+            "select-target-size",
+            _external_inference_evaluator=harness.evaluate,
+        )
+        == 0
+    )
+
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        authorities = build_prepared_target_size_substrate(cfg, paths, store)
+    finally:
+        store.close()
+    expected_avg_num_neighbors = authorities.common.common_avg_num_neighbors
+
+    assert record.is_file(), "no candidate rung reached the pinned MACE parser"
+    parsed = [
+        json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()
+    ]
+    assert parsed
+    for item in parsed:
+        assert item["atomic_numbers"] == sorted(item["atomic_numbers"])
+        assert all(isinstance(z, int) for z in item["atomic_numbers"])
+        # JSON stringifies the int keys the MACE literal carried.
+        assert {int(z) for z in item["E0s"]} == set(item["atomic_numbers"])
+        assert item["radial_MLP"] == [64, 64, 64]
+        # The pinned parser receives the canonical P3 target dataset head, so
+        # real MACE builds ``target_head`` rather than its ``Default``
+        # fallback, and it is told not to recompute the common normalization.
+        assert item["heads"] == ["target_head"]
+        assert item["compute_avg_num_neighbors"] is False
+        assert item["avg_num_neighbors"] == pytest.approx(
+            expected_avg_num_neighbors
+        )
+        assert "schema" not in item["keys"]
+        assert "multi_head" not in item["keys"]
+
+
 def test_p4d_req5_mace_run_configuration_is_translation_only():
+    from mdstats.training_data.model_features import (
+        mace_candidate_architecture_defaults,
+    )
     from mdstats.training_data.target_size_execution import (
         TARGET_SIZE_MACE_CONFIG_SCHEMA,
     )
 
+    architecture = mace_candidate_architecture_defaults()
     source = {
         "schema": TARGET_SIZE_MACE_CONFIG_SCHEMA,
         "name": "target-size-n8-seed1",
@@ -515,20 +892,71 @@ def test_p4d_req5_mace_run_configuration_is_translation_only():
         "max_num_epochs": 10,
         "default_dtype": "float64",
         "device": "cpu",
-        "mace_architecture": {"num_channels": 16, "batch_size": 999},
+        "compute_avg_num_neighbors": False,
+        "mace_architecture": architecture,
+        "multi_head": {
+            "target_head": {
+                "train_file": "target_train.xyz",
+                "valid_file": "harness_validation.xyz",
+                "atomic_numbers": [3, 8],
+                "E0s": {"3": -1.0, "8": -2.0},
+                "energy_key": "REF_energy",
+                "forces_key": "REF_forces",
+                "stress_key": "REF_stress",
+            }
+        },
     }
     translated = mace_run_configuration(source)
     assert translated["train_file"] == "target_train.xyz"
     assert translated["valid_file"] == "harness_validation.xyz"
     assert translated["seed"] == 1
-    assert translated["num_channels"] == 16
-    # The architecture never overrides an optimizer or data key.
+    assert translated["num_channels"] == architecture["num_channels"]
+    # The canonical P3 target dataset head is projected deliberately, so real
+    # MACE builds ``target_head`` instead of falling back to its own
+    # ``Default`` namespace, and it never recomputes the common normalization.
+    assert "'target_head'" in translated["heads"]
+    assert "Default" not in translated["heads"]
+    assert translated["compute_avg_num_neighbors"] is False
+    assert translated["avg_num_neighbors"] == architecture["avg_num_neighbors"]
+    # The architecture never overrides an optimizer or data key: the projected
+    # architecture keys and the candidate passthrough keys are disjoint.
     assert translated["batch_size"] == 4
     assert "schema" not in translated
     assert "target_train_file" not in translated
+    # Canonical typed values are untouched by the derived executable spelling.
+    assert source["atomic_numbers"] == [3, 8]
+    assert source["E0s"] == {"3": -1.0, "8": -2.0}
+    assert source["mace_architecture"] is architecture
 
     with pytest.raises(Exception):
         mace_run_configuration({**source, "schema": "retired"})
+
+    # Leaving MACE's candidate-local average-neighbor recomputation enabled is
+    # not an admissible P3 executable configuration.
+    with pytest.raises(Exception):
+        mace_run_configuration({**source, "compute_avg_num_neighbors": True})
+    with pytest.raises(Exception):
+        translation_source = dict(source)
+        translation_source.pop("compute_avg_num_neighbors")
+        mace_run_configuration(translation_source)
+
+    # The internal architecture head list is never the dataset-head argument.
+    with pytest.raises(Exception):
+        mace_run_configuration({**source, "multi_head": {"Default": {}}})
+    with pytest.raises(Exception):
+        translation_source = dict(source)
+        translation_source.pop("multi_head")
+        mace_run_configuration(translation_source)
+
+    # An architecture field with no declared executable projection fails here
+    # rather than leaking into the pinned dependency.
+    with pytest.raises(Exception):
+        mace_run_configuration(
+            {
+                **source,
+                "mace_architecture": {**architecture, "batch_size": 999},
+            }
+        )
 
 
 def test_p4d_req6_no_version_prefixed_production_names():

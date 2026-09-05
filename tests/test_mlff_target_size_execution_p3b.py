@@ -560,3 +560,75 @@ def test_p3b_worker_resource_field_is_bound_not_silently_excluded(tmp_path: Path
     assert changed.seed_neutral_training_policy_digest != (
         trajectory.seed_neutral_training_policy_digest
     )
+
+
+def test_p3b_order_divergent_candidate_materializes_in_exact_p2_order(
+    tmp_path: Path,
+) -> None:
+    """Real trajectory/projection/materialization owners on divergent orders.
+
+    ``pi_train`` is condition-balanced and therefore not a subsequence of the
+    stored ``P_train``; the exact P2 ``T_N`` must survive to the target-train
+    artifact, and the projected weights must remain the common fitted weights
+    attached by frame UID.
+    """
+
+    env = p3a.order_divergent_environment(tmp_path)
+    aggregate, common = env["aggregate"], env["common"]
+    definition = aggregate.definition
+    size = p3a._first_non_subsequence_size(aggregate)
+    schedule = build_target_size_screen_schedule(
+        tuple(definition.policy.fidelity_epochs)
+    )
+    context = _context_for(aggregate, common, schedule)
+    optimizer = MaceOptimizerPolicy(max_num_epochs=schedule.n3, batch_size=4)
+    trajectory = build_target_size_candidate_trajectory(
+        definition,
+        context,
+        common,
+        schedule,
+        target_size=size,
+        optimizer_policy=optimizer,
+        optimizer_seed=1,
+    )
+    projection = project_target_size_candidate_preparation(common, definition, size)
+
+    membership = definition.candidate_membership(size)
+    assert trajectory.candidate_membership == tuple(membership)
+    assert trajectory.candidate_membership_digest == (
+        definition.training_order.candidate_digest(size)
+    )
+    assert projection.candidate_membership == tuple(membership)
+
+    record = materialize_target_size_candidate(
+        trajectory,
+        projection,
+        common,
+        canonical_frame_authority=env["frame_authority"],
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        output_directory=tmp_path / "divergent-candidate",
+        optimizer_policy=optimizer,
+        extxyz_policy=MaceExtxyzPolicy(),
+        frame_array_index=env["index"],
+    )
+    # The artifact carries the exact P2 prefix order, not P_train order.
+    assert record.target_train_artifact.frame_uids == tuple(membership)
+    assert tuple(membership) != tuple(
+        uid for uid in aggregate.split.training_frame_uids if uid in set(membership)
+    )
+    validate_target_size_materialization(
+        record,
+        trajectory,
+        canonical_frame_authority=env["frame_authority"],
+        extxyz_policy=MaceExtxyzPolicy(),
+    )
+    # Weights attach by UID and are the untouched common fitted values.
+    table = projection.frame_weight_table()
+    common_weight_by_uid = {
+        item.frame_uid: item for item in common.fitted_frame_weights
+    }
+    for uid in membership:
+        assert table.for_frame(uid).to_dict() == common_weight_by_uid[uid].to_dict()
+    # No candidate-specific refit: the bound common state is unchanged.
+    assert projection.common_preparation_digest == common.content_digest

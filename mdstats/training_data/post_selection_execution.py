@@ -32,6 +32,7 @@ from ._common import (
     digest,
     validate_digest,
 )
+from .bounded_inference import run_bounded_inference
 from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
@@ -1176,7 +1177,17 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
 def post_selection_mace_run_configuration(
     config: Mapping[str, Any]
 ) -> dict[str, Any]:
-    """Rename the frozen post-selection configuration into MACE's argument names."""
+    """Project the frozen post-selection configuration into MACE arguments.
+
+    Renaming, explicit architecture projection, and the pinned parser's
+    scalar-literal spelling all happen here; the canonical configuration and its
+    digests are untouched.
+    """
+
+    from .mace_compatibility import (
+        encode_mace_executable_configuration,
+        project_mace_architecture_arguments,
+    )
 
     if config.get("schema") != POST_SELECTION_MACE_CONFIG_SCHEMA:
         raise PostSelectionExecutionError(
@@ -1233,9 +1244,19 @@ def post_selection_mace_run_configuration(
                 f"{target_head_name!r} and {replay_head_name!r}."
             )
         result["heads"] = dict(heads)
-    for key, value in dict(config.get("mace_architecture") or {}).items():
-        result.setdefault(str(key), value)
-    return result
+    for key, value in project_mace_architecture_arguments(
+        config.get("mace_architecture")
+    ).items():
+        # The internal architecture head list is mdstats metadata and must never
+        # become MACE's dataset-head argument; only the P5 multihead mapping can
+        # set ``heads``.
+        result.setdefault(key, value)
+    try:
+        return encode_mace_executable_configuration(result)
+    except TrainingDataInputError as exc:
+        raise PostSelectionExecutionError(
+            f"Post-selection MACE configuration cannot be spelled for MACE: {exc}"
+        ) from exc
 
 
 def post_selection_runtime_plan(
@@ -1368,6 +1389,7 @@ def evaluate_post_selection_dataset(
     root_directory: str | os.PathLike[str],
     provider: Any,
     block_ids: Sequence[str],
+    execution_batch_width: int,
     extxyz_policy: Any = None,
     inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
 ) -> Any:
@@ -1418,10 +1440,16 @@ def evaluate_post_selection_dataset(
         focus_atomic_numbers=(),
         condition_keys=(),
     )
-    if inference_evaluator is not None:
-        raw_predictions = inference_evaluator(provider, atoms_list)
-    else:
-        raw_predictions = provider.predict_batch(atoms_list)
+    # The evaluation population is scientific membership; the device batch is
+    # not. Post-selection evaluation shares the bounded execution boundary with
+    # target-size EVAL2 so the same oversized-batch failure cannot reappear on
+    # a CV monitor, replay, or outer population.
+    raw_predictions = run_bounded_inference(
+        provider,
+        atoms_list,
+        batch_width=execution_batch_width,
+        forward=inference_evaluator,
+    )
     if len(raw_predictions) != len(atoms_list):
         raise PostSelectionExecutionError(
             "Post-selection inference returned the wrong number of predictions."

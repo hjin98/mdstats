@@ -42,11 +42,11 @@ from ..target_size_experiment import (
     target_training_prefix_digest,
 )
 
-TARGET_SIZE_COMMON_POLICY_SCHEMA = "mdstats.target-size.common-training-policy.v1"
+TARGET_SIZE_COMMON_POLICY_SCHEMA = "mdstats.target-size.common-training-policy.v2"
 TARGET_SIZE_COMMON_ATOMIC_REFERENCE_SCHEMA = (
     "mdstats.target-size.common-atomic-reference.v1"
 )
-TARGET_SIZE_COMMON_PREPARATION_SCHEMA = "mdstats.target-size.common-preparation.v1"
+TARGET_SIZE_COMMON_PREPARATION_SCHEMA = "mdstats.target-size.common-preparation.v2"
 TARGET_SIZE_CANDIDATE_PREPARATION_SCHEMA = (
     "mdstats.target-size.candidate-preparation.v1"
 )
@@ -621,6 +621,106 @@ def _fitted_frame_weights(
     return tuple(sorted(records, key=lambda item: item.frame_uid))
 
 
+def fit_common_mace_neighbor_normalization(
+    frame_catalog: Any,
+    frame_data_by_run: Mapping[str, Any],
+    membership: Sequence[str],
+    *,
+    r_max: float,
+    frame_array_index: Mapping[str, tuple[Any, Any, int]] | None = None,
+) -> float:
+    """Fit the one common MACE neighbor normalization over the P2 ``P_train``.
+
+    ``avg_num_neighbors`` is a model-construction input: pinned MACE consumes
+    it when building every interaction block, so it must be a study-wide fitted
+    constant rather than a function of ``T_N``.  This computes exactly what
+    pinned MACE 0.3.16 computes -- the mean, over every atom that has at least
+    one neighbour, of that atom's in-cutoff neighbour count -- using MACE's own
+    ``get_neighborhood`` so the cutoff/periodic-image semantics are the
+    dependency's and not a second approximate formula.  The result is
+    independent of batching because each count is per-atom.
+    """
+
+    try:
+        from mace.data.neighborhood import get_neighborhood
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+        raise TrainingDataInputError(
+            "Common MACE neighbor normalization requires the pinned mace-torch dependency."
+        ) from exc
+
+    from .._frame_access import ase_atoms_for_frame
+
+    cutoff = float(r_max)
+    if not math.isfinite(cutoff) or cutoff <= 0.0:
+        raise TrainingDataInputError(
+            "Common MACE neighbor normalization requires a positive finite r_max."
+        )
+    index = (
+        build_frame_array_index(frame_catalog, frame_data_by_run)
+        if frame_array_index is None
+        else frame_array_index
+    )
+    frames = tuple(str(v) for v in membership)
+    if not frames:
+        raise TrainingDataInputError(
+            "Common MACE neighbor normalization requires a non-empty membership."
+        )
+    total_neighbors = 0
+    total_atoms = 0
+    for uid in frames:
+        try:
+            record, frame_data, local_index = index[uid]
+        except KeyError:
+            raise TrainingDataInputError(
+                f"Common membership frame {uid!r} has no normalized array binding."
+            ) from None
+        atoms = ase_atoms_for_frame(record, frame_data, local_index)
+        edge_index, _shifts, _unit_shifts, _cell = get_neighborhood(
+            positions=np.asarray(atoms.positions, dtype=np.float64),
+            cutoff=cutoff,
+            pbc=tuple(bool(v) for v in atoms.pbc),
+            cell=np.asarray(atoms.cell.array, dtype=np.float64),
+        )
+        receivers = np.asarray(edge_index[1], dtype=np.int64)
+        # MACE counts through ``torch.unique(receivers, return_counts=True)``,
+        # so an atom with no neighbour inside the cutoff contributes no sample.
+        counts = np.bincount(receivers)
+        counts = counts[counts > 0]
+        total_neighbors += int(counts.sum())
+        total_atoms += int(counts.size)
+    if total_atoms == 0:
+        raise TrainingDataInputError(
+            "Common MACE neighbor normalization found no in-cutoff neighbours; "
+            "the architecture r_max cannot describe this corpus."
+        )
+    value = float(total_neighbors) / float(total_atoms)
+    if not math.isfinite(value) or value <= 0.0:
+        raise TrainingDataInputError(
+            "Common MACE neighbor normalization must be finite and positive."
+        )
+    return value
+
+
+def realize_common_mace_architecture(
+    template: Mapping[str, Any] | None,
+    *,
+    avg_num_neighbors: float,
+) -> dict[str, Any]:
+    """Bind the fitted neighbor normalization into the study-wide template.
+
+    The template is the seed-neutral, ``N``-neutral P3 architecture; the only
+    value this stamps into it is the common fitted normalization.  The result
+    is the single realized architecture consumed by candidate materialization,
+    real TRAIN2, and EVAL2 reconstruction alike.
+    """
+
+    from ..model_features import canonicalize_mace_candidate_architecture
+
+    resolved = canonicalize_mace_candidate_architecture(template)
+    resolved["avg_num_neighbors"] = float(avg_num_neighbors)
+    return canonicalize_mace_candidate_architecture(resolved)
+
+
 @dataclass(frozen=True, slots=True)
 class TargetSizeCommonPreparation:
     """One canonical deterministic fitted preparation per P2 experiment.
@@ -644,6 +744,7 @@ class TargetSizeCommonPreparation:
     fitted_weights_digest: str
     harness_validation_membership: tuple[str, ...]
     harness_validation_membership_digest: str
+    realized_mace_architecture: Mapping[str, Any]
 
     def __post_init__(self) -> None:
         for name in (
@@ -699,9 +800,20 @@ class TargetSizeCommonPreparation:
             raise TrainingDataInputError(
                 "Harness-validation membership does not match its digest."
             )
+        from ..model_features import canonicalize_mace_candidate_architecture
+
+        try:
+            architecture = canonicalize_mace_candidate_architecture(
+                self.realized_mace_architecture
+            )
+        except TrainingDataInputError as exc:
+            raise TrainingDataInputError(
+                f"Common preparation carries an unrealizable MACE architecture: {exc}"
+            ) from exc
         object.__setattr__(self, "common_membership", membership)
         object.__setattr__(self, "fitted_frame_weights", weights)
         object.__setattr__(self, "harness_validation_membership", harness)
+        object.__setattr__(self, "realized_mace_architecture", architecture)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -721,11 +833,21 @@ class TargetSizeCommonPreparation:
             "harness_validation_membership_digest": (
                 self.harness_validation_membership_digest
             ),
+            # The realized architecture carries the one common fitted MACE
+            # neighbor normalization, so a change to model construction changes
+            # this digest and therefore the whole P3 execution identity.
+            "realized_mace_architecture": dict(self.realized_mace_architecture),
         }
 
     @property
     def content_digest(self) -> str:
         return digest(self._payload())
+
+    @property
+    def common_avg_num_neighbors(self) -> float:
+        """The one study-wide MACE neighbor normalization."""
+
+        return float(self.realized_mace_architecture["avg_num_neighbors"])
 
     def to_dict(self) -> dict[str, Any]:
         return {**self._payload(), "content_digest": self.content_digest}
@@ -765,6 +887,7 @@ class TargetSizeCommonPreparation:
             harness_validation_membership_digest=str(
                 payload["harness_validation_membership_digest"]
             ),
+            realized_mace_architecture=payload["realized_mace_architecture"],
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -816,6 +939,7 @@ def build_target_size_common_preparation(
     frame_array_index: Mapping[str, tuple[Any, Any, int]] | None = None,
     foundation_prediction_energy_by_frame: Mapping[str, float] | None = None,
     foundation_reference_energies: Mapping[int, float] | None = None,
+    mace_architecture: Mapping[str, Any] | None = None,
 ) -> TargetSizeCommonPreparation:
     """Build the one canonical common preparation for a P2 experiment.
 
@@ -824,6 +948,8 @@ def build_target_size_common_preparation(
     the fixed common training policy.  It never consumes M-ladder/CV/held-out
     labels, optimizer seeds, candidate sizes, or candidate outcomes.
     """
+
+    from ..model_features import canonicalize_mace_candidate_architecture
 
     active = TargetSizeCommonTrainingPolicy() if policy is None else policy
     definition = aggregate.definition
@@ -862,6 +988,21 @@ def build_target_size_common_preparation(
             "Fixed harness-validation size exceeds the common training membership."
         )
     harness_membership = tuple(sorted(membership)[:harness_count])
+    # One seed-neutral, N-neutral MACE construction identity for the whole
+    # study: the architecture template is resolved once here and its neighbor
+    # normalization is fitted once over the exact P2 P_train, so no candidate
+    # ever refits a model-construction input.
+    template = canonicalize_mace_candidate_architecture(mace_architecture)
+    realized_architecture = realize_common_mace_architecture(
+        template,
+        avg_num_neighbors=fit_common_mace_neighbor_normalization(
+            frame_catalog,
+            frame_data_by_run,
+            membership,
+            r_max=float(template["r_max"]),
+            frame_array_index=index,
+        ),
+    )
     return TargetSizeCommonPreparation(
         experiment_definition_digest=definition.content_digest,
         frame_authority_digest=aggregate.frame_authority_digest,
@@ -878,6 +1019,7 @@ def build_target_size_common_preparation(
         harness_validation_membership_digest=digest(
             {"frame_uids": list(harness_membership)}
         ),
+        realized_mace_architecture=realized_architecture,
     )
 
 
@@ -1022,15 +1164,15 @@ def project_target_size_candidate_preparation(
         raise TrainingDataInputError(
             "Candidate membership does not match the P2 membership digest."
         )
-    common_order = {uid: position for position, uid in enumerate(common.common_membership)}
-    if any(uid not in common_order for uid in membership):
+    # ``T_N`` is the exact P2 ``pi_train`` prefix.  ``pi_train`` is a separate
+    # condition-balanced order over the same frames as ``P_train``, so the
+    # candidate is a subset of the common membership but is not in general a
+    # subsequence of its storage order.  Containment is the whole requirement:
+    # fitted values are selected by frame UID, never by position.
+    common_members = set(common.common_membership)
+    if any(uid not in common_members for uid in membership):
         raise TrainingDataInputError(
             "Candidate membership is not contained in the common preparation membership."
-        )
-    positions = [common_order[uid] for uid in membership]
-    if positions != sorted(positions):
-        raise TrainingDataInputError(
-            "Candidate membership is not an exact ordered projection of the common membership."
         )
     weight_by_uid = {item.frame_uid: item for item in common.fitted_frame_weights}
     projected_weights = tuple(

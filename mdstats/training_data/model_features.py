@@ -639,7 +639,9 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
     try:
         import torch
         from mace import tools
+        from mace.data import KeySpecification as MaceKeySpecification
         from mace.tools.model_script_utils import configure_model
+        from mace.tools.multihead_tools import HeadConfig as MaceHeadConfig
     except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
         raise TrainingDataInputError(
             "Real target-size MACE reconstruction requires mace-torch."
@@ -683,12 +685,25 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
         args.mean = architecture["mean"]
         args.std = architecture["std"]
         args.loss = architecture["loss"]
-        args.heads = list(architecture["heads"])
+        heads = [str(value) for value in architecture["heads"]]
+        args.heads = list(heads)
         args.compute_energy = True
         args.compute_forces = True
         args.compute_dipole = False
         args.compute_polarizability = False
         z_table = tools.AtomicNumberTable(list(atomic_numbers))
+        # Real MACE training reaches ``configure_model`` with one HeadConfig per
+        # dataset head and with per-head atomic energies, which is what decides
+        # the realized shapes of the scale/shift and atomic-energy buffers.
+        # Reconstructing through the same call shape is what makes the
+        # reconstructed model the same architecture rather than a lookalike.
+        head_configs = [
+            MaceHeadConfig(head_name=name, key_specification=MaceKeySpecification())
+            for name in heads
+        ]
+        head_atomic_energies = np.repeat(
+            atomic_energies[np.newaxis, :], len(heads), axis=0
+        )
         requested_dtype = torch.float32 if default_dtype == "float32" else torch.float64
         previous_dtype = torch.get_default_dtype()
         torch.set_default_dtype(requested_dtype)
@@ -696,11 +711,11 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
             model, _output_args = configure_model(
                 args,
                 None,
-                atomic_energies,
+                head_atomic_energies,
                 model_foundation=None,
-                heads=list(architecture["heads"]),
+                heads=list(heads),
                 z_table=z_table,
-                head_configs=None,
+                head_configs=head_configs,
             )
         finally:
             torch.set_default_dtype(previous_dtype)

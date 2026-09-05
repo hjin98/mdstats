@@ -856,3 +856,12 @@ certificates, and the selected energy channel against what the source authority 
 substituting the campaign's normalized frame cache would weaken accepted P1 validation rather than
 reconcile it, and was not done. The cost is bounded (once per command, not once per candidate cell)
 and belongs in the deferred bounded production benchmark, not in a silent validation reduction.
+
+> **Superseded by `P4_POST_DATA4_AUTHORITY_RECONSTRUCTION_PERFORMANCE_REPAIR.md`.** The premise
+> above — that reusing the normalized frame cache would weaken P1 validation — conflated two
+> different operations. Fresh P1 authentication and normalized frame-payload acquisition are now
+> separate owners: `authenticate_vasp_source_authority(...)` still re-proves all eight
+> source/control/ensemble/energy facts against the actual files on every invocation and reads no
+> frame payload at all, while the payload itself comes from the already-authenticated frame cache.
+> Validation is unchanged; only the redundant full-source read was removed. This note is preserved
+> as the record of the state that motivated the repair.

@@ -2523,21 +2523,34 @@ _TRAIN2_INVALIDATION_RECORD_KEYS = (
 
 def _load_or_rebuild_frame_data(
     cfg: Mapping[str, Any], paths: CampaignPaths, sources: Any
-) -> dict[str, Any]:
-    """Restore normalized arrays only when a scientific phase actually needs them."""
+) -> tuple[dict[str, Any], tuple[Mapping[str, Any], ...]]:
+    """Restore normalized arrays, with the exact members they were read from.
+
+    The member records are returned alongside the arrays because ``prepare``
+    binds them into the immutable prepared generation: a downstream command must
+    load the exact published bytes, not whatever the mutable discovery alias
+    happens to name later.
+    """
 
     import mdstats
 
+    cache_root = paths.internal / "frame-cache"
     cache_start = time.monotonic()
     try:
-        frame_data = mdstats.load_frame_data_cache(
-            sources, paths.internal / "frame-cache"
+        manifest = mdstats.read_frame_data_cache_manifest(cache_root)
+        if manifest.get("source_catalog_digest") != sources.content_digest:
+            raise CampaignCliError(
+                "Normalized frame cache belongs to another DATA2 catalog."
+            )
+        records = tuple(dict(record) for record in manifest.get("records", ()))
+        frame_data = mdstats.load_frame_data_cache_records(
+            sources, records, cache_root
         )
         _ok(
             f"normalized frame cache restored on demand; "
             f"elapsed={format_progress_time(time.monotonic() - cache_start)}"
         )
-        return dict(frame_data)
+        return dict(frame_data), records
     except Exception as exc:
         training_root = _path_cfg(cfg, paths, "training_root")
         assert training_root is not None
@@ -2547,14 +2560,19 @@ def _load_or_rebuild_frame_data(
         frame_data, _ = mdstats.load_vasp_frame_data_by_run(
             sources, base_directory=training_root
         )
-        mdstats.write_frame_data_cache(
-            sources, frame_data, paths.internal / "frame-cache"
+        source_by_run = {source.run_id: source for source in sources.sources}
+        records = tuple(
+            mdstats.write_frame_data_cache_entry(
+                run_id, source_by_run[run_id], frame_data[run_id], cache_root
+            )
+            for run_id in sorted(source_by_run)
         )
+        mdstats.finalize_frame_data_cache(sources, list(records), cache_root)
         _ok(
             f"normalized frame cache rebuilt on demand; "
             f"elapsed={format_progress_time(time.monotonic() - cache_start)}"
         )
-        return dict(frame_data)
+        return dict(frame_data), records
 
 
 def _resolved_foundation_potential_identity(cfg: Mapping[str, Any], paths: CampaignPaths) -> Any:
@@ -4095,6 +4113,7 @@ def _resolve_feature_worker_count(
     estimated_bytes_per_worker: int,
     reserved_bytes: int = 0,
     startup_sensitive: bool = False,
+    maximum_workers: int | None = None,
 ) -> tuple[int, Any]:
     """Resolve process-level run concurrency within CPU and RAM budgets.
 
@@ -4115,6 +4134,7 @@ def _resolve_feature_worker_count(
             requested=requested,
             estimated_bytes_per_worker=estimated_bytes_per_worker,
             reserved_bytes=max(0, int(reserved_bytes)),
+            maximum_workers=maximum_workers,
         )
     except ValueError as exc:
         raise CampaignCliError(str(exc)) from exc
@@ -4333,6 +4353,92 @@ def _run_source_ingestion_workers(
     return completed_results
 
 
+def _partition_policies(cfg: Mapping[str, Any]) -> tuple[Any, Any]:
+    """Translate the campaign ``[partition]`` namespace for the DATA4/DATA5 owners.
+
+    The same operator namespace already configures the neutral P1 partition
+    policy.  Reading only two of its keys here made DATA5 construction disagree
+    with the substrate that consumes it -- a campaign whose configured block
+    length or role minimums differ from the library defaults would build a
+    partition it had not asked for, and fail feasibility for a reason that is
+    nowhere in its configuration.  Every unset key keeps the accepted owner
+    default, so this remains translation and decides nothing.
+    """
+
+    import mdstats
+
+    defaults = mdstats.PartitionRoleBudgetPolicy()
+    block_defaults = mdstats.CompleteFrameBlockPolicy()
+    explicit_block = _cfg(cfg, "partition", "explicit_block_length_frames", None)
+    role_budget = mdstats.PartitionRoleBudgetPolicy(
+        development_minimum_independent_units=int(
+            _cfg(
+                cfg,
+                "partition",
+                "development_minimum_independent_units",
+                defaults.development_minimum_independent_units,
+            )
+        ),
+        outer_monitor_minimum_independent_units=int(
+            _cfg(
+                cfg,
+                "partition",
+                "outer_monitor_minimum_independent_units",
+                defaults.outer_monitor_minimum_independent_units,
+            )
+        ),
+        calibration_minimum_independent_units=int(
+            _cfg(
+                cfg,
+                "partition",
+                "calibration_minimum_independent_units",
+                defaults.calibration_minimum_independent_units,
+            )
+        ),
+        locked_interpolation_test_minimum_independent_units=int(
+            _cfg(
+                cfg,
+                "partition",
+                "locked_interpolation_test_minimum_independent_units",
+                defaults.locked_interpolation_test_minimum_independent_units,
+            )
+        ),
+        purge_units_between_roles=int(
+            _cfg(
+                cfg,
+                "partition",
+                "purge_units_between_roles",
+                defaults.purge_units_between_roles,
+            )
+        ),
+        allow_calibration_deferral=bool(
+            _cfg(
+                cfg,
+                "partition",
+                "allow_calibration_deferral",
+                defaults.allow_calibration_deferral,
+            )
+        ),
+    )
+    partition_policy = mdstats.PartitionPolicy(
+        role_budget=role_budget,
+        block_policy=mdstats.CompleteFrameBlockPolicy(
+            minimum_block_frames=int(
+                _cfg(
+                    cfg,
+                    "partition",
+                    "minimum_block_frames",
+                    block_defaults.minimum_block_frames,
+                )
+            ),
+            explicit_block_length_frames=(
+                None if explicit_block is None else int(explicit_block)
+            ),
+        ),
+    )
+    return role_budget, partition_policy
+
+
 def _prepare_catalog(
     cfg: Mapping[str, Any],
     paths: CampaignPaths,
@@ -4341,7 +4447,11 @@ def _prepare_catalog(
     approve_manifest: bool,
     refresh_inferences: bool = False,
 ) -> dict[str, Any]:
-    """Build DATA2-DATA5 with one VASP frame decode per source."""
+    """Build DATA2-DATA5 with one VASP frame decode per source.
+
+    Returns the validated in-memory products preparation just constructed, so
+    the caller continues from them rather than reading them back off disk.
+    """
 
     import mdstats
 
@@ -4358,8 +4468,10 @@ def _prepare_catalog(
 
     _print_header("DATA2 source ingestion and quality assessment")
     cache_root = paths.internal / "frame-cache"
-    if cache_root.exists():
-        shutil.rmtree(cache_root)
+    # The normalized cache is append-only content-addressed storage. A future
+    # generation publishes new members beside the ones an already adopted
+    # generation still requires; deleting the directory here would destroy a
+    # current prepared dependency before the new generation is even adopted.
     cache_root.mkdir(parents=True, exist_ok=True)
     source_by_run: dict[str, Any] = {}
     targets: dict[str, Any] = {}
@@ -4440,15 +4552,7 @@ def _prepare_catalog(
     del worker_results, worker_payloads, source_by_run, cache_records
     gc.collect()
 
-    role_budget = mdstats.PartitionRoleBudgetPolicy(
-        purge_units_between_roles=int(_cfg(cfg, "partition", "purge_units_between_roles", 1)),
-    )
-    partition_policy = mdstats.PartitionPolicy(
-        role_budget=role_budget,
-        block_policy=mdstats.CompleteFrameBlockPolicy(
-            minimum_block_frames=int(_cfg(cfg, "partition", "minimum_block_frames", 32))
-        ),
-    )
+    role_budget, partition_policy = _partition_policies(cfg)
 
     stage_start = time.monotonic()
     _print_header("DATA3 frame identity, eligibility, and strain")
@@ -4557,7 +4661,9 @@ def _prepare_catalog(
     _ok(f"DATA5 complete; elapsed={format_progress_time(data5_seconds)}")
 
     cache_seconds = cache_finalize_seconds + cache_load_seconds
-    cache_bytes = sum(path.stat().st_size for path in cache_root.glob("*.npz"))
+    cache_bytes = sum(
+        path.stat().st_size for path in cache_root.rglob("*") if path.is_file()
+    )
     _ok(
         f"normalized frame cache: {cache_bytes / (1024 ** 3):.2f} GiB; "
         f"manifest finalization + restore={format_progress_time(cache_seconds)}"
@@ -4617,7 +4723,11 @@ def _prepare_catalog(
         )
     _ok(f"catalogued {len(sources.sources)} runs and {len(frames.frames)} frames; elapsed={format_progress_time(elapsed)}")
     _ok("DATA5 leakage audit passed")
-    return frame_data
+    # The validated bundle is handed back in memory. Persisting a sharded DATA4
+    # record and immediately restoring it again, purely because a downstream
+    # helper only accepted a store lookup, was real O(dataset) I/O that proved
+    # nothing the caller did not already hold.
+    return {"frame_data": frame_data, "data4": data4}
 
 
 
@@ -5525,185 +5635,54 @@ class _PublicLifecycleStep:
     state: StageState
     message: str
     terminal: bool = False
+    #: The typed observational state, which distinguishes a stage that has not
+    #: started from one whose durable evidence is missing or corrupt.
+    observation: str = "not_started"
+
+
+_LIFECYCLE_STAGE_STATE = {
+    "not_started": StageState.NOT_STARTED,
+    "waiting": StageState.WAITING,
+    "running": StageState.RUNNING,
+    "complete": StageState.COMPLETE,
+    "failed": StageState.FAILED,
+    # A blocked stage is durable state that cannot proceed as it stands. It is
+    # deliberately not reported as "not started": the difference between "no
+    # evidence exists" and "the evidence that exists is unusable" is the whole
+    # point of observing at all.
+    "blocked": StageState.WAITING,
+}
 
 
 def _current_public_lifecycle(
     cfg: Mapping[str, Any], paths: CampaignPaths, store: CampaignStore
 ) -> tuple[_PublicLifecycleStep, ...]:
-    """Project the current target-size/post-selection authorities into the CLI lifecycle.
+    """Project the public lifecycle from persisted owner state only.
 
-    Every state shown here is read from the owning current authority - the
-    campaign-store target-size revision for the substrate and the screen, and the
-    post-selection owners for cross-validation and fresh final production.  No
-    retired selector, role-domain, coverage, materialization, or study record
-    participates, and no stage marker is trusted in place of the authority it
-    claims to describe.
+    This is a thin adapter over the pure projection in
+    :mod:`.campaign_lifecycle`.  It constructs no post-selection context, no
+    trainer, no qualification session, and no evidence root, so asking what a
+    campaign is cannot change what it is.  ``cfg`` is accepted for call
+    compatibility and is deliberately unused: configuration is an input to
+    consequential admission, not to describing durable state.
     """
 
-    from .campaign_post_selection import load_current_selected_training_context
-    from .campaign_post_selection_runtime import (
-        build_post_selection_context,
-        resolve_current_cv_acceptance,
-        resolve_current_cv_plan,
-        resolve_current_final_production_completion,
-        resolve_current_final_production_plan,
+    from .campaign_lifecycle import project_campaign_lifecycle
+
+    snapshot = project_campaign_lifecycle(paths, store)
+    return tuple(
+        _PublicLifecycleStep(
+            step.key,
+            step.command,
+            step.label,
+            step.description,
+            _LIFECYCLE_STAGE_STATE[step.state],
+            step.message,
+            terminal=step.terminal,
+            observation=step.state,
+        )
+        for step in snapshot.steps
     )
-    from .campaign_target_size_state import (
-        TargetSizeLifecycle,
-        TargetSizeRegime,
-        load_target_size_campaign_revision,
-    )
-
-    steps: list[_PublicLifecycleStep] = []
-    doctor_state, doctor_message = _effective_stage(store, paths, "doctor")
-    steps.append(_PublicLifecycleStep(
-        "doctor", "doctor", "doctor", "environment and input checks",
-        doctor_state, doctor_message,
-    ))
-
-    revision = load_target_size_campaign_revision(store)
-    state = None if revision is None else revision.state
-    if state is None or state.regime is TargetSizeRegime.LEGACY:
-        prepare_state = StageState.NOT_STARTED
-        prepare_message = (
-            "the current target-size substrate has not been bound; `prepare` performs "
-            "the one-time destructive cutover"
-        )
-    elif state.regime is TargetSizeRegime.TRANSITIONING:
-        prepare_state = StageState.WAITING
-        prepare_message = (
-            f"a destructive cutover for canonical generation {state.generation} is "
-            "interrupted; rerun `prepare` to resume it"
-        )
-    else:
-        prepare_state = StageState.COMPLETE
-        prepare_message = (
-            f"current substrate bound at canonical generation {state.generation}; "
-            f"experiment={_short_digest(state.experiment_definition_digest)}"
-        )
-    steps.append(_PublicLifecycleStep(
-        "current_prepare", "prepare", "prepare",
-        "current target-size scientific substrate; selects nothing",
-        prepare_state, prepare_message,
-    ))
-
-    terminal = None if state is None else state.terminal
-    screen_terminal = False
-    if prepare_state is not StageState.COMPLETE:
-        screen_state = StageState.NOT_STARTED
-        screen_message = "the current substrate must be bound first"
-    elif state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED and terminal is not None:
-        screen_state = StageState.COMPLETE
-        screen_message = (
-            f"selected target size frozen at N={terminal.selected_target_size}; "
-            f"T_selected={_short_digest(terminal.selected_membership_digest)}"
-        )
-    elif state.lifecycle is TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE:
-        screen_state = StageState.COMPLETE
-        screen_terminal = True
-        reasons = ", ".join(terminal.terminal_reason_codes) if terminal is not None else ""
-        screen_message = (
-            "the paired-seed screen reached a typed scientific terminal outcome"
-            + (f": {reasons}" if reasons else "")
-        )
-    elif state.lifecycle is TargetSizeLifecycle.SCREEN_ACTIVE:
-        screen_state = StageState.RUNNING
-        screen_message = (
-            f"screen attempt {state.attempt} is open at canonical generation "
-            f"{state.generation}"
-        )
-    else:
-        screen_state = StageState.NOT_STARTED
-        screen_message = "no candidate has been screened for this generation"
-    steps.append(_PublicLifecycleStep(
-        "target_size_selection", "select-target-size", "select-target-size",
-        "paired optimizer-seed target-size screen; the only command that decides N",
-        screen_state, screen_message, terminal=screen_terminal,
-    ))
-
-    selected_frozen = screen_state is StageState.COMPLETE and not screen_terminal
-    context = None
-    if selected_frozen:
-        try:
-            load_current_selected_training_context(cfg, paths, store)
-            context = build_post_selection_context(cfg, paths, store, trainer=None)
-        except Exception as exc:  # noqa: BLE001 - reported, never silently ignored
-            selected_frozen = False
-            post_selection_blocker = str(exc)
-        else:
-            post_selection_blocker = None
-    else:
-        post_selection_blocker = None
-
-    if not selected_frozen:
-        cv_state = StageState.NOT_STARTED
-        cv_message = (
-            post_selection_blocker
-            if post_selection_blocker is not None
-            else "no target size is frozen yet"
-        )
-        acceptance = None
-    else:
-        try:
-            plan = resolve_current_cv_plan(context)
-            acceptance = resolve_current_cv_acceptance(context)
-        except Exception as exc:  # noqa: BLE001
-            cv_state, cv_message, acceptance = StageState.WAITING, str(exc), None
-        else:
-            if acceptance is not None and acceptance.accepted:
-                cv_state = StageState.COMPLETE
-                cv_message = (
-                    "the frozen method passed every required fold of every required "
-                    f"CV seed (K={plan.fold_count})"
-                )
-            elif acceptance is not None:
-                cv_state = StageState.FAILED
-                cv_message = "cross-validation rejected the frozen training method"
-            else:
-                cv_state = StageState.NOT_STARTED
-                cv_message = (
-                    "the exact selected dataset has not been cross-validated"
-                    if plan is None
-                    else f"CV plan is current (K={plan.fold_count}); no acceptance exists yet"
-                )
-    steps.append(_PublicLifecycleStep(
-        "post_selection_cv", "cross-validate", "cross-validate",
-        "post-selection cross-validation of the frozen method on exactly T_selected",
-        cv_state, cv_message,
-    ))
-
-    if cv_state is not StageState.COMPLETE:
-        production_state = StageState.NOT_STARTED
-        production_message = "the frozen method is not cross-validation accepted"
-    else:
-        try:
-            final_plan = resolve_current_final_production_plan(context)
-            final_completion = resolve_current_final_production_completion(context)
-        except Exception as exc:  # noqa: BLE001
-            production_state, production_message = StageState.WAITING, str(exc)
-        else:
-            if final_plan is None:
-                production_state = StageState.NOT_STARTED
-                production_message = "no fresh final production run has been published"
-            elif final_completion is None:
-                production_state = StageState.WAITING
-                production_message = (
-                    "fresh final production plan is published on the full exact "
-                    f"T_selected ({_short_digest(final_plan.content_digest)}); "
-                    "required final production run(s) are incomplete"
-                )
-            else:
-                production_state = StageState.COMPLETE
-                production_message = (
-                    "fresh production is published on the full exact T_selected under "
-                    f"the accepted method ({_short_digest(final_plan.content_digest)})"
-                )
-    steps.append(_PublicLifecycleStep(
-        "final_production", "train-production", "train-production",
-        "fresh final production on the complete selected dataset",
-        production_state, production_message,
-    ))
-    return tuple(steps)
 
 
 def _short_digest(value: Any) -> str:
@@ -5714,53 +5693,97 @@ def _short_digest(value: Any) -> str:
 def _next_public_operation(
     cfg: Mapping[str, Any], paths: CampaignPaths, store: CampaignStore
 ) -> str | None:
-    lifecycle = _current_public_lifecycle(cfg, paths, store)
-    if any(step.terminal for step in lifecycle):
-        return None
-    for step in lifecycle:
-        if step.state is not StageState.COMPLETE:
-            return step.command
-    return None
+    """Advisory routing only; the chosen command admits itself."""
+
+    from .campaign_lifecycle import project_campaign_lifecycle
+
+    return project_campaign_lifecycle(paths, store).next_command
 
 
 def command_status(args: argparse.Namespace) -> int:
-    cfg, paths = _load_config(args.config)
-    store = CampaignStore(paths.state_db)
-    _print_header(f"Campaign status: {_cfg(cfg, 'campaign', 'id', 'mlff-campaign')}")
-    lifecycle = _current_public_lifecycle(cfg, paths, store)
-    for step in lifecycle:
-        symbol = (
-            "STOP" if step.terminal else {
-                StageState.COMPLETE: "PASS",
-                StageState.FAILED: "FAIL",
-                StageState.WAITING: "WAIT",
-                StageState.RUNNING: "RUN ",
-                StageState.NOT_STARTED: "----",
-            }[step.state]
+    """Describe the campaign without touching it.
+
+    The whole command runs under the observational capability: configuration
+    paths are resolved without creating workspace directories, the campaign
+    store is opened read-only by SQLite itself, and every nested owner helper
+    inherits the same no-write capability. Nothing here can construct a
+    provider, a trainer, a wrapper script, or an evidence root.
+    """
+
+    from .campaign_lifecycle import project_campaign_lifecycle
+
+    with observational_campaign_state():
+        cfg, paths = _load_config(args.config, ensure=False)
+        _print_header(
+            f"Campaign status: {_cfg(cfg, 'campaign', 'id', 'mlff-campaign')}"
         )
+        if not paths.state_db.is_file():
+            print(
+                "No campaign state exists yet in this workspace. It is reported as "
+                "uninitialized rather than created by an observational command."
+            )
+            print(f"\nWorkspace: {paths.workspace}")
+            print(
+                "\nNext command: python tools/mdstats-mlff-campaign.py "
+                f"--config {paths.config} doctor"
+            )
+            return 0
+        store = CampaignStore(paths.state_db, create=False)
+        try:
+            snapshot = project_campaign_lifecycle(paths, store)
+        finally:
+            store.close()
+
+    symbols = {
+        "complete": "PASS",
+        "failed": "FAIL",
+        "waiting": "WAIT",
+        "running": "RUN ",
+        "blocked": "BLOK",
+        "not_started": "----",
+    }
+    for step in snapshot.steps:
+        symbol = "STOP" if step.terminal else symbols[step.state]
         print(f"[{symbol}] {step.label:<24} {step.description}")
         print(f"       {step.message}")
-    next_command = _next_public_operation(cfg, paths, store)
     print(f"\nWorkspace: {paths.workspace}")
     print(f"State DB:  {paths.state_db}")
     print(f"Results:   {paths.results}")
-    terminal_step = next((step for step in lifecycle if step.terminal), None)
+    next_command = snapshot.next_command
+    terminal_step = snapshot.terminal_step
     if next_command:
-        print(f"\nNext command: python tools/mdstats-mlff-campaign.py --config {paths.config} {next_command}")
+        print(
+            "\nNext command: python tools/mdstats-mlff-campaign.py "
+            f"--config {paths.config} {next_command}"
+        )
     elif terminal_step is not None:
-        print("\nThe target-size screen stopped scientifically; no production next command exists.")
+        print(f"\n{terminal_step.message}; no production next command exists.")
     else:
         print("\nAll bounded campaign stages are complete.")
     return 0
 
 
 def command_advance(args: argparse.Namespace) -> int:
+    """Route to the next admissible command, then let it admit itself.
+
+    The projection below is advisory: it chooses which command to dispatch and
+    stops there. The dispatched command re-establishes current authority for
+    itself, so a snapshot that was already stale when it was read can never
+    authorize work.
+    """
+
+    from .campaign_lifecycle import project_campaign_lifecycle
+
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
-    lifecycle = _current_public_lifecycle(cfg, paths, store)
-    name = _next_public_operation(cfg, paths, store)
+    try:
+        with observational_campaign_state():
+            snapshot = project_campaign_lifecycle(paths, store)
+    finally:
+        store.close()
+    name = snapshot.next_command
     if name is None:
-        terminal_step = next((step for step in lifecycle if step.terminal), None)
+        terminal_step = snapshot.terminal_step
         if terminal_step is not None:
             print(
                 "Campaign has no next production command: "
@@ -5800,6 +5823,24 @@ def command_advance(args: argparse.Namespace) -> int:
         if name == "cross-validate":
             return command_cross_validate(forwarded)
         return command_train_production(forwarded)
+    if name == "qualification run":
+        # Ordinary nonlocked qualification is routable. Locked activation is
+        # irreversible one-shot disclosure and is never reached from `advance`.
+        from .qualification.commands import execute_qualification_run
+
+        forwarded = argparse.Namespace(config=args.config)
+        for attribute in (
+            "_external_post_selection_trainer",
+            "_external_inference_evaluator",
+            "_external_deployment_exporter",
+            "_external_mliap_builder",
+            "_external_deployed_evaluator",
+            "_external_dynamics_runner",
+            "case_workers",
+        ):
+            if hasattr(args, attribute):
+                setattr(forwarded, attribute, getattr(args, attribute))
+        return execute_qualification_run(forwarded)
     raise CampaignCliError(f"Unsupported derived next operation: {name}")
 
 

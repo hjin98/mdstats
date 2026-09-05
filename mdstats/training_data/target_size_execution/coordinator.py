@@ -40,6 +40,7 @@ from .._common import (
     digest,
     validate_digest,
 )
+from ..bounded_inference import execution_batch_width
 from ..mace_export import MaceExtxyzPolicy
 from ..protocol import MaceOptimizerPolicy
 from ..target_size_experiment import (
@@ -3560,11 +3561,18 @@ def _validate_replayed_eval2_parents(
         or prediction.default_dtype != provider.default_dtype
         or prediction.execution_architecture != provider.runtime_architecture_digest
         or prediction.backend_policy != provider.backend_policy
-        or prediction.batch_size != eval_data.evaluation_size
     ):
         raise TrainingDataInputError(
             "Replay prediction execution provenance differs from the authenticated provider."
         )
+    # The execution partition is deterministic in the exact scientific
+    # population and the accepted execution policy that bounds one device
+    # forward. Replay authenticates that policy rather than a copy of it: the
+    # width comes from the same owner the run used, and the optimizer policy is
+    # already inside the candidate trajectory identity checked above, so a
+    # different `valid_batch_size` is a different trajectory and cannot be
+    # replayed as this one.
+    execution_batch_width(optimizer_policy)
     view = eval_data.build_authenticated_evaluation_view(
         eval_root,
         definition=authority.aggregate.definition,

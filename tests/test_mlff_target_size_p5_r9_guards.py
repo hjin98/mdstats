@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -237,7 +239,8 @@ def test_r9a_mace_translation_uses_training_artifact_and_true_monitor_separately
     translated = post_selection_mace_run_configuration(internal)
     assert translated["pt_train_file"] == str(files["pseudo_train"].resolve())
     assert translated["pt_valid_file"] == str(files["true_monitor"].resolve())
-    assert set(translated["heads"]) == {
+    assert isinstance(translated["heads"], str)
+    assert set(ast.literal_eval(translated["heads"])) == {
         POST_SELECTION_TARGET_HEAD_NAME,
         POST_SELECTION_REPLAY_HEAD_NAME,
     }
@@ -341,7 +344,8 @@ def test_r9b_head_namespace_is_one_owner_across_policy_and_mace_translation(
         },
     }
     translated = post_selection_mace_run_configuration(internal)
-    assert set(translated["heads"]) == {
+    assert isinstance(translated["heads"], str)
+    assert set(ast.literal_eval(translated["heads"])) == {
         POST_SELECTION_TARGET_HEAD_NAME,
         POST_SELECTION_REPLAY_HEAD_NAME,
     }
@@ -353,6 +357,7 @@ def _write_fake_train_wrapper(path: Path, marker: Path, pseudo_train: Path, true
         f"""#!/usr/bin/env python3
 import argparse
 import json
+import ast
 import os
 from pathlib import Path
 import sys
@@ -377,7 +382,7 @@ parser.add_argument('--results_dir', required=True)
 args = parser.parse_args()
 config_path = Path.cwd() / args.config
 payload = yaml.safe_load(config_path.read_text(encoding='utf-8'))
-if set(payload.get('heads', {{}})) != {{{POST_SELECTION_TARGET_HEAD_NAME!r}, {POST_SELECTION_REPLAY_HEAD_NAME!r}}}:
+if set(ast.literal_eval(payload['heads'])) != {{{POST_SELECTION_TARGET_HEAD_NAME!r}, {POST_SELECTION_REPLAY_HEAD_NAME!r}}}:
     raise RuntimeError('noncanonical MACE head map')
 for key in ('train_file', 'valid_file', 'pt_train_file', 'pt_valid_file'):
     candidate = Path(payload[key])
@@ -399,7 +404,7 @@ with Path({str(marker.resolve())!r}).open('a', encoding='utf-8') as handle:
     handle.write(json.dumps({{
         'cwd': str(Path.cwd()),
         'plan': json.loads(os.environ[TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE]),
-        'heads': sorted(payload['heads']),
+        'heads': sorted(ast.literal_eval(payload['heads'])),
         'pt_train_file': str(Path(payload['pt_train_file']).resolve()),
         'pt_valid_file': str(Path(payload['pt_valid_file']).resolve()),
     }}) + '\\n')
@@ -575,7 +580,11 @@ legacy_normalized = true
 
     records = [json.loads(line) for line in marker.read_text(encoding="utf-8").splitlines()]
     assert records
-    assert all(set(item["heads"]) == {POST_SELECTION_TARGET_HEAD_NAME, POST_SELECTION_REPLAY_HEAD_NAME} for item in records)
+    assert all(
+        set(item["heads"])
+        == {POST_SELECTION_TARGET_HEAD_NAME, POST_SELECTION_REPLAY_HEAD_NAME}
+        for item in records
+    )
     assert all(item["pt_train_file"] == str(pseudo_train.resolve()) for item in records)
     assert all(item["pt_valid_file"] == str(true_monitor.resolve()) for item in records)
     from ase.io import read

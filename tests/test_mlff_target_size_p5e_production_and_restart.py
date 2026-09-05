@@ -492,12 +492,21 @@ def test_p5e_the_held_out_fold_is_invisible_until_the_representative_is_frozen(
         store.close()
 
     class _Recording(PostSelectionHarness):
+        """Record every device batch this seam is handed.
+
+        The production owner partitions each evaluation population into bounded
+        device batches, so this seam now sees one chunk at a time. The
+        anti-leakage claim is unchanged and is asserted directly on those
+        chunks; the contiguous chunks of one evaluation are then reassembled to
+        recover the per-evaluation ordering claim.
+        """
+
         def __init__(self) -> None:
             super().__init__()
-            self.seen: list[frozenset[str]] = []
+            self.chunks: list[frozenset[str]] = []
 
         def evaluate(self, provider, atoms_list):
-            self.seen.append(
+            self.chunks.append(
                 frozenset(str(atoms.info["frame_uid"]) for atoms in atoms_list)
             )
             return super().evaluate(provider, atoms_list)
@@ -507,8 +516,24 @@ def test_p5e_the_held_out_fold_is_invisible_until_the_representative_is_frozen(
 
     monitors = {frozenset(fold.checkpoint_monitor_frame_uids) for fold in plan.folds}
     outers = {frozenset(fold.outer_evaluation_frame_uids) for fold in plan.folds}
-    assert harness.seen
-    assert set(harness.seen) <= monitors | outers
+    allowed = monitors | outers
+    assert harness.chunks
+    # No device batch ever contains a frame outside the population it belongs to.
+    for chunk in harness.chunks:
+        assert any(chunk <= population for population in allowed), (
+            "a device batch evaluated frames outside every accepted population"
+        )
+
+    seen: list[frozenset[str]] = []
+    accumulated: set[str] = set()
+    for chunk in harness.chunks:
+        assert not (accumulated & chunk), "a frame was evaluated twice in one role"
+        accumulated |= set(chunk)
+        if frozenset(accumulated) in allowed:
+            seen.append(frozenset(accumulated))
+            accumulated = set()
+    assert not accumulated, "an evaluation did not cover its exact population"
+    harness.seen = seen
 
     # Every observed outer evaluation is preceded by at least one monitor
     # evaluation, and no monitor evaluation follows the last outer one within a
@@ -998,7 +1023,15 @@ def test_p5e_r9_mandatory_case4_all_runs_complete_and_stable_across_process_boun
         lifecycle = cli._current_public_lifecycle(cfg, paths, store)
         prod_step = next(s for s in lifecycle if s.semantic_id == "final_production")
         assert prod_step.state == cli.StageState.COMPLETE
-        assert cli._next_public_operation(cfg, paths, store) is None
+        # The public campaign does not end at final production: a frozen
+        # product is still unqualified until P7 says otherwise, so the next
+        # admissible command is ordinary nonlocked qualification. Locked
+        # activation is never routed here.
+        qualification_step = next(
+            s for s in lifecycle if s.semantic_id == "post_production_qualification"
+        )
+        assert qualification_step.state is cli.StageState.NOT_STARTED
+        assert cli._next_public_operation(cfg, paths, store) == "qualification run"
     finally:
         store.close()
 
@@ -1011,4 +1044,8 @@ def test_p5e_r9_mandatory_case4_all_runs_complete_and_stable_across_process_boun
     )
     assert "[PASS] train-production" in proc.stdout
     assert "fresh production is published on the full exact T_selected" in proc.stdout
-    assert "Next command:" not in proc.stdout
+    # Status is truthful about what is left: the frozen product still has to be
+    # qualified, so it names that command rather than declaring completion.
+    assert "qualification" in proc.stdout
+    assert "Next command:" in proc.stdout
+    assert "activate-locked" not in proc.stdout
