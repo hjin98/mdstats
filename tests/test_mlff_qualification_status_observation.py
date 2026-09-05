@@ -36,6 +36,7 @@ import tests._mlff_qualification_fixture as fx
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data._campaign_cli_core import CampaignStore
 from mdstats.training_data.campaign_lifecycle import campaign_owner_snapshot
+from mdstats.training_data.qualification.errors import QualificationLineageError
 from mdstats.training_data.qualification.observation import (
     ABSENT,
     PRESENT,
@@ -297,7 +298,83 @@ def test_tampered_p7_evidence_is_never_reported_as_current_truth(
     assert restored.verdict == "release_qualified"
 
 
-def test_a_position_that_does_not_authenticate_its_object_is_unreadable(qualified):
+def _locator_mutations(locator: dict) -> dict[str, dict]:
+    """Ways a current-schema locator stops satisfying its own contract.
+
+    Each one still parses, and each one still leaves an authentic immutable
+    position object and authentic evidence on disk.  What is under test is that
+    coordination bytes which no longer satisfy the accepted representation are
+    not allowed to choose which authentic evidence an operator is shown.
+    """
+
+    other_digest = hashlib.sha256(b"a different subject").hexdigest()
+
+    def without(*fields: str) -> dict:
+        return {key: value for key, value in locator.items() if key not in fields}
+
+    def replacing(field: str, value) -> dict:
+        mutated = dict(locator)
+        mutated[field] = value
+        return mutated
+
+    return {
+        # The bypass this amendment exists for: deleting only the mandatory
+        # object reference used to read as the historical direct representation.
+        "no_position_object": without("position_object"),
+        "no_position_object_or_digest": without(
+            "position_object", "position_object_digest"
+        ),
+        "no_position_object_digest": without("position_object_digest"),
+        "no_evidence_digest": without("evidence_digest"),
+        "no_component_input_digest": without("component_input_digest"),
+        "empty_position_object": replacing("position_object", ""),
+        "mistyped_position_object": replacing("position_object", 17),
+        "tampered_position_object_digest": replacing(
+            "position_object_digest", hashlib.sha256(b"tampered").hexdigest()
+        ),
+        # Declared claims that the authenticated object it names contradicts.
+        "disagreeing_component": replacing("component", "not_this_component"),
+        "disagreeing_binding": replacing("binding_digest", other_digest),
+        "disagreeing_input": replacing("component_input_digest", other_digest),
+        "disagreeing_evidence": replacing("evidence_digest", other_digest),
+        # Representation discrimination: neither a current locator nor the exact
+        # historical direct shape.
+        "no_schema": without("schema"),
+        "unknown_schema": replacing("schema", "mdstats.something-else.v1"),
+        "legacy_schema_on_locator": replacing("schema", None),
+        "near_miss_legacy": {
+            "component": locator["component"],
+            "binding_digest": locator["binding_digest"],
+            "component_input_digest": locator["component_input_digest"],
+            "evidence_digest": locator["evidence_digest"],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "no_position_object",
+        "no_position_object_or_digest",
+        "no_position_object_digest",
+        "no_evidence_digest",
+        "no_component_input_digest",
+        "empty_position_object",
+        "mistyped_position_object",
+        "tampered_position_object_digest",
+        "disagreeing_component",
+        "disagreeing_binding",
+        "disagreeing_input",
+        "disagreeing_evidence",
+        "no_schema",
+        "unknown_schema",
+        "legacy_schema_on_locator",
+        "near_miss_legacy",
+    ],
+)
+def test_a_position_that_does_not_satisfy_its_representation_is_unreadable(
+    qualified, mutation: str, capsys
+):
     """Mutable position bytes degrade to a diagnostic, not to semantic truth."""
 
     config, paths, _harness = qualified
@@ -306,29 +383,128 @@ def test_a_position_that_does_not_authenticate_its_object_is_unreadable(qualifie
 
     healthy = _observe(config, paths)
     component = healthy.planned_components[0]
+    healthy_status = dict(healthy.component_states)[component]
+    assert healthy_status != UNREADABLE_POSITION
     locator_path = attempt / "components" / f"{component}.json"
     original = locator_path.read_bytes()
     locator = json.loads(original.decode("utf-8"))
     assert locator.get("position_object"), "the fixture published no position object"
+    assert locator.get("position_object_digest")
 
     try:
-        # The locator still parses and still names an existing object; it simply
-        # no longer authenticates it.  Believing its ``evidence_digest`` here
-        # would let substituted position bytes choose which evidence is read.
-        locator["position_object_digest"] = hashlib.sha256(b"tampered").hexdigest()
-        locator_path.write_bytes(json.dumps(locator, sort_keys=True).encode("utf-8"))
+        payload = _locator_mutations(locator)[mutation]
+        locator_path.write_bytes(json.dumps(payload, sort_keys=True).encode("utf-8"))
         before_files = _managed_snapshot(paths)
+        before_rows = _database_rows(paths)
+
+        # The single shared reader is the boundary under test.
+        with pytest.raises(QualificationLineageError):
+            read_component_position(attempt, component)
 
         observation = _observe(config, paths)
         assert dict(observation.component_states)[component] == UNREADABLE_POSITION
         assert observation.blocked_detail is not None
+
+        # The real public command stays truthful and non-mutating.
+        capsys.readouterr()
+        assert cli.main(["--config", str(config), "qualification", "status"]) == 0
+        assert "incomplete or corrupt" in capsys.readouterr().out
+        assert _managed_snapshot(paths) == before_files
+        assert _database_rows(paths) == before_rows
+    finally:
+        locator_path.write_bytes(original)
+
+    assert dict(_observe(config, paths).component_states)[component] == healthy_status
+
+
+def test_the_exact_historical_direct_position_still_reads_through_both_owners(
+    qualified, capsys
+):
+    """Compatibility is a validated shape, not "anything without a locator".
+
+    The pre-locator writer published the position payload itself at the locator
+    path, carrying no schema tag and no component-input identity.  That exact
+    shape must still read -- through the session owner and through the public
+    command -- so that tightening the current locator does not silently strand
+    an attempt directory written before the locator existed.
+    """
+
+    config, paths, _harness = qualified
+    root = _root(paths)
+    attempt = _attempt_root(config, paths, root)
+
+    healthy = _observe(config, paths)
+    component = healthy.planned_components[0]
+    healthy_status = dict(healthy.component_states)[component]
+    locator_path = attempt / "components" / f"{component}.json"
+    original = locator_path.read_bytes()
+    locator = json.loads(original.decode("utf-8"))
+
+    legacy = {
+        "component": locator["component"],
+        "binding_digest": locator["binding_digest"],
+        "evidence_digest": locator["evidence_digest"],
+    }
+    try:
+        locator_path.write_bytes(json.dumps(legacy, sort_keys=True).encode("utf-8"))
+
+        assert read_component_position(attempt, component) == legacy
+
+        _cfg, _paths, store, session = fx.load_session(config, _harness)
+        try:
+            evidence = session.completed_component(component)
+            assert evidence is not None
+            assert evidence.content_digest == legacy["evidence_digest"]
+        finally:
+            store.close()
+
+        before_files = _managed_snapshot(paths)
+        observation = _observe(config, paths)
+        assert dict(observation.component_states)[component] == healthy_status
+        assert observation.blocked_detail is None
+
+        capsys.readouterr()
+        assert cli.main(["--config", str(config), "qualification", "status"]) == 0
+        assert "incomplete or corrupt" not in capsys.readouterr().out
         assert _managed_snapshot(paths) == before_files
     finally:
         locator_path.write_bytes(original)
 
-    assert dict(_observe(config, paths).component_states)[component] != (
-        UNREADABLE_POSITION
-    )
+    assert dict(_observe(config, paths).component_states)[component] == healthy_status
+
+
+@pytest.mark.parametrize(
+    "field", ["component", "binding_digest", "evidence_digest"]
+)
+def test_a_near_miss_of_the_historical_direct_position_fails_closed(
+    qualified, field: str
+):
+    """The historical shape is validated on its own terms, not merely accepted."""
+
+    config, paths, _harness = qualified
+    attempt = _attempt_root(config, paths, _root(paths))
+
+    healthy = _observe(config, paths)
+    component = healthy.planned_components[0]
+    locator_path = attempt / "components" / f"{component}.json"
+    original = locator_path.read_bytes()
+    locator = json.loads(original.decode("utf-8"))
+    legacy = {
+        "component": locator["component"],
+        "binding_digest": locator["binding_digest"],
+        "evidence_digest": locator["evidence_digest"],
+    }
+    legacy[field] = ""
+
+    try:
+        locator_path.write_bytes(json.dumps(legacy, sort_keys=True).encode("utf-8"))
+        with pytest.raises(QualificationLineageError):
+            read_component_position(attempt, component)
+        observation = _observe(config, paths)
+        assert dict(observation.component_states)[component] == UNREADABLE_POSITION
+        assert observation.blocked_detail is not None
+    finally:
+        locator_path.write_bytes(original)
 
 
 def test_an_absent_attempt_state_is_absence_and_a_corrupt_one_is_blocked(qualified):

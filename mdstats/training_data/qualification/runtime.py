@@ -115,6 +115,34 @@ from .store import (
 
 COMPONENT_POSITION_DIRECTORY = "components"
 
+COMPONENT_POSITION_LOCATOR_SCHEMA = "mdstats.qualification-component-position-locator.v1"
+COMPONENT_POSITION_OBJECT_SCHEMA = "mdstats.qualification-component-position.v1"
+
+#: Every field the current locator schema must carry.  The publication owner
+#: always writes all of them, so a current-schema locator missing any one of
+#: them is malformed coordination state -- never an older representation.
+_LOCATOR_REQUIRED_FIELDS = (
+    "component",
+    "binding_digest",
+    "component_input_digest",
+    "evidence_digest",
+    "position_object",
+    "position_object_digest",
+)
+
+#: The exact pre-locator representation: the position payload itself, written
+#: directly at the locator path by the historical writer, which carried no
+#: schema tag and no component-input identity.
+_LEGACY_POSITION_FIELDS = frozenset({"component", "binding_digest", "evidence_digest"})
+
+#: Fields the locator and the immutable object it names must agree on.
+_POSITION_AGREEMENT_FIELDS = (
+    "component",
+    "binding_digest",
+    "component_input_digest",
+    "evidence_digest",
+)
+
 
 def component_position_path(attempt_root_path: Path, component: str) -> Path:
     """Where one component's mutable position locator lives.
@@ -127,6 +155,18 @@ def component_position_path(attempt_root_path: Path, component: str) -> Path:
     return attempt_root_path / COMPONENT_POSITION_DIRECTORY / f"{component}.json"
 
 
+def _position_text(payload: Mapping[str, Any], field: str, where: str) -> str:
+    """One required non-empty string field of a position representation."""
+
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise QualificationLineageError(
+            f"Qualification component position {where} field {field!r} is "
+            "missing or not a non-empty string."
+        )
+    return value
+
+
 def read_component_position(
     attempt_root_path: Path, component: str
 ) -> Mapping[str, Any] | None:
@@ -135,9 +175,16 @@ def read_component_position(
     This is the single reader for the mutable locator and the immutable position
     object behind it.  The locator is diagnostic coordination state rather than a
     content-addressed record, so it is deliberately not promoted to a CAS object;
-    it is still never believed on parse alone -- a locator that names an object
-    must reproduce that object's digest before its ``evidence_digest`` is used to
-    reach evidence.
+    it is still never believed on parse alone -- a current-schema locator must
+    carry its complete contract, reproduce the digest of the immutable object it
+    names, and agree with that object's own claims before its ``evidence_digest``
+    is used to reach evidence.
+
+    The two accepted representations are told apart by an explicit discriminator
+    rather than by which field happens to be absent.  Only the exact pre-locator
+    direct shape reads as historical state; a current locator with a mandatory
+    field deleted is malformed, not old, and must not choose which authentic
+    evidence object an operator is shown.
 
     Present-but-inconsistent is an error, not an absence: a caller that could not
     tell "never started" from "the position no longer authenticates" would report
@@ -157,8 +204,19 @@ def read_component_position(
         raise QualificationLineageError(
             f"Qualification component position {path!s} is not a JSON object."
         )
-    if not payload.get("position_object"):
+    schema = payload.get("schema")
+    if schema is None and set(payload) == _LEGACY_POSITION_FIELDS:
+        # The exact historical direct representation, validated on its own terms.
+        for field in sorted(_LEGACY_POSITION_FIELDS):
+            _position_text(payload, field, "record")
         return payload
+    if schema != COMPONENT_POSITION_LOCATOR_SCHEMA:
+        raise QualificationLineageError(
+            f"Qualification component position {path!s} declares unsupported "
+            f"representation {schema!r}."
+        )
+    for field in _LOCATOR_REQUIRED_FIELDS:
+        _position_text(payload, field, "locator")
     relative = Path(str(payload["position_object"]))
     if relative.is_absolute() or ".." in relative.parts:
         raise QualificationLineageError(
@@ -176,12 +234,31 @@ def read_component_position(
         raise QualificationLineageError(
             f"Qualification component position object {object_path!s} is corrupt."
         ) from exc
-    if digest(object_payload) != str(payload.get("position_object_digest")):
+    if not isinstance(object_payload, Mapping):
+        raise QualificationLineageError(
+            f"Qualification component position object {object_path!s} is not a "
+            "JSON object."
+        )
+    if digest(object_payload) != str(payload["position_object_digest"]):
         raise QualificationLineageError(
             "Qualification component position locator does not authenticate "
             "its immutable position object."
         )
+    if object_payload.get("schema") != COMPONENT_POSITION_OBJECT_SCHEMA:
+        raise QualificationLineageError(
+            "Qualification component position object declares unsupported "
+            f"representation {object_payload.get('schema')!r}."
+        )
+    for field in _POSITION_AGREEMENT_FIELDS:
+        claimed = _position_text(payload, field, "locator")
+        recorded = _position_text(object_payload, field, "record")
+        if claimed != recorded:
+            raise QualificationLineageError(
+                "Qualification component position locator disagrees with its "
+                f"immutable position object about {field!r}."
+            )
     return object_payload
+
 
 _DEPLOYMENT_RECEIPT_SCHEMA = "mdstats.qualification-deployment-receipt.v1"
 
@@ -1293,7 +1370,7 @@ class QualificationSession:
                 "Durable component evidence must bind its exact component inputs."
             )
         position_payload = {
-            "schema": "mdstats.qualification-component-position.v1",
+            "schema": COMPONENT_POSITION_OBJECT_SCHEMA,
             "component": evidence.component,
             "binding_digest": self.binding.content_digest,
             "component_input_digest": evidence.component_input_digest,
@@ -1309,7 +1386,7 @@ class QualificationSession:
         )
         relative = object_path.relative_to(self.attempt_root)
         locator = {
-            "schema": "mdstats.qualification-component-position-locator.v1",
+            "schema": COMPONENT_POSITION_LOCATOR_SCHEMA,
             "component": evidence.component,
             "binding_digest": self.binding.content_digest,
             "component_input_digest": evidence.component_input_digest,
