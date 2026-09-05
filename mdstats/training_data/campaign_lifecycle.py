@@ -146,13 +146,19 @@ def _pointer_prefixes(binding: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
     )
 
 
-def _owner_snapshot(store: Any) -> tuple[Any, Any, dict[str, str | None]]:
+def campaign_owner_snapshot(store: Any) -> tuple[Any, Any, dict[str, str | None]]:
     """Read the target revision and every descendant pointer atomically.
 
     One deferred read transaction spans the campaign-state head and the P5/P7
     pointer rows.  The binding is derived inside it because it is a pure
     function of the revision, so the pointer namespace this answer reads is the
     namespace that revision actually owned.
+
+    This is the *only* coherent-read boundary for public observation.  Every
+    public status answer -- the campaign lifecycle projection and
+    `qualification status` alike -- derives its revision, binding and pointer
+    digests here, so no second, weaker assembly of independently moving pointer
+    reads can exist beside it.
     """
 
     from .campaign_target_size_state import _load_head
@@ -585,7 +591,7 @@ def project_campaign_lifecycle(
     """Project the public lifecycle from persisted owner state, coherently."""
 
     steps: list[LifecycleStep] = [_doctor_step(store, paths)]
-    revision, binding, pointers = _owner_snapshot(store)
+    revision, binding, pointers = campaign_owner_snapshot(store)
     state = None if revision is None else revision.state
     prepare = _prepare_step(state)
     steps.append(prepare)
@@ -613,6 +619,7 @@ def project_campaign_lifecycle(
 
 __all__ = [
     "CampaignLifecycleSnapshot",
+    "campaign_owner_snapshot",
     "LifecycleObservationState",
     "LifecycleStep",
     "project_campaign_lifecycle",

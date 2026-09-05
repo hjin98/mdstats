@@ -115,6 +115,74 @@ from .store import (
 
 COMPONENT_POSITION_DIRECTORY = "components"
 
+
+def component_position_path(attempt_root_path: Path, component: str) -> Path:
+    """Where one component's mutable position locator lives.
+
+    Naming a position never creates one: the writer's own publication helper
+    makes the directory when it actually publishes, so an observer can ask this
+    question without leaving a directory behind as the answer.
+    """
+
+    return attempt_root_path / COMPONENT_POSITION_DIRECTORY / f"{component}.json"
+
+
+def read_component_position(
+    attempt_root_path: Path, component: str
+) -> Mapping[str, Any] | None:
+    """The one authenticated component-position payload, or ``None`` if absent.
+
+    This is the single reader for the mutable locator and the immutable position
+    object behind it.  The locator is diagnostic coordination state rather than a
+    content-addressed record, so it is deliberately not promoted to a CAS object;
+    it is still never believed on parse alone -- a locator that names an object
+    must reproduce that object's digest before its ``evidence_digest`` is used to
+    reach evidence.
+
+    Present-but-inconsistent is an error, not an absence: a caller that could not
+    tell "never started" from "the position no longer authenticates" would report
+    a corrupt attempt as a fresh one.
+    """
+
+    path = component_position_path(attempt_root_path, component)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise QualificationLineageError(
+            f"Qualification component position {path!s} is corrupt."
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise QualificationLineageError(
+            f"Qualification component position {path!s} is not a JSON object."
+        )
+    if not payload.get("position_object"):
+        return payload
+    relative = Path(str(payload["position_object"]))
+    if relative.is_absolute() or ".." in relative.parts:
+        raise QualificationLineageError(
+            "Qualification component position points outside its attempt root."
+        )
+    object_path = attempt_root_path / relative
+    if not object_path.is_file():
+        raise QualificationLineageError(
+            "Qualification component position refers to a missing immutable "
+            "position object."
+        )
+    try:
+        object_payload = json.loads(object_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise QualificationLineageError(
+            f"Qualification component position object {object_path!s} is corrupt."
+        ) from exc
+    if digest(object_payload) != str(payload.get("position_object_digest")):
+        raise QualificationLineageError(
+            "Qualification component position locator does not authenticate "
+            "its immutable position object."
+        )
+    return object_payload
+
 _DEPLOYMENT_RECEIPT_SCHEMA = "mdstats.qualification-deployment-receipt.v1"
 
 
@@ -1028,9 +1096,7 @@ class QualificationSession:
 
     # -- component position records -----------------------------------------
     def _position_path(self, component: str) -> Path:
-        root = self.attempt_root / COMPONENT_POSITION_DIRECTORY
-        root.mkdir(parents=True, exist_ok=True)
-        return root / f"{component}.json"
+        return component_position_path(self.attempt_root, component)
 
     def _position_object_path(self, component: str, component_input_digest: str) -> Path:
         from .._common import validate_digest
@@ -1192,40 +1258,9 @@ class QualificationSession:
     def completed_component(
         self, component: str, expected_input_digest: str | None = None
     ) -> QualificationComponentEvidence | None:
-        path = self._position_path(component)
-        if not path.is_file():
+        payload = read_component_position(self.attempt_root, component)
+        if payload is None:
             return None
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            raise QualificationLineageError(
-                f"Qualification component position {path!s} is corrupt."
-            ) from exc
-        object_path = None
-        if payload.get("position_object"):
-            relative = Path(str(payload["position_object"]))
-            if relative.is_absolute() or ".." in relative.parts:
-                raise QualificationLineageError(
-                    "Qualification component position points outside its attempt root."
-                )
-            object_path = self.attempt_root / relative
-            if not object_path.is_file():
-                raise QualificationLineageError(
-                    "Qualification component position refers to a missing immutable "
-                    "position object."
-                )
-            try:
-                object_payload = json.loads(object_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError) as exc:
-                raise QualificationLineageError(
-                    f"Qualification component position object {object_path!s} is corrupt."
-                ) from exc
-            if digest(object_payload) != str(payload.get("position_object_digest")):
-                raise QualificationLineageError(
-                    "Qualification component position locator does not authenticate "
-                    "its immutable position object."
-                )
-            payload = object_payload
         input_digest = payload.get("component_input_digest")
         if expected_input_digest is not None and str(input_digest) != str(expected_input_digest):
             return None

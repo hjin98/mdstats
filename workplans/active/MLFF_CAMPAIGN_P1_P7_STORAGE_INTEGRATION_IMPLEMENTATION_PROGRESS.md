@@ -384,3 +384,189 @@ binding is unchanged rather than asserting a stale literal size.
   asserted as an owner result (`p1:frame_cache` and `p4:prepared_generations`
   are not archive-eligible, their bytes are untouched, and consumption still
   reaches no preparation owner) instead of being skipped.
+
+---
+
+# Second-review repair (amendment `..._IMPLEMENTATION_REVIEW_R2.md`)
+
+This section records the repair of the two blocking findings raised by the
+second independent implementation review. Nothing above is retracted; the R2
+amendment closed IR1/IR2/IR3/IR5/IR6 and left IR4 partially open plus a closure-
+evidence blocker.
+
+## R2-IR1 -- `qualification status` uses the one coherent, authenticated boundary
+
+`qualification status` had a second, weaker observation path beside the repaired
+campaign projection. It loaded the target-size revision on its own, derived a
+binding from it, and then read each P7 pointer in a separate `_meta()`
+transaction; the qualification plan, each component evidence object, the locked
+activation, and the release pointer were all interpreted out of raw JSON. Only
+the terminal record went through `QualificationEvidenceStore`.
+
+The repair consolidates rather than adding a third observer.
+
+*Coherence.* `campaign_lifecycle._owner_snapshot` is now the named, shared
+read-only boundary `campaign_owner_snapshot`, and `execute_qualification_status`
+derives its revision, binding and every P7 pointer digest from exactly that one
+deferred SQLite read transaction. `observe_current_qualification` no longer
+opens a store or reads a pointer row at all: it takes the pointer mapping the
+snapshot produced. No lifecycle revision table, snapshot registry, or second
+currentness token was introduced.
+
+*Integrity.* Every content-addressed P7 object whose fields reach an operator is
+loaded through `QualificationEvidenceStore.get()` with its own accepted
+deserializer -- `ProductionQualificationPlan`, `QualificationComponentEvidence`,
+`LockedActivationRecord`, `ReleaseEvidenceIndex`, `ProductionQualificationRecord`
+-- and must reproduce the digest the pointer named before any field is read.
+Each is additionally checked against the identity it is supposed to belong to,
+so authentic bytes describing a different binding or a different component are
+not accepted as this answer's truth either.
+
+*Existing owners, not parallel readers.* The attempt state is read through
+`authenticate_attempt_state`, the single strict attempt authority, which is
+non-creating -- `read_attempt_state` was not usable here because its path helper
+creates the attempt root, and an observational command must not. The component
+position locator and its immutable position object are read by one new shared
+owner, `qualification.runtime.read_component_position`, extracted from
+`QualificationSession.completed_component`; both the session and the observation
+now use it, and it is the only reader of that representation. Mutable position
+state is deliberately still not a CAS object, but a locator that does not
+authenticate its position object degrades to `unreadable_position` rather than
+choosing which evidence is believed.
+
+*A defect this exposed.* The attempt identity was being re-derived as
+`_expected_attempt_identity(selected_binding.content_digest)`, but the owner
+derives it from the *qualification input* binding. Status was therefore naming a
+directory the owner never wrote to, so every component read as `not_started` and
+the attempt state always read as absent. The identity now comes from the
+authenticated plan (`plan.attempt_identity`), which is the owner that actually
+names the attempt; with no authentic plan there is no attempt to describe, and
+status says so instead of guessing.
+
+*Truthful pointer-level states.* `locked_state` and `release_state` distinguish
+`absent` from `unreadable`. Reporting a tampered locked activation as "not
+activated" would deny an irreversible disclosure, which is exactly the fact this
+command exists to report honestly.
+
+The observational capability is unchanged: `create=False`, no
+`QualificationSession`, no provider/model/reference execution, no prepared-array
+load, no wrapper creation, no managed write. `advance` remains advisory.
+
+## R2-IR2 -- deterministic concurrency acceptance, and closure evidence
+
+`test_answers_across_p5_and_p7_pointer_publication_are_never_hybrid` was
+withdrawn. Its mutation published the P5 pointer and then the P7 pointer in two
+separate transactions, so a graph with the first published and the second not is
+a state that legitimately exists; accepting only the pre- and post-mutation
+snapshots asserted that the pair was atomic, and the test could pass merely
+because the scheduler never sampled the legitimate interval.
+
+It is replaced by per-owner-boundary tests built on `tests/_mlff_observation_race.py`.
+One status answer is paused inside its own open read transaction -- at
+`_binding_for`, after the target-size head read and before the first pointer
+read, which is exactly the window a hybrid answer would need -- and one real
+publication transaction then attempts to commit with a short busy timeout. Under
+this store's rollback journal the commit is excluded, which is direct evidence
+that no pointer the answer interprets can move underneath it; an implementation
+that read each pointer in its own transaction would hold no lock there and the
+commit would succeed. The oracle is the boundary the owner really has: the
+answer is the whole pre-publication graph, and the post-publication graph
+appears only after the publication completes. No production sleep, poll, or
+synchronization primitive was added; the pause is a test-only wrapper around one
+module-level function and the mutation runs the real owner's real transaction.
+
+The lifecycle oracle also had to be sharpened: a published terminal record with
+a nonterminal verdict and no record at all are both `waiting`, so state alone
+could not see the mutation. It now compares state *and* message.
+
+## New acceptance
+
+- `tests/test_mlff_qualification_status_observation.py` -- the real
+  `qualification status` command and the real P7 stores/publishers, over one
+  campaign driven to `release_qualified` with the locked cohort opened:
+  - corruption matrix: qualification plan, one current component evidence
+    object, locked activation, release evidence and terminal record, each
+    missing / malformed / parseable-but-misidentified. In all fifteen cases the
+    tampered semantic field is never reported as current truth, a typed
+    blocked/unreadable condition is reported instead, the command still exits 0,
+    and no managed byte or database row changes -- including that the object it
+    could not authenticate is not repaired or recreated;
+  - a position locator that no longer authenticates its immutable position
+    object degrades to `unreadable_position`;
+  - a corrupt attempt-state file degrades to `unreadable` and blocks;
+  - coherence matrix: real publication of the qualification-plan,
+    qualification-record, locked-activation and release-evidence pointers, and a
+    real target-generation adoption, each proven to be excluded from one
+    in-flight status answer.
+- `tests/test_mlff_campaign_observation_coherence.py` -- the two deterministic
+  single-boundary replacements described above.
+
+## Structural evidence
+
+Semgrep rules were validated against the pre-repair sources as known positives
+(3 findings) before their zero-finding result on the candidate was relied on: no
+`json.load`/`json.loads` in either public observation module; no `SELECT value
+FROM meta` in the qualification observation/command path; no independent
+`load_target_size_campaign_revision` in `qualification status`. Serena
+caller closure confirms exactly two production consumers of
+`read_component_position` (the session and the observation) and one production
+consumer of `observe_current_qualification`.
+
+## Affected-surface regression on the exact candidate
+
+`pytest -k "mlff or storage or campaign"` in the `mace` environment, run twice
+under identical conditions (`-p no:randomly -n 14`, 32-core host): once on this
+candidate, and once in a clean worktree at the unmodified branch head `2f720cf`.
+The worktree's own `mdstats` package was proven to be the one imported, so the
+baseline is genuinely the unmodified code rather than the editable install.
+
+- baseline (`2f720cf`, clean worktree): 117 failed, 1904 passed, 15 skipped;
+- candidate: 117 failed, 1927 passed, 15 skipped.
+
+The failure **sets are identical** -- `comm` over the sorted node-id lists gives
+an empty difference in both directions. The 23 additional passes are the new
+`qualification status` observation suite (22) and the net effect of replacing
+one unsound coherence test with two sound ones.
+
+Mapping of the 117 persistent failures: none is on this plan's acceptance
+surface. They fall into two unrelated pre-existing families, both present
+identically at the unmodified head:
+
+- documentation/specification suites asserting release identities, manual
+  status lines, and dependency-graph nodes that are not present in the tree
+  (the great majority, all `*_specification.py`); the single one whose name
+  mentions qualification,
+  `test_mlff_data9a_specification.py::test_data9a_dependency_graph_contains_runtime_qualification_chain`,
+  fails on a missing `MACE_DEPENDENCY_MANIFEST` graph node;
+- a few stale non-documentation expectations unrelated to campaign
+  observation -- a `PartitionRoleBudgetPolicy` default in
+  `test_mlff_data4_raw_features_events.py`, a removed
+  `campaign_cli.command_evaluate` attribute and two argument-parse
+  `SystemExit`s in `test_mlff_mace_compatibility.py` /
+  `test_mlff_mace_executable_config.py`.
+
+No campaign-lifecycle, qualification-observation, P7, prepare-boundary,
+prepared-generation, storage-composition, currentness, or assembled-lifecycle
+test fails on the candidate.
+
+## Required closure suites on the exact candidate
+
+The list R2 section 3.4 requires was also run as one named selection on the same
+candidate (`-p no:randomly -n 12`): **690 passed, 0 failed, 0 skipped** in
+24m48s.
+
+| requirement | suite |
+| --- | --- |
+| focused prepare / publication / CAS | `test_mlff_campaign_prepare_boundary.py`, `test_mlff_campaign_prepared_generation.py`, `test_mlff_campaign_prepared_generation_efficiency.py` |
+| campaign + qualification observation purity / integrity / coherence | `test_mlff_campaign_observation_purity.py`, `test_mlff_campaign_observation_coherence.py`, `test_mlff_qualification_status_observation.py` |
+| bounded direct inference / replay | `test_mlff_bounded_direct_inference.py`, `test_mlff_bounded_direct_inference_cuda.py` |
+| P7 post-production qualification acceptance | `test_mlff_p7_post_production_qualification.py` |
+| full assembled lifecycle through locked activation and generation advance | `test_mlff_campaign_assembled_lifecycle.py` |
+| storage composition incl. the empty-archive owner result and locked-reveal retention | `test_mlff_campaign_storage_composition.py`, `test_mlff_storage_reset_core.py`, `test_mlff_storage_reset_integration.py` |
+| P3 interruption / continuation / currentness | `test_mlff_target_size_first_boundary_interruption.py`, `test_mlff_target_size_continuation_corruption.py`, `test_mlff_campaign_currentness_races.py`, `test_mlff_campaign_stateful_properties.py` |
+| project-required check | `test_docs_pdf_builder.py` (the repository's only CI gate; it builds documentation PDFs and is triggered by `docs/**/*.md`, none of which this change touches) |
+
+No permanent documentation contract changed. The user guide's claim that `status`
+and `qualification status` are observational in the strict sense is now more
+true, not less, and no architecture manual or specification names the modules
+that were changed, so no PDF republication is due.

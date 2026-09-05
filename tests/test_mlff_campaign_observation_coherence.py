@@ -51,6 +51,7 @@ from mdstats.training_data.qualification.store import (
     qualification_root,
 )
 
+import tests._mlff_observation_race as race
 import tests.test_mlff_campaign_prepare_boundary as boundary
 
 
@@ -129,6 +130,18 @@ def _object_path(root: Path, digest: str) -> Path:
 
 def _step_states(snapshot) -> tuple[tuple[str, str], ...]:
     return tuple((step.key, step.state) for step in snapshot.steps)
+
+
+def _step_details(snapshot) -> tuple[tuple[str, str, str], ...]:
+    """State plus message.
+
+    Two owner graphs can share a coarse state and still differ: a published
+    terminal record whose verdict is nonterminal and no record at all are both
+    ``waiting``.  A coherence oracle has to be able to tell them apart, or the
+    mutation it races is invisible to it.
+    """
+
+    return tuple((step.key, step.state, step.message) for step in snapshot.steps)
 
 
 # ---------------------------------------------------------------------------
@@ -253,61 +266,105 @@ def test_answers_across_a_real_prepare_adoption_are_never_hybrid(tmp_path: Path)
         assert observed in (before, after)
 
 
-def test_answers_across_p5_and_p7_pointer_publication_are_never_hybrid(
-    tmp_path: Path,
-):
-    """The hybrid this closes: a pre-P5 view combined with a post-P7 view.
-
-    P5 and P7 pointer publication mutates ``meta`` without moving the
-    target-size state revision, so re-reading that revision proves nothing.
-    The two pointers are withdrawn and then republished through the real
-    campaign store while the projection runs; every answer must be one of the
-    two owner graphs that actually existed.
-    """
-
-    _config, paths, _harness = _qualified(tmp_path)
-    binding, _revision = _binding(paths)
-    publication_digest = _pointer(
-        paths, "post_selection", POINTER_FINAL_PUBLICATION
-    )
-    record_digest = _pointer(paths, "qualification", POINTER_QUALIFICATION_RECORD)
-    keys = (
-        f"post_selection:{binding.content_digest}:{POINTER_FINAL_PUBLICATION}",
-        f"qualification:{binding.content_digest}:{POINTER_QUALIFICATION_RECORD}",
-    )
-
-    after = _step_states(_project(paths))
+def _withdraw(paths, key: str) -> None:
     db = sqlite3.connect(paths.state_db)
     try:
-        db.executemany("DELETE FROM meta WHERE key=?", [(key,) for key in keys])
+        db.execute("DELETE FROM meta WHERE key=?", (key,))
         db.commit()
     finally:
         db.close()
-    before = _step_states(_project(paths))
-    assert before != after, "the fixture did not make the two graphs differ"
+
+
+def _one_pointer_publication_is_excluded_from_one_answer(paths, binding, publish):
+    """One real pointer publication, raced against one in-flight answer.
+
+    The two-pointer version of this test was not sound: publishing a P5 pointer
+    and then a P7 pointer is *two* owner transactions, so a graph with the first
+    published and the second not is a state that legitimately exists.  Accepting
+    only the pre- and post-mutation graphs asserted that the pair was atomic,
+    and the test could pass merely because the scheduler never sampled the
+    legitimate interval.  Each owner boundary is therefore raced on its own, and
+    the oracle is the boundary that boundary really has.
+    """
+
+    after = _step_details(_project(paths))
+    before = _step_details(_project(paths))
+    assert before == after
 
     store = CampaignStore(paths.state_db)
     try:
-
-        def republish() -> None:
-            publish_current_post_selection_pointer(
-                store,
-                binding=binding,
-                kind=POINTER_FINAL_PUBLICATION,
-                content_digest=publication_digest,
-            )
-            publish_current_qualification_pointer(
-                store,
-                binding=binding,
-                kind=POINTER_QUALIFICATION_RECORD,
-                content_digest=record_digest,
-            )
-
-        observations = _race(paths, republish)
+        answer, outcome = race.observe_during_open_publication(
+            lambda: _step_details(_project(paths)), publish, store
+        )
     finally:
         store.close()
+    return answer, outcome
 
-    assert observations
-    assert _step_states(_project(paths)) == after
-    for observed in observations:
-        assert observed in (before, after)
+
+def test_a_p5_pointer_publication_cannot_land_inside_one_answer(tmp_path: Path):
+    _config, paths, _harness = _qualified(tmp_path)
+    binding, _revision = _binding(paths)
+    digest = _pointer(paths, "post_selection", POINTER_FINAL_PUBLICATION)
+    key = f"post_selection:{binding.content_digest}:{POINTER_FINAL_PUBLICATION}"
+
+    after = _step_details(_project(paths))
+    _withdraw(paths, key)
+    before = _step_details(_project(paths))
+    assert before != after, "the fixture did not make the two graphs differ"
+
+    def publish(store) -> None:
+        publish_current_post_selection_pointer(
+            store,
+            binding=binding,
+            kind=POINTER_FINAL_PUBLICATION,
+            content_digest=digest,
+        )
+
+    answer, outcome = _one_pointer_publication_is_excluded_from_one_answer(
+        paths, binding, publish
+    )
+    # The answer was in flight, inside its read transaction, when the real
+    # publication transaction tried to commit.  It is excluded, so the answer
+    # is the whole pre-publication graph -- never a mixture of the two.
+    assert outcome == "excluded"
+    assert answer == before
+
+    store = CampaignStore(paths.state_db)
+    try:
+        publish(store)
+    finally:
+        store.close()
+    assert _step_details(_project(paths)) == after
+
+
+def test_a_p7_pointer_publication_cannot_land_inside_one_answer(tmp_path: Path):
+    _config, paths, _harness = _qualified(tmp_path)
+    binding, _revision = _binding(paths)
+    digest = _pointer(paths, "qualification", POINTER_QUALIFICATION_RECORD)
+    key = f"qualification:{binding.content_digest}:{POINTER_QUALIFICATION_RECORD}"
+
+    after = _step_details(_project(paths))
+    _withdraw(paths, key)
+    before = _step_details(_project(paths))
+    assert before != after, "the fixture did not make the two graphs differ"
+
+    def publish(store) -> None:
+        publish_current_qualification_pointer(
+            store,
+            binding=binding,
+            kind=POINTER_QUALIFICATION_RECORD,
+            content_digest=digest,
+        )
+
+    answer, outcome = _one_pointer_publication_is_excluded_from_one_answer(
+        paths, binding, publish
+    )
+    assert outcome == "excluded"
+    assert answer == before
+
+    store = CampaignStore(paths.state_db)
+    try:
+        publish(store)
+    finally:
+        store.close()
+    assert _step_details(_project(paths)) == after

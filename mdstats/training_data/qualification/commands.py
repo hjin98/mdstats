@@ -128,8 +128,7 @@ def execute_qualification_status(args: Any) -> int:
         _warn,
         observational_campaign_state,
     )
-    from ..campaign_lifecycle import _binding_for
-    from ..campaign_target_size_state import load_target_size_campaign_revision
+    from ..campaign_lifecycle import campaign_owner_snapshot
     from .observation import observe_current_qualification
     from .spec import resolve_qualification_spec_identity
 
@@ -141,15 +140,17 @@ def execute_qualification_status(args: Any) -> int:
             return 0
         store = CampaignStore(paths.state_db, create=False)
         try:
-            revision = load_target_size_campaign_revision(store)
-            binding = None if revision is None else _binding_for(revision)
+            # One read transaction spans the target-size revision, the binding
+            # derived from it, and every P7 pointer row this answer interprets,
+            # so the qualification state reported is one ancestry that existed.
+            _revision, binding, pointers = campaign_owner_snapshot(store)
             if binding is None:
                 _warn(_no_publication_message())
                 return 0
             observation = observe_current_qualification(
                 paths,
-                store,
                 binding,
+                pointers,
                 specification_digest=resolve_qualification_spec_identity(
                     cfg
                 ).content_digest,
@@ -159,7 +160,6 @@ def execute_qualification_status(args: Any) -> int:
 
     print(f"  canonical generation   {observation.generation}", flush=True)
     print(f"  selected binding       {observation.binding_digest[:16]}", flush=True)
-    print(f"  attempt identity       {observation.attempt_identity[:16]}", flush=True)
     if not observation.started:
         _warn(
             "no qualification plan is current for this publication; run "
@@ -167,19 +167,42 @@ def execute_qualification_status(args: Any) -> int:
         )
         return 0
     print(f"  qualification plan     {str(observation.plan_digest)[:16]}", flush=True)
+    # The attempt is named by the authenticated plan; an unauthenticated plan
+    # names no attempt, and status says so rather than guessing a directory.
+    print(
+        "  attempt identity       "
+        + (
+            observation.attempt_identity[:16]
+            if observation.attempt_identity is not None
+            else "unresolved (the current plan does not authenticate)"
+        ),
+        flush=True,
+    )
     if observation.attempt_state is not None:
         print(f"  attempt state          {observation.attempt_state}", flush=True)
     for component, state in observation.component_states:
         print(f"  {component:<24} {state}", flush=True)
-    print(
-        "  locked activation        "
-        + (
-            f"activated {observation.locked_activated_at}"
-            if observation.locked_activated_at
-            else "not activated"
-        ),
-        flush=True,
+    from .observation import ABSENT, UNREADABLE
+
+    # "not activated" is a claim about irreversible disclosure, so it is said
+    # only when no activation pointer exists at all.  A pointer whose object
+    # does not authenticate is reported as unreadable, never as absent.
+    locked = {
+        ABSENT: "not activated",
+        UNREADABLE: "pointer present but the activation object is unreadable",
+    }.get(
+        observation.locked_state,
+        f"activated {observation.locked_activated_at}",
     )
+    print(f"  locked activation      {locked}", flush=True)
+    release = {
+        ABSENT: "none published",
+        UNREADABLE: "pointer present but the release index is unreadable",
+    }.get(
+        observation.release_state,
+        str(observation.release_evidence_digest)[:16],
+    )
+    print(f"  release evidence       {release}", flush=True)
     if observation.blocked_detail is not None:
         _warn(
             "current qualification evidence is incomplete or corrupt: "
