@@ -94,7 +94,11 @@ practical_equivalence_mev_per_a = 1.0
 
 
 def _fixture_campaign(
-    tmp_path: Path, *, regime: str | None = "production", approve: bool = True
+    tmp_path: Path,
+    *,
+    regime: str | None = "production",
+    approve: bool = True,
+    elements: tuple[str, ...] = ("Li", "O"),
 ) -> tuple[Path, Path]:
     """A real campaign workspace whose lower-level inputs are already built.
 
@@ -106,7 +110,9 @@ def _fixture_campaign(
 
     training_root = tmp_path / "sources"
     training_root.mkdir(parents=True, exist_ok=True)
-    manifest, sources, frames, data4 = _data4_bundle(training_root, regime=regime)
+    manifest, sources, frames, data4 = _data4_bundle(
+        training_root, regime=regime, elements=elements
+    )
 
     workspace = tmp_path / "campaign"
     config = tmp_path / "campaign.toml"
