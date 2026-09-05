@@ -74,12 +74,21 @@ publication completes before adoption.
 - the public lifecycle includes P7. `advance` may route ordinary
   `qualification run` and can never reach locked activation.
 
-### Partial Stage 5 - storage composition (INT-F, FINAL-C)
+### Stage 5 - storage composition (INT-F, R2-F, FINAL-C)
 
 - new `prepared_generation_view` owner adapter classifies `.mdstats/prepared` as
   restart state the current generation requires, with reachability derived from
   prepared manifests rather than from pathnames. No reference-count database, no
-  second cache, no new destructive path.
+  second cache, no new destructive path;
+- the affected Storage R38 operation family is exercised against one prepared
+  generation - report, deep report, safe and cache cleanup (dry run and apply),
+  deduplicate (dry run and apply), archive create (dry run and apply), archive
+  list - and after **every** operation a real downstream consumer re-loads the
+  generation and is proven to reach no preparation owner;
+- retiring a historical generation releases nothing the current one still
+  shares: two generations differing in one preparation policy share the entire
+  normalized payload plus several immutable components, and every applied
+  operation leaves that shared content byte-identical.
 
 ### FINAL-A / FINAL-B
 
@@ -88,28 +97,55 @@ publication completes before adoption.
   as that attempt's boundary state;
 - stale-P3-writer fencing is established through the real CAS transition.
 
+### Assembled lifecycle, property coverage, GPU and cost evidence
+
+- **root section 6.1**: one fresh workspace is driven through the real parser and
+  dispatch - prepare, select-target-size, cross-validate, train-production,
+  qualification status, qualification run - reopening the campaign and
+  re-observing between every stage, plus one genuine subprocess boundary. The
+  routing sequence is exactly the accepted lifecycle and ends truthfully at
+  `waiting_for_reference`. This test found and closed a real projection defect:
+  a published `waiting_for_reference` verdict was reported as a *completed*
+  qualification stage, which would have told an operator the campaign was done
+  while the product was still unqualified;
+- **root section 6.9 / final section 5.6**: a model-based state machine over the
+  real owners enumerates every bounded interleaving of observe, reopen, repeated
+  preparation, changed preparation and storage cleanup (85 walks), checking
+  generation monotonicity, immutability of published content, protection of what
+  the current generation requires, loader authentication, and agreement between
+  the public projection and the owner it projects. `hypothesis` is not a
+  dependency of this project; the enumeration is deterministic and total over the
+  bounded alphabet, so a failure names an exact reproducible sequence rather than
+  a seed;
+- **INT-B / P4-STAGE-E sections 6.9-6.10**: a real authenticated MACE checkpoint
+  is evaluated on the target hardware class (NVIDIA RTX 3090, 23.55 GiB) through
+  the production direct-inference owner with no forward override. Observed:
+  `valid_batch_size=1`, population 2, chunk widths `[1, 1]`, one provider state
+  across both chunks, peak allocated 16.4 MiB, peak reserved 22.0 MiB;
+- **root section 6.10 / P4 section 6.13 / R2 section 4.9**: measured on the real
+  commands - `select` first run, `select` resume and `status` each perform
+  **zero** DATA4 restores, **zero** source frame reads and **zero** preparation
+  builds, and `status` completes in ~0.01 s. Repeating an unchanged preparation
+  adds no published object at all; a changed preparation policy republishes only
+  the components it actually changes and reuses the entire normalized payload by
+  content identity. Warm prepared load keeps every normalized array backed by the
+  shared read-only mapping rather than private RAM.
+
 ## Executed evidence
 
 New focused/acceptance suites, all executing the real owners with numerical
 doubles strictly below them:
 
 - `tests/test_mlff_campaign_prepared_generation.py`
+- `tests/test_mlff_campaign_prepared_generation_efficiency.py`
 - `tests/test_mlff_bounded_direct_inference.py`
+- `tests/test_mlff_bounded_direct_inference_cuda.py`
 - `tests/test_mlff_campaign_observation_purity.py`
 - `tests/test_mlff_campaign_currentness_races.py`
 - `tests/test_mlff_target_size_first_boundary_interruption.py`
-
-Affected-surface regression, `pytest -k "mlff or storage or campaign"` on 24
-workers in the `mace` environment, compared against the same selection run on
-the unmodified branch baseline:
-
-- baseline: 307 failed, 1577 passed, 15 skipped, 8 errors;
-- candidate: identical failure set apart from one user-guide documentation
-  assertion that encoded the pre-repair "advance never runs qualification"
-  claim, which was corrected with the lifecycle change and now passes.
-
-No failure in that suite was introduced by this work. The 307 pre-existing
-failures are recorded below.
+- `tests/test_mlff_campaign_storage_composition.py`
+- `tests/test_mlff_campaign_stateful_properties.py`
+- `tests/test_mlff_campaign_assembled_lifecycle.py`
 
 Structural claims were validated with Semgrep rules checked against known
 positive and negative constructs before their zero-finding results were relied
@@ -118,42 +154,81 @@ no evidence-store opener creates its root unconditionally; the prepare-only
 builder is reachable only from `prepare`. Symbol-level caller closure confirms
 exactly two production consumers of the prepared-generation loader.
 
+### Affected-surface regression
+
+`pytest -k "mlff or storage or campaign"` in the `mace` environment, compared
+against the same selection run in a clean worktree at the unmodified branch head
+`28b56eb`:
+
+- true baseline: 299 failed, 1562 passed, 15 skipped, 8 errors;
+- the candidate introduced nine failures, each traced and repaired:
+  - one user-guide documentation assertion that encoded the pre-repair "advance
+    never runs qualification" claim, corrected with the lifecycle change;
+  - eight P5 provider-lifetime guards whose `_optimizer_policy_for` stand-in
+    omitted `valid_batch_size`; the accepted execution policy owns that bound,
+    so a stand-in without it was not standing in for the real thing.
+
+An earlier comparison in this cycle was run against a baseline that already
+contained the first commit's changes, and so under-reported the introduced
+failures. The comparison above is against the true unmodified head.
+
 ## Not implemented - the integration remains reopened
 
 The following composed obligations are **not** satisfied and no part of this
 progress should be read as closing them:
 
-- the complete fresh-workspace public lifecycle contract of root section 6.1
-  (`doctor` through qualification with restart boundaries at every marked point);
-- the full FINAL-A interruption matrix (cases 4-7: each required predecessor
-  continuation component deleted or corrupted after a committed boundary,
-  exercised through the campaign path);
-- FINAL-C / R2-F storage composition beyond retention classification: the
-  dedup, archive, verify, restore and maintenance operations have not been
-  exercised against the prepared representation, and no downstream consumer has
-  been re-run after each transformation;
+- the tail of root section 6.1 - supplying the authenticated reference bundle,
+  completing nonlocked qualification, explicit locked activation, and a terminal
+  release verdict - is blocked by the P7 fixture defect below;
+- FINAL-A cases 4-7: each required predecessor continuation component deleted or
+  corrupted after a committed boundary, exercised through the campaign path. The
+  first-rung half of the distinction is closed and the corrupt-predecessor half
+  is covered at the same owner by the existing P3A4/P3A7 restart negatives, but
+  not through the assembled campaign;
+- R2-F archive verify and restore against the prepared representation: no owner
+  in the bounded campaign declares cold-replaceable bulk, so `archive create`
+  catalogs nothing and there is no archive to verify or restore. Every other
+  affected storage operation is exercised;
 - R2-G irreversible locked-disclosure history across generation advance and
-  storage transformation;
-- the Hypothesis stateful/property coverage of root section 6.9 and final
-  section 5.6 (`hypothesis` is not installed in the project environment);
-- the bounded real-MACE CUDA smoke required by INT-B and P4-STAGE-E §6.9-6.10;
-- the performance/I-O evidence of root section 6.10 and R2 §4.9.
+  storage transformation, which requires a locked activation and is therefore
+  blocked by the same P7 defect.
 
-## Known pre-existing failures, not introduced here
+## Blocking: the P7 bounded qualification fixture cannot relax
 
-307 failures in the affected selection reproduce identically on the unmodified
-branch baseline. They fall into two groups:
+`tests/test_mlff_p7_post_production_qualification.py`, the P7 acceptance suites,
+and most of `test_mlff_storage_reset_integration.py` fail at
+`required_component_rejected:relaxation`. This is a **regression on this
+branch**, not a long-standing condition: `git bisect` over the single assembled
+P7 test identifies commit `4d61cd1` ("hotfix", carrying the P3 realized-MACE
+architecture identity repair and the post-DATA4 authority-reconstruction work)
+as the first bad commit; the test passes at its predecessor `323ea89`.
 
-- the assembled qualification fixture reaches
-  `required_component_rejected:relaxation`, which fails P7 and then cascades
-  through every suite built on a qualified campaign - most of
-  `test_mlff_storage_reset_integration.py` and the P7 acceptance suites;
-- several documentation/specification suites reference spec files that are not
-  present in the tree.
+The product owner is behaving correctly. `relax_fixed_cell` uses ASE's FIRE
+optimizer, the acceptance thresholds are untouched, and the component truthfully
+reports `relaxation_not_converged: step_budget_exhausted`. The defect is in the
+bounded acceptance *model*: the fixture's stand-in potential is a harmonic pair
+term with `r0 = 6.0 A` over a frustrated cell plus a per-frame constant force
+offset, and it does not have a minimum FIRE can reach from this base. Raising the
+budget does not help - measured over 25, 50, 200 and 600 steps the maximum force
+oscillates (2.60, 2.87, 1.90, 3.79 eV/A) instead of decreasing, while the relaxed
+geometry drifts several angstrom from the reference. A model that cannot be
+relaxed makes the relaxation component unexercisable in its passing direction: it
+can only ever reject.
 
-They are recorded rather than repaired because they are outside the changes
-above; they are, however, part of the assembled surface and must be resolved
-before any assembled closure claim.
+Repairing this means choosing a bounded reference potential with a reachable
+minimum near the canonical geometry. That is a decision about the accepted P7
+acceptance model rather than an implementation detail, and it is deliberately
+**not** patched here: raising a budget that demonstrably does not converge, or
+relaxing a scientific threshold, would manufacture a pass rather than establish
+one.
+
+## Other pre-existing failures, not introduced here
+
+Beyond the qualification cascade above, several documentation/specification
+suites reference spec files that are not present in the tree. They are recorded
+rather than repaired because they are outside the changes above; they are,
+however, part of the assembled surface and must be resolved before any assembled
+closure claim.
 
 Separately, running `prepare` again on a campaign whose generation is already
 terminal fails inside the result-view writer, which refuses to write terminal

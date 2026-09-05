@@ -437,14 +437,50 @@ def _qualification_step(
             )
         verdict = str(payload.get("verdict", "")) or "unknown"
         release = "release evidence published" if release_digest else "no release index"
+        # Only `rejected` and `release_qualified` are terminal verdicts.
+        # `waiting_for_reference` and `incomplete` are truthful *nonterminal*
+        # product states: qualification has run and has said, correctly, that it
+        # cannot finish yet. Reporting either as a completed stage would tell an
+        # operator the campaign is done when the product is still unqualified.
+        if verdict == "rejected":
+            return LifecycleStep(
+                "post_production_qualification",
+                "qualification run",
+                "qualification",
+                description,
+                LifecycleObservationState.COMPLETE,
+                f"terminal qualification verdict: rejected ({release})",
+                terminal=True,
+            )
+        if verdict == "release_qualified":
+            return LifecycleStep(
+                "post_production_qualification",
+                "qualification run",
+                "qualification",
+                description,
+                LifecycleObservationState.COMPLETE,
+                f"terminal qualification verdict: release_qualified ({release})",
+            )
+        if verdict == "waiting_for_reference":
+            return LifecycleStep(
+                "post_production_qualification",
+                "qualification run",
+                "qualification",
+                description,
+                LifecycleObservationState.WAITING,
+                "qualification is waiting for independent external reference "
+                "evidence; supply the requested bundle and rerun "
+                "`qualification run`",
+            )
         return LifecycleStep(
             "post_production_qualification",
             "qualification run",
             "qualification",
             description,
-            LifecycleObservationState.COMPLETE,
-            f"terminal qualification verdict: {verdict} ({release})",
-            terminal=verdict.upper() in {"REJECTED", "RELEASE_REJECTED"},
+            LifecycleObservationState.WAITING,
+            f"qualification is incomplete (verdict: {verdict}); rerun "
+            "`qualification run`. Locked evidence, when required, is activated "
+            "only by the explicit `qualification activate-locked` command",
         )
 
     if plan_digest is None:
