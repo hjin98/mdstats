@@ -570,3 +570,12 @@ No permanent documentation contract changed. The user guide's claim that `status
 and `qualification status` are observational in the strict sense is now more
 true, not less, and no architecture manual or specification names the modules
 that were changed, so no PDF republication is due.
+
+## Candidate identity
+
+Every result in this R2 section was produced on the working tree committed as
+executable candidate `84868ec` ("qualification status: one coherent,
+authenticated observation"). Only this progress record changed afterwards.
+
+This section records repair and evidence; it does not grant closure. The R2
+amendment's verdict is the reviewer's to change.
