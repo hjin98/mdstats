@@ -1635,6 +1635,24 @@ class Data8PreparationBundle:
         object.__setattr__(self, "sealed_outer_evaluations", tuple(self.sealed_outer_evaluations))
         object.__setattr__(self, "notes", tuple(str(v) for v in self.notes))
 
+    def require_current_mace_execution_compatibility(self) -> None:
+        """Authorize execution only from current, repaired MACE evidence.
+
+        DATA8 records remain readable when their nested compatibility records are
+        historical v1 records.  Readability is deliberately separate from the
+        current launch authority; callers that are about to execute MACE must
+        invoke this method.
+        """
+
+        if not self.compatibility_policy.current_execution_compatible:
+            raise TrainingDataInputError(
+                "Historical DATA8 MACE policy evidence cannot authorize current execution."
+            )
+        if not self.compatibility_probe.current_execution_compatible:
+            raise TrainingDataInputError(
+                "Historical DATA8 MACE source-probe evidence cannot authorize current execution."
+            )
+
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": DATA8_PREPARATION_BUNDLE_SCHEMA,
@@ -1726,4 +1744,3 @@ class Data8PreparationBundle:
         elif payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("DATA8 bundle digest mismatch.")
         return result
-

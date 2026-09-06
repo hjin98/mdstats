@@ -544,6 +544,10 @@ def _post_selection_mace_config(
         "max_num_epochs": int(planned_epochs),
         "ema": bool(optimizer_policy.ema),
         "ema_decay": float(optimizer_policy.ema_decay),
+        # TRAIN2 authenticates each completed epoch against the raw MACE
+        # checkpoint for that epoch.  Retaining every checkpoint is the
+        # existing checkpoint-control policy, not a post-hoc evidence aid.
+        "save_all_checkpoints": True,
         "amsgrad": bool(optimizer_policy.amsgrad),
         "weight_decay": float(optimizer_policy.weight_decay),
         "clip_grad": float(optimizer_policy.clip_grad),
@@ -1300,6 +1304,7 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "max_num_epochs",
     "ema",
     "ema_decay",
+    "save_all_checkpoints",
     "amsgrad",
     "weight_decay",
     "clip_grad",
@@ -1718,6 +1723,7 @@ def authenticate_post_selection_provider(
     summary: Any,
     evaluation_model_state: str,
     allow_forward_override: bool,
+    checkpoint_epoch: int | None = None,
 ) -> tuple[Any, str]:
     """Authenticate one post-selection checkpoint through the shared provider owner.
 
@@ -1741,24 +1747,77 @@ def authenticate_post_selection_provider(
             "Post-selection MACE configuration content changed before evaluation."
         )
     checkpoint_root = Path(checkpoint_directory)
+    effective_summary = summary
+    effective_companion_path = checkpoint_root / "train2_runtime.pt"
+    effective_checkpoint_epoch = checkpoint_epoch
+    if effective_checkpoint_epoch is None:
+        import re
+
+        match = re.search(r"_epoch-(\d+)\.pt$", Path(checkpoint_name).name)
+        if match is not None:
+            effective_checkpoint_epoch = int(match.group(1))
+    if effective_checkpoint_epoch is not None:
+        from .train2_runtime import (
+            load_train2_runtime_boundary_summary,
+            train2_runtime_boundary_companion_path,
+        )
+
+        try:
+            candidate_summary = load_train2_runtime_boundary_summary(
+                checkpoint_root, effective_checkpoint_epoch
+            )
+        except TrainingDataInputError:
+            latest_epoch = getattr(summary, "raw_checkpoint_epoch", None)
+            if latest_epoch != effective_checkpoint_epoch:
+                raise PostSelectionExecutionError(
+                    "The selected TRAIN2 checkpoint has no authenticated per-epoch runtime boundary."
+                )
+        else:
+            if candidate_summary.raw_checkpoint_sha256 != checkpoint_sha256:
+                raise PostSelectionExecutionError(
+                    "The selected TRAIN2 checkpoint disagrees with its per-epoch runtime boundary."
+                )
+            for field in (
+                "plan_digest",
+                "training_protocol_digest",
+                "optimizer_policy_digest",
+                "budget_policy_digest",
+                "lr_policy_digest",
+                "model_architecture_digest",
+                "mace_execution_evidence",
+            ):
+                if getattr(candidate_summary, field, None) != getattr(summary, field, None):
+                    raise PostSelectionExecutionError(
+                        "The selected TRAIN2 boundary does not belong to the authenticated run authority."
+                    )
+            companion_candidate = train2_runtime_boundary_companion_path(
+                checkpoint_root, effective_checkpoint_epoch
+            )
+            if not companion_candidate.is_file():
+                raise PostSelectionExecutionError(
+                    "The selected TRAIN2 checkpoint has no authenticated per-epoch continuation state."
+                )
+            effective_summary = candidate_summary
+            effective_companion_path = companion_candidate
     provider, evaluated_digest, _companion = authenticate_train2_checkpoint_provider(
         raw_checkpoint_path=checkpoint_root / checkpoint_name,
         raw_checkpoint_sha256=checkpoint_sha256,
-        companion_path=checkpoint_root / "train2_runtime.pt",
-        companion_sha256=_companion_sha256(checkpoint_root),
-        summary=summary,
+        companion_path=effective_companion_path,
+        companion_sha256=_companion_sha256(effective_companion_path),
+        summary=effective_summary,
         evaluation_model_state=evaluation_model_state,
         config_payload=config_payload,
         allow_forward_override=allow_forward_override,
+        raw_checkpoint_epoch=effective_checkpoint_epoch,
     )
     return provider, evaluated_digest
 
 
-def _companion_sha256(checkpoint_directory: Path) -> str:
-    companion = checkpoint_directory / "train2_runtime.pt"
+def _companion_sha256(companion: Path) -> str:
+    companion = Path(companion)
     if not companion.is_file():
         raise PostSelectionExecutionError(
-            f"TRAIN2 continuation companion missing in {checkpoint_directory}."
+            f"TRAIN2 continuation companion missing: {companion}."
         )
     return hashlib.sha256(companion.read_bytes()).hexdigest()
 

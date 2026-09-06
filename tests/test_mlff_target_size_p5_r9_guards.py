@@ -64,6 +64,7 @@ def _write_replay_file(path: Path, indices: list[int], *, energy_offset: float) 
             pbc=True,
         )
         atoms.info["REF_energy"] = -10.0 + energy_offset + 0.01 * index
+        atoms.info["frame_uid"] = f"replay-{index:04d}"
         atoms.arrays["REF_forces"] = np.asarray(
             [[0.1 + 0.001 * index, 0.0, 0.0], [-0.1 - 0.001 * index, 0.0, 0.0]],
             dtype=np.float64,

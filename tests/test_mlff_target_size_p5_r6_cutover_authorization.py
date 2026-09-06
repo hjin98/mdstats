@@ -41,8 +41,8 @@ from tests._mlff_post_selection_fixture import (
 
 #: The method-recipe token in force before the canonical optimizer/precision
 #: resolution cutover.
-HISTORICAL_METHOD_RECIPE = "mdstats.post-selection-method.2026-08.v1"
-CURRENT_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v2"
+HISTORICAL_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v2"
+CURRENT_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v3"
 
 
 def _historical_authorization(plan, acceptance, historical_method):

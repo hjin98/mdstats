@@ -36,6 +36,8 @@ TRAIN2_RUNTIME_SUMMARY_FILENAME = "train2_runtime.json"
 TRAIN2_RUNTIME_COMPANION_FILENAME = "train2_runtime.pt"
 TRAIN2_RUNTIME_HISTORY_FILENAME = "train2_history.jsonl"
 TRAIN2_PERSISTENCE_TELEMETRY_FILENAME = "train2_persistence.jsonl"
+TRAIN2_RUNTIME_BOUNDARY_SUMMARY_TEMPLATE = "train2_runtime_epoch-{epoch}.json"
+TRAIN2_RUNTIME_BOUNDARY_COMPANION_TEMPLATE = "train2_runtime_epoch-{epoch}.pt"
 TRAIN2_NUMERICAL_FAILURE_SCHEMA = "mdstats.train2-numerical-failure.v1"
 TRAIN2_NUMERICAL_FAILURE_FILENAME = "train2_numerical_failure.json"
 TRAIN2_NUMERICAL_FAILURE_CODES = frozenset({
@@ -44,6 +46,28 @@ TRAIN2_NUMERICAL_FAILURE_CODES = frozenset({
 })
 
 _ACTIVE_RUNTIME: "_Train2Runtime | None" = None
+
+
+def train2_runtime_boundary_summary_path(
+    checkpoint_directory: str | Path, epoch: int
+) -> Path:
+    """Return the authenticated per-epoch summary path for one checkpoint."""
+
+    return (
+        Path(checkpoint_directory).resolve()
+        / TRAIN2_RUNTIME_BOUNDARY_SUMMARY_TEMPLATE.format(epoch=int(epoch))
+    )
+
+
+def train2_runtime_boundary_companion_path(
+    checkpoint_directory: str | Path, epoch: int
+) -> Path:
+    """Return the authenticated per-epoch state path for one checkpoint."""
+
+    return (
+        Path(checkpoint_directory).resolve()
+        / TRAIN2_RUNTIME_BOUNDARY_COMPANION_TEMPLATE.format(epoch=int(epoch))
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -406,6 +430,8 @@ def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
     matches = []
     for item in directory.glob("*.pt"):
         name = item.name
+        if name.startswith("train2_runtime_epoch-"):
+            continue
         if f"epoch-{int(epoch)}" in name or f"epoch_{int(epoch)}" in name:
             matches.append(item)
     if len(matches) != 1:
@@ -1082,6 +1108,14 @@ class _Train2Runtime:
             companion["model_architecture_digest"] = model_architecture_digest
         companion_write_started = time.perf_counter()
         _atomic_torch_save(self.companion_path, companion)
+        # The latest companion above is the exact-resume authority.  Keep one
+        # immutable boundary companion per completed epoch as well so EVAL2 can
+        # authenticate an earlier checkpoint candidate without applying a later
+        # epoch's live/EMA state.
+        _atomic_torch_save(
+            train2_runtime_boundary_companion_path(self.checkpoint_directory, epoch),
+            companion,
+        )
         companion_write_seconds = time.perf_counter() - companion_write_started
         summary = Train2RuntimeSummary(
             plan_digest=self.plan.content_digest,
@@ -1115,6 +1149,10 @@ class _Train2Runtime:
         )
         summary_write_started = time.perf_counter()
         _atomic_json(self.summary_path, summary.to_dict())
+        _atomic_json(
+            train2_runtime_boundary_summary_path(self.checkpoint_directory, epoch),
+            summary.to_dict(),
+        )
         summary_write_seconds = time.perf_counter() - summary_write_started
         loss, validation = self._read_new_metrics(epoch)
         history = {
@@ -1345,6 +1383,30 @@ def load_train2_runtime_summary(checkpoint_directory: str | Path) -> Train2Runti
     return Train2RuntimeSummary.from_dict(payload)
 
 
+def load_train2_runtime_boundary_summary(
+    checkpoint_directory: str | Path, epoch: int
+) -> Train2RuntimeSummary:
+    """Load one authenticated historical TRAIN2 checkpoint boundary."""
+
+    path = train2_runtime_boundary_summary_path(checkpoint_directory, epoch)
+    if not path.is_file():
+        raise TrainingDataInputError(
+            f"TRAIN2 boundary runtime summary is missing for epoch {int(epoch)}: {path}"
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise TrainingDataSerializationError(
+            f"TRAIN2 boundary runtime summary is corrupt and cannot be read: {path}"
+        ) from exc
+    result = Train2RuntimeSummary.from_dict(payload)
+    if result.raw_checkpoint_epoch != int(epoch):
+        raise TrainingDataSerializationError(
+            "TRAIN2 boundary runtime summary epoch does not match its path."
+        )
+    return result
+
+
 def build_train2_runtime_plan(
     job: Any, *, execution_epoch_limit: int | None = None,
     true_replay_monitor_sha256: str | None = None,
@@ -1385,5 +1447,8 @@ __all__ = [
     "train2_runtime_should_pause_after_epoch",
     "validate_train2_runtime_continuation_artifacts",
     "load_train2_runtime_summary",
+    "load_train2_runtime_boundary_summary",
+    "train2_runtime_boundary_summary_path",
+    "train2_runtime_boundary_companion_path",
     "verify_train2_checkpoint_model_parameters",
 ]

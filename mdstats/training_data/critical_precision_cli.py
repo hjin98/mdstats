@@ -173,7 +173,7 @@ def _qualify_mace_execution_source(authority: dict[str, Any]) -> dict[str, Any]:
             "The installed MACE source could not be qualified for the mdstats "
             f"execution repair: {type(exc).__name__}: {exc}"
         ) from exc
-    if not probe.fixed_file_adapter_supported:
+    if not probe.current_execution_compatible:
         raise RuntimeError(
             "The installed MACE source does not match the qualified 0.3.16 "
             "execution semantics; refusing to patch or run it."

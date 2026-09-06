@@ -29,6 +29,8 @@ from ._common import (
 
 MACE_COMPATIBILITY_POLICY_SCHEMA = "mdstats.mace-compatibility-policy.v2"
 MACE_SOURCE_PROBE_SCHEMA = "mdstats.mace-source-probe.v2"
+MACE_COMPATIBILITY_POLICY_LEGACY_SCHEMA = "mdstats.mace-compatibility-policy.v1"
+MACE_SOURCE_PROBE_LEGACY_SCHEMA = "mdstats.mace-source-probe.v1"
 MACE_CHECKPOINT_CONTROL_POLICY_SCHEMA = "mdstats.mace-checkpoint-control-policy.v1"
 MACE_LOADER_DRY_RUN_SCHEMA = "mdstats.mace-loader-dry-run.v1"
 MACE_COMPATIBILITY_POLICY_VERSION = "mdstats.mlff-data8.mace-compatibility.2026-09.v2"
@@ -154,7 +156,14 @@ class MaceCompatibilityPolicy:
         "https://raw.githubusercontent.com/ACEsuit/mace/v0.3.16/mace/tools/multihead_tools.py"
     )
     policy_version: str = MACE_COMPATIBILITY_POLICY_VERSION
-    execution_semantics_version: str = MACE_EXECUTION_SEMANTICS_VERSION
+    execution_semantics_version: str | None = MACE_EXECUTION_SEMANTICS_VERSION
+    serialization_schema: str = MACE_COMPATIBILITY_POLICY_SCHEMA
+    _historical_payload: dict[str, Any] | None = dataclass_field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _historical_policy_digest: str | None = dataclass_field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if self.package_name != "mace-torch" or self.package_version != "0.3.16":
@@ -168,19 +177,29 @@ class MaceCompatibilityPolicy:
             "train_source_url",
             "multihead_source_url",
             "policy_version",
-            "execution_semantics_version",
         ):
             if not str(getattr(self, name)).strip():
                 raise TrainingDataInputError(f"{name} must be non-empty.")
-        if self.execution_semantics_version != MACE_EXECUTION_SEMANTICS_VERSION:
-            raise TrainingDataInputError(
-                "MACE compatibility policy carries an unsupported execution "
-                "semantics revision."
-            )
+        if self.serialization_schema == MACE_COMPATIBILITY_POLICY_SCHEMA:
+            if self.execution_semantics_version != MACE_EXECUTION_SEMANTICS_VERSION:
+                raise TrainingDataInputError(
+                    "MACE compatibility policy carries an unsupported execution "
+                    "semantics revision."
+                )
+        elif self.serialization_schema == MACE_COMPATIBILITY_POLICY_LEGACY_SCHEMA:
+            if self.execution_semantics_version is not None:
+                raise TrainingDataInputError(
+                    "Historical MACE compatibility records cannot carry current "
+                    "execution semantics."
+                )
+        else:
+            raise TrainingDataInputError("Unsupported MACE compatibility schema.")
 
     def _payload(self) -> dict[str, Any]:
+        if self._historical_payload is not None:
+            return dict(self._historical_payload)
         return {
-            "schema": MACE_COMPATIBILITY_POLICY_SCHEMA,
+            "schema": self.serialization_schema,
             "package_name": self.package_name,
             "package_version": self.package_version,
             "release_tag": self.release_tag,
@@ -194,15 +213,76 @@ class MaceCompatibilityPolicy:
 
     @property
     def policy_digest(self) -> str:
+        if self._historical_policy_digest is not None:
+            return self._historical_policy_digest
         return digest(self._payload())
 
     def to_dict(self) -> dict[str, Any]:
+        if self._historical_payload is not None:
+            return {
+                **self._historical_payload,
+                "policy_digest": self.policy_digest,
+            }
         return {**self._payload(), "policy_digest": self.policy_digest}
+
+    @property
+    def current_execution_compatible(self) -> bool:
+        """Whether this readable record can authorize current MACE execution."""
+
+        return (
+            self.serialization_schema == MACE_COMPATIBILITY_POLICY_SCHEMA
+            and self.execution_semantics_version == MACE_EXECUTION_SEMANTICS_VERSION
+            and self.policy_version == MACE_COMPATIBILITY_POLICY_VERSION
+        )
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MaceCompatibilityPolicy":
-        if payload.get("schema") != MACE_COMPATIBILITY_POLICY_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in {
+            MACE_COMPATIBILITY_POLICY_SCHEMA,
+            MACE_COMPATIBILITY_POLICY_LEGACY_SCHEMA,
+        }:
             raise TrainingDataSerializationError("Unsupported MACE compatibility schema.")
+        if schema == MACE_COMPATIBILITY_POLICY_LEGACY_SCHEMA:
+            expected_keys = {
+                "schema",
+                "package_name",
+                "package_version",
+                "release_tag",
+                "release_commit",
+                "run_train_source_url",
+                "train_source_url",
+                "multihead_source_url",
+                "policy_version",
+                "policy_digest",
+            }
+            if set(payload) != expected_keys:
+                raise TrainingDataSerializationError(
+                    "Historical MACE compatibility record has an unexpected serialized shape."
+                )
+            historical_payload = {
+                key: value for key, value in payload.items() if key != "policy_digest"
+            }
+            expected_digest = digest(historical_payload)
+            if payload["policy_digest"] != expected_digest:
+                raise TrainingDataSerializationError(
+                    "Historical MACE compatibility digest mismatch."
+                )
+            result = cls(
+                package_name=str(payload["package_name"]),
+                package_version=str(payload["package_version"]),
+                release_tag=str(payload["release_tag"]),
+                release_commit=str(payload["release_commit"]),
+                run_train_source_url=str(payload["run_train_source_url"]),
+                train_source_url=str(payload["train_source_url"]),
+                multihead_source_url=str(payload["multihead_source_url"]),
+                policy_version=str(payload["policy_version"]),
+                execution_semantics_version=None,
+                serialization_schema=MACE_COMPATIBILITY_POLICY_LEGACY_SCHEMA,
+            )
+            object.__setattr__(result, "_historical_payload", historical_payload)
+            object.__setattr__(result, "_historical_policy_digest", expected_digest)
+            return result
         result = cls(
             package_name=str(payload["package_name"]),
             package_version=str(payload["package_version"]),
@@ -229,15 +309,22 @@ class MaceSourceProbe:
     target_validation_head_is_last: bool
     native_checkpoint_uses_last_validation_head: bool
     implicit_target_duplication_present: bool
-    multihead_forced_universal_loss_present: bool
-    multihead_lr_ema_override_present: bool
-    target_per_head_drop_last_present: bool
-    target_distributed_sampler_drop_last_present: bool
-    target_combined_loader_drop_last_present: bool
-    dry_run_supported: bool
-    save_all_checkpoints_supported: bool
-    fixed_file_adapter_supported: bool
+    multihead_forced_universal_loss_present: bool = False
+    multihead_lr_ema_override_present: bool = False
+    target_per_head_drop_last_present: bool = False
+    target_distributed_sampler_drop_last_present: bool = False
+    target_combined_loader_drop_last_present: bool = False
+    dry_run_supported: bool = False
+    save_all_checkpoints_supported: bool = False
+    fixed_file_adapter_supported: bool = False
     evidence_notes: tuple[str, ...] = ()
+    serialization_schema: str = MACE_SOURCE_PROBE_SCHEMA
+    _historical_payload: dict[str, Any] | None = dataclass_field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _historical_content_digest: str | None = dataclass_field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         for name in (
@@ -247,26 +334,43 @@ class MaceSourceProbe:
             "multihead_sha256",
         ):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
-        expected = (
-            self.pt_head_sorted_first
-            and self.target_validation_head_is_last
-            and self.native_checkpoint_uses_last_validation_head
-            and self.implicit_target_duplication_present
-            and self.multihead_forced_universal_loss_present
-            and self.multihead_lr_ema_override_present
-            and self.target_per_head_drop_last_present
-            and self.target_distributed_sampler_drop_last_present
-            and self.target_combined_loader_drop_last_present
-            and self.dry_run_supported
-            and self.save_all_checkpoints_supported
-        )
+        if self.serialization_schema == MACE_SOURCE_PROBE_SCHEMA:
+            expected = (
+                self.pt_head_sorted_first
+                and self.target_validation_head_is_last
+                and self.native_checkpoint_uses_last_validation_head
+                and self.implicit_target_duplication_present
+                and self.multihead_forced_universal_loss_present
+                and self.multihead_lr_ema_override_present
+                and self.target_per_head_drop_last_present
+                and self.target_distributed_sampler_drop_last_present
+                and self.target_combined_loader_drop_last_present
+                and self.dry_run_supported
+                and self.save_all_checkpoints_supported
+            )
+        elif self.serialization_schema == MACE_SOURCE_PROBE_LEGACY_SCHEMA:
+            # The pre-repair probe did not qualify the four execution behaviors
+            # repaired in this lineage.  Its support bit is checked only against
+            # the historical fields; it is never promoted to current evidence.
+            expected = (
+                self.pt_head_sorted_first
+                and self.target_validation_head_is_last
+                and self.native_checkpoint_uses_last_validation_head
+                and self.implicit_target_duplication_present
+                and self.dry_run_supported
+                and self.save_all_checkpoints_supported
+            )
+        else:
+            raise TrainingDataInputError("Unsupported MACE source-probe schema.")
         if self.fixed_file_adapter_supported != expected:
             raise TrainingDataInputError("MACE source-probe support state is inconsistent.")
         object.__setattr__(self, "evidence_notes", tuple(str(v) for v in self.evidence_notes))
 
     def _payload(self) -> dict[str, Any]:
+        if self._historical_payload is not None:
+            return dict(self._historical_payload)
         return {
-            "schema": MACE_SOURCE_PROBE_SCHEMA,
+            "schema": self.serialization_schema,
             "policy_digest": self.policy_digest,
             "run_train_sha256": self.run_train_sha256,
             "train_sha256": self.train_sha256,
@@ -288,15 +392,96 @@ class MaceSourceProbe:
 
     @property
     def content_digest(self) -> str:
+        if self._historical_content_digest is not None:
+            return self._historical_content_digest
         return digest(self._payload())
 
     def to_dict(self) -> dict[str, Any]:
+        if self._historical_payload is not None:
+            return {
+                **self._historical_payload,
+                "content_digest": self.content_digest,
+            }
         return {**self._payload(), "content_digest": self.content_digest}
+
+    @property
+    def current_execution_compatible(self) -> bool:
+        """Whether this readable probe qualifies the repaired execution seam."""
+
+        return (
+            self.serialization_schema == MACE_SOURCE_PROBE_SCHEMA
+            and self.multihead_forced_universal_loss_present
+            and self.multihead_lr_ema_override_present
+            and self.target_per_head_drop_last_present
+            and self.target_distributed_sampler_drop_last_present
+            and self.target_combined_loader_drop_last_present
+            and self.fixed_file_adapter_supported
+        )
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MaceSourceProbe":
-        if payload.get("schema") != MACE_SOURCE_PROBE_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in {MACE_SOURCE_PROBE_SCHEMA, MACE_SOURCE_PROBE_LEGACY_SCHEMA}:
             raise TrainingDataSerializationError("Unsupported MACE source-probe schema.")
+        if schema == MACE_SOURCE_PROBE_LEGACY_SCHEMA:
+            expected_keys = {
+                "schema",
+                "policy_digest",
+                "run_train_sha256",
+                "train_sha256",
+                "multihead_sha256",
+                "pt_head_sorted_first",
+                "target_validation_head_is_last",
+                "native_checkpoint_uses_last_validation_head",
+                "implicit_target_duplication_present",
+                "dry_run_supported",
+                "save_all_checkpoints_supported",
+                "fixed_file_adapter_supported",
+                "evidence_notes",
+                "content_digest",
+            }
+            if set(payload) != expected_keys:
+                raise TrainingDataSerializationError(
+                    "Historical MACE source-probe record has an unexpected serialized shape."
+                )
+            historical_payload = {
+                key: value for key, value in payload.items() if key != "content_digest"
+            }
+            expected_digest = digest(historical_payload)
+            if payload["content_digest"] != expected_digest:
+                raise TrainingDataSerializationError(
+                    "Historical MACE source-probe digest mismatch."
+                )
+            result = cls(
+                policy_digest=str(payload["policy_digest"]),
+                run_train_sha256=str(payload["run_train_sha256"]),
+                train_sha256=str(payload["train_sha256"]),
+                multihead_sha256=str(payload["multihead_sha256"]),
+                pt_head_sorted_first=bool(payload["pt_head_sorted_first"]),
+                target_validation_head_is_last=bool(
+                    payload["target_validation_head_is_last"]
+                ),
+                native_checkpoint_uses_last_validation_head=bool(
+                    payload["native_checkpoint_uses_last_validation_head"]
+                ),
+                implicit_target_duplication_present=bool(
+                    payload["implicit_target_duplication_present"]
+                ),
+                dry_run_supported=bool(payload["dry_run_supported"]),
+                save_all_checkpoints_supported=bool(
+                    payload["save_all_checkpoints_supported"]
+                ),
+                fixed_file_adapter_supported=bool(
+                    payload["fixed_file_adapter_supported"]
+                ),
+                evidence_notes=tuple(
+                    str(v) for v in payload.get("evidence_notes", ())
+                ),
+                serialization_schema=MACE_SOURCE_PROBE_LEGACY_SCHEMA,
+            )
+            object.__setattr__(result, "_historical_payload", historical_payload)
+            object.__setattr__(result, "_historical_content_digest", expected_digest)
+            return result
         result = cls(
             policy_digest=str(payload["policy_digest"]),
             run_train_sha256=str(payload["run_train_sha256"]),
@@ -1046,8 +1231,10 @@ def emulate_mace_v0316_loader_dry_run(
     checkpoint_policy: MaceCheckpointControlPolicy | None = None,
     config_path: str = "mace_config.yaml",
 ) -> MaceLoaderDryRun:
-    if not compatibility_probe.fixed_file_adapter_supported:
-        raise TrainingDataInputError("MACE source probe does not support the fixed-file adapter.")
+    if not compatibility_probe.current_execution_compatible:
+        raise TrainingDataInputError(
+            "MACE source probe is historical or does not support the current fixed-file execution seam."
+        )
     active = MaceCheckpointControlPolicy() if checkpoint_policy is None else checkpoint_policy
     if target_train_count <= 0 or target_validation_count <= 0:
         raise TrainingDataInputError("Target train and validation counts must be positive.")

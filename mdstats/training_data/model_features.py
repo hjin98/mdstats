@@ -638,6 +638,7 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
         ) from exc
     if np.any(~np.isfinite(atomic_energies)):
         raise TrainingDataInputError("MACE model configuration E0s must be finite.")
+    configuration_atomic_energies = atomic_energies.copy()
     device = str(config_payload.get("device", "")).strip()
     default_dtype = str(config_payload.get("default_dtype", "")).strip()
     if device not in {"cpu", "cuda", "mps", "xpu"}:
@@ -650,14 +651,33 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
         import torch
         from mace import tools
         from mace.data import KeySpecification as MaceKeySpecification
+        from mace.tools.finetuning_utils import load_foundations_elements
         from mace.tools.model_script_utils import configure_model
         from mace.tools.multihead_tools import HeadConfig as MaceHeadConfig
+        from mace.tools.scripts_utils import remove_pt_head
     except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
         raise TrainingDataInputError(
             "Real target-size MACE reconstruction requires mace-torch."
         ) from exc
 
     try:
+        configured_heads = config_payload.get("heads")
+        if isinstance(configured_heads, Mapping):
+            # Pinned MACE places pt_head first before constructing the native
+            # multihead model.  Reconstruct that same order from the
+            # authenticated executable head map rather than from the P3-only
+            # architecture projection.
+            heads = sorted(
+                (str(value) for value in configured_heads),
+                key=lambda value: -1000 if value == "pt_head" else 0,
+            )
+        elif bool(config_payload.get("multiheads_finetuning")):
+            # A post-selection single-head run reaches MACE's Default head;
+            # target_head is the P3 namespace and is not silently reused here.
+            heads = ["Default"]
+        else:
+            heads = [str(value) for value in architecture["heads"]]
+
         args = tools.build_default_arg_parser().parse_args(
             ["--name", str(config_payload.get("name", "target-size"))]
         )
@@ -694,26 +714,101 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
         args.scaling = architecture["scaling"]
         args.mean = architecture["mean"]
         args.std = architecture["std"]
-        args.loss = architecture["loss"]
-        heads = [str(value) for value in architecture["heads"]]
+        args.loss = str(config_payload.get("loss", architecture["loss"]))
         args.heads = list(heads)
         args.compute_energy = True
         args.compute_forces = True
         args.compute_dipole = False
         args.compute_polarizability = False
         z_table = tools.AtomicNumberTable(list(atomic_numbers))
+
+        foundation_model = None
+        foundation_path = config_payload.get("foundation_model")
+        if foundation_path:
+            foundation_path = Path(str(foundation_path)).resolve()
+            if not foundation_path.is_file():
+                raise TrainingDataInputError(
+                    f"MACE foundation model does not exist: {foundation_path}"
+                )
+            foundation_model = torch.load(
+                str(foundation_path), map_location="cpu", weights_only=False
+            )
+            foundation_heads = [
+                str(value) for value in getattr(foundation_model, "heads", ())
+            ]
+            requested_foundation_head = str(
+                config_payload.get("foundation_head") or "default"
+            )
+            if len(foundation_heads) > 1:
+                foundation_model = remove_pt_head(
+                    foundation_model, requested_foundation_head
+                )
+
+        head_payloads = configured_heads if isinstance(configured_heads, Mapping) else {}
+
+        def _foundation_atomic_energies() -> dict[int, float]:
+            if foundation_model is None:
+                return {}
+            values = getattr(
+                getattr(foundation_model, "atomic_energies_fn", None),
+                "atomic_energies",
+                None,
+            )
+            if values is None:
+                return {}
+            values = values.detach().cpu()
+            if values.ndim > 1:
+                values = values[0]
+            foundation_z = tools.AtomicNumberTable(
+                [int(value) for value in foundation_model.atomic_numbers]
+            )
+            return {
+                int(z): float(values[foundation_z.z_to_index(int(z))].item())
+                for z in atomic_numbers
+            }
+
+        foundation_e0s = _foundation_atomic_energies()
+
+        def _head_atomic_energies(head: str) -> list[float]:
+            head_payload = head_payloads.get(head, {})
+            e0_payload = (
+                head_payload.get("E0s")
+                if isinstance(head_payload, Mapping)
+                else None
+            )
+            if isinstance(e0_payload, Mapping):
+                return [
+                    float(
+                        e0_payload[str(z)]
+                        if str(z) in e0_payload
+                        else e0_payload[z]
+                    )
+                    for z in atomic_numbers
+                ]
+            if foundation_e0s:
+                return [foundation_e0s[int(z)] for z in atomic_numbers]
+            return list(configuration_atomic_energies)
+
+        atomic_energies = np.asarray(
+            [_head_atomic_energies(head) for head in heads], dtype=np.float64
+        )
         # Real MACE training reaches ``configure_model`` with one HeadConfig per
         # dataset head and with per-head atomic energies, which is what decides
         # the realized shapes of the scale/shift and atomic-energy buffers.
         # Reconstructing through the same call shape is what makes the
         # reconstructed model the same architecture rather than a lookalike.
         head_configs = [
-            MaceHeadConfig(head_name=name, key_specification=MaceKeySpecification())
+            MaceHeadConfig(
+                head_name=name,
+                key_specification=MaceKeySpecification(),
+                E0s=(
+                    None
+                    if not isinstance(head_payloads.get(name), Mapping)
+                    else head_payloads[name].get("E0s")
+                ),
+            )
             for name in heads
         ]
-        head_atomic_energies = np.repeat(
-            atomic_energies[np.newaxis, :], len(heads), axis=0
-        )
         requested_dtype = torch.float32 if default_dtype == "float32" else torch.float64
         previous_dtype = torch.get_default_dtype()
         torch.set_default_dtype(requested_dtype)
@@ -721,14 +816,23 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
             model, _output_args = configure_model(
                 args,
                 None,
-                head_atomic_energies,
-                model_foundation=None,
+                atomic_energies,
+                model_foundation=foundation_model,
                 heads=list(heads),
                 z_table=z_table,
                 head_configs=head_configs,
             )
         finally:
             torch.set_default_dtype(previous_dtype)
+        if foundation_model is not None:
+            model = load_foundations_elements(
+                model,
+                foundation_model,
+                z_table,
+                load_readout=bool(getattr(args, "foundation_filter_elements", True)),
+                max_L=int(getattr(args, "max_L", architecture["max_L"])),
+                default_dtype=requested_dtype,
+            )
         model = model.to(device="cpu", dtype=requested_dtype)
     except (AssertionError, AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
         raise TrainingDataInputError(

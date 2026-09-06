@@ -78,6 +78,11 @@ DEFAULT_CV_MAX_NUM_EPOCHS = 30
 POST_SELECTION_TARGET_HEAD_NAME = "target_head"
 POST_SELECTION_REPLAY_HEAD_NAME = "pt_head"
 
+# The current method recipe is the method-level cutover token.  It advances
+# once for the repaired MACE execution semantics and is shared by scratch,
+# naive fine-tuning, and replay rather than being maintained per mode.
+POST_SELECTION_METHOD_RECIPE_VERSION = "mdstats.post-selection-method.2026-09.v3"
+
 
 def _table(config: Mapping[str, Any], *path: str) -> Mapping[str, Any]:
     current: Any = config
@@ -1331,7 +1336,7 @@ def resolve_post_selection_method_identity(
         # evidence may have executed different effective values than its
         # identity claimed, so it must not authenticate under the corrected
         # method.
-        method_recipe_version="mdstats.post-selection-method.2026-09.v2",
+        method_recipe_version=POST_SELECTION_METHOD_RECIPE_VERSION,
         training_mode=resolved.training_mode,
         common_training_policy_digest=resolved.common_training.content_digest,
         learning_rate_schedule_policy_digest=(

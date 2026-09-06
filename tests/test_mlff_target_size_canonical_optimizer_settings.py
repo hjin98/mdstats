@@ -486,7 +486,7 @@ def test_c_target_size_horizon_comes_from_the_screen_schedule():
 
 def test_e_method_recipe_version_is_the_corrected_generation():
     identity = resolve_post_selection_method_identity(_config())
-    assert identity.method_recipe_version == "mdstats.post-selection-method.2026-09.v2"
+    assert identity.method_recipe_version == "mdstats.post-selection-method.2026-09.v3"
 
 
 def test_e_old_method_recipe_evidence_cannot_authorize_corrected_runs():

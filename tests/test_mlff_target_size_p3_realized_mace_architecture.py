@@ -262,6 +262,44 @@ def test_p3_real_train2_builds_the_canonical_target_head_and_common_normalizatio
     )
 
 
+def test_p3_real_train2_records_nondivisible_target_exposure_and_native_update_evidence(
+    tmp_path: Path,
+):
+    """The real P3 path proves ``ceil(N/B)`` and native MACE loss/update evidence.
+
+    This deliberately uses an admissible ``N=4`` with ``B=3``.  The target
+    materialization, ExtXYZ export, parser config, qualified wrapper, pinned
+    MACE loader/loss path, and durable TRAIN2 summary are all production owners;
+    no weights or evidence are injected after export.
+    """
+
+    env = p3e._env(tmp_path, batch_size=3)
+    trajectory, materialization, directory = _materialize(
+        env, tmp_path, target_size=4, optimizer_seed=1
+    )
+    _boundary, _checkpoint_directory, summary = _train_real_boundary(
+        env, tmp_path, trajectory, materialization, directory
+    )
+
+    evidence = summary.mace_execution_evidence
+    assert evidence is not None
+    assert trajectory.realization.target_train_count == 4
+    assert trajectory.realization.batch_size == 3
+    assert trajectory.realization.updates_per_epoch == 2
+    assert summary.updates_per_epoch == 2
+    assert summary.completed_updates == summary.completed_epochs * 2
+    assert evidence["role"] == "target_size"
+    assert evidence["target_train_count"] == 4
+    assert evidence["target_batch_size"] == 3
+    assert evidence["target_updates_per_epoch"] == 2
+    assert evidence["target_drop_last"] is False
+    assert evidence["target_duplication_factor"] == 1
+    assert evidence["loss_class"] == "mace.modules.loss.WeightedEnergyForcesStressLoss"
+    assert evidence["target_frame_uid_set_digest"] == mdstats.mace_frame_uid_set_digest(
+        materialization.target_train_artifact.frame_uids
+    )
+
+
 def test_p3_two_candidate_sizes_consume_one_common_normalization(tmp_path: Path):
     """``N`` changes data cardinality only; model construction is invariant."""
 
