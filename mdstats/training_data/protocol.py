@@ -11,6 +11,7 @@ from ._common import (
     TrainingDataInputError,
     TrainingDataSerializationError,
     digest,
+    strict_finite_real,
     strict_string,
     validate_digest,
 )
@@ -91,12 +92,26 @@ class MaceOptimizerPolicy:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int):
                 raise TrainingDataInputError(f"MACE optimizer {name} must be an integer.")
-        for name in ("learning_rate", "ema_decay", "weight_decay", "clip_grad"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise TrainingDataInputError(f"MACE optimizer {name} must be a real number.")
-            if not math.isfinite(float(value)):
-                raise TrainingDataInputError(f"MACE optimizer {name} must be finite.")
+        real_domains = {
+            "learning_rate": {"minimum": 0.0},
+            "ema_decay": {"minimum": 0.0, "maximum": 1.0},
+            "weight_decay": {"minimum": 0.0, "exclusive_minimum": False},
+            "clip_grad": {"minimum": 0.0},
+        }
+        for name, domain in real_domains.items():
+            # Validate before assigning so independently constructed policies
+            # cannot retain an integer spelling of a real method value.  The
+            # shared helper also keeps bool/string/non-finite rejection and
+            # canonical float conversion identical to the other policy owners.
+            object.__setattr__(
+                self,
+                name,
+                strict_finite_real(
+                    getattr(self, name),
+                    name=f"MACE optimizer {name}",
+                    **domain,
+                ),
+            )
         for name in ("ema", "amsgrad"):
             if not isinstance(getattr(self, name), bool):
                 raise TrainingDataInputError(f"MACE optimizer {name} must be a boolean.")

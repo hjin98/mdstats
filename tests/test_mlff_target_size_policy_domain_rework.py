@@ -187,3 +187,29 @@ def test_persisted_mace_optimizer_positive_payload_round_trips_without_drift() -
     restored = MaceOptimizerPolicy.from_dict(policy.to_dict())
     assert restored == policy
     assert restored.policy_digest == policy.policy_digest
+
+
+def test_mace_optimizer_real_fields_have_one_integer_float_identity() -> None:
+    integer_spelling = MaceOptimizerPolicy(
+        device="cpu",
+        learning_rate=1,
+        ema_decay=1 - 1 / 100,
+        weight_decay=2,
+        clip_grad=10,
+    )
+    float_spelling = MaceOptimizerPolicy(
+        device="cpu",
+        learning_rate=1.0,
+        ema_decay=0.99,
+        weight_decay=2.0,
+        clip_grad=10.0,
+    )
+
+    assert integer_spelling.to_dict() == float_spelling.to_dict()
+    assert integer_spelling.policy_digest == float_spelling.policy_digest
+    for field in ("learning_rate", "ema_decay", "weight_decay", "clip_grad"):
+        assert isinstance(getattr(integer_spelling, field), float)
+
+    restored = MaceOptimizerPolicy.from_dict(integer_spelling.to_dict())
+    assert restored.to_dict() == float_spelling.to_dict()
+    assert restored.policy_digest == float_spelling.policy_digest

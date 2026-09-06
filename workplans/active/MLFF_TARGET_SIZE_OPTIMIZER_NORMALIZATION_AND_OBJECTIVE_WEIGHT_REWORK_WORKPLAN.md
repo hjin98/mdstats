@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: MLFF-TARGET-SIZE-OPTIMIZER-NORMALIZATION-AND-OBJECTIVE-WEIGHT-REWORK
 protocol_version: 5.15.0
-status: rework-required
+status: implemented-pending-independent-review
 created_date: 2026-09-05
 amended_date: 2026-09-06
 review_revision: 7
@@ -582,3 +582,77 @@ Close this workplan only when all are true:
 
 **Independent Software Design review verdict: NO-PASS / rework-required.**  
 **Frozen scientific/high-level architecture verdict: PASS / no redesign.**
+
+## 11. Rework implementation evidence — 2026-09-06
+
+The R7-1 and R7-2 repairs are implemented on the dedicated branch. The
+executable candidate used for validation is base commit
+`573ba3005edc40810cbbe009de8de18915ca5728` plus the working-tree changes in:
+
+- `mdstats/training_data/protocol.py`
+- `tests/test_mlff_target_size_policy_domain_rework.py`
+- `tests/test_mlff_target_size_mace_objective_realization.py`
+
+The binary diff digest for those three candidate files is
+`f2d8204ff65b443fa5676c1773c727345c9d0b82de801e14a0b18065196a65f7`.
+The earlier `reviewed_*` commit identities and `NO-PASS` verdicts above remain
+the historical independent-review record; this evidence records implementation
+completion pending a fresh independent review of the new candidate.
+
+### Focused acceptance
+
+```text
+conda run -n mace python3 -m compileall -q mdstats/training_data \
+  tests/test_mlff_target_size_mace_objective_realization.py \
+  tests/test_mlff_target_size_policy_domain_rework.py
+  PASS
+
+conda run -n mace python3 -m pytest -n 32 --dist=load \
+  tests/test_mlff_target_size_policy_domain_rework.py \
+  tests/test_mlff_target_size_mace_objective_realization.py
+  47 passed, 20 warnings in 14.57s
+```
+
+The focused suite exercised integer-valued-real versus float-valued-real
+optimizer identity, exact policy domains, the real mdstats P1-P3 preparation /
+materialization / ExtXYZ exporter, and MACE's dependency-native weighted loss.
+The semantic test positively established `mace-torch==0.3.16`, instantiated
+`WeightedEnergyForcesStressLoss`, consumed the exported local masks and
+configuration weights, and matched the independent numerical reduction.
+
+### Final affected-surface regression
+
+The affected surface was re-derived from the final source/test diff and the
+workplan's transitive P3/P4/P5/TRAIN2/campaign requirements. It was executed
+with all 32 online CPUs:
+
+```text
+conda run -n mace python3 -m pytest -n 32 --dist=load \
+  tests/test_mlff_target_size*.py \
+  tests/test_mlff_mace_executable_config.py \
+  tests/test_mlff_data9a5_critical_precision.py \
+  tests/test_mlff_prec1_precision_profiles.py \
+  tests/test_mlff_train2a_policy.py tests/test_mlff_train2b_runtime.py \
+  tests/test_mlff_prepared_common_atomic_reference_order.py \
+  tests/test_mlff_campaign_assembled_lifecycle.py \
+  tests/test_mlff_campaign_prepare_boundary.py \
+  tests/test_mlff_campaign_prepared_generation.py \
+  tests/test_mlff_campaign_currentness_races.py \
+  tests/test_mlff_campaign_storage_composition.py \
+  tests/test_mlff_data8_specification.py \
+  tests/test_mlff_data9b3_campaign_cli_specification.py
+  945 passed, 2 skipped, 1819 warnings in 232.28s (0:03:52)
+```
+
+The two skips are environmental and were not counted as passes:
+
+1. `tests/test_mlff_data9a5_critical_precision.py:114` — the real MPA-0 model
+   or VASP trajectory is not mounted.
+2. `tests/test_mlff_target_size_p6_p5a6_compatibility.py:138` — the preserved
+   P5A6 compatibility workspace is absent.
+
+The first-rung live-writer/retry, practical-ceiling -> P4 terminal adoption ->
+P5 `cross-validate` flow, historical-method rejection, and affected campaign
+currentness/restart paths all passed in the assembled run. Final non-PDF
+`git diff --check` also passed. No GPU or production-scale external-reference
+qualification is claimed; those remain outside this executable closure.
