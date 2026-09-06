@@ -2,42 +2,34 @@
 kind: implementation-workplan
 workplan_id: MLFF-TARGET-SIZE-OPTIMIZER-NORMALIZATION-AND-OBJECTIVE-WEIGHT-REWORK
 protocol_version: 5.15.0
-status: implementation-ready
+status: rework-required
 created_date: 2026-09-05
-amended_date: 2026-09-05
-review_revision: 2
-reviewed_source_branch: fix/mlff-prepared-common-atomic-reference-order
-reviewed_code_baseline: aeba206cc1a172a87618b14ff4ae23ef0b560613
-reviewed_plan_head: 14fd249006d225608876b3df0c11ccce1c2a6d60
+amended_date: 2026-09-06
+review_revision: 3
+reviewed_source_branch: rework/mlff-target-size-normalization-practical-ceiling
+reviewed_implementation_head: 1b0ba891c0500bacbf7585a6f249c4c82c1a4510
+reviewed_executable_commit: 275c3aa294497a410666795dc17b36d17f10c4f9
 architecture_change: narrow-methodological-rework
 amends_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 ---
 
 # MLFF target-size optimizer normalization, practical-ceiling selection, and objective-weight rework
 
-## Status and authority
+## Status and independent review verdict
 
-**PASS / implementation-ready after final Software Design closure review.**
+**NO-PASS / reopened for bounded implementation repair.**
 
-This document is the snapshot-complete current implementation authority for this bounded rework. It preserves the accepted V7 target-size architecture except where it explicitly amends it below. In particular, it supersedes earlier V7/P2 wording that treats `nonconverged_at_configured_ceiling` as a blocking target-size failure.
+Independent Software Design review of implementation commit `275c3aa294497a410666795dc17b36d17f10c4f9` and documentation-only head `1b0ba891c0500bacbf7585a6f249c4c82c1a4510` found that the principal scientific-method changes are implemented correctly, but the target-size training-policy/configuration boundary still contains competing or contradictory authorities. Those identity defects can invalidate a scientifically unchanged completed screen or persist a P3 context that describes different precision/batch/LR semantics from the executable training path. Required final functional regression/integration evidence is also not present on the reviewed remote candidate.
 
-The rework has three coupled purposes:
+The high-level target-size architecture remains accepted. Do **not** redesign the P1 -> P5 authority graph, add another state machine, add a warning-specific lifecycle, add a target-size LR override wrapper, or create a second configuration digest. The repair is a Tier-2 simplification: consolidate canonical training-policy resolution and narrow P3 scientific identity to fields that actually define the target-size trajectory.
 
-1. remove the optimizer-progress confound from the target-size convergence experiment by normalizing learning-rate amplitude and EMA update time against one configurable reference size;
-2. correct the executable MACE loss/weight realization so the configured mdstats objective is the objective actually optimized; and
-3. change configured-ceiling semantics so a materially best practical upper limit is a valid selected size with a non-blocking warning, not a hard stop that prevents post-selection training.
-
-The third item is a product-semantic change, not an error-handling relaxation. The configured target-size ceiling is a practical resource/data limit. The experiment should prefer a smaller size when the evidence supports a plateau or an interior/reflection optimum; when accuracy is still materially improving at the configured practical ceiling, the scientifically honest result is to select that ceiling and record that convergence was not demonstrated within the affordable ladder.
-
-No implementation may reinterpret old fixed-LR/fixed-EMA/old-loss or old blocking-ceiling evidence as if it were produced by this corrected methodology.
+Everything explicitly listed under **Accepted implementation retained** below remains accepted and should not be rewritten merely because this plan is reopened.
 
 ---
 
 ## 1. Problem / product invariants
 
-### 1.1 Target-size scientific question
-
-The target-size experiment asks:
+The governing target-size question is:
 
 > Within the configured practical target-data budget, what is the smallest nested target-training cardinality whose performance is not materially improved by using more unique target data; and, if no such plateau is demonstrated before the practical ceiling, what is the best permitted size available?
 
@@ -47,51 +39,14 @@ A candidate remains exactly:
 T_N = pi_train[:N]
 ```
 
-`N` remains the sole target-size independent data-cardinality variable. The ordered optimizer-seed set remains the stochastic replicate dimension. Ranking remains target-side EVAL2 evidence only.
+`N` is the sole target-data-cardinality independent variable. The configured ordered optimizer-seed set remains the stochastic replicate dimension. Ranking uses only authenticated paired-seed target-side EVAL2 evidence at the exact configured fidelity/evaluation boundaries.
 
-The experiment must distinguish two different conclusions:
+The experiment distinguishes:
 
-- **evidence-supported truncation**: a smaller size is practically equivalent to, or better than, the larger finalist, so there is direct evidence to stop below the ceiling;
-- **practical-ceiling selection**: the largest configured candidate remains materially superior at the terminal comparison, so convergence was not demonstrated within the available ladder, but the best permitted target size is still well defined and usable.
+- **evidence-supported truncation**: a smaller size is practically equivalent to, or better than, the larger finalist;
+- **practical-ceiling selection**: `Nmax` remains materially superior, so the best permitted size is `Nmax` even though convergence was not demonstrated inside the affordable ladder.
 
-The second conclusion is not an operational or methodological failure. It is a selected result with a warning that the selected size is budget-limited rather than convergence-limited.
-
-### 1.2 Practical-equivalence semantics remain authoritative
-
-The existing practical-equivalence threshold remains the definition of a plateau for target-size ranking.
-
-At the terminal comparison:
-
-- if two finalists differ by no more than `practical_equivalence_mev_per_a`, the smaller finalist is preferred;
-- if a smaller finalist has lower target-force RMSE, it is preferred normally;
-- if the configured `Nmax` is lower in paired-mean target-force RMSE than every other successful terminal finalist by **more than** the practical-equivalence threshold, `Nmax` is selected and the result carries a non-convergence warning.
-
-Thus a raw numerical improvement at `Nmax` that is inside the practical-equivalence band is treated as a plateau, not as unresolved convergence.
-
-No additional curve-fitting, derivative test, monotonicity model, reflection detector, or trend extrapolator is required. The existing terminal ranking evidence already expresses the needed decision: practical equivalence favors the smaller size; a genuinely lower interior finalist wins; only material superiority at `Nmax` produces the ceiling warning.
-
-### 1.3 Blocking outcomes remain genuinely blocking
-
-A selected-at-ceiling warning must not be confused with incomplete or invalid evidence.
-
-The following remain blocking scientific/execution outcomes under their existing owners:
-
-- too few complete comparable terminal candidates;
-- malformed, missing, duplicated, reordered, or lineage-incompatible boundary evidence;
-- authenticated numerical failures that leave the reducer unable to make the required comparison;
-- ordinary execution, persistence, corruption, configuration, or orchestration failures.
-
-The reducer must never fabricate a ceiling selection when the terminal comparison is incomplete.
-
-### 1.4 No rescue beyond the configured ladder
-
-The configured largest candidate remains the target-size ceiling. The corrected behavior does not invent, extrapolate, or schedule any unconfigured larger size.
-
-Selecting the ceiling with a warning means exactly:
-
-> `Nmax` is the best supported choice within the configured practical budget, while the screen did not establish a plateau before that limit.
-
-It does not claim that `Nmax` is asymptotically converged or that still larger datasets would not improve the model.
+Incomplete, malformed, foreign, or insufficient terminal evidence remains blocking. No unconfigured rescue size is invented.
 
 ---
 
@@ -114,41 +69,43 @@ canonical frame authority
   -> fresh final production on exactly T_selected
 ```
 
-The following are also Frozen for this cycle:
+Also Frozen for this cycle:
 
 - exact nested `T_N = pi_train[:N]` membership;
-- configured candidate ladder and ceiling;
-- configured evaluation ladder and exact direct M1/M2/M3 populations;
-- `q -> min(q,4) -> 2 -> 1` successive-halving funnel shape;
-- paired optimizer-seed aggregation by arithmetic mean;
-- target-force RMSE ranking metric;
-- practical-equivalence smaller-size preference;
+- configured candidate/evaluation ladders and practical ceiling;
+- `q -> min(q,4) -> 2 -> 1` funnel;
+- paired-seed arithmetic-mean aggregation;
+- target-force RMSE ranking and practical-equivalence smaller-size preference;
 - one continuous candidate trajectory across `n1 -> n2 -> n3`;
-- EVAL2 evaluation of the authenticated configured model state (EMA when enabled);
-- P4 currentness/terminal projection ownership;
-- P5 post-selection CV and fresh-production ownership;
-- final production never resumes from a screen or CV checkpoint;
-- full long GPU/production qualification remains deferred to final release.
+- EVAL2 evaluates the authenticated configured model state, including EMA when enabled;
+- P4 owns current terminal projection/currentness;
+- P5 owns post-selection CV and fresh final production;
+- final production never resumes a screen/CV checkpoint;
+- long GPU/production qualification remains deferred to final release.
 
-The only P2 decision-semantic amendment is the disposition of the materially superior configured ceiling: it becomes `SELECTED` with warning metadata instead of a blocking `NONCONVERGED_AT_CONFIGURED_CEILING` current outcome.
-
-No second selector, warning lifecycle, fallback training path, alternate reducer, rescue ladder, or parallel state machine may be introduced.
+The only amended P2 terminal decision is: materially superior `Nmax` is `SELECTED` with warning metadata, not a blocking current outcome.
 
 ---
 
-## 3. Target-size optimizer-normalization policy
+## 3. Accepted implementation retained
 
-### 3.1 One configurable reference policy
+Independent review found these implementation surfaces substantively conformant. Preserve them while repairing the reopened blockers.
 
-Introduce one serializable target-size optimizer-normalization policy with a fixed algorithm identity and these defaults:
+### 3.1 Practical-ceiling reducer semantics
 
-```text
-reference_target_size = 1024
-reference_learning_rate = 1.0e-4
-reference_ema_decay = 0.99999
-```
+Current P2 behavior is accepted:
 
-Canonical user-facing configuration:
+- `Nmax` materially superior by more than practical-equivalence epsilon -> `SELECTED`, exact `T_selected`, warning reason `nonconverged_at_configured_ceiling`;
+- `Nmax` raw-best but within epsilon of a smaller finalist -> smaller finalist selected, no warning;
+- an interior/smaller finalist with the best score -> ordinary selection;
+- insufficient comparable evidence -> blocking insufficient-comparison outcome;
+- historical blocking-ceiling reducer state is not relabeled into a current selection.
+
+The corrected terminal-decision policy/version participates in P2 policy/definition identity.
+
+### 3.2 Optimizer-normalization mathematics and one-trajectory continuation
+
+The study-wide target-size normalization policy remains:
 
 ```toml
 [target_data.size_convergence.optimizer_normalization]
@@ -157,575 +114,216 @@ reference_learning_rate = 1.0e-4
 reference_ema_decay = 0.99999
 ```
 
-Validation:
-
-- `reference_target_size` is a positive integer;
-- `reference_learning_rate` is finite and strictly positive;
-- `reference_ema_decay` is finite and satisfies `0 < beta < 1`;
-- the reference size need not be a candidate and need not lie inside the configured ladder.
-
-The numerical reference values are user-configurable. The normalization algorithm/version is specification-owned and is not an arbitrary user plugin string.
-
-### 3.2 Exact batch-aware realization
-
-For the current target-size screen, replay exposure is `none`. Let `B` be the authenticated target-size batch size.
+For authenticated target-size batch size `B`:
 
 ```text
 U_ref = ceil(N_ref / B)
 U_N   = ceil(N / B)
 s_N   = U_ref / U_N
+
+LR_N   = LR_ref * s_N
+beta_N = beta_ref ** s_N
 ```
 
-Derive:
+No hidden cap/floor, survivor-dependent rescaling, or candidate-specific tuning is allowed. The normalized-progress LR shape remains unchanged; only amplitude varies. EMA is normalized because EVAL2 uses EMA state when enabled.
+
+Each `(N, optimizer_seed)` owns one realized full-`n3` schedule/EMA trajectory. `n1` and `n2` are pause/continuation boundaries, not new schedules.
+
+Normalization is a target-size-screen control and does not make screen optimizer state a production parent.
+
+### 3.3 Objective and MACE loss realization
+
+Retain the corrected ownership:
+
+- `TrainingObjectivePolicy` owns the global energy/forces/stress coefficients;
+- `ConfigurationWeightPolicy` owns the per-configuration multiplier;
+- local per-frame property weights are property-local modifiers/availability masks (`1.0` present, `0.0` absent unless another explicit local rule applies);
+- current MACE configs emit global E/F/S coefficients explicitly;
+- the current executable MACE loss family is the dependency-native weighted energy+force+stress loss (`loss="stress"` / `WeightedEnergyForcesStressLoss`);
+- the executable loss family is bound through the canonical MACE architecture/training-method identity;
+- historical `UniversalLoss` trajectories are not compatible prefixes of corrected trajectories.
+
+Do not add a custom patched loss, residual pre-scaling, square-root weight trick, duplicated-sample approximation, or a second mdstats loss engine.
+
+### 3.4 P4/P5 selected-at-ceiling propagation
+
+Retain the ordinary selected path:
 
 ```text
-effective_base_learning_rate(N) = reference_learning_rate * s_N
-```
-
-and, when EMA is enabled:
-
-```text
-effective_ema_decay(N) = reference_ema_decay ** s_N
-```
-
-For an exact doubling of update geometry:
-
-```text
-LR_(2N)   = LR_N / 2
-beta_(2N) = sqrt(beta_N)
-```
-
-No hidden cap, floor, clipping, survivor-dependent rescaling, or candidate-specific override is allowed.
-
-### 3.3 What normalization means
-
-The current TRAIN2 learning-rate schedule already uses normalized update progress. Preserve that shape and change only candidate-specific amplitude.
-
-Normalize only the two update-count clocks established by this design:
-
-- LR amplitude;
-- EMA decay.
-
-Keep fixed across candidates:
-
-- epoch/fidelity boundaries and number of dataset passes;
-- batch size;
-- LR phase fractions and normalized-progress multiplier shape;
-- Adam/AMSGrad settings and moment coefficients;
-- weight decay;
-- gradient clipping;
-- model precision and architecture;
-- acceleration policy;
-- optimizer-seed set;
-- objective/configuration/property weighting policy.
-
-This is a first-order optimizer-progress normalization, not a claim of exact optimizer-path equivalence. Differences from minibatch noise, Adam history, and finite discretization of the analytic LR curve are accepted residuals, not additional variables to compensate with more machinery.
-
-### 3.4 One realization per full candidate trajectory
-
-For each `(N, optimizer_seed)`:
-
-- derive `s_N`, effective LR, and effective EMA once from the full candidate geometry;
-- bind them into the authenticated candidate realization;
-- use exactly the same realized values through all `n1 -> n2 -> n3` continuation;
-- never recompute normalization from the survivor set or active rung.
-
-`execution_epoch_limit` remains the rung pause mechanism; it must not redefine the full schedule.
-
-### 3.5 Screen control versus post-selection training
-
-Normalization is a control of the target-size comparison experiment. It does not make screen checkpoints production parents and does not require final production to inherit a candidate-specific screen LR/EMA realization.
-
-Post-selection CV/final production start fresh under their own accepted method/role policy. The architecture documentation must distinguish the coverage-normalized size-comparison protocol from the fresh post-selection training run.
-
----
-
-## 4. P2 terminal-decision policy and identity
-
-### 4.1 Preserve P2 membership science; amend terminal disposition
-
-Optimizer normalization itself belongs to P3 execution-scientific identity and must not change P_train/M3, pi_train/pi_eval, candidate qualification, hard-support obligations, or M1/M2/M3 membership.
-
-The configured-ceiling decision rule, however, **is P2 target-size scientific policy** because it changes which terminal evidence produces `N_selected`. Therefore current P2 policy/definition identity must explicitly bind the corrected terminal-decision semantics.
-
-The implementation may use a fixed policy/version token such as:
-
-```text
-practical_equivalence_then_practical_ceiling.v2
-```
-
-or an equivalently explicit schema/algorithm version. The exact symbol name is delegated. The required semantic identity is not.
-
-Changing from the old blocking-ceiling rule to the new practical-ceiling rule must change the P2 scientific policy/experiment-definition identity so old reducer evidence cannot be replayed under the new meaning.
-
-### 4.2 Current terminal decision table
-
-At the terminal boundary, after the existing exact paired-seed aggregation and practical-equivalence ranking:
-
-#### A. Plateau / practical equivalence
-
-If `Nmax` is numerically best but a smaller finalist is within the practical-equivalence threshold, select the smaller finalist with ordinary `SELECTED` semantics and no ceiling non-convergence warning.
-
-#### B. Interior/reflection winner
-
-If a smaller finalist has the best terminal score according to the existing ranking, select that finalist normally. No extra reflection-point classifier is needed.
-
-#### C. Practical ceiling remains materially superior
-
-If `Nmax` is present in the successful terminal comparison and is materially superior to every other successful terminal finalist by more than the practical-equivalence threshold:
-
-```text
-status = SELECTED
-selected_target_size = Nmax
-selected_membership_digest = candidate_digest(Nmax)
-terminal_reason_codes includes "nonconverged_at_configured_ceiling"
-```
-
-The reason code is a **non-blocking scientific warning** because the primary reducer disposition is `SELECTED`.
-
-The human-readable meaning is:
-
-> The configured practical ceiling is the best evaluated permitted size; target-size convergence was not demonstrated within the configured ladder.
-
-#### D. Insufficient comparison
-
-If the terminal matrix does not contain enough authenticated comparable successful candidates, retain `INSUFFICIENT_COMPARISON` or the existing appropriate failure disposition. Do not select `Nmax` merely because it is the last surviving numeric size.
-
-### 4.3 No new selected-with-warning status
-
-Do not add a new reducer status or campaign lifecycle solely to represent the warning.
-
-`SELECTED` plus existing terminal diagnostic metadata is sufficient and is preferred because:
-
-- downstream consumers already authorize post-selection work from selected state;
-- selected membership remains bound exactly once;
-- warning severity is encoded by the selected disposition plus reason metadata;
-- no duplicate terminal-state transition or P5 admission path is needed.
-
-`terminal_reason_codes` is the preferred existing metadata carrier. For `SELECTED`, any configured-ceiling non-convergence code is diagnostic/warning metadata, not a failure reason.
-
-The historical enum/value `NONCONVERGED_AT_CONFIGURED_CEILING` may remain readable only if needed for historical compatibility. The corrected current reducer must not emit it. An old generation carrying that old status is not retroactively converted into a selection; the corrected methodology requires new evidence under the new identity.
-
-### 4.4 P4/P5 downstream consequences
-
-A selected-at-ceiling result must follow the exact same authoritative path as any other selection:
-
-```text
-P2 reducer SELECTED with Nmax + warning
+P2 SELECTED Nmax + warning
   -> P3 terminal head
-  -> P4 TERMINAL_SELECTED projection
+  -> P4 TERMINAL_SELECTED
   -> exact N_selected / T_selected binding
-  -> P5 post-selection CV
-  -> fresh final production if CV accepts
+  -> P5 cross-validation
+  -> fresh production if CV accepts
 ```
 
-The warning must not route the campaign into `TERMINAL_SCIENTIFIC_FAILURE`, must not make lifecycle `advance` stop, and must not block `load_current_selected_training_context()`.
-
-CLI/status/result views must surface the warning while still presenting the target size as selected and frozen. The next admissible lifecycle command must remain `cross-validate`.
+The warning remains visible diagnostic metadata and never becomes a separate lifecycle or authorization path.
 
 ---
 
-## 5. Objective and weighting repair
+## 4. Reopened blocker family A — one canonical target-size optimizer/training identity
 
-### 5.1 One canonical objective resolver
+### 4.1 Problem
 
-Current target-size preparation falls back to `TargetSizeCommonTrainingPolicy()` defaults while post-selection resolves `[objective]`. That is not acceptable even though the defaults currently happen to be the same.
+The implemented screen correctly derives and executes candidate LR from the target-size normalization policy, but the P3 seed-neutral optimizer template is still created through the generic campaign optimizer resolver. That resolver reads `[training].learning_rate` and therefore injects a second independently mutable LR value into P3 screen scientific identity.
 
-Create or reuse one canonical config-to-objective/common-training resolver so target-size common preparation and post-selection consume the same `TrainingObjectivePolicy` semantics.
+Consequences:
 
-At minimum `[objective]` continues to own:
+- `[target_data.size_convergence.optimizer_normalization].reference_learning_rate` controls actual target-size LR realization;
+- `[training].learning_rate` can nevertheless change the reconstructed P3 context digest;
+- a completed, scientifically unchanged target-size screen can fail currentness after a post-selection/general LR edit;
+- the P3 authority graph carries two LR descriptions even though only one is scientifically active for screening.
 
-```text
-energy_weight
-forces_weight
-stress_weight
-```
+This violates the accepted configuration ownership and the parent P3 requirement for one seed-neutral training-policy authority.
 
-with default ratio:
+### 4.2 Required repair
 
-```text
-1.0 : 10.0 : 1.0
-```
+Consolidate target-size optimizer-template construction at the existing policy-resolution boundary.
 
-The common/prepared-generation semantic identity must change when this objective/common weighting policy changes. A user override may not be silently ignored by target-size preparation.
+Required end state:
 
-### 5.2 Separate global objective coefficients from local weights
+1. Target-size P3 has one canonical seed-neutral optimizer/training template constructor/resolver used by both:
+   - live screen construction; and
+   - terminal/currentness reconstruction.
+2. Target-size reference LR and reference EMA values come only from the resolved target-size optimizer-normalization policy.
+3. `[training].learning_rate` remains a post-selection/general training-method setting and does **not** participate in target-size P3 identity or target-size currentness.
+4. Candidate-specific effective LR/EMA remain deterministic descendants of the normalization policy and authenticated update geometry.
+5. Do not special-case the terminal loader, suppress a digest mismatch after the fact, or add a second target-size-LR override object. Fix the owning resolution once.
 
-Restore these distinct owners:
+If the generic `MaceOptimizerPolicy` remains the convenient carrier, construct its target-size template from the target-size resolved scientific policy before hashing/validation. If a field exists only because the generic carrier is broader than the screen contract, prefer excluding/removing that field from the screen identity rather than synchronizing two authorities.
 
-- `TrainingObjectivePolicy.energy_weight / forces_weight / stress_weight`: global loss-component coefficients;
-- `ConfigurationWeightPolicy`: per-configuration modifier;
-- frame-local property weights: local property modifier / missing-label mask.
+### 4.3 Acceptance
 
-Absent an additional explicit local property-weight rule, frame-local property weights are:
+Prove through the real P3 context/currentness owners:
 
-```text
-1.0 when the property is present
-0.0 when the property is absent
-```
-
-Do not copy the global 1:10:1 objective ratio into every per-frame property weight.
-
-If persisted `FrameTrainingWeight` semantics would otherwise change under the same schema, evolve the owning schema/identity so old 1:10:1-per-frame payloads are not silently reinterpreted as local masks.
-
-### 5.3 Emit global objective coefficients explicitly
-
-Every current MACE training config that consumes mdstats weights must explicitly emit the resolved global E/F/S coefficients. This includes:
-
-- target-size candidate training;
-- post-selection CV;
-- post-selection final production.
-
-No current path may rely on MACE's default `forces_weight=100`.
-
-### 5.4 Use executable MACE loss semantics that honor the declared weighting contract
-
-Pinned MACE 0.3.16 `UniversalLoss` is not a correct realization of the declared mdstats weighting model because:
-
-- its per-config property weights scale residuals inside Huber evaluation, so they are not linearly equivalent to global objective coefficients; and
-- it does not consume `config_weight` as the declared configuration-weight policy requires.
-
-The preferred narrow dependency-native realization is MACE's weighted energy+force+stress loss (`loss="stress"`, `WeightedEnergyForcesStressLoss`), whose native helper reductions consume `ref.weight` and local property weights linearly while applying global E/F/S coefficients explicitly.
-
-This is a suggested realization below the product-level weighting contract, not permission to preserve `universal` with compensating patches.
-
-Do not add a custom patched `UniversalLoss`, square-root weighting trick, residual pre-scaling workaround, duplicated-sample approximation, or second mdstats loss engine merely to retain the old loss string.
-
-A real pinned-MACE boundary test must prove the chosen native realization satisfies the declared configuration/property/global weighting semantics. If it does not, stop and reopen the loss-realization design rather than layering another workaround.
-
-### 5.5 Loss family is method identity
-
-The actual executable loss family must be explicit in the relevant MACE/model/training-method identity. Historical checkpoints generated under the old loss semantics cannot be prefixes or equivalents of corrected trajectories.
+- changing only `[training].learning_rate` leaves target-size P3 context, trajectory/current terminal exposure, and selected target-size currentness unchanged;
+- changing only target-size `reference_learning_rate` changes target-size P3 context/trajectory identity and rejects stale screen descendants;
+- live screen construction and terminal reload produce the same target-size optimizer-template digest from the same resolved configuration;
+- candidate MACE config and TRAIN2 runtime plan still use the same N-derived effective LR/EMA.
 
 ---
 
-## 6. Identity and invalidation
+## 5. Reopened blocker family B — narrow seed-neutral P3 identity to scientific fields
 
-### 6.1 Normalization identity
+### 5.1 Problem
 
-The complete optimizer-normalization policy belongs in P3 execution-scientific identity.
+The current seed-neutral optimizer digest removes seed and acceleration-realization identifiers but still hashes generic execution fields such as `num_workers`. Parent P3 explicitly classifies worker/process count as execution-only when it does not alter scientific trajectory semantics and requires such differences not to change the study-wide context.
 
-Candidate realization must bind or deterministically re-derive at minimum:
+This is an ownership defect: process scheduling/resource realization must not retire scientific target-size evidence merely because it changed how the same trajectory was executed.
 
-```text
-normalization_policy_digest
-reference_updates_per_epoch
-optimizer_progress_scale
-effective_base_learning_rate
-effective_ema_decay (or explicit None if EMA disabled)
-realized_learning_rate_policy_digest
-```
+### 5.2 Required repair
 
-Restart validation must reject drift in these values.
+Perform one bounded field-classification pass over the generic optimizer payload at the target-size boundary.
 
-### 6.2 Target-size decision identity
+For every field included in the target-size seed-neutral digest, classify it as:
 
-The corrected configured-ceiling terminal rule must participate in P2 policy/experiment-definition identity. A current reducer must not be able to consume an old definition whose digest was produced under the blocking-ceiling rule.
+- **scientific trajectory semantics** -> keep it in the P3 identity; or
+- **proven execution-only realization** -> exclude it from the P3 scientific digest while allowing runtime launch to use it.
 
-### 6.3 Objective/loss identity
+At minimum `num_workers` must not remain scientific identity if it only controls DataLoader worker processes under the accepted deterministic loader semantics.
 
-Corrected objective, local-weight semantics, and executable loss family must invalidate all descendants whose optimization meaning changes, including as applicable:
+Preserve fields that genuinely affect training science, including batch/exposure geometry, optimizer moment/regularization parameters, precision/model arithmetic, acceleration backend when scientifically material, and full-screen training-budget/schedule semantics.
 
-- common preparation;
-- materialization/config;
-- candidate trajectory;
-- TRAIN2 checkpoint;
-- EVAL2 evidence;
-- reducer state;
-- post-selection method/CV evidence;
-- final-production evidence.
+Do not create a parallel "screen optimizer identity" registry or a chain of per-field compatibility exceptions. The existing seed-neutral projection is the correct owner; make that projection accurately represent the target-size contract.
 
-### 6.4 Historical evidence
+If inspection proves another generic field such as validation batch geometry is execution-only for this one-head screen, remove it from scientific identity only with an owner-level test proving no governed target-size trajectory/evaluation semantic depends on it.
 
-Historical fixed-LR/fixed-EMA/old-loss/blocking-ceiling evidence may remain readable as history when its old schema remains supported. It must never be migrated by filling defaults or changing a status label so that it authenticates as corrected evidence.
+### 5.3 Acceptance
 
-The corrected screen must establish fresh scientific evidence under the corrected identities.
+- changing only `num_workers` does not change target-size execution-context digest, candidate trajectory digest, or completed-screen currentness;
+- the changed worker value still reaches the execution launch where appropriate;
+- changing batch size, optimizer regularization, precision, or another retained scientific field changes the appropriate screen identity;
+- existing seed neutrality and acceleration-realization neutrality remain intact;
+- no P3 caller computes an independent competing digest.
 
 ---
 
-## 7. Implementation obligations by coherent stage
+## 6. Reopened blocker family C — canonical batch-size and precision resolution
 
-### Stage A - P2 decision semantics and current lifecycle
+### 6.1 Problem
 
-**Concern:** the configured ceiling is a practical budget boundary, not a requirement that convergence occur before it.
+The implementation currently resolves the same training geometry/precision through multiple defaults:
 
-**Required end state:**
+- generic executable optimizer resolution defaults batch size to `2` and obtains model dtype from the campaign binary precision contract;
+- `TargetSizeCommonTrainingPolicy` defaults batch size to `4` and dtype to `float64`;
+- its new campaign resolver reads configured batch size but currently retains the dataclass `float64` dtype instead of the resolved campaign model dtype;
+- post-selection method resolution independently defaults batch size to `4`.
 
-- P2 policy/definition identity binds the corrected terminal-selection rule;
-- terminal `Nmax` material superiority returns `SELECTED`, exact `T_selected`, and warning code `nonconverged_at_configured_ceiling`;
-- plateau/interior cases preserve current smaller-size ranking;
-- incomplete comparison remains blocking;
-- current reducer never emits blocking `NONCONVERGED_AT_CONFIGURED_CEILING` for new evidence;
-- P4 commits selected-at-ceiling through the ordinary terminal-selection transition;
-- P5 admits the exact selected ceiling into post-selection CV;
-- campaign lifecycle/status/advance treat it as selected and continue to `cross-validate`;
-- CLI/result metadata visibly report the warning.
+The shipped example configuration explicitly requests single/FP32 model precision. Under that normal configuration the target-size common-policy identity can therefore state `float64` while the actual executable optimizer is `float32`. When `batch_size` is omitted, common/method and executable paths can likewise disagree on `B`, which is especially material because `ceil(N/B)` defines the normalization scale.
 
-**Likely affected surfaces:**
+The authority graph must not describe contradictory training science.
 
-```text
-mdstats/training_data/target_size_experiment.py
-mdstats/training_data/campaign_target_size_state.py
-mdstats/training_data/campaign_target_size_terminal.py
-mdstats/training_data/campaign_target_size_runtime.py
-mdstats/training_data/campaign_target_size_view.py
-mdstats/training_data/campaign_lifecycle.py
-mdstats/training_data/campaign_post_selection.py
-```
+### 6.2 Required repair
 
-Avoid adding a warning-specific state machine. Reuse selected state plus diagnostic metadata.
+Consolidate these values through existing canonical campaign policy owners rather than changing literals independently.
 
-### Stage B - optimizer-normalization policy/config
+Required end state:
 
-**Required end state:**
+1. Resolve the campaign learned-model dtype once through the existing binary precision contract (or one equivalent canonical owner) and reuse that resolved value wherever target-size/P5 training policy identity needs model dtype.
+2. Resolve training batch size through one canonical campaign training-policy/default path and reuse it for:
+   - target-size common policy when that policy genuinely owns/needs batch geometry;
+   - target-size optimizer template and candidate update geometry;
+   - post-selection common/method policy;
+   - executable optimizer construction.
+3. If a field is not actually consumed by common preparation and exists there only as duplicated execution metadata, simplification by removing it from the common-preparation policy is preferable to maintaining synchronized copies, provided the P3 execution context still binds the scientific value exactly once.
+4. Do not add downstream equality assertions as the primary repair. Fix resolution ownership so contradictory objects cannot be constructed from the same valid campaign config.
 
-- one versioned normalization policy type;
-- one canonical resolver for the nested config table;
-- defaults exactly `1024 / 1e-4 / 0.99999`;
-- generated/example/user config surfaces expose those values;
-- target-size reference LR/EMA come from this policy, not a competing hidden `[training].learning_rate` fallback;
-- normalization-only changes do not change P1/P2 membership/common-preparation payloads, apart from the independent fixed P2 decision-policy version introduced in Stage A.
+Do not infer a new user-visible default in this review. Reuse the repository's established campaign executable default/initialization contract and make every resolver agree with that one source.
 
-Likely surfaces include:
+### 6.3 Acceptance
 
-```text
-mdstats/training_data/target_size_execution/schedule.py
-mdstats/training_data/campaign_target_size_runtime.py
-mdstats/training_data/_campaign_cli_core.py
-campaign.toml.example
-```
-
-### Stage C - common objective authority
-
-**Required end state:**
-
-- target-size and post-selection use one resolved objective meaning;
-- target-size no longer ignores `[objective]` overrides;
-- common/prepared identity binds objective/common weighting policy;
-- global objective and local/configuration weighting semantics are separated.
-
-Likely surfaces:
-
-```text
-mdstats/training_data/target_size_execution/common.py
-mdstats/training_data/objectives.py
-mdstats/training_data/post_selection_identity.py
-mdstats/training_data/campaign_target_size_runtime.py
-mdstats/training_data/campaign_prepared_generation.py
-```
-
-Prefer reusing/extracting current post-selection resolution rather than creating a parallel parser.
-
-### Stage D - candidate realization and exact continuation
-
-**Required end state:**
-
-- execution context binds normalization policy;
-- candidate realization derives exact `U_ref`, `U_N`, scale, effective LR, effective EMA, and realized LR policy identity;
-- MACE config and TRAIN2 runtime plan agree on the same realized policy;
-- boundary continuation preserves the exact same realization across all rungs;
-- restart drift is diagnosed and rejected.
-
-Likely surfaces:
-
-```text
-mdstats/training_data/target_size_execution/context.py
-mdstats/training_data/target_size_execution/candidate.py
-mdstats/training_data/target_size_execution/schedule.py
-mdstats/training_data/target_size_execution/execution.py
-mdstats/training_data/train2_policy.py
-mdstats/training_data/train2_runtime.py
-```
-
-### Stage E - MACE objective realization
-
-**Required end state:**
-
-- all current MACE configs emit configured global E/F/S weights;
-- local property weights carry corrected local semantics;
-- configuration weights are actually consumed by the selected native MACE loss;
-- target-size, CV, and final production share the same objective-weight ownership model;
-- model reconstruction/EVAL2 identity recognizes the corrected loss family.
-
-Likely surfaces:
-
-```text
-mdstats/training_data/target_size_execution/candidate.py
-mdstats/training_data/post_selection_execution.py
-mdstats/training_data/model_features.py
-mdstats/training_data/mace_export.py
-mdstats/training_data/target_size_execution/export.py
-```
-
-Do not refactor retired/unreachable DATA8 paths solely for consistency. If a historical helper is still reachable from a current command or qualification consumer, it is affected and must satisfy the same invariant.
-
-### Stage F - durable cutover/currentness
-
-**Required end state:**
-
-- corrected P2/P3/method identities distinguish new evidence from old evidence;
-- stale trajectories/configs/checkpoints/reducer states fail authentication before execution or adoption;
-- old blocking-ceiling states remain historical and are not reclassified in place;
-- immutable reusable content is reused only when its semantic identity is genuinely unchanged;
-- no new migration registry or parallel state authority is introduced.
-
-### Stage G - documentation synchronization
-
-Update current durable documentation at minimum:
-
-```text
-docs/arch_manuals/mlff_training_data/30_statistical_design.md
-docs/arch_manuals/mlff_training_data/40_training_evaluation.md
-docs/arch_manuals/mlff_training_data/50_target_size_selection.md
-docs/arch_manuals/mlff_training_data/80_ownership_and_decisions.md
-docs/arch_manuals/mlff_training_data_architecture.md
-docs/specs/training_data/mlff_data8_mace_artifacts_spec.md
-docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md
-docs/guides/mlff_campaign_cli_user_guide.md
-campaign.toml.example
-```
-
-Documentation must state clearly:
-
-- configured ceiling is a practical limit;
-- a materially superior ceiling is selected with a non-convergence warning;
-- practical equivalence still favors the smaller size;
-- insufficient comparison remains blocking;
-- no unconfigured rescue size is created;
-- LR/EMA normalization defaults/formulas;
-- EMA is normalized because EVAL2 evaluates EMA when enabled;
-- screen normalization is distinct from fresh post-selection optimization state;
-- global objective versus local/configuration weighting ownership;
-- actual MACE loss family/semantics;
-- historical evidence invalidation.
+- the shipped `precision_profile="single"`, model/training `float32` example produces the same FP32 model dtype in target-size common/training identity and executable optimizer path;
+- `double` produces the same FP64 agreement;
+- an omitted `batch_size` resolves one identical effective value everywhere that owns the same training geometry;
+- an explicit non-default batch size propagates identically and changes normalization update geometry exactly once;
+- incompatible dtype/profile combinations continue to fail before expensive work;
+- preparation identity changes only for values common preparation genuinely owns; execution-only edits do not force unrelated P1/P2/common rebuilds.
 
 ---
 
-## 8. Task-specific acceptance
+## 7. Reopened documentation correction — loss-family owner
 
-Functional testing is mandatory after each material stage and again after the assembled implementation. Full production/GPU qualification remains deferred.
+The current normative statistical-design wording says `TrainingObjectivePolicy` binds the loss family. The implementation correctly does not add such a field: global E/F/S coefficients belong to `TrainingObjectivePolicy`, while the executable loss family belongs to the canonical MACE architecture/training-method identity.
 
-### 8.1 Reducer decision tests
+Correct the normative documentation to state that ownership accurately.
 
-Prove at the real P2 reducer owner:
+Do **not** make the implementation match the mistaken sentence by adding a redundant `loss_family` field to `TrainingObjectivePolicy`.
 
-1. `Nmax` materially superior by more than epsilon -> `SELECTED`, `N_selected=Nmax`, exact selected membership digest, warning code `nonconverged_at_configured_ceiling`;
-2. `Nmax` raw-best but within epsilon of a smaller finalist -> smaller finalist selected, no ceiling warning;
-3. smaller finalist has lower terminal score -> smaller finalist selected normally;
-4. `Nmax` is not a terminal finalist -> ordinary finalist selection, no ceiling warning;
-5. incomplete/reordered/foreign terminal matrix -> no fabricated selection;
-6. numerical failure leaving too few comparable finalists -> insufficient comparison remains blocking;
-7. warning metadata survives reducer serialization/replay validation exactly;
-8. the terminal-decision policy/version changes P2 policy/definition identity relative to the old rule.
+Regenerate tracked derived documentation only through the repository's existing source -> generated-document workflow after the authoritative Markdown is corrected.
 
-The test fixture must preserve paired arithmetic-mean semantics and the actual practical-equivalence rule; do not prove the new behavior by bypassing `_equivalence_order` or seeding a post-decision reducer state.
+---
 
-### 8.2 P4/P5 owner-boundary acceptance
+## 8. Required functional closure after repair
 
-Using the real current terminal projection/lifecycle/current-selected-context owners with only expensive training/inference below them replaced as allowed:
+The reviewed remote implementation commit exposes only documentation-generation check evidence; no executed functional regression/integration result is available for the required rework suite. Protocol 5.15 functional acceptance therefore remains open even if source repair is correct.
 
-- drive a reducer to selected-at-ceiling with warning;
-- adopt/commit the actual terminal head;
-- prove campaign lifecycle is `TERMINAL_SELECTED`, not scientific failure;
-- prove exact `N_selected/T_selected` re-derivation succeeds;
-- prove `load_current_selected_training_context()` succeeds;
-- prove `status`/result view exposes the warning;
-- prove lifecycle `next_command`/`advance` routes to `cross-validate`;
-- prove historical blocking-ceiling evidence is not silently converted to current selected evidence.
+### 8.1 Focused scientific/method tests
 
-A helper-only assertion that constructs `TargetSizeTerminalProjection` directly is insufficient for this product claim.
-
-### 8.3 Normalization-policy tests
-
-Prove exactly:
-
-1. defaults resolve to `1024 / 1e-4 / 0.99999`;
-2. overrides serialize and participate in identity;
-3. invalid reference values fail closed;
-4. `N_ref` need not be a candidate;
-5. `N=N_ref` gives scale 1 and exact reference LR/EMA;
-6. half/double update geometry gives expected LR and EMA transformations;
-7. non-power-of-two cases use `ceil(N/B)` exactly;
-8. no cap/floor is applied.
-
-### 8.4 Mathematical realization tests
-
-For representative N/B pairs prove:
+Run and require execution (not skip) of the applicable tests covering:
 
 ```text
-U_ref = ceil(N_ref/B)
-U_N = ceil(N/B)
-scale = U_ref/U_N
+tests/test_mlff_target_size_optimizer_normalization.py
+tests/test_mlff_target_size_terminal_decision_policy.py
+tests/test_mlff_target_size_mace_objective_realization.py
+tests/test_mlff_target_size_corrected_identity_cutover.py
 ```
 
-and:
+The pinned-MACE semantic test must execute in an environment with the supported pinned MACE 0.3.16 dependency; a skipped import does not close the loss-semantics claim.
+
+Add/adjust focused tests for the reopened configuration/identity blockers:
+
+- `[training].learning_rate` independence from target-size P3 identity/currentness;
+- normalization-reference LR dependence;
+- `num_workers` execution-only independence;
+- canonical FP32/FP64 parity across common and executable training identity;
+- canonical omitted/explicit batch-size parity across screen/common/post-selection/executable owners.
+
+### 8.2 Existing affected regression
+
+Rerun affected families at minimum:
 
 ```text
-effective_base_lr_N * U_N ~= reference_lr * U_ref
-(effective_beta_N ** U_N) ~= (reference_beta ** U_ref)
-```
-
-at justified floating tolerance.
-
-Separately prove the normalized-progress LR multiplier shape is unchanged. Do not claim exact equality of the discrete sum of scheduled LR values over differently sampled update grids.
-
-### 8.5 Identity/restart tests
-
-Prove:
-
-- changing reference size/LR/EMA changes P3 execution/trajectory identity;
-- normalization-only changes leave P2 membership/order/common statistical products unchanged;
-- changing the terminal-decision policy changes P2 policy/definition identity;
-- changing `[objective]` changes common-preparation/method identity;
-- stale fixed-LR trajectories cannot resume;
-- changed normalization cannot resume another policy's checkpoint;
-- boundary continuation preserves one realized LR/EMA trajectory;
-- survivor elimination does not alter the reference or surviving candidate realization.
-
-### 8.6 Objective/config tests
-
-Prove:
-
-- `[objective] = 1:10:1` reaches target-size common policy, post-selection method policy, and MACE configs;
-- non-default objective overrides propagate consistently;
-- global coefficients appear exactly once at the global MACE loss layer;
-- local property weights are availability/local modifiers rather than duplicated global coefficients;
-- configuration weights remain independent and nontrivial where policy requires them;
-- normalization-only edits do not invalidate common preparation;
-- objective edits do invalidate common preparation.
-
-### 8.7 Pinned-MACE real semantic boundary
-
-Against pinned MACE 0.3.16:
-
-1. parse a generated corrected config;
-2. instantiate the actual loss through MACE's real loss resolver;
-3. prove the selected loss family is the accepted weighted energy+force+stress implementation (or an equivalent native implementation established by the same evidence);
-4. prove global E/F/S coefficients equal mdstats resolved objective;
-5. use a tiny batch with distinct `config_weight` and local property weights and prove the real loss responds according to the declared weighting contract;
-6. prove local zero property weight masks a missing property as intended;
-7. prove the corrected path does not accidentally instantiate old `UniversalLoss` semantics.
-
-Config-text inspection alone cannot close this claim.
-
-### 8.8 Real target-size integration
-
-Using the real P3/P4 orchestration and bounded expensive dependency substitution where appropriate:
-
-- materialize at least two candidate sizes on opposite sides of `N_ref`;
-- verify distinct derived LR/EMA with identical epoch/pass policy;
-- execute at least one continuation sequence through multiple boundaries;
-- authenticate EMA/live evaluation state as applicable;
-- commit/reconcile through the actual reducer/head/currentness owners;
-- cover both an interior/plateau selection and a selected-at-ceiling warning path;
-- verify no alternate current route bypasses normalization or the corrected terminal semantics.
-
-### 8.9 Affected regression
-
-At minimum include the affected families covering:
-
-```text
-tests/test_mlff_target_size_statistical_authorities.py
 tests/test_mlff_target_size_execution_p3a.py
 tests/test_mlff_target_size_execution_p3b.py
 tests/test_mlff_target_size_execution_p3c.py
@@ -735,113 +333,132 @@ tests/test_mlff_target_size_execution_p3f.py
 tests/test_mlff_target_size_p3a9_head_pointer_reconciliation.py
 tests/test_mlff_target_size_p4*.py
 tests/test_mlff_target_size_p5*.py
-tests/test_mlff_doc_arch1_specification.py
+tests covering campaign prepared-generation configuration identity
 tests covering campaign lifecycle/status/advance
-tests covering prepared-generation config identity
 tests covering post-selection identity/execution/materialization
-tests covering MACE export/realization/real-MACE contracts
+tests covering MACE executable config/model reconstruction
 tests covering TRAIN2 policy/runtime continuation
+tests/test_mlff_doc_arch1_specification.py
 ```
 
-Re-derive the final affected surface from the assembled implementation. If broader than this initial map, run the broader affected suite. If impact cannot be bounded confidently, run the full relevant MLFF suite.
+Re-derive the final affected surface from the repaired assembled implementation. If resolution/helper consolidation changes callers beyond this map, include those callers. If the affected boundary cannot be confidently bounded, run the full relevant MLFF regression suite.
+
+### 8.3 Real-owner integration
+
+Using bounded expensive numerical substitution only below the accepted owners:
+
+- build/execute/reload a real target-size current generation through P3/P4;
+- prove the same canonical target-size policy resolution is used on initial execution and terminal exposure;
+- prove selected-at-ceiling warning still proceeds to P5;
+- prove a post-selection-only LR edit does not retire target-size selection;
+- prove a target-size normalization edit does retire incompatible P3 descendants;
+- prove the executable candidate config and TRAIN2 plan agree on batch, dtype, LR, and EMA realization.
+
+Full long GPU production qualification remains deferred and is not a substitute for these tests.
 
 ---
 
-## 9. Compatibility policy
+## 9. Compatibility and invalidation policy
 
-This is a scientific-method change, not a backward-compatible reinterpretation of existing evidence.
+This remains a scientific-method change, not a migration of old evidence.
 
-Required posture:
+- historical fixed-LR/fixed-EMA/old-loss/blocking-ceiling evidence may remain readable under its historical schema when supported;
+- it must never authenticate as corrected current evidence;
+- do not repair old evidence by filling the new normalization digest, rewriting a status, or supplying new policy defaults;
+- corrected objective/loss/normalization/terminal-decision changes invalidate only descendants whose scientific meaning changes;
+- post-selection-only settings must not invalidate a completed target-size result;
+- execution-only resource settings must not become scientific invalidation keys;
+- content-addressed immutable artifacts may be reused only when their semantic parents are genuinely unchanged.
 
-- old evidence may remain readable under its original schema/identity when historical support is retained;
-- old evidence must never be resumed/reduced/adopted as corrected evidence;
-- old `NONCONVERGED_AT_CONFIGURED_CEILING` states are not rewritten into successful selections;
-- the new selected-at-ceiling result must be generated by the corrected reducer under the corrected P2/P3/method identities;
-- schema evolution is required wherever identical serialized fields would otherwise acquire materially different meaning;
-- content-addressed artifacts may be reused only when their semantic parents are unchanged.
-
-If the existing campaign state model cannot safely replace only the affected descendants, prefer a fresh canonical generation that reuses still-valid immutable content over a new in-place migration mechanism.
-
----
-
-## 10. Delegated solution space
-
-The implementer may choose local symbol names, schema version numbers, helper placement, and compact refactors provided all Frozen semantics hold.
-
-Preferred simplicity:
-
-- one P2 terminal-decision policy/version identity;
-- existing `SELECTED` state plus warning metadata, not a new status/lifecycle;
-- one optimizer-normalization policy type and resolver;
-- one objective/common-policy resolver;
-- one candidate realization formula;
-- existing P3/P4/P5 currentness and restart machinery;
-- dependency-native MACE loss semantics rather than custom patched loss machinery.
-
-Existing code, enums, serializers, helpers, and tests are Tier-2 realization unless specifically Frozen above. Remove or narrow obsolete blocking-ceiling branches when safe; retain historical readers only where compatibility actually requires them.
-
-Do not preserve old behavior with wrappers or aliases merely to keep old tests green. Tests asserting the old product semantics must be updated because the accepted product requirement has changed.
+Prefer natural existing digest/schema/generation invalidation. Do not add a migration registry or compatibility wrapper for this repair.
 
 ---
 
-## 11. Reopen only on evidence
+## 10. Delegated solution space and anti-shortcuts
 
-Reopen Software Design only if evidence proves one of these Frozen assumptions false:
+The implementer may refactor existing config/policy resolution to achieve one canonical owner. Local names and helper placement remain delegated.
 
-1. MACE 0.3.16 does not apply EMA once per optimizer update in the actual TRAIN2 path, invalidating `beta_ref ** scale`;
-2. the target-size loader has hidden duplication/resampling so `ceil(N/B)` is not actual update geometry;
-3. target-size replay exposure becomes non-`none` or varies with N;
-4. the candidate-specific effective LR cannot be carried through one authenticated full-n3 continuation trajectory;
-5. the native weighted MACE loss fails the real boundary acceptance for configuration/property/global weights;
-6. changing the loss family changes model-construction semantics in a way the existing method/model identity cannot represent;
-7. the existing P2/P4/P5 authority graph cannot represent selected-at-ceiling-with-warning without a materially different high-level state architecture;
-8. the campaign cannot invalidate old affected scientific descendants without reinterpreting old evidence or creating a competing currentness authority;
-9. the implementation would require hidden candidate-specific tuning, empirical LR caps, an unconfigured rescue ladder, or another new independent target-size variable.
+Preferred repair direction:
 
-A trigger is not permission to patch around the problem. It requires bounded Design reconsideration of only the affected surface.
+```text
+recover one canonical campaign training-policy resolution
+  -> project target-size scientific subset
+  -> project post-selection scientific subset
+  -> keep execution-only realization outside scientific digests
+```
 
----
+Prefer removal/consolidation over synchronization.
 
-## 12. Gated implementation order
+Forbidden shortcuts:
 
-Implement in this order, with semantic/conformance closure plus stage-local affected regression at each material stage:
-
-1. **P2 decision-policy gate** - practical-ceiling selected-with-warning semantics, P2 identity, P4/P5/lifecycle propagation.
-2. **Normalization-policy gate** - config/defaults/resolution and identity.
-3. **Objective-owner gate** - one config-aware objective/common policy and corrected global/local weight semantics.
-4. **Candidate-identity gate** - scale/effective LR/effective EMA/realized schedule and stale-evidence rejection.
-5. **TRAIN2 continuation gate** - one full-trajectory realization across exact boundaries.
-6. **MACE loss/config gate** - explicit global objective and dependency-native weighting semantics across target-size/CV/production.
-7. **Current-owner integration gate** - reducer/head/currentness/post-selection acceptance including ceiling warning.
-8. **Documentation gate** - current architecture/spec/user guide synchronized.
-9. **Final affected-surface gate** - re-derive and run complete affected regression plus assembled integration.
-
-Do not proceed past a stage whose material semantic or functional closure is failing.
+- terminal-loader exceptions that ignore a context mismatch;
+- hard-coding `[training].learning_rate` equal to the target-size reference LR;
+- copying values between policy objects after independent resolution;
+- adding another target-size optimizer-policy wrapper solely to reconcile existing objects;
+- broadening prepared-generation identity to include normalization or post-selection-only fields;
+- adding a new selected-with-warning reducer/lifecycle;
+- adding a duplicate loss-family field solely to satisfy documentation wording;
+- weakening stale-evidence checks to make old tests pass.
 
 ---
 
-## 13. Final closure review
+## 11. Reopen only on new design evidence
 
-The final Software Design closure review found the following material gaps in revision 1 and closes them here:
+The following remain genuine bounded Design-reopen triggers after this implementation repair:
 
-- the old plan incorrectly said P2 remained entirely unchanged; corrected terminal disposition is now explicitly P2 scientific decision policy and identity;
-- configured-ceiling non-convergence is now correctly modeled as **selected scientific result + warning**, not a hard failure;
-- `SELECTED` plus existing diagnostic metadata is sufficient; no new terminal status/lifecycle is justified;
-- the practical-equivalence rule now explicitly distinguishes a real plateau from a materially superior ceiling;
-- an interior/reflection winner is handled by existing ranking without a new curve classifier;
-- genuinely insufficient comparison remains blocking and cannot be converted into a ceiling selection;
-- P4/P5/current lifecycle consequences are explicit: selected-at-ceiling must continue into CV and fresh production;
-- historical blocking-ceiling evidence is not retroactively blessed; the new decision-policy identity forces corrected evidence;
-- fixed configurable `N_ref/LR_ref/EMA_ref` defaults and exact batch-aware inverse-update scaling remain Frozen;
-- EMA normalization remains required because EVAL2 evaluates EMA state when enabled;
-- target-size normalization remains a screen-control policy rather than production checkpoint inheritance;
-- target-size now consumes the explicit configured objective rather than coincidental defaults;
-- global objective, local property weights, and configuration weights have separate ownership;
-- pinned MACE `UniversalLoss` cannot represent the declared weighting semantics merely by moving coefficients between layers;
-- real pinned-MACE loss semantics and real P2/P4/P5 owner boundaries are mandatory acceptance points;
-- stale fixed-LR/fixed-EMA/old-loss/old-terminal-decision evidence is not reusable;
-- full affected regression/integration is mandatory, while long GPU production qualification remains deferred to final release.
+1. MACE 0.3.16 does not apply EMA once per optimizer update in the actual TRAIN2 path;
+2. target-size loader exposure differs from `ceil(N/B)` because of hidden duplication/resampling;
+3. target-size replay exposure becomes non-none or N-dependent;
+4. one candidate-specific effective LR/EMA cannot survive the authenticated full-`n3` continuation trajectory;
+5. the native weighted MACE loss fails real pinned-dependency acceptance for configuration/property/global weights;
+6. corrected loss family changes model construction in a way the existing model/method identity cannot represent;
+7. selected-at-ceiling warning cannot be represented by the existing selected P2/P4/P5 architecture without changing Frozen ownership;
+8. correct currentness requires a competing authority rather than simplification of the existing one;
+9. the method would require hidden candidate-specific tuning, empirical LR caps, an unconfigured rescue ladder, or another independent target-size variable.
 
-No remaining design blocker was found. The implementation search space is bounded, the changed scientific semantics are identity-safe, and the simplest existing authority path can realize the requested behavior without new state machinery.
+The blockers in this review do **not** trigger any of these redesign conditions. They are implementation/configuration-owner nonconformance under the existing architecture.
 
-**Final verdict: PASS / implementation-ready.**
+---
+
+## 12. Repair sequence
+
+Perform the repair in this order, with stage-local focused/affected regression after each material executable stage:
+
+1. **Canonical target-size optimizer-template resolution** — remove generic post-selection LR from screen scientific identity; use target-size normalization reference LR/EMA as the only screen authority.
+2. **Seed-neutral identity narrowing** — classify generic optimizer fields and remove proven execution-only worker/resource fields from P3 scientific identity.
+3. **Canonical dtype/batch resolution** — eliminate contradictory common/executable/post-selection defaults and projections through one existing campaign owner.
+4. **Documentation ownership correction** — fix loss-family ownership wording and regenerate affected tracked derivatives.
+5. **Final assembled functional closure** — execute focused tests, pinned-MACE semantic acceptance, affected regression, and real-owner integration on the repaired candidate.
+
+Do not proceed to a closure claim while any stage still permits two authorities for the same target-size training semantic.
+
+---
+
+## 13. Review disposition
+
+### Accepted and preserved
+
+The independent review accepts the implemented:
+
+- practical-ceiling `SELECTED + warning` reducer semantics;
+- exact practical-equivalence/interior-winner behavior;
+- target-size optimizer-normalization formulas and candidate realization;
+- one full trajectory across fidelity boundaries;
+- objective/global-vs-local weighting separation;
+- dependency-native weighted MACE loss and model/method loss-family identity;
+- stale scientific-evidence schema cutover;
+- P4/P5 selected-at-ceiling lifecycle propagation and warning reporting.
+
+### Blocking before closure
+
+The workplan remains open because:
+
+1. generic `[training].learning_rate` still contaminates target-size P3 identity despite not owning target-size LR;
+2. the seed-neutral digest still includes execution-only `num_workers` and has not completed the parent-P3 field-boundary requirement;
+3. target-size common policy and executable optimizer can bind contradictory dtype, and batch defaults are inconsistent across owners;
+4. normative documentation misstates loss-family ownership;
+5. required functional regression/integration evidence has not been established on the reviewed remote candidate.
+
+These findings all trace to one architectural principle: **one scientific semantic must have one canonical owner**. The repair should reduce duplicate configuration interpretation and shrink identity to the actual target-size contract.
+
+**Verdict: NO-PASS / rework required.**
