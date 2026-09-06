@@ -15,10 +15,12 @@ architecture or provider override.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -26,11 +28,15 @@ import pytest
 
 import mdstats
 import tests.test_mlff_target_size_execution_p3a as p3a
+import tests.test_mlff_target_size_execution_p3c as p3c
+import tests.test_mlff_target_size_execution_p3d as p3d
 import tests.test_mlff_target_size_execution_p3e as p3e
+import tests.test_mlff_target_size_execution_p3f as p3f
 from mdstats.training_data._common import TrainingDataInputError
 from mdstats.training_data.campaign_target_size_runtime import (
     MaceTargetSizeBoundaryTrainer,
     TargetSizeRungRequest,
+    TargetSizeRuntimeError,
     mace_run_configuration,
 )
 from mdstats.training_data.model_features import (
@@ -40,12 +46,21 @@ from mdstats.training_data.model_features import (
 )
 from mdstats.training_data.target_size_execution import (
     bind_target_size_boundary_state,
+    build_complete_boundary_batch,
     build_target_size_candidate_trajectory,
+    build_target_size_cell_completion_record,
     build_target_size_eval2_role,
+    collect_boundary_cell_completion_records,
+    commit_target_size_boundary_batch,
+    derive_active_boundary_requirements,
+    evaluate_target_size_boundary,
     materialize_target_size_candidate,
     project_target_size_candidate_preparation,
     promote_target_size_boundary_snapshot,
+    record_candidate_boundary_outcome,
+    resolve_target_size_candidate_for_resume,
     run_target_size_direct_boundary_inference,
+    run_target_size_eval2_reduction,
     target_size_rung_plan,
     write_target_size_evaluation_artifact,
 )
@@ -60,16 +75,33 @@ from mdstats.training_data.target_size_execution.evaluation import (
 pytestmark = pytest.mark.slow
 
 
-def _wrapper(tmp_path: Path) -> Path:
-    """The real qualified ``mdstats-mace-train`` entry point, as production uses."""
+def _wrapper(tmp_path: Path, *, name: str = "mdstats-mace-train",
+             restart_epoch_record: Path | None = None) -> Path:
+    """The real qualified ``mdstats-mace-train`` entry point, as production uses.
+
+    ``restart_epoch_record`` only *observes* the restart contract the launcher
+    handed this child before the qualified entry point runs; the entry point
+    itself is unchanged, so the wrapper's own fail-closed verification is still
+    the thing being executed.
+    """
 
     source_root = Path(mdstats.__file__).resolve().parents[1]
-    path = tmp_path / "mdstats-mace-train"
+    path = tmp_path / name
+    observe = ""
+    if restart_epoch_record is not None:
+        observe = (
+            "import json, os, pathlib\n"
+            f"pathlib.Path({str(restart_epoch_record)!r}).write_text(json.dumps({{\n"
+            "    'argv': sys.argv[1:],\n"
+            "    'restart_epoch': os.environ.get('MDSTATS_MACE_RESTART_EPOCH'),\n"
+            "}, sort_keys=True), encoding='utf-8')\n"
+        )
     path.write_text(
         f"#!{sys.executable}\n"
         "import sys\n"
         f"sys.path.insert(0, {str(source_root)!r})\n"
-        "from mdstats.training_data.critical_precision_cli import train_main\n"
+        + observe
+        + "from mdstats.training_data.critical_precision_cli import train_main\n"
         "raise SystemExit(train_main())\n",
         encoding="utf-8",
     )
@@ -77,15 +109,19 @@ def _wrapper(tmp_path: Path) -> Path:
     return path
 
 
-def _materialize(env, tmp_path: Path, *, target_size: int, optimizer_seed: int):
+def _materialize(
+    env, tmp_path: Path, *, target_size: int, optimizer_seed: int,
+    optimizer_policy=None,
+):
     definition = env["aggregate"].definition
+    optimizer_policy = optimizer_policy or env["optimizer"]
     trajectory = build_target_size_candidate_trajectory(
         definition,
         env["context"],
         env["common"],
         env["schedule"],
         target_size=target_size,
-        optimizer_policy=env["optimizer"],
+        optimizer_policy=optimizer_policy,
         optimizer_seed=optimizer_seed,
     )
     projection = project_target_size_candidate_preparation(
@@ -101,7 +137,7 @@ def _materialize(env, tmp_path: Path, *, target_size: int, optimizer_seed: int):
         frame_catalog=env["frames"],
         frame_data_by_run=env["frame_data_by_run"],
         output_directory=directory,
-        optimizer_policy=env["optimizer"],
+        optimizer_policy=optimizer_policy,
         extxyz_policy=env["authority"].extxyz_policy,
         frame_array_index=env["index"],
         mace_architecture=env["common"].realized_mace_architecture,
@@ -109,24 +145,56 @@ def _materialize(env, tmp_path: Path, *, target_size: int, optimizer_seed: int):
     return trajectory, materialization, directory
 
 
-def _train_real_boundary(env, tmp_path: Path, trajectory, materialization, directory):
-    """Run one durable TRAIN2 boundary through the real pinned MACE trainer."""
+def _run_real_rung(
+    env,
+    trajectory,
+    materialization,
+    directory,
+    *,
+    boundary: int,
+    checkpoint_directory: Path,
+    start_epoch: int,
+    wrapper: Path,
+    optimizer_policy=None,
+):
+    """One rung through the production trainer and the qualified wrapper.
 
-    boundary = env["schedule"].fidelity_epochs[0]
-    checkpoint_directory = tmp_path / f"train2-{trajectory.content_digest[:12]}"
+    Nothing above the child process is substituted: the production launcher
+    writes the argv and the child environment, so a rung with
+    ``start_epoch > 0`` really does have to carry the restart contract the
+    qualified wrapper verifies.
+    """
+
     checkpoint_directory.mkdir(parents=True, exist_ok=True)
     plan = target_size_rung_plan(trajectory, env["schedule"], boundary_epoch=boundary)
-    trainer = MaceTargetSizeBoundaryTrainer(wrapper_path=_wrapper(tmp_path))
-    summary = trainer(
+    trainer = MaceTargetSizeBoundaryTrainer(wrapper_path=wrapper)
+    return trainer(
         TargetSizeRungRequest(
             plan=plan,
             trajectory=trajectory,
             materialization=materialization,
             materialization_directory=directory,
             checkpoint_directory=checkpoint_directory,
-            start_epoch=0,
-            optimizer_policy=env["optimizer"],
+            start_epoch=start_epoch,
+            optimizer_policy=optimizer_policy or env["optimizer"],
         )
+    )
+
+
+def _train_real_boundary(env, tmp_path: Path, trajectory, materialization, directory):
+    """Run one durable TRAIN2 boundary through the real pinned MACE trainer."""
+
+    boundary = env["schedule"].fidelity_epochs[0]
+    checkpoint_directory = tmp_path / f"train2-{trajectory.content_digest[:12]}"
+    summary = _run_real_rung(
+        env,
+        trajectory,
+        materialization,
+        directory,
+        boundary=boundary,
+        checkpoint_directory=checkpoint_directory,
+        start_epoch=0,
+        wrapper=_wrapper(tmp_path),
     )
     return boundary, checkpoint_directory, summary
 
@@ -459,3 +527,327 @@ def test_p3_pre_repair_executable_shape_reproduces_the_reported_mismatch(
         build_mace_model_from_configuration(config_payload)
     )
     assert observed["digest"] != canonical
+
+
+def _complete_boundary_cell(
+    env, tmp_path: Path, *, boundary: int, evaluation_data, evaluation_directory: Path,
+    trajectory, materialization, materialization_directory: Path, checkpoint_directory: Path,
+    summary, optimizer_policy,
+):
+    """Carry one trained rung through EVAL2 and durable P3 cell completion.
+
+    EVAL2 numerics are the bounded stand-in the other P3 suites already use:
+    what this test needs from the boundary is an *authenticated durable
+    predecessor* to continue from, and candidate ranking that is deterministic
+    rather than dependent on a two-epoch model's error.
+    """
+
+    definition = env["aggregate"].definition
+    boundary_state = bind_target_size_boundary_state(
+        trajectory, env["schedule"], summary, checkpoint_directory=checkpoint_directory
+    )
+    snapshot = promote_target_size_boundary_snapshot(
+        trajectory,
+        boundary_state,
+        checkpoint_directory=checkpoint_directory,
+        snapshot_root=env["root"],
+    )
+    role = build_target_size_eval2_role(
+        trajectory=trajectory,
+        boundary_state=snapshot,
+        definition=definition,
+        schedule=env["schedule"],
+        correlation_blocks=env["blocks"],
+        evaluation_data=evaluation_data,
+    )
+    view = evaluation_data.build_evaluation_view(evaluation_directory)
+    evaluator = p3d._predictions_evaluator(
+        view,
+        epsilon=p3f._epsilon(trajectory.target_size, trajectory.optimizer_seed),
+    )
+    prediction = run_target_size_direct_boundary_inference(
+        trajectory=trajectory,
+        materialization=materialization,
+        boundary_state=snapshot,
+        role=role,
+        evaluation_data=evaluation_data,
+        canonical_frame_authority=env["frame_authority"],
+        definition=definition,
+        context=env["context"],
+        common=env["common"],
+        schedule=env["schedule"],
+        optimizer_policy=optimizer_policy,
+        extxyz_policy=env["authority"].extxyz_policy,
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+        materialization_directory=materialization_directory,
+        snapshot_root=env["root"],
+        evaluation_directory=evaluation_directory,
+        inference_evaluator=evaluator,
+    )
+    metric_record = run_target_size_eval2_reduction(
+        role, evaluation_data, prediction, root_directory=evaluation_directory
+    )
+    outcome = evaluate_target_size_boundary(
+        role, evaluation_data, prediction, root_directory=evaluation_directory
+    )
+    planned_rung, predecessor = p3f._rung_provenance(env, trajectory, boundary)
+    completion = build_target_size_cell_completion_record(
+        window=env["window"],
+        trajectory=trajectory,
+        materialization=materialization,
+        boundary_snapshot=snapshot,
+        eval2_role=role,
+        evaluation_data=evaluation_data,
+        outcome=outcome,
+        prediction_evidence=prediction,
+        eval2_metric_record=metric_record,
+        planned_rung=planned_rung,
+        schedule=env["schedule"],
+        predecessor_continuation=predecessor,
+    )
+    record_candidate_boundary_outcome(
+        env["root"],
+        env["window"],
+        trajectory,
+        completion,
+        materialization=materialization,
+        boundary_snapshot=snapshot,
+        eval2_role=role,
+        evaluation_data=evaluation_data,
+        prediction_evidence=prediction,
+        eval2_metric_record=metric_record,
+        planned_rung=planned_rung,
+        predecessor_continuation=predecessor,
+        restart_authority=env["authority"],
+    )
+    return snapshot
+
+
+def test_p3_real_restart_continues_the_authenticated_predecessor_boundary(
+    tmp_path: Path,
+):
+    """The production restart handoff, across the boundary that failed.
+
+    A production ``select-target-size`` run committed fidelity boundary 1 and
+    then died resuming a surviving candidate for boundary 3 with
+    ``KeyError: 'MDSTATS_MACE_RESTART_EPOCH'``: the launcher passed
+    ``--restart_latest`` without ever telling the qualified wrapper which raw
+    checkpoint epoch it meant to continue from.  Every earlier P3 continuation
+    test either substituted the trainer or ran the first rung only, so nothing
+    executed this contract.
+
+    This crosses it for real -- authenticated predecessor, production launcher,
+    qualified wrapper, pinned MACE checkpoint load, restart verification, and
+    continued optimizer execution -- for the exact reported transition:
+
+    .. code-block:: text
+
+        completed epochs 1  ->  raw checkpoint 0  ->  resume at epoch 1
+                            ->  completed epochs 3, raw checkpoint 2
+
+    Only the trained candidate is real MACE; the other cells of the boundary
+    exist so the batch can commit at all, and they use the bounded TRAIN2
+    stand-in the rest of the P3 suite uses.
+    """
+
+    env = p3e._env(tmp_path, batch_size=1)
+    definition = env["aggregate"].definition
+    schedule = env["schedule"]
+    state = env["aggregate"].reducer_state
+    requirements = derive_active_boundary_requirements(definition, state)
+    assert requirements is not None
+    n1, evaluation_size, keys = requirements
+    assert n1 == schedule.n1 == 1
+
+    subject = (2, 1)
+    assert subject in keys
+
+    evaluation_directory = tmp_path / f"eval_data_{n1}"
+    evaluation_directory.mkdir(parents=True, exist_ok=True)
+    evaluation_data = write_target_size_evaluation_artifact(
+        evaluation_directory,
+        definition=definition,
+        evaluation_size=evaluation_size,
+        canonical_frame_authority=env["frame_authority"],
+        frame_catalog=env["frames"],
+        frame_data_by_run=env["frame_data_by_run"],
+        frame_array_index=env["index"],
+    )
+
+    subject_state: dict = {}
+    for size, seed in keys:
+        policy = (
+            env["optimizer"] if seed == env["optimizer"].seed
+            else replace(env["optimizer"], seed=seed)
+        )
+        trajectory, materialization, directory = _materialize(
+            env, tmp_path, target_size=size, optimizer_seed=seed,
+            optimizer_policy=policy,
+        )
+        checkpoint_directory = tmp_path / f"train2-n{size}-s{seed}"
+        checkpoint_directory.mkdir(parents=True, exist_ok=True)
+        if (size, seed) == subject:
+            summary = _run_real_rung(
+                env,
+                trajectory,
+                materialization,
+                directory,
+                boundary=n1,
+                checkpoint_directory=checkpoint_directory,
+                start_epoch=0,
+                wrapper=_wrapper(tmp_path),
+                optimizer_policy=policy,
+            )
+            # The predecessor this repair has to continue from exactly.
+            assert summary.completed_epochs == 1
+            assert summary.raw_checkpoint_epoch == 0
+            subject_state = {
+                "trajectory": trajectory,
+                "materialization": materialization,
+                "directory": directory,
+                "policy": policy,
+                "summary": summary,
+            }
+        else:
+            _runtime, summary, _state, _rng = p3c._run_rung(
+                target_size_rung_plan(trajectory, schedule, boundary_epoch=n1),
+                checkpoint_directory,
+                start_epoch=0,
+                updates_per_epoch=trajectory.realization.updates_per_epoch,
+                seed=seed,
+            )
+        _complete_boundary_cell(
+            env,
+            tmp_path,
+            boundary=n1,
+            evaluation_data=evaluation_data,
+            evaluation_directory=evaluation_directory,
+            trajectory=trajectory,
+            materialization=materialization,
+            materialization_directory=directory,
+            checkpoint_directory=checkpoint_directory,
+            summary=summary,
+            optimizer_policy=policy,
+        )
+
+    collected = collect_boundary_cell_completion_records(
+        env["root"], env["window"], boundary_epoch=n1
+    )
+    batch = build_complete_boundary_batch(definition, state, collected)
+    head = commit_target_size_boundary_batch(env["root"], definition, state, batch)
+    committed = head.post_state
+    assert committed.completed_boundary_epochs == (n1,)
+
+    # The reported transition: boundary 1 committed, boundary 3 next.
+    next_boundary, _evaluation_size, surviving = derive_active_boundary_requirements(
+        definition, committed
+    )
+    assert next_boundary == 3
+    assert subject in surviving, "the candidate under test did not survive boundary 1"
+
+    resolved = resolve_target_size_candidate_for_resume(
+        env["root"],
+        env["authority"],
+        boundary_epoch=next_boundary,
+        target_size=subject[0],
+        optimizer_seed=subject[1],
+        state=committed,
+    )
+    # P3 hands the launcher completed epochs, not a raw MACE checkpoint index.
+    assert resolved.start_epoch == 1
+    assert resolved.predecessor_snapshot.boundary_epoch == n1
+    # ...for the same authenticated candidate real MACE actually trained.
+    assert (
+        resolved.trajectory.content_digest
+        == subject_state["trajectory"].content_digest
+    )
+    assert (
+        resolved.materialization.content_digest
+        == subject_state["materialization"].content_digest
+    )
+
+    observed = tmp_path / "restart-contract.json"
+    continuation = _run_real_rung(
+        env,
+        resolved.trajectory,
+        resolved.materialization,
+        subject_state["directory"],
+        boundary=next_boundary,
+        checkpoint_directory=resolved.checkpoint_directory,
+        start_epoch=resolved.start_epoch,
+        wrapper=_wrapper(
+            tmp_path, name="mdstats-mace-train-observed",
+            restart_epoch_record=observed,
+        ),
+        optimizer_policy=resolved.optimizer_policy,
+    )
+
+    # The child really was launched in restart mode carrying the raw predecessor
+    # checkpoint epoch -- the value whose absence produced the reported KeyError.
+    contract = json.loads(observed.read_text(encoding="utf-8"))
+    assert "--restart_latest" in contract["argv"]
+    assert contract["restart_epoch"] == "0"
+
+    # ...and pinned MACE resumed from it rather than replaying or skipping.
+    updates_per_epoch = int(resolved.trajectory.realization.updates_per_epoch)
+    assert continuation.completed_epochs == 3
+    assert continuation.raw_checkpoint_epoch == 2
+    assert continuation.completed_updates == 3 * updates_per_epoch
+    assert continuation.structures_presented == (
+        3 * int(continuation.structures_per_epoch)
+    )
+    # A fresh start would have rebuilt epoch 0 in this workspace; continuation
+    # leaves the authenticated predecessor bytes exactly as published.
+    predecessor_bytes = (
+        resolved.checkpoint_directory
+        / resolved.predecessor_snapshot.raw_checkpoint_name
+    ).read_bytes()
+    assert (
+        hashlib.sha256(predecessor_bytes).hexdigest()
+        == resolved.predecessor_snapshot.raw_checkpoint_sha256
+    )
+
+
+def test_p3_real_restart_guard_rejects_a_disagreeing_expected_epoch(
+    tmp_path: Path, capfd
+):
+    """The wrapper's restart verifier is live, not merely satisfied.
+
+    Supplying the epoch is only half the contract: the qualified wrapper still
+    has to reject a run whose loaded checkpoint is not the one the launcher
+    intended.  Without this, a repair that merely made the ``KeyError`` go away
+    would look identical to a correct one.
+    """
+
+    env = p3e._env(tmp_path, batch_size=1)
+    trajectory, materialization, directory = _materialize(
+        env, tmp_path, target_size=2, optimizer_seed=1
+    )
+    boundary, checkpoint_directory, summary = _train_real_boundary(
+        env, tmp_path, trajectory, materialization, directory
+    )
+    assert summary.raw_checkpoint_epoch == 0
+
+    # Same real predecessor, same qualified wrapper, one wrong expectation.
+    trainer = MaceTargetSizeBoundaryTrainer(wrapper_path=_wrapper(tmp_path))
+    request = TargetSizeRungRequest(
+        plan=target_size_rung_plan(
+            trajectory, env["schedule"], boundary_epoch=env["schedule"].fidelity_epochs[1]
+        ),
+        trajectory=trajectory,
+        materialization=materialization,
+        materialization_directory=directory,
+        checkpoint_directory=checkpoint_directory,
+        start_epoch=5,
+        optimizer_policy=env["optimizer"],
+    )
+    with pytest.raises(TargetSizeRuntimeError):
+        trainer(request)
+    child_output = capfd.readouterr()
+    # The verifier compares what MACE actually loaded against what the launcher
+    # said, and fails closed on disagreement.
+    assert "MACE loaded restart epoch 0, expected 4" in (
+        child_output.err + child_output.out
+    )

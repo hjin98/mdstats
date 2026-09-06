@@ -49,6 +49,7 @@ from .campaign_target_size_paths import (
     target_size_execution_root,
     target_size_execution_root_locator,
 )
+from .precision_runtime import MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE
 
 
 class TargetSizeRuntimeError(TrainingDataError):
@@ -667,6 +668,19 @@ class MaceTargetSizeBoundaryTrainer:
             request.plan.to_dict(), sort_keys=True, separators=(",", ":")
         )
         environment["PYTHONHASHSEED"] = str(int(request.trajectory.optimizer_seed))
+        # The qualified wrapper verifies the raw checkpoint epoch MACE actually
+        # loaded against the epoch this launcher intended to continue from, so
+        # that intent has to travel with the launch.  ``start_epoch`` is the
+        # authenticated *completed*-epoch predecessor boundary supplied by P3,
+        # while TRAIN2's raw MACE checkpoint epochs are zero-based; hence the
+        # -1.  A fresh rung has no predecessor continuation authority at all, so
+        # an ambient or injected value is cleared rather than inherited.
+        if request.start_epoch > 0:
+            environment[MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE] = str(
+                int(request.start_epoch) - 1
+            )
+        else:
+            environment.pop(MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE, None)
         command = [
             str(self.wrapper_path),
             "--config",
@@ -1319,6 +1333,7 @@ def execute_current_select_target_size(
         build_complete_boundary_batch,
         commit_target_size_boundary_batch,
         derive_active_boundary_requirements,
+        recover_authenticated_boundary_progress,
     )
 
     cfg, paths = _load_config(args.config)
@@ -1416,22 +1431,46 @@ def execute_current_select_target_size(
             if requirements is None:
                 break
             boundary, _evaluation_size, keys = requirements
+            # An interrupted boundary leaves accepted per-cell evidence behind
+            # without advancing the reducer, so the whole boundary is still
+            # active on restart.  Active is not the same claim as unexecuted:
+            # anything already published is authenticated here and reused, and
+            # only genuinely missing cells reach the scientific owners.
+            completion_by_key = recover_authenticated_boundary_progress(
+                screen.root,
+                screen.window,
+                screen.authority,
+                boundary_epoch=int(boundary),
+                active_keys=keys,
+            )
+            if completion_by_key:
+                _ok(
+                    f"boundary {boundary}: recovered "
+                    f"{len(completion_by_key)} authenticated completed "
+                    f"(N, optimizer seed) cells from durable progress"
+                )
             print(
-                f"Boundary {boundary}: executing {len(keys)} surviving "
+                f"Boundary {boundary}: executing "
+                f"{len(keys) - len(completion_by_key)} of {len(keys)} surviving "
                 f"(N, optimizer seed) cells.",
                 flush=True,
             )
-            completion_records = []
             for size, seed in keys:
-                completion_records.append(
-                    _execute_candidate_cell(
-                        screen,
-                        target_size=int(size),
-                        optimizer_seed=int(seed),
-                        boundary=int(boundary),
-                        state=state,
-                    )
+                cell = (int(size), int(seed))
+                if cell in completion_by_key:
+                    continue
+                completion_by_key[cell] = _execute_candidate_cell(
+                    screen,
+                    target_size=int(size),
+                    optimizer_seed=int(seed),
+                    boundary=int(boundary),
+                    state=state,
                 )
+            # Exact P2 order, whatever mix of recovered and freshly executed
+            # cells produced it.
+            completion_records = [
+                completion_by_key[(int(size), int(seed))] for size, seed in keys
+            ]
             batch = build_complete_boundary_batch(
                 screen.aggregate.definition, state, completion_records
             )

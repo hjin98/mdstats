@@ -259,11 +259,12 @@ def _data4_bundle(
     tebeg: int = 700,
     sub_dir: str = "run",
     regime: str | None = "production",
+    elements: tuple[str, ...] = ("Li", "O"),
 ):
     _write(
         tmp_path,
         sub_dir,
-        ("Li", "O"),
+        elements,
         n_frames=n_frames,
         force_event_frame=8,
         tebeg=tebeg,

@@ -306,22 +306,73 @@ class CommonAtomicReferenceFit:
     def to_dict(self) -> dict[str, Any]:
         return {**self._payload(), "content_digest": self.content_digest}
 
+    @staticmethod
+    def _references_in_element_order(
+        value: Any, elements: tuple[int, ...]
+    ) -> tuple[tuple[int, float], ...]:
+        """Rebuild fitted references by semantic key identity, not mapping order.
+
+        Canonical prepared-generation bytes are produced with sorted JSON
+        object keys, so the persisted atomic-number keys arrive in lexical
+        order (``"13", "14", "8"``) rather than numeric order.  The fitted
+        values are keyed data: their authoritative order is ``element_order``,
+        never the serialized mapping iteration order.
+        """
+
+        if not isinstance(value, Mapping):
+            raise TrainingDataSerializationError(
+                "Common atomic-reference fitted values must be a mapping keyed "
+                "by atomic number."
+            )
+        reference_by_z: dict[int, float] = {}
+        for key, fitted in value.items():
+            if isinstance(key, bool) or not isinstance(key, (int, str)):
+                raise TrainingDataSerializationError(
+                    "Common atomic-reference fitted values use a malformed "
+                    "atomic-number key."
+                )
+            try:
+                atomic_number = int(key)
+            except ValueError:
+                raise TrainingDataSerializationError(
+                    "Common atomic-reference fitted values use a malformed "
+                    "atomic-number key."
+                ) from None
+            if atomic_number in reference_by_z:
+                raise TrainingDataSerializationError(
+                    "Common atomic-reference fitted values declare a duplicate "
+                    "atomic number."
+                )
+            try:
+                reference_by_z[atomic_number] = float(fitted)
+            except (TypeError, ValueError):
+                raise TrainingDataSerializationError(
+                    "Common atomic-reference fitted values must be numeric."
+                ) from None
+        if set(reference_by_z) != set(elements):
+            raise TrainingDataSerializationError(
+                "Common atomic-reference fitted values do not cover exactly the "
+                "persisted element order."
+            )
+        return tuple((z, reference_by_z[z]) for z in elements)
+
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> CommonAtomicReferenceFit:
         if payload.get("schema") != TARGET_SIZE_COMMON_ATOMIC_REFERENCE_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported common atomic-reference schema."
             )
+        element_order = tuple(int(v) for v in payload["element_order"])
+        references = cls._references_in_element_order(
+            payload["reference_energies_ev"], element_order
+        )
         result = cls(
             policy_digest=str(payload["policy_digest"]),
             membership_digest=str(payload["membership_digest"]),
-            element_order=tuple(int(v) for v in payload["element_order"]),
+            element_order=element_order,
             count_matrix_digest=str(payload["count_matrix_digest"]),
             target_energies_digest=str(payload["target_energies_digest"]),
-            reference_energies_ev=tuple(
-                (int(z), float(v))
-                for z, v in payload["reference_energies_ev"].items()
-            ),
+            reference_energies_ev=references,
             rank=int(payload["rank"]),
             singular_values_digest=str(payload["singular_values_digest"]),
             residual_rmse_ev=float(payload["residual_rmse_ev"]),

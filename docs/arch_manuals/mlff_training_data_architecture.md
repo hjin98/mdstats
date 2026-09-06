@@ -1129,6 +1129,20 @@ has no current endpoint. The execution head is reconciled before new work is
 scheduled, and compare-and-set adoption prevents two workers from becoming
 current simultaneously.
 
+A boundary interrupted part-way through its matrix keeps its published cells
+and leaves the reducer at its pre-boundary state, so the whole boundary is
+still *active* on the next invocation. Active is not the same claim as
+unexecuted. Before scheduling, the runtime authenticates the durable per-cell
+progress of the active boundary through the same completion-record replay owner
+that publication and reconciliation use, reuses the cells that pass, and sends
+only the genuinely missing cells to TRAIN2 and EVAL2. Recovered and newly
+executed cells are assembled in exact P2 size-major/seed-minor order, so one
+complete matrix still produces exactly one reducer transition. Progress that
+does not authenticate - foreign screen window, a cell outside the active matrix,
+or a missing or tampered scientific parent - is contradictory durable evidence
+and fails closed before any new work starts; absence of progress for an active
+cell is simply work that remains.
+
 Eliminated candidates receive no later ordinary-production authorization.
 Exhaustive full-fidelity training of every configured size is a separate
 algorithm/decision-preservation qualification, not a default campaign artifact

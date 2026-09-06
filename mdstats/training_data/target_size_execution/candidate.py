@@ -8,6 +8,13 @@ identity) plus the deterministic N/seed-derived realization facts (effective
 counts, update geometry, precision, acceleration, harness-validation
 artifact identity, full-``n3`` planned updates).
 
+The acceleration realization among those facts is candidate-local execution
+provenance, not screen identity: the seed-neutral execution context excludes it
+by design, so replay authenticates the realization a published trajectory
+actually bound rather than the one this invocation currently qualifies.  Every
+other realization fact stays a consequence of still-current authority and is
+re-derived on restart.
+
 Materialization reuses the proven low-level DATA8/MACE mechanisms (exact
 ExtXYZ export with canonical parentage, atomic publication, content-addressed
 reuse) through the generic exact-membership primitive in
@@ -73,6 +80,11 @@ class TargetSizeCandidateRealization:
     experimental variables.  A stale trajectory whose loader/update geometry
     or precision realization differs from the current exact ``T_N`` must be
     rejected even when the global execution-context digest matches.
+
+    ``acceleration_realization_digest`` is the one field here that is bound
+    rather than re-derived: it records which qualified acceleration realization
+    executed this candidate, and a later invocation running under a different
+    one does not make already accepted evidence stale.
     """
 
     target_train_count: int
@@ -520,6 +532,76 @@ def build_target_size_candidate_trajectory(
     )
 
 
+_REALIZATION_DRIFT_CLASSES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "exact T_N / candidate loader geometry",
+        (
+            "target_train_count",
+            "replay_train_count",
+            "harness_validation_count",
+            "structures_per_epoch",
+            "loader_geometry_digest",
+        ),
+    ),
+    (
+        "update geometry / full-n3 screen budget",
+        (
+            "batch_size",
+            "updates_per_epoch",
+            "planned_updates",
+            "planned_structures_presented",
+            "max_num_epochs",
+        ),
+    ),
+    (
+        "precision realization",
+        ("default_dtype", "precision_schedule_digest"),
+    ),
+    ("optimizer seed", ("optimizer_seed",)),
+    (
+        "historical acceleration provenance",
+        ("acceleration_realization_digest",),
+    ),
+)
+
+
+def _candidate_realization_drift_message(
+    expected: TargetSizeCandidateRealization,
+    observed: TargetSizeCandidateRealization,
+) -> str:
+    """Name the realization dimensions that actually diverged.
+
+    The digest comparison stays the authority; this only reads the same
+    canonical payload back so the diagnostic points at the real conflict
+    instead of always blaming ``T_N``/loader geometry.
+    """
+
+    expected_payload = expected._payload()
+    observed_payload = observed._payload()
+    differing = tuple(
+        name
+        for name in expected_payload
+        if name != "schema" and expected_payload[name] != observed_payload.get(name)
+    )
+    classes = tuple(
+        label
+        for label, fields in _REALIZATION_DRIFT_CLASSES
+        if any(name in differing for name in fields)
+    )
+    if not differing:
+        # Divergent digests with an identical payload can only mean a foreign
+        # realization schema.
+        return "Trajectory realization carries a foreign candidate-realization schema."
+    return (
+        "Trajectory realization does not authenticate against the accepted "
+        "candidate identity; "
+        + (", ".join(classes) if classes else "candidate realization")
+        + " differs (fields: "
+        + ", ".join(differing)
+        + ")."
+    )
+
+
 def validate_target_size_candidate_trajectory(
     trajectory: TargetSizeCandidateTrajectory,
     definition: TargetSizeExperimentDefinition,
@@ -576,27 +658,45 @@ def validate_target_size_candidate_trajectory(
         raise TrainingDataInputError(
             "Trajectory candidate membership is not the exact P2 T_N."
         )
-    from .context import validate_candidate_optimizer_policy
+    from .context import (
+        bind_candidate_optimizer_policy,
+        validate_candidate_optimizer_policy,
+    )
 
-    if optimizer_policy is not None:
-        validate_candidate_optimizer_policy(
-            context.seed_neutral_optimizer_policy_digest,
-            optimizer_policy,
-            authorized_seed=trajectory.optimizer_seed,
-        )
+    validate_candidate_optimizer_policy(
+        context.seed_neutral_optimizer_policy_digest,
+        optimizer_policy,
+        authorized_seed=trajectory.optimizer_seed,
+    )
 
+    # A persisted trajectory is immutable historical evidence.  Everything the
+    # still-current screen authority determines -- exact ``T_N``, counts,
+    # loader/update geometry, precision, full-``n3`` budget, authorized seed --
+    # is re-derived below and must still hold.  The acceleration realization is
+    # deliberately *not* part of the seed-neutral screen identity: it is
+    # candidate-local execution provenance, so replay authenticates the one this
+    # trajectory actually bound instead of substituting whichever realization
+    # happens to be qualified now.
+    replay_policy = bind_candidate_optimizer_policy(
+        optimizer_policy,
+        optimizer_seed=trajectory.optimizer_seed,
+        acceleration_realization_digest=(
+            trajectory.realization.acceleration_realization_digest
+        ),
+    )
     expected_realization = derive_target_size_candidate_realization(
         schedule=schedule,
         projection=projection,
         common=common,
-        optimizer_policy=optimizer_policy,
+        optimizer_policy=replay_policy,
         optimizer_seed=trajectory.optimizer_seed,
         replay_train_count=replay_train_count,
     )
     if trajectory.realization.content_digest != expected_realization.content_digest:
         raise TrainingDataInputError(
-            "Trajectory realization is stale for the current exact T_N; "
-            "loader/update geometry or precision realization differs."
+            _candidate_realization_drift_message(
+                expected_realization, trajectory.realization
+            )
         )
 
     expected_foundation_digest = digest(
