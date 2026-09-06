@@ -186,8 +186,23 @@ with paired optimizer seeds from the sole enabled method. Each candidate is an
 exact prefix of the one `pi_train` order. The reducer publishes either one
 `N_selected` with exact `T_selected = pi_train[:N_selected]` or a typed
 scientific failure. Replay and later validation evidence cannot affect the
-decision. A configured-ceiling nonconvergence is terminal evidence, not a
-request to synthesize an intermediate size.
+decision.
+
+Candidate learning-rate amplitude and EMA decay are normalized against the
+configured reference size (`[target_data.size_convergence.optimizer_normalization]`)
+so a larger candidate does not also receive more optimizer progress; epoch
+counts, batch size, LR shape, and every other optimizer setting stay fixed
+across candidates.
+
+The configured ladder ceiling is a practical budget limit. When `Nmax` remains
+materially superior to every other successful terminal finalist, it is
+**selected** and the result carries the non-blocking warning code
+`nonconverged_at_configured_ceiling`; `status` and the derived result view
+report the warning alongside the frozen size, the campaign lifecycle is
+`TERMINAL_SELECTED`, and the next admissible command remains `cross-validate`.
+Inside the practical-equivalence band the smaller finalist is still preferred.
+Genuinely insufficient comparison remains a typed scientific failure, and no
+unconfigured intermediate or rescue size is ever synthesized.
 
 ### `cross-validate`
 

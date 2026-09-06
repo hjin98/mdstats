@@ -38,6 +38,7 @@ from .._common import (
     validate_digest,
 )
 from ..mace_export import MaceExtxyzPolicy
+from ..mace_compatibility import MACE_EXECUTABLE_LOSS_FAMILY
 from ..protocol import MaceOptimizerPolicy
 from ..target_size_experiment import (
     TargetSizeExperimentDefinition,
@@ -60,10 +61,13 @@ from .export import (
 )
 from .schedule import TargetSizeScreenSchedule
 
-TARGET_SIZE_REALIZATION_SCHEMA = "mdstats.target-size.candidate-realization.v1"
+TARGET_SIZE_REALIZATION_SCHEMA = "mdstats.target-size.candidate-realization.v2"
 TARGET_SIZE_TRAJECTORY_SCHEMA = "mdstats.target-size.candidate-trajectory.v1"
 TARGET_SIZE_MATERIALIZATION_SCHEMA = "mdstats.target-size.candidate-materialization.v1"
-TARGET_SIZE_MACE_CONFIG_SCHEMA = "mdstats.target-size.mace-config.v2"
+TARGET_SIZE_MACE_CONFIG_SCHEMA = "mdstats.target-size.mace-config.v3"
+#: The executable MACE loss family for target-size screening; the shared owner
+#: in ``objectives`` explains why this family and not ``universal``.
+TARGET_SIZE_MACE_LOSS_FAMILY = MACE_EXECUTABLE_LOSS_FAMILY
 
 
 def _positive_int(value: Any, *, name: str) -> int:
@@ -101,6 +105,12 @@ class TargetSizeCandidateRealization:
     loader_geometry_digest: str
     optimizer_seed: int
     max_num_epochs: int
+    normalization_policy_digest: str
+    reference_updates_per_epoch: int
+    optimizer_progress_scale: float
+    effective_base_learning_rate: float
+    effective_ema_decay: float | None
+    realized_learning_rate_policy_digest: str
 
     def __post_init__(self) -> None:
         for name in (
@@ -162,6 +172,48 @@ class TargetSizeCandidateRealization:
             raise TrainingDataInputError(
                 "Candidate updates_per_epoch must equal ceil(structures/batch)."
             )
+        for name in (
+            "normalization_policy_digest",
+            "realized_learning_rate_policy_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        object.__setattr__(
+            self,
+            "reference_updates_per_epoch",
+            _positive_int(
+                self.reference_updates_per_epoch, name="reference_updates_per_epoch"
+            ),
+        )
+        # The normalization identity is re-derived here rather than trusted, so a
+        # trajectory whose scale/LR/EMA were edited cannot authenticate against
+        # its own update geometry.
+        scale = float(self.optimizer_progress_scale)
+        expected_scale = self.reference_updates_per_epoch / float(
+            self.updates_per_epoch
+        )
+        if not math.isfinite(scale) or scale <= 0.0 or not math.isclose(
+            scale, expected_scale, rel_tol=1.0e-12, abs_tol=0.0
+        ):
+            raise TrainingDataInputError(
+                "Candidate optimizer_progress_scale must equal "
+                "reference_updates_per_epoch / updates_per_epoch exactly."
+            )
+        object.__setattr__(self, "optimizer_progress_scale", scale)
+        effective_lr = float(self.effective_base_learning_rate)
+        if not math.isfinite(effective_lr) or effective_lr <= 0.0:
+            raise TrainingDataInputError(
+                "Candidate effective_base_learning_rate must be finite and positive."
+            )
+        object.__setattr__(self, "effective_base_learning_rate", effective_lr)
+        if self.effective_ema_decay is not None:
+            beta = float(self.effective_ema_decay)
+            if not math.isfinite(beta) or not 0.0 < beta < 1.0:
+                raise TrainingDataInputError(
+                    "Candidate effective_ema_decay must satisfy 0 < beta < 1."
+                )
+            object.__setattr__(self, "effective_ema_decay", beta)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -180,6 +232,14 @@ class TargetSizeCandidateRealization:
             "loader_geometry_digest": self.loader_geometry_digest,
             "optimizer_seed": self.optimizer_seed,
             "max_num_epochs": self.max_num_epochs,
+            "normalization_policy_digest": self.normalization_policy_digest,
+            "reference_updates_per_epoch": self.reference_updates_per_epoch,
+            "optimizer_progress_scale": self.optimizer_progress_scale,
+            "effective_base_learning_rate": self.effective_base_learning_rate,
+            "effective_ema_decay": self.effective_ema_decay,
+            "realized_learning_rate_policy_digest": (
+                self.realized_learning_rate_policy_digest
+            ),
         }
 
     @property
@@ -216,6 +276,20 @@ class TargetSizeCandidateRealization:
             loader_geometry_digest=str(payload["loader_geometry_digest"]),
             optimizer_seed=int(payload["optimizer_seed"]),
             max_num_epochs=int(payload["max_num_epochs"]),
+            normalization_policy_digest=str(payload["normalization_policy_digest"]),
+            reference_updates_per_epoch=int(payload["reference_updates_per_epoch"]),
+            optimizer_progress_scale=float(payload["optimizer_progress_scale"]),
+            effective_base_learning_rate=float(
+                payload["effective_base_learning_rate"]
+            ),
+            effective_ema_decay=(
+                None
+                if payload.get("effective_ema_decay") is None
+                else float(payload["effective_ema_decay"])
+            ),
+            realized_learning_rate_policy_digest=str(
+                payload["realized_learning_rate_policy_digest"]
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -272,6 +346,25 @@ def derive_target_size_candidate_realization(
             "valid_batch_size": optimizer_policy.valid_batch_size,
         }
     )
+    # Optimizer-progress normalization is derived once here, from the *full*
+    # candidate geometry (all n3 epochs, the complete T_N), and is then carried
+    # unchanged through every rung.  It is never recomputed from the active rung
+    # or the survivor set, so eliminating a candidate cannot alter any surviving
+    # candidate's realized schedule.
+    normalization = schedule.normalization_policy
+    reference_updates = normalization.reference_updates_per_epoch(batch_size)
+    scale = normalization.optimizer_progress_scale(
+        batch_size=batch_size, updates_per_epoch=updates_per_epoch
+    )
+    effective_learning_rate = normalization.effective_base_learning_rate(scale)
+    effective_ema_decay = (
+        normalization.effective_ema_decay(scale)
+        if bool(optimizer_policy.ema)
+        else None
+    )
+    realized_learning_rate_policy = schedule.realized_learning_rate_policy(
+        effective_learning_rate
+    )
     return TargetSizeCandidateRealization(
         target_train_count=target_train_count,
         replay_train_count=replay,
@@ -287,6 +380,14 @@ def derive_target_size_candidate_realization(
         loader_geometry_digest=loader_geometry_digest,
         optimizer_seed=int(optimizer_seed),
         max_num_epochs=schedule.n3,
+        normalization_policy_digest=normalization.content_digest,
+        reference_updates_per_epoch=reference_updates,
+        optimizer_progress_scale=scale,
+        effective_base_learning_rate=effective_learning_rate,
+        effective_ema_decay=effective_ema_decay,
+        realized_learning_rate_policy_digest=(
+            realized_learning_rate_policy.policy_digest
+        ),
     )
 
 
@@ -561,6 +662,17 @@ _REALIZATION_DRIFT_CLASSES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "historical acceleration provenance",
         ("acceleration_realization_digest",),
+    ),
+    (
+        "optimizer-progress normalization",
+        (
+            "normalization_policy_digest",
+            "reference_updates_per_epoch",
+            "optimizer_progress_scale",
+            "effective_base_learning_rate",
+            "effective_ema_decay",
+            "realized_learning_rate_policy_digest",
+        ),
     ),
 )
 
@@ -855,6 +967,7 @@ def _mace_config_for_candidate(
     realized_architecture = canonicalize_mace_candidate_architecture(
         common.realized_mace_architecture
     )
+    objective_policy = common.objective_policy
     if mace_architecture is not None and canonicalize_mace_candidate_architecture(
         mace_architecture
     ) != realized_architecture:
@@ -886,13 +999,30 @@ def _mace_config_for_candidate(
         "energy_key": extxyz_policy.energy_key,
         "forces_key": extxyz_policy.forces_key,
         "stress_key": extxyz_policy.stress_key,
-        "lr": float(optimizer_policy.learning_rate),
+        # The screen's executable learning rate and EMA decay are the
+        # size-normalized realized values, not the production-side
+        # ``[training].learning_rate`` / ``ema_decay`` defaults.
+        "lr": float(trajectory.realization.effective_base_learning_rate),
         "batch_size": int(optimizer_policy.batch_size),
         "valid_batch_size": int(optimizer_policy.valid_batch_size),
         "num_workers": int(optimizer_policy.num_workers),
         "max_num_epochs": int(trajectory.realization.max_num_epochs),
         "ema": bool(optimizer_policy.ema),
-        "ema_decay": float(optimizer_policy.ema_decay),
+        "ema_decay": (
+            float(optimizer_policy.ema_decay)
+            if trajectory.realization.effective_ema_decay is None
+            else float(trajectory.realization.effective_ema_decay)
+        ),
+        # The declared mdstats objective is the objective actually optimized.
+        # ``loss="stress"`` selects MACE's WeightedEnergyForcesStressLoss, whose
+        # native reductions consume ``config_weight`` and the per-frame property
+        # weights linearly while applying these global coefficients once, at the
+        # global layer.  Without them MACE would silently default to
+        # ``forces_weight=100`` under its ``weighted`` loss.
+        "loss": TARGET_SIZE_MACE_LOSS_FAMILY,
+        "energy_weight": float(objective_policy.energy_weight),
+        "forces_weight": float(objective_policy.forces_weight),
+        "stress_weight": float(objective_policy.stress_weight),
         "amsgrad": bool(optimizer_policy.amsgrad),
         "weight_decay": float(optimizer_policy.weight_decay),
         "clip_grad": float(optimizer_policy.clip_grad),

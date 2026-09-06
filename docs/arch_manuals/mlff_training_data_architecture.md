@@ -1,8 +1,8 @@
 ---
 geometry: "margin=0.75in"
-architecture_revision: 107
+architecture_revision: 108
 status: "current normative architecture"
-last_updated: "2026-08-30"
+last_updated: "2026-09-05"
 ---
 
 # MLFF Training-Data and Fine-Tuning Architecture
@@ -639,12 +639,29 @@ view of `T_selected`, but it is not an independent membership authority.
 ## Objective, weighting, and exposure
 
 Target membership, target size, loss weighting, and runtime exposure are
-separate decisions. `TrainingObjectivePolicy` binds the loss family,
-energy/force/stress weights, head weights, normalization, robust-loss choices,
-and missing-label behavior. Configuration/property weighting binds applicable
-condition, regime, event, quality, and property weights. Exposure binds the
-head, actual gradient exposures, batching/duplication behavior, seed, and
-runtime lineage.
+separate decisions, and the three weighting layers are themselves separate
+owners applied at different points in the loss:
+
+- `TrainingObjectivePolicy` binds the loss family and the **global**
+  energy/force/stress coefficients (default `1 : 10 : 1`), head weights,
+  normalization, robust-loss choices, and missing-label behavior. The
+  coefficients are applied exactly once, at the global loss layer, and are
+  emitted explicitly into every generated MACE configuration;
+- `ConfigurationWeightPolicy` binds the **per-configuration** weight from
+  applicable condition, regime, event, and quality evidence;
+- per-frame **property weights are local availability masks** (`1.0` present,
+  `0.0` absent). They never duplicate the global coefficient ratio, because a
+  per-frame copy would both apply the objective twice and destroy the mask.
+
+The executable realization must honour that separation linearly: the current
+loss family is MACE's weighted energy+force+stress loss, whose reductions
+consume the configuration weight and local property weights linearly under the
+global coefficients. Exposure binds the head, actual gradient exposures,
+batching/duplication behavior, seed, and runtime lineage.
+
+Optimizer-progress amplitude for the target-size screen is a further separate
+decision: it is normalized against one configurable reference size so a larger
+candidate does not also receive more optimizer progress. See Part V.
 
 A frame can be selected once, weighted non-uniformly, and exposed through a
 qualified loader without those decisions becoming one authority. A custom
@@ -724,11 +741,41 @@ foundation checkpoint / model family / selected foundation head
 protocol-global N_selected and exact T_selected binding
 replay source, split, and replay-monitor identity
 training objective and configuration/property weights
+executable loss family
 target/replay head weights and realized exposure policy
 checkpoint metric and admissibility policy
 optimizer, LR schedule, epoch cap, stopping policy, and seed policy
 model precision, acceleration backend, and MACE adapter/runtime lock
 ```
+
+## Objective and weighting layers
+
+Three weighting owners are applied at three different layers and are never
+merged:
+
+- **global loss coefficients** - `[objective]` (`TrainingObjectivePolicy`),
+  default `energy : forces : stress = 1 : 10 : 1`. They are emitted explicitly
+  into every generated MACE configuration, so MACE's own `forces_weight = 100`
+  default never applies to an mdstats run;
+- **per-configuration weight** - `[weighting]` (`ConfigurationWeightPolicy`),
+  exported as `config_weight`;
+- **local property weights** - availability masks, `1.0` when the canonical
+  label is present and `0.0` when it is absent. They are not per-frame copies of
+  the global ratio.
+
+The executable loss family is MACE's weighted energy+force+stress loss
+(`loss = "stress"`, `WeightedEnergyForcesStressLoss`), whose native reductions
+consume `ref.weight` and the local property weights linearly while applying the
+global coefficients once. MACE's `UniversalLoss` is not used: it scales
+residuals inside a Huber evaluation - so its per-config property weights are not
+linearly equivalent to global coefficients - and it does not consume
+`config_weight`. The loss family is part of method identity, so historical
+checkpoints trained under different loss semantics are not prefixes or
+equivalents of corrected trajectories.
+
+Target-size screening, post-selection cross-validation, and fresh final
+production resolve these owners through the same configuration resolvers, so
+"the same objective" means the same resolved policy on every path.
 
 The identity contains no unbound caller-held model or fold result. A change to
 replay semantics, objective, selected membership, checkpoint policy,
@@ -829,9 +876,9 @@ current selected binding
   -> fold/final execution and evidence
 ```
 
-The shared method identity binds preparation/objective recipe, foundation and
-initialization family, optimizer family, LR schedule, checkpoint semantics,
-precision, and backend. It does not contain fold membership or a second target
+The shared method identity binds preparation/objective recipe, executable loss
+family, foundation and initialization family, optimizer family, LR schedule,
+checkpoint semantics, precision, and backend. It does not contain fold membership or a second target
 size.
 
 The CV policy owns `K >= 2`, partition seed, fold algorithm, CV budget,
@@ -973,6 +1020,40 @@ n1 / M1  ->  n2 / M2  ->  n3 / M3
 
 Fidelity boundaries are continuation points, not restarts: model, optimizer, and RNG state continue exactly across `n1 -> n2 -> n3`. Ordinary early stopping may not truncate a required screen boundary, and the seed set is identical at every `N` so a size comparison is never a seed comparison.
 
+### Optimizer-progress normalization
+
+Under a fixed number of dataset passes and a fixed batch size `B`, candidate `N` performs `U_N = ceil(N/B)` optimizer updates per epoch. Holding the nominal learning rate and EMA decay fixed would therefore give larger candidates strictly more optimizer progress - a second independent variable the target-size question never asked about. The screen removes that confound by normalizing amplitude against one configurable reference size:
+
+```text
+U_ref   = ceil(N_ref / B)
+U_N     = ceil(N / B)
+s_N     = U_ref / U_N
+lr(N)   = reference_learning_rate * s_N
+beta(N) = reference_ema_decay ** s_N
+```
+
+so `lr(N) * U_N` and `beta(N) ** U_N` are invariant in `N`. An exact doubling of update geometry halves the learning rate and takes the square root of the EMA decay. Defaults are `N_ref = 1024`, `reference_learning_rate = 1.0e-4`, `reference_ema_decay = 0.99999`, configured under `[target_data.size_convergence.optimizer_normalization]`. The reference size need not be a candidate and need not lie inside the configured ladder. No cap, floor, clipping, survivor-dependent rescaling, or candidate-specific override is applied.
+
+EMA is normalized because EVAL2 evaluates the authenticated configured model state, which is the EMA state whenever EMA is enabled; leaving the decay fixed would compare EMA windows of different effective lengths.
+
+Only those two update clocks are normalized. Epoch and fidelity boundaries, the number of dataset passes, the batch size, the LR phase fractions and normalized-progress multiplier shape, Adam/AMSGrad settings, weight decay, gradient clipping, model precision and architecture, acceleration policy, the optimizer-seed set, and the objective/weighting policy are all held fixed across candidates. This is a first-order optimizer-progress normalization, not a claim of exact optimizer-path equivalence: minibatch noise, Adam moment history, and the finite discretization of the analytic LR curve remain accepted residuals.
+
+Each `(N, optimizer_seed)` derives its scale, effective learning rate, and effective EMA decay **once**, from the full candidate geometry, and binds them into the candidate realization. The same realized values are replayed through every rung of `n1 -> n2 -> n3`; they are never recomputed from the active rung or the survivor set, so eliminating a candidate cannot alter a surviving candidate's schedule. Restart validation re-derives the normalization identity and rejects drift, so a stale fixed-LR or differently-normalized checkpoint cannot be resumed.
+
+This normalization is a control of the size-comparison **screen** only. Post-selection cross-validation and fresh final production start from their own optimizer state under their own accepted method policy; screen checkpoints are never production parents.
+
+### Objective and weighting ownership
+
+Three weighting owners are kept distinct and are applied at different layers:
+
+- `[objective]` (`TrainingObjectivePolicy`) owns the **global** loss-component coefficients, by default `energy : forces : stress = 1 : 10 : 1`. They are emitted explicitly into every generated MACE configuration - target-size candidate, post-selection CV, and fresh final production - so MACE's own `forces_weight = 100` default is never in effect;
+- `[weighting]` (`ConfigurationWeightPolicy`) owns the **per-configuration** weight, exported as `config_weight`;
+- per-frame property weights are **local availability masks**: `1.0` when the canonical label is present, `0.0` when it is absent. They are never per-frame copies of the global ratio.
+
+Target-size common preparation and post-selection resolve all three through the same config resolvers, so a user override cannot be honoured by one path and silently ignored by the other. Changing `[objective]` changes common/prepared-generation identity and invalidates its descendants; changing the optimizer-normalization reference values does not, because normalization is P3 execution identity rather than a preparation input.
+
+The executable loss family is MACE's weighted energy+force+stress loss (`loss = "stress"`, `WeightedEnergyForcesStressLoss`), whose native reductions consume `ref.weight` and the local property weights linearly while applying the global coefficients once. MACE's `UniversalLoss` is not used: it scales residuals inside a Huber evaluation, so its per-config property weights are not linearly equivalent to global objective coefficients, and it does not consume `config_weight` at all. The loss family is part of method identity - a checkpoint trained under a different family is not a prefix of a corrected trajectory.
+
 Candidate rungs execute through the accepted TRAIN2 runtime and are evaluated through the accepted EVAL2 owners. Expensive numerical training has exactly one substitution seam, strictly below the mdstats owner boundary; configuration resolution, authority construction, materialization, provider and checkpoint authentication, publication, reconciliation, and adoption are production code in every invocation.
 
 ## The reducer and the terminal decision
@@ -980,11 +1061,20 @@ Candidate rungs execute through the accepted TRAIN2 runtime and are evaluated th
 One reducer consumes the screen evidence and advances the experiment. Its outcome is one of:
 
 - **selected** - a size `N_selected` is frozen together with the exact membership `T_selected = pi_train[:N_selected]`;
-- **typed scientific terminal failure** - the configured candidate ceiling did not converge, too few candidates qualified, or the surviving candidates were not comparable.
-
-A configured-ceiling nonconvergence is a typed result, not an invitation to invent a rescue size outside the configured ladder.
+- **typed scientific terminal failure** - too few candidates qualified, or the surviving candidates were not comparable.
 
 Ranking is owned by the target-side metric and practical-equivalence policy alone. Inside the practical-equivalence band the **smaller** `N` is preferred, because the scientific question is the smallest sufficient training-set size.
+
+The configured ladder ceiling is a **practical budget limit**, not a requirement that convergence occur below it. The terminal decision therefore distinguishes two selected outcomes:
+
+- **evidence-supported truncation** - a smaller size is practically equivalent to, or better than, the larger finalist, so there is direct evidence to stop below the ceiling. This is an ordinary selection with no warning;
+- **practical-ceiling selection** - the largest configured candidate remains materially superior to every other successful terminal finalist by more than the practical-equivalence threshold. `Nmax` is then selected, and the result carries the non-blocking warning code `nonconverged_at_configured_ceiling`: the configured practical ceiling is the best evaluated permitted size, while target-size convergence was not demonstrated within the configured ladder. It does not claim that `Nmax` is asymptotically converged, and no unconfigured rescue size is invented.
+
+The warning is diagnostic metadata on a valid selection, carried in `terminal_reason_codes`. There is no separate selected-with-warning status: a selected-at-ceiling result commits through the ordinary `TERMINAL_SELECTED` transition, binds `N_selected`/`T_selected` exactly once, admits post-selection cross-validation, and leaves `cross-validate` as the next admissible command. CLI status and the derived result view surface the warning alongside the frozen size.
+
+Genuinely insufficient comparison stays blocking. Too few complete comparable terminal candidates, malformed/missing/duplicated/reordered/lineage-incompatible boundary evidence, and authenticated numerical failures that leave the reducer unable to make the required comparison remain typed failures; the reducer never fabricates a ceiling selection from an incomplete terminal comparison.
+
+The terminal-decision rule participates in P2 policy identity (`practical_equivalence_then_practical_ceiling.v2`). Evidence reduced under the retired blocking-ceiling rule stays historical and is never relabelled in place as a selection.
 
 ## Currentness and the selected set
 
@@ -994,7 +1084,7 @@ The terminal projection binds `N_selected` and the exact `T_selected` membership
 
 ## Invalidation scope
 
-A change to target-size scientific identity - source or frame membership, canonical numerical labels or their interpretation policy, the candidate ladder or configured ceiling, the evaluation-size ladder, fidelity boundaries, the ordered optimizer-seed set, the training-order policy, the `P_train`/`M3` split or `pi_eval` ordering policy, the common preparation, the metric/practical-equivalence policy, or the foundation/replay identity where it is part of the experiment - replaces the generation. The old selected set stays readable as history and can never re-enter current authority.
+A change to target-size scientific identity - source or frame membership, canonical numerical labels or their interpretation policy, the candidate ladder or configured ceiling, the evaluation-size ladder, fidelity boundaries, the ordered optimizer-seed set, the training-order policy, the `P_train`/`M3` split or `pi_eval` ordering policy, the common preparation, the metric/practical-equivalence policy, the terminal-decision policy, the training objective and its weighting ownership, or the foundation/replay identity where it is part of the experiment - replaces the generation. The old selected set stays readable as history and can never re-enter current authority.
 
 Changes that are *not* target-size identity invalidate only their own descendants:
 
@@ -1598,9 +1688,35 @@ not a reason to choose a different order.
 The reducer consumes only authorized target-side development/model-selection
 evidence. Replay metrics, post-selection CV, calibration, physical-observable,
 and locked-test evidence cannot rank, reject, or tie-break a target size.
-Fewer than three qualified sizes is a typed failure. A configured ceiling that
-remains materially superior at the final comparison produces
-`nonconverged_at_configured_ceiling`; no unconfigured rescue size is invented.
+Fewer than three qualified sizes is a typed failure.
+
+The configured ladder ceiling is a **practical budget limit**, not a requirement
+that convergence occur below it. At the terminal comparison the current
+terminal-decision policy
+(`practical_equivalence_then_practical_ceiling.v2`, bound into P2 policy
+identity) is:
+
+- if two finalists differ by no more than `practical_equivalence_mev_per_a`, the
+  smaller finalist is selected -- a raw improvement at `Nmax` inside that band is
+  a plateau, not unresolved convergence;
+- if a smaller finalist has the best terminal paired-mean target-force RMSE, it
+  is selected normally;
+- if `Nmax` is materially superior to every other successful terminal finalist by
+  more than the practical-equivalence threshold, `Nmax` is **selected** and the
+  result carries the non-blocking warning code
+  `nonconverged_at_configured_ceiling`, meaning that the configured practical
+  ceiling is the best evaluated permitted size while a plateau was not
+  demonstrated within the configured ladder. It does not claim that `Nmax` is
+  asymptotically converged.
+
+A selected-at-ceiling result follows the ordinary terminal path
+(`TERMINAL_SELECTED` -> post-selection CV -> fresh production); no separate
+status, lifecycle, or admission path exists for it. Genuinely insufficient
+comparison -- too few complete comparable finalists, or malformed, missing,
+duplicated, reordered, or lineage-incompatible boundary evidence -- remains
+blocking and is never converted into a ceiling selection. No unconfigured rescue
+size is invented. Evidence reduced under the retired blocking-ceiling rule stays
+historical and is never relabelled as a selection.
 
 ## Post-selection ownership
 

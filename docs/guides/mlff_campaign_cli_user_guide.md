@@ -172,10 +172,65 @@ points; an earlier better checkpoint cannot replace the prescribed endpoint.
 The reducer first narrows the qualified population, then freezes one size and
 its exact membership or records a typed scientific failure.
 
+Larger candidates take more optimizer steps per epoch, so the screen normalizes
+learning-rate amplitude and EMA decay against a reference size. You configure
+the reference point, not the per-candidate values:
+
+```toml
+[target_data.size_convergence.optimizer_normalization]
+reference_target_size = 1024
+reference_learning_rate = 1.0e-4
+reference_ema_decay = 0.99999
+```
+
+A candidate with twice the reference update geometry runs at half the learning
+rate and the square root of the EMA decay, so a size comparison is not also an
+optimizer-progress comparison. Epoch counts, batch size, LR schedule shape, and
+every other optimizer setting are identical across candidates. The reference
+size does not have to be one of the candidates. This applies to the screen only:
+`cross-validate` and `train-production` start fresh under their own method
+policy. Changing a reference value invalidates screen trajectories and requires
+a fresh screen; it does not invalidate `prepare`.
+
+The loss the screen optimizes is the objective you configured:
+
+```toml
+[objective]
+energy_weight = 1.0
+forces_weight = 10.0
+stress_weight = 1.0
+```
+
+These global coefficients are written into every generated MACE configuration -
+for the screen, for cross-validation, and for final production - so MACE's own
+`forces_weight = 100` default never applies. They are separate from `[weighting]`
+(the per-configuration weight) and from the per-frame property weights, which
+only mark whether a label is present. Editing `[objective]` changes preparation
+identity, so it requires a fresh `prepare`.
+
 Replay metrics, post-selection CV, physical-observable evidence, and downstream
-qualification cannot rank or tie-break a size. A terminal nonconvergence at
-the configured ceiling is a scientific result, not permission to invent a
-rescue size. An incomplete but nonterminal run remains resumable.
+qualification cannot rank or tie-break a size.
+
+The configured ceiling is a **practical budget limit**, not a requirement that
+convergence happen below it. If the largest configured size is still materially
+better than every other finalist, that size is selected and `status` reports the
+warning `nonconverged_at_configured_ceiling`:
+
+```text
+selected target size frozen at N=16384; T_selected=...; warning: nonconverged_at_configured_ceiling
+```
+
+Read that as: this is the best size available within your configured budget, and
+the screen did not show a plateau below it. It is a normal selection - the next
+command is still `cross-validate` - and no rescue size outside the configured
+ladder is invented. If you want to know whether a larger dataset would help,
+raise `target_size_power_max` and run a fresh screen.
+
+Inside the practical-equivalence band the smaller size is still preferred, so a
+tiny improvement at the ceiling is treated as a plateau, not a warning. A run
+that simply lacks enough comparable candidates remains a typed scientific
+failure and is not turned into a ceiling selection. An incomplete but nonterminal
+run remains resumable.
 
 The selected size and membership are not editable fields. Every current read
 re-derives them from authenticated reducer state and `pi_train`; divergence

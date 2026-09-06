@@ -1013,11 +1013,11 @@ def resolve_post_selection_method_policies(
 
     from .mace_export import MaceExtxyzPolicy
     from .model_features import canonicalize_mace_candidate_architecture
-    from .objectives import ConfigurationWeightPolicy, TrainingObjectivePolicy
-    from .reference_fit import (
-        AtomicReferenceFitMode,
-        AtomicReferenceFitPolicy,
+    from .objectives import (
+        resolve_configuration_weight_policy,
+        resolve_training_objective_policy,
     )
+    from .reference_fit import resolve_atomic_reference_fit_policy
     from .replay import ReplayMode, single_source_replay_config_from_campaign
     from .target_size_execution import (
         REPLAY_EXPOSURE_NONE_DIGEST,
@@ -1171,59 +1171,11 @@ def resolve_post_selection_method_policies(
     )
 
     # 5. Objective, Configuration Weight, and Atomic Reference Policies
-    objective = _table(config, "objective") or _table(config, "loss")
-    objective_policy = TrainingObjectivePolicy(
-        energy_weight=float(objective.get("energy_weight", 1.0)),
-        forces_weight=float(objective.get("forces_weight", 10.0)),
-        stress_weight=float(objective.get("stress_weight", 1.0)),
-        group_aware_force_objective=bool(
-            objective.get("group_aware_force_objective", False)
-        ),
-        focus_atom_group_ids=tuple(
-            str(v) for v in objective.get("focus_atom_group_ids", ())
-        ),
-        focus_atomic_numbers=tuple(
-            int(v) for v in objective.get("focus_atomic_numbers", ())
-        ),
-    )
-
-    weighting = _table(config, "weighting")
-    if weighting:
-        configuration_weight_policy = ConfigurationWeightPolicy(
-            equalize_condition_strata=bool(
-                weighting.get("equalize_condition_strata", True)
-            ),
-            event_anchor_multiplier=float(
-                weighting.get("event_anchor_multiplier", 2.0)
-            ),
-            protected_event_multiplier=float(
-                weighting.get("protected_event_multiplier", 1.25)
-            ),
-            degraded_frame_multiplier=float(
-                weighting.get("degraded_frame_multiplier", 0.5)
-            ),
-            minimum_configuration_weight=float(
-                weighting.get("minimum_configuration_weight", 0.05)
-            ),
-            maximum_configuration_weight=float(
-                weighting.get("maximum_configuration_weight", 10.0)
-            ),
-        )
-    else:
-        configuration_weight_policy = ConfigurationWeightPolicy()
-
-    atomic_ref = _table(config, "atomic_references")
-    if atomic_ref:
-        fit_mode_str = str(atomic_ref.get("fit_mode", "from_scratch_total_energy"))
-        atomic_reference_policy = AtomicReferenceFitPolicy(
-            fit_mode=AtomicReferenceFitMode(fit_mode_str),
-            ridge_lambda=float(atomic_ref.get("ridge_lambda", 0.0)),
-            allow_rank_deficient_fixed_domain=bool(
-                atomic_ref.get("allow_rank_deficient_fixed_domain", True)
-            ),
-        )
-    else:
-        atomic_reference_policy = AtomicReferenceFitPolicy()
+    # These three owners are shared with target-size common preparation, so both
+    # sides resolve one objective meaning rather than two coincidental defaults.
+    objective_policy = resolve_training_objective_policy(config)
+    configuration_weight_policy = resolve_configuration_weight_policy(config)
+    atomic_reference_policy = resolve_atomic_reference_fit_policy(config)
 
     default_dtype = str(
         model.get(

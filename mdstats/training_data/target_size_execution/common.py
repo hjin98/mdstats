@@ -46,7 +46,7 @@ TARGET_SIZE_COMMON_POLICY_SCHEMA = "mdstats.target-size.common-training-policy.v
 TARGET_SIZE_COMMON_ATOMIC_REFERENCE_SCHEMA = (
     "mdstats.target-size.common-atomic-reference.v1"
 )
-TARGET_SIZE_COMMON_PREPARATION_SCHEMA = "mdstats.target-size.common-preparation.v2"
+TARGET_SIZE_COMMON_PREPARATION_SCHEMA = "mdstats.target-size.common-preparation.v3"
 TARGET_SIZE_CANDIDATE_PREPARATION_SCHEMA = (
     "mdstats.target-size.candidate-preparation.v1"
 )
@@ -600,6 +600,9 @@ def fit_common_configuration_weights(
         else:
             raw = 1.0
             reason_codes = ("uniform_configuration_weight",)
+        # Only ``configuration_weight`` and ``reason_codes`` are meaningful in
+        # these intermediates; the property fields are placeholders that
+        # ``_fitted_frame_weights`` replaces with the real availability masks.
         records.append(
             FrameTrainingWeight(
                 frame_uid=uid,
@@ -636,29 +639,24 @@ def _fitted_frame_weights(
     index: Mapping[str, tuple[Any, Any, int]],
     membership: Sequence[str],
     *,
-    objective_policy: TrainingObjectivePolicy,
     configuration_weights: Mapping[str, FrameTrainingWeight],
 ) -> tuple[FrameTrainingWeight, ...]:
-    """Freeze per-frame property weights from the objective policy and the
-    canonical label presence of each frame."""
+    """Freeze per-frame *local* property weights from canonical label presence.
+
+    These are availability masks, not a second copy of the global objective.
+    The global E/F/S coefficients belong to ``TrainingObjectivePolicy`` and are
+    applied exactly once, at MACE's global loss layer.  Duplicating the 1:10:1
+    ratio here would multiply it into the objective twice and would also make
+    the per-frame masks unusable as masks.
+    """
 
     records: list[FrameTrainingWeight] = []
     for uid in membership:
         _record, data, local = index[uid]
         weight = configuration_weights[uid]
-        energy_weight = (
-            objective_policy.energy_weight if data.energies_ev is not None else 0.0
-        )
-        forces_weight = (
-            objective_policy.forces_weight
-            if data.forces_ev_per_angstrom is not None
-            else 0.0
-        )
-        stress_weight = (
-            objective_policy.stress_weight
-            if data.stresses_ev_per_angstrom3 is not None
-            else 0.0
-        )
+        energy_weight = 1.0 if data.energies_ev is not None else 0.0
+        forces_weight = 1.0 if data.forces_ev_per_angstrom is not None else 0.0
+        stress_weight = 1.0 if data.stresses_ev_per_angstrom3 is not None else 0.0
         records.append(
             FrameTrainingWeight(
                 frame_uid=uid,
@@ -788,6 +786,7 @@ class TargetSizeCommonPreparation:
     frame_authority_digest: str
     neutral_statistical_base_digest: str
     common_training_policy_digest: str
+    objective_policy: TrainingObjectivePolicy
     common_membership: tuple[str, ...]
     common_membership_digest: str
     fitted_atomic_references: CommonAtomicReferenceFit
@@ -873,6 +872,10 @@ class TargetSizeCommonPreparation:
             "frame_authority_digest": self.frame_authority_digest,
             "neutral_statistical_base_digest": self.neutral_statistical_base_digest,
             "common_training_policy_digest": self.common_training_policy_digest,
+            # The resolved global objective is carried explicitly: candidate
+            # materialization must emit these coefficients into every MACE
+            # config, and a changed objective must invalidate this preparation.
+            "objective_policy": self.objective_policy.to_dict(),
             "common_membership": list(self.common_membership),
             "common_membership_digest": self.common_membership_digest,
             "fitted_atomic_references": self.fitted_atomic_references.to_dict(),
@@ -919,6 +922,9 @@ class TargetSizeCommonPreparation:
             ),
             common_training_policy_digest=str(
                 payload["common_training_policy_digest"]
+            ),
+            objective_policy=TrainingObjectivePolicy.from_dict(
+                payload["objective_policy"]
             ),
             common_membership=tuple(
                 str(v) for v in payload["common_membership"]
@@ -1030,7 +1036,6 @@ def build_target_size_common_preparation(
     fitted_weights = _fitted_frame_weights(
         index,
         membership,
-        objective_policy=active.objective_policy,
         configuration_weights=weight_by_uid,
     )
     harness_count = active.harness_validation_frame_count
@@ -1059,6 +1064,7 @@ def build_target_size_common_preparation(
         frame_authority_digest=aggregate.frame_authority_digest,
         neutral_statistical_base_digest=aggregate.neutral_statistical_base_digest,
         common_training_policy_digest=active.content_digest,
+        objective_policy=active.objective_policy,
         common_membership=membership,
         common_membership_digest=digest({"frame_uids": list(membership)}),
         fitted_atomic_references=atomic_references,
@@ -1243,25 +1249,68 @@ def project_target_size_candidate_preparation(
     )
 
 
+def resolve_target_size_common_training_policy(
+    config: Mapping[str, Any],
+) -> TargetSizeCommonTrainingPolicy:
+    """Resolve the seed-neutral common training policy for the screen from config.
+
+    The screen is one-head scratch training with ``replay exposure = none`` and
+    no foundation checkpoint, so only the shared scientific weighting/reference
+    owners are configurable here.  Those owners are exactly the ones
+    post-selection resolves, which is the point: "the same objective" must mean
+    the same resolved policy on both sides, not two independent default sets
+    that happen to agree today.
+    """
+
+    from ..objectives import (
+        resolve_configuration_weight_policy,
+        resolve_training_objective_policy,
+    )
+    from ..reference_fit import resolve_atomic_reference_fit_policy
+
+    training = config.get("training", {})
+    if not isinstance(training, Mapping):
+        raise TrainingDataInputError("[training] must be a table.")
+    defaults = TargetSizeCommonTrainingPolicy()
+    # ``batch_size``/``harness_validation_frame_count`` are read from the same
+    # keys, with the same defaults, that post-selection uses, so the two sides
+    # cannot drift apart.  The screen is one-head scratch training with replay
+    # exposure ``none`` and no foundation checkpoint, so the remaining fields of
+    # this policy are not configurable here.
+    return TargetSizeCommonTrainingPolicy(
+        objective_policy=resolve_training_objective_policy(config),
+        configuration_weight_policy=resolve_configuration_weight_policy(config),
+        atomic_reference_policy=resolve_atomic_reference_fit_policy(config),
+        batch_size=int(training.get("batch_size", defaults.batch_size)),
+        default_dtype=defaults.default_dtype,
+        harness_validation_frame_count=int(
+            training.get(
+                "harness_validation_frame_count",
+                defaults.harness_validation_frame_count,
+            )
+        ),
+    )
+
+
 def fit_membership_frame_training_weights(
     frame_array_index: Mapping[str, tuple[Any, Any, int]],
     membership: Sequence[str],
     *,
-    objective_policy: TrainingObjectivePolicy,
     configuration_weights: Mapping[str, FrameTrainingWeight],
 ) -> tuple[FrameTrainingWeight, ...]:
     """Freeze per-frame training weights over one exact membership.
 
-    This is the shared objective-weighting seam.  The common P3 preparation and
-    any downstream fold-local or final-production preparation produce their
-    weights through this one recipe, so that "the same method" means the same
-    arithmetic applied to whatever membership the caller is authorized to fit.
+    This is the shared *local* weighting seam: the common P3 preparation and any
+    downstream fold-local or final-production preparation produce configuration
+    weights plus per-property availability masks through this one recipe, so
+    that "the same method" means the same arithmetic applied to whatever
+    membership the caller is authorized to fit.  The global objective
+    coefficients are a separate owner and never enter these records.
     """
 
     return _fitted_frame_weights(
         frame_array_index,
         membership,
-        objective_policy=objective_policy,
         configuration_weights=configuration_weights,
     )
 
@@ -1278,6 +1327,7 @@ __all__ = [
     "TargetSizeCommonPreparation",
     "TargetSizeCommonTrainingPolicy",
     "build_target_size_common_preparation",
+    "resolve_target_size_common_training_policy",
     "fit_common_atomic_reference_energies",
     "fit_common_configuration_weights",
     "fit_membership_frame_training_weights",

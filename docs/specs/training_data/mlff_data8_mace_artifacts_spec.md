@@ -134,6 +134,52 @@ written with at least 17 significant decimal digits. The ASE 3.29 default
 `%16.8f` format is not used because it can round Cartesian positions and force
 labels by several nanounits and violate the lossless DATA8 contract.
 
+### Executable loss family and weighting layers
+
+Every generated MACE configuration on a current path - target-size candidate
+training, post-selection cross-validation, and fresh final production - SHALL
+emit the resolved global objective coefficients explicitly:
+
+```text
+loss = "stress"
+energy_weight
+forces_weight
+stress_weight
+```
+
+`loss = "stress"` selects pinned MACE's `WeightedEnergyForcesStressLoss`. Its
+native reductions consume `config_weight` (`ref.weight`) and the per-frame
+property weights **linearly**, and apply the global coefficients exactly once,
+outside those reductions. No current path may rely on MACE's
+`forces_weight = 100` default.
+
+MACE's `UniversalLoss` SHALL NOT be used on a current path. Its per-config
+property weights scale residuals *inside* a Huber evaluation, so they are not
+linearly equivalent to global objective coefficients, and it does not consume
+`config_weight` at all - it therefore cannot realize the declared mdstats
+weighting contract. This SHALL NOT be worked around with a patched loss, a
+square-root weighting trick, residual pre-scaling, sample duplication, or a
+second mdstats loss engine.
+
+The three weighting layers are distinct owners:
+
+| Layer | Owner | Exported as |
+| --- | --- | --- |
+| global loss coefficients | `[objective]` / `TrainingObjectivePolicy` | `energy_weight`, `forces_weight`, `stress_weight` config keys |
+| per-configuration weight | `[weighting]` / `ConfigurationWeightPolicy` | `config_weight` |
+| local property weights | canonical label presence | `config_energy_weight`, `config_forces_weight`, `config_stress_weight` |
+
+Local property weights are availability masks - `1.0` when the canonical label
+is present, `0.0` when it is absent - and SHALL NOT carry per-frame copies of
+the global coefficient ratio.
+
+The loss family is part of model/training-method identity. Model reconstruction
+records it, and pinned MACE derives the same `compute_stress` / `compute_virials`
+output configuration for it as for the retired family, so reconstruction and
+EVAL2 semantics are preserved while the identity now names what actually
+executes. Checkpoints produced under the retired loss semantics are not prefixes
+or equivalents of corrected trajectories.
+
 ### Stress contract
 
 `REF_stress` is an ASE six-component stress vector in eV/Angstrom^3 with order
@@ -379,9 +425,13 @@ These amendments are implemented in 0.20.37a0 as part of DATA9A hardening.
 The v0.3.16 runtime contract is stricter than a native YAML interpretation.
 `atomic_numbers`, `heads`, every nested head `atomic_numbers` value, and every
 nested head `E0s` mapping are emitted as scalar strings containing deterministic
-Python literals. The loss name is the
-lowercase parser choice `universal`. DATA8 does not emit unsupported
-`weight_pt` or `weight_ft` options.
+Python literals. DATA8 does not emit unsupported `weight_pt` or `weight_ft`
+options.
+
+The loss name recorded in this amendment was the lowercase parser choice
+`universal`. That is historical: the retired DATA8 preparation topology is no
+longer reachable from any current command, and the current executable loss
+family is `stress` (see "Executable loss family and weighting layers" below).
 
 For preselected fixed-file replay, target and replay training exposure is
 realized by multiplying each training structure's extended-XYZ

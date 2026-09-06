@@ -36,6 +36,7 @@ from .common import (
     TargetSizeCommonPreparation,
     TargetSizeCommonTrainingPolicy,
     build_target_size_common_preparation,
+    resolve_target_size_common_training_policy,
     fit_common_atomic_reference_energies,
     fit_common_configuration_weights,
     fit_membership_frame_training_weights,
@@ -149,14 +150,29 @@ from .persistence import (
     publish_mutable_json_atomic,
 )
 from .schedule import (
+    DEFAULT_REFERENCE_EMA_DECAY,
+    DEFAULT_REFERENCE_LEARNING_RATE,
+    DEFAULT_REFERENCE_TARGET_SIZE,
     FRESH_FINAL_PRODUCTION_HORIZON_EPOCHS,
+    TARGET_SIZE_NORMALIZATION_ALGORITHM,
+    TARGET_SIZE_OPTIMIZER_NORMALIZATION_SCHEMA,
     TARGET_SIZE_SCREEN_SCHEDULE_SCHEMA,
     TARGET_SIZE_SEED_NEUTRAL_POLICY_SCHEMA,
+    TargetSizeOptimizerNormalizationPolicy,
     TargetSizeScreenSchedule,
     build_target_size_screen_schedule,
+    resolve_target_size_optimizer_normalization_policy,
 )
 
 __all__ = [
+    "DEFAULT_REFERENCE_EMA_DECAY",
+    "DEFAULT_REFERENCE_LEARNING_RATE",
+    "DEFAULT_REFERENCE_TARGET_SIZE",
+    "TARGET_SIZE_NORMALIZATION_ALGORITHM",
+    "TARGET_SIZE_OPTIMIZER_NORMALIZATION_SCHEMA",
+    "TargetSizeOptimizerNormalizationPolicy",
+    "resolve_target_size_optimizer_normalization_policy",
+    "resolve_target_size_common_training_policy",
     "artifact_publication_lock",
     "fsync_parent_directory",
     "authenticate_train2_checkpoint_provider",

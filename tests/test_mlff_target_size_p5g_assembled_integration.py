@@ -39,6 +39,7 @@ from mdstats.training_data.campaign_target_size_state import (
     load_target_size_campaign_revision,
 )
 from mdstats.training_data.post_selection_execution import (
+    POST_SELECTION_PREPARATION_SCHEMA,
     PostSelectionFittedPreparation,
     PostSelectionMaterialization,
 )
@@ -134,7 +135,7 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
         preparations = []
         for path in sorted((evidence.root / "objects").rglob("*.json")):
             payload = json.loads(path.read_text(encoding="utf-8"))
-            if payload.get("schema") == "mdstats.post-selection-fitted-preparation.v1":
+            if payload.get("schema") == POST_SELECTION_PREPARATION_SCHEMA:
                 preparations.append(PostSelectionFittedPreparation.from_dict(payload))
         assert preparations
         by_membership = {item.membership_digest: item for item in preparations}

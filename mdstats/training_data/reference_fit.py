@@ -552,3 +552,22 @@ def fit_foundation_residual_atomic_references(
         foundation_checkpoint_digest=foundation_checkpoint_digest,
         foundation_identity_digest=foundation_identity_digest,
     )
+
+
+def resolve_atomic_reference_fit_policy(
+    config: "Mapping[str, Any]",
+) -> AtomicReferenceFitPolicy:
+    """Resolve ``[atomic_references]`` into the one E0-fit authority."""
+
+    table = config.get("atomic_references")
+    if not isinstance(table, Mapping) or not table:
+        return AtomicReferenceFitPolicy()
+    return AtomicReferenceFitPolicy(
+        fit_mode=AtomicReferenceFitMode(
+            str(table.get("fit_mode", "from_scratch_total_energy"))
+        ),
+        ridge_lambda=float(table.get("ridge_lambda", 0.0)),
+        allow_rank_deficient_fixed_domain=bool(
+            table.get("allow_rank_deficient_fixed_domain", True)
+        ),
+    )

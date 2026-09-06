@@ -30,11 +30,41 @@ foundation checkpoint / model family / selected foundation head
 protocol-global N_selected and exact T_selected binding
 replay source, split, and replay-monitor identity
 training objective and configuration/property weights
+executable loss family
 target/replay head weights and realized exposure policy
 checkpoint metric and admissibility policy
 optimizer, LR schedule, epoch cap, stopping policy, and seed policy
 model precision, acceleration backend, and MACE adapter/runtime lock
 ```
+
+## Objective and weighting layers
+
+Three weighting owners are applied at three different layers and are never
+merged:
+
+- **global loss coefficients** - `[objective]` (`TrainingObjectivePolicy`),
+  default `energy : forces : stress = 1 : 10 : 1`. They are emitted explicitly
+  into every generated MACE configuration, so MACE's own `forces_weight = 100`
+  default never applies to an mdstats run;
+- **per-configuration weight** - `[weighting]` (`ConfigurationWeightPolicy`),
+  exported as `config_weight`;
+- **local property weights** - availability masks, `1.0` when the canonical
+  label is present and `0.0` when it is absent. They are not per-frame copies of
+  the global ratio.
+
+The executable loss family is MACE's weighted energy+force+stress loss
+(`loss = "stress"`, `WeightedEnergyForcesStressLoss`), whose native reductions
+consume `ref.weight` and the local property weights linearly while applying the
+global coefficients once. MACE's `UniversalLoss` is not used: it scales
+residuals inside a Huber evaluation - so its per-config property weights are not
+linearly equivalent to global coefficients - and it does not consume
+`config_weight`. The loss family is part of method identity, so historical
+checkpoints trained under different loss semantics are not prefixes or
+equivalents of corrected trajectories.
+
+Target-size screening, post-selection cross-validation, and fresh final
+production resolve these owners through the same configuration resolvers, so
+"the same objective" means the same resolved policy on every path.
 
 The identity contains no unbound caller-held model or fold result. A change to
 replay semantics, objective, selected membership, checkpoint policy,
@@ -135,9 +165,9 @@ current selected binding
   -> fold/final execution and evidence
 ```
 
-The shared method identity binds preparation/objective recipe, foundation and
-initialization family, optimizer family, LR schedule, checkpoint semantics,
-precision, and backend. It does not contain fold membership or a second target
+The shared method identity binds preparation/objective recipe, executable loss
+family, foundation and initialization family, optimizer family, LR schedule,
+checkpoint semantics, precision, and backend. It does not contain fold membership or a second target
 size.
 
 The CV policy owns `K >= 2`, partition seed, fold algorithm, CV budget,

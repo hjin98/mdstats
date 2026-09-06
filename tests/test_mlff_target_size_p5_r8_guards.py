@@ -12,6 +12,8 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
+
+from mdstats.training_data.objectives import TrainingObjectivePolicy
 from typing import Any
 import pytest
 
@@ -474,7 +476,10 @@ def test_claims_17_18_19_20_eval_interval_and_acceleration_parity():
     preparation = SimpleNamespace(
         fitted_atomic_references=SimpleNamespace(
             reference_energies_ev=((3, 0.0), (8, 0.0))
-        )
+        ),
+        # The fitted preparation carries the resolved global objective, which the
+        # generated MACE config must emit explicitly.
+        objective_policy=TrainingObjectivePolicy(),
     )
     target_train = SimpleNamespace(relative_path="train.extxyz", atomic_numbers=(3, 8))
     monitor = SimpleNamespace(relative_path="valid.extxyz", atomic_numbers=(3, 8))

@@ -112,9 +112,35 @@ not a reason to choose a different order.
 The reducer consumes only authorized target-side development/model-selection
 evidence. Replay metrics, post-selection CV, calibration, physical-observable,
 and locked-test evidence cannot rank, reject, or tie-break a target size.
-Fewer than three qualified sizes is a typed failure. A configured ceiling that
-remains materially superior at the final comparison produces
-`nonconverged_at_configured_ceiling`; no unconfigured rescue size is invented.
+Fewer than three qualified sizes is a typed failure.
+
+The configured ladder ceiling is a **practical budget limit**, not a requirement
+that convergence occur below it. At the terminal comparison the current
+terminal-decision policy
+(`practical_equivalence_then_practical_ceiling.v2`, bound into P2 policy
+identity) is:
+
+- if two finalists differ by no more than `practical_equivalence_mev_per_a`, the
+  smaller finalist is selected -- a raw improvement at `Nmax` inside that band is
+  a plateau, not unresolved convergence;
+- if a smaller finalist has the best terminal paired-mean target-force RMSE, it
+  is selected normally;
+- if `Nmax` is materially superior to every other successful terminal finalist by
+  more than the practical-equivalence threshold, `Nmax` is **selected** and the
+  result carries the non-blocking warning code
+  `nonconverged_at_configured_ceiling`, meaning that the configured practical
+  ceiling is the best evaluated permitted size while a plateau was not
+  demonstrated within the configured ladder. It does not claim that `Nmax` is
+  asymptotically converged.
+
+A selected-at-ceiling result follows the ordinary terminal path
+(`TERMINAL_SELECTED` -> post-selection CV -> fresh production); no separate
+status, lifecycle, or admission path exists for it. Genuinely insufficient
+comparison -- too few complete comparable finalists, or malformed, missing,
+duplicated, reordered, or lineage-incompatible boundary evidence -- remains
+blocking and is never converted into a ceiling selection. No unconfigured rescue
+size is invented. Evidence reduced under the retired blocking-ceiling rule stays
+historical and is never relabelled as a selection.
 
 ## Post-selection ownership
 

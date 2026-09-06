@@ -1117,6 +1117,25 @@ MACE_ARCHITECTURE_EXTERNAL_KEYS = frozenset(
     }
 )
 
+#: The one executable MACE loss family for every current mdstats training path.
+#:
+#: MACE's ``UniversalLoss`` cannot represent the declared mdstats weighting
+#: contract: its per-config property weights scale residuals *inside* a Huber
+#: evaluation, so they are not linearly equivalent to global objective
+#: coefficients, and it never consumes ``config_weight`` at all.  The weighted
+#: energy+force+stress loss does: its native reductions multiply by
+#: ``ref.weight`` and the local property weight linearly and apply the global
+#: coefficients once, outside.
+#:
+#: The family is method identity, not formatting: the optimization meaning of a
+#: checkpoint depends on it, so a checkpoint trained under a different family is
+#: not a prefix or equivalent of a corrected trajectory.  Model construction is
+#: unaffected -- pinned MACE derives ``compute_stress`` for both ``stress`` and
+#: ``universal`` and ``compute_virials`` for neither -- so reconstruction and
+#: EVAL2 semantics are preserved across the correction.
+MACE_EXECUTABLE_LOSS_FAMILY = "stress"
+
+
 #: Architecture fields whose canonical value is structured and whose pinned
 #: parser action is scalar ``type=str``.
 MACE_ARCHITECTURE_LITERAL_KEYS = frozenset({"radial_MLP"})

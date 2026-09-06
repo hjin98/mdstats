@@ -37,6 +37,9 @@ from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
 )
+from .mace_compatibility import (
+    MACE_EXECUTABLE_LOSS_FAMILY as _MACE_EXECUTABLE_LOSS_FAMILY,
+)
 from .post_selection_identity import (
     POST_SELECTION_REPLAY_HEAD_NAME,
     POST_SELECTION_TARGET_HEAD_NAME,
@@ -44,9 +47,12 @@ from .post_selection_identity import (
     canonical_post_selection_head_names,
 )
 
-POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v1"
+POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v2"
 POST_SELECTION_MATERIALIZATION_SCHEMA = "mdstats.post-selection-materialization.v1"
-POST_SELECTION_MACE_CONFIG_SCHEMA = "mdstats.post-selection-mace-config.v1"
+POST_SELECTION_MACE_CONFIG_SCHEMA = "mdstats.post-selection-mace-config.v2"
+#: The executable MACE loss family for post-selection CV and fresh production;
+#: the shared owner in ``objectives`` explains why this family and not ``universal``.
+POST_SELECTION_MACE_LOSS_FAMILY = _MACE_EXECUTABLE_LOSS_FAMILY
 POST_SELECTION_EVAL_ROLE_SCHEMA = "mdstats.post-selection-eval2-role.v1"
 POST_SELECTION_RUN_EVIDENCE_SCHEMA = "mdstats.post-selection-run-evidence.v1"
 
@@ -81,6 +87,7 @@ class PostSelectionFittedPreparation:
     owner_plan_digest: str
     dataset_role: str
     common_training_policy_digest: str
+    objective_policy: Any
     membership: tuple[str, ...]
     membership_digest: str
     fitted_atomic_reference_digest: str
@@ -135,6 +142,9 @@ class PostSelectionFittedPreparation:
             "owner_plan_digest": self.owner_plan_digest,
             "dataset_role": self.dataset_role,
             "common_training_policy_digest": self.common_training_policy_digest,
+            # The resolved global objective travels with the fitted preparation so
+            # CV and final production emit the same coefficients the screen did.
+            "objective_policy": self.objective_policy.to_dict(),
             "membership": list(self.membership),
             "membership_digest": self.membership_digest,
             "fitted_atomic_reference_digest": self.fitted_atomic_reference_digest,
@@ -154,7 +164,7 @@ class PostSelectionFittedPreparation:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionFittedPreparation":
-        from .objectives import FrameTrainingWeight
+        from .objectives import FrameTrainingWeight, TrainingObjectivePolicy
         from .target_size_execution import CommonAtomicReferenceFit
 
         if payload.get("schema") != POST_SELECTION_PREPARATION_SCHEMA:
@@ -166,6 +176,9 @@ class PostSelectionFittedPreparation:
             dataset_role=str(payload["dataset_role"]),
             common_training_policy_digest=str(
                 payload["common_training_policy_digest"]
+            ),
+            objective_policy=TrainingObjectivePolicy.from_dict(
+                payload["objective_policy"]
             ),
             membership=tuple(str(v) for v in payload["membership"]),
             membership_digest=str(payload["membership_digest"]),
@@ -254,7 +267,6 @@ def fit_post_selection_preparation(
     fitted_weights = fit_membership_frame_training_weights(
         authorities.frame_array_index,
         frames,
-        objective_policy=policy.objective_policy,
         configuration_weights={
             item.frame_uid: item for item in configuration_weights
         },
@@ -263,6 +275,7 @@ def fit_post_selection_preparation(
         owner_plan_digest=str(owner_plan_digest),
         dataset_role=dataset_role,
         common_training_policy_digest=policy.content_digest,
+        objective_policy=policy.objective_policy,
         membership=frames,
         membership_digest=digest({"frame_uids": list(frames)}),
         fitted_atomic_reference_digest=atomic_references.content_digest,
@@ -505,6 +518,16 @@ def _post_selection_mace_config(
         "forces_key": extxyz_policy.forces_key,
         "stress_key": extxyz_policy.stress_key,
         "lr": float(optimizer_policy.learning_rate),
+        # The declared mdstats objective is the objective actually optimized, in
+        # cross-validation and in final production exactly as in the screen.
+        # ``loss="stress"`` selects MACE's WeightedEnergyForcesStressLoss, whose
+        # native reductions consume ``config_weight`` and the local property
+        # masks linearly; without these keys MACE would default to
+        # ``forces_weight=100`` under its own ``weighted`` loss.
+        "loss": POST_SELECTION_MACE_LOSS_FAMILY,
+        "energy_weight": float(preparation.objective_policy.energy_weight),
+        "forces_weight": float(preparation.objective_policy.forces_weight),
+        "stress_weight": float(preparation.objective_policy.stress_weight),
         "batch_size": int(optimizer_policy.batch_size),
         "valid_batch_size": int(optimizer_policy.valid_batch_size),
         "num_workers": int(optimizer_policy.num_workers),
@@ -1157,6 +1180,10 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "forces_key",
     "stress_key",
     "lr",
+    "loss",
+    "energy_weight",
+    "forces_weight",
+    "stress_weight",
     "batch_size",
     "valid_batch_size",
     "num_workers",

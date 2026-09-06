@@ -1252,7 +1252,14 @@ def real_train2_failure(env, trajectory, plan, checkpoint_dir):
     handler = SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir)))
     train_loader = [object()] * trajectory.realization.updates_per_epoch
     model = torch.nn.Linear(3, 2, dtype=torch.float64)
-    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4, momentum=0.9)
+    # The executable optimizer must start at the candidate's *realized*
+    # size-normalized base learning rate, exactly as MACE does from the
+    # generated config's ``lr`` key.
+    optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=float(plan.learning_rate_policy.base_learning_rate),
+        momentum=0.9,
+    )
     ema = ExponentialMovingAverage(model.parameters(), decay=0.95)
     runtime = runtime_mod._Train2Runtime(
         plan, model=model, optimizer=optimizer, lr_scheduler=p3c._NoStepScheduler(),

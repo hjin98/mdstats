@@ -287,7 +287,10 @@ def build_prepared_target_size_substrate(
         build_neutral_statistical_base,
         build_source_authority_from_data2_catalog,
     )
-    from .target_size_execution import build_target_size_common_preparation
+    from .target_size_execution import (
+        build_target_size_common_preparation,
+        resolve_target_size_common_training_policy,
+    )
     from .target_size_experiment import (
         build_target_size_statistical_aggregate,
         resolve_target_size_policy_from_config,
@@ -380,11 +383,15 @@ def build_prepared_target_size_substrate(
         )
     with _authority_stage("P3 common preparation"):
         frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
+        # The configured [objective] reaches the screen through the same
+        # resolver post-selection uses; target-size preparation never falls back
+        # to library defaults that merely happen to agree with it.
         common = build_target_size_common_preparation(
             aggregate,
             frame_catalog=frame_catalog,
             frame_data_by_run=frame_data_by_run,
             frame_array_index=frame_array_index,
+            policy=resolve_target_size_common_training_policy(cfg),
         )
     return CurrentTargetSizeAuthorities(
         manifest=manifest,
@@ -532,6 +539,10 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "forces_key",
     "stress_key",
     "lr",
+    "loss",
+    "energy_weight",
+    "forces_weight",
+    "stress_weight",
     "batch_size",
     "valid_batch_size",
     "num_workers",
@@ -1000,6 +1011,7 @@ def build_screen_context(
         TargetSizeRestartAuthority,
         build_target_size_execution_context,
         build_target_size_screen_schedule,
+        resolve_target_size_optimizer_normalization_policy,
         initialize_target_size_screen,
         target_size_population_correlation_blocks,
     )
@@ -1007,7 +1019,10 @@ def build_screen_context(
     authorities = load_prepared_target_size_generation(cfg, paths, store, revision)
     aggregate = authorities.aggregate
     definition = aggregate.definition
-    schedule = build_target_size_screen_schedule(definition.policy.fidelity_epochs)
+    schedule = build_target_size_screen_schedule(
+        definition.policy.fidelity_epochs,
+        normalization_policy=resolve_target_size_optimizer_normalization_policy(cfg),
+    )
     seeds = tuple(definition.policy.optimizer_seeds)
     optimizer_policy = _optimizer_policy(
         cfg,
@@ -1561,6 +1576,9 @@ def report_current_target_size_terminal_state(
 
 
 def _report_terminal_state(validated_result: Any) -> None:
+    from .target_size_experiment import (
+        CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE,
+    )
     from .campaign_target_size_terminal import (
         TargetSizeTerminalProjectionError,
         ValidatedTargetSizeTerminalResult,
@@ -1577,6 +1595,21 @@ def _report_terminal_state(validated_result: Any) -> None:
             f"Target size is already selected and frozen: N={terminal.selected_target_size}.",
             flush=True,
         )
+        if CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE in terminal.terminal_reason_codes:
+            print(
+                "Warning: the configured practical ceiling is the best evaluated "
+                "permitted size; target-size convergence was not demonstrated within "
+                "the configured ladder. The selection is budget-limited rather than "
+                "convergence-limited.",
+                flush=True,
+            )
+        other = tuple(
+            code
+            for code in terminal.terminal_reason_codes
+            if code != CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE
+        )
+        if other:
+            print(f"Selection diagnostics: {', '.join(other)}.", flush=True)
     else:
         print(
             "Target-size selection is scientifically terminal: "

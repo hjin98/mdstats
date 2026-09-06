@@ -11,10 +11,19 @@ import numpy as np
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
 from .feature_metric import FeatureFitDomain, build_feature_fit_domains
 
+#: Re-exported for objective-side callers.  The canonical definition lives with
+#: the MACE compatibility contract that owns pinned-parser semantics; it is the
+#: executable realization of the global objective declared here.
+from .mace_compatibility import MACE_EXECUTABLE_LOSS_FAMILY
+
 TRAINING_OBJECTIVE_POLICY_SCHEMA = "mdstats.training-objective-policy.v2"
 CONFIGURATION_WEIGHT_POLICY_SCHEMA = "mdstats.configuration-weight-policy.v1"
-FRAME_TRAINING_WEIGHT_SCHEMA = "mdstats.frame-training-weight.v1"
-TRAINING_WEIGHT_CATALOG_SCHEMA = "mdstats.training-weight-catalog.v1"
+#: v2 changes the *meaning* of the per-frame property weights: they are local
+#: availability masks (1.0 present / 0.0 absent), not per-frame copies of the
+#: global E/F/S objective coefficients.  The schema is versioned so a persisted
+#: v1 payload carrying 1:10:1 per frame is never silently reread as a mask.
+FRAME_TRAINING_WEIGHT_SCHEMA = "mdstats.frame-training-weight.v2"
+TRAINING_WEIGHT_CATALOG_SCHEMA = "mdstats.training-weight-catalog.v2"
 CHECKPOINT_METRIC_POLICY_SCHEMA = "mdstats.checkpoint-metric-policy.v2"
 TRAINING_OBJECTIVE_POLICY_VERSION = "mdstats.mlff-data7.training-objective.2026-07.v2"
 CONFIGURATION_WEIGHT_POLICY_VERSION = "mdstats.mlff-data7.configuration-weight.2026-07.v1"
@@ -78,6 +87,75 @@ class TrainingObjectivePolicy:
             raise TrainingDataSerializationError("Training-objective digest mismatch.")
         return result
 
+
+
+def _objective_table(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    for name in ("objective", "loss"):
+        table = config.get(name)
+        if isinstance(table, Mapping) and table:
+            return table
+    return {}
+
+
+def resolve_training_objective_policy(
+    config: Mapping[str, Any],
+) -> "TrainingObjectivePolicy":
+    """Resolve ``[objective]`` into the one global loss-coefficient authority.
+
+    This is the single config-to-objective seam.  Target-size common
+    preparation, post-selection cross-validation, and fresh final production all
+    consume it, so a user override cannot be honoured by one path and silently
+    ignored by another.
+    """
+
+    objective = _objective_table(config)
+    return TrainingObjectivePolicy(
+        energy_weight=float(objective.get("energy_weight", 1.0)),
+        forces_weight=float(objective.get("forces_weight", 10.0)),
+        stress_weight=float(objective.get("stress_weight", 1.0)),
+        group_aware_force_objective=bool(
+            objective.get("group_aware_force_objective", False)
+        ),
+        focus_atom_group_ids=tuple(
+            str(v) for v in objective.get("focus_atom_group_ids", ())
+        ),
+        focus_atomic_numbers=tuple(
+            int(v) for v in objective.get("focus_atomic_numbers", ())
+        ),
+    )
+
+
+def resolve_configuration_weight_policy(
+    config: Mapping[str, Any],
+) -> "ConfigurationWeightPolicy":
+    """Resolve ``[weighting]`` into the per-configuration weight authority.
+
+    Configuration weights are a separate owner from the global objective and
+    from the local per-property availability masks; all three are consumed by
+    the training loss at different layers.
+    """
+
+    weighting = config.get("weighting")
+    if not isinstance(weighting, Mapping) or not weighting:
+        return ConfigurationWeightPolicy()
+    return ConfigurationWeightPolicy(
+        equalize_condition_strata=bool(
+            weighting.get("equalize_condition_strata", True)
+        ),
+        event_anchor_multiplier=float(weighting.get("event_anchor_multiplier", 2.0)),
+        protected_event_multiplier=float(
+            weighting.get("protected_event_multiplier", 1.25)
+        ),
+        degraded_frame_multiplier=float(
+            weighting.get("degraded_frame_multiplier", 0.5)
+        ),
+        minimum_configuration_weight=float(
+            weighting.get("minimum_configuration_weight", 0.05)
+        ),
+        maximum_configuration_weight=float(
+            weighting.get("maximum_configuration_weight", 10.0)
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -530,9 +608,11 @@ def build_training_weight_catalog(
         frame = frame_records[uid]
         records.append(FrameTrainingWeight(
             frame_uid=uid, configuration_weight=float(normalized),
-            energy_weight=objective.energy_weight if frame.energy_present else 0.0,
-            forces_weight=objective.forces_weight if frame.forces_present else 0.0,
-            stress_weight=objective.stress_weight if frame.stress_present else 0.0,
+            # Local availability masks.  The global 1:10:1 objective ratio is
+            # applied once by the training loss, never duplicated per frame.
+            energy_weight=1.0 if frame.energy_present else 0.0,
+            forces_weight=1.0 if frame.forces_present else 0.0,
+            stress_weight=1.0 if frame.stress_present else 0.0,
             reason_codes=tuple(reasons),
         ))
     return TrainingWeightCatalog(
