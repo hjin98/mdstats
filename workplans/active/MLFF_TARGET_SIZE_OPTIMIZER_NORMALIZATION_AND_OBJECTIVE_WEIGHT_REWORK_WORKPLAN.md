@@ -2,49 +2,52 @@
 kind: implementation-workplan
 workplan_id: MLFF-TARGET-SIZE-OPTIMIZER-NORMALIZATION-AND-OBJECTIVE-WEIGHT-REWORK
 protocol_version: 5.15.0
-status: implementation-ready
+status: rework-required
 created_date: 2026-09-05
 amended_date: 2026-09-06
-review_revision: 4
+review_revision: 5
 reviewed_source_branch: rework/mlff-target-size-normalization-practical-ceiling
-reviewed_source_head: 6c8b853b7d42ab6266b21bba5a8136ac24c57b7f
-reviewed_executable_commit: 275c3aa294497a410666795dc17b36d17f10c4f9
+reviewed_source_head: cadf23c488ae61831d7dee8fccdc4eed98aaf8f4
+reviewed_implementation_commit: 022206646c518582889661c3b38c464b6a7760a7
+reviewed_documentation_commit: cadf23c488ae61831d7dee8fccdc4eed98aaf8f4
 architecture_change: narrow-methodological-rework
 amends_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
-closure_verdict: pass
+closure_verdict: no-pass
 ---
 
 # MLFF target-size optimizer normalization, practical-ceiling selection, objective-weight, and training-policy identity rework
 
-## 0. Software Design closure verdict
+## 0. Independent implementation-review verdict
 
-**PASS / implementation-ready.**
+**NO-PASS / reopened for bounded repair and acceptance closure.**
 
-Revision 4 is the final Software Design closure of the reopened workplan against the current remote source tree. The executable implementation at `275c3aa294497a410666795dc17b36d17f10c4f9` remains nonconformant until the repair obligations below are implemented and validated, but no unresolved design question remains that requires another architecture decision before implementation begins.
+Software Design reviewed implementation commit `022206646c518582889661c3b38c464b6a7760a7` and assembled branch head `cadf23c488ae61831d7dee8fccdc4eed98aaf8f4` against this workplan, Protocol 5.15.0, and the directly related target-size restart/partial-boundary contracts.
 
-The closure review confirms that the principal scientific-method changes already implemented are sound:
+The implementation closes the major revision-4 configuration-authority defects correctly:
 
-- practical-ceiling selection is a valid `SELECTED` result with warning metadata rather than a blocking failure;
-- practical equivalence still prefers the smaller finalist;
-- optimizer-progress normalization uses the accepted inverse-update LR / EMA transformation;
-- one `(N, optimizer-seed)` trajectory continues exactly across `n1 -> n2 -> n3`;
-- global objective coefficients, per-configuration weight, and local property masks remain distinct owners;
-- MACE's dependency-native weighted energy+force+stress loss is the accepted executable loss family;
-- selected-at-ceiling state proceeds through ordinary P4 `TERMINAL_SELECTED` and P5 cross-validation/final-production ownership.
+- one canonical shared optimizer-setting resolver now feeds P5 identity and executable `MaceOptimizerPolicy`;
+- executable/default parity is corrected for LR, batch sizes, EMA, EMA decay, AMSGrad, weight decay, clipping, and evaluation interval;
+- learned-model dtype is resolved through one binary precision authority;
+- target-size common preparation no longer owns batch size or learned-model dtype that it does not consume;
+- target-size seed-neutral scientific identity excludes general LR/EMA decay, workers, validation batch size, and evaluation interval while retaining trajectory-changing optimizer/precision/backend state;
+- target-size candidate loader geometry no longer treats `valid_batch_size` as science;
+- already-published candidate materializations can be replayed across execution-only worker/validation-batch drift without retiring the scientific trajectory;
+- P5 carries a corrected method-recipe identity cutover;
+- the previously accepted practical-ceiling, objective/weight, native MACE-loss, P4 selected-flow, and fresh-production semantics were not displaced.
 
-The reopened defects all reduce to one Tier-2 design problem:
+Two implementation blockers and one acceptance blocker remain:
 
-> **The same training semantics are currently resolved by multiple partially overlapping configuration paths, while some execution-only values are hashed as scientific state.**
+1. **Uncommitted first-rung materialization still becomes an execution-only identity collision.** A first-boundary attempt can publish immutable materialization/config bytes before any accepted cell completion exists. The materialization path is keyed by the scientific trajectory digest, which intentionally excludes `num_workers` and `valid_batch_size`, while the immutable MACE config still records those fields as execution provenance. If the process dies after materialization but before accepted progress and the operator changes either execution-only setting, the next scientifically identical fresh first-rung attempt addresses the same path with different config bytes and the immutable create-or-verify owner rejects the attempt. This contradicts the accepted distinction `no accepted boundary yet -> retry first rung fresh` and the revision-4 rule that execution-only drift must not invalidate target-size science.
+2. **The new canonical optimizer resolver is not yet a complete validation authority.** It converts numeric values before exact type/domain validation and does not reject non-finite LR/weight-decay/clip values. TOML values such as `nan`, `inf`, a fractional batch size, or a boolean in an integer field can therefore be silently accepted/reinterpreted and enter method identity/execution. Centralizing configuration is only correct if the canonical owner validates exactly what it canonicalizes.
+3. **Required assembled functional acceptance is not established on the reviewed candidate.** The accessible GitHub evidence for the implementation commit contains only the documentation-PDF workflow; no focused/affected regression, assembled P2->P5 integration, or required real pinned-MACE semantic acceptance is recorded. Under Protocol 5.15.0 an unexecuted required check is not a pass. In addition, the new old-method P5 cutover test only proves two digests differ; final closure must prove the real final-production authorization owner rejects historical-method CV acceptance before training.
 
-The final repair therefore consolidates configuration normalization and narrows identities. It does **not** add another state machine, compatibility registry, target-size wrapper, warning lifecycle, parallel optimizer authority, or migration layer.
+No Frozen high-level architecture change is required. The correct repair is to **reduce the remaining ambiguity at existing owners**: treat unaccepted first-rung materialization as attempt-local scratch just as unaccepted first-rung checkpoint state already is; make the existing canonical resolver strict; then execute the required real-owner regression/integration matrix. Do not add a compatibility registry, alternate materialization identity, migration layer, warning lifecycle, restart database, or second configuration resolver.
 
-This revision is snapshot-complete and supersedes the previous wording in this file. Implementers should not need earlier revisions or review conversation to determine the required end state.
+This revision is snapshot-complete for the remaining work. Earlier accepted scientific-method sections are restated below so an implementer does not need review conversation to determine what must remain unchanged.
 
 ---
 
-## 1. Objective / problem invariants / non-goals
-
-### 1.1 Governing scientific question
+## 1. Tier-1 problem and scientific invariants
 
 The target-size experiment answers:
 
@@ -57,52 +60,39 @@ N = number of target configurations used for gradient training
 T_N = pi_train[:N]
 ```
 
-The ordered optimizer-seed set remains the stochastic replicate dimension. Target-size ranking uses only authenticated paired-seed target-side EVAL2 evidence at the exact configured fidelity/evaluation boundaries.
+The ordered optimizer-seed set is the stochastic replicate dimension. Ranking uses authenticated paired-seed target-side EVAL2 evidence at the exact configured fidelity/evaluation boundaries.
 
 The experiment distinguishes:
 
-- **evidence-supported truncation** — a smaller finalist is practically equivalent to, or better than, a larger finalist;
-- **practical-ceiling selection** — configured `Nmax` remains materially superior, so the best permitted size is `Nmax`, while convergence remains unproven inside the configured ladder;
-- **insufficient comparison** — malformed, foreign, missing, reordered, or numerically insufficient evidence prevents a valid comparison and remains blocking.
+- **evidence-supported truncation**: a smaller finalist is practically equivalent to, or better than, a larger finalist;
+- **practical-ceiling selection**: configured `Nmax` remains materially superior, so `Nmax` is the best permitted size while convergence remains unproven inside the configured ladder;
+- **insufficient comparison**: malformed, foreign, missing, reordered, or numerically insufficient evidence prevents a valid comparison and remains blocking.
 
 No unconfigured rescue size is invented.
 
-### 1.2 Product invariants
+Product invariants that remain binding:
 
-The implementation must preserve all of the following:
-
-- exact nested candidate membership `T_N = pi_train[:N]`;
-- configured candidate and evaluation ladders;
+- exact nested `T_N = pi_train[:N]` membership;
+- one P1 canonical frame authority and one neutral statistical substrate;
 - one `P_train / M3` split and one `pi_train / pi_eval` authority;
+- configured candidate/evaluation ladders;
+- `q -> min(q,4) -> 2 -> 1` successive-halving topology;
 - paired-seed arithmetic-mean aggregation;
 - target-force RMSE ranking;
 - practical-equivalence preference for smaller data size;
-- one continuous training trajectory per `(N, seed)` across all screening boundaries;
-- exact boundary checkpoint ownership and EVAL2 authentication;
+- one continuous scientific trajectory per `(N, optimizer_seed)` across `n1 -> n2 -> n3`;
+- exact authenticated boundary checkpoint/EVAL2 evidence;
 - current P4 terminal/currentness ownership;
-- P5 cross-validation over exactly frozen `T_selected`;
-- fresh final production over exactly frozen `T_selected`;
-- no screen/CV checkpoint as final-production parent;
+- P5 cross-validation on exactly frozen `T_selected`;
+- fresh final production on exactly frozen `T_selected`;
+- no screen or CV checkpoint as final-production parent;
 - historical evidence is never silently reinterpreted under corrected scientific semantics.
-
-### 1.3 Non-goals
-
-This repair does **not**:
-
-- change P1/P2 statistical population, split, ordering, or candidate membership;
-- redesign the `q -> min(q,4) -> 2 -> 1` funnel;
-- introduce curve fitting, derivative estimation, extrapolation, or another convergence detector;
-- change the post-selection CV question or final-production ownership;
-- add an optimizer family beyond the currently accepted method;
-- make worker count or other pure resource scheduling a scientific variable;
-- add a second configuration namespace merely to resolve the current inconsistency;
-- perform long GPU/full-production qualification during implementation.
 
 ---
 
-## 2. Frozen high-level architecture and engineering envelope
+## 2. Frozen high-level architecture
 
-The following architecture remains Frozen for this cycle:
+The high-level authority graph remains Frozen:
 
 ```text
 canonical frame authority
@@ -119,43 +109,43 @@ canonical frame authority
   -> fresh final production on exactly T_selected
 ```
 
-Also Frozen:
+Also Frozen for this cycle:
 
-- practical-ceiling selection is `SELECTED` plus warning metadata;
-- insufficient comparison remains a blocking scientific terminal outcome;
-- target-size reference LR/EMA normalization is screen-specific;
-- final production starts from fresh optimizer/model training state;
-- executable loss family is dependency-native MACE weighted energy+force+stress unless real dependency evidence fires the redesign trigger below;
-- full GPU/production qualification remains deferred to final release.
+- materially superior configured ceiling is `SELECTED` with warning metadata, not a blocking failure;
+- insufficient comparison remains blocking;
+- target-size optimizer-progress normalization is screen-specific;
+- target-size EVAL2 consumes the authenticated configured model state, EMA when enabled;
+- objective/global component coefficients, configuration weights, and local property masks remain separate owners;
+- executable target-size/P5 loss family remains dependency-native MACE weighted energy+force+stress under the accepted pinned dependency evidence;
+- P3 remains target-size execution/restart evidence owner;
+- P4 remains campaign terminal/currentness/adoption owner;
+- P5 remains cross-validation/fresh-production owner;
+- final production starts fresh;
+- long GPU/full-production qualification remains deferred to final release.
 
-The exact function/class/module placement used to realize canonical configuration normalization is **not** Frozen. Existing helpers may be moved, merged, narrowed, or deleted if the resulting ownership is simpler and the product semantics above are preserved.
+The exact helper/function/module structure used to implement the remaining repair is Tier 2 and may be simplified. A local API inconvenience is not a redesign trigger.
 
 ---
 
-## 3. Accepted implementation retained
+## 3. Accepted implementation that must be retained
 
-### 3.1 Practical-ceiling reducer semantics
+### 3.1 Practical-ceiling reducer
 
-At the terminal boundary:
-
-1. If `Nmax` is materially superior to every other successful terminal finalist by more than `practical_equivalence_mev_per_a`, emit:
+At the terminal comparison:
 
 ```text
-status = SELECTED
-selected_target_size = Nmax
-selected_membership_digest = candidate_digest(Nmax)
-terminal_reason_codes includes "nonconverged_at_configured_ceiling"
+Nmax materially superior by > practical-equivalence epsilon
+    -> status = SELECTED
+    -> selected_target_size = Nmax
+    -> exact membership digest
+    -> terminal_reason_codes includes "nonconverged_at_configured_ceiling"
 ```
 
-2. If `Nmax` is raw-best but a smaller finalist lies inside the practical-equivalence band, select the smaller finalist without the ceiling warning.
-3. If a smaller finalist has the best score, select it normally.
-4. If comparison is insufficient, do not fabricate a selection.
+If a smaller finalist is within practical equivalence of a raw-best larger finalist, prefer the smaller finalist. If a smaller finalist is strictly best, select it normally. If comparison is insufficient, do not fabricate selection.
 
-The warning means the selection is **budget-limited rather than convergence-limited**. It must not claim asymptotic convergence. No `SELECTED_WITH_WARNING` state or new lifecycle is introduced.
+The ceiling warning means **budget-limited rather than convergence-limited**. It does not claim asymptotic convergence. No `SELECTED_WITH_WARNING` lifecycle exists.
 
-The corrected terminal-decision policy/version remains part of P2 policy/definition identity so retired blocking-ceiling evidence is not relabeled under the new semantics.
-
-### 3.2 Optimizer-progress normalization mathematics
+### 3.2 Target-size optimizer normalization
 
 The screen normalization policy remains:
 
@@ -172,518 +162,479 @@ For target-size training batch size `B`:
 U_ref = ceil(N_ref / B)
 U_N   = ceil(N / B)
 s_N   = U_ref / U_N
-
 LR_N   = LR_ref * s_N
 beta_N = beta_ref ** s_N
 ```
 
-There are no hidden LR caps/floors. The normalized-progress LR phase shape is unchanged; only amplitude changes. EMA is normalized because target-size EVAL2 consumes EMA state when EMA is enabled.
+No hidden cap/floor or survivor-dependent recomputation is allowed. One `(N, seed)` realization is derived from the full `n3` geometry and remains unchanged through all rungs. General `[training].learning_rate` and `[training].ema_decay` are P5/general-training settings and are not target-size LR/EMA-decay authority.
 
-Epoch/fidelity counts, batch size, optimizer family, moment semantics, weight decay, clipping, precision, architecture, seed population, and objective policy are not candidate-specific tuning knobs. Each `(N, seed)` receives one realization for the full `n3` trajectory and retains it through `n1 -> n2 -> n3` continuation.
-
-### 3.3 Objective / configuration / local-property weight ownership
+### 3.3 Weight/loss ownership
 
 Retain:
 
 - `TrainingObjectivePolicy` as owner of global energy/force/stress coefficients;
 - `ConfigurationWeightPolicy` as owner of per-configuration multiplier;
-- local frame property weights as local availability/modifier weights, normally `1.0` when present and `0.0` when absent;
+- local property weights as availability/local modifiers, normally `1.0` present and `0.0` absent;
 - explicit global coefficients in generated MACE configs;
 - dependency-native `loss="stress"` / `WeightedEnergyForcesStressLoss` realization;
-- loss-family identity through canonical MACE architecture/training-method identity.
+- loss-family identity through canonical MACE method/architecture ownership.
 
-Do not duplicate the global `1:10:1` ratio into local frame property weights.
+Do not duplicate the global `1:10:1` ratio into local per-frame property weights.
 
-### 3.4 P4/P5 selected-at-ceiling propagation
+### 3.4 One canonical shared optimizer-setting resolution
 
-Retain the ordinary selected flow:
-
-```text
-P2 SELECTED Nmax + warning
-  -> P3 terminal head
-  -> P4 TERMINAL_SELECTED
-  -> exact N_selected / T_selected
-  -> P5 cross-validation
-  -> fresh final production if CV accepts
-```
-
-The warning remains visible in CLI/status/result projections but is not an authorization branch.
-
----
-
-## 4. Final closure finding: one configuration authority, role-specific projections
-
-The closure review found three manifestations of the same underlying defect family.
-
-### 4.1 Common-preparation policy contains fields it does not consume
-
-`TargetSizeCommonTrainingPolicy` currently carries `batch_size` and `default_dtype`, but `build_target_size_common_preparation()` does not use either value to fit or construct any common scientific product. Common preparation consumes objective policy, configuration weighting, atomic-reference policy, harness-validation membership size, applicable foundation/reference inputs, and model-construction inputs; batch size and learned-model dtype do not affect the common fitted state.
-
-Therefore `batch_size` and `default_dtype` are **not common-preparation authority**. Keeping them there causes unrelated batch/precision edits to invalidate prepared/common science and creates a second description of execution state.
-
-The correct repair is removal/narrowing, not synchronization.
-
-### 4.2 Target-size seed-neutral identity hashes irrelevant generic optimizer fields
-
-The current seed-neutral projection removes seed and acceleration-realization identifiers but hashes most of `MaceOptimizerPolicy`, including fields that are either replaced by target-size-specific authorities or are execution-only for the screen.
-
-In particular:
-
-- generic `learning_rate` is not the target-size LR authority; normalized `LR_N` is;
-- generic `ema_decay` is not the target-size EMA-decay authority; normalized `beta_N` is;
-- `num_workers` is resource realization;
-- `valid_batch_size` affects fixed non-controlling validation/harness execution, not gradient trajectory or target-size ranking authority;
-- generic `eval_interval` is not emitted by the current target-size candidate MACE configuration and cannot define target-size scientific identity.
-
-These fields must not retire an otherwise identical target-size screen.
-
-### 4.3 P5 method identity and executable optimizer are not the same policy
-
-`resolve_shared_optimizer_settings()` and `_optimizer_policy()` currently resolve overlapping fields independently and with different defaults. The executable resolver also fails to propagate several supported user-configurable optimizer fields into `MaceOptimizerPolicy`, so those fields can alter P5 method identity without altering actual training.
-
-Reviewed examples include:
-
-- method identity defaults `batch_size=4`, `valid_batch_size=4`, while executable campaign training defaults them to `2`;
-- method identity defaults `ema_decay=0.99`, while executable `MaceOptimizerPolicy` uses `0.99999` when omitted;
-- method identity defaults `weight_decay=5e-7`, while executable `MaceOptimizerPolicy` uses `1e-6`;
-- explicit `[training].ema`, `ema_decay`, `amsgrad`, `weight_decay`, and `clip_grad` can enter P5 method identity while the current generic executable resolver ignores them.
-
-This violates the fundamental requirement that method identity describe the method that actually executes. The final repair must close the **whole optimizer-settings family**, not patch individual fields one at a time.
-
----
-
-## 5. Canonical field-ownership matrix
-
-This matrix is the required semantic end state. Exact helper names and module placement remain delegated.
-
-| Field / semantic | Canonical owner | Common-preparation identity | Target-size P3 scientific identity | Target-size launch/runtime | P5 method identity / execution |
-|---|---|---|---|---|---|
-| general `[training].learning_rate` | shared post-selection/general training policy | No | No | ignored for screen LR | Yes |
-| target-size `reference_learning_rate` | optimizer-normalization policy | No | Yes, through normalization/realization | Yes | No |
-| `batch_size` | canonical shared training-setting resolver | No | Yes; defines `ceil(N/B)` | Yes | Yes |
-| `valid_batch_size` | canonical shared training-setting resolver | No | No | execution/materialization provenance | Yes under current P5 contract |
-| `num_workers` | execution/resource policy | No | No | Yes, execution-only | execution-only; not method identity |
-| `eval_interval` | role-specific training policy | No | No for current target-size screen | no new target-size scientific use | Yes under current P5 contract |
-| EMA enabled/disabled | canonical shared optimizer semantics | No | Yes | Yes | Yes |
-| general `[training].ema_decay` | shared post-selection/general training policy | No | No | not target-size EMA authority | Yes |
-| target-size `reference_ema_decay` | optimizer-normalization policy | No | Yes, through normalization/realization | Yes when EMA enabled | No |
-| `amsgrad` | canonical shared optimizer semantics | No | Yes | Yes | Yes |
-| `weight_decay` | canonical shared optimizer semantics | No | Yes | Yes | Yes |
-| `clip_grad` | canonical shared optimizer semantics | No | Yes | Yes | Yes |
-| learned-model dtype | canonical binary precision policy | No | Yes | Yes | Yes |
-| device / acceleration backend / critical precision | existing canonical backend/precision owners | No | retain current execution-scientific ownership | Yes | retain current P5 ownership |
-| target-size `n3` | target-size screen schedule | No | Yes | Yes | No |
-| P5 CV/final epoch budgets | P5 role-specific policies | No | No | No | role-specific P5 identity/execution |
-| acceleration realization digest | execution realization/provenance | No | No in global seed-neutral identity; candidate-local historical provenance only | candidate-local | existing P5 qualification/execution ownership |
-
-Two consequences are mandatory:
-
-1. A field may be represented in more than one descendant digest only when every occurrence is derived from the **same canonical resolved value**. Duplicated hashing is not itself a second authority; duplicated independent resolution is.
-2. A value that is execution-only for target-size may still be persisted in an immutable materialization as historical execution provenance. Persisting it does not make it current scientific identity.
-
----
-
-## 6. Implementation obligations and delegated solution space
-
-### 6.1 Consolidate canonical shared optimizer-setting resolution
-
-**Concern.** P5 identity and executable training can describe different methods, while target-size consumes a broad generic optimizer carrier with fields it does not scientifically own.
-
-**Required end state.** Establish one pure canonical resolution of the shared optimizer semantics actually configurable by the campaign. Every consumer that claims those semantics must derive from it.
-
-At minimum canonically resolve and validate:
+The implemented canonical owner is accepted in principle. One resolved value must feed P5 method identity and real execution for:
 
 - general learning rate;
-- batch size;
+- training batch size;
 - validation batch size;
+- evaluation interval;
 - EMA enable/disable;
 - EMA decay;
 - AMSGrad;
 - weight decay;
 - gradient clipping;
-- evaluation interval where that role uses it;
-- the existing optimizer-family restriction.
+- supported optimizer family.
 
-Precision and acceleration may remain under their existing dedicated owners, but downstream optimizer construction must consume those canonical resolved results instead of independently inferring incompatible defaults.
+Effective omitted defaults remain the executable campaign defaults:
 
-The shared resolver must **not** absorb optimizer seed, role-specific epoch budget, worker count, target-size normalization reference LR/EMA, candidate N, CV fold state, or acceleration realization digest.
+```text
+learning_rate    = 1.0e-4
+batch_size       = 2
+valid_batch_size = 2
+eval_interval    = 1
+ema              = true
+ema_decay        = 0.99999
+amsgrad          = true
+weight_decay     = 1.0e-6
+clip_grad        = 10.0
+```
 
-**Default policy.** Do not invent new defaults. Where no durable user-facing specification overrides the behavior, preserve the current effective executable campaign behavior as product truth and make identity match it. In particular, the current executable/default campaign path establishes `batch_size=2` and `valid_batch_size=2`, while the generic `MaceOptimizerPolicy` supplies the effective EMA/regularization defaults actually executed when configuration omits those fields. Identity-only defaults that were never applied by execution are not authoritative merely because tests copied them.
+Optimizer seed, role-specific epoch budgets, worker count, target-size normalization references, candidate N, CV fold state, and acceleration realization remain outside this shared resolution.
 
-Explicit supported configuration values must, after this repair, change both resolved identity and actual execution.
+Learned-model dtype remains owned by the canonical binary precision authority.
 
-**Delegated realization.** A single lower-level resolver function, a narrowed existing resolver, or another minimal canonical representation is acceptable. Moving pure resolution code to break import cycles is allowed. Do not create parallel identity and execution resolvers that must be synchronized.
+### 3.5 Common-preparation narrowing
 
-**Acceptance.** Use deliberately non-default distinct values and prove that canonical resolution, P5 method identity, constructed `MaceOptimizerPolicy`, generated internal MACE config, and executable MACE projection agree on every shared scientific optimizer field. Repeat with fields omitted and prove default parity.
+`batch_size` and learned-model dtype are **not** common-preparation scientific identity because common fitting consumes neither. They remain P3 execution-scientific state where they change training. Objective/configuration-weight/E0/harness inputs remain common-preparation identity.
 
-### 6.2 Narrow common-preparation policy to quantities common preparation actually owns
+### 3.6 Target-size role projection
 
-**Required end state.** Remove `batch_size` and `default_dtype` from `TargetSizeCommonTrainingPolicy` scientific content, or perform an equivalent narrowing that makes common-preparation identity independent of them.
+Target-size seed-neutral scientific identity excludes:
 
-Common preparation continues to own only quantities that affect its actual fitted/common products, including as applicable objective policy, configuration-weight policy, atomic-reference policy, replay/foundation inputs genuinely used by the common fit, fixed harness membership policy, and other model-construction inputs genuinely consumed by the common product.
+- optimizer seed;
+- candidate-local acceleration realization/mode;
+- general learning rate;
+- general EMA decay;
+- worker count;
+- validation batch size;
+- evaluation interval.
 
-A batch-size or learned-model dtype edit must **not** require rebuilding P1/P2/common fitted science merely because those values were redundantly stored there. They must still invalidate the appropriate P3 execution/trajectory descendants because they change training execution semantics.
+It retains fields that change the target-size scientific trajectory, including:
 
-**Simplification requirement.** Do not repair this by teaching common preparation to consume batch/dtype merely to justify the existing fields. Remove the unnecessary authority instead.
-
-**Compatibility.** Advance the serialized common-policy schema because the payload shape/meaning changes. Historical common/prepared evidence remains historical; do not fill removed fields on read and call it current. `preparation_configuration_identity()` must naturally stop treating batch/dtype as preparation-owned once the common-policy digest is narrowed.
-
-**Acceptance.** Prove batch-only and dtype-only edits leave common-policy/common fitted identity unchanged; objective/config-weight/E0/harness changes still invalidate common preparation; P3 execution identity still changes for scientific batch/dtype changes. Revise tests that encoded the old incorrect common ownership rather than preserving them with adapters.
-
-### 6.3 Build one target-size optimizer-template projection used by live execution and reconstruction
-
-One canonical target-size optimizer-template projection must be used by fresh screen construction, restart authority construction, active candidate resume validation, and terminal/currentness reconstruction.
-
-It derives from:
-
-- canonical shared scientific optimizer settings where they genuinely apply to the screen;
-- canonical binary precision/backend owners;
-- target-size screen schedule;
-- target-size optimizer-normalization policy.
-
-Target-size effective LR and EMA decay come only from the normalization policy plus authenticated update geometry.
-
-The target-size seed-neutral scientific projection must exclude at least:
-
-- `seed`;
-- acceleration realization digest / resolved realization mode;
-- generic `learning_rate`;
-- generic `ema_decay`;
-- `num_workers`;
-- `valid_batch_size`;
-- `eval_interval`.
-
-It must retain or derive the scientific fields that actually change the target-size training trajectory, including:
-
-- `batch_size`;
+- training batch size;
 - EMA enabled/disabled;
 - AMSGrad;
 - weight decay;
 - gradient clipping;
 - learned-model dtype / critical precision;
-- device/backend/acceleration policy under the current scientific-backend contract;
-- full-screen `n3` horizon derived from the screen schedule rather than `[training].max_num_epochs`.
+- accepted device/backend/acceleration policy;
+- full-screen `n3` horizon.
 
-Advance the implementation-owned target-size seed-neutral projection algorithm/schema token so old broad-policy evidence cannot authenticate under the corrected projection.
+Candidate realization retains exact target membership/count, `ceil(N/B)` update geometry, full-n3 exposure, precision, seed, normalization identity, effective LR/EMA, realized LR schedule, and candidate-local acceleration provenance. `valid_batch_size` remains absent from candidate scientific loader geometry.
 
-`TargetSizeCandidateRealization` continues to bind exact membership/count lineage, scientific training batch size, `ceil(N/B)` geometry, full-`n3` exposure, precision, seed, normalization identity/effective LR/effective EMA, and candidate-local acceleration provenance. Remove `valid_batch_size` from candidate scientific loader-geometry/currentness identity.
+### 3.7 P5 method cutover
 
-**Acceptance.** Through the real context/trajectory owners prove:
-
-- general `[training].learning_rate`, general `[training].ema_decay`, `num_workers`, target-size `valid_batch_size`, and `eval_interval` do not move target-size scientific currentness;
-- target-size reference LR/EMA move P3/trajectory identity;
-- batch size, EMA enabled, AMSGrad, weight decay, clip gradient, dtype/backend move P3/trajectory identity;
-- live and terminal/restart reconstruction produce the same canonical target-size template;
-- candidate MACE config and TRAIN2 runtime use the same realized effective LR/EMA.
-
-### 6.4 Separate target-size scientific replay validation from materialization-local execution provenance
-
-Even after execution-only fields are removed from target-size context/trajectory identity, current `validate_target_size_materialization()` re-derives the complete immutable MACE config from the current optimizer policy. A mid-screen `num_workers` or `valid_batch_size` edit can therefore still reject a scientifically valid materialization during real resume.
-
-**Required end state.** A previously published candidate materialization remains scientifically valid when only target-size execution-only launch settings change.
-
-Its immutable config may retain the exact execution values used when it was created. Those values are historical execution provenance, not a requirement that the current invocation resolve the same value.
-
-Restart validation must:
-
-- re-derive and compare every **scientific** MACE/config field against current accepted authority;
-- authenticate persisted execution-only values as valid materialization content;
-- not require execution-only persisted values to equal current invocation resource settings;
-- preserve exact scientific trajectory, checkpoint ancestry, and `n1 -> n2 -> n3` continuation.
-
-For an already materialized trajectory, continuing with its persisted execution-only launch values or cleanly applying current execution-only values at launch is acceptable; prefer the simpler existing-owner realization. What is forbidden is making execution-only drift scientific invalidation or adding a registry/migration layer solely to reconcile it.
-
-Do not weaken materialization authentication generally. Membership, common preparation, scientific optimizer fields, realized LR/EMA, architecture, objective/loss, precision, target/harness artifacts, and checkpoint lineage remain strongly authenticated.
-
-**Real-owner acceptance.** Execute a cell through `n1` under execution settings A; change only `num_workers` and/or target-size `valid_batch_size`; reconstruct the real restart authority; resume through `resolve_target_size_candidate_for_resume()` into `n2`; prove no new scientific trajectory/common generation is created and continuation ancestry remains exact. Companion negatives must reject scientific batch/dtype/EMA-enable/AMSGrad/weight-decay/clip/reference-LR/reference-EMA drift before training.
-
-### 6.5 Make P5 method identity and executable optimizer one method
-
-`PostSelectionMethodIdentity` and every P5 CV/final run must consume the same canonical shared optimizer settings:
-
-```text
-configuration
-  -> one canonical resolved value
-      -> P5 method identity
-      -> executable MaceOptimizerPolicy
-      -> generated MACE config
-      -> TRAIN2 runtime
-```
-
-No independently defaulted second route is permitted. Role-specific epoch budgets and optimizer seeds remain outside shared method settings exactly as today.
-
-P5 learned-model dtype must come from the same binary precision authority as executable optimizer construction. Do not independently default P5 identity to FP64 while campaign execution resolves FP32.
-
-If a user explicitly sets a supported shared optimizer field, it must affect both identity and execution. Verify at least learning rate, batch size, validation batch size, eval interval, EMA enabled, EMA decay, AMSGrad, weight decay, and clip gradient.
-
-**Identity cutover.** The corrected execution semantics require an implementation-owned P5 method-recipe/optimizer-resolution identity revision. This is mandatory even when a particular old `shared_optimizer_settings_digest` happened to contain the intended value, because old P5 evidence may have executed different effective values than its identity claimed. A method-recipe version bump or equivalent canonical identity token is acceptable. Do not rewrite old CV/final evidence in place.
-
-**Acceptance.** Prove omitted defaults resolve identically in method identity and executable optimizer; each explicit shared-field mutation changes both identity and executable config consistently; `num_workers` remains outside P5 method identity; CV/final role budgets remain independent; old method-recipe evidence cannot authorize corrected runs.
-
-### 6.6 Preserve objective/loss repair while changing policy resolution
-
-Canonical optimizer consolidation must not regress the accepted objective/loss repair:
-
-- `[objective]` resolves through one shared objective resolver for screen and P5;
-- global coefficients occur exactly once at the global loss layer;
-- configuration weights remain independent;
-- local property weights remain masks/local modifiers;
-- target-size and P5 generated configs use the same accepted executable loss family;
-- pinned MACE 0.3.16 real-loss acceptance must actually execute in the supported acceptance environment.
-
-Documentation must state that `TrainingObjectivePolicy` owns global component coefficients while executable loss-family identity belongs to the canonical MACE method/architecture owner. Do not add a duplicate loss-family field to `TrainingObjectivePolicy` to preserve incorrect prose.
+P5 corrected method identity remains `mdstats.post-selection-method.2026-09.v2` or an equivalent newer identity if implementation legitimately advances it. Historical pre-cutover CV/final evidence must not authorize a corrected method. P5 final production must require CV acceptance whose exact method digest equals the method it is about to execute.
 
 ---
 
-## 7. Compatibility, schemas, and invalidation
+## 4. Relationship to existing restart/partial-boundary contracts
 
-### 7.1 Target-size common-policy cutover
+These existing contracts remain authoritative and constrain the repair.
 
-Advance the common-policy schema/version when removing non-consumed fields. Historical common/prepared generations remain historical. Current commands must not deserialize them, fill removed fields, and call them current.
+### 4.1 Partial-boundary progress
 
-A corrected current generation may need fresh prepared/current derived state. Reuse semantically unchanged content-addressed lower-level artifacts where existing ownership already permits it; do not add migration machinery merely to preserve a derived generation. P1/P2 statistical identities are unchanged by this repair.
+Already **accepted** immutable progress for a logical `(screen, boundary, N, seed)` cell is scientific evidence. It must be deeply authenticated and reused. The scheduler executes only missing active cells. Genuine conflicting accepted evidence remains a hard error.
 
-### 7.2 Target-size seed-neutral policy cutover
+Do not delete or overwrite accepted progress to make restart easier.
 
-Advance the implementation-owned target-size seed-neutral optimizer-projection algorithm/schema token. Old P3 screen evidence produced under the broad generic projection must not authenticate as corrected evidence. Do not reinterpret a historical execution-context digest by dropping fields during deserialization.
+### 4.2 First-boundary absence
 
-### 7.3 P5 method-recipe cutover
+Before any boundary completion for a cell is accepted, there is no continuation authority. An interrupted first-rung attempt is attempt-local scratch and must be retried fresh. Existing first-boundary checkpoint handling already follows this model by removing stale uncommitted checkpoint workspace before the retry.
 
-Advance P5 method recipe/optimizer-resolution identity so historical evidence whose identity did not match actual execution cannot authorize corrected CV/final production. No historical CV acceptance, final-production plan, or publication is rewritten.
+The remaining materialization repair must follow the same authority distinction rather than create a new one.
 
-### 7.4 Schema discipline
+### 4.3 Later-rung continuation
 
-Version serialized schemas when the same serialized fields would otherwise acquire changed meaning. Do not bump unrelated schemas mechanically when ordinary content identity already changes safely and field meaning is unchanged.
+For `n2`/`n3`, existing authenticated predecessor snapshot/continuation ownership remains unchanged. A missing current-boundary survivor continues from its exact accepted previous boundary. An already completed current-boundary cell does not run again.
+
+### 4.4 Candidate-local acceleration provenance
+
+A published trajectory may retain the acceleration realization that actually executed it without making a later compatible realization change global screen identity. The new materialization repair must not regress that accepted replay behavior.
+
+---
+
+## 5. Blocking repair A — remove uncommitted first-rung materialization collision
+
+### 5.1 Diagnosis
+
+Current first-rung execution performs, in order:
+
+```text
+build scientific trajectory
+ -> materialization_directory = materialization_root / trajectory_digest
+ -> materialize_target_size_candidate(...)
+ -> create/reset uncommitted TRAIN2 checkpoint workspace
+ -> train/evaluate
+ -> publish accepted cell completion/progress
+```
+
+The scientific trajectory digest intentionally excludes `num_workers` and `valid_batch_size`. The immutable candidate MACE config intentionally persists those values as historical execution provenance. The config is published with create-or-verify semantics at a deterministic path inside the trajectory materialization directory.
+
+Therefore this interrupted state is possible:
+
+```text
+scientific trajectory S
+execution settings A
+ -> materialization/config A published under path keyed by S
+ -> process dies before any accepted completion/progress for the cell
+
+operator changes only num_workers and/or valid_batch_size to B
+ -> scientific trajectory is still S
+ -> first rung correctly has no predecessor and should retry fresh
+ -> materializer addresses the same S directory
+ -> config B differs only in execution provenance
+ -> immutable create-or-verify rejects config B
+```
+
+The immutable publisher is behaving correctly. The error is the ownership of **unaccepted attempt-local materialization**: the runtime currently leaves it in a location where a future fresh attempt treats it like reusable durable content even though no accepted cell evidence references it.
+
+### 5.2 Required end state
+
+For a first-boundary cell with **no authenticated accepted completion/progress**, all attempt-local artifacts whose only purpose is to launch that unaccepted first-rung attempt must be retryable under current execution-only settings without changing scientific generation/context/trajectory identity.
+
+The simplest accepted repair is:
+
+- use the existing P3 progress/completion authority to determine whether this logical first-boundary cell has accepted evidence;
+- if it has accepted evidence, ordinary partial-boundary recovery owns it and the runtime must not execute/rematerialize the cell;
+- if it has no accepted evidence and the runtime is about to execute the cell fresh, treat any pre-existing first-attempt materialization workspace at that scientific trajectory location as **uncommitted attempt scratch**, just as the first-rung checkpoint workspace already is;
+- remove/recreate that unaccepted attempt-local materialization before rematerialization, or implement an equivalently simple replacement that proves the same ownership distinction without adding persistent state;
+- never delete/rewrite a materialization referenced by an authenticated accepted completion;
+- preserve immutable create-or-verify semantics for accepted/canonical artifacts.
+
+### 5.3 Preferred simplification
+
+Prefer extending the existing first-rung fresh-attempt cleanup boundary so materialization and TRAIN2 attempt scratch obey one rule:
+
+```text
+no accepted logical-cell evidence
+    -> no durable first-rung attempt authority
+    -> stale attempt-local materialization/checkpoint workspace may be discarded
+    -> retry fresh under current execution-only settings
+
+accepted logical-cell evidence exists
+    -> recover/authenticate/reuse through existing P3 owners
+    -> do not execute or clean its durable parent graph
+```
+
+Do **not** add:
+
+- a second materialization identity containing worker/validation-batch settings;
+- an execution-only compatibility registry;
+- a mutable latest-materialization pointer;
+- an orphan migration table;
+- an alternate first-rung resume state machine;
+- a permissive overwrite mode in the immutable publisher.
+
+The problem is solved by correctly classifying unaccepted attempt scratch, not by weakening immutable evidence.
+
+### 5.4 Required focused acceptance
+
+Add a real-owner test at the production `select-target-size` boundary:
+
+1. prepare a real bounded campaign;
+2. enter the first active cell;
+3. allow real candidate materialization to publish;
+4. interrupt **after materialization exists but before the trainer produces an accepted boundary/completion/progress**;
+5. verify no cell progress/completion/head was accepted for that cell;
+6. change only `num_workers` and/or `valid_batch_size`;
+7. invoke `select-target-size` again;
+8. prove the first rung starts fresh (`start_epoch=0`), stale attempt-local materialization does not block the retry, and no new scientific generation/execution-context/trajectory identity is created;
+9. let the screen continue successfully through the ordinary owners.
+
+Companion negatives:
+
+- if accepted progress exists, retry must recover/reuse it and must not delete its materialization;
+- scientific drift (batch size, dtype, EMA enabled, AMSGrad, weight decay, clip gradient, normalization reference LR/EMA, accepted backend policy) must still invalidate/reject stale science through existing owners;
+- a genuine conflicting immutable accepted cell remains a hard error.
+
+This test must not fake materialization or directly seed post-decision state. Only MACE numerical work may be substituted below the real orchestration/identity/persistence owners.
+
+---
+
+## 6. Blocking repair B — make canonical optimizer normalization a strict validation authority
+
+### 6.1 Diagnosis
+
+`resolve_shared_optimizer_settings()` now correctly centralizes shared optimizer configuration, but several fields are converted before exact validation:
+
+- floats are accepted when merely not `<= 0` or `< 0`;
+- `nan` and positive `inf` therefore pass some LR/regularization checks;
+- integer fields are converted through `int(...)`, so fractional numeric values or booleans can be silently reinterpreted;
+- boolean fields are normalized through truthiness rather than requiring an actual boolean value.
+
+The generic `MaceOptimizerPolicy` constructor has similarly permissive finite-domain checks, so downstream construction does not reliably catch the bad canonical value.
+
+This is not a request for a second validator. It is a defect in the new **single canonical validator**.
+
+### 6.2 Required end state
+
+The canonical shared optimizer resolver must reject malformed or non-finite scientific optimizer configuration before identity construction or launch.
+
+Required validation semantics:
+
+- `learning_rate`: real finite number, strictly `> 0`;
+- `batch_size`: positive integer, not boolean, no truncation from fractional float;
+- `valid_batch_size`: positive integer, not boolean, no truncation;
+- `eval_interval`: positive integer, not boolean, no truncation;
+- `ema`: actual boolean;
+- `ema_decay`: real finite number with `0 < value < 1`;
+- `amsgrad`: actual boolean;
+- `weight_decay`: real finite number with `value >= 0`;
+- `clip_grad`: real finite number, strictly `> 0`;
+- optimizer family: existing accepted-family validation remains fail-closed.
+
+If repository-wide `MaceOptimizerPolicy` construction remains a public/serialized owner that can independently admit non-finite values, strengthen that existing constructor consistently rather than leaving two incompatible domains. This is alteration of the existing owner, not new machinery.
+
+### 6.3 Required focused acceptance
+
+Add canonical-owner negatives for at least:
+
+- `nan`, `inf`, `-inf` where representable for LR/EMA decay/weight decay/clip gradient;
+- fractional batch/validation-batch/eval-interval values;
+- boolean values supplied to integer fields;
+- non-boolean values supplied to `ema`/`amsgrad`.
+
+Prove failure occurs before method identity, candidate trajectory, materialization, or trainer launch.
+
+Retain positive tests for explicit non-default settings and omitted-default parity across:
+
+```text
+config
+ -> canonical resolver
+ -> P5 method identity
+ -> MaceOptimizerPolicy
+ -> internal MACE config
+ -> executable MACE projection
+```
+
+---
+
+## 7. Acceptance blocker C — execute the required assembled evidence
+
+### 7.1 Current evidence status
+
+The reviewed GitHub candidate records a successful documentation-PDF workflow for implementation commit `022206646c518582889661c3b38c464b6a7760a7`, but no test/status evidence for the required implementation regression/integration matrix. Source inspection cannot substitute for execution.
+
+The workplan remains open until the required checks actually run and pass on the assembled repaired candidate.
+
+### 7.2 Required real-owner P5 historical-cutover acceptance
+
+The current source correctly compares `CvCampaignAcceptance.method_identity_digest` to the method final production would execute. Final acceptance must exercise that owner rather than merely assert that two method digests differ.
+
+Required test:
+
+1. construct/publish a bounded valid CV plan/acceptance under the historical pre-cutover method identity or an otherwise authenticated historical-method fixture;
+2. resolve the current corrected P5 method;
+3. enter the real final-production authorization path (or its exact authorization owner used by that path);
+4. prove the historical acceptance is rejected on method mismatch **before trainer launch/materialization of final production**;
+5. prove a matching corrected-method acceptance is admitted through the same owner.
+
+Do not add another cutover table or compatibility layer; the existing exact method-digest authorization is the correct mechanism.
+
+### 7.3 Required practical-ceiling retention
+
+Retain one real-owner bounded integration that drives:
+
+```text
+terminal paired-seed reducer evidence
+ -> SELECTED Nmax + nonconverged_at_configured_ceiling warning
+ -> real P3 terminal head
+ -> P4 TERMINAL_SELECTED adoption/currentness
+ -> exact N_selected / T_selected loading
+ -> next lifecycle command = cross-validate
+```
+
+The configuration/restart repair must not regress this accepted flow.
+
+### 7.4 Required pinned-MACE semantic acceptance
+
+Run the real pinned MACE 0.3.16 parser/loss integration in an environment where the pinned dependency is available. It must actually execute, not skip, and prove:
+
+- generated target-size and P5 configs select the accepted weighted energy+force+stress loss family;
+- global E/F/S coefficients equal mdstats objective settings;
+- configuration weights and local property masks are consumed according to the accepted dependency semantics;
+- missing-label zero masks behave correctly;
+- corrected paths do not silently fall back to `UniversalLoss`.
+
+### 7.5 Final affected-surface regression
+
+At minimum execute the final affected versions of:
+
+- `tests/test_mlff_target_size_statistical_authorities.py`;
+- target-size P3A through P3F and later P3 closure/replay suites;
+- `tests/test_mlff_target_size_canonical_optimizer_settings.py`;
+- `tests/test_mlff_target_size_execution_only_drift_restart.py`;
+- first-boundary interruption/retry tests;
+- partial-boundary resume/recovery tests;
+- target-size acceleration-realization replay tests;
+- target-size realized-MACE-architecture tests;
+- P3 head-pointer/reconciliation tests;
+- all affected `tests/test_mlff_target_size_p4*.py`;
+- all affected `tests/test_mlff_target_size_p5*.py`;
+- `tests/test_mlff_mace_executable_config.py`;
+- binary/critical precision tests;
+- TRAIN2 policy/runtime/restart/continuation tests;
+- prepared-generation identity/currentness tests;
+- campaign lifecycle/status/advance tests;
+- post-selection identity/CV/final-production authorization/materialization/execution/publication tests;
+- objective/weight/export tests;
+- affected documentation integrity/specification tests.
+
+After the repairs are assembled, re-derive the transitive affected surface from the final diff. If the boundary remains uncertain, run the broader MLFF regression suite. Stage-local focused checks are not a replacement for this final affected regression.
+
+Production-scale GPU qualification remains **deferred**. Functional real-MACE acceptance is required; long data-heavy GPU qualification is not.
 
 ---
 
 ## 8. Implementation authority
 
-### Frozen
+### 8.1 Frozen
 
-Frozen product/design authority is limited to:
+Frozen authority is limited to:
 
-- the scientific target-size question and exact `T_N` definition;
-- the P1 -> P5 high-level authority graph;
-- practical-ceiling terminal semantics;
+- the scientific target-size question and exact `T_N` membership;
+- the P1->P5 authority graph in Section 2;
+- practical-ceiling selected-warning semantics;
 - inverse-update LR/EMA normalization mathematics;
-- one continuous target-size trajectory per `(N, seed)`;
-- objective/configuration/local-weight separation;
-- dependency-native weighted MACE loss family under current accepted dependency evidence;
-- post-selection CV then fresh final production;
-- field-ownership semantics in Section 5;
-- historical evidence is not reinterpreted under corrected method semantics.
+- one continuous target-size scientific trajectory per `(N, seed)`;
+- P3 immutable accepted evidence/restart ownership;
+- distinction between accepted partial progress and unaccepted attempt scratch;
+- objective/configuration/local-weight separation and accepted MACE loss family;
+- one canonical shared optimizer-setting resolution;
+- field-ownership classification in Sections 3.4-3.6;
+- P5 exact method-digest CV authorization;
+- fresh final production;
+- no silent reinterpretation of historical evidence.
 
-### Delegated
+### 8.2 Delegated
 
-Tier-2 realization that may be simplified/replaced includes:
+Implementation may simplify or replace Tier-2 details including:
 
-- exact name/module/type of the canonical shared optimizer resolver;
-- whether pure precision/config helpers move to a lower-level module to avoid import cycles;
-- exact target-size projection helper name;
-- exact materialization-validation factoring between scientific fields and execution provenance;
-- exact schema/version constant names;
-- test fixture organization;
-- internal caller signatures made obsolete by consolidation.
+- exact helper name/location for strict shared-setting validation;
+- exact factoring of the first-rung fresh-attempt cleanup;
+- whether uncommitted first-rung materialization cleanup is colocated with existing checkpoint cleanup or factored into one small existing-owner helper;
+- internal fixture organization;
+- redundant old helpers made obsolete by canonical resolution;
+- exact diagnostics.
 
-Delete or narrow existing helpers when the canonical resolver makes them redundant. Do not preserve parallel paths solely for internal-test compatibility.
+Prefer deletion/narrowing/consolidation over aliases or adapters.
 
-### Reopen only on evidence
+### 8.3 Reopen Design only on evidence
 
-Reopen the affected design surface only if implementation evidence proves one of these Frozen assumptions false:
+Reopen only the affected surface if implementation proves one of these Frozen assumptions false:
 
-1. target-size validation batch geometry or eval interval actually mutates parameter trajectory, LR schedule, checkpoint admissibility, or ranking;
-2. `num_workers` changes deterministic scientific trajectory semantics under the qualified loader and that dependence cannot be eliminated by existing deterministic execution guarantees;
-3. common preparation actually consumes batch size or learned-model dtype in a mathematically necessary fitted quantity;
-4. one canonical shared optimizer-semantic resolver cannot serve P3 and P5 without changing their Frozen method families rather than merely projecting role-specific fields;
-5. pinned MACE 0.3.16 no longer realizes the accepted weighted loss semantics under actual generated configs;
-6. corrected historical-evidence invalidation cannot be represented by existing content/method identities without a genuinely new product-level persistence contract.
+1. A first-rung materialization with no accepted logical-cell completion must survive as durable authority for a scientific reason not represented by current accepted progress/completion lineage.
+2. Deleting/rebuilding unaccepted first-rung materialization cannot be made safe because an independent accepted object can reference it before cell acceptance.
+3. `num_workers` or target-size validation batch size actually changes deterministic scientific trajectory/ranking semantics under the qualified runtime.
+4. Common preparation mathematically consumes batch size or learned-model dtype after all.
+5. One canonical shared optimizer-semantic resolver cannot serve P3/P5 through role-specific projection without changing their Frozen method families.
+6. Pinned MACE 0.3.16 does not realize the accepted weighted loss semantics under the actual generated configs.
+7. Existing exact method-digest authorization cannot prevent historical P5 evidence from authorizing corrected final production.
 
-A failure to fit the current helper layout is not a redesign trigger. Refactor Tier-2 layout instead.
-
----
-
-## 9. Affected surface and task-specific acceptance
-
-The final affected surface must be re-derived after implementation. At minimum inspect and test:
-
-### 9.1 Configuration / identity owners
-
-- `_campaign_cli_core._optimizer_policy()` and any replacement/consolidated pure resolver;
-- binary model precision resolution used by optimizer and P5 method identity;
-- `post_selection_identity.resolve_shared_optimizer_settings()` or its replacement;
-- `resolve_post_selection_method_policies()` and `resolve_post_selection_method_identity()`;
-- `TargetSizeCommonTrainingPolicy` and `resolve_target_size_common_training_policy()`;
-- prepared-generation configuration identity;
-- target-size optimizer-normalization resolver;
-- target-size seed-neutral optimizer projection/context construction.
-
-### 9.2 Target-size execution / restart
-
-- candidate realization and loader-geometry identity;
-- candidate MACE config generation;
-- materialization validation;
-- restart authority and `replay_optimizer_policy_for_trajectory()`;
-- `resolve_target_size_candidate_for_resume()`;
-- live screen construction;
-- terminal/currentness reconstruction;
-- TRAIN2 runtime-plan parity;
-- P4 terminal validation/result exposure.
-
-### 9.3 P5 execution
-
-- P5 fitted preparation after common-policy narrowing;
-- internal/executable MACE config generation;
-- `_optimizer_policy_for()` or equivalent execution construction;
-- CV method/currentness identity;
-- final-production method/currentness identity;
-- checkpoint selection/admissibility paths whose method digest changes.
-
-### 9.4 Focused acceptance cases
-
-**A. Canonical shared optimizer parity.** Use deliberately distinct non-default values. Through real owners assert resolved method settings, P5 method identity, `MaceOptimizerPolicy`, internal MACE config, and executable MACE projection agree for every shared field. Repeat with fields omitted and prove default parity.
-
-**B. Common-preparation narrowing.** Prove batch/dtype changes do not alter common fitted identity, while objective/config-weight/E0/harness changes still do.
-
-**C. Target-size role projection.** Prove general LR / general EMA decay / workers / target valid-batch / eval interval are absent from target-size scientific currentness; target-size reference LR/EMA, scientific batch, EMA enable, AMSGrad, weight decay, clip gradient, dtype/backend remain effective identity; `U_ref`, `U_N`, effective LR, effective EMA and realized schedule remain exact.
-
-**D. Active-screen restart across execution-only drift.** Execute/replay the real `n1 -> n2` continuation owner while changing only target-size execution-only settings between invocations. The survivor must resume without new scientific identity. Negative scientific-drift cases must reject.
-
-**E. P5 method/execution identity cutover.** Prove old method-recipe evidence cannot authorize corrected runs. New CV/final method identity and executable config must be one method.
-
-**F. Practical-ceiling end-to-end retention.** Drive the real reducer to selected-at-ceiling with warning, adopt the real P3 terminal head, reach P4 `TERMINAL_SELECTED`, load exact selected training context, and route lifecycle to `cross-validate`.
-
-**G. Pinned MACE semantic acceptance.** Run the real MACE 0.3.16 parser/loss test and prove weighted energy+force+stress behavior, global coefficients, configuration weights, and local masks. A skipped required MACE test is not final acceptance evidence.
-
-### 9.5 Minimum affected regression
-
-At minimum run/reconcile the affected versions of:
-
-- `tests/test_mlff_target_size_statistical_authorities.py`;
-- `tests/test_mlff_target_size_execution_p3a.py` through P3F and later P3 closure suites;
-- target-size realized-MACE-architecture suites;
-- target-size first-boundary interruption/restart suites;
-- P3 head-pointer/reconciliation suites;
-- `tests/test_mlff_target_size_p4*.py`;
-- `tests/test_mlff_target_size_p5*.py`;
-- `tests/test_mlff_mace_executable_config.py`;
-- binary/critical precision suites;
-- TRAIN2 policy/runtime/continuation suites;
-- prepared-generation identity/currentness suites;
-- campaign lifecycle/status/advance suites;
-- post-selection identity/materialization/execution/CV/final-publication suites;
-- objective/weight/export suites;
-- `tests/test_mlff_doc_arch1_specification.py` and affected documentation integrity checks.
-
-Then re-derive transitive affected surface from the assembled implementation and run broader MLFF regression if ownership expansion makes the boundary uncertain.
-
-Production qualification remains **deferred**. Do not run long data-heavy GPU qualification as an implementation gate.
+Do not reopen because a current helper API is inconvenient.
 
 ---
 
-## 10. Documentation obligations
+## 9. Forbidden repair patterns
 
-Reconcile current normative/user-facing documentation where this corrected contract changes what readers must know. At minimum cover target-size optimizer normalization, training/evaluation method identity, target-size currentness, MACE artifact/config specification, campaign CLI/config specification/example, user guide, and the architecture wording that incorrectly assigns executable loss-family ownership to `TrainingObjectivePolicy`.
+Do not close this review by:
 
-Current documentation must explain:
+- weakening immutable create-or-verify semantics;
+- overwriting or deleting **accepted** partial-boundary progress/materialization;
+- adding worker/validation-batch fields back into scientific trajectory identity merely to avoid the orphan collision;
+- adding an execution-only compatibility registry, migration table, alternate materialization generation, or second restart database;
+- teaching common preparation to consume batch/dtype artificially;
+- restoring independent P5 identity/execution defaults;
+- adding a second optimizer validator instead of fixing the canonical one;
+- allowing non-finite optimizer parameters because a downstream library may eventually fail;
+- treating a digest-inequality unit assertion as proof of real final-production historical-evidence rejection;
+- treating skipped required pinned-MACE acceptance as pass;
+- substituting long GPU qualification for functional regression;
+- adding another target-size terminal/warning lifecycle.
 
-- one canonical optimizer-setting resolution rather than independent identity/execution defaults;
-- target-size LR/EMA authority is the normalization policy, not general `[training]` LR/EMA-decay;
-- batch size is P3 scientific execution identity but not common-preparation identity;
-- workers and target-size validation batch geometry are not target-size scientific currentness;
-- P5 method identity equals actual executable optimizer semantics;
-- historical evidence under the old policy-resolution semantics is not silently reused.
-
-Do not turn architecture manuals into implementation chronology. Rewrite current-state wording coherently.
-
----
-
-## 11. Implementation sequence and gates
-
-### Gate 1 — canonical configuration semantics and common-policy reduction
-
-- establish one shared optimizer-semantic resolver/default authority;
-- route current executable optimizer construction through it;
-- remove batch/dtype from common-preparation scientific policy;
-- apply required common-policy schema cutover;
-- add focused parity/narrowing tests.
-
-Exit only when canonical resolution has one value per semantic field and common preparation no longer owns unused execution state.
-
-### Gate 2 — target-size role projection and restart semantics
-
-- build one target-size optimizer-template projection used by live/restart/terminal reconstruction;
-- narrow seed-neutral target-size scientific identity;
-- remove valid-batch from candidate scientific loader geometry;
-- preserve effective LR/EMA realization;
-- repair materialization/restart validation so execution-only drift does not become scientific invalidation;
-- run real `n1 -> n2` restart tests plus scientific-drift negatives.
-
-Exit only when a target-size screen can survive execution-only resource drift while rejecting real method drift.
-
-### Gate 3 — P5 method/executable parity and identity cutover
-
-- route P5 identity and actual optimizer construction through the canonical shared settings;
-- route dtype through canonical binary precision authority;
-- bump P5 method recipe/optimizer-resolution identity;
-- prove explicit and default parity through internal and executable MACE configs;
-- prove old evidence cannot authorize corrected runs.
-
-Exit only when P5 identity is literally the method that executes.
-
-### Gate 4 — assembled P2 -> P5 integration and documentation
-
-- retain objective/loss semantics;
-- retain practical-ceiling selected-warning flow;
-- reconcile current documentation;
-- run focused owner integrations and documentation checks.
-
-### Gate 5 — final affected-surface regression
-
-- re-derive all transitive callers/consumers changed by resolver/schema/API simplification;
-- run all affected regression/integration suites;
-- run real pinned-MACE semantic acceptance in the supported MACE environment;
-- inspect for obsolete helper/default paths that should be removed rather than left as dormant competing authorities.
-
-Implementation is accepted only after every material required check actually executes and passes, or a genuine environment limitation is explicitly classified and the work remains open.
+If another sibling is found in the same canonical-config or first-rung scratch/accepted-authority family, fix it at that shared owner under this workplan rather than layering another local patch.
 
 ---
 
-## 12. Forbidden repair patterns
+## 10. Repair sequence and gates
 
-Do not close this work by:
+### Gate R5-A — strict canonical configuration validation
 
-- adding a target-size terminal-loader exception for mismatched optimizer digests;
-- hard-coding equality between `[training].learning_rate` and target-size reference LR;
-- copying values between independently resolved P5 identity and executable policies after the fact;
-- retaining batch/dtype in common policy and forcing common preparation to "use" them artificially;
-- introducing a second target-size optimizer dataclass solely to shadow the generic policy without replacing a broader authority;
-- adding a materialization compatibility registry or migration table for worker/valid-batch drift;
-- weakening scientific materialization authentication to ignore genuine optimizer/precision/objective changes;
-- adding `SELECTED_WITH_WARNING` or another warning-specific lifecycle;
-- broadening prepared-generation identity to arbitrary `[training]` configuration;
-- preserving obsolete internal tests by aliases/adapters when their assertions encode incorrect ownership;
-- treating skipped required MACE acceptance as a pass;
-- running long production/GPU qualification in place of functional regression.
+- strengthen the existing canonical shared optimizer resolver;
+- strengthen the generic optimizer policy constructor too if it independently admits values outside the canonical domain;
+- add exact-type/non-finite negatives;
+- rerun canonical parity tests.
 
-If clean implementation reveals another competing configuration owner in this same affected field family, consolidate it under this plan rather than adding a local reconciliation patch. That is affected-surface discovery, not a new product requirement.
+Exit only when malformed configuration cannot enter identity or execution.
+
+### Gate R5-B — first-rung unaccepted-materialization restart closure
+
+- establish the accepted-progress/no-progress distinction before first-rung materialization reuse;
+- make unaccepted first-attempt materialization retryable scratch under execution-only drift;
+- preserve accepted progress/materialization immutability;
+- add the post-materialization/pre-completion interruption test and scientific-drift negatives;
+- rerun first-boundary, partial-boundary, continuation, acceleration-replay, and target-size P3/P4 regression.
+
+Exit only when execution-only drift is non-scientific across **both** accepted replay and unaccepted first-rung retry states.
+
+### Gate R5-C — P5 real authorization closure
+
+- retain canonical shared settings and method recipe cutover;
+- add real final-production authorization rejection of historical-method CV acceptance;
+- prove matching corrected acceptance succeeds;
+- rerun P5 CV/final currentness/execution/publication regression.
+
+### Gate R5-D — assembled acceptance
+
+- run practical-ceiling P2->P5 integration;
+- run real pinned-MACE 0.3.16 parser/loss semantic acceptance;
+- run the final re-derived affected regression matrix;
+- update documentation only if the repair changes current-state wording;
+- regenerate affected PDFs only after normative Markdown is final.
+
+No long GPU/full-production qualification is required at this gate.
 
 ---
 
-## 13. Final closure statement
+## 11. Final review status
 
-The reopened design is now closed for implementation.
+The architecture and scientific method remain accepted. The implementation is close, but it is **not yet closable** because execution-only drift still blocks one legitimate first-rung crash/retry state, the new canonical resolver still admits malformed/non-finite configuration, and required assembled executable evidence is absent on the reviewed candidate.
 
-No Frozen high-level architecture change is required. The remaining work is a bounded Tier-2 simplification and identity repair:
+The remaining repair is deliberately reductive:
 
 ```text
-one canonical configuration normalization
-    -> common-preparation projection containing only common-fit science
-    -> target-size scientific projection + execution-only launch provenance
-    -> P5 method projection
-    -> real executable optimizer/configs
+existing canonical configuration owner
+    -> validate exactly
+
+existing first-rung no-authority distinction
+    -> include unaccepted materialization scratch
+
+existing P5 exact method-digest authorization
+    -> prove through the real owner
+
+then run final affected regression/integration
 ```
 
-The implementation should solve the configuration-authority family once, delete or narrow superseded resolution paths, and prove parity through the real target-size restart and P5 execution owners.
-
-**Software Design verdict: PASS / implementation-ready.**
+**Software Design verdict: NO-PASS / rework-required.**
