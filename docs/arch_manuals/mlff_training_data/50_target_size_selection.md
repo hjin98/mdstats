@@ -92,6 +92,16 @@ so `lr(N) * U_N` and `beta(N) ** U_N` are invariant in `N`. An exact doubling of
 
 EMA is normalized because EVAL2 evaluates the authenticated configured model state, which is the EMA state whenever EMA is enabled; leaving the decay fixed would compare EMA windows of different effective lengths.
 
+The normalized clock is also the executable loader contract. The qualified
+target-size MACE path retains the final partial target batch, uses no
+truncating target sampler, and realizes exactly `ceil(N / B)` target batches.
+Every exported target `frame_uid` must occur once in that epoch; target frames
+are never duplicated merely to fill a batch. A distributed target-size path
+that cannot prove the same coverage fails closed rather than silently changing
+the frozen `ceil` geometry to floor semantics. Resolved loss, optimizer,
+replay, batch, membership, and source-probe facts are recorded in the existing
+runtime evidence and are required for continuation/currentness.
+
 Only those two update clocks are normalized. Epoch and fidelity boundaries, the number of dataset passes, the batch size, the LR phase fractions and normalized-progress multiplier shape, Adam/AMSGrad settings, weight decay, gradient clipping, model precision and architecture, acceleration policy, the optimizer-seed set, and the objective/weighting policy are all held fixed across candidates. This is a first-order optimizer-progress normalization, not a claim of exact optimizer-path equivalence: minibatch noise, Adam moment history, and the finite discretization of the analytic LR curve remain accepted residuals.
 
 Each `(N, optimizer_seed)` derives its scale, effective learning rate, and effective EMA decay **once**, from the full candidate geometry, and binds them into the candidate realization. The same realized values are replayed through every rung of `n1 -> n2 -> n3`; they are never recomputed from the active rung or the survivor set, so eliminating a candidate cannot alter a surviving candidate's schedule. Restart validation re-derives the normalization identity and rejects drift, so a stale fixed-LR or differently-normalized checkpoint cannot be resumed.

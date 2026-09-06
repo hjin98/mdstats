@@ -12,7 +12,10 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Iterator, Mapping
 import hashlib
+import json
 import logging
+import math
+import os
 import re
 import sys
 import warnings
@@ -24,11 +27,22 @@ from ._common import (
     validate_digest,
 )
 
-MACE_COMPATIBILITY_POLICY_SCHEMA = "mdstats.mace-compatibility-policy.v1"
-MACE_SOURCE_PROBE_SCHEMA = "mdstats.mace-source-probe.v1"
+MACE_COMPATIBILITY_POLICY_SCHEMA = "mdstats.mace-compatibility-policy.v2"
+MACE_SOURCE_PROBE_SCHEMA = "mdstats.mace-source-probe.v2"
 MACE_CHECKPOINT_CONTROL_POLICY_SCHEMA = "mdstats.mace-checkpoint-control-policy.v1"
 MACE_LOADER_DRY_RUN_SCHEMA = "mdstats.mace-loader-dry-run.v1"
-MACE_COMPATIBILITY_POLICY_VERSION = "mdstats.mlff-data8.mace-compatibility.2026-07.v1"
+MACE_COMPATIBILITY_POLICY_VERSION = "mdstats.mlff-data8.mace-compatibility.2026-09.v2"
+
+# This revision is an execution identity, not a second method registry.  It is
+# carried by the existing MACE compatibility/currentness owners and by the
+# process-local launch authority below.  A new value must invalidate evidence
+# whose actual loader/loss semantics may differ from the current wrapper.
+MACE_EXECUTION_SEMANTICS_VERSION = "mdstats.mace-execution-semantics.2026-09.v1"
+MACE_REPLAY_FORCE_MH_FT_LR = True
+MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD = 0.0
+MACE_EXECUTION_AUTHORITY_SCHEMA = "mdstats.mace-execution-authority.v1"
+MACE_EXECUTION_EVIDENCE_SCHEMA = "mdstats.mace-execution-evidence.v1"
+MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE = "MDSTATS_MACE_EXECUTION_AUTHORITY"
 
 MACE_SELECTED_HEAD_COMPATIBILITY_POLICY_SCHEMA = "mdstats.mace-selected-head-compatibility-policy.v1"
 MACE_MH1_SELECTED_HEAD_SHIM_VERSION = "mdstats.mh1-selected-head-reconstruction.2026-08.v1"
@@ -140,6 +154,7 @@ class MaceCompatibilityPolicy:
         "https://raw.githubusercontent.com/ACEsuit/mace/v0.3.16/mace/tools/multihead_tools.py"
     )
     policy_version: str = MACE_COMPATIBILITY_POLICY_VERSION
+    execution_semantics_version: str = MACE_EXECUTION_SEMANTICS_VERSION
 
     def __post_init__(self) -> None:
         if self.package_name != "mace-torch" or self.package_version != "0.3.16":
@@ -153,9 +168,15 @@ class MaceCompatibilityPolicy:
             "train_source_url",
             "multihead_source_url",
             "policy_version",
+            "execution_semantics_version",
         ):
             if not str(getattr(self, name)).strip():
                 raise TrainingDataInputError(f"{name} must be non-empty.")
+        if self.execution_semantics_version != MACE_EXECUTION_SEMANTICS_VERSION:
+            raise TrainingDataInputError(
+                "MACE compatibility policy carries an unsupported execution "
+                "semantics revision."
+            )
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -168,6 +189,7 @@ class MaceCompatibilityPolicy:
             "train_source_url": self.train_source_url,
             "multihead_source_url": self.multihead_source_url,
             "policy_version": self.policy_version,
+            "execution_semantics_version": self.execution_semantics_version,
         }
 
     @property
@@ -190,6 +212,7 @@ class MaceCompatibilityPolicy:
             train_source_url=str(payload["train_source_url"]),
             multihead_source_url=str(payload["multihead_source_url"]),
             policy_version=str(payload["policy_version"]),
+            execution_semantics_version=str(payload["execution_semantics_version"]),
         )
         if payload.get("policy_digest") not in (None, result.policy_digest):
             raise TrainingDataSerializationError("MACE compatibility digest mismatch.")
@@ -206,6 +229,11 @@ class MaceSourceProbe:
     target_validation_head_is_last: bool
     native_checkpoint_uses_last_validation_head: bool
     implicit_target_duplication_present: bool
+    multihead_forced_universal_loss_present: bool
+    multihead_lr_ema_override_present: bool
+    target_per_head_drop_last_present: bool
+    target_distributed_sampler_drop_last_present: bool
+    target_combined_loader_drop_last_present: bool
     dry_run_supported: bool
     save_all_checkpoints_supported: bool
     fixed_file_adapter_supported: bool
@@ -224,6 +252,11 @@ class MaceSourceProbe:
             and self.target_validation_head_is_last
             and self.native_checkpoint_uses_last_validation_head
             and self.implicit_target_duplication_present
+            and self.multihead_forced_universal_loss_present
+            and self.multihead_lr_ema_override_present
+            and self.target_per_head_drop_last_present
+            and self.target_distributed_sampler_drop_last_present
+            and self.target_combined_loader_drop_last_present
             and self.dry_run_supported
             and self.save_all_checkpoints_supported
         )
@@ -242,6 +275,11 @@ class MaceSourceProbe:
             "target_validation_head_is_last": self.target_validation_head_is_last,
             "native_checkpoint_uses_last_validation_head": self.native_checkpoint_uses_last_validation_head,
             "implicit_target_duplication_present": self.implicit_target_duplication_present,
+            "multihead_forced_universal_loss_present": self.multihead_forced_universal_loss_present,
+            "multihead_lr_ema_override_present": self.multihead_lr_ema_override_present,
+            "target_per_head_drop_last_present": self.target_per_head_drop_last_present,
+            "target_distributed_sampler_drop_last_present": self.target_distributed_sampler_drop_last_present,
+            "target_combined_loader_drop_last_present": self.target_combined_loader_drop_last_present,
             "dry_run_supported": self.dry_run_supported,
             "save_all_checkpoints_supported": self.save_all_checkpoints_supported,
             "fixed_file_adapter_supported": self.fixed_file_adapter_supported,
@@ -268,6 +306,21 @@ class MaceSourceProbe:
             target_validation_head_is_last=bool(payload["target_validation_head_is_last"]),
             native_checkpoint_uses_last_validation_head=bool(payload["native_checkpoint_uses_last_validation_head"]),
             implicit_target_duplication_present=bool(payload["implicit_target_duplication_present"]),
+            multihead_forced_universal_loss_present=bool(
+                payload["multihead_forced_universal_loss_present"]
+            ),
+            multihead_lr_ema_override_present=bool(
+                payload["multihead_lr_ema_override_present"]
+            ),
+            target_per_head_drop_last_present=bool(
+                payload["target_per_head_drop_last_present"]
+            ),
+            target_distributed_sampler_drop_last_present=bool(
+                payload["target_distributed_sampler_drop_last_present"]
+            ),
+            target_combined_loader_drop_last_present=bool(
+                payload["target_combined_loader_drop_last_present"]
+            ),
             dry_run_supported=bool(payload["dry_run_supported"]),
             save_all_checkpoints_supported=bool(payload["save_all_checkpoints_supported"]),
             fixed_file_adapter_supported=bool(payload["fixed_file_adapter_supported"]),
@@ -285,7 +338,13 @@ def probe_mace_source_texts(
     *,
     policy: MaceCompatibilityPolicy | None = None,
 ) -> MaceSourceProbe:
-    """Verify the exact v0.3.16 behaviors required by the fixed-file adapter."""
+    """Verify the exact v0.3.16 behaviors required by current execution.
+
+    The probe deliberately records the upstream defects that the qualified
+    wrapper is allowed to repair.  A future source shape that removes or moves
+    one of those branches is not silently treated as equivalent: the wrapper
+    must be requalified against that source first.
+    """
 
     active = MaceCompatibilityPolicy() if policy is None else policy
     run_digest = hashlib.sha256(run_train_text.encode("utf-8")).hexdigest()
@@ -302,11 +361,62 @@ def probe_mace_source_texts(
         "real_pt_data_ratio_threshold" in run_train_text
         and "head_config.collections.train +=" in run_train_text
     )
+    forced_universal = bool(
+        re.search(
+            r"if\s+args\.multiheads_finetuning\s*:.*?"
+            r"args\.loss\s*=\s*[\"']universal[\"']",
+            run_train_text,
+            flags=re.DOTALL,
+        )
+    )
+    lr_ema_override = bool(
+        re.search(
+            r"if\s+not\s+args\.force_mh_ft_lr\s*:.*?"
+            r"args\.lr\s*=\s*0\.0001.*?"
+            r"args\.ema\s*=\s*True.*?"
+            r"args\.ema_decay\s*=\s*0\.99999",
+            run_train_text,
+            flags=re.DOTALL,
+        )
+    )
+    per_head_drop_last = bool(
+        re.search(
+            r"train_loader_head\s*=.*?drop_last\s*=\s*\(\s*not\s+args\.lbfgs\s*\)",
+            run_train_text,
+            flags=re.DOTALL,
+        )
+    )
+    distributed_sampler_drop_last = bool(
+        re.search(
+            r"DistributedSampler\(.*?drop_last\s*=\s*\(\s*not\s+args\.lbfgs\s*\)",
+            run_train_text,
+            flags=re.DOTALL,
+        )
+    )
+    combined_drop_last = bool(
+        re.search(
+            r"train_loader\s*=.*?drop_last\s*=\s*\(\s*train_sampler\s+is\s+None\s+and\s+not\s+args\.lbfgs\s*\)",
+            run_train_text,
+            flags=re.DOTALL,
+        )
+    )
     dry_run = "if args.dry_run" in run_train_text
     save_all = "save_all_checkpoints=args.save_all_checkpoints" in run_train_text and "if save_all_checkpoints" in train_text
     pt_prepare = "def prepare_pt_head" in multihead_text and "pt_valid_file" in multihead_text
     target_last = pt_first and pt_prepare
-    supported = pt_first and target_last and last_valid and duplication and dry_run and save_all
+    supported = (
+        pt_first
+        and target_last
+        and last_valid
+        and duplication
+        and forced_universal
+        and lr_ema_override
+        and per_head_drop_last
+        and distributed_sampler_drop_last
+        and combined_drop_last
+        and dry_run
+        and save_all
+    )
     return MaceSourceProbe(
         policy_digest=active.policy_digest,
         run_train_sha256=run_digest,
@@ -316,6 +426,11 @@ def probe_mace_source_texts(
         target_validation_head_is_last=target_last,
         native_checkpoint_uses_last_validation_head=last_valid,
         implicit_target_duplication_present=duplication,
+        multihead_forced_universal_loss_present=forced_universal,
+        multihead_lr_ema_override_present=lr_ema_override,
+        target_per_head_drop_last_present=per_head_drop_last,
+        target_distributed_sampler_drop_last_present=distributed_sampler_drop_last,
+        target_combined_loader_drop_last_present=combined_drop_last,
         dry_run_supported=dry_run,
         save_all_checkpoints_supported=save_all,
         fixed_file_adapter_supported=supported,
@@ -343,6 +458,417 @@ def probe_mace_source_tree(
         )
     texts = tuple(path.read_text(encoding="utf-8") for path in paths)
     return probe_mace_source_texts(*texts, policy=policy)
+
+
+def mace_frame_uid_set_digest(frame_uids: Any) -> str:
+    """Digest an unordered, duplicate-free set of exported frame UIDs."""
+
+    values = tuple(str(value) for value in frame_uids)
+    if any(not value.strip() or value == "None" for value in values):
+        raise TrainingDataInputError(
+            "MACE execution frame identity requires non-empty UID values."
+        )
+    if not values or len(set(values)) != len(values):
+        raise TrainingDataInputError(
+            "MACE execution frame identity requires a unique non-empty UID set."
+        )
+    return digest({"frame_uids": sorted(values)})
+
+
+def _execution_integer(
+    value: Any,
+    *,
+    name: str,
+    minimum: int,
+) -> int:
+    """Require a JSON-number integer without silently truncating a float."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TrainingDataInputError(f"MACE execution authority {name} must be an integer.")
+    if not math.isfinite(float(value)):
+        raise TrainingDataInputError(
+            f"MACE execution authority {name} must be finite."
+        )
+    result = int(value)
+    if result != value or result < minimum:
+        qualifier = "positive" if minimum > 0 else "nonnegative"
+        raise TrainingDataInputError(
+            f"MACE execution authority {name} must be a {qualifier} integer."
+        )
+    return result
+
+
+def _normalize_mace_execution_authority(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the process-local execution transport without trusting it."""
+
+    if payload.get("schema") != MACE_EXECUTION_AUTHORITY_SCHEMA:
+        raise TrainingDataInputError(
+            "Unsupported MACE execution-authority schema."
+        )
+    if payload.get("execution_semantics_version") != MACE_EXECUTION_SEMANTICS_VERSION:
+        raise TrainingDataInputError(
+            "MACE execution authority carries an unsupported semantics revision."
+        )
+    role = str(payload.get("role", ""))
+    if role not in {"target_size", "post_selection"}:
+        raise TrainingDataInputError("MACE execution authority role is unsupported.")
+    config_digest = validate_digest(
+        str(payload.get("config_digest", "")), name="config_digest"
+    )
+    method_identity_digest = payload.get("method_identity_digest")
+    if method_identity_digest is not None:
+        method_identity_digest = validate_digest(
+            str(method_identity_digest), name="method_identity_digest"
+        )
+    loss_family = str(payload.get("loss_family", ""))
+    if loss_family != MACE_EXECUTABLE_LOSS_FAMILY:
+        raise TrainingDataInputError(
+            "MACE execution authority must request the native weighted loss family."
+        )
+    learning_rate = float(payload.get("learning_rate"))
+    if not math.isfinite(learning_rate) or learning_rate <= 0.0:
+        raise TrainingDataInputError("MACE execution authority LR is invalid.")
+    ema = payload.get("ema")
+    if not isinstance(ema, bool):
+        raise TrainingDataInputError("MACE execution authority EMA flag is invalid.")
+    ema_decay = payload.get("ema_decay")
+    if ema:
+        if ema_decay is None:
+            raise TrainingDataInputError(
+                "MACE execution authority requires EMA decay when EMA is enabled."
+            )
+        ema_decay = float(ema_decay)
+        if not math.isfinite(ema_decay) or not 0.0 < ema_decay < 1.0:
+            raise TrainingDataInputError("MACE execution authority EMA decay is invalid.")
+    else:
+        ema_decay = None
+    multihead = payload.get("multiheads_finetuning")
+    if not isinstance(multihead, bool):
+        raise TrainingDataInputError(
+            "MACE execution authority multihead flag is invalid."
+        )
+    force_mh_ft_lr = payload.get("force_mh_ft_lr")
+    ratio_threshold = payload.get("real_pt_data_ratio_threshold")
+    if multihead:
+        if force_mh_ft_lr is not MACE_REPLAY_FORCE_MH_FT_LR:
+            raise TrainingDataInputError(
+                "Replay execution must explicitly force its authenticated LR/EMA."
+            )
+        if ratio_threshold is None or not math.isclose(
+            float(ratio_threshold),
+            MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+            rel_tol=0.0,
+            abs_tol=0.0,
+        ):
+            raise TrainingDataInputError(
+                "Replay execution must explicitly disable MACE target duplication."
+            )
+        ratio_threshold = float(ratio_threshold)
+    else:
+        force_mh_ft_lr = None
+        ratio_threshold = None
+    target_count = _execution_integer(
+        payload.get("target_train_count"), name="target count", minimum=1
+    )
+    replay_count = _execution_integer(
+        payload.get("replay_train_count", 0), name="replay count", minimum=0
+    )
+    if multihead and replay_count <= 0:
+        raise TrainingDataInputError(
+            "Replay execution authority requires a non-empty replay training set."
+        )
+    batch_size = _execution_integer(
+        payload.get("batch_size"), name="batch size", minimum=1
+    )
+    target_updates = payload.get("target_updates_per_epoch")
+    if role == "target_size":
+        target_updates = _execution_integer(
+            target_updates, name="target updates per epoch", minimum=1
+        )
+        if replay_count != 0:
+            raise TrainingDataInputError(
+                "Target-size execution authority cannot carry replay samples."
+            )
+        if payload.get("target_drop_last") is not False:
+            raise TrainingDataInputError(
+                "Target-size execution authority requires drop_last=False."
+            )
+        if payload.get("distributed_allowed") is not False:
+            raise TrainingDataInputError(
+                "Target-size execution authority must forbid distributed samplers."
+            )
+    else:
+        target_updates = (
+            None
+            if target_updates is None
+            else _execution_integer(
+                target_updates, name="target updates per epoch", minimum=1
+            )
+        )
+        if payload.get("target_drop_last") is not None:
+            raise TrainingDataInputError(
+                "Post-selection execution authority cannot claim target-size loader semantics."
+            )
+    for name in ("target_frame_uid_set_digest", "replay_frame_uid_set_digest"):
+        value = payload.get(name)
+        if value is not None:
+            payload_value = validate_digest(str(value), name=name)
+        else:
+            payload_value = None
+        # The local variable is assigned into the normalized payload below.
+        if name == "target_frame_uid_set_digest":
+            target_uid_digest = payload_value
+        else:
+            replay_uid_digest = payload_value
+    source_probe_digest = payload.get("source_probe_digest")
+    if source_probe_digest is not None:
+        source_probe_digest = validate_digest(
+            str(source_probe_digest), name="source_probe_digest"
+        )
+    distributed_allowed = payload.get("distributed_allowed")
+    if not isinstance(distributed_allowed, bool):
+        raise TrainingDataInputError(
+            "MACE execution authority distributed_allowed flag is invalid."
+        )
+    target_head_name = str(payload.get("target_head_name", "target_head"))
+    replay_head_name = str(payload.get("replay_head_name", "pt_head"))
+    if not target_head_name.strip() or not replay_head_name.strip():
+        raise TrainingDataInputError("MACE execution authority head names are invalid.")
+    result: dict[str, Any] = {
+        "schema": MACE_EXECUTION_AUTHORITY_SCHEMA,
+        "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
+        "role": role,
+        "config_digest": config_digest,
+        "method_identity_digest": method_identity_digest,
+        "loss_family": loss_family,
+        "learning_rate": learning_rate,
+        "ema": ema,
+        "ema_decay": ema_decay,
+        "multiheads_finetuning": multihead,
+        "force_mh_ft_lr": force_mh_ft_lr,
+        "real_pt_data_ratio_threshold": ratio_threshold,
+        "target_train_count": target_count,
+        "replay_train_count": replay_count,
+        # This is deliberately fixed: replay balancing is never implemented by
+        # silently duplicating target frames.
+        "target_duplication_factor": 1,
+        "batch_size": batch_size,
+        "target_updates_per_epoch": target_updates,
+        "target_drop_last": (
+            False if role == "target_size" else None
+        ),
+        "distributed_allowed": distributed_allowed,
+        "target_frame_uid_set_digest": target_uid_digest,
+        "replay_frame_uid_set_digest": replay_uid_digest,
+        "target_head_name": target_head_name,
+        "replay_head_name": replay_head_name,
+        "source_probe_digest": source_probe_digest,
+    }
+    if "resolved_evidence" in payload and payload["resolved_evidence"] is not None:
+        evidence = payload["resolved_evidence"]
+        if not isinstance(evidence, Mapping):
+            raise TrainingDataInputError(
+                "MACE execution authority resolved evidence is not an object."
+            )
+        evidence = dict(evidence)
+        if evidence.get("schema") != MACE_EXECUTION_EVIDENCE_SCHEMA:
+            raise TrainingDataInputError(
+                "Unsupported MACE execution-evidence schema."
+            )
+        evidence_digest = evidence.get("evidence_digest")
+        if evidence_digest is None:
+            raise TrainingDataInputError(
+                "MACE execution evidence is missing its content digest."
+            )
+        observed_digest = digest(
+            {key: value for key, value in evidence.items() if key != "evidence_digest"}
+        )
+        if str(evidence_digest) != observed_digest:
+            raise TrainingDataInputError(
+                "MACE execution evidence content digest mismatch."
+            )
+        result["resolved_evidence"] = evidence
+    return result
+
+
+def build_mace_execution_authority(**kwargs: Any) -> dict[str, Any]:
+    """Build the authenticated process-local MACE execution transport."""
+
+    payload = {
+        "schema": MACE_EXECUTION_AUTHORITY_SCHEMA,
+        "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
+        **kwargs,
+    }
+    return _normalize_mace_execution_authority(payload)
+
+
+def mace_execution_authority_from_environment(
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any] | None:
+    """Load and validate the launch authority, or return ``None`` for ordinary MACE."""
+
+    source = os.environ if environ is None else environ
+    raw = source.get(MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE)
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except Exception as exc:
+        raise TrainingDataInputError(
+            "MACE execution authority is not valid JSON."
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise TrainingDataInputError("MACE execution authority must be a JSON object.")
+    return _normalize_mace_execution_authority(payload)
+
+
+def mace_execution_authority_to_environment(
+    authority: Mapping[str, Any],
+) -> str:
+    """Validate and serialize one launch authority for a child process."""
+
+    normalized = _normalize_mace_execution_authority(authority)
+    return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+
+
+def record_mace_execution_evidence(
+    authority: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Attach validated resolved facts to the existing launch authority."""
+
+    normalized = _normalize_mace_execution_authority(authority)
+    resolved = {
+        "schema": MACE_EXECUTION_EVIDENCE_SCHEMA,
+        "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
+        **dict(evidence),
+    }
+    for name in (
+        "loss_family",
+        "loss_class",
+        "learning_rate",
+        "ema",
+        "ema_decay",
+        "multiheads_finetuning",
+        "force_mh_ft_lr",
+        "real_pt_data_ratio_threshold",
+        "target_train_count",
+        "replay_train_count",
+        "target_duplication_factor",
+        "target_batch_size",
+        "target_updates_per_epoch",
+        "target_drop_last",
+        "distributed",
+        "target_frame_uid_set_digest",
+        "replay_frame_uid_set_digest",
+        "combined_train_count",
+    ):
+        if name not in resolved:
+            raise TrainingDataInputError(
+                f"MACE execution evidence is missing {name}."
+            )
+    if resolved["loss_family"] != normalized["loss_family"]:
+        raise TrainingDataInputError("Resolved MACE loss family differs from authority.")
+    if resolved["loss_class"] != "mace.modules.loss.WeightedEnergyForcesStressLoss":
+        raise TrainingDataInputError(
+            "Resolved MACE loss class is not the native weighted stress loss."
+        )
+    if not math.isclose(
+        float(resolved["learning_rate"]),
+        float(normalized["learning_rate"]),
+        rel_tol=0.0,
+        abs_tol=0.0,
+    ):
+        raise TrainingDataInputError("Resolved MACE learning rate differs from authority.")
+    if bool(resolved["ema"]) != bool(normalized["ema"]):
+        raise TrainingDataInputError("Resolved MACE EMA flag differs from authority.")
+    resolved_ema_decay = resolved["ema_decay"]
+    if normalized["ema"]:
+        if resolved_ema_decay is None or not math.isclose(
+            float(resolved_ema_decay),
+            float(normalized["ema_decay"]),
+            rel_tol=0.0,
+            abs_tol=0.0,
+        ):
+            raise TrainingDataInputError("Resolved MACE EMA decay differs from authority.")
+    elif resolved_ema_decay is not None:
+        raise TrainingDataInputError("Resolved MACE EMA decay is present while EMA is disabled.")
+    if bool(resolved["multiheads_finetuning"]) != bool(
+        normalized["multiheads_finetuning"]
+    ):
+        raise TrainingDataInputError(
+            "Resolved MACE multihead mode differs from authority."
+        )
+    if normalized["multiheads_finetuning"]:
+        if resolved["force_mh_ft_lr"] is not True:
+            raise TrainingDataInputError("Resolved MACE replay LR/EMA forcing is disabled.")
+        if float(resolved["real_pt_data_ratio_threshold"]) != float(
+            normalized["real_pt_data_ratio_threshold"]
+        ):
+            raise TrainingDataInputError("Resolved MACE replay ratio threshold differs from authority.")
+    elif resolved["force_mh_ft_lr"] is not None or resolved["real_pt_data_ratio_threshold"] is not None:
+        raise TrainingDataInputError("Non-replay MACE evidence carries replay controls.")
+    if int(resolved["target_train_count"]) != normalized["target_train_count"]:
+        raise TrainingDataInputError(
+            "Resolved MACE target count differs from authority."
+        )
+    if int(resolved["replay_train_count"]) != normalized["replay_train_count"]:
+        raise TrainingDataInputError(
+            "Resolved MACE replay count differs from authority."
+        )
+    if int(resolved["target_duplication_factor"]) != 1:
+        raise TrainingDataInputError(
+            "Resolved MACE execution reports forbidden target duplication."
+        )
+    if int(resolved["target_batch_size"]) != normalized["batch_size"]:
+        raise TrainingDataInputError("Resolved MACE batch size differs from authority.")
+    if normalized["role"] == "target_size":
+        if int(resolved["target_updates_per_epoch"]) != int(
+            normalized["target_updates_per_epoch"]
+        ):
+            raise TrainingDataInputError(
+                "Resolved target-size update geometry differs from authority."
+            )
+        if resolved["target_drop_last"] is not False or resolved["distributed"] is not False:
+            raise TrainingDataInputError(
+                "Resolved target-size loader retained truncating or distributed semantics."
+            )
+    elif resolved["target_updates_per_epoch"] is not None or resolved["target_drop_last"] is not None:
+        raise TrainingDataInputError(
+            "Post-selection MACE evidence carries target-size loader semantics."
+        )
+    for name in ("target_frame_uid_set_digest", "replay_frame_uid_set_digest"):
+        expected = normalized.get(name)
+        observed = resolved[name]
+        if expected is not None and observed != expected:
+            raise TrainingDataInputError(
+                f"Resolved MACE {name} differs from authority."
+            )
+    if int(resolved["combined_train_count"]) != int(
+        normalized["target_train_count"] + normalized["replay_train_count"]
+    ):
+        raise TrainingDataInputError(
+            "Resolved MACE combined training count differs from authority."
+        )
+    resolved["source_probe_digest"] = normalized.get("source_probe_digest")
+    resolved["authority_config_digest"] = normalized["config_digest"]
+    resolved["evidence_digest"] = digest(resolved)
+    normalized["resolved_evidence"] = resolved
+    return _normalize_mace_execution_authority(normalized)
+
+
+def mace_execution_evidence_from_environment(
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any] | None:
+    """Return the resolved evidence carried by the current child process."""
+
+    authority = mace_execution_authority_from_environment(environ)
+    if authority is None:
+        return None
+    evidence = authority.get("resolved_evidence")
+    return None if evidence is None else dict(evidence)
 
 
 @dataclass(frozen=True, slots=True)
@@ -516,7 +1042,7 @@ def emulate_mace_v0316_loader_dry_run(
     target_validation_count: int,
     replay_train_count: int = 0,
     replay_validation_count: int = 0,
-    real_pt_data_ratio_threshold: float = 0.1,
+    real_pt_data_ratio_threshold: float = MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
     checkpoint_policy: MaceCheckpointControlPolicy | None = None,
     config_path: str = "mace_config.yaml",
 ) -> MaceLoaderDryRun:

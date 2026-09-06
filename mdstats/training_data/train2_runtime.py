@@ -599,6 +599,7 @@ class Train2RuntimeSummary:
     group_base_learning_rates: tuple[float, ...]
     complete_budget: bool
     model_architecture_digest: str | None = None
+    mace_execution_evidence: Mapping[str, Any] | None = None
 
     @property
     def content_digest(self) -> str:
@@ -638,6 +639,8 @@ class Train2RuntimeSummary:
             payload["model_architecture_digest"] = validate_digest(
                 self.model_architecture_digest, name="model_architecture_digest"
             )
+        if self.mace_execution_evidence is not None:
+            payload["mace_execution_evidence"] = dict(self.mace_execution_evidence)
         return payload
 
     def to_dict(self) -> dict[str, Any]:
@@ -678,6 +681,11 @@ class Train2RuntimeSummary:
                 None
                 if payload.get("model_architecture_digest") is None
                 else str(payload["model_architecture_digest"])
+            ),
+            mace_execution_evidence=(
+                None
+                if payload.get("mace_execution_evidence") is None
+                else dict(payload["mace_execution_evidence"])
             ),
         )
         for name in ("plan_digest", "training_protocol_digest", "optimizer_policy_digest", "budget_policy_digest", "lr_policy_digest", "raw_checkpoint_sha256", "optimizer_state_digest", "live_parameter_digest", "rng_state_digest"):
@@ -741,6 +749,9 @@ class _Train2Runtime:
         self.numerical_failure_path = (
             self.checkpoint_directory / TRAIN2_NUMERICAL_FAILURE_FILENAME
         )
+        from .mace_compatibility import mace_execution_evidence_from_environment
+
+        self.mace_execution_evidence = mace_execution_evidence_from_environment()
         self.completed_updates = self.current_epoch * self.updates_per_epoch
         self.group_base_lrs: tuple[float, ...]
         self._metric_offset = 0
@@ -811,6 +822,10 @@ class _Train2Runtime:
             raise TrainingDataInputError("TRAIN2 restart companion belongs to a different training-budget policy.")
         if summary.lr_policy_digest != self.plan.learning_rate_policy.policy_digest:
             raise TrainingDataInputError("TRAIN2 restart companion belongs to a different LR-schedule policy.")
+        if summary.mace_execution_evidence != self.mace_execution_evidence:
+            raise TrainingDataInputError(
+                "TRAIN2 restart companion belongs to different resolved MACE execution evidence."
+            )
         if summary.planned_epochs != self.plan.budget_policy.planned_epochs:
             raise TrainingDataInputError("TRAIN2 restart companion changed the frozen epoch horizon.")
         if summary.structures_per_epoch != self.structures_per_epoch or summary.planned_structures_presented != self.planned_structures:
@@ -837,6 +852,10 @@ class _Train2Runtime:
             raise TrainingDataSerializationError("TRAIN2 continuation companion budget-policy identity mismatch.")
         if payload.get("lr_policy_digest") != self.plan.learning_rate_policy.policy_digest:
             raise TrainingDataSerializationError("TRAIN2 continuation companion LR-policy identity mismatch.")
+        if payload.get("mace_execution_evidence") != self.mace_execution_evidence:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion MACE execution evidence changed across restart."
+            )
         if int(payload.get("planned_updates", -1)) != self.planned_updates or int(payload.get("updates_per_epoch", -1)) != self.updates_per_epoch:
             raise TrainingDataSerializationError("TRAIN2 continuation companion update geometry changed across restart.")
         if int(payload.get("structures_per_epoch", -1)) != self.structures_per_epoch or int(payload.get("planned_structures_presented", -1)) != self.planned_structures:
@@ -1057,6 +1076,7 @@ class _Train2Runtime:
             "ema_state": ema_state,
             "rng_state": rng_state,
             "group_base_learning_rates": list(self.group_base_lrs),
+            "mace_execution_evidence": self.mace_execution_evidence,
         }
         if model_architecture_digest is not None:
             companion["model_architecture_digest"] = model_architecture_digest
@@ -1091,6 +1111,7 @@ class _Train2Runtime:
             group_base_learning_rates=self.group_base_lrs,
             complete_budget=(completed_epochs == self.plan.budget_policy.planned_epochs),
             model_architecture_digest=model_architecture_digest,
+            mace_execution_evidence=self.mace_execution_evidence,
         )
         summary_write_started = time.perf_counter()
         _atomic_json(self.summary_path, summary.to_dict())

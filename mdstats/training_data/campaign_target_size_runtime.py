@@ -555,6 +555,7 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "default_dtype",
     "device",
     "compute_avg_num_neighbors",
+    "multiheads_finetuning",
 )
 
 #: The one canonical P3 dataset-head namespace.  It is the name of the model
@@ -673,8 +674,62 @@ class MaceTargetSizeBoundaryTrainer:
             json.dumps(run_config, indent=2, sort_keys=True), encoding="utf-8"
         )
 
+        authority = None
+        # Production P3 materializations always carry these authenticated
+        # fields.  The parser-boundary probe intentionally supplies only the
+        # config-file seam, so it remains a parser test rather than an
+        # incomplete training-authority test.
+        if all(
+            hasattr(request.materialization, name)
+            for name in ("target_train_artifact", "mace_config_digest")
+        ) and hasattr(request.trajectory, "candidate_training_protocol_digest"):
+            from .mace_compatibility import (
+                MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+                build_mace_execution_authority,
+                mace_frame_uid_set_digest,
+                mace_execution_authority_to_environment,
+            )
+
+            target_artifact = request.materialization.target_train_artifact
+            target_uid_digest = None
+            if hasattr(target_artifact, "frame_uids"):
+                target_uid_digest = mace_frame_uid_set_digest(target_artifact.frame_uids)
+            configured_ema = bool(run_config["ema"])
+            authority = build_mace_execution_authority(
+                role="target_size",
+                config_digest=request.materialization.mace_config_digest,
+                method_identity_digest=request.trajectory.candidate_training_protocol_digest,
+                loss_family=run_config["loss"],
+                learning_rate=float(run_config["lr"]),
+                ema=configured_ema,
+                ema_decay=(
+                    None if not configured_ema else float(run_config["ema_decay"])
+                ),
+                multiheads_finetuning=False,
+                force_mh_ft_lr=None,
+                real_pt_data_ratio_threshold=None,
+                target_train_count=int(request.trajectory.realization.target_train_count),
+                replay_train_count=0,
+                batch_size=int(request.trajectory.realization.batch_size),
+                target_updates_per_epoch=int(
+                    request.trajectory.realization.updates_per_epoch
+                ),
+                target_drop_last=False,
+                distributed_allowed=False,
+                target_frame_uid_set_digest=target_uid_digest,
+                replay_frame_uid_set_digest=None,
+                target_head_name="target_head",
+                replay_head_name="pt_head",
+            )
+
         environment = dict(os.environ)
         environment.update(dict(self.environment or {}))
+        # This transport is derived after the authenticated materialization and
+        # intentionally overrides any ambient/injected value.
+        if authority is not None:
+            environment[MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE] = (
+                mace_execution_authority_to_environment(authority)
+            )
         environment[mdstats.TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE] = json.dumps(
             request.plan.to_dict(), sort_keys=True, separators=(",", ":")
         )

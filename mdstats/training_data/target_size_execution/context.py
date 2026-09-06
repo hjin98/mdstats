@@ -23,6 +23,10 @@ from typing import Any, Mapping
 from .._common import digest, validate_digest
 from .._common import TrainingDataInputError, TrainingDataSerializationError
 from ..acceleration import MaceAccelerationBackend, MaceAccelerationKernelMode
+from ..mace_compatibility import (
+    MACE_EXECUTION_SEMANTICS_VERSION,
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+)
 from ..protocol import MaceOptimizerPolicy
 from ..target_size_experiment import (
     TargetSizeExperimentDefinition,
@@ -453,7 +457,14 @@ def build_target_size_execution_context(
         mace_compatibility_policy_digest=(
             digest(
                 {
-                    "schema": "mdstats.target-size.mace-compatibility.v1",
+                    "schema": "mdstats.target-size.mace-compatibility.v2",
+                    "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
+                    "target_loader_policy": {
+                        "drop_last": False,
+                        "coverage": "complete_target_membership",
+                        "updates_per_epoch": "ceil(structures_per_epoch / batch_size)",
+                    },
+                    "replay_ratio_threshold": MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
                     "acceleration_policy": (
                         seed_neutral_optimizer_policy.acceleration_policy.to_dict()
                     ),

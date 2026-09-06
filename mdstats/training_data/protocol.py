@@ -23,7 +23,13 @@ from .train2_policy import (
 )
 from .critical_precision import MaceCriticalPrecisionPolicy
 from .precision_schedule import PrecisionSchedulePolicy, ResolvedPrecisionSchedule
-from .mace_compatibility import MaceCheckpointControlPolicy, MaceExposureBackend, MaceLoaderDryRun, MaceSourceProbe
+from .mace_compatibility import (
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+    MaceCheckpointControlPolicy,
+    MaceExposureBackend,
+    MaceLoaderDryRun,
+    MaceSourceProbe,
+)
 from .replay import ReplayPreparationPlan, ReplayMode
 from .foundation import FOUNDATION_CHECKPOINT_IDENTITY_SCHEMA, FoundationCheckpointIdentity
 
@@ -320,7 +326,7 @@ class TrainingProtocolIdentity:
     optimizer_policy: MaceOptimizerPolicy
     selection_size: int
     exposure_backend: MaceExposureBackend = MaceExposureBackend.NATIVE_MACE_FIXED
-    real_pt_data_ratio_threshold: float = 0.1
+    real_pt_data_ratio_threshold: float = MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD
     resolved_precision_schedule: ResolvedPrecisionSchedule | None = None
     online_monitor_policy_digest: str | None = None
     target_online_monitor_record_digest: str | None = None
@@ -448,6 +454,15 @@ class TrainingProtocolIdentity:
             raise TrainingDataInputError("Multi-head replay protocols require a replay plan.")
         if self.training_mode is TrainingMode.NAIVE_FINE_TUNING and self.replay_plan_digest is not None:
             raise TrainingDataInputError("Naive protocols cannot carry replay plans.")
+        if self.training_mode is TrainingMode.MULTIHEAD_REPLAY and not math.isclose(
+            float(self.real_pt_data_ratio_threshold),
+            MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+            rel_tol=0.0,
+            abs_tol=0.0,
+        ):
+            raise TrainingDataInputError(
+                "Multi-head replay protocols require real_pt_data_ratio_threshold=0.0."
+            )
         if self.selection_size <= 0:
             raise TrainingDataInputError("Training-protocol selection size must be positive.")
         if self.exposure_backend is not MaceExposureBackend.NATIVE_MACE_FIXED:

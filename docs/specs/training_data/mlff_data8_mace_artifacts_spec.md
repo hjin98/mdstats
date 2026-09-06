@@ -51,6 +51,10 @@ depend. For MACE v0.3.16, the required behaviors are:
   validation head;
 - target data can be duplicated internally when the target/replay ratio falls
   below `real_pt_data_ratio_threshold`;
+- multi-head fine-tuning can replace the requested learning rate and EMA
+  settings unless `force_mh_ft_lr` is true;
+- target-head, distributed-sampler, and combined training loaders can discard
+  the final partial batch through `drop_last`;
 - `dry_run` and `save_all_checkpoints` are available;
 - external replay supports `pt_train_file` and `pt_valid_file`.
 
@@ -79,6 +83,8 @@ Records content digests and verified source semantics:
 - target-last validation ordering;
 - last-head checkpoint behavior;
 - implicit target duplication;
+- the multi-head loss, LR/EMA override, and target-loader truncation branches
+  that the qualified runtime must control;
 - dry-run support;
 - save-all-checkpoint support;
 - fixed-file adapter acceptance.
@@ -111,6 +117,40 @@ For target count \(N_{ft}\), replay count \(N_{pt}\), and threshold \(r\),
 the v0.3.16 compatibility emulation repeats target data until the realized
 ratio satisfies the source behavior. DATA8 defaults to \(r=0\), so balancing is
 owned explicitly by mdstats rather than hidden inside MACE.
+
+### Qualified execution semantics
+
+The current execution identity is pinned to `mace-torch==0.3.16` and the
+source-qualified mdstats MACE wrapper. Every replay-enabled parser-facing
+configuration SHALL explicitly carry:
+
+```text
+loss = "stress"
+force_mh_ft_lr = true
+real_pt_data_ratio_threshold = 0.0
+```
+
+Every ordinary one-head parser-facing configuration SHALL explicitly carry
+`multiheads_finetuning = false`; replay configurations carry
+`multiheads_finetuning = true`. This prevents MACE 0.3.16's parser default from
+silently promoting an ordinary P5 or final-production request into replay mode.
+
+The wrapper changes only the pinned multi-head assignment that would otherwise
+force `UniversalLoss`; native MACE `get_loss_fn()` still constructs the loss.
+It validates the parser result, validates the resolved native
+`WeightedEnergyForcesStressLoss` after MACE's mutation region, and records the
+resolved LR, EMA, replay counts, duplication factor, source probe, and
+method/config digests. `UniversalLoss` is therefore neither accepted nor
+emulated by an mdstats-side loss path.
+
+For target-size execution, the same authenticated target-size authority
+activates complete target-head and combined-loader coverage: `drop_last` is
+false, the realized batch count is `ceil(N / B)`, every exported target
+`frame_uid` is present exactly once, and target-size distributed sampler paths
+are rejected unless separately qualified. No frame is duplicated to fill a
+partial batch. The resolved evidence is attached to the existing TRAIN2
+runtime summary; missing, stale, or mismatched evidence cannot authorize a
+restart or downstream current artifact.
 
 ### `MaceExtxyzArtifact`
 

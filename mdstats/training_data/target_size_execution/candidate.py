@@ -38,7 +38,10 @@ from .._common import (
     validate_digest,
 )
 from ..mace_export import MaceExtxyzPolicy
-from ..mace_compatibility import MACE_EXECUTABLE_LOSS_FAMILY
+from ..mace_compatibility import (
+    MACE_EXECUTABLE_LOSS_FAMILY,
+    MACE_EXECUTION_SEMANTICS_VERSION,
+)
 from ..protocol import MaceOptimizerPolicy
 from ..target_size_experiment import (
     TargetSizeExperimentDefinition,
@@ -340,7 +343,8 @@ def derive_target_size_candidate_realization(
     # identical candidate mid-screen.
     loader_geometry_digest = digest(
         {
-            "schema": "mdstats.target-size.loader-geometry.v2",
+            "schema": "mdstats.target-size.loader-geometry.v3",
+            "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
             "candidate_membership_digest": projection.candidate_membership_digest,
             "harness_validation_membership_digest": (
                 common.harness_validation_membership_digest
@@ -348,6 +352,8 @@ def derive_target_size_candidate_realization(
             "target_train_count": target_train_count,
             "replay_train_count": replay,
             "batch_size": batch_size,
+            "drop_last": False,
+            "coverage": "complete_target_membership",
         }
     )
     # Optimizer-progress normalization is derived once here, from the *full*

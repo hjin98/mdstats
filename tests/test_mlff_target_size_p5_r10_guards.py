@@ -314,9 +314,9 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
     assert "multiheads_finetuning" not in scratch_internal
     assert "pt_train_file" not in scratch_internal
     assert "heads" not in scratch_internal
-    assert "multiheads_finetuning" not in post_selection_mace_run_configuration(
-        scratch_internal
-    )
+    assert post_selection_mace_run_configuration(scratch_internal)[
+        "multiheads_finetuning"
+    ] is False
 
     naive_internal = _post_selection_mace_config(
         run_identity="naive",

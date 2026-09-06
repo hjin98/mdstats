@@ -42,6 +42,12 @@ from .training_settings import (
     resolve_shared_optimizer_settings as _resolve_shared_optimizer_settings,
     shared_optimizer_settings_payload,
 )
+from .mace_compatibility import (
+    MACE_EXECUTABLE_LOSS_FAMILY,
+    MACE_EXECUTION_SEMANTICS_VERSION,
+    MACE_REPLAY_FORCE_MH_FT_LR,
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+)
 
 POST_SELECTION_METHOD_IDENTITY_SCHEMA = "mdstats.post-selection-method-identity.v1"
 CV_VALIDATION_POLICY_IDENTITY_SCHEMA = "mdstats.post-selection-cv-policy-identity.v1"
@@ -741,6 +747,10 @@ def resolve_post_selection_replay_policy_digest(
             "true_dft_monitor_required": True,
             "target_head_name": target_head_name,
             "replay_head_name": replay_head_name,
+            "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
+            "loss_family": MACE_EXECUTABLE_LOSS_FAMILY,
+            "force_mh_ft_lr": MACE_REPLAY_FORCE_MH_FT_LR,
+            "real_pt_data_ratio_threshold": MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
         }
     elif has_legacy_replay:
         if training_label_mode is None:
@@ -760,6 +770,10 @@ def resolve_post_selection_replay_policy_digest(
             "true_dft_monitor_required": True,
             "target_head_name": target_head_name,
             "replay_head_name": replay_head_name,
+            "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
+            "loss_family": MACE_EXECUTABLE_LOSS_FAMILY,
+            "force_mh_ft_lr": MACE_REPLAY_FORCE_MH_FT_LR,
+            "real_pt_data_ratio_threshold": MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
         }
     else:
         payload = {

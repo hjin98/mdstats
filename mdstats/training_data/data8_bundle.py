@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping, Sequence
 import ast
 import hashlib
 import json
+import math
 import os
 import shutil
 import time
@@ -30,6 +31,9 @@ from .train2_policy import (
 )
 from .reference_fit import AtomicReferenceFitMode
 from .mace_compatibility import (
+    MACE_EXECUTABLE_LOSS_FAMILY,
+    MACE_REPLAY_FORCE_MH_FT_LR,
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
     MaceCheckpointControlPolicy,
     MaceCompatibilityPolicy,
     MaceLoaderDryRun,
@@ -1388,6 +1392,15 @@ def _mace_config(
     real_pt_data_ratio_threshold: float,
     extxyz_policy: MaceExtxyzPolicy,
 ) -> dict[str, Any]:
+    if replay_plan.mode is not ReplayMode.NONE and not math.isclose(
+        float(real_pt_data_ratio_threshold),
+        MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+        rel_tol=0.0,
+        abs_tol=0.0,
+    ):
+        raise TrainingDataInputError(
+            "Current replay execution requires real_pt_data_ratio_threshold=0.0."
+        )
     target_train_path = target_train.relative_path
     target_valid_path = target_valid.relative_path
     fitted_e0s = {
@@ -1440,9 +1453,9 @@ def _mace_config(
         "energy_weight": data7_bundle.training_weights.objective_policy.energy_weight,
         "forces_weight": data7_bundle.training_weights.objective_policy.forces_weight,
         "stress_weight": data7_bundle.training_weights.objective_policy.stress_weight,
-        "loss": "universal",
+        "loss": MACE_EXECUTABLE_LOSS_FAMILY,
         "lr": optimizer.learning_rate,
-        "force_mh_ft_lr": True,
+        "force_mh_ft_lr": MACE_REPLAY_FORCE_MH_FT_LR,
         "batch_size": optimizer.batch_size,
         "valid_batch_size": optimizer.valid_batch_size,
         "num_workers": optimizer.num_workers,
@@ -1471,7 +1484,7 @@ def _mace_config(
         ),
         "save_all_checkpoints": checkpoint.save_all_checkpoints,
         "patience": checkpoint.native_patience,
-        "real_pt_data_ratio_threshold": real_pt_data_ratio_threshold,
+        "real_pt_data_ratio_threshold": MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
         "plot": False,
     }
     if replay_plan.mode is not ReplayMode.NONE:
@@ -1713,5 +1726,4 @@ class Data8PreparationBundle:
         elif payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("DATA8 bundle digest mismatch.")
         return result
-
 

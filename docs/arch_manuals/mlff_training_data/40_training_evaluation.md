@@ -133,6 +133,21 @@ accepted by the MACE runtime, normally an atomic-number mapping. A record name
 or path is not an E0 payload. Target and replay label domains are checked for
 compatibility rather than silently merged.
 
+The current MACE execution lock extends this boundary through dependency
+argument mutation. Parser-facing configurations explicitly carry
+`multiheads_finetuning = false` for ordinary one-head runs and
+`multiheads_finetuning = true`, `loss = "stress"`,
+`force_mh_ft_lr = true`, and `real_pt_data_ratio_threshold = 0.0` for replay.
+The one source-qualified mdstats wrapper
+prevents pinned MACE 0.3.16 from replacing that loss with `UniversalLoss`, then
+records the native resolved `WeightedEnergyForcesStressLoss`, LR/EMA settings,
+replay exposure, source-probe identity, and method/config digests in the
+existing TRAIN2 runtime evidence. Target-size executions additionally retain
+the final target batch, realize `ceil(N / B)` batches with complete target UID
+coverage, and fail closed for an unqualified distributed sampler. This is an
+execution realization of the existing method identity, not a second trainer or
+loss owner.
+
 ## Controlled target-size screen versus ordinary training
 
 The target-size experiment is the special Part V protocol-comparison control.

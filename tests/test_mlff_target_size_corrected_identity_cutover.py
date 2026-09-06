@@ -154,10 +154,9 @@ def test_the_executable_loss_family_is_one_authority() -> None:
 def test_no_current_source_path_emits_the_retired_universal_loss() -> None:
     """Structural absence over the current package source.
 
-    Scope: every ``.py`` file under ``mdstats/`` in this working tree. The one
-    permitted occurrence is the retired, unreachable DATA8 preparation topology,
-    which no current command or qualification consumer calls; it is named here
-    explicitly rather than being hidden by a broad exclusion.
+    Scope: every ``.py`` file under ``mdstats/`` in this working tree. The
+    retired DATA8 preparation topology is now aligned with the current native
+    weighted loss as well, so no executable configuration path may emit it.
     """
 
     root = Path(mdstats.__file__).resolve().parent
@@ -166,7 +165,7 @@ def test_no_current_source_path_emits_the_retired_universal_loss() -> None:
         text = path.read_text(encoding="utf-8")
         if '"loss": "universal"' in text or "'loss': 'universal'" in text:
             offenders.append(path.relative_to(root).as_posix())
-    assert offenders == ["training_data/data8_bundle.py"], offenders
+    assert offenders == [], offenders
 
     # Known-positive control: the scan really does detect the construct.
     probe = '{"loss": "universal"}'
