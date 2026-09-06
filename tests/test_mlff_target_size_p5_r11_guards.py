@@ -205,8 +205,11 @@ def _lifecycle_fixture(
             foundation_head="default",
             common_training=SimpleNamespace(
                 eval2_metric_policy_digest=_digest("c"),
-                default_dtype="float64",
             ),
+            # The learned-model dtype is resolved by the one binary precision
+            # authority and carried on the method policies, not by the
+            # common-preparation policy, which does not consume it.
+            default_dtype="float64",
             device="cpu",
         ),
         inference_evaluator=None,

@@ -27,6 +27,7 @@ from mdstats.training_data.target_size_execution import (
 )
 from mdstats.training_data.target_size_execution.context import (
     build_target_size_execution_context,
+    validate_candidate_optimizer_policy,
 )
 
 def _context_for(aggregate, common, schedule, *, optimizer_policy=None):
@@ -528,7 +529,19 @@ def test_p3b_structural_absence_no_legacy_authority_in_p3_records(tmp_path: Path
         assert token not in json.dumps(sidecar)
 
 
-def test_p3b_worker_resource_field_is_bound_not_silently_excluded(tmp_path: Path) -> None:
+def test_p3b_worker_count_is_execution_only_but_batch_size_is_scientific(
+    tmp_path: Path,
+) -> None:
+    """Loader worker count is resource realization; batch size is the method.
+
+    ``num_workers`` chooses how many DataLoader processes feed the same exact
+    ``T_N`` in the same exact order under the qualified deterministic loader.
+    It moves no parameter trajectory, LR schedule, checkpoint admissibility, or
+    ranking, so it must not retire an otherwise identical screen - retuning it
+    mid-screen is ordinary resource work.  ``batch_size`` is the opposite: it
+    fixes the ``ceil(N/B)`` update geometry the whole normalization rests on.
+    """
+
     manifest, fa, nb, aggregate, common, index = p3a._common(tmp_path)
     schedule = build_target_size_screen_schedule(
         tuple(aggregate.definition.policy.fidelity_epochs)
@@ -541,25 +554,55 @@ def test_p3b_worker_resource_field_is_bound_not_silently_excluded(tmp_path: Path
         definition, context, common, schedule,
         target_size=n, optimizer_policy=optimizer, optimizer_seed=1,
     )
-    # num_workers is not proven execution-only for sample-order semantics, so
-    # it stays bound inside the seed-neutral training-policy identity: a
-    # changed worker count yields a different (rejected) trajectory identity.
-    changed = build_target_size_candidate_trajectory(
-        definition,
-        build_target_size_execution_context(
+
+    def _trajectory_for(policy):
+        return build_target_size_candidate_trajectory(
             definition,
+            build_target_size_execution_context(
+                definition, common, schedule, seed_neutral_optimizer_policy=policy
+            ),
             common,
             schedule,
-            seed_neutral_optimizer_policy=replace(optimizer, num_workers=3),
-        ),
-        common,
-        schedule,
-        target_size=n,
-        optimizer_policy=replace(optimizer, num_workers=3),
-        optimizer_seed=1,
-    )
-    assert changed.seed_neutral_training_policy_digest != (
+            target_size=n,
+            optimizer_policy=policy,
+            optimizer_seed=1,
+        )
+
+    # A changed worker count is the same screen method, down to the realized
+    # loader geometry and the whole candidate trajectory identity.
+    workers_changed = _trajectory_for(replace(optimizer, num_workers=3))
+    assert workers_changed.seed_neutral_training_policy_digest == (
         trajectory.seed_neutral_training_policy_digest
+    )
+    assert workers_changed.realization.loader_geometry_digest == (
+        trajectory.realization.loader_geometry_digest
+    )
+    assert workers_changed.content_digest == trajectory.content_digest
+    # The candidate policy carrying the different worker count is still an
+    # admissible realization of the accepted screen template.
+    validate_candidate_optimizer_policy(
+        context.seed_neutral_optimizer_policy_digest,
+        replace(optimizer, num_workers=3),
+        authorized_seed=1,
+    )
+
+    # A changed gradient batch size is a different method: it changes the
+    # update geometry, hence the realized normalization and the trajectory.
+    batch_changed = _trajectory_for(replace(optimizer, batch_size=8))
+    assert batch_changed.seed_neutral_training_policy_digest != (
+        trajectory.seed_neutral_training_policy_digest
+    )
+    # This fixture's smallest N happens to need one update per epoch at either
+    # batch size, so the visible consequence is the reference geometry the
+    # normalization scales against - and therefore the realized amplitude.
+    assert batch_changed.realization.reference_updates_per_epoch != (
+        trajectory.realization.reference_updates_per_epoch
+    )
+    assert batch_changed.realization.effective_base_learning_rate != (
+        trajectory.realization.effective_base_learning_rate
+    )
+    assert batch_changed.realization.content_digest != (
+        trajectory.realization.content_digest
     )
 
 

@@ -73,6 +73,27 @@ class MaceOptimizerPolicy:
     precision_schedule_policy: PrecisionSchedulePolicy | None = None
 
     def __post_init__(self) -> None:
+        # This policy is independently constructible and independently
+        # deserialized, so it repeats the canonical configuration domain rather
+        # than trusting that every caller came through
+        # ``resolve_shared_optimizer_settings``.  ``nan`` passes every ordinary
+        # comparison and an infinite bound is not a training method, so both are
+        # rejected explicitly; booleans are rejected in integer fields even
+        # though ``bool`` is an ``int`` subclass.
+        for name in ("batch_size", "valid_batch_size", "num_workers", "max_num_epochs",
+                     "eval_interval", "seed"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TrainingDataInputError(f"MACE optimizer {name} must be an integer.")
+        for name in ("learning_rate", "ema_decay", "weight_decay", "clip_grad"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TrainingDataInputError(f"MACE optimizer {name} must be a real number.")
+            if not math.isfinite(float(value)):
+                raise TrainingDataInputError(f"MACE optimizer {name} must be finite.")
+        for name in ("ema", "amsgrad"):
+            if not isinstance(getattr(self, name), bool):
+                raise TrainingDataInputError(f"MACE optimizer {name} must be a boolean.")
         if self.learning_rate <= 0.0 or self.batch_size <= 0 or self.valid_batch_size <= 0:
             raise TrainingDataInputError("MACE optimizer sizes and learning rate must be positive.")
         if self.num_workers < 0:

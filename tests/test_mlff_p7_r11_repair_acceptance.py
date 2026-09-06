@@ -1131,9 +1131,15 @@ def test_r11b2_wrong_head_or_dtype_receipt_is_refused(tmp_path: Path):
         receipt = path.parent / "deployment-receipt.json"
         original = json.loads(receipt.read_text(encoding="utf-8"))
 
+        # The tampered dtype is derived from the receipt rather than hard-coded,
+        # so the case stays a genuine mismatch whichever binary precision the
+        # campaign actually resolved.
+        other_dtype = (
+            "float64" if original["deployment_dtype"] == "float32" else "float32"
+        )
         for field, value in (
             ("target_head_name", POST_SELECTION_REPLAY_HEAD_NAME),
-            ("deployment_dtype", "float32"),
+            ("deployment_dtype", other_dtype),
             ("representative_checkpoint_sha256", "0" * 64),
         ):
             tampered = dict(original)

@@ -37,6 +37,85 @@ BINARY_PRECISION_DTYPES = {"single": "float32", "double": "float64"}
 RETIRED_PRECISION_PROFILES = {"refine", "mixed"}
 
 
+def _strict_bool(value: Any, *, name: str) -> bool:
+    """An actual boolean.  ``"false"``, ``0``, and ``[]`` are configuration errors.
+
+    Truth-normalizing an arbitrary value here would silently turn a typo into a
+    different training method, so the domain is exact.
+    """
+
+    if not isinstance(value, bool):
+        raise TrainingDataInputError(
+            f"[training].{name} must be a boolean; got {value!r}."
+        )
+    return value
+
+
+def _strict_positive_int(value: Any, *, name: str) -> int:
+    """An exact positive integer.
+
+    ``bool`` is rejected even though it is an ``int`` subclass, and floats and
+    strings are rejected rather than truncated: ``int(2.7)`` would silently
+    change the update geometry the whole size normalization rests on.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TrainingDataInputError(
+            f"[training].{name} must be an integer; got {value!r}."
+        )
+    if value <= 0:
+        raise TrainingDataInputError(f"[training].{name} must be positive; got {value!r}.")
+    return int(value)
+
+
+def _strict_finite_real(
+    value: Any,
+    *,
+    name: str,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    exclusive_minimum: bool = True,
+    exclusive_maximum: bool = True,
+) -> float:
+    """A finite real inside the declared domain.
+
+    ``nan`` passes every ordinary comparison, so a sign-only check would admit
+    it and poison training silently; ``inf`` is rejected for the same reason.
+    Booleans and strings are rejected rather than coerced.
+    """
+
+    import math
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TrainingDataInputError(
+            f"[training].{name} must be a real number; got {value!r}."
+        )
+    result = float(value)
+    if not math.isfinite(result):
+        raise TrainingDataInputError(
+            f"[training].{name} must be finite; got {value!r}."
+        )
+    if minimum is not None:
+        if exclusive_minimum and not result > minimum:
+            raise TrainingDataInputError(
+                f"[training].{name} must be greater than {minimum}; got {value!r}."
+            )
+        if not exclusive_minimum and not result >= minimum:
+            raise TrainingDataInputError(
+                f"[training].{name} must be at least {minimum}; got {value!r}."
+            )
+    if maximum is not None:
+        if exclusive_maximum and not result < maximum:
+            raise TrainingDataInputError(
+                f"[training].{name} must be less than {maximum}; got {value!r}."
+            )
+        if not exclusive_maximum and not result <= maximum:
+            raise TrainingDataInputError(
+                f"[training].{name} must be at most {maximum}; got {value!r}."
+            )
+    return result
+
+
 def _training_table(config: Mapping[str, Any]) -> Mapping[str, Any]:
     training = config.get("training", {})
     if not isinstance(training, Mapping):
@@ -65,32 +144,41 @@ def resolve_shared_optimizer_settings(config: Mapping[str, Any]) -> dict[str, An
             raise TrainingDataInputError(f"Unsupported [training].optimizer: {opt_raw}")
         if opt_raw not in _SUPPORTED_OPTIMIZER_FAMILIES:
             raise TrainingDataInputError(f"Unsupported [training].optimizer: {opt_raw}")
-    settings = {
-        "learning_rate": float(training.get("learning_rate", 1.0e-4)),
-        "batch_size": int(training.get("batch_size", 2)),
-        "valid_batch_size": int(training.get("valid_batch_size", 2)),
-        "eval_interval": int(training.get("eval_interval", 1)),
-        "ema": bool(training.get("ema", True)),
-        "ema_decay": float(training.get("ema_decay", 0.99999)),
-        "amsgrad": bool(training.get("amsgrad", True)),
-        "weight_decay": float(training.get("weight_decay", 1.0e-6)),
-        "clip_grad": float(training.get("clip_grad", 10.0)),
+    # The domain is validated before anything is canonicalized.  A canonical
+    # owner that coerces first is not fail-closed: it would let `nan`, an
+    # infinite bound, a fractional batch size, or a truth-normalized string
+    # become both the recorded method identity and the executed method.
+    return {
+        "learning_rate": _strict_finite_real(
+            training.get("learning_rate", 1.0e-4), name="learning_rate", minimum=0.0
+        ),
+        "batch_size": _strict_positive_int(
+            training.get("batch_size", 2), name="batch_size"
+        ),
+        "valid_batch_size": _strict_positive_int(
+            training.get("valid_batch_size", 2), name="valid_batch_size"
+        ),
+        "eval_interval": _strict_positive_int(
+            training.get("eval_interval", 1), name="eval_interval"
+        ),
+        "ema": _strict_bool(training.get("ema", True), name="ema"),
+        "ema_decay": _strict_finite_real(
+            training.get("ema_decay", 0.99999),
+            name="ema_decay",
+            minimum=0.0,
+            maximum=1.0,
+        ),
+        "amsgrad": _strict_bool(training.get("amsgrad", True), name="amsgrad"),
+        "weight_decay": _strict_finite_real(
+            training.get("weight_decay", 1.0e-6),
+            name="weight_decay",
+            minimum=0.0,
+            exclusive_minimum=False,
+        ),
+        "clip_grad": _strict_finite_real(
+            training.get("clip_grad", 10.0), name="clip_grad", minimum=0.0
+        ),
     }
-    if settings["learning_rate"] <= 0.0:
-        raise TrainingDataInputError("[training].learning_rate must be positive.")
-    if settings["batch_size"] <= 0 or settings["valid_batch_size"] <= 0:
-        raise TrainingDataInputError(
-            "[training].batch_size and [training].valid_batch_size must be positive."
-        )
-    if settings["eval_interval"] <= 0:
-        raise TrainingDataInputError("[training].eval_interval must be positive.")
-    if not (0.0 < settings["ema_decay"] < 1.0):
-        raise TrainingDataInputError("[training].ema_decay must lie strictly in (0, 1).")
-    if settings["weight_decay"] < 0.0:
-        raise TrainingDataInputError("[training].weight_decay must be non-negative.")
-    if settings["clip_grad"] <= 0.0:
-        raise TrainingDataInputError("[training].clip_grad must be positive.")
-    return settings
 
 
 def shared_optimizer_settings_payload(config: Mapping[str, Any]) -> dict[str, Any]:
