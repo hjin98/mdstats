@@ -1452,7 +1452,7 @@ def build_qualification_session(
     predecessor_reclosure = resolve_current_predecessor_reclosure(context)
     specification = resolve_qualification_spec_identity(cfg)
     environment = capture_environment_fingerprint(
-        default_dtype=str(context.method_policies.common_training.default_dtype),
+        default_dtype=str(context.method_policies.default_dtype),
         device=str(context.method_policies.device),
     )
     resources, resource_scope, resource_digest = _qualification_resource_scope(

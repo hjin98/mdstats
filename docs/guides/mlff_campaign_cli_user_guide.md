@@ -95,6 +95,51 @@ scientific reductions, reference fitting, geometry, and persistent bookkeeping
 remain FP64 in either mode. The selected acceleration backend and MACE runtime
 identity are bound by `doctor` and the campaign protocol.
 
+### Shared optimizer settings, and what they do and do not control
+
+The shared scientific optimizer settings are authored once under `[training]`:
+
+```toml
+[training]
+learning_rate = 1.0e-4
+batch_size = 2
+valid_batch_size = 2
+eval_interval = 1
+ema = true
+ema_decay = 0.99999
+amsgrad = true
+weight_decay = 1.0e-6
+clip_grad = 10.0
+```
+
+They are resolved once and feed both the recorded post-selection method
+identity and the optimizer that actually trains, so an explicit value here
+always changes both, and an omitted key resolves to the same default on both
+sides. The recorded method is therefore the method that ran. Evidence produced
+under the older resolution - where identity and execution could default
+differently - is kept as history and cannot authorize corrected
+cross-validation or final production.
+
+Three things under `[training]` are deliberately *not* shared method settings:
+
+- `num_workers` is pure resource scheduling. It is not method identity and not
+  target-size scientific currentness, so it can be retuned between runs, even
+  mid-screen, without invalidating anything.
+- `max_num_epochs` is the final-production horizon. The target-size screen uses
+  its own `fidelity_epochs` schedule, and cross-validation uses
+  `[post_selection.cv].max_num_epochs`.
+- `learning_rate` and `ema_decay` are the post-selection/general training
+  authority. The target-size screen derives its own effective learning rate and
+  EMA decay from `[target_data.size_convergence.optimizer_normalization]` and
+  the candidate's `ceil(N/batch_size)` update geometry; editing the general
+  values cannot change a screen result.
+
+`batch_size` and the learned-model precision *do* change target-size training
+execution, so editing them retires P3 screen evidence - but not the prepared
+P1/P2 statistical substrate or the common fit, which consume neither. The
+harness-validation `valid_batch_size` is fixed non-controlling validation
+geometry and, like `num_workers`, may drift mid-screen.
+
 ## 2. Check inputs and runtime
 
 ```bash

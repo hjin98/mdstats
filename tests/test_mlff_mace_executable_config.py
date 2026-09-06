@@ -21,6 +21,7 @@ import pytest
 import mdstats
 from mdstats.training_data.campaign_target_size_runtime import (
     MaceTargetSizeBoundaryTrainer,
+    TARGET_SIZE_MACE_HEAD_NAME,
     mace_run_configuration,
 )
 from mdstats.training_data.mace_compatibility import (
@@ -98,6 +99,13 @@ def _canonical_target_size_config() -> dict:
         "max_num_epochs": 1,
         "ema": True,
         "ema_decay": 0.99,
+        # The declared mdstats objective is what the candidate optimizes; the
+        # global coefficients are emitted explicitly so MACE never falls back to
+        # its own ``forces_weight = 100`` default.
+        "loss": "stress",
+        "energy_weight": 1.0,
+        "forces_weight": 10.0,
+        "stress_weight": 1.0,
         "amsgrad": True,
         "weight_decay": 5.0e-07,
         "clip_grad": 10.0,
@@ -106,9 +114,23 @@ def _canonical_target_size_config() -> dict:
         "foundation_model": None,
         "foundation_head": None,
         "multiheads_finetuning": False,
+        # The common preparation owns the neighbor normalization; a candidate
+        # never recomputes it from T_N.
+        "compute_avg_num_neighbors": False,
         "mace_architecture": canonicalize_mace_candidate_architecture(
             mace_candidate_architecture_defaults()
         ),
+        "multi_head": {
+            "target_head": {
+                "train_file": "target_train.extxyz",
+                "valid_file": "harness_validation.extxyz",
+                "atomic_numbers": sorted(PRODUCTION_ATOMIC_NUMBERS),
+                "E0s": dict(PRODUCTION_E0S),
+                "energy_key": "REF_energy",
+                "forces_key": "REF_forces",
+                "stress_key": "REF_stress",
+            }
+        },
     }
 
 
@@ -189,10 +211,30 @@ def test_c1_production_candidate_config_is_accepted_by_the_pinned_parser(
     assert ast.literal_eval(args.radial_MLP) == source["mace_architecture"]["radial_MLP"]
     # Internal metadata never crosses the boundary.
     assert "schema" not in config
-    # Scratch target-size execution must not inherit MACE dataset heads from the
-    # internal architecture head list.
-    assert "heads" not in config
-    assert args.heads is None
+    # Scratch target-size execution exposes exactly the canonical P3 target
+    # dataset head, and must not inherit MACE dataset heads from the internal
+    # architecture head list.  Without an explicit mapping pinned MACE builds a
+    # differently named ``Default`` head that reconstruction and EVAL2 disagree
+    # with.
+    assert set(ast.literal_eval(config["heads"])) == {TARGET_SIZE_MACE_HEAD_NAME}
+    assert set(ast.literal_eval(args.heads)) == {TARGET_SIZE_MACE_HEAD_NAME}
+    assert ast.literal_eval(config["heads"])[TARGET_SIZE_MACE_HEAD_NAME][
+        "train_file"
+    ] == source["target_train_file"]
+    # The emitted mapping is the canonical P3 *dataset* head, not the internal
+    # architecture head-name list, which never crosses the boundary.
+    assert isinstance(source["mace_architecture"]["heads"], list)
+    assert set(
+        ast.literal_eval(config["heads"])[TARGET_SIZE_MACE_HEAD_NAME]
+    ) == {
+        "train_file",
+        "valid_file",
+        "atomic_numbers",
+        "E0s",
+        "energy_key",
+        "forces_key",
+        "stress_key",
+    }
     # A canonical ``None`` means "no override": the parser default stands.
     assert "distance_transform" not in config
     assert args.distance_transform == "None"
@@ -395,14 +437,14 @@ def test_c4_production_trainer_config_reaches_the_real_parser(tmp_path: Path) ->
         int(z): value for z, value in PRODUCTION_E0S.items()
     }
     assert ast.literal_eval(parsed["radial_MLP"]) == [64, 64, 64]
-    assert parsed["heads"] is None
+    assert set(ast.literal_eval(parsed["heads"])) == {TARGET_SIZE_MACE_HEAD_NAME}
     assert parsed["seed"] == 1
     # The generated config file remains next to the run root, as before.
     written = json.loads(
         (checkpoint_dir.parent / "mace_run_config.yaml").read_text(encoding="utf-8")
     )
     assert "schema" not in written
-    assert "heads" not in written
+    assert set(ast.literal_eval(written["heads"])) == {TARGET_SIZE_MACE_HEAD_NAME}
 
 
 # --- structural / negative acceptance --------------------------------------

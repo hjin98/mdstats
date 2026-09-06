@@ -170,6 +170,41 @@ family, foundation and initialization family, optimizer family, LR schedule,
 checkpoint semantics, precision, and backend. It does not contain fold membership or a second target
 size.
 
+### One canonical optimizer-setting resolution
+
+The shared scientific optimizer semantics a campaign may configure - general
+learning rate, batch size, validation batch size, evaluation interval, EMA
+enable/disable, EMA decay, AMSGrad, weight decay, gradient clipping, and the
+permitted optimizer family - are resolved exactly once, by
+`mdstats.training_data.training_settings.resolve_shared_optimizer_settings`.
+The learned-model dtype is likewise resolved once, by the binary
+learned-model-precision contract in the same module. The method identity, the
+executable `MaceOptimizerPolicy`, the generated MACE configuration, and the
+TRAIN2 runtime all descend from those single resolutions:
+
+```text
+configuration
+  -> one canonical resolved value
+      -> P5 method identity
+      -> executable MaceOptimizerPolicy
+      -> generated MACE config
+      -> TRAIN2 runtime
+```
+
+There is no second, independently defaulted route. P5 method identity is
+therefore literally the method that executes: an explicitly configured shared
+optimizer field changes both the recorded identity and actual training, and an
+omitted field resolves to the same default on both sides. The optimizer seed,
+role-specific epoch budgets, and worker counts stay outside these shared
+settings, because they are per-run identity, role policy, and pure resource
+choice respectively.
+
+Because historical evidence could previously record an identity whose defaults
+were never the ones execution applied, the method recipe carries an explicit
+version. Evidence produced under the earlier resolution cannot authorize
+corrected cross-validation or final production; it remains readable as history
+and is never rewritten in place.
+
 The CV policy owns `K >= 2`, partition seed, fold algorithm, CV budget,
 monitor/purge allocation, target-only acceptance, and the all-required-fold /
 all-required-seed rule. The final-production policy owns the production epoch

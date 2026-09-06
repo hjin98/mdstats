@@ -53,6 +53,14 @@ from .storage_accounting import (
     configured_protected_inputs,
 )
 from .storage_reclamation import filesystem_identity
+from .training_settings import (
+    BINARY_PRECISION_DTYPES as _BINARY_PRECISION_DTYPES,
+    CampaignCliError,
+    RETIRED_PRECISION_PROFILES as _RETIRED_PRECISION_PROFILES,
+    legacy_precision_schedule_policy as _legacy_precision_schedule_policy,
+    resolve_binary_model_precision_contract as _binary_model_precision_contract,
+    resolve_shared_optimizer_settings,
+)
 from .campaign_target_size_retention import build_target_size_retention_fence
 from .campaign_target_size_state import (
     TargetSizeCampaignStateError,
@@ -136,10 +144,6 @@ CURRENT_PREPARE_CONTRACT_VERSION = "mdstats.mlff-campaign-prepare.current.v1"
 EXTERNAL_RECORD_THRESHOLD_BYTES = 4 * 1024 * 1024
 DEFAULT_CONFIG_NAME = "campaign.toml"
 DEFAULT_MANIFEST_NAME = "campaign-manifest.json"
-
-
-class CampaignCliError(RuntimeError):
-    """A concise, user-actionable campaign failure."""
 
 
 class StageState(str, Enum):
@@ -1451,182 +1455,6 @@ def _training_acceleration_noise_normalized_policy() -> Any:
     )
 
 
-_BINARY_PRECISION_DTYPES = {"single": "float32", "double": "float64"}
-_RETIRED_PRECISION_PROFILES = {"refine", "mixed"}
-
-
-def _legacy_precision_schedule_policy(cfg: Mapping[str, Any]) -> Any | None:
-    """Deserialize the pre-ADAPT-PREC1 staged schedule without authorizing it.
-
-    Historical schedule records remain readable for status/storage/reporting.  New
-    production execution must use :func:`_binary_model_precision_contract`, which
-    rejects staged/refine semantics and never returns this policy to DATA8/runtime.
-    """
-
-    import mdstats
-
-    training = cfg.get("training", {})
-    precision = training.get("precision")
-    if precision is None:
-        return None
-    if not isinstance(precision, Mapping):
-        raise CampaignCliError("[training.precision] must be a TOML table.")
-    stage_payloads = precision.get("stage")
-    if not isinstance(stage_payloads, list) or not stage_payloads:
-        raise CampaignCliError(
-            "[training.precision] requires one or more [[training.precision.stage]] tables."
-        )
-    try:
-        stages = tuple(
-            mdstats.PrecisionStage(
-                dtype=str(item["dtype"]),
-                fraction=float(item["fraction"]),
-                learning_rate_scale=float(item.get("learning_rate_scale", 1.0)),
-            )
-            for item in stage_payloads
-        )
-        profile = str(_cfg(cfg, "campaign", "precision_profile", "custom")).strip() or "custom"
-        policy = mdstats.PrecisionSchedulePolicy(
-            requested_profile=profile,
-            stages=stages,
-            minimum_final_stage_epochs=int(precision.get("minimum_final_stage_epochs", 0)),
-            minimum_final_stage_gradient_updates=int(
-                precision.get("minimum_final_stage_gradient_updates", 0)
-            ),
-            preserve_optimizer_state=bool(precision.get("preserve_optimizer_state", True)),
-            preserve_scheduler_state=bool(precision.get("preserve_scheduler_state", True)),
-            preserve_ema_state=bool(precision.get("preserve_ema_state", True)),
-            model_dtype=str(_cfg(cfg, "model", "dtype", training.get("dtype", "float32"))),
-            critical_operation_dtype=str(
-                precision.get("critical_operation_dtype", "float64")
-            ),
-            evaluation_dtype=str(_cfg(cfg, "evaluation", "dtype", training.get("dtype", "float32"))),
-            verification_dtype=str(_cfg(cfg, "verification", "dtype", training.get("dtype", "float32"))),
-            export_dtype=str(cfg.get("export", {}).get("dtype", training.get("dtype", "float32"))),
-        )
-    except Exception as exc:
-        raise CampaignCliError(f"Invalid historical staged precision configuration: {exc}") from exc
-    training_dtype = str(training.get("dtype", stages[0].dtype))
-    if training_dtype != stages[0].dtype:
-        raise CampaignCliError(
-            "[training].dtype must equal the first historical [[training.precision.stage]].dtype."
-        )
-    mode = str(precision.get("mode", policy.mode))
-    if mode != policy.mode:
-        raise CampaignCliError(
-            f"[training.precision].mode={mode!r} disagrees with the historical stage count; "
-            f"expected {policy.mode!r}."
-        )
-    return policy
-
-
-def _binary_model_precision_contract(
-    cfg: Mapping[str, Any],
-    *,
-    allow_historical_refine: bool = False,
-) -> dict[str, Any]:
-    """Resolve the ADAPT-PREC1 learned-model dtype and validate all inference surfaces.
-
-    The precision mode controls only learned-model arithmetic.  mdstats-owned critical
-    reductions/statistics/MD bookkeeping remain FP64 and are not a user-selectable mode.
-    """
-
-    campaign = cfg.get("campaign", {})
-    training = cfg.get("training", {})
-    model = cfg.get("model", {})
-    requested = campaign.get("precision_profile")
-    requested_text = "" if requested is None else str(requested).strip().lower()
-
-    historical = _legacy_precision_schedule_policy(cfg)
-    if requested_text in _RETIRED_PRECISION_PROFILES or (
-        historical is not None and len(historical.stages) > 1
-    ):
-        if allow_historical_refine:
-            if historical is None:
-                raise CampaignCliError(
-                    "Historical staged precision evidence is incomplete: the configuration names "
-                    f"{requested_text!r} but contains no explicit schedule."
-                )
-            return {
-                "requested_profile": historical.requested_profile,
-                "model_dtype": historical.model_dtype,
-                "historical_schedule": historical,
-                "historical_read_only": True,
-            }
-        raise CampaignCliError(
-            "The staged `refine`/`mixed` precision mode is retired for production campaigns. "
-            "Choose `single` (FP32 learned model) or `double` (FP64 learned model). "
-            "Historical staged evidence remains readable through status/storage/reporting, "
-            "but cannot be resumed or silently reinterpreted under the binary precision contract."
-        )
-
-    # Pre-PREC/one-stage configurations are scientifically equivalent when every
-    # learned-model inference surface already agrees on one dtype.  Infer the binary
-    # label only when the profile is absent/legacy; explicit unknown profile names fail.
-    if requested_text in _BINARY_PRECISION_DTYPES:
-        profile = requested_text
-        expected_dtype = _BINARY_PRECISION_DTYPES[profile]
-        source = "explicit"
-    elif requested_text in {"", "legacy", "legacy_custom", "custom"}:
-        inferred_dtype = str(training.get("dtype", model.get("dtype", "float32")))
-        if inferred_dtype not in {"float32", "float64"}:
-            raise CampaignCliError(f"Unsupported learned-model dtype {inferred_dtype!r}.")
-        profile = "single" if inferred_dtype == "float32" else "double"
-        expected_dtype = inferred_dtype
-        source = "legacy_inferred"
-    else:
-        raise CampaignCliError(
-            f"Unsupported precision profile {requested_text!r}. New campaigns support only "
-            "`single` and `double`."
-        )
-
-    observed = {
-        "[model].dtype": str(model.get("dtype", expected_dtype)),
-        "[training].dtype": str(training.get("dtype", expected_dtype)),
-        "[evaluation].dtype": str(cfg.get("evaluation", {}).get("dtype", expected_dtype)),
-        "[verification].dtype": str(cfg.get("verification", {}).get("dtype", expected_dtype)),
-        "[export].dtype": str(cfg.get("export", {}).get("dtype", expected_dtype)),
-    }
-    mismatches = [f"{name}={value!r}" for name, value in observed.items() if value != expected_dtype]
-    if mismatches:
-        raise CampaignCliError(
-            f"Precision profile `{profile}` requires learned-model dtype {expected_dtype} for "
-            "training and every model-inference/export surface; mismatches: " + ", ".join(mismatches)
-        )
-
-    # Old single/double TOMLs may still contain a one-stage [training.precision]
-    # table. Validate it, but deliberately do not return it to DATA8/runtime; this
-    # makes staged transition machinery unreachable from the binary production path.
-    if historical is not None:
-        if len(historical.stages) != 1:
-            raise CampaignCliError("Binary precision cannot carry a staged training schedule.")
-        stage = historical.stages[0]
-        if stage.dtype != expected_dtype or abs(stage.fraction - 1.0) > 1.0e-12:
-            raise CampaignCliError(
-                "Historical one-stage precision metadata disagrees with the binary model dtype."
-            )
-        if abs(stage.learning_rate_scale - 1.0) > 1.0e-12:
-            raise CampaignCliError(
-                "Binary precision does not support a precision-stage learning-rate scale."
-            )
-
-    return {
-        "requested_profile": profile,
-        "model_dtype": expected_dtype,
-        "source": source,
-        "historical_schedule": historical,
-        "historical_read_only": False,
-    }
-
-
-
-
-
-
-
-
-
-
 def _optimizer_policy(
     cfg: Mapping[str, Any],
     *,
@@ -1635,26 +1463,39 @@ def _optimizer_policy(
     paths: CampaignPaths | None = None,
     planned_epochs: int | None = None,
 ) -> Any:
-    """Build one protocol-frozen optimizer policy under binary model precision."""
+    """Build one protocol-frozen optimizer policy under binary model precision.
+
+    Every shared scientific optimizer field comes from the one canonical
+    resolver in :mod:`mdstats.training_data.training_settings`, and the
+    learned-model dtype from the one binary precision contract, so the method
+    P5 identity claims and the method this policy executes cannot drift apart.
+    Only the genuinely role-local inputs -- optimizer seed, worker count, and
+    the role's planned epoch budget -- are supplied by the caller.
+    """
 
     import mdstats
 
-    contract = _binary_model_precision_contract(cfg)
-    model_dtype = str(contract["model_dtype"])
+    settings = resolve_shared_optimizer_settings(cfg)
+    model_dtype = str(_binary_model_precision_contract(cfg)["model_dtype"])
     realization = None if paths is None else _stored_training_acceleration_realization(
         cfg, paths, require_qualified=True
     )
     training_acceleration = _training_acceleration_policy(cfg)
     return mdstats.MaceOptimizerPolicy(
-        learning_rate=float(_cfg(cfg, "training", "learning_rate", 1.0e-4)),
-        batch_size=int(_cfg(cfg, "training", "batch_size", 2)),
-        valid_batch_size=int(_cfg(cfg, "training", "valid_batch_size", 2)),
+        learning_rate=settings["learning_rate"],
+        batch_size=settings["batch_size"],
+        valid_batch_size=settings["valid_batch_size"],
         num_workers=num_workers,
         max_num_epochs=(
             int(_cfg(cfg, "training", "max_num_epochs", 30))
             if planned_epochs is None else int(planned_epochs)
         ),
-        eval_interval=int(_cfg(cfg, "training", "eval_interval", 1)),
+        eval_interval=settings["eval_interval"],
+        ema=settings["ema"],
+        ema_decay=settings["ema_decay"],
+        amsgrad=settings["amsgrad"],
+        weight_decay=settings["weight_decay"],
+        clip_grad=settings["clip_grad"],
         default_dtype=model_dtype,
         device=str(_cfg(cfg, "training", "device", "cuda")),
         seed=seed,

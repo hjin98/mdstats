@@ -98,11 +98,25 @@ Each `(N, optimizer_seed)` derives its scale, effective learning rate, and effec
 
 This normalization is a control of the size-comparison **screen** only. Post-selection cross-validation and fresh final production start from their own optimizer state under their own accepted method policy; screen checkpoints are never production parents.
 
+The normalization policy is the screen's *only* learning-rate and EMA-decay authority. General `[training].learning_rate` and `[training].ema_decay` are post-selection/general training settings; they never reach screen training and are not part of target-size scientific identity. Editing them cannot retire an otherwise identical screen.
+
+### What is, and is not, target-size scientific identity
+
+The target-size screen projects the generic optimizer carrier down to the fields that actually change a candidate trajectory. That projection is built once and is used identically by fresh screen construction, restart-authority construction, active-candidate resume validation, and terminal/currentness reconstruction, so those four paths cannot disagree about what the screen's method is.
+
+Target-size scientific identity **retains** the training `batch_size` (which fixes the `ceil(N/B)` update geometry), EMA enabled/disabled, AMSGrad, weight decay, gradient clipping, learned-model dtype and critical precision, device/acceleration policy, and the full-screen `n3` horizon taken from the screen schedule.
+
+It **excludes** the optimizer seed and the candidate-local acceleration realization (both rebound per candidate), general `[training].learning_rate` and `[training].ema_decay` (replaced by the normalization policy), `num_workers` (pure resource realization), the harness-validation `valid_batch_size` (fixed, non-controlling validation geometry that moves no gradient trajectory, LR schedule, checkpoint admissibility, or ranking), and `eval_interval` (not emitted into the candidate MACE configuration at all).
+
+Consequently a mid-screen worker-count or harness validation batch-width change is not scientific invalidation: a published candidate materialization keeps the exact execution values it was launched with as historical execution provenance, restart re-derives and compares only the scientific configuration content, and `n1 -> n2 -> n3` continuation ancestry stays exact. Real method drift - batch size, dtype, EMA enable, AMSGrad, weight decay, gradient clipping, or the normalization reference LR/EMA - still rejects before training resumes.
+
+Training batch size and the learned-model dtype are P3 *execution* identity, not common-preparation identity. The common preparation fits atomic references, configuration weights, and the fixed harness membership; it consumes neither value, so a batch or precision edit must not retire prepared P1/P2/common science, while it does still retire the P3 execution descendants whose trajectory it changes.
+
 ### Objective and weighting ownership
 
 Three weighting owners are kept distinct and are applied at different layers:
 
-- `[objective]` (`TrainingObjectivePolicy`) owns the **global** loss-component coefficients, by default `energy : forces : stress = 1 : 10 : 1`. They are emitted explicitly into every generated MACE configuration - target-size candidate, post-selection CV, and fresh final production - so MACE's own `forces_weight = 100` default is never in effect;
+- `[objective]` (`TrainingObjectivePolicy`) owns the **global** loss-component coefficients, by default `energy : forces : stress = 1 : 10 : 1`. They are emitted explicitly into every generated MACE configuration - target-size candidate, post-selection CV, and fresh final production - so MACE's own `forces_weight = 100` default is never in effect. It does not own the executable loss *family*, which belongs to the canonical MACE method/architecture owner;
 - `[weighting]` (`ConfigurationWeightPolicy`) owns the **per-configuration** weight, exported as `config_weight`;
 - per-frame property weights are **local availability masks**: `1.0` when the canonical label is present, `0.0` when it is absent. They are never per-frame copies of the global ratio.
 

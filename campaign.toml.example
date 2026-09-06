@@ -169,10 +169,27 @@ policy_generation = "train2"
 # explicit per-method tables below for new campaigns.
 device = "cuda"
 dtype = "float32"
+# The shared scientific optimizer settings below are resolved exactly once and
+# feed both the recorded post-selection method identity and the optimizer that
+# actually executes, so an explicit value here changes both. Omitting a key
+# resolves the same default on both sides.
+#
+# `learning_rate` and `ema_decay` are the post-selection/general training
+# authority. They do NOT set the target-size screen learning rate or EMA decay:
+# the screen derives those from
+# [target_data.size_convergence.optimizer_normalization] and the candidate's
+# ceil(N/batch_size) update geometry.
 learning_rate = 1.0e-4
 batch_size = 2
 valid_batch_size = 2
-# 0 chooses a CPU/RAM-bounded DataLoader worker count.
+ema = true
+ema_decay = 0.99999
+amsgrad = true
+weight_decay = 1.0e-6
+clip_grad = 10.0
+# 0 chooses a CPU/RAM-bounded DataLoader worker count. Worker count is pure
+# resource realization: it is not method identity and is not target-size
+# scientific currentness, so it may be retuned mid-screen.
 num_workers = 0
 estimated_loader_memory_mib_per_worker = 256.0
 max_num_epochs = 30

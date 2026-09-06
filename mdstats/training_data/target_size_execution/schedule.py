@@ -35,7 +35,7 @@ from ..train2_policy import (
 from ..train2_runtime import Train2RuntimePlan
 
 TARGET_SIZE_SCREEN_SCHEDULE_SCHEMA = "mdstats.target-size.screen-schedule.v2"
-TARGET_SIZE_SEED_NEUTRAL_POLICY_SCHEMA = "mdstats.target-size.seed-neutral-policy.v1"
+TARGET_SIZE_SEED_NEUTRAL_POLICY_SCHEMA = "mdstats.target-size.seed-neutral-policy.v2"
 TARGET_SIZE_OPTIMIZER_NORMALIZATION_SCHEMA = (
     "mdstats.target-size.optimizer-normalization-policy.v1"
 )

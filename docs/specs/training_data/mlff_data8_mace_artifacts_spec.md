@@ -173,7 +173,9 @@ Local property weights are availability masks - `1.0` when the canonical label
 is present, `0.0` when it is absent - and SHALL NOT carry per-frame copies of
 the global coefficient ratio.
 
-The loss family is part of model/training-method identity. Model reconstruction
+`TrainingObjectivePolicy` owns the global component coefficients only; it SHALL
+NOT carry a loss-family field. The loss family is part of model/training-method
+identity, owned by the canonical MACE method/architecture owner. Model reconstruction
 records it, and pinned MACE derives the same `compute_stress` / `compute_virials`
 output configuration for it as for the retired family, so reconstruction and
 EVAL2 semantics are preserved while the identity now names what actually

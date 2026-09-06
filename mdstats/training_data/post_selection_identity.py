@@ -37,6 +37,11 @@ from ._common import (
     validate_digest,
 )
 from .campaign_post_selection import PostSelectionError
+from .training_settings import (
+    resolve_binary_model_dtype,
+    resolve_shared_optimizer_settings as _resolve_shared_optimizer_settings,
+    shared_optimizer_settings_payload,
+)
 
 POST_SELECTION_METHOD_IDENTITY_SCHEMA = "mdstats.post-selection-method-identity.v1"
 CV_VALIDATION_POLICY_IDENTITY_SCHEMA = "mdstats.post-selection-cv-policy-identity.v1"
@@ -664,32 +669,11 @@ class FinalProductionPolicyIdentity:
 # ---------------------------------------------------------------------------
 
 
-def resolve_shared_optimizer_settings(config: Mapping[str, Any]) -> dict[str, Any]:
-    """The optimizer settings CV and final production must share.
-
-    The optimizer *seed*, the epoch *budget*, and worker counts are excluded on
-    purpose: seeds are per-run identity, budgets are role-specific policy, and
-    worker counts are a resource choice with no scientific meaning.
-    """
-
-    training = _table(config, "training")
-    if "optimizer" in training:
-        opt_raw = str(training.get("optimizer")).strip().lower()
-        if opt_raw not in {"adam", "adamw", "sgd", "amsgrad", ""}:
-            raise TrainingDataInputError(f"Unsupported [training].optimizer: {opt_raw}")
-        if opt_raw and opt_raw != "adam":
-            raise TrainingDataInputError(f"Unsupported [training].optimizer: {opt_raw}")
-    return {
-        "learning_rate": float(training.get("learning_rate", 1.0e-4)),
-        "batch_size": int(training.get("batch_size", 4)),
-        "valid_batch_size": int(training.get("valid_batch_size", 4)),
-        "eval_interval": int(training.get("eval_interval", 1)),
-        "ema": bool(training.get("ema", True)),
-        "ema_decay": float(training.get("ema_decay", 0.99)),
-        "amsgrad": bool(training.get("amsgrad", True)),
-        "weight_decay": float(training.get("weight_decay", 5.0e-7)),
-        "clip_grad": float(training.get("clip_grad", 10.0)),
-    }
+#: P5 resolves the shared optimizer semantics through the one canonical owner.
+#: The re-export keeps the P5-facing name while removing the second, differently
+#: defaulted resolution that let method identity describe a method that never
+#: executed.
+resolve_shared_optimizer_settings = _resolve_shared_optimizer_settings
 
 
 def resolve_post_selection_foundation_identity(
@@ -990,6 +974,7 @@ class PostSelectionMethodPolicies:
     device: str
     mace_architecture: dict[str, Any]
     mace_architecture_digest: str
+    default_dtype: str = "float32"
     foundation_potential_identity: Any = None
     foundation_model: str | None = None
     foundation_head: str | None = None
@@ -1177,16 +1162,12 @@ def resolve_post_selection_method_policies(
     configuration_weight_policy = resolve_configuration_weight_policy(config)
     atomic_reference_policy = resolve_atomic_reference_fit_policy(config)
 
-    default_dtype = str(
-        model.get(
-            "dtype",
-            training.get("dtype", training.get("default_dtype", "float64")),
-        )
-    ).strip()
-    if default_dtype not in {"float32", "float64"}:
-        raise TrainingDataInputError(
-            f"Unsupported [training].default_dtype: '{default_dtype}'. Accepted values are 'float32' or 'float64'."
-        )
+    # The learned-model dtype is resolved by the one binary precision authority
+    # that executable optimizer construction uses.  Independently defaulting P5
+    # identity to FP64 while the campaign executes FP32 is exactly the
+    # identity/execution split this owner must not reintroduce.
+    default_dtype = resolve_binary_model_dtype(config)
+    shared_optimizer = _resolve_shared_optimizer_settings(config)
 
     f_head_configured = training.get(
         "foundation_head",
@@ -1218,7 +1199,6 @@ def resolve_post_selection_method_policies(
         else None
     )
 
-    batch_size = int(training.get("batch_size", 4))
     common_training = TargetSizeCommonTrainingPolicy(
         objective_policy=objective_policy,
         configuration_weight_policy=configuration_weight_policy,
@@ -1226,8 +1206,6 @@ def resolve_post_selection_method_policies(
         replay_exposure_policy_digest=replay_exposure_policy_digest,
         foundation_checkpoint_digest=foundation_checkpoint_digest,
         selected_head_name=target_head_name,
-        batch_size=batch_size,
-        default_dtype=default_dtype,
         harness_validation_frame_count=int(
             training.get("harness_validation_frame_count", 4)
         ),
@@ -1269,7 +1247,9 @@ def resolve_post_selection_method_policies(
     return PostSelectionMethodPolicies(
         common_training=common_training,
         learning_rate_schedule=LearningRateSchedulePolicy(
-            base_learning_rate=float(training.get("learning_rate", 1.0e-4)),
+            # One canonical resolved value; never a second independent read of
+            # ``[training].learning_rate``.
+            base_learning_rate=shared_optimizer["learning_rate"],
             warmup_end_fraction=float(
                 training.get("train2_warmup_end_fraction", 0.05)
             ),
@@ -1306,6 +1286,7 @@ def resolve_post_selection_method_policies(
         device=str(training.get("device", "cuda")),
         mace_architecture=mace_architecture,
         mace_architecture_digest=mace_architecture_digest,
+        default_dtype=default_dtype,
         foundation_potential_identity=foundation_identity,
         foundation_model=str(Path(f_model_raw).resolve()) if f_model_raw else None,
         foundation_head=resolved_foundation_head if f_model_raw else None,
@@ -1331,7 +1312,12 @@ def resolve_post_selection_method_identity(
         resolve_post_selection_method_policies(config) if policies is None else policies
     )
     return PostSelectionMethodIdentity(
-        method_recipe_version="mdstats.post-selection-method.2026-08.v1",
+        # Identity cutover: the shared optimizer semantics and the learned-model
+        # dtype now come from the canonical resolvers that execution uses.  Old
+        # evidence may have executed different effective values than its
+        # identity claimed, so it must not authenticate under the corrected
+        # method.
+        method_recipe_version="mdstats.post-selection-method.2026-09.v2",
         training_mode=resolved.training_mode,
         common_training_policy_digest=resolved.common_training.content_digest,
         learning_rate_schedule_policy_digest=(
@@ -1342,7 +1328,7 @@ def resolve_post_selection_method_identity(
         ),
         checkpoint_selection_policy_digest=resolved.checkpoint_selection.policy_digest,
         shared_optimizer_settings_digest=digest(
-            resolve_shared_optimizer_settings(config)
+            shared_optimizer_settings_payload(config)
         ),
         replay_exposure_policy_digest=(
             resolved.common_training.replay_exposure_policy_digest
@@ -1350,7 +1336,7 @@ def resolve_post_selection_method_identity(
         extxyz_policy_digest=resolved.extxyz.policy_digest,
         mace_architecture_digest=resolved.mace_architecture_digest,
         checkpoint_interval_epochs=resolved.checkpoint_interval_epochs,
-        default_dtype=str(resolved.common_training.default_dtype),
+        default_dtype=str(resolved.default_dtype),
         device=resolved.device,
         acceleration_backend=resolved.acceleration_backend,
     )

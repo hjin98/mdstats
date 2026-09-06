@@ -40,24 +40,56 @@ from .schedule import (
 
 TARGET_SIZE_EXECUTION_CONTEXT_SCHEMA = "mdstats.target-size.execution-context.v1"
 
+#: Fields ``MaceOptimizerPolicy`` carries that are *not* target-size screen
+#: scientific identity.
+#:
+#: ``seed`` and the acceleration realization are candidate-local and rebound by
+#: :func:`bind_candidate_optimizer_policy`.  The remaining five are the generic
+#: carrier's execution/role state that the screen either replaces or does not
+#: consume:
+#:
+#: * ``learning_rate`` / ``ema_decay`` -- the screen's LR and EMA-decay
+#:   authority is the target-size optimizer-normalization policy, which derives
+#:   ``LR_N`` and ``beta_N`` from the reference values and ``ceil(N/B)``
+#:   geometry.  The generic ``[training]`` values are the post-selection
+#:   authority and never reach screen training.
+#: * ``num_workers`` -- pure resource realization.
+#: * ``valid_batch_size`` -- fixed non-controlling harness-validation execution
+#:   geometry; it moves no parameter trajectory, LR schedule, checkpoint
+#:   admissibility, or target-size ranking.
+#: * ``eval_interval`` -- not emitted by the candidate MACE configuration at
+#:   all, so it cannot define target-size scientific identity.
+#:
+#: None of them may retire an otherwise identical target-size screen.
 _SEED_NEUTRAL_EXCLUDED_FIELDS = (
     "seed",
     "acceleration_realization_digest",
     "resolved_acceleration_kernel_mode",
+    "learning_rate",
+    "ema_decay",
+    "num_workers",
+    "valid_batch_size",
+    "eval_interval",
 )
 
 
 def seed_neutral_optimizer_policy_digest(
     optimizer_policy: MaceOptimizerPolicy,
 ) -> str:
-    """Canonical seed-neutral training-policy identity.
+    """Canonical seed-neutral target-size training-policy identity.
 
-    The current ``MaceOptimizerPolicy`` embeds ``seed`` (and per-realization
-    acceleration fields that are bound per candidate instead).  A
-    candidate-specific optimizer-policy digest is therefore not a valid
-    global context: the seed-neutral identity removes exactly those fields,
-    and every candidate policy must equal the template except for the
-    authorized seed and the N-derived realization.
+    This is the one target-size optimizer-template projection.  Fresh screen
+    construction, restart authority construction, active-candidate resume
+    validation, and terminal/currentness reconstruction all derive the screen's
+    scientific training identity from exactly this function, so they cannot
+    disagree about what the screen's method is.
+
+    The generic ``MaceOptimizerPolicy`` is a broad execution carrier.  The
+    projection keeps only the fields that actually change the target-size
+    training trajectory -- ``batch_size`` (which fixes ``ceil(N/B)``), EMA
+    enabled, AMSGrad, weight decay, gradient clipping, learned-model dtype and
+    critical precision, device/acceleration policy, and the full-screen ``n3``
+    horizon -- and drops :data:`_SEED_NEUTRAL_EXCLUDED_FIELDS`.
     """
 
     payload = dict(optimizer_policy._payload())
@@ -73,8 +105,15 @@ def validate_candidate_optimizer_policy(
     *,
     authorized_seed: int,
 ) -> None:
-    """Require a candidate policy to equal the seed-neutral template except
-    for the authorized optimizer seed."""
+    """Require a candidate policy to be the seed-neutral template plus the
+    authorized optimizer seed.
+
+    Equality is over the *scientific* projection, so a candidate that differs
+    only in execution-only launch settings (workers, harness-validation batch
+    width, evaluation interval, or the generic post-selection LR/EMA-decay
+    fields the screen does not consume) is the same screen method and is
+    accepted; any scientific drift is not.
+    """
 
     if seed_neutral_optimizer_policy_digest(candidate_policy) != validate_digest(
         template_digest, name="template_digest"
@@ -119,8 +158,9 @@ def bind_candidate_optimizer_policy(
 ) -> MaceOptimizerPolicy:
     """Recombine the seed-neutral template with one candidate's local identity.
 
-    The template excludes exactly ``seed`` and the per-candidate acceleration
-    realization; this is the single place that puts them back.  "Policy for
+    Of the fields the seed-neutral projection drops, ``seed`` and the
+    per-candidate acceleration realization are the two that a candidate must
+    carry concretely; this is the single place that puts them back.  "Policy for
     new work" and "policy for replaying already accepted evidence" therefore
     differ only in which acceleration realization the caller supplies -- the
     currently authorized one, or the one the persisted trajectory bound --

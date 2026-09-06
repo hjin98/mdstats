@@ -42,7 +42,7 @@ from ..target_size_experiment import (
     target_training_prefix_digest,
 )
 
-TARGET_SIZE_COMMON_POLICY_SCHEMA = "mdstats.target-size.common-training-policy.v2"
+TARGET_SIZE_COMMON_POLICY_SCHEMA = "mdstats.target-size.common-training-policy.v3"
 TARGET_SIZE_COMMON_ATOMIC_REFERENCE_SCHEMA = (
     "mdstats.target-size.common-atomic-reference.v1"
 )
@@ -77,6 +77,12 @@ class TargetSizeCommonTrainingPolicy:
     here or derived once by the common preparation built under this policy.
     The policy never carries an optimizer seed, a candidate size, an M-rung,
     or any evaluation/CV/held-out identity.
+
+    It also carries no training *execution* state.  Training batch size and the
+    learned-model dtype change what the optimizer does, not what the common fit
+    produces, so they belong to the canonical shared optimizer/precision owners
+    and to P3 execution identity.  Storing them here would make an unrelated
+    batch or precision edit invalidate P1/P2/common fitted science.
     """
 
     objective_policy: TrainingObjectivePolicy = field(
@@ -92,8 +98,6 @@ class TargetSizeCommonTrainingPolicy:
     foundation_checkpoint_digest: str | None = None
     selected_head_name: str | None = None
     eval2_metric_policy_digest: str = EVAL2_TARGET_METRIC_POLICY_DIGEST
-    batch_size: int = 4
-    default_dtype: str = "float64"
     harness_validation_frame_count: int = 4
 
     def __post_init__(self) -> None:
@@ -125,15 +129,11 @@ class TargetSizeCommonTrainingPolicy:
             self.selected_head_name
         ).strip():
             raise TrainingDataInputError("selected_head_name must be non-empty.")
-        batch = _positive_int(self.batch_size, name="batch_size")
-        object.__setattr__(self, "batch_size", batch)
         harness = _positive_int(
             self.harness_validation_frame_count,
             name="harness_validation_frame_count",
         )
         object.__setattr__(self, "harness_validation_frame_count", harness)
-        if self.default_dtype not in {"float32", "float64"}:
-            raise TrainingDataInputError("Unsupported common default dtype.")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -145,8 +145,6 @@ class TargetSizeCommonTrainingPolicy:
             "foundation_checkpoint_digest": self.foundation_checkpoint_digest,
             "selected_head_name": self.selected_head_name,
             "eval2_metric_policy_digest": self.eval2_metric_policy_digest,
-            "batch_size": self.batch_size,
-            "default_dtype": self.default_dtype,
             "harness_validation_frame_count": self.harness_validation_frame_count,
         }
 
@@ -185,8 +183,6 @@ class TargetSizeCommonTrainingPolicy:
                 else str(payload["selected_head_name"])
             ),
             eval2_metric_policy_digest=str(payload["eval2_metric_policy_digest"]),
-            batch_size=int(payload["batch_size"]),
-            default_dtype=str(payload["default_dtype"]),
             harness_validation_frame_count=int(
                 payload["harness_validation_frame_count"]
             ),
@@ -1272,17 +1268,17 @@ def resolve_target_size_common_training_policy(
     if not isinstance(training, Mapping):
         raise TrainingDataInputError("[training] must be a table.")
     defaults = TargetSizeCommonTrainingPolicy()
-    # ``batch_size``/``harness_validation_frame_count`` are read from the same
-    # keys, with the same defaults, that post-selection uses, so the two sides
-    # cannot drift apart.  The screen is one-head scratch training with replay
-    # exposure ``none`` and no foundation checkpoint, so the remaining fields of
-    # this policy are not configurable here.
+    # ``harness_validation_frame_count`` is read from the same key, with the
+    # same default, that post-selection uses, so the two sides cannot drift
+    # apart.  The screen is one-head scratch training with replay exposure
+    # ``none`` and no foundation checkpoint, so the remaining fields of this
+    # policy are not configurable here.  Batch size and learned-model dtype are
+    # deliberately absent: they are shared optimizer/precision semantics that
+    # change training execution, not the common fitted product.
     return TargetSizeCommonTrainingPolicy(
         objective_policy=resolve_training_objective_policy(config),
         configuration_weight_policy=resolve_configuration_weight_policy(config),
         atomic_reference_policy=resolve_atomic_reference_fit_policy(config),
-        batch_size=int(training.get("batch_size", defaults.batch_size)),
-        default_dtype=defaults.default_dtype,
         harness_validation_frame_count=int(
             training.get(
                 "harness_validation_frame_count",

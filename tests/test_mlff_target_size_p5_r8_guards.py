@@ -427,11 +427,16 @@ def test_claims_14_15_16_invalid_dtype_mode_and_optimizer_fail_closed():
     Claim 15: Invalid training mode rejects.
     Claim 16: Unsupported optimizer family remains rejected.
     """
-    # Claim 14: invalid dtype
+    # Claim 14: invalid dtype.  P5 identity resolves the learned-model dtype
+    # through the one binary precision authority that executable optimizer
+    # construction uses, so an unsupported dtype fails closed there rather than
+    # being coerced or defaulted independently.
+    from mdstats.training_data.training_settings import CampaignCliError
+
     cfg_invalid_dtype = {"training": {"dtype": "bfloat16"}}
-    with pytest.raises(TrainingDataInputError) as exc_info:
+    with pytest.raises(CampaignCliError) as exc_info:
         resolve_post_selection_method_policies(cfg_invalid_dtype)
-    assert "Unsupported [training].default_dtype: 'bfloat16'" in str(exc_info.value)
+    assert "Unsupported learned-model dtype 'bfloat16'" in str(exc_info.value)
 
     # Claim 15: invalid training mode
     cfg_invalid_mode = {"training": {"mode": "unsupported_reinforcement_learning"}}

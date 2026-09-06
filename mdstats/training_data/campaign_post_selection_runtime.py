@@ -663,7 +663,7 @@ def evaluate_post_selection_run_candidates(
                         context.method_policies.common_training.eval2_metric_policy_digest
                     ),
                     "default_dtype": (
-                        context.method_policies.common_training.default_dtype
+                        context.method_policies.default_dtype
                     ),
                     "device": context.method_policies.device,
                 }
@@ -682,7 +682,7 @@ def evaluate_post_selection_run_candidates(
                     foundation_identity=foundation_identity,
                     foundation_head=foundation_head,
                     device=context.method_policies.device,
-                    default_dtype=context.method_policies.common_training.default_dtype,
+                    default_dtype=context.method_policies.default_dtype,
                 )
                 try:
                     baseline_replay_metrics = evaluate_post_selection_dataset(

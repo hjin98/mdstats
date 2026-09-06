@@ -333,9 +333,14 @@ def derive_target_size_candidate_realization(
             }
         )
     )
+    # ``valid_batch_size`` is deliberately absent.  The harness validation set is
+    # fixed and non-controlling, so its loader width changes no gradient
+    # trajectory, LR schedule, checkpoint admissibility, or ranking; including it
+    # here would make an execution-only resource edit invalidate a scientifically
+    # identical candidate mid-screen.
     loader_geometry_digest = digest(
         {
-            "schema": "mdstats.target-size.loader-geometry.v1",
+            "schema": "mdstats.target-size.loader-geometry.v2",
             "candidate_membership_digest": projection.candidate_membership_digest,
             "harness_validation_membership_digest": (
                 common.harness_validation_membership_digest
@@ -343,7 +348,6 @@ def derive_target_size_candidate_realization(
             "target_train_count": target_train_count,
             "replay_train_count": replay,
             "batch_size": batch_size,
-            "valid_batch_size": optimizer_policy.valid_batch_size,
         }
     )
     # Optimizer-progress normalization is derived once here, from the *full*
@@ -947,6 +951,50 @@ class TargetSizeCandidateMaterialization:
         return result
 
 
+#: Candidate MACE-configuration keys that are execution-only launch settings.
+#:
+#: They are written into the immutable materialization because the run that
+#: created it actually launched with those values, so they are genuine
+#: historical execution provenance.  They are *not* a requirement that a later
+#: invocation resolve the same value: a mid-screen worker-count or
+#: harness-validation batch-width change must not invalidate a scientifically
+#: identical published materialization.  Everything else in the configuration --
+#: membership, common preparation, scientific optimizer fields, realized LR/EMA,
+#: architecture, objective/loss, precision, artifacts, lineage -- is re-derived
+#: and compared exactly.
+TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS = ("num_workers", "valid_batch_size")
+
+
+def _scientific_candidate_config(config: Mapping[str, Any]) -> dict[str, Any]:
+    """The scientific projection of one candidate MACE configuration."""
+
+    return {
+        key: value
+        for key, value in config.items()
+        if key not in TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS
+    }
+
+
+def _validate_persisted_execution_only_config(config: Mapping[str, Any]) -> None:
+    """Authenticate persisted execution-only values as well-formed content."""
+
+    for key in TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS:
+        if key not in config:
+            raise TrainingDataInputError(
+                f"Candidate MACE configuration is missing execution setting {key!r}."
+            )
+    workers = config["num_workers"]
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 0:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration num_workers must be a non-negative integer."
+        )
+    valid_batch = config["valid_batch_size"]
+    if isinstance(valid_batch, bool) or not isinstance(valid_batch, int) or valid_batch <= 0:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration valid_batch_size must be a positive integer."
+        )
+
+
 def _mace_config_for_candidate(
     *,
     trajectory: TargetSizeCandidateTrajectory,
@@ -1173,7 +1221,19 @@ def validate_target_size_materialization(
     frame_data_by_run: Mapping[str, Any] | None = None,
     frame_array_index: Mapping[str, tuple[Any, Any, int]] | None = None,
 ) -> None:
-    """Restart authentication of a durable candidate materialization."""
+    """Restart authentication of a durable candidate materialization.
+
+    Scientific content is re-derived from current accepted authority and must
+    match exactly.  Persisted execution-only launch settings
+    (:data:`TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS`) are authenticated as
+    well-formed materialization content but are *not* required to equal the
+    current invocation's resource settings, so a mid-screen worker-count or
+    harness validation batch-width change cannot invalidate a scientifically
+    valid trajectory.  Membership, common preparation, scientific optimizer
+    fields, realized LR/EMA, architecture, objective/loss, precision,
+    target/harness artifacts, and checkpoint lineage remain strongly
+    authenticated.
+    """
 
     if record.trajectory_digest != trajectory.content_digest:
         raise TrainingDataInputError(
@@ -1307,13 +1367,17 @@ def validate_target_size_materialization(
                 extxyz_policy=active_extxyz_policy,
                 mace_architecture=payload["mace_architecture"],
             )
-            if record.mace_config_digest != digest(expected_config):
+            _validate_persisted_execution_only_config(payload)
+            if digest(_scientific_candidate_config(payload)) != digest(
+                _scientific_candidate_config(expected_config)
+            ):
                 raise TrainingDataInputError(
                     "Candidate MACE configuration does not match re-derived configuration."
                 )
 
 
 __all__ = [
+    "TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS",
     "TARGET_SIZE_MACE_CONFIG_SCHEMA",
     "TARGET_SIZE_MATERIALIZATION_SCHEMA",
     "TARGET_SIZE_REALIZATION_SCHEMA",
