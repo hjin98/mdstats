@@ -1127,6 +1127,83 @@ def _discard_unaccepted_first_rung_materialization(
 def _execute_candidate_cell(
     screen: _ScreenContext, *, target_size: int, optimizer_seed: int, boundary: int, state: Any
 ) -> Any:
+    """Run one candidate cell, fencing first-rung scratch by logical cell.
+
+    The first-rung materialization directory is the deterministic identity of a
+    logical ``(target_size, optimizer_seed)`` cell.  Its adjacent advisory lock
+    is an execution fence, not scientific state: it serializes cleanup,
+    materialization, checkpoint creation, and accepted-progress publication for
+    that one cell, and the kernel releases it if the writer dies.  A waiter
+    re-authenticates durable progress after acquiring the fence before it can
+    remove or recreate any scratch.
+    """
+
+    boundary_index = screen.schedule.fidelity_epochs.index(int(boundary))
+    if boundary_index != 0:
+        return _execute_candidate_cell_unlocked(
+            screen,
+            target_size=target_size,
+            optimizer_seed=optimizer_seed,
+            boundary=boundary,
+            state=state,
+        )
+
+    from dataclasses import replace as _replace
+
+    from .target_size_execution import (
+        build_target_size_candidate_trajectory,
+        derive_active_boundary_requirements,
+        recover_authenticated_boundary_progress,
+    )
+    from .target_size_execution.persistence import artifact_publication_lock
+
+    optimizer = _replace(screen.optimizer_policy, seed=int(optimizer_seed))
+    trajectory = build_target_size_candidate_trajectory(
+        screen.aggregate.definition,
+        screen.context,
+        screen.authorities.common,
+        screen.schedule,
+        target_size=int(target_size),
+        optimizer_policy=optimizer,
+        optimizer_seed=int(optimizer_seed),
+    )
+    materialization_directory = (
+        screen.authority.bulk_root("materialization") / trajectory.content_digest
+    )
+    cell = (int(target_size), int(optimizer_seed))
+    requirements = derive_active_boundary_requirements(
+        screen.aggregate.definition, state
+    )
+    if (
+        requirements is None
+        or int(requirements[0]) != int(boundary)
+        or cell not in tuple(requirements[2])
+    ):
+        raise TargetSizeRuntimeError(
+            "The first-rung cell is not part of the exact active P2 boundary matrix."
+        )
+    with artifact_publication_lock(materialization_directory):
+        recovered = recover_authenticated_boundary_progress(
+            screen.root,
+            screen.window,
+            screen.authority,
+            boundary_epoch=int(boundary),
+            active_keys=requirements[2],
+        )
+        if cell in recovered:
+            return recovered[cell]
+        return _execute_candidate_cell_unlocked(
+            screen,
+            target_size=int(target_size),
+            optimizer_seed=int(optimizer_seed),
+            boundary=int(boundary),
+            state=state,
+        )
+
+
+def _execute_candidate_cell_unlocked(
+    screen: _ScreenContext, *, target_size: int, optimizer_seed: int, boundary: int, state: Any
+) -> Any:
     """Run one surviving ``(N, seed)`` cell through the real P3 owners."""
 
     from dataclasses import replace as _replace

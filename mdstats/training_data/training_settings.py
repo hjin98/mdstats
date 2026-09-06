@@ -20,7 +20,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from ._common import TrainingDataInputError
+from ._common import (
+    TrainingDataInputError,
+    strict_bool,
+    strict_finite_real,
+    strict_positive_int,
+)
 
 
 class CampaignCliError(RuntimeError):
@@ -44,11 +49,7 @@ def _strict_bool(value: Any, *, name: str) -> bool:
     different training method, so the domain is exact.
     """
 
-    if not isinstance(value, bool):
-        raise TrainingDataInputError(
-            f"[training].{name} must be a boolean; got {value!r}."
-        )
-    return value
+    return strict_bool(value, name=f"[training].{name}")
 
 
 def _strict_positive_int(value: Any, *, name: str) -> int:
@@ -59,13 +60,7 @@ def _strict_positive_int(value: Any, *, name: str) -> int:
     change the update geometry the whole size normalization rests on.
     """
 
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TrainingDataInputError(
-            f"[training].{name} must be an integer; got {value!r}."
-        )
-    if value <= 0:
-        raise TrainingDataInputError(f"[training].{name} must be positive; got {value!r}.")
-    return int(value)
+    return strict_positive_int(value, name=f"[training].{name}")
 
 
 def _strict_finite_real(
@@ -84,36 +79,14 @@ def _strict_finite_real(
     Booleans and strings are rejected rather than coerced.
     """
 
-    import math
-
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TrainingDataInputError(
-            f"[training].{name} must be a real number; got {value!r}."
-        )
-    result = float(value)
-    if not math.isfinite(result):
-        raise TrainingDataInputError(
-            f"[training].{name} must be finite; got {value!r}."
-        )
-    if minimum is not None:
-        if exclusive_minimum and not result > minimum:
-            raise TrainingDataInputError(
-                f"[training].{name} must be greater than {minimum}; got {value!r}."
-            )
-        if not exclusive_minimum and not result >= minimum:
-            raise TrainingDataInputError(
-                f"[training].{name} must be at least {minimum}; got {value!r}."
-            )
-    if maximum is not None:
-        if exclusive_maximum and not result < maximum:
-            raise TrainingDataInputError(
-                f"[training].{name} must be less than {maximum}; got {value!r}."
-            )
-        if not exclusive_maximum and not result <= maximum:
-            raise TrainingDataInputError(
-                f"[training].{name} must be at most {maximum}; got {value!r}."
-            )
-    return result
+    return strict_finite_real(
+        value,
+        name=f"[training].{name}",
+        minimum=minimum,
+        maximum=maximum,
+        exclusive_minimum=exclusive_minimum,
+        exclusive_maximum=exclusive_maximum,
+    )
 
 
 def _training_table(config: Mapping[str, Any]) -> Mapping[str, Any]:

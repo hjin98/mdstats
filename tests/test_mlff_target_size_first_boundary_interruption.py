@@ -24,6 +24,9 @@ MACE numerical work is substituted, below those owners.
 from __future__ import annotations
 
 import json
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -208,3 +211,88 @@ def test_the_first_rung_has_no_continuation_path_at_all(tmp_path: Path):
             state=env["aggregate"].reducer_state,
         )
     assert "no predecessor continuation" in str(excinfo.value)
+
+
+def test_same_first_rung_cell_has_one_live_writer_and_one_reuse(tmp_path: Path):
+    """A waiting writer cannot delete or duplicate a live first-rung attempt."""
+
+    from mdstats.training_data import campaign_target_size_runtime as runtime
+
+    config, paths = _prepared(tmp_path)
+    store = CampaignStore(paths.state_db)
+    try:
+        revision = load_target_size_campaign_revision(store)
+        harness = _RecordingHarness()
+
+        class _BlockingTrainer:
+            def __init__(self):
+                self.entered = threading.Event()
+                self.release = threading.Event()
+                self.calls = 0
+                self.first_checkpoint_contents: tuple[str, ...] = ()
+                self.materialization_directory: Path | None = None
+
+            def __call__(self, request):
+                self.calls += 1
+                self.materialization_directory = Path(request.materialization_directory)
+                (self.materialization_directory / "live-writer.sentinel").write_text(
+                    "writer-a", encoding="utf-8"
+                )
+                self.first_checkpoint_contents = tuple(
+                    sorted(path.name for path in Path(request.checkpoint_directory).iterdir())
+                )
+                self.entered.set()
+                if not self.release.wait(timeout=30):
+                    raise TimeoutError("blocked first-rung test writer was not released")
+                return harness.train(request)
+
+        blocking = _BlockingTrainer()
+        screen = runtime.build_screen_context(
+            cli._load_config(config)[0],
+            paths,
+            store,
+            revision,
+            trainer=blocking,
+            inference_evaluator=harness.evaluate,
+        )
+        state = screen.aggregate.reducer_state
+        target_size = int(screen.aggregate.definition.qualified_candidate_sizes[0])
+        optimizer_seed = int(screen.aggregate.definition.policy.optimizer_seeds[0])
+        boundary = int(screen.schedule.n1)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(
+                runtime._execute_candidate_cell,
+                screen,
+                target_size=target_size,
+                optimizer_seed=optimizer_seed,
+                boundary=boundary,
+                state=state,
+            )
+            assert blocking.entered.wait(timeout=30)
+            assert blocking.materialization_directory is not None
+            sentinel = blocking.materialization_directory / "live-writer.sentinel"
+            assert sentinel.read_text(encoding="utf-8") == "writer-a"
+
+            second = executor.submit(
+                runtime._execute_candidate_cell,
+                screen,
+                target_size=target_size,
+                optimizer_seed=optimizer_seed,
+                boundary=boundary,
+                state=state,
+            )
+            # A remains inside the cell fence, so B cannot finish, clean the
+            # workspace, or reach the trainer while A is paused.
+            time.sleep(0.2)
+            assert not second.done()
+            blocking.release.set()
+            first_record = first.result(timeout=60)
+            second_record = second.result(timeout=60)
+
+        assert first_record.content_digest == second_record.content_digest
+        assert blocking.calls == 1
+        assert sentinel.is_file()
+        assert sentinel.read_text(encoding="utf-8") == "writer-a"
+    finally:
+        store.close()

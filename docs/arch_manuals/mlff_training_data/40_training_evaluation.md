@@ -208,6 +208,15 @@ AMSGrad flags must be actual booleans rather than truth-normalized values.
 `MaceOptimizerPolicy` repeats those invariants in its constructor, because it is
 independently constructible and independently deserialized.
 
+The same fail-closed, validate-before-canonicalization rule applies to the
+target-size normalization reference policy, `TrainingObjectivePolicy`, and
+`ConfigurationWeightPolicy`, including their current-schema readers. Real
+values must be finite and in their declared ranges, integer values must be
+actual integers, boolean values must be actual booleans, and collection
+elements must satisfy their declared domains. A malformed current-schema value
+is rejected before it can affect identity, export, or execution; only an
+explicitly supported historical reader may preserve a historical representation.
+
 Because historical evidence could previously record an identity whose defaults
 were never the ones execution applied, the method recipe carries an explicit
 version. Evidence produced under the earlier resolution cannot authorize

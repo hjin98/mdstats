@@ -105,6 +105,15 @@ mdstats reductions, geometry/statistical arithmetic, and persistent bookkeeping
 remain FP64. The acceleration backend, MACE interface, and runtime identity
 are bound by the doctor/current protocol record.
 
+Policy configuration is fail-closed at the existing semantic owners. Finite
+real fields reject booleans and strings, integer fields require actual
+integers, boolean fields require actual booleans, and collection elements are
+validated before canonical ordering or float conversion. This includes the
+target-size normalization reference, global objective, and configuration-weight
+policies. Current-schema readers reject malformed values before identity or
+execution; only an explicitly supported historical reader may apply a
+historical representation.
+
 ## Command behavior
 
 ### `init`

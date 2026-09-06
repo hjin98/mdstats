@@ -173,6 +173,16 @@ Local property weights are availability masks - `1.0` when the canonical label
 is present, `0.0` when it is absent - and SHALL NOT carry per-frame copies of
 the global coefficient ratio.
 
+The `[objective]` and `[weighting]` policy readers validate raw configuration
+and current-schema values before canonicalization. Global coefficients are
+finite nonnegative reals with at least one positive value; the configuration
+equalization flag is an actual boolean; configuration multipliers and bounds
+are finite positive reals satisfying the normalized-mean constraint; and
+focus collections contain only declared string or positive-integer elements.
+Malformed current-schema values SHALL fail rather than become valid policy
+identity through `int`, `float`, or `bool` coercion. Historical representations
+remain admissible only through an explicit supported compatibility reader.
+
 `TrainingObjectivePolicy` owns the global component coefficients only; it SHALL
 NOT carry a loss-family field. The loss family is part of model/training-method
 identity, owned by the canonical MACE method/architecture owner. Model reconstruction

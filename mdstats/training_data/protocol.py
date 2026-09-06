@@ -7,7 +7,13 @@ from enum import Enum
 from typing import Any, Mapping
 import math
 
-from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+from ._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+    digest,
+    strict_string,
+    validate_digest,
+)
 from .acceleration import MaceAccelerationPolicy, MaceAccelerationKernelMode
 from .adaptive_stop import AdaptiveTrainingStopPolicy
 from .train2_policy import (
@@ -102,8 +108,12 @@ class MaceOptimizerPolicy:
             raise TrainingDataInputError("MACE epoch and seed settings are invalid.")
         if not (0.0 < self.ema_decay < 1.0) or self.weight_decay < 0.0 or self.clip_grad <= 0.0:
             raise TrainingDataInputError("MACE optimizer regularization settings are invalid.")
-        if self.default_dtype not in {"float32", "float64"}:
+        default_dtype = strict_string(
+            self.default_dtype, name="MACE optimizer default_dtype"
+        )
+        if default_dtype not in {"float32", "float64"}:
             raise TrainingDataInputError("Unsupported MACE dtype.")
+        strict_string(self.device, name="MACE optimizer device")
         if (self.acceleration_realization_digest is None) != (self.resolved_acceleration_kernel_mode is None):
             raise TrainingDataInputError(
                 "MACE optimizer acceleration realization digest/mode must be both present or both absent."
@@ -111,9 +121,20 @@ class MaceOptimizerPolicy:
         if self.acceleration_realization_digest is not None:
             object.__setattr__(
                 self, "acceleration_realization_digest",
-                validate_digest(self.acceleration_realization_digest, name="acceleration_realization_digest")
+                validate_digest(
+                    strict_string(
+                        self.acceleration_realization_digest,
+                        name="acceleration_realization_digest",
+                    ),
+                    name="acceleration_realization_digest",
+                )
             )
-            mode = MaceAccelerationKernelMode(str(self.resolved_acceleration_kernel_mode))
+            mode = MaceAccelerationKernelMode(
+                strict_string(
+                    self.resolved_acceleration_kernel_mode,
+                    name="resolved_acceleration_kernel_mode",
+                )
+            )
             if mode is MaceAccelerationKernelMode.CUEQ_UNRESOLVED:
                 raise TrainingDataInputError("MACE optimizer cannot bind an unresolved CuEq realization.")
             if mode.backend is not self.acceleration_policy.backend:
@@ -194,20 +215,20 @@ class MaceOptimizerPolicy:
         }:
             raise TrainingDataSerializationError("Unsupported MACE optimizer schema.")
         result = cls(
-            learning_rate=float(payload["learning_rate"]),
-            batch_size=int(payload["batch_size"]),
-            valid_batch_size=int(payload["valid_batch_size"]),
-            num_workers=int(payload.get("num_workers", 0)),
-            max_num_epochs=int(payload["max_num_epochs"]),
-            eval_interval=int(payload["eval_interval"]),
-            ema=bool(payload["ema"]),
-            ema_decay=float(payload["ema_decay"]),
-            amsgrad=bool(payload["amsgrad"]),
-            weight_decay=float(payload["weight_decay"]),
-            clip_grad=float(payload["clip_grad"]),
-            default_dtype=str(payload["default_dtype"]),
-            device=str(payload["device"]),
-            seed=int(payload["seed"]),
+            learning_rate=payload["learning_rate"],
+            batch_size=payload["batch_size"],
+            valid_batch_size=payload["valid_batch_size"],
+            num_workers=payload.get("num_workers", 0),
+            max_num_epochs=payload["max_num_epochs"],
+            eval_interval=payload["eval_interval"],
+            ema=payload["ema"],
+            ema_decay=payload["ema_decay"],
+            amsgrad=payload["amsgrad"],
+            weight_decay=payload["weight_decay"],
+            clip_grad=payload["clip_grad"],
+            default_dtype=payload["default_dtype"],
+            device=payload["device"],
+            seed=payload["seed"],
             critical_precision_policy=(
                 MaceCriticalPrecisionPolicy()
                 if payload.get("critical_precision_policy") is None
@@ -222,11 +243,11 @@ class MaceOptimizerPolicy:
             ),
             acceleration_realization_digest=(
                 None if payload.get("acceleration_realization_digest") is None
-                else str(payload["acceleration_realization_digest"])
+                else payload["acceleration_realization_digest"]
             ),
             resolved_acceleration_kernel_mode=(
                 None if payload.get("resolved_acceleration_kernel_mode") is None
-                else str(payload["resolved_acceleration_kernel_mode"])
+                else payload["resolved_acceleration_kernel_mode"]
             ),
             precision_schedule_policy=(
                 None

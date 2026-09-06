@@ -922,6 +922,15 @@ AMSGrad flags must be actual booleans rather than truth-normalized values.
 `MaceOptimizerPolicy` repeats those invariants in its constructor, because it is
 independently constructible and independently deserialized.
 
+The same fail-closed, validate-before-canonicalization rule applies to the
+target-size normalization reference policy, `TrainingObjectivePolicy`, and
+`ConfigurationWeightPolicy`, including their current-schema readers. Real
+values must be finite and in their declared ranges, integer values must be
+actual integers, boolean values must be actual booleans, and collection
+elements must satisfy their declared domains. A malformed current-schema value
+is rejected before it can affect identity, export, or execution; only an
+explicitly supported historical reader may preserve a historical representation.
+
 Because historical evidence could previously record an identity whose defaults
 were never the ones execution applied, the method recipe carries an explicit
 version. Evidence produced under the earlier resolution cannot authorize
@@ -1091,6 +1100,13 @@ This normalization is a control of the size-comparison **screen** only. Post-sel
 
 The normalization policy is the screen's *only* learning-rate and EMA-decay authority. General `[training].learning_rate` and `[training].ema_decay` are post-selection/general training settings; they never reach screen training and are not part of target-size scientific identity. Editing them cannot retire an otherwise identical screen.
 
+The normalization resolver and current-schema reader enforce the reference
+domain before digesting or projecting a candidate: `reference_target_size` is a
+positive integer, `reference_learning_rate` is a finite real greater than zero,
+`reference_ema_decay` is a finite real strictly between zero and one, and the
+algorithm identifier is the specification-owned string. Strings, booleans,
+fractional values, and non-finite values are rejected rather than coerced.
+
 ### What is, and is not, target-size scientific identity
 
 The target-size screen projects the generic optimizer carrier down to the fields that actually change a candidate trajectory. That projection is built once and is used identically by fresh screen construction, restart-authority construction, active-candidate resume validation, and terminal/currentness reconstruction, so those four paths cannot disagree about what the screen's method is.
@@ -1120,6 +1136,15 @@ Target-size common preparation and post-selection resolve all three through the 
 The executable loss family is MACE's weighted energy+force+stress loss (`loss = "stress"`, `WeightedEnergyForcesStressLoss`), whose native reductions consume `ref.weight` and the local property weights linearly while applying the global coefficients once. MACE's `UniversalLoss` is not used: it scales residuals inside a Huber evaluation, so its per-config property weights are not linearly equivalent to global objective coefficients, and it does not consume `config_weight` at all. The loss family is part of method identity - a checkpoint trained under a different family is not a prefix of a corrected trajectory.
 
 Candidate rungs execute through the accepted TRAIN2 runtime and are evaluated through the accepted EVAL2 owners. Expensive numerical training has exactly one substitution seam, strictly below the mdstats owner boundary; configuration resolution, authority construction, materialization, provider and checkpoint authentication, publication, reconciliation, and adoption are production code in every invocation.
+
+An unaccepted first-rung materialization is execution-local scratch. Cleanup
+and first-rung execution for a logical `(N, optimizer_seed)` cell acquire one
+exclusive execution-local fence, then recheck authenticated progress before
+reclaiming scratch. A concurrent writer therefore cannot have its live
+workspace deleted or launch duplicate training; once accepted progress exists,
+the waiter reuses that immutable evidence. The fence is not scientific state
+and releases when its process exits, so a later retry may reclaim stale scratch
+from an interrupted attempt without changing the campaign identity.
 
 ## The reducer and the terminal decision
 

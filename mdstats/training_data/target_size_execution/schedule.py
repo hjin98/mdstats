@@ -26,8 +26,15 @@ import math
 from dataclasses import dataclass, field, replace
 from typing import Any, Mapping
 
-from .._common import digest, validate_digest
-from .._common import TrainingDataInputError, TrainingDataSerializationError
+from .._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+    digest,
+    strict_finite_real,
+    strict_positive_int,
+    strict_string,
+    validate_digest,
+)
 from ..train2_policy import (
     LearningRateSchedulePolicy,
     TrainingBudgetPolicy,
@@ -53,9 +60,15 @@ TARGET_SIZE_NORMALIZATION_ALGORITHM = "batch_aware_inverse_update_scaling.v1"
 
 
 def _positive_int(value: Any, *, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise TrainingDataInputError(f"{name} must be a positive integer.")
-    return int(value)
+    return strict_positive_int(value, name=name)
+
+
+def _sequence(value: Any, *, name: str) -> tuple[Any, ...]:
+    """Accept only the list/tuple shape declared by a current schema."""
+
+    if not isinstance(value, (list, tuple)):
+        raise TrainingDataInputError(f"{name} must be a list or tuple.")
+    return tuple(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,23 +111,26 @@ class TargetSizeOptimizerNormalizationPolicy:
             "reference_target_size",
             _positive_int(self.reference_target_size, name="reference_target_size"),
         )
-        lr = float(self.reference_learning_rate)
-        if not math.isfinite(lr) or lr <= 0.0:
-            raise TrainingDataInputError(
-                "reference_learning_rate must be finite and strictly positive."
-            )
+        lr = strict_finite_real(
+            self.reference_learning_rate,
+            name="reference_learning_rate",
+            minimum=0.0,
+        )
         object.__setattr__(self, "reference_learning_rate", lr)
-        beta = float(self.reference_ema_decay)
-        if not math.isfinite(beta) or not 0.0 < beta < 1.0:
-            raise TrainingDataInputError(
-                "reference_ema_decay must be finite and satisfy 0 < beta < 1."
-            )
+        beta = strict_finite_real(
+            self.reference_ema_decay,
+            name="reference_ema_decay",
+            minimum=0.0,
+            maximum=1.0,
+        )
         object.__setattr__(self, "reference_ema_decay", beta)
-        if self.algorithm != TARGET_SIZE_NORMALIZATION_ALGORITHM:
+        algorithm = strict_string(self.algorithm, name="algorithm")
+        if algorithm != TARGET_SIZE_NORMALIZATION_ALGORITHM:
             raise TrainingDataInputError(
                 "Only the specification-owned target-size normalization algorithm "
                 f"{TARGET_SIZE_NORMALIZATION_ALGORITHM!r} is supported."
             )
+        object.__setattr__(self, "algorithm", algorithm)
 
     def reference_updates_per_epoch(self, batch_size: int) -> int:
         """``U_ref = ceil(N_ref / B)`` for the authenticated screen batch size."""
@@ -175,10 +191,10 @@ class TargetSizeOptimizerNormalizationPolicy:
                 "Unsupported target-size optimizer-normalization policy schema."
             )
         result = cls(
-            reference_target_size=int(payload["reference_target_size"]),
-            reference_learning_rate=float(payload["reference_learning_rate"]),
-            reference_ema_decay=float(payload["reference_ema_decay"]),
-            algorithm=str(payload["algorithm"]),
+            reference_target_size=payload["reference_target_size"],
+            reference_learning_rate=payload["reference_learning_rate"],
+            reference_ema_decay=payload["reference_ema_decay"],
+            algorithm=payload["algorithm"],
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -210,15 +226,16 @@ def resolve_target_size_optimizer_normalization_policy(
             "[target_data.size_convergence.optimizer_normalization] must be a table."
         )
     return TargetSizeOptimizerNormalizationPolicy(
-        reference_target_size=int(
-            table.get("reference_target_size", DEFAULT_REFERENCE_TARGET_SIZE)
+        reference_target_size=table.get(
+            "reference_target_size", DEFAULT_REFERENCE_TARGET_SIZE
         ),
-        reference_learning_rate=float(
-            table.get("reference_learning_rate", DEFAULT_REFERENCE_LEARNING_RATE)
+        reference_learning_rate=table.get(
+            "reference_learning_rate", DEFAULT_REFERENCE_LEARNING_RATE
         ),
-        reference_ema_decay=float(
-            table.get("reference_ema_decay", DEFAULT_REFERENCE_EMA_DECAY)
+        reference_ema_decay=table.get(
+            "reference_ema_decay", DEFAULT_REFERENCE_EMA_DECAY
         ),
+        algorithm=table.get("algorithm", TARGET_SIZE_NORMALIZATION_ALGORITHM),
     )
 
 
@@ -370,7 +387,9 @@ class TargetSizeScreenSchedule:
                 "Unsupported target-size screen-schedule schema."
             )
         result = cls(
-            fidelity_epochs=tuple(int(v) for v in payload["fidelity_epochs"]),
+            fidelity_epochs=_sequence(
+                payload["fidelity_epochs"], name="fidelity_epochs"
+            ),
             budget_policy=TrainingBudgetPolicy.from_dict(payload["budget_policy"]),
             learning_rate_policy=LearningRateSchedulePolicy.from_dict(
                 payload["learning_rate_policy"]

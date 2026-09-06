@@ -214,6 +214,37 @@ def test_real_loss_honours_configuration_and_local_property_weights(
     pred = _prediction(ref, energy_error=0.3, force_error=0.05, stress_error=0.02)
     reference_loss = float(loss_fn(ref=ref, pred=pred, ddp=False))
 
+    # Independently derive the expected weighted MSE from the batch tensors.
+    # This intentionally does not call any MACE loss helper: it proves that the
+    # real WeightedEnergyForcesStressLoss combines the three global coefficients
+    # and the per-configuration/local masks with the declared semantics.
+    num_atoms = ref.ptr[1:] - ref.ptr[:-1]
+    expected_energy = torch.mean(
+        ref.weight
+        * ref.energy_weight
+        * torch.square((ref["energy"] - pred["energy"]) / num_atoms)
+    )
+    repeated_weight = torch.repeat_interleave(ref.weight, num_atoms).unsqueeze(-1)
+    repeated_forces_weight = torch.repeat_interleave(
+        ref.forces_weight, num_atoms
+    ).unsqueeze(-1)
+    expected_forces = torch.mean(
+        repeated_weight
+        * repeated_forces_weight
+        * torch.square(ref["forces"] - pred["forces"])
+    )
+    expected_stress = torch.mean(
+        ref.weight.view(-1, 1, 1)
+        * ref.stress_weight.view(-1, 1, 1)
+        * torch.square(ref["stress"] - pred["stress"])
+    )
+    expected = (
+        OBJECTIVE.energy_weight * expected_energy
+        + OBJECTIVE.forces_weight * expected_forces
+        + OBJECTIVE.stress_weight * expected_stress
+    )
+    assert reference_loss == pytest.approx(float(expected))
+
     # Doubling every configuration weight doubles the loss: config_weight enters
     # MACE's reductions linearly, which is exactly what the declared
     # configuration-weight policy requires and what UniversalLoss cannot do.
