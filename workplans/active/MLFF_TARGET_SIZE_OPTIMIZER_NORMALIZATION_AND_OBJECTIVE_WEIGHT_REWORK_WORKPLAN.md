@@ -8,8 +8,8 @@ amended_date: 2026-09-06
 review_revision: 7
 reviewed_source_branch: rework/mlff-target-size-normalization-practical-ceiling
 reviewed_design_handoff_commit: 43a8b5f78880b9faaf4b023e979cb6303b1291e3
-reviewed_implementation_commit: 932cbff216f1fddb7b1102594d607975d397941b
-reviewed_assembled_source_commit: 08ceafd0acf79c92652cc27d407efc9937c16cd1
+reviewed_implementation_commit: 119fab779a79566b4262067249c8986a8a7fc978
+reviewed_assembled_source_commit: dcb0c9fc603e1f83d2657a6f4c4bb6c4e777012a
 architecture_change: narrow-methodological-rework
 amends_workplan_id: CODE-MLFF-TARGET-SIZE-SCIENTIFIC-SIMPLIFICATION-V7
 design_handoff_verdict: pass
@@ -19,43 +19,94 @@ closure_verdict: no-pass
 
 # MLFF target-size optimizer normalization, practical-ceiling selection, objective-weight, and training-policy identity rework
 
-## 0. Current implementation review and authority
+## 0. Current independent implementation review
 
-**Software Design: PASS / closed.**  
-**Implementation: NO-PASS / bounded rework remains.**
+**Overall implementation review: NO-PASS / bounded repair remains.**  
+**Software Design / Frozen architecture: PASS / unchanged.**
 
-Software Design re-reviewed the newly completed implementation at executable commit
-`932cbff216f1fddb7b1102594d607975d397941b` and assembled source/documentation commit
-`08ceafd0acf79c92652cc27d407efc9937c16cd1` against the accepted Protocol 5.15.0 design.
+Software Design independently reviewed executable implementation commit
+`119fab779a79566b4262067249c8986a8a7fc978` and assembled source/documentation
+commit `dcb0c9fc603e1f83d2657a6f4c4bb6c4e777012a` against this Revision 7 handoff,
+the inherited P3 restart/partial-boundary/acceleration-replay authorities, P4
+currentness/adoption authority, P5 CV/final-production authority, and Protocol
+5.15.0.
 
-No Frozen scientific or high-level architectural decision needs revision. The remaining findings are implementation nonconformance to already accepted requirements. This Revision 7 consolidates and supersedes Revision 6 plus
-`MLFF_TARGET_SIZE_OPTIMIZER_NORMALIZATION_AND_OBJECTIVE_WEIGHT_REWORK_FINAL_DESIGN_CLOSURE.md`
-as the sole current task-specific implementation handoff. Earlier review artifacts remain historical context only.
+No new scientific or architectural deficiency was found. The implementation
+uses the accepted owners and mostly follows the required reduction-oriented
+repair strategy: strict validation is consolidated in existing helpers and
+first-rung writer exclusion reuses the existing advisory artifact lock rather
+than introducing a lease database, new attempt identity, or second restart
+state machine.
 
-### 0.1 Concerns now closed by the new implementation
+Three genuine blockers remain. They are implementation/acceptance
+nonconformances against the already accepted design, so this file remains the
+sole current implementation entrance. **Do not create a new design amendment or
+parallel repair plan for them.**
 
-The following previously blocking concerns are now accepted and must be preserved:
+### 0.1 Concerns now semantically closed by the implementation
 
-1. **Shared live `[training]` optimizer resolution is fail-closed.**
-   `resolve_shared_optimizer_settings()` now validates exact boolean/integer/finite-real domains before canonicalization, and the executable `MaceOptimizerPolicy` constructor rejects the same malformed direct values.
-2. **Single-writer first-rung crash/retry collision is closed.**
-   An unaccepted first-rung materialization can be reclaimed and rematerialized so a retry after worker/validation-batch drift starts fresh at `start_epoch=0` without minting a new scientific generation/context/trajectory; accepted progress remains preserved.
-3. **Conditionally inert general `[training].ema_decay` no longer leaks into target-size materialization.**
-   With target-size EMA disabled, candidate configuration omits `ema_decay`; with EMA enabled, the realized normalized target-size beta remains present and scientific.
-4. **P5 historical-method cutover is exercised through the real final-production authorization owner.**
-   Historical-method CV evidence is rejected against the corrected method, while matching corrected evidence is admitted through the same owner before production launch.
-5. The previously accepted practical-ceiling reducer, target-size normalization mathematics, objective/configuration/local-weight separation, common-preparation narrowing, seed-neutral target-size scientific projection, binary precision ownership, accepted acceleration replay, P4 selected flow, and fresh P5 final-production architecture remain intact.
+The following prior R7 concerns are accepted at source/design level and must be
+preserved through final regression:
+
+1. **Live-writer-safe first-rung ownership is implemented with existing
+   repository machinery.** First-rung execution acquires the existing adjacent
+   `artifact_publication_lock` for the deterministic materialization path,
+   re-authenticates durable progress after acquiring the lock, and holds the
+   fence through cleanup, materialization, TRAIN2/EVAL2 work, and accepted cell
+   publication. A competing writer waits and then reuses accepted progress;
+   lock ownership is execution-local and kernel-released on process exit.
+2. **Serial stale first-rung retry remains correct.** Unaccepted materialization
+   and checkpoint scratch can be reclaimed for a fresh `start_epoch=0` attempt,
+   while accepted progress remains immutable recovery authority.
+3. **Target-size optimizer-normalization policy is now exact-domain and
+   fail-closed.** Current config and current-schema deserialization no longer
+   pre-coerce malformed integer/real/string values.
+4. **`TrainingObjectivePolicy` and `ConfigurationWeightPolicy` are now
+   exact-domain and fail-closed.** Objective coefficients, group-awareness,
+   focus collections, configuration-weight flags, multipliers, and bounds are
+   validated before normalization; current-schema readers pass raw values to
+   those validators.
+5. **Persisted `MaceOptimizerPolicy.from_dict()` no longer pre-coerces current
+   policy fields.** Malformed current values now reach direct-constructor
+   validation rather than being silently repaired by `int/float/bool` casts.
+6. **Conditionally inert general `[training].ema_decay` remains absent from
+   target-size materialization when EMA is disabled; realized target-size beta
+   remains scientific when EMA is enabled.**
+7. **P5 historical-method cutover remains closed through the real final
+   production authorization owner.** Historical CV evidence cannot authorize
+   corrected final production.
+8. Practical-ceiling selection, paired-seed ranking, target-size normalization
+   mathematics, objective/configuration/local-mask separation, common
+   preparation ownership, partial-boundary recovery, historical acceleration
+   replay, P4 selected flow, and fresh P5 production remain architecturally
+   intact.
 
 ### 0.2 Remaining blockers
 
-Only the following issues remain active:
-
-1. **P3 live-writer safety remains incomplete.** The new first-rung cleanup still deletes the deterministic materialization directory whenever accepted progress is absent. Absence of accepted progress proves only that the workspace is not durable scientific authority; it does not prove another live `select-target-size` invocation is not currently using it. Destructive cleanup therefore still needs execution-local single-writer ownership/fencing.
-2. **The bounded canonical policy-domain family is only partially closed.** The shared live `[training]` resolver is strict, but target-size optimizer-normalization resolution/deserialization, `TrainingObjectivePolicy`, `ConfigurationWeightPolicy`, and persisted `MaceOptimizerPolicy.from_dict()` still pre-coerce values with `int(...)`, `float(...)`, or `bool(...)` before exact validation.
-3. **Pinned-MACE weighted-loss semantic acceptance is not established.** Parser/config projection evidence is insufficient; the actual pinned MACE 0.3.16 weighted energy+force+stress loss path must execute with discriminating non-default coefficients/weights/masks and agree with an independent expected semantic result.
-4. **Final assembled functional acceptance is not established.** The reviewed candidate has documentation-build evidence, but not the required final affected-regression plus assembled P2->P5 / real-owner integration acceptance on the final executable candidate.
-
-These are Tier-2 repair/evidence obligations. Do not introduce a new scientific authority, compatibility registry, migration database, restart state machine, warning lifecycle, or parallel optimizer-policy hierarchy.
+1. **Canonical real-value normalization is incomplete in independently
+   constructible `MaceOptimizerPolicy`.** The constructor validates
+   `learning_rate`, `ema_decay`, `weight_decay`, and `clip_grad` as finite real
+   numbers but retains an accepted integer object unchanged. Consequently
+   semantically identical values such as `1` and `1.0` can serialize/hash
+   differently even though this workplan explicitly requires real fields to be
+   canonicalized to float *after* validation. This is a current scientific
+   method-identity split, not a style issue.
+2. **The new pinned-MACE weighted-loss test is not proxy-proof for mdstats
+   forwarding.** It correctly instantiates the real MACE loss and checks the
+   numerical reduction, but its `_batch(...)` helper constructs new ASE objects
+   and directly injects `config_weight`, `config_energy_weight`,
+   `config_forces_weight`, and `config_stress_weight`. The test can therefore
+   stay green if the real mdstats ExtXYZ exporter stops forwarding
+   configuration weights or duplicates global E/F/S coefficients into local
+   property weights. The accepted claim is the assembled mdstats-export -> MACE
+   loss path, not MACE's isolated behavior after the test manually supplies the
+   intended values.
+3. **Final assembled executable evidence is still absent.** The reviewed source
+   commit has only the documentation-PDF GitHub Actions run in accessible
+   repository evidence. Required focused/stage-local tests, proxy-proof pinned
+   MACE 0.3.16 acceptance, real-owner integration, and final affected-surface
+   regression have not been established on the final executable candidate.
+   Required checks that did not execute are not a pass.
 
 ---
 
@@ -63,7 +114,10 @@ These are Tier-2 repair/evidence obligations. Do not introduce a new scientific 
 
 The target-size experiment asks:
 
-> Within the configured practical target-data budget, what is the smallest nested target-training cardinality whose performance is not materially improved by using more unique target data; and, if no such plateau is demonstrated before the practical ceiling, what is the best permitted size available?
+> Within the configured practical target-data budget, what is the smallest
+> nested target-training cardinality whose performance is not materially
+> improved by using more unique target data; and, if no plateau is demonstrated
+> before the practical ceiling, what is the best permitted size available?
 
 The sole target-data-cardinality independent variable remains:
 
@@ -72,27 +126,31 @@ N = number of target configurations used for gradient training
 T_N = pi_train[:N]
 ```
 
-The optimizer-seed set is the stochastic replicate dimension. Ranking uses authenticated paired-seed target-side EVAL2 evidence at the exact configured fidelity/evaluation boundaries.
+The optimizer-seed set is the stochastic replicate dimension. Ranking consumes
+authenticated paired-seed target-side EVAL2 evidence at exact configured
+fidelity/evaluation boundaries.
 
-Binding product invariants remain:
+Binding Tier-1 product/scientific invariants:
 
 - exact nested `T_N = pi_train[:N]` membership;
 - one P1 canonical frame authority and neutral statistical substrate;
 - one `P_train / M3` split and one `pi_train / pi_eval` authority;
-- configured candidate/evaluation ladders;
-- `q -> min(q,4) -> 2 -> 1` successive-halving topology;
-- paired-seed arithmetic-mean aggregation;
-- target-force RMSE ranking;
+- configured candidate/evaluation ladders and `q -> min(q,4) -> 2 -> 1`
+  successive-halving topology;
+- paired-seed arithmetic-mean aggregation and target-force RMSE ranking;
 - practical-equivalence preference for smaller data size;
-- one continuous scientific trajectory per `(N, optimizer_seed)` across `n1 -> n2 -> n3`;
-- exact authenticated boundary checkpoint/EVAL2 evidence;
-- materially superior configured ceiling is `SELECTED` with `nonconverged_at_configured_ceiling` warning metadata rather than a blocking failure;
+- materially superior configured ceiling is `SELECTED` with
+  `nonconverged_at_configured_ceiling` warning metadata, not a blocking
+  scientific failure;
 - insufficient comparison remains blocking;
-- P4 terminal/currentness ownership;
-- P5 cross-validation on exactly frozen `T_selected`;
-- fresh final production on exactly frozen `T_selected`;
-- no screen/CV checkpoint as final-production parent;
-- historical evidence is never silently reinterpreted under corrected semantics.
+- one continuous scientific trajectory per `(N, optimizer_seed)` across
+  `n1 -> n2 -> n3` with exact authenticated predecessor continuation;
+- P4 owns terminal/currentness/adoption;
+- P5 cross-validates exactly frozen `T_selected` and final production starts
+  fresh from exactly `T_selected`;
+- no screen/CV checkpoint becomes final-production parent;
+- historical accepted evidence is never silently reinterpreted under a current
+  execution realization or corrected method.
 
 No unconfigured rescue size is invented.
 
@@ -119,278 +177,252 @@ canonical frame authority
 
 Also Frozen:
 
-- target-size optimizer-progress normalization is screen-specific;
-- for batch size `B`, `U_ref = ceil(N_ref/B)`, `U_N = ceil(N/B)`, `s_N = U_ref/U_N`, `LR_N = LR_ref*s_N`, and `beta_N = beta_ref**s_N`;
-- there is no hidden cap/floor, survivor-dependent rescaling, or rung-local reconstruction of the normalized scientific trajectory;
-- target-size EVAL2 consumes the authenticated configured model state, EMA when enabled;
-- general `[training].learning_rate` and general `[training].ema_decay` are not target-size LR/EMA-decay authority;
+- target-size optimizer-progress normalization is screen-specific:
+  `U_ref=ceil(N_ref/B)`, `U_N=ceil(N/B)`, `s_N=U_ref/U_N`,
+  `LR_N=LR_ref*s_N`, `beta_N=beta_ref**s_N`;
+- no hidden cap/floor, survivor-dependent rescaling, or rung-local normalized
+  trajectory reconstruction;
+- general `[training].learning_rate` and `[training].ema_decay` are not
+  target-size LR/EMA-decay authority;
 - realized target-size LR and realized EMA beta are scientific when applicable;
-- global E/F/S objective coefficients, configuration weights, and local property availability/modifier weights remain separate semantic layers;
-- target-size/P5 executable loss family remains dependency-native MACE weighted energy+force+stress under pinned dependency evidence;
-- P3 owns authenticated target-size execution/restart evidence;
-- P4 owns campaign terminal/currentness/adoption;
-- P5 owns CV and fresh final production;
-- accepted logical-cell evidence is durable scientific/restart authority;
-- an unaccepted first-rung attempt workspace is execution-local scratch only;
-- process liveness is execution state, not scientific identity;
+- global E/F/S coefficients, configuration weights, and local property
+  availability/modifier weights are distinct semantic layers;
+- target-size/P5 executable loss remains dependency-native MACE
+  `WeightedEnergyForcesStressLoss` / accepted `loss="stress"` semantics;
+- P3 owns target-size execution, immutable accepted evidence, restart, and
+  replay; P4 owns currentness/terminal adoption; P5 owns CV/fresh production;
+- accepted logical-cell evidence is durable science/restart authority;
+  unaccepted first-rung workspace is execution-local scratch;
+- process liveness/locking is execution state and must not become scientific
+  identity;
 - final production starts fresh;
-- long GPU/full-production qualification remains deferred to final release.
+- production-scale GPU qualification remains deferred to final release.
 
-Exact helper/module placement, local lock primitive, validation helper shape, fixture layout, and equivalent simpler Tier-2 realization remain delegated.
+The restart-epoch handoff and acceleration-replay sibling workplans remain
+binding relatives: later rungs must resume the exact authenticated predecessor,
+new execution realization may govern new work but may not rewrite accepted
+historical trajectory identity, and no second checkpoint/restart authority may
+be introduced.
 
 ---
 
-## 3. Accepted implementation state that must be retained
+## 3. Accepted implementation state to preserve
 
-### 3.1 Practical-ceiling reducer
+Retain all already-correct behavior, including:
 
-At terminal comparison:
+- practical-ceiling selected-warning semantics and exact selected-membership
+  digest;
+- one normalized `(N, seed)` trajectory across all three rungs;
+- seed-neutral screen identity excludes optimizer seed, candidate-local
+  acceleration realization, general LR/EMA decay, workers,
+  `valid_batch_size`, and `eval_interval`, while retaining true
+  trajectory-changing optimizer/precision/backend state;
+- candidate realization retains exact membership/count, update geometry,
+  full-`n3` exposure, precision, seed, normalization identity, effective
+  LR/EMA, LR schedule, and candidate-local acceleration provenance;
+- general EMA decay is omitted/ignored when target-size EMA is disabled, while
+  realized beta remains authenticated when enabled;
+- `TrainingObjectivePolicy` owns global E/F/S coefficients;
+  `ConfigurationWeightPolicy` owns per-configuration multipliers; local
+  property weights remain availability/local modifiers normally `1` present / `0`
+  absent;
+- common preparation owns objective/configuration-weight/E0/harness inputs but
+  not training batch size or learned-model dtype;
+- accepted partial-boundary evidence is authenticated/reused; only missing
+  active cells execute; later rungs use the existing P3 continuation owner;
+- historical acceleration realization is replayed from accepted evidence rather
+  than replaced by the current invocation's realization;
+- corrected P5 method recipe and exact method-digest authorization prevent
+  historical pre-cutover CV evidence from authorizing corrected production.
+
+---
+
+## 4. Repair R7-1 — finish canonical `MaceOptimizerPolicy` real-value normalization
+
+### 4.1 Diagnosis
+
+Current `MaceOptimizerPolicy.__post_init__()` correctly rejects booleans,
+strings, non-real types, NaN, and infinities for its real fields. It then checks
+ranges but does not assign the validated real values back as canonical floats.
+Its `_payload()` serializes the retained attributes directly.
+
+Therefore:
 
 ```text
-Nmax materially superior by > practical-equivalence epsilon
-    -> status = SELECTED
-    -> selected_target_size = Nmax
-    -> exact membership digest
-    -> terminal_reason_codes includes "nonconverged_at_configured_ceiling"
+MaceOptimizerPolicy(learning_rate=1)
+MaceOptimizerPolicy(learning_rate=1.0)
 ```
 
-A smaller finalist within practical equivalence of a raw-best larger finalist wins. A strictly better smaller finalist wins normally. Insufficient comparison never fabricates selection.
+can describe the same declared real method value yet produce different canonical
+JSON and policy digests. The same issue applies to `ema_decay`, `weight_decay`,
+and `clip_grad`.
 
-### 3.2 Target-size optimizer normalization and role projection
+This violates the already-Frozen canonical-domain rule:
 
-The configurable reference remains:
+> validate finite real numeric values without coercing malformed values, then
+> canonicalize accepted real values to float before identity/serialization.
 
-```toml
-[target_data.size_convergence.optimizer_normalization]
-reference_target_size = 1024
-reference_learning_rate = 1.0e-4
-reference_ema_decay = 0.99999
-```
+### 4.2 Required repair
 
-Target-size seed-neutral scientific identity excludes:
+Repair the existing constructor; do not create another policy or validator
+layer.
 
-- optimizer seed;
-- candidate-local acceleration realization/mode;
-- general learning rate;
-- general EMA decay;
-- worker count;
-- validation batch size;
-- evaluation interval.
+Preferred reduction:
 
-It retains trajectory-changing state including training batch size, EMA enablement, AMSGrad, weight decay, gradient clipping, learned-model/critical precision, accepted device/backend/acceleration policy, and full-screen `n3` horizon.
+- reuse the existing shared `strict_finite_real` helper (or equivalently reduce
+  the hand-written loop to the same semantics) for `learning_rate`,
+  `ema_decay`, `weight_decay`, and `clip_grad`;
+- preserve the existing field-specific ranges;
+- after exact-type/finiteness validation, assign the canonical `float` result
+  into each dataclass field before `_payload()`, digesting, or downstream use;
+- preserve exact-int semantics for batch sizes, workers, epoch/eval counts, and
+  seed, and exact-bool semantics for EMA/AMSGrad;
+- do not accept numeric strings or booleans merely to canonicalize them.
 
-Candidate realization retains exact target membership/count, `ceil(N/B)` update geometry, full-n3 exposure, precision, seed, normalization identity, effective LR/EMA, realized LR schedule, and candidate-local acceleration provenance. `valid_batch_size` remains absent from candidate scientific loader geometry.
+Do not introduce a schema migration just for this correction. If an existing
+explicit legacy-schema digest reader is demonstrably affected by canonicalizing
+an otherwise supported historical numeric representation, preserve that
+reader's historical digest verification inside the **existing compatibility
+branch**, using already-validated raw legacy representation where necessary.
+Do not create a new compatibility registry or alternate policy identity.
 
-When target-size EMA is disabled, candidate configuration must omit or scientifically ignore any inert generic EMA decay; the current accepted realization omits the key. When EMA is enabled, candidate configuration must carry the realized normalized beta and authenticate it strongly.
+### 4.3 Required acceptance
 
-### 3.3 Objective/loss ownership
+At minimum prove:
 
-Retain:
+- `1` and `1.0` (and analogous integer-valued real inputs) canonicalize to the
+  same float-valued current policy payload and policy digest;
+- current-schema serialize/deserialize round trips retain that canonical form;
+- malformed bool/string/non-finite values still fail before identity/execution;
+- valid non-integral reals retain their exact declared values;
+- supported legacy round-trip/digest tests remain green if those schemas are
+  still part of the product compatibility surface;
+- the bounded four-family coercion/normalization census remains clean.
 
-- `TrainingObjectivePolicy` as owner of global energy/force/stress coefficients;
-- `ConfigurationWeightPolicy` as owner of per-configuration multiplier;
-- local property weights as availability/local modifiers, normally `1.0` present and `0.0` absent;
-- explicit global coefficients in generated MACE configs;
-- dependency-native `loss="stress"` / `WeightedEnergyForcesStressLoss` realization;
-- no duplication of the global objective ratio into local property masks.
-
-### 3.4 Canonical shared optimizer/live execution resolution
-
-One resolved live configuration value feeds P5 method identity and real execution for general LR, training batch size, validation batch size, evaluation interval, EMA enable/decay, AMSGrad, weight decay, gradient clipping, and supported optimizer family.
-
-Effective omitted defaults remain:
-
-```text
-learning_rate    = 1.0e-4
-batch_size       = 2
-valid_batch_size = 2
-eval_interval    = 1
-ema              = true
-ema_decay        = 0.99999
-amsgrad          = true
-weight_decay     = 1.0e-6
-clip_grad        = 10.0
-```
-
-The live resolver now rejects malformed/non-finite/exact-type violations before identity/execution. `MaceOptimizerPolicy` direct construction now enforces the same domain. Preserve this closure.
-
-Optimizer seed, role-specific epoch budgets, worker count, target-size normalization references, candidate `N`, CV fold state, and acceleration realization remain outside shared method resolution. Learned-model dtype remains owned by the binary precision authority.
-
-### 3.5 Common-preparation narrowing and restart/replay
-
-Batch size and learned-model dtype are not common-preparation identity because common fitting consumes neither. Objective/configuration-weight/E0/harness inputs remain common-preparation identity.
-
-Accepted partial-boundary progress is immutable scientific evidence and must be authenticated/reused. Later rungs resolve the exact authenticated predecessor through the existing P3 resume owner. Candidate-local acceleration replay retains the realization that actually executed the accepted trajectory without promoting later compatible realization drift into global screen identity.
-
-### 3.6 P5 method cutover
-
-The corrected method recipe remains `mdstats.post-selection-method.2026-09.v2` or an explicitly newer equivalent method identity. Historical pre-cutover CV evidence cannot authorize corrected final production. The new real-owner authorization acceptance is considered closed and must remain in regression coverage.
+The already-correct target-normalization/objective/configuration-weight readers
+must not be broadened again.
 
 ---
 
-## 4. Remaining blocker A — live-writer-safe first-rung scratch reclamation
+## 5. Repair R7-2 — make pinned-MACE objective acceptance proxy-proof through the mdstats exporter
 
-### 4.1 Current defect
+### 5.1 Diagnosis
 
-The current implementation correctly treats an unaccepted first-rung materialization as scratch in a serial retry, but the cleanup decision is effectively:
+`tests/test_mlff_target_size_mace_objective_realization.py` now provides useful
+real dependency evidence:
 
-```text
-materialization exists
-AND accepted progress path does not exist
-    -> delete materialization directory
-```
+- non-default global coefficients;
+- real MACE parser and `get_loss_fn`;
+- `WeightedEnergyForcesStressLoss`, not `UniversalLoss`;
+- independent expected weighted-MSE calculation;
+- local-mask and missing-stress behavior.
 
-That is insufficient under concurrent invocations. Absence of accepted progress does not prove the workspace is stale; another live `select-target-size` process may currently own it and be training from it.
+However its numerical batch helper creates new ASE `Atoms` and writes
+`config_weight`, `config_energy_weight`, `config_forces_weight`, and
+`config_stress_weight` directly from test literals. That bypasses the production
+mdstats export owner which is responsible for forwarding fitted configuration
+weights and local property masks into ExtXYZ.
 
-A second invocation can therefore delete or replace the first invocation's live workspace before either publishes accepted evidence.
+The test therefore proves MACE consumes correctly injected values, but not that
+mdstats injects the right values. It could pass if production forwarding were
+removed or if global coefficients were incorrectly copied into the local
+weights.
 
-### 4.2 Required end state
+### 5.2 Required repair
 
-Before destructive cleanup/rematerialization of an unaccepted first-rung workspace, the execution path must establish exclusive live ownership of the logical cell/workspace.
+Alter the existing semantic acceptance path rather than adding production
+machinery.
 
-Required behavior:
+Use a bounded real mdstats preparation/materialization/export fixture with:
 
-- **Accepted progress/completion exists:** authenticate/reuse through existing P3 recovery; never delete its parent materialization merely to rerun the cell.
-- **No accepted progress and another live writer owns the same cell/workspace:** do not delete, overwrite, or launch a duplicate scientific execution. Wait/reconcile, fail cleanly as already/in-progress, or use an existing equivalent single-writer exclusion.
-- **No accepted progress and no live writer owns the cell:** prior first-rung materialization/checkpoint artifacts are stale attempt scratch and may be removed/recreated for a fresh `start_epoch=0` attempt.
-- **Writer exits/crashes:** execution-only ownership releases without scientific-state migration so a later invocation can reclaim stale scratch.
-- After accepted cell publication, existing immutable/replay authority resumes; live ownership may not become a second durability authority.
+- deliberately non-default, distinguishable global objective coefficients;
+- deliberately non-default configuration weighting that produces at least one
+  configuration weight distinguishable from `1.0`;
+- at least one missing-property frame so the exported local mask contains zero;
+- ordinary present properties whose exported local weights are `1.0`, not
+  copies of the global objective coefficients.
 
-### 4.3 Simplicity boundary
+Then feed the **actual mdstats-exported ExtXYZ frames** (or the exact production
+export-owner output parsed through ASE) into MACE's real
+`config_from_atoms`/`AtomicData` path. Do not replace their weight metadata with
+test-authored literals after export.
 
-Prefer the minimum repository-native execution-local exclusion. If none exists, a narrow advisory lock/ownership scope around the logical cell or attempt workspace is acceptable.
+Through that assembled path prove:
 
-Do not add:
+1. generated MACE config carries the non-default global E/F/S coefficients;
+2. exported `config_weight` equals mdstats' realized configuration-weight
+   authority for the chosen frame(s);
+3. exported `config_energy_weight` / `config_forces_weight` /
+   `config_stress_weight` are local availability/modifier values and are not
+   copies of the global coefficient ratio;
+4. missing property exports/arrives as a zero local mask and contributes zero;
+5. MACE 0.3.16 instantiates `WeightedEnergyForcesStressLoss`, not
+   `UniversalLoss`;
+6. MACE's dependency-computed loss on the exported batch agrees with an
+   independently derived expected value;
+7. the test would fail if mdstats stopped forwarding configuration weights,
+   copied global coefficients into local weights, selected another loss family,
+   or fell back to MACE defaults.
 
-- a persisted liveness database or lease state machine;
-- a new scientific attempt identifier;
-- a materialization compatibility registry;
-- a mutable latest-materialization pointer;
-- a broad cleanup daemon;
-- process-liveness meaning to campaign scientific/currentness fields;
-- a second restart authority;
-- a coarse campaign-wide lock across expensive MACE work unless an already-existing exclusion demonstrably provides the required semantics without degrading the accepted execution architecture.
+Numerical workload may remain tiny. The production materialization/export and
+MACE semantic owners must not be replaced by doubles for the claim they own.
 
-### 4.4 Required acceptance
+### 5.3 Dependency/version requirement
 
-Exercise the real `select-target-size` / P3 orchestration with bounded numerical work below it:
-
-1. invocation A owns a first-rung cell, publishes materialization, and pauses before accepted completion/progress;
-2. invocation B reaches the same current screen/logical cell;
-3. prove B neither deletes/mutates A's workspace nor launches duplicate scientific execution;
-4. completion branch: A publishes accepted evidence, then B re-reconciles/reuses it;
-5. crash branch: A exits without accepted evidence, ownership releases, and a later invocation reclaims stale scratch and starts fresh;
-6. preserve the already-passing serial crash/retry with worker/validation-batch drift;
-7. preserve accepted-progress immutability, conflict detection, scientific-drift rejection, and create-or-verify semantics.
-
-A test double may replace expensive MACE numerical work only below the production orchestration/ownership/persistence boundary.
-
----
-
-## 5. Remaining blocker B — complete the bounded canonical policy-domain family
-
-### 5.1 Scope
-
-This is not a repository-wide parser cleanup. Close only the policy family directly owned/redefined by this work:
-
-1. shared optimizer settings and independently constructible/persisted `MaceOptimizerPolicy`;
-2. target-size optimizer-normalization reference policy;
-3. `TrainingObjectivePolicy` config/current-schema serialization seam;
-4. `ConfigurationWeightPolicy` config/current-schema serialization seam.
-
-The shared live `[training]` resolver and direct `MaceOptimizerPolicy` constructor are already corrected. The remaining gap is that adjacent resolvers and `from_dict()` readers still coerce malformed values before validation.
-
-### 5.2 Canonical-domain rules
-
-Validate before lossy normalization:
-
-- real scientific fields: finite real numeric values only; reject booleans and strings; canonicalize to float only after validation;
-- integer scientific fields: actual integers only; reject booleans, fractional floats, and numeric strings;
-- boolean policy fields: actual booleans only; do not truth-normalize numbers/strings;
-- collection elements: validate declared element domains rather than silently casting arbitrary objects;
-- current-schema persisted payloads: malformed types must fail; do not turn malformed records into valid current records by `int/float/bool` coercion;
-- valid explicitly supported historical schema representations may continue only through an existing explicit compatibility reader; implementation accidents are not compatibility contracts.
-
-High-risk required domains:
-
-- shared LR/EMA decay/weight decay/clip gradient: finite real with existing ranges;
-- shared batch sizes/eval interval: positive integer, not bool;
-- shared EMA/AMSGrad: actual bool;
-- target-size `reference_target_size`: positive integer, not bool;
-- target-size `reference_learning_rate`: finite real `> 0`, not bool;
-- target-size `reference_ema_decay`: finite real in `(0,1)`, not bool;
-- global E/F/S coefficients: finite nonnegative real, not bool, with at least one positive;
-- objective group-awareness flag: actual bool;
-- focus atomic numbers: positive integer elements, no bool/fraction/string reinterpretation;
-- configuration-weight equalization flag: actual bool;
-- configuration-weight multipliers/bounds: finite positive real, not bool, preserving normalized-mean/bound constraints.
-
-Do not create a second validator object/hierarchy. Reuse or consolidate small validation helpers where that reduces total complexity.
-
-### 5.3 Required acceptance
-
-- focused deterministic invalid-domain cases for all four owner families;
-- current-schema deserialization negatives proving malformed payloads fail before canonical conversion;
-- positive resolve/serialize/deserialize identity stability for valid values;
-- positive config -> policy -> identity -> executable config -> dependency-facing projection parity;
-- bounded property-based coverage when Hypothesis is available and economical for the parser/normalizer domain;
-- bounded structural/AST census over these four families for pre-validation `int(...)`, `float(...)`, or `bool(...)` coercion of config/current-schema persisted fields; a focused Semgrep rule is appropriate when available, with known-positive/known-negative rule validation;
-- structural zero findings never substitute for runtime tests.
-
-Exit only when malformed values cannot silently become valid current scientific/method identity or execution state.
+The acceptance environment must positively establish `mace-torch==0.3.16` (or
+the repository's qualified exact equivalent package identity) and execute these
+tests. `pytest.importorskip("mace")` is acceptable for ordinary developer
+portability, but a skipped result is **not** closure evidence for this workplan.
 
 ---
 
-## 6. Acceptance blocker C — pinned MACE weighted-loss semantics
+## 6. Repair R7-3 — execute final assembled functional closure
 
-The accepted dependency-native loss architecture is unchanged, but its semantic acceptance must actually execute against pinned MACE 0.3.16.
+Source inspection cannot close executable acceptance. After R7-1 and R7-2 are
+assembled, run the required evidence on one final executable candidate.
 
-Use deliberately **non-default and mutually distinguishable** global objective coefficients and configuration weights plus at least one missing-property zero-mask case so the test fails if mdstats forwarding is omitted, MACE defaults are used, global coefficients are duplicated into local weights, or another loss family is selected.
+### 6.1 Focused/stage-local checks
 
-At minimum prove through the real dependency-facing path:
+Run and retain evidence for:
 
-- instantiated loss is `WeightedEnergyForcesStressLoss` / accepted `loss="stress"` semantics, not `UniversalLoss`;
-- configured mdstats global E/F/S coefficients reach the dependency loss;
-- per-configuration weight and local property masks are consumed at distinct intended layers;
-- missing property contributes zero through the local mask rather than by changing the global objective;
-- a bounded dependency-calculated loss/reduction agrees with an independently derived expected value or equivalent dependency-grounded semantic oracle.
+- strict four-family policy-domain tests including the new real-value
+  canonicalization equivalence;
+- serial first-rung interruption/retry and execution-only drift;
+- concurrent live-writer test: A owns/materializes/pauses; B cannot delete,
+  mutate, or duplicate-run; A completion allows B to re-authenticate/reuse;
+- crash/release/reclaim path after no accepted progress;
+- accepted progress immutability and genuine scientific-drift negatives;
+- EMA-disabled/general-decay and EMA-enabled/reference-beta identity cases;
+- revised proxy-proof pinned-MACE objective/export/loss semantic acceptance.
 
-Parser/config argument equality alone is insufficient for this claim. Required pinned-MACE acceptance must execute rather than skip.
+The existing direct logical-cell concurrency test is useful focused evidence.
+Final assembled integration must additionally establish that the production
+`select-target-size` orchestration actually reaches the same fenced owner and
+reconciliation behavior; do not add a second synchronization path merely to
+make this test convenient.
 
----
+### 6.2 Final affected regression and integration
 
-## 7. Acceptance blocker D — final assembled functional closure
+Re-derive the transitive affected surface from the final diff and execute the
+complete affected regression. At minimum include final versions of:
 
-On the final candidate after all remaining executable edits:
-
-1. reconcile every Tier-1/Frozen obligation above against the assembled source;
-2. re-derive the transitive affected surface from the final diff;
-3. execute the complete affected regression;
-4. execute real-boundary integration through the assembled affected product;
-5. run repository/project-required checks;
-6. update normative documentation only if current behavior/contracts changed, then regenerate derived PDFs after Markdown is final.
-
-Minimum affected coverage includes final versions of:
-
-- target-size statistical-authority and practical-ceiling tests;
-- P3A-P3F and later P3 closure/replay suites;
-- canonical optimizer/policy-domain tests;
-- execution-only drift restart, serial stale-materialization retry, **concurrent live-writer/reclamation**, and EMA-disabled cases;
-- first-boundary interruption/retry and partial-boundary recovery;
+- target-size statistical authority and practical-ceiling reducer;
+- P3A-P3F and later P3 closure/replay/currentness suites;
+- restart-epoch handoff and partial-boundary recovery;
 - acceleration-realization replay;
-- realized-MACE architecture;
-- P3 head-pointer/reconciliation;
-- affected P4 suites;
-- P5 identity/CV/final-production authorization/materialization/execution/publication;
-- MACE executable configuration plus the semantic weighted-loss acceptance from Section 6;
-- binary/critical precision;
-- TRAIN2 policy/runtime/restart/continuation;
-- prepared-generation identity/currentness;
-- campaign lifecycle/status/advance;
-- objective/weight/export;
+- first-boundary interruption/retry and concurrent writer ownership;
+- canonical optimizer/normalization/objective/configuration-weight policy
+  domains and identity parity;
+- realized MACE architecture, executable config, binary/critical precision, and
+  TRAIN2 continuation/restart;
+- objective/weight/export and the proxy-proof real MACE 0.3.16 loss test;
+- affected P4 currentness/adoption;
+- P5 identity, historical-method rejection, CV/final-production authorization,
+  materialization/execution/publication;
+- prepared-generation identity/currentness and campaign lifecycle/status;
 - affected documentation/specification integrity.
 
-Retain the already-closed real-owner P5 historical-method rejection in final regression. Retain bounded real-owner practical-ceiling flow:
+Retain bounded real-owner practical-ceiling flow:
 
 ```text
 terminal paired-seed reducer evidence
@@ -401,139 +433,152 @@ terminal paired-seed reducer evidence
  -> next lifecycle command = cross-validate
 ```
 
-If the final affected boundary cannot be confidently bounded, run the broader MLFF regression suite.
+If the affected boundary cannot be confidently bounded, run the broader MLFF
+regression suite. Run repository/project-required checks as applicable.
 
-Production-scale GPU qualification remains **deferred**. It cannot substitute for missing functional regression/integration.
+Accessible repository evidence for `119fab...` currently establishes only the
+successful documentation-PDF workflow. The implementation must therefore make
+the functional test execution/results reviewable (CI/checks or another
+repository-governed test record sufficient to identify commands, candidate,
+and pass/skip/fail status).
+
+Production-scale GPU qualification remains **deferred** and must not be used as
+a substitute for this functional closure.
 
 ---
 
-## 8. Implementation authority
+## 7. Simplicity and authority boundaries
 
 ### Frozen
 
 Frozen authority is limited to:
 
 - Tier-1 scientific question and exact `T_N` membership;
-- P1->P5 authority graph;
+- P1 -> P5 authority graph;
 - practical-ceiling selected-warning semantics;
 - inverse-update LR/EMA normalization mathematics;
-- one continuous target-size scientific trajectory per `(N, seed)`;
-- P3 immutable accepted evidence/restart ownership;
-- distinction between accepted progress and unaccepted attempt scratch;
+- one continuous target-size trajectory per `(N, seed)`;
+- exact P3 accepted-evidence/restart ownership;
+- accepted-progress vs unaccepted-attempt-scratch distinction;
 - process liveness excluded from scientific identity;
-- target-size general-LR/general-EMA-decay exclusion and realized LR/EMA authority;
-- objective/configuration/local-weight separation and accepted MACE loss family;
+- historical acceleration replay vs current-new-work realization distinction;
+- target-size general-LR/general-EMA-decay exclusion and realized LR/EMA
+  authority;
+- global objective / configuration weight / local property mask separation;
+- dependency-native weighted E/F/S MACE loss family;
 - one canonical shared optimizer/method semantics;
-- P5 exact method-digest CV authorization;
-- fresh final production;
+- P5 exact method-digest authorization and fresh final production;
 - no silent reinterpretation of historical evidence.
 
-### Delegated
+### Delegated Tier 2
 
-Implementation may simplify or replace Tier-2 details including:
+Implementation may alter/simplify:
 
-- exact execution-local live-writer exclusion primitive;
-- exact helper location/factoring for first-rung cleanup;
-- exact strict-validation helper shape;
-- internal fixture organization;
-- redundant helpers made obsolete by canonical resolution;
-- diagnostics.
+- exact validation helper factoring;
+- test fixture layout;
+- exact bounded test data used to create non-default configuration weights;
+- use of the existing export record/ExtXYZ path to feed the MACE semantic test;
+- diagnostics and redundant helpers made obsolete by consolidation.
 
-Prefer deletion/narrowing/consolidation over aliases, wrappers, parallel state, or compatibility machinery.
+Prefer changing/reducing existing owners and tests over adding adapters,
+wrappers, registries, or parallel policy objects.
 
-### Reopen Design only on genuine evidence
+### Reopen Software Design only if evidence invalidates a Frozen assumption
 
-Reopen only the affected design surface if implementation proves one of these assumptions false:
+Examples include:
 
-1. safe stale-scratch reclamation cannot be achieved with existing or ephemeral execution-local ownership and truly requires persistent lease/liveness architecture;
-2. accepted P3 evidence can legitimately reference a first-rung materialization before logical-cell acceptance in a way that makes cleanup unsafe;
-3. worker count or target-size validation batch size changes deterministic scientific trajectory/ranking semantics;
-4. a supported current/historical configuration schema intentionally relies on one of the lossy coercions forbidden above and cannot be preserved through an explicit compatibility boundary;
-5. common preparation actually consumes batch size or learned-model dtype;
-6. one canonical optimizer/method policy cannot serve P3/P5 through role-specific projection without method-family redesign;
-7. pinned MACE 0.3.16 requires a materially different loss/weight ownership architecture;
-8. existing exact P5 method-digest authorization cannot prevent historical evidence from authorizing corrected production.
+- the existing execution-local lock cannot safely fence first-rung ownership
+  without a materially different persistent liveness architecture;
+- a supported historical policy schema intrinsically depends on lossy current
+  numeric reinterpretation rather than an explicit historical representation;
+- the real mdstats exporter and pinned MACE 0.3.16 cannot realize the accepted
+  global/configuration/local-weight ownership separation;
+- existing P3/P5 authority boundaries cannot express exact restart/currentness
+  or historical-method rejection without architectural change.
 
-Do not reopen because a current helper API, fixture, or lock API is inconvenient.
+Do not reopen Design because a current helper/test API is inconvenient.
 
 ---
 
-## 9. Forbidden repair patterns
+## 8. Forbidden repair patterns
 
 Do not close this work by:
 
-- weakening immutable create-or-verify semantics;
-- deleting/overwriting accepted partial-boundary evidence;
-- deleting unaccepted materialization merely because progress is absent without establishing that no other live writer owns the workspace;
-- treating stage status, deterministic attempt identity, PID-file existence, or stale lock-file existence by itself as scientific or liveness truth;
-- adding worker/validation-batch/general-EMA-decay back into target-size scientific trajectory identity merely to suppress restart conflicts;
-- globally treating EMA decay as execution-only when EMA is enabled;
-- adding a persisted lease database, compatibility registry, migration table, alternate materialization generation, mutable latest pointer, or second restart database;
-- teaching common preparation to consume batch/dtype artificially;
-- restoring independent P5 identity/execution defaults;
-- fixing only the shared `[training]` resolver while leaving the plan-owned target-size normalization/objective/configuration-weight/current-schema readers free to silently coerce the same malformed type classes;
-- weakening current schema integrity by coercing malformed persisted policy payloads into valid records;
-- adding a second optimizer validator hierarchy rather than consolidating validation at existing owners;
-- permitting non-finite/malformed settings because a dependency may fail later;
-- treating parser/config equality as proof of weighted-loss semantics;
-- counting skipped pinned-MACE acceptance as pass;
-- adding another target-size terminal/warning lifecycle;
-- substituting long GPU qualification for functional regression.
-
-If another sibling appears in the same canonical-policy or attempt-scratch/scientific-projection family, repair the shared owner rather than layering another local patch.
+- adding a second optimizer policy/validator hierarchy;
+- weakening exact-type validation to make integer/float identity tests pass;
+- accepting numeric strings or booleans as reals/integers;
+- changing scientific identity to include worker/validation-batch/liveness data;
+- adding a persisted lock/lease database, new scientific attempt ID,
+  compatibility registry, mutable latest pointer, cleanup daemon, or second
+  restart authority;
+- weakening immutable create-or-verify or accepted partial-boundary evidence;
+- deleting accepted evidence to force a clean rerun;
+- bypassing the production mdstats export owner in the semantic loss acceptance;
+- manually injecting the expected configuration/local weights after export and
+  calling that end-to-end evidence;
+- treating parser/config equality as loss semantics;
+- counting a skipped MACE test as pass;
+- creating a local UniversalLoss replacement or MACE adapter merely for testing;
+- adding a new target-size terminal/warning lifecycle;
+- substituting production-scale GPU qualification for functional regression.
 
 ---
 
-## 10. Remaining implementation sequence
+## 9. Reopened implementation sequence
 
-### Gate R7-A — canonical policy-domain closure
+### Gate R7-1 — canonical real-value identity closure
 
-Complete Section 5 as one coherent stage:
+- canonicalize valid `MaceOptimizerPolicy` real fields to float after strict
+  validation at the existing constructor owner;
+- preserve supported legacy digest semantics only through the existing explicit
+  compatibility branch if actually needed;
+- add integer-valued-real vs float-valued-real identity/round-trip tests;
+- rerun focused four-family domain/parity/structural checks.
 
-- strict target-size normalization config/current-schema deserialization;
-- strict objective/configuration-weight config/current-schema deserialization;
-- strict persisted `MaceOptimizerPolicy.from_dict()` without pre-coercion of current schema values;
-- preserve already-correct live shared optimizer/direct-constructor behavior;
-- focused malformed/non-finite/type negatives, positive round-trip/parity, structural family census, and stage-local affected regression.
+### Gate R7-2 — proxy-proof pinned-MACE semantic closure
 
-### Gate R7-B — P3 live-writer ownership closure
+- alter the existing real-MACE semantic acceptance to consume actual
+  mdstats-exported weight/mask metadata;
+- exercise non-default global objective, non-default configuration weight,
+  present-property local weight, and missing-property zero mask;
+- execute real qualified MACE 0.3.16 loss and independent expected reduction.
 
-Complete Section 4:
+### Gate R7-3 — final assembled acceptance
 
-- establish execution-local single-writer ownership before destructive first-rung scratch reclamation and execution;
-- preserve serial crash/retry repair;
-- preserve accepted evidence immutability and scientific-drift rejection;
-- add completion and crash concurrent-writer acceptance plus stage-local affected regression.
+- run focused concurrency/restart/policy/MACE checks;
+- run production-owner integration including target-size practical-ceiling ->
+  P4 -> P5 handoff and retained P5 historical-method rejection;
+- re-derive and execute complete affected regression/project checks on one final
+  candidate;
+- regenerate derived documentation only after any normative Markdown change.
 
-### Gate R7-C — pinned dependency semantic closure
-
-Execute Section 6 against pinned MACE 0.3.16 with non-default discriminating coefficients/weights/missing-property masks and an independent semantic expected result.
-
-### Gate R7-D — assembled acceptance
-
-Execute Section 7 on one final assembled candidate after all material executable edits.
-
-No long production/GPU qualification is required for this workplan.
+No long GPU/full-production qualification is required for these gates.
 
 ---
 
-## 11. Closure criteria
+## 10. Closure criteria
 
-Close this workplan only when all of the following are true:
+Close this workplan only when all are true:
 
-- no live first-rung writer can have its unaccepted workspace destructively reclaimed by a concurrent invocation;
-- stale unaccepted first-rung scratch remains safely reclaimable after owner exit/crash and retries from epoch 0 without changing scientific identity;
-- accepted materialization/progress remains immutable and recoverable;
-- generic EMA decay remains non-scientific to target-size when EMA is disabled, while EMA enablement and realized/reference beta changes remain scientifically invalidating as appropriate;
-- all four plan-owned canonical policy families reject malformed/non-finite/current-schema type violations before identity/execution and valid values round-trip stably;
-- P5 corrected method identity and executable optimizer remain one canonical method, and historical-method CV evidence remains rejected by the real final-production owner;
+- valid real-valued optimizer inputs have one canonical float identity regardless
+  of integer-vs-float Python representation, while malformed values remain
+  rejected;
+- all four plan-owned policy families retain exact-domain fail-closed behavior
+  and stable valid round trips;
+- first-rung live-writer fencing, serial crash/retry, owner-death reclaim, and
+  accepted evidence immutability pass through the real P3 owner path;
+- target-size general EMA decay remains inert when EMA is disabled and realized
+  beta remains scientific when enabled;
+- proxy-proof MACE 0.3.16 acceptance consumes actual mdstats-exported
+  configuration/local weights, instantiates the accepted weighted loss, and
+  matches an independent numerical expectation;
+- P5 corrected method identity remains exact and historical-method CV evidence
+  remains rejected by the real final-production owner;
 - practical-ceiling selected-warning flow remains intact through P4/P5;
-- required pinned-MACE weighted-loss semantic acceptance actually executes and passes;
-- final re-derived affected-surface regression and assembled integration execute and pass;
-- repository/project-required checks pass;
-- no new competing configuration/restart/materialization/liveness authority was introduced.
+- final re-derived affected regression, assembled integration, and project
+  checks execute and pass on the final candidate with required tests not skipped;
+- no new competing configuration/restart/materialization/liveness/loss authority
+  is introduced.
 
-The architecture and scientific method remain accepted. The remaining work is bounded implementation repair and acceptance closure.
-
-**Software Design verdict: PASS / closed.**  
-**Implementation review verdict: NO-PASS / rework-required until R7-A through R7-D close.**
+**Independent Software Design review verdict: NO-PASS / rework-required.**  
+**Frozen scientific/high-level architecture verdict: PASS / no redesign.**
