@@ -1056,11 +1056,6 @@ def _mace_config_for_candidate(
         "num_workers": int(optimizer_policy.num_workers),
         "max_num_epochs": int(trajectory.realization.max_num_epochs),
         "ema": bool(optimizer_policy.ema),
-        "ema_decay": (
-            float(optimizer_policy.ema_decay)
-            if trajectory.realization.effective_ema_decay is None
-            else float(trajectory.realization.effective_ema_decay)
-        ),
         # The declared mdstats objective is the objective actually optimized.
         # ``loss="stress"`` selects MACE's WeightedEnergyForcesStressLoss, whose
         # native reductions consume ``config_weight`` and the per-frame property
@@ -1098,6 +1093,20 @@ def _mace_config_for_candidate(
             }
         },
     }
+    # EMA decay is emitted only when EMA is actually enabled, and then only as
+    # the size-normalized realized beta.  With EMA disabled there is no EMA
+    # state to decay, so writing the generic ``[training].ema_decay`` here would
+    # put an inert value into scientific materialization replay and let a
+    # post-selection-only edit reject an accepted target-size trajectory - the
+    # exact contradiction the seed-neutral projection removes upstream.
+    if bool(optimizer_policy.ema):
+        effective = trajectory.realization.effective_ema_decay
+        if effective is None:
+            raise TrainingDataInputError(
+                "An EMA-enabled candidate realization must carry a realized "
+                "target-size EMA decay."
+            )
+        config["ema_decay"] = float(effective)
     return config
 
 

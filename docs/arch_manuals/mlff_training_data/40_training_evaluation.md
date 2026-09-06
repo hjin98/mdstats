@@ -199,6 +199,15 @@ role-specific epoch budgets, and worker counts stay outside these shared
 settings, because they are per-run identity, role policy, and pure resource
 choice respectively.
 
+The resolver is also the place where the configuration domain is enforced, so
+that a malformed setting cannot become either a recorded identity or an executed
+method: learning rate, EMA decay, weight decay, and gradient clipping must be
+finite reals in their declared ranges; batch sizes and evaluation interval must
+be exact positive integers, never booleans or truncated floats; and the EMA and
+AMSGrad flags must be actual booleans rather than truth-normalized values.
+`MaceOptimizerPolicy` repeats those invariants in its constructor, because it is
+independently constructible and independently deserialized.
+
 Because historical evidence could previously record an identity whose defaults
 were never the ones execution applied, the method recipe carries an explicit
 version. Evidence produced under the earlier resolution cannot authorize

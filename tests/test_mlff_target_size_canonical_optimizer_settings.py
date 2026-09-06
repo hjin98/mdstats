@@ -229,18 +229,105 @@ def test_a_unsupported_optimizer_family_still_fails_closed():
     assert resolve_shared_optimizer_settings({"training": {"optimizer": "adam"}})
 
 
-def test_a_invalid_shared_values_fail_closed_at_the_canonical_owner():
+#: Values outside the declared scientific domain of a shared optimizer field.
+#:
+#: A canonical owner that coerces before validating is not fail-closed: ``nan``
+#: passes every ordinary comparison, ``int(2.7)`` silently changes the update
+#: geometry the size normalization rests on, Python booleans are integers, and
+#: ``bool("false")`` is ``True``.
+_INVALID_SHARED_VALUES = [
+    # Sign/range violations.
+    {"learning_rate": 0.0},
+    {"learning_rate": -1.0e-4},
+    {"batch_size": 0},
+    {"batch_size": -2},
+    {"valid_batch_size": 0},
+    {"eval_interval": 0},
+    {"ema_decay": 1.0},
+    {"ema_decay": 0.0},
+    {"weight_decay": -1.0},
+    {"clip_grad": 0.0},
+    # Non-finite reals that survive comparison-only checks.
+    {"learning_rate": float("nan")},
+    {"learning_rate": float("inf")},
+    {"ema_decay": float("nan")},
+    {"ema_decay": float("-inf")},
+    {"weight_decay": float("nan")},
+    {"weight_decay": float("inf")},
+    {"clip_grad": float("nan")},
+    {"clip_grad": float("inf")},
+    # Fractional values that int() would truncate.
+    {"batch_size": 2.5},
+    {"valid_batch_size": 3.9},
+    {"eval_interval": 1.5},
+    # Booleans entering integer fields.
+    {"batch_size": True},
+    {"valid_batch_size": False},
+    {"eval_interval": True},
+    # Non-booleans entering boolean fields.
+    {"ema": "false"},
+    {"ema": 0},
+    {"ema": 1},
+    {"amsgrad": "yes"},
+    {"amsgrad": 1},
+    # Malformed values that previously escaped as raw conversion errors.
+    {"learning_rate": "1e-4"},
+    {"batch_size": "4"},
+    {"weight_decay": None},
+    {"clip_grad": [10.0]},
+    {"ema_decay": {"value": 0.99}},
+]
+
+
+@pytest.mark.parametrize(
+    "bad", _INVALID_SHARED_VALUES, ids=lambda b: f"{next(iter(b))}={next(iter(b.values()))!r}"
+)
+def test_b_invalid_shared_values_fail_closed_at_the_canonical_owner(bad: dict):
+    """Every rejection is the canonical error type, not a raw coercion error."""
+
+    with pytest.raises(TrainingDataInputError):
+        resolve_shared_optimizer_settings({"training": bad})
+
+
+@pytest.mark.parametrize(
+    "bad", _INVALID_SHARED_VALUES, ids=lambda b: f"{next(iter(b))}={next(iter(b.values()))!r}"
+)
+def test_b_invalid_values_fail_before_identity_or_executable_construction(bad: dict):
+    """Failure happens before method identity or any trainer-bound policy."""
+
+    cfg = _config(**bad)
+    with pytest.raises(TrainingDataInputError):
+        resolve_post_selection_method_identity(cfg)
+    with pytest.raises(TrainingDataInputError):
+        cli._optimizer_policy(cfg, seed=1, num_workers=0, planned_epochs=3)
+
+
+def test_b_the_executable_policy_enforces_the_same_domain_directly():
+    """Direct or deserialized construction cannot bypass the canonical domain.
+
+    ``MaceOptimizerPolicy`` is independently constructible and independently
+    deserialized, so it repeats the domain rather than trusting that every
+    caller came through the canonical resolver.
+    """
+
+    MaceOptimizerPolicy(device="cpu")  # the accepted default is admissible
     for bad in (
-        {"learning_rate": 0.0},
-        {"batch_size": 0},
-        {"valid_batch_size": 0},
-        {"eval_interval": 0},
-        {"ema_decay": 1.0},
-        {"weight_decay": -1.0},
-        {"clip_grad": 0.0},
+        {"learning_rate": float("nan")},
+        {"learning_rate": float("inf")},
+        {"ema_decay": float("nan")},
+        {"weight_decay": float("inf")},
+        {"clip_grad": float("nan")},
+        {"batch_size": True},
+        {"valid_batch_size": True},
+        {"num_workers": True},
+        {"eval_interval": True},
+        {"ema": 1},
+        {"amsgrad": 0},
+        {"batch_size": 2.5},
+        {"learning_rate": "1e-4"},
     ):
         with pytest.raises(TrainingDataInputError):
-            resolve_shared_optimizer_settings({"training": bad})
+            MaceOptimizerPolicy(device="cpu", **bad)
 
 
 def test_a_unsupported_learned_model_dtype_fails_closed():

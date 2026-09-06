@@ -1092,6 +1092,38 @@ def build_screen_context(
     )
 
 
+def _discard_unaccepted_first_rung_materialization(
+    screen: _ScreenContext,
+    materialization_directory: Path,
+    *,
+    target_size: int,
+    optimizer_seed: int,
+    boundary: int,
+) -> None:
+    """Remove first-rung attempt scratch, and only ever attempt scratch.
+
+    The caller has already established that this cell needs work, but deleting
+    a durable parent graph would be unrecoverable, so the accepted-progress
+    check is repeated here rather than assumed.  If any authenticated progress
+    exists for this cell the directory is left untouched and the ordinary
+    recovery owner keeps authority over it.
+    """
+
+    if not materialization_directory.exists():
+        return
+    resolver = screen.authority.resolver
+    progress_path = resolver.progress_path(
+        screen.window.content_digest, int(boundary), int(target_size), int(optimizer_seed)
+    )
+    if progress_path.exists():
+        raise TargetSizeRuntimeError(
+            "A first-rung cell with accepted durable progress reached fresh "
+            "execution; its materialization is accepted evidence and is owned "
+            "by boundary recovery, not by a new attempt."
+        )
+    shutil.rmtree(materialization_directory)
+
+
 def _execute_candidate_cell(
     screen: _ScreenContext, *, target_size: int, optimizer_seed: int, boundary: int, state: Any
 ) -> Any:
@@ -1139,6 +1171,28 @@ def _execute_candidate_cell(
         )
         materialization_directory = (
             materialization_root / trajectory.content_digest
+        )
+        # A first rung reached here has no authenticated accepted progress: the
+        # recovery owner reuses accepted cells and only genuinely missing ones
+        # arrive at TRAIN2/EVAL2.  Anything a previously interrupted attempt
+        # left in this directory is therefore unaccepted attempt scratch, not
+        # durable scientific authority.
+        #
+        # It has to be discarded rather than verified.  The trajectory digest
+        # that names this path deliberately excludes execution-only launch
+        # settings, while the immutable MACE configuration records the values
+        # the attempt actually launched with.  So after a crash, a scientifically
+        # identical retry under a different worker count or harness-validation
+        # batch width would address the same path with different bytes and be
+        # rejected by immutable create-or-verify -- turning a resource edit into
+        # an unrecoverable screen.  Accepted materializations are never reached
+        # by this branch, and create-or-verify stays strict for them.
+        _discard_unaccepted_first_rung_materialization(
+            screen,
+            materialization_directory,
+            target_size=int(target_size),
+            optimizer_seed=int(optimizer_seed),
+            boundary=int(boundary),
         )
         materialization_directory.mkdir(parents=True, exist_ok=True)
         materialization = materialize_target_size_candidate(

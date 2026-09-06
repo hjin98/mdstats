@@ -913,6 +913,15 @@ role-specific epoch budgets, and worker counts stay outside these shared
 settings, because they are per-run identity, role policy, and pure resource
 choice respectively.
 
+The resolver is also the place where the configuration domain is enforced, so
+that a malformed setting cannot become either a recorded identity or an executed
+method: learning rate, EMA decay, weight decay, and gradient clipping must be
+finite reals in their declared ranges; batch sizes and evaluation interval must
+be exact positive integers, never booleans or truncated floats; and the EMA and
+AMSGrad flags must be actual booleans rather than truth-normalized values.
+`MaceOptimizerPolicy` repeats those invariants in its constructor, because it is
+independently constructible and independently deserialized.
+
 Because historical evidence could previously record an identity whose defaults
 were never the ones execution applied, the method recipe carries an explicit
 version. Evidence produced under the earlier resolution cannot authorize
@@ -1089,6 +1098,10 @@ The target-size screen projects the generic optimizer carrier down to the fields
 Target-size scientific identity **retains** the training `batch_size` (which fixes the `ceil(N/B)` update geometry), EMA enabled/disabled, AMSGrad, weight decay, gradient clipping, learned-model dtype and critical precision, device/acceleration policy, and the full-screen `n3` horizon taken from the screen schedule.
 
 It **excludes** the optimizer seed and the candidate-local acceleration realization (both rebound per candidate), general `[training].learning_rate` and `[training].ema_decay` (replaced by the normalization policy), `num_workers` (pure resource realization), the harness-validation `valid_batch_size` (fixed, non-controlling validation geometry that moves no gradient trajectory, LR schedule, checkpoint admissibility, or ranking), and `eval_interval` (not emitted into the candidate MACE configuration at all).
+
+General `[training].ema_decay` is inert for the screen in both EMA states, and the candidate configuration reflects that. With EMA enabled the configuration carries the size-normalized realized beta, which is strongly authenticated. With EMA disabled there is no EMA state to decay, so no decay key is emitted at all - writing the generic value there would put an inert number into scientific replay and let a post-selection-only edit reject an accepted trajectory. Toggling EMA on or off is, by contrast, genuine screen science, because EVAL2 consumes the EMA state whenever EMA is enabled.
+
+Before any of this is resolved, the shared optimizer configuration domain is checked exactly: non-finite learning rates or decays, fractional or boolean batch sizes, and non-boolean EMA/AMSGrad flags are rejected at the canonical owner, before they can reach method identity, a candidate trajectory, a materialization, or a trainer launch.
 
 Consequently a mid-screen worker-count or harness validation batch-width change is not scientific invalidation: a published candidate materialization keeps the exact execution values it was launched with as historical execution provenance, restart re-derives and compares only the scientific configuration content, and `n1 -> n2 -> n3` continuation ancestry stays exact. Real method drift - batch size, dtype, EMA enable, AMSGrad, weight decay, gradient clipping, or the normalization reference LR/EMA - still rejects before training resumes.
 
