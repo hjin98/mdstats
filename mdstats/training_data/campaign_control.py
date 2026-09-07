@@ -285,10 +285,6 @@ def inventory_checkpoint_files(
     for path in sorted(root.rglob(pattern)):
         if not path.is_file():
             continue
-        if path.name.startswith("train2_runtime_epoch-"):
-            # Per-epoch TRAIN2 continuation state is durable runtime evidence,
-            # not a model checkpoint candidate.
-            continue
         resolved = path.resolve()
         try:
             relative = resolved.relative_to(root)

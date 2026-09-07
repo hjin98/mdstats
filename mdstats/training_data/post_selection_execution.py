@@ -1748,7 +1748,7 @@ def authenticate_post_selection_provider(
         )
     checkpoint_root = Path(checkpoint_directory)
     effective_summary = summary
-    effective_companion_path = checkpoint_root / "train2_runtime.pt"
+    effective_companion_path: Path | None = checkpoint_root / "train2_runtime.pt"
     effective_checkpoint_epoch = checkpoint_epoch
     if effective_checkpoint_epoch is None:
         import re
@@ -1759,7 +1759,6 @@ def authenticate_post_selection_provider(
     if effective_checkpoint_epoch is not None:
         from .train2_runtime import (
             load_train2_runtime_boundary_summary,
-            train2_runtime_boundary_companion_path,
         )
 
         try:
@@ -1790,20 +1789,36 @@ def authenticate_post_selection_provider(
                     raise PostSelectionExecutionError(
                         "The selected TRAIN2 boundary does not belong to the authenticated run authority."
                     )
-            companion_candidate = train2_runtime_boundary_companion_path(
-                checkpoint_root, effective_checkpoint_epoch
-            )
-            if not companion_candidate.is_file():
+            summary_epoch = getattr(summary, "raw_checkpoint_epoch", None)
+            if isinstance(summary, Mapping) and summary_epoch is None:
+                summary_epoch = summary.get("raw_checkpoint_epoch")
+            if summary_epoch is None:
                 raise PostSelectionExecutionError(
-                    "The selected TRAIN2 checkpoint has no authenticated per-epoch continuation state."
+                    "The authenticated TRAIN2 run summary has no latest checkpoint epoch."
                 )
-            effective_summary = candidate_summary
-            effective_companion_path = companion_candidate
+            if int(effective_checkpoint_epoch) != int(summary_epoch):
+                # The immutable boundary record and raw checkpoint are the
+                # complete historical evaluation authority.  Do not retain or
+                # consult a second full-model state archive for this path.
+                # A bounded forward override may still need the latest-only
+                # companion to construct its explicit synthetic provider shell
+                # when a toy checkpoint has no native model state.  Native MACE
+                # earlier-checkpoint authentication ignores this path and uses
+                # the raw checkpoint plus its immutable boundary only.
+                effective_companion_path = (
+                    checkpoint_root / "train2_runtime.pt"
+                    if allow_forward_override
+                    else None
+                )
     provider, evaluated_digest, _companion = authenticate_train2_checkpoint_provider(
         raw_checkpoint_path=checkpoint_root / checkpoint_name,
         raw_checkpoint_sha256=checkpoint_sha256,
         companion_path=effective_companion_path,
-        companion_sha256=_companion_sha256(effective_companion_path),
+        companion_sha256=(
+            None
+            if effective_companion_path is None
+            else _companion_sha256(effective_companion_path)
+        ),
         summary=effective_summary,
         evaluation_model_state=evaluation_model_state,
         config_payload=config_payload,

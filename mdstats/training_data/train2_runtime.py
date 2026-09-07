@@ -37,7 +37,6 @@ TRAIN2_RUNTIME_COMPANION_FILENAME = "train2_runtime.pt"
 TRAIN2_RUNTIME_HISTORY_FILENAME = "train2_history.jsonl"
 TRAIN2_PERSISTENCE_TELEMETRY_FILENAME = "train2_persistence.jsonl"
 TRAIN2_RUNTIME_BOUNDARY_SUMMARY_TEMPLATE = "train2_runtime_epoch-{epoch}.json"
-TRAIN2_RUNTIME_BOUNDARY_COMPANION_TEMPLATE = "train2_runtime_epoch-{epoch}.pt"
 TRAIN2_NUMERICAL_FAILURE_SCHEMA = "mdstats.train2-numerical-failure.v1"
 TRAIN2_NUMERICAL_FAILURE_FILENAME = "train2_numerical_failure.json"
 TRAIN2_NUMERICAL_FAILURE_CODES = frozenset({
@@ -56,17 +55,6 @@ def train2_runtime_boundary_summary_path(
     return (
         Path(checkpoint_directory).resolve()
         / TRAIN2_RUNTIME_BOUNDARY_SUMMARY_TEMPLATE.format(epoch=int(epoch))
-    )
-
-
-def train2_runtime_boundary_companion_path(
-    checkpoint_directory: str | Path, epoch: int
-) -> Path:
-    """Return the authenticated per-epoch state path for one checkpoint."""
-
-    return (
-        Path(checkpoint_directory).resolve()
-        / TRAIN2_RUNTIME_BOUNDARY_COMPANION_TEMPLATE.format(epoch=int(epoch))
     )
 
 
@@ -430,8 +418,6 @@ def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
     matches = []
     for item in directory.glob("*.pt"):
         name = item.name
-        if name.startswith("train2_runtime_epoch-"):
-            continue
         if f"epoch-{int(epoch)}" in name or f"epoch_{int(epoch)}" in name:
             matches.append(item)
     if len(matches) != 1:
@@ -1108,14 +1094,6 @@ class _Train2Runtime:
             companion["model_architecture_digest"] = model_architecture_digest
         companion_write_started = time.perf_counter()
         _atomic_torch_save(self.companion_path, companion)
-        # The latest companion above is the exact-resume authority.  Keep one
-        # immutable boundary companion per completed epoch as well so EVAL2 can
-        # authenticate an earlier checkpoint candidate without applying a later
-        # epoch's live/EMA state.
-        _atomic_torch_save(
-            train2_runtime_boundary_companion_path(self.checkpoint_directory, epoch),
-            companion,
-        )
         companion_write_seconds = time.perf_counter() - companion_write_started
         summary = Train2RuntimeSummary(
             plan_digest=self.plan.content_digest,
@@ -1149,9 +1127,14 @@ class _Train2Runtime:
         )
         summary_write_started = time.perf_counter()
         _atomic_json(self.summary_path, summary.to_dict())
-        _atomic_json(
+        from .target_size_execution.persistence import (
+            publish_immutable_json_create_or_verify,
+        )
+
+        publish_immutable_json_create_or_verify(
             train2_runtime_boundary_summary_path(self.checkpoint_directory, epoch),
             summary.to_dict(),
+            deserializer=Train2RuntimeSummary.from_dict,
         )
         summary_write_seconds = time.perf_counter() - summary_write_started
         loss, validation = self._read_new_metrics(epoch)
@@ -1449,6 +1432,5 @@ __all__ = [
     "load_train2_runtime_summary",
     "load_train2_runtime_boundary_summary",
     "train2_runtime_boundary_summary_path",
-    "train2_runtime_boundary_companion_path",
     "verify_train2_checkpoint_model_parameters",
 ]

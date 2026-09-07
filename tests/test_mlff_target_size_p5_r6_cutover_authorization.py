@@ -15,6 +15,7 @@ inference are substituted, strictly below that boundary.
 from __future__ import annotations
 
 import dataclasses
+import json
 from pathlib import Path
 
 import pytest
@@ -26,9 +27,12 @@ from mdstats.training_data.campaign_post_selection_runtime import (
     resolve_current_cv_plan,
 )
 from mdstats.training_data.post_selection_cv_acceptance import (
+    CvCampaignAcceptance,
     PostSelectionCvRejectedError,
 )
+from mdstats.training_data.post_selection_cv_plan import PostSelectionCvPlan
 from mdstats.training_data.post_selection_identity import (
+    PostSelectionMethodIdentity,
     resolve_post_selection_method_identity,
 )
 from mdstats.training_data.post_selection_production import build_final_production_plan
@@ -43,6 +47,21 @@ from tests._mlff_post_selection_fixture import (
 #: resolution cutover.
 HISTORICAL_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v2"
 CURRENT_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v3"
+
+
+def _load_pre_repair_authorization_fixture() -> tuple[
+    PostSelectionMethodIdentity, PostSelectionCvPlan, CvCampaignAcceptance
+]:
+    """Read the exact pre-repair serialized method/CV/acceptance chain."""
+
+    fixture_path = Path(__file__).with_name("fixtures") / (
+        "p5_pre_repair_authorization_v2.json"
+    )
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    method = PostSelectionMethodIdentity.from_dict(payload["method"])
+    plan = PostSelectionCvPlan.from_dict(payload["cv_plan"])
+    acceptance = CvCampaignAcceptance.from_dict(payload["acceptance"])
+    return method, plan, acceptance
 
 
 def _historical_authorization(plan, acceptance, historical_method):
@@ -139,6 +158,40 @@ def test_r6d_historical_method_cv_cannot_authorize_corrected_final_production(
         )
         assert admitted.method_identity_digest == corrected_method.content_digest
         assert admitted.cv_authorization_digest == acceptance.content_digest
+    finally:
+        store.close()
+
+
+def test_r6d_static_pre_repair_authorization_is_rejected_before_trainer_launch(
+    tmp_path: Path,
+):
+    """Stored v2 authorization is rejected by the real production owner."""
+
+    config, _workspace = build_selected_campaign(tmp_path)
+    cfg, paths, store = load_context(config)
+    harness = PostSelectionHarness()
+    try:
+        context = build_post_selection_context(cfg, paths, store)
+        historical_method, historical_plan, historical_acceptance = (
+            _load_pre_repair_authorization_fixture()
+        )
+        assert historical_method.method_recipe_version == HISTORICAL_METHOD_RECIPE
+        assert historical_plan.method_identity_digest == historical_method.content_digest
+        assert historical_acceptance.cv_plan_digest == historical_plan.content_digest
+        assert historical_acceptance.method_identity_digest == historical_method.content_digest
+        assert historical_acceptance.accepted
+
+        with pytest.raises((PostSelectionError, PostSelectionCvRejectedError)) as excinfo:
+            build_final_production_plan(
+                context.selected,
+                context.method,
+                context.production_policy,
+                cv_plan=historical_plan,
+                cv_acceptance=historical_acceptance,
+                replay_lineage_digest=historical_plan.replay_lineage_digest,
+            )
+        assert "different training method" in str(excinfo.value) or "different shared method" in str(excinfo.value)
+        assert getattr(harness, "trained", []) == []
     finally:
         store.close()
 

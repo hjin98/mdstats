@@ -585,8 +585,6 @@ def _checkpoint_for_epoch(directory: Path, epoch: int) -> Path:
     matches = []
     for item in directory.glob("*.pt"):
         name = item.name
-        if name.startswith("train2_runtime_epoch-"):
-            continue
         if f"epoch-{int(epoch)}" in name or f"epoch_{int(epoch)}" in name:
             matches.append(item)
     if len(matches) != 1:

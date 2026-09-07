@@ -661,6 +661,18 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
         ) from exc
 
     try:
+        # The canonical architecture projection is P3's target-size model
+        # namespace.  P5's ordinary one-head parser has a different, pinned
+        # MACE-owned namespace, while replay supplies its explicit mapping.
+        # Resolve the existing role schemas here instead of creating a second
+        # architecture representation.
+        from .post_selection_execution import (
+            POST_SELECTION_MACE_CONFIG_SCHEMA,
+            POST_SELECTION_SINGLE_HEAD_NAME,
+        )
+        from .post_selection_identity import POST_SELECTION_REPLAY_HEAD_NAME
+        from .target_size_execution import TARGET_SIZE_MACE_CONFIG_SCHEMA
+
         configured_heads = config_payload.get("heads")
         if isinstance(configured_heads, Mapping):
             # Pinned MACE places pt_head first before constructing the native
@@ -671,10 +683,18 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
                 (str(value) for value in configured_heads),
                 key=lambda value: -1000 if value == "pt_head" else 0,
             )
+        elif config_payload.get("schema") == POST_SELECTION_MACE_CONFIG_SCHEMA:
+            # Pinned MACE's ordinary post-selection parser path calls
+            # prepare_default_head() when no explicit heads map is supplied.
+            # This is intentionally not the P3 target_head namespace.
+            heads = [POST_SELECTION_SINGLE_HEAD_NAME]
+        elif config_payload.get("schema") == TARGET_SIZE_MACE_CONFIG_SCHEMA:
+            heads = [str(value) for value in architecture["heads"]]
         elif bool(config_payload.get("multiheads_finetuning")):
-            # A post-selection single-head run reaches MACE's Default head;
-            # target_head is the P3 namespace and is not silently reused here.
-            heads = ["Default"]
+            # Preserve the compatibility fallback for older executable-shaped
+            # records that do not carry their role schema.  Current P5 records
+            # are resolved by the explicit post-selection schema branch above.
+            heads = [POST_SELECTION_SINGLE_HEAD_NAME]
         else:
             heads = [str(value) for value in architecture["heads"]]
 
@@ -785,7 +805,11 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
                     )
                     for z in atomic_numbers
                 ]
-            if foundation_e0s:
+            # MACE's replay pt_head derives its calibration from the
+            # authenticated foundation.  Ordinary P5 Default and P3 target
+            # heads use the explicit configuration E0s even when a foundation
+            # model is present.
+            if head == POST_SELECTION_REPLAY_HEAD_NAME and foundation_e0s:
                 return [foundation_e0s[int(z)] for z in atomic_numbers]
             return list(configuration_atomic_energies)
 

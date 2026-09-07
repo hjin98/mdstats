@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -11,12 +13,20 @@ import mdstats
 import tests.test_mlff_target_size_p3_realized_mace_architecture as p3_real
 import tests.test_mlff_target_size_mace_objective_realization as objective_real
 import tests.test_mlff_neutral_scientific_substrate as neutral_fixtures
+from mdstats.training_data._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+)
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data.campaign_post_selection_runtime import (
     _resolve_post_selection_replay_resolution,
+    _component_block_ids,
+    _optimizer_policy_for,
+    POST_SELECTION_EVALUATION_MODEL_STATE,
     build_post_selection_context,
     execute_post_selection_run,
 )
+from mdstats.training_data.bounded_inference import execution_batch_width
 from mdstats.training_data.post_selection_cv_plan import (
     build_cv_fold_run_plan,
     build_post_selection_cv_plan,
@@ -27,10 +37,23 @@ from mdstats.training_data.post_selection_identity import (
     cv_training_budget_policy,
 )
 from mdstats.training_data.post_selection_execution import (
+    DATASET_ROLE_CHECKPOINT_MONITOR,
+    authenticate_post_selection_provider,
+    evaluate_post_selection_dataset,
     PostSelectionMaterialization,
     post_selection_mace_run_configuration,
 )
-from mdstats.training_data.train2_runtime import load_train2_runtime_summary
+from mdstats.training_data.model_features import (
+    build_mace_model_from_configuration,
+    mace_model_execution_architecture_digest,
+)
+from mdstats.training_data.train2_runtime import (
+    load_train2_runtime_boundary_summary,
+    load_train2_runtime_summary,
+)
+from mdstats.training_data.target_size_execution.evaluation import (
+    EVALUATION_MODEL_STATE_EMA,
+)
 from tests._mlff_post_selection_fixture import (
     PostSelectionHarness,
     build_selected_campaign,
@@ -96,6 +119,174 @@ def _two_condition_data4_bundle(
         partition_role_budget=neutral_fixtures._data4_role_budget(),
     )
     return manifest, sources, frames, data4
+
+
+@pytest.mark.parametrize("mode", ["scratch", "naive_fine_tuning"])
+def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """Ordinary P5 modes use MACE's real ``Default`` checkpoint namespace.
+
+    The P3 architecture projection remains ``target_head``; this exercises the
+    downstream P5 materialization, real wrapper/trainer, raw checkpoint
+    authentication, and bounded EVAL2 provider path that must instead rebuild
+    MACE's ordinary one-head ``Default`` model.
+    """
+
+    foundation = tmp_path / "foundation.model"
+    if mode == "naive_fine_tuning":
+        _write_tiny_mace_foundation(foundation)
+
+    config_text = fixture_config_text()
+    if mode == "naive_fine_tuning":
+        config_text = config_text.replace(
+            'training_root = "{training_root}"',
+            "\n".join(
+                (
+                    'training_root = "{training_root}"',
+                    f'foundation_model = "{foundation}"',
+                    'foundation_head = "default"',
+                )
+            ),
+        )
+    config_text = config_text.replace("partition_seed = 7", "partition_seed = 2", 1)
+    config_text = config_text.replace(
+        "batch_size = 4",
+        "batch_size = 1\nlearning_rate = 0.0123\nema = false",
+        1,
+    )
+    config, _workspace = build_selected_campaign(
+        tmp_path / "campaign",
+        config_text=config_text,
+        data4_bundle=_two_condition_data4_bundle,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_ensure_local_wrappers",
+        lambda _paths: {"mdstats-mace-train": p3_real._wrapper(tmp_path)},
+    )
+
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(
+            cfg,
+            paths,
+            store,
+            inference_evaluator=PostSelectionHarness().evaluate,
+        )
+        assert context.method.training_mode == mode
+        projection = build_selected_relation_projection(context.selected)
+        cv_plan = build_post_selection_cv_plan(
+            context.selected,
+            context.method,
+            context.cv_policy,
+            projection=projection,
+            replay_lineage_digest=None,
+        )
+        fold = cv_plan.fold(0)
+        run_plan = build_cv_fold_run_plan(
+            cv_plan,
+            fold_index=fold.fold_index,
+            optimizer_seed=context.cv_policy.required_cv_seeds[0],
+            planned_epochs=context.cv_policy.cv_max_num_epochs,
+        )
+        execute_post_selection_run(
+            context,
+            run_plan=run_plan,
+            budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
+            training_frame_uids=fold.training_frame_uids,
+            monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
+            outer_evaluation_frame_uids=None,
+        )
+
+        run_root = context.run_root(run_plan.run_identity)
+        checkpoint_root = run_root / "checkpoints"
+        summary = load_train2_runtime_summary(checkpoint_root)
+        assert summary.mace_execution_evidence is not None
+        assert summary.mace_execution_evidence["multiheads_finetuning"] is False
+        assert summary.mace_execution_evidence["learning_rate"] == pytest.approx(
+            0.0123
+        )
+
+        materialization = PostSelectionMaterialization.from_dict(
+            json.loads(
+                (
+                    run_root
+                    / "materialization"
+                    / "materialization.json"
+                ).read_text(encoding="utf-8")
+            )
+        )
+        config_payload = json.loads(
+            (
+                run_root
+                / "materialization"
+                / materialization.mace_config_relative_path
+            ).read_text(encoding="utf-8")
+        )
+        assert config_payload["schema"] == "mdstats.post-selection-mace-config.v2"
+        assert "heads" not in config_payload
+        assert config_payload["E0s"]
+        executable = post_selection_mace_run_configuration(config_payload)
+        assert executable["multiheads_finetuning"] is False
+        model_shell = build_mace_model_from_configuration(config_payload)
+        import torch
+
+        shell_e0s = torch.as_tensor(
+            model_shell.atomic_energies_fn.atomic_energies
+        ).reshape(-1)
+        expected_e0s = torch.tensor(
+            [
+                float(config_payload["E0s"][str(z)])
+                for z in sorted(int(value) for value in config_payload["atomic_numbers"])
+            ],
+            dtype=shell_e0s.dtype,
+        )
+        assert torch.allclose(shell_e0s, expected_e0s)
+        raw_checkpoints = sorted(
+            path
+            for path in checkpoint_root.glob("*.pt")
+            if "epoch-" in path.name and path.name != "train2_runtime.pt"
+        )
+        assert raw_checkpoints
+        raw_checkpoint = raw_checkpoints[-1]
+        provider, _evaluated = authenticate_post_selection_provider(
+            materialization=materialization,
+            materialization_directory=run_root / "materialization",
+            checkpoint_directory=checkpoint_root,
+            checkpoint_name=raw_checkpoint.name,
+            checkpoint_sha256=hashlib.sha256(raw_checkpoint.read_bytes()).hexdigest(),
+            summary=summary,
+            evaluation_model_state=POST_SELECTION_EVALUATION_MODEL_STATE,
+            allow_forward_override=False,
+            checkpoint_epoch=summary.raw_checkpoint_epoch,
+        )
+        assert tuple(str(value) for value in provider.model.heads) == ("Default",)
+        assert (
+            mace_model_execution_architecture_digest(provider.model)
+            == summary.model_architecture_digest
+        )
+        optimizer_policy = _optimizer_policy_for(
+            context,
+            seed=run_plan.optimizer_seed,
+            planned_epochs=run_plan.planned_epochs,
+        )
+        monitor_metrics = evaluate_post_selection_dataset(
+            run_plan=run_plan,
+            artifact=materialization.checkpoint_monitor_artifact,
+            dataset_role=DATASET_ROLE_CHECKPOINT_MONITOR,
+            root_directory=run_root / "materialization",
+            provider=provider,
+            block_ids=_component_block_ids(
+                context.selected, fold.checkpoint_monitor_frame_uids
+            ),
+            execution_batch_width=execution_batch_width(optimizer_policy),
+            extxyz_policy=context.method_policies.extxyz,
+            inference_evaluator=None,
+        )
+        assert monitor_metrics is not None
+    finally:
+        store.close()
 
 
 def test_p5_real_replay_run_crosses_materialization_native_mace_and_train2(
@@ -241,6 +432,36 @@ legacy_normalized = true
         assert mace_evidence["replay_train_count"] == 60
         assert mace_evidence["target_train_count"] == len(fold.training_frame_uids)
 
+        checkpoint_root = run_root / "checkpoints"
+        raw_checkpoints = sorted(
+            path
+            for path in checkpoint_root.glob("*.pt")
+            if "epoch-" in path.name and path.name != "train2_runtime.pt"
+        )
+        assert len(raw_checkpoints) >= 2
+        assert [
+            path.name for path in checkpoint_root.glob("train2_runtime*.pt")
+        ] == ["train2_runtime.pt"]
+        assert not list(checkpoint_root.glob("train2_runtime_epoch-*.pt"))
+        assert len(list(checkpoint_root.glob("train2_runtime_epoch-*.json"))) >= 2
+        earliest_checkpoint = raw_checkpoints[0]
+        earliest_epoch = int(re.search(r"epoch-(\d+)", earliest_checkpoint.name).group(1))
+        earliest_boundary = load_train2_runtime_boundary_summary(
+            checkpoint_root, earliest_epoch
+        )
+        earliest_sha = hashlib.sha256(earliest_checkpoint.read_bytes()).hexdigest()
+        assert earliest_boundary.raw_checkpoint_sha256 == earliest_sha
+        for field in (
+            "plan_digest",
+            "training_protocol_digest",
+            "optimizer_policy_digest",
+            "budget_policy_digest",
+            "lr_policy_digest",
+            "model_architecture_digest",
+            "mace_execution_evidence",
+        ):
+            assert getattr(earliest_boundary, field) == getattr(summary, field)
+
         materialization_path = run_root / "materialization" / "materialization.json"
         materialization = PostSelectionMaterialization.from_dict(
             json.loads(materialization_path.read_text(encoding="utf-8"))
@@ -255,9 +476,82 @@ legacy_normalized = true
         assert config_payload["energy_weight"] == 2.0
         assert config_payload["forces_weight"] == 7.0
         assert config_payload["stress_weight"] == 3.0
+        assert config_payload["lr"] == pytest.approx(0.0123)
+        assert config_payload["ema"] is True
+        assert config_payload["ema_decay"] == pytest.approx(0.87)
         executable = post_selection_mace_run_configuration(config_payload)
         assert executable["force_mh_ft_lr"] is True
         assert executable["real_pt_data_ratio_threshold"] == 0.0
+        assert executable["lr"] == pytest.approx(0.0123)
+        assert executable["ema"] is True
+        assert executable["ema_decay"] == pytest.approx(0.87)
+        assert (
+            mace_evidence["learning_rate"] == pytest.approx(0.0123)
+        )
+        assert mace_evidence["ema"] is True
+        assert mace_evidence["ema_decay"] == pytest.approx(0.87)
+        assert (
+            mace_evidence["target_train_count"] / mace_evidence["replay_train_count"]
+            < 0.1
+        )
+
+        earlier_provider, earlier_digest = authenticate_post_selection_provider(
+            materialization=materialization,
+            materialization_directory=run_root / "materialization",
+            checkpoint_directory=checkpoint_root,
+            checkpoint_name=earliest_checkpoint.name,
+            checkpoint_sha256=earliest_sha,
+            summary=summary,
+            evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
+            allow_forward_override=False,
+            checkpoint_epoch=earliest_epoch,
+        )
+        assert earlier_provider.model is not None
+        assert earlier_digest
+
+        boundary_path = checkpoint_root / f"train2_runtime_epoch-{earliest_epoch}.json"
+        boundary_bytes = boundary_path.read_bytes()
+        tampered_boundary = json.loads(boundary_bytes.decode("utf-8"))
+        tampered_boundary["raw_checkpoint_sha256"] = "0" * 64
+        boundary_path.write_text(
+            json.dumps(tampered_boundary, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        try:
+            with pytest.raises(TrainingDataSerializationError):
+                authenticate_post_selection_provider(
+                    materialization=materialization,
+                    materialization_directory=run_root / "materialization",
+                    checkpoint_directory=checkpoint_root,
+                    checkpoint_name=earliest_checkpoint.name,
+                    checkpoint_sha256=earliest_sha,
+                    summary=summary,
+                    evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
+                    allow_forward_override=False,
+                    checkpoint_epoch=earliest_epoch,
+                )
+        finally:
+            boundary_path.write_bytes(boundary_bytes)
+
+        raw_checkpoint_bytes = earliest_checkpoint.read_bytes()
+        earliest_checkpoint.write_bytes(
+            raw_checkpoint_bytes[:-1]
+            + bytes([raw_checkpoint_bytes[-1] ^ 1])
+        )
+        try:
+            with pytest.raises(TrainingDataInputError):
+                authenticate_post_selection_provider(
+                    materialization=materialization,
+                    materialization_directory=run_root / "materialization",
+                    checkpoint_directory=checkpoint_root,
+                    checkpoint_name=earliest_checkpoint.name,
+                    checkpoint_sha256=earliest_sha,
+                    summary=summary,
+                    evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
+                    allow_forward_override=False,
+                    checkpoint_epoch=earliest_epoch,
+                )
+        finally:
+            earliest_checkpoint.write_bytes(raw_checkpoint_bytes)
 
         from ase.io import read
 
