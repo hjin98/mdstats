@@ -67,13 +67,15 @@ def _load_pre_repair_authorization_fixture() -> tuple[
 
 
 def _historical_authorization(plan, acceptance, historical_method):
-    """An authenticated CV plan/acceptance pair under the historical method.
+    """Serialize and reload a coherent CV chain under the historical method.
 
     Both records are re-bound consistently, so the pair is internally coherent:
     the acceptance really does authorize the plan it names, and the plan really
     does record the historical method. The only thing wrong with it is that the
     method it validated is not the method that would now execute - which is
-    exactly the condition the cutover must catch.
+    exactly the condition the cutover must catch.  The round trip is intentional:
+    this acceptance must exercise the readers used for persisted v3 evidence,
+    rather than only an in-memory dataclass replacement.
     """
 
     historical_plan = dataclasses.replace(
@@ -84,7 +86,23 @@ def _historical_authorization(plan, acceptance, historical_method):
         cv_plan_digest=historical_plan.content_digest,
         method_identity_digest=historical_method.content_digest,
     )
-    return historical_plan, historical_acceptance
+    serialized = json.loads(
+        json.dumps(
+            {
+                "method": historical_method.to_dict(),
+                "cv_plan": historical_plan.to_dict(),
+                "acceptance": historical_acceptance.to_dict(),
+            }
+        )
+    )
+    reloaded_method = PostSelectionMethodIdentity.from_dict(serialized["method"])
+    reloaded_plan = PostSelectionCvPlan.from_dict(serialized["cv_plan"])
+    reloaded_acceptance = CvCampaignAcceptance.from_dict(serialized["acceptance"])
+    assert reloaded_method.method_recipe_version == HISTORICAL_METHOD_RECIPE
+    assert reloaded_plan.method_identity_digest == reloaded_method.content_digest
+    assert reloaded_acceptance.cv_plan_digest == reloaded_plan.content_digest
+    assert reloaded_acceptance.method_identity_digest == reloaded_method.content_digest
+    return reloaded_plan, reloaded_acceptance
 
 
 def test_r6d_current_method_recipe_is_the_corrected_generation(tmp_path: Path):

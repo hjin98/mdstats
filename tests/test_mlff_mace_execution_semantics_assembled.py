@@ -382,11 +382,25 @@ legacy_normalized = true
 
     cfg, paths, store = load_context(config)
     try:
+        numerical_harness = PostSelectionHarness(
+            run_force_offsets={"epoch-0": 1.0e-4, "epoch-1": 2.0e-2}
+        )
+        evaluated_checkpoint_names: list[str] = []
+
+        def evaluate_with_checkpoint_record(provider, atoms_list):
+            locator = getattr(
+                getattr(provider, "checkpoint_identity", None),
+                "checkpoint_locator",
+                "",
+            )
+            evaluated_checkpoint_names.append(Path(str(locator)).name)
+            return numerical_harness.evaluate(provider, atoms_list)
+
         context = build_post_selection_context(
             cfg,
             paths,
             store,
-            inference_evaluator=PostSelectionHarness().evaluate,
+            inference_evaluator=evaluate_with_checkpoint_record,
         )
         assert context.method.training_mode == "multihead_replay"
         resolution = _resolve_post_selection_replay_resolution(context)
@@ -416,8 +430,10 @@ legacy_normalized = true
             budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
             training_frame_uids=fold.training_frame_uids,
             monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
-            outer_evaluation_frame_uids=None,
+            outer_evaluation_frame_uids=fold.outer_evaluation_frame_uids,
         )
+        assert _outer_metrics is not None
+        assert evidence.outer_metric_record_digest == _outer_metrics.content_digest
 
         run_root = context.run_root(run_plan.run_identity)
         summary = load_train2_runtime_summary(run_root / "checkpoints")
@@ -455,6 +471,11 @@ legacy_normalized = true
             checkpoint_root, earliest_epoch
         )
         earliest_sha = hashlib.sha256(earliest_checkpoint.read_bytes()).hexdigest()
+        assert evidence.representative_checkpoint_sha256 == earliest_sha
+        # The final inference call made by the real P5 owner is the held-out
+        # outer evaluation.  Its provider must therefore be the same earlier
+        # native checkpoint that monitor selection froze.
+        assert evaluated_checkpoint_names[-1] == earliest_checkpoint.name
         assert earliest_boundary.raw_checkpoint_sha256 == earliest_sha
         for field in (
             "plan_digest",
@@ -535,6 +556,29 @@ legacy_normalized = true
                     checkpoint_epoch=earliest_epoch,
                 )
 
+        # Reuse the exact native checkpoint through the P7 qualification owner,
+        # including its policy-derived EMA state.  ``predict_all`` keeps the
+        # existing accepted numerical seam below that owner while proving the
+        # member provider actually supplies the authenticated model.
+        from mdstats.training_data.qualification.providers import (
+            member_provider,
+            predict_all,
+        )
+        from mdstats.training_data.qualification.publication import (
+            PublishedProductionMember,
+        )
+
+        member = PublishedProductionMember(
+            optimizer_seed=run_plan.optimizer_seed,
+            run_identity=run_plan.run_identity,
+            run_plan_digest=run_plan.content_digest,
+            run_evidence_digest=evidence.content_digest,
+            representative_candidate_identity=evidence.representative_candidate_identity,
+            representative_checkpoint_sha256=earliest_sha,
+            checkpoint_relative_path=earliest_checkpoint.name,
+            target_head_name=context.method_policies.target_head_name,
+        )
+
         boundary_path = checkpoint_root / f"train2_runtime_epoch-{earliest_epoch}.json"
         boundary_bytes = boundary_path.read_bytes()
         tampered_boundary = json.loads(boundary_bytes.decode("utf-8"))
@@ -588,6 +632,13 @@ legacy_normalized = true
         )
         target_frames = read(target_path, index=":", format="extxyz")
         assert target_frames
+        with member_provider(context, member) as qualification_provider:
+            assert qualification_provider.checkpoint_identity.checkpoint_locator.endswith(
+                earliest_checkpoint.name
+            )
+            predictions = predict_all(context, qualification_provider, target_frames[:1])
+            assert len(predictions) == 1
+        assert evaluated_checkpoint_names[-1] == earliest_checkpoint.name
         assert any(
             float(frame.info["config_weight"]) != pytest.approx(1.0)
             for frame in target_frames
