@@ -43,10 +43,12 @@ from tests._mlff_post_selection_fixture import (
     run_cross_validate,
 )
 
-#: The method-recipe token in force before the canonical optimizer/precision
-#: resolution cutover.
-HISTORICAL_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v2"
-CURRENT_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v3"
+#: The immediately previous method-recipe token.  It remains readable history
+#: but cannot authorize the corrected EMA checkpoint convention.
+HISTORICAL_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v3"
+#: The static fixture predates the prior repair and intentionally remains v2.
+PRE_REPAIR_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v2"
+CURRENT_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v4"
 
 
 def _load_pre_repair_authorization_fixture() -> tuple[
@@ -175,7 +177,7 @@ def test_r6d_static_pre_repair_authorization_is_rejected_before_trainer_launch(
         historical_method, historical_plan, historical_acceptance = (
             _load_pre_repair_authorization_fixture()
         )
-        assert historical_method.method_recipe_version == HISTORICAL_METHOD_RECIPE
+        assert historical_method.method_recipe_version == PRE_REPAIR_METHOD_RECIPE
         assert historical_plan.method_identity_digest == historical_method.content_digest
         assert historical_acceptance.cv_plan_digest == historical_plan.content_digest
         assert historical_acceptance.method_identity_digest == historical_method.content_digest

@@ -81,7 +81,7 @@ POST_SELECTION_REPLAY_HEAD_NAME = "pt_head"
 # The current method recipe is the method-level cutover token.  It advances
 # once for the repaired MACE execution semantics and is shared by scratch,
 # naive fine-tuning, and replay rather than being maintained per mode.
-POST_SELECTION_METHOD_RECIPE_VERSION = "mdstats.post-selection-method.2026-09.v3"
+POST_SELECTION_METHOD_RECIPE_VERSION = "mdstats.post-selection-method.2026-09.v4"
 
 
 def _table(config: Mapping[str, Any], *path: str) -> Mapping[str, Any]:

@@ -22,9 +22,9 @@ from mdstats.training_data.campaign_post_selection_runtime import (
     _resolve_post_selection_replay_resolution,
     _component_block_ids,
     _optimizer_policy_for,
-    POST_SELECTION_EVALUATION_MODEL_STATE,
     build_post_selection_context,
     execute_post_selection_run,
+    resolve_post_selection_evaluation_model_state,
 )
 from mdstats.training_data.bounded_inference import execution_batch_width
 from mdstats.training_data.post_selection_cv_plan import (
@@ -53,6 +53,7 @@ from mdstats.training_data.train2_runtime import (
 )
 from mdstats.training_data.target_size_execution.evaluation import (
     EVALUATION_MODEL_STATE_EMA,
+    EVALUATION_MODEL_STATE_LIVE,
 )
 from tests._mlff_post_selection_fixture import (
     PostSelectionHarness,
@@ -257,7 +258,11 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
             checkpoint_name=raw_checkpoint.name,
             checkpoint_sha256=hashlib.sha256(raw_checkpoint.read_bytes()).hexdigest(),
             summary=summary,
-            evaluation_model_state=POST_SELECTION_EVALUATION_MODEL_STATE,
+            evaluation_model_state=resolve_post_selection_evaluation_model_state(
+                context,
+                seed=run_plan.optimizer_seed,
+                planned_epochs=run_plan.planned_epochs,
+            ),
             allow_forward_override=False,
             checkpoint_epoch=summary.raw_checkpoint_epoch,
         )
@@ -508,6 +513,27 @@ legacy_normalized = true
         )
         assert earlier_provider.model is not None
         assert earlier_digest
+
+        # A native EMA checkpoint cannot be admitted as historical live state,
+        # even when the bounded numerical forward seam is present.  This is the
+        # counterfactual that distinguishes the real P5 owner from the old
+        # broad override exception.
+        for allow_forward_override in (False, True):
+            with pytest.raises(
+                TrainingDataInputError,
+                match="earlier TRAIN2 checkpoint saved with EMA",
+            ):
+                authenticate_post_selection_provider(
+                    materialization=materialization,
+                    materialization_directory=run_root / "materialization",
+                    checkpoint_directory=checkpoint_root,
+                    checkpoint_name=earliest_checkpoint.name,
+                    checkpoint_sha256=earliest_sha,
+                    summary=summary,
+                    evaluation_model_state=EVALUATION_MODEL_STATE_LIVE,
+                    allow_forward_override=allow_forward_override,
+                    checkpoint_epoch=earliest_epoch,
+                )
 
         boundary_path = checkpoint_root / f"train2_runtime_epoch-{earliest_epoch}.json"
         boundary_bytes = boundary_path.read_bytes()

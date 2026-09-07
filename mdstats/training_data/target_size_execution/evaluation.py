@@ -415,7 +415,7 @@ def authenticate_train2_checkpoint_provider(
         if (
             not candidate_is_latest
             and summary_ema_for_live is not None
-            and not allow_forward_override
+            and not bounded_parameter_shell
         ):
             raise TrainingDataInputError(
                 "An earlier TRAIN2 checkpoint saved with EMA cannot be evaluated as live state."

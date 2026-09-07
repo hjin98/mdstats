@@ -15,7 +15,9 @@ from typing import Any, Iterator, Sequence
 
 import numpy as np
 
-from ..campaign_post_selection_runtime import POST_SELECTION_EVALUATION_MODEL_STATE
+from ..campaign_post_selection_runtime import (
+    resolve_post_selection_evaluation_model_state,
+)
 from ..post_selection_execution import (
     PostSelectionMaterialization,
     PostSelectionRunEvidence,
@@ -50,6 +52,11 @@ def member_provider(context: Any, member: PublishedProductionMember) -> Iterator
     run_root = context.run_root(member.run_identity)
     checkpoint_directory = run_root / "checkpoints"
     summary = load_train2_runtime_summary(checkpoint_directory)
+    evaluation_model_state = resolve_post_selection_evaluation_model_state(
+        context,
+        seed=member.optimizer_seed,
+        planned_epochs=context.production_policy.production_max_num_epochs,
+    )
     provider, _evaluated = authenticate_post_selection_provider(
         materialization=materialization,
         materialization_directory=run_root / "materialization",
@@ -57,7 +64,7 @@ def member_provider(context: Any, member: PublishedProductionMember) -> Iterator
         checkpoint_name=Path(member.checkpoint_relative_path).name,
         checkpoint_sha256=member.representative_checkpoint_sha256,
         summary=summary,
-        evaluation_model_state=POST_SELECTION_EVALUATION_MODEL_STATE,
+        evaluation_model_state=evaluation_model_state,
         allow_forward_override=context.inference_evaluator is not None,
     )
     try:
