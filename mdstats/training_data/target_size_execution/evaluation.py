@@ -136,13 +136,14 @@ def authenticate_train2_checkpoint_provider(
     *,
     raw_checkpoint_path: Path,
     raw_checkpoint_sha256: str,
-    companion_path: Path,
-    companion_sha256: str,
+    companion_path: Path | None,
+    companion_sha256: str | None,
     summary: Any,
     evaluation_model_state: str,
     config_payload: Mapping[str, Any],
     allow_forward_override: bool,
-) -> tuple[Any, str, Mapping[str, Any]]:
+    raw_checkpoint_epoch: int | None = None,
+) -> tuple[Any, str, Mapping[str, Any] | None]:
     """Authenticate one TRAIN2 state through the shared provider owner.
 
     The returned provider is the same model owner that must perform the
@@ -209,35 +210,70 @@ def authenticate_train2_checkpoint_provider(
             )
         raw_checkpoint_state = raw_model["model"]
 
-    raw_companion = companion_path.read_bytes()
-    if hashlib.sha256(raw_companion).hexdigest() != validate_digest(
-        companion_sha256, name="companion_sha256"
-    ):
-        raise TrainingDataInputError(
-            "TRAIN2 continuation companion bytes changed before provider authentication."
-        )
-    try:
-        companion = torch.load(
-            io.BytesIO(raw_companion), map_location="cpu", weights_only=False
-        )
-    except TypeError:  # pragma: no cover - older torch
-        companion = torch.load(io.BytesIO(raw_companion), map_location="cpu")
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise TrainingDataInputError(
-            "Authenticated TRAIN2 continuation companion cannot be loaded."
-        ) from exc
-    if (
-        not isinstance(companion, Mapping)
-        or companion.get("schema") != TRAIN2_RUNTIME_COMPANION_SCHEMA
-    ):
-        raise TrainingDataSerializationError(
-            "Unsupported TRAIN2 continuation companion schema."
-        )
-    live_parameters = companion.get("live_parameters")
-    if not isinstance(live_parameters, list) or not live_parameters:
-        raise TrainingDataInputError(
-            "Authenticated TRAIN2 continuation companion has no live parameter state."
-        )
+    summary_epoch = getattr(summary, "raw_checkpoint_epoch", None)
+    if isinstance(summary, Mapping) and summary_epoch is None:
+        summary_epoch = summary.get("raw_checkpoint_epoch")
+    if raw_checkpoint_epoch is None:
+        candidate_is_latest = True
+    else:
+        raw_checkpoint_epoch = int(raw_checkpoint_epoch)
+        if summary_epoch is None:
+            raise TrainingDataInputError(
+                "TRAIN2 checkpoint candidate epoch cannot be checked against its runtime summary."
+            )
+        summary_epoch = int(summary_epoch)
+        if raw_checkpoint_epoch < 0 or raw_checkpoint_epoch > summary_epoch:
+            raise TrainingDataInputError(
+                "TRAIN2 checkpoint candidate epoch is outside the authenticated runtime history."
+            )
+        candidate_is_latest = raw_checkpoint_epoch == summary_epoch
+
+    # Earlier checkpoints are authenticated from their immutable boundary JSON
+    # plus the raw MACE checkpoint itself.  Only the latest checkpoint needs the
+    # one mutable continuation companion for exact live/EMA/RNG/optimizer
+    # continuation and latest-state verification.
+    companion: Mapping[str, Any] | None = None
+    live_parameters: list[Any] | None = None
+    # The bounded forward-override seam intentionally substitutes only MACE's
+    # arithmetic.  Its toy checkpoints contain no native model state, so the
+    # existing provider shell may use the one latest companion to exercise that
+    # seam.  No production path sets this override; native MACE checkpoints use
+    # their raw state plus the immutable epoch boundary above.
+    bounded_parameter_shell = allow_forward_override and raw_checkpoint_state is None
+    if candidate_is_latest or bounded_parameter_shell:
+        if companion_path is None or companion_sha256 is None:
+            raise TrainingDataInputError(
+                "Latest TRAIN2 evaluation requires its continuation companion."
+            )
+        raw_companion = companion_path.read_bytes()
+        if hashlib.sha256(raw_companion).hexdigest() != validate_digest(
+            companion_sha256, name="companion_sha256"
+        ):
+            raise TrainingDataInputError(
+                "TRAIN2 continuation companion bytes changed before provider authentication."
+            )
+        try:
+            companion = torch.load(
+                io.BytesIO(raw_companion), map_location="cpu", weights_only=False
+            )
+        except TypeError:  # pragma: no cover - older torch
+            companion = torch.load(io.BytesIO(raw_companion), map_location="cpu")
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise TrainingDataInputError(
+                "Authenticated TRAIN2 continuation companion cannot be loaded."
+            ) from exc
+        if (
+            not isinstance(companion, Mapping)
+            or companion.get("schema") != TRAIN2_RUNTIME_COMPANION_SCHEMA
+        ):
+            raise TrainingDataSerializationError(
+                "Unsupported TRAIN2 continuation companion schema."
+            )
+        live_parameters = companion.get("live_parameters")
+        if not isinstance(live_parameters, list) or not live_parameters:
+            raise TrainingDataInputError(
+                "Authenticated TRAIN2 continuation companion has no live parameter state."
+            )
     device = str(config_payload.get("device", ""))
     dtype_str = str(config_payload.get("default_dtype", ""))
     if not device or not dtype_str:
@@ -262,21 +298,33 @@ def authenticate_train2_checkpoint_provider(
         # authority.  The raw checkpoint contributes state_dict bytes only;
         # companion['model'] is deliberately ignored in this production branch.
         provider_model = build_mace_model_from_configuration(config_payload)
+        configured_target_head = config_payload.get("target_head_name")
+        model_heads = tuple(str(value) for value in getattr(provider_model, "heads", ()))
+        if configured_target_head and len(model_heads) > 1:
+            configured_target_head = str(configured_target_head)
+            if configured_target_head not in model_heads:
+                raise TrainingDataInputError(
+                    "Candidate MACE configuration target head is absent from the reconstructed model."
+                )
+            provider_kwargs["calculator_kwargs"] = {
+                "head": configured_target_head,
+            }
         provider = MaceCalculatorProvider.from_authenticated_model(
             provider_model, **provider_kwargs
         )
         expected_architecture_digest = getattr(
             summary, "model_architecture_digest", None
         )
-        companion_architecture_digest = companion.get("model_architecture_digest")
         if expected_architecture_digest is None:
             raise TrainingDataInputError(
                 "Real MACE TRAIN2 evaluation requires an authenticated model architecture digest."
             )
-        if companion_architecture_digest != expected_architecture_digest:
-            raise TrainingDataInputError(
-                "TRAIN2 companion model architecture identity differs from its runtime summary."
-            )
+        if candidate_is_latest:
+            companion_architecture_digest = companion.get("model_architecture_digest")
+            if companion_architecture_digest != expected_architecture_digest:
+                raise TrainingDataInputError(
+                    "TRAIN2 companion model architecture identity differs from its runtime summary."
+                )
         reconstructed_architecture_digest = mace_model_execution_architecture_digest(
             provider.model
         )
@@ -292,11 +340,13 @@ def authenticate_train2_checkpoint_provider(
             raw_checkpoint_state[name]
             for name, _parameter in provider.model.named_parameters()
         )
-        verify_train2_checkpoint_model_parameters(
-            raw_parameter_values,
-            companion=companion,
-            summary=summary,
-        )
+        if candidate_is_latest:
+            assert companion is not None and live_parameters is not None
+            verify_train2_checkpoint_model_parameters(
+                raw_parameter_values,
+                companion=companion,
+                summary=summary,
+            )
         loaded_architecture_digest = mace_model_execution_architecture_digest(
             provider.model
         )
@@ -304,12 +354,15 @@ def authenticate_train2_checkpoint_provider(
             raise TrainingDataInputError(
                 "Authenticated TRAIN2 model state changed the reconstructed execution architecture."
             )
-        # The checkpoint's parameter values are inspected for provenance, but
-        # the exact continuation companion remains authoritative for the
-        # evaluated live/EMA state.  Apply it through the same provider owner.
-        provider.load_authenticated_parameter_state(
-            live_parameters, state_name="live"
-        )
+        # The latest checkpoint shares the continuation companion's boundary.
+        # An earlier P5 trajectory checkpoint is already the native MACE
+        # evaluation representation (EMA when enabled, live otherwise); the
+        # latest companion must not overwrite it with a later epoch's state.
+        if candidate_is_latest:
+            assert companion is not None and live_parameters is not None
+            provider.load_authenticated_parameter_state(
+                live_parameters, state_name="live"
+            )
     else:
         # Older bounded fixtures intentionally carry only parameter state.  They
         # may use the synthetic shell only below an explicit forward override;
@@ -319,6 +372,10 @@ def authenticate_train2_checkpoint_provider(
             raise TrainingDataInputError(
                 "A pinned MACE TRAIN2 state_dict is required for no-override target-size evaluation; "
                 "synthetic parameter-shell reconstruction is not a production fallback."
+            )
+        if companion is None or live_parameters is None:
+            raise TrainingDataInputError(
+                "Historical TRAIN2 evaluation requires a native MACE checkpoint state."
             )
         provider_model = companion.get("model")
         if provider_model is not None and not hasattr(provider_model, "named_parameters"):
@@ -343,18 +400,45 @@ def authenticate_train2_checkpoint_provider(
     computed_live_digest = _tensor_state_digest(
         live_model_parameters, schema="mdstats.train2-live-parameters.v1"
     )
-    if computed_live_digest != summary.live_parameter_digest:
+    summary_live_digest = getattr(summary, "live_parameter_digest", None)
+    if isinstance(summary, Mapping) and summary_live_digest is None:
+        summary_live_digest = summary.get("live_parameter_digest")
+    if candidate_is_latest and computed_live_digest != summary_live_digest:
         raise TrainingDataInputError(
             "Loaded provider model live parameter digest does not match summary live parameter digest."
         )
 
     if evaluation_model_state == EVALUATION_MODEL_STATE_LIVE:
+        summary_ema_for_live = getattr(summary, "ema_state_digest", None)
+        if isinstance(summary, Mapping) and summary_ema_for_live is None:
+            summary_ema_for_live = summary.get("ema_state_digest")
+        if (
+            not candidate_is_latest
+            and summary_ema_for_live is not None
+            and not bounded_parameter_shell
+        ):
+            raise TrainingDataInputError(
+                "An earlier TRAIN2 checkpoint saved with EMA cannot be evaluated as live state."
+            )
         evaluated_model_state_digest = computed_live_digest
     elif evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
-        if summary.ema_state_digest is None:
+        summary_ema_digest = getattr(summary, "ema_state_digest", None)
+        if isinstance(summary, Mapping) and summary_ema_digest is None:
+            summary_ema_digest = summary.get("ema_state_digest")
+        if summary_ema_digest is None:
             raise TrainingDataInputError(
                 "EMA trajectory convention requires authenticated EMA boundary state."
             )
+        # MACE's qualified checkpoint-save seam writes each epoch checkpoint
+        # inside ``ema.average_parameters()``.  For an earlier trajectory
+        # point, the authenticated raw checkpoint is therefore the candidate's
+        # EMA state; only the latest point has a matching companion snapshot.
+        if not candidate_is_latest:
+            evaluated_model_state_digest = _tensor_state_digest(
+                live_model_parameters, schema="mdstats.train2-ema-state.v1"
+            )
+            return provider, evaluated_model_state_digest, companion
+        assert companion is not None
         ema_state = companion.get("ema_state")
         if not isinstance(ema_state, Mapping):
             raise TrainingDataInputError("EMA state missing in continuation companion.")
@@ -392,7 +476,7 @@ def authenticate_train2_checkpoint_provider(
         computed_ema_digest = _tensor_state_digest(
             ema_values, schema="mdstats.train2-ema-state.v1"
         )
-        if computed_ema_digest != summary.ema_state_digest:
+        if computed_ema_digest != summary_ema_digest:
             raise TrainingDataInputError(
                 "Loaded provider EMA state digest does not match summary EMA state digest."
             )

@@ -37,6 +37,11 @@ from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
 )
+from .mace_compatibility import (
+    MACE_REPLAY_FORCE_MH_FT_LR,
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+    MACE_EXECUTABLE_LOSS_FAMILY as _MACE_EXECUTABLE_LOSS_FAMILY,
+)
 from .post_selection_identity import (
     POST_SELECTION_REPLAY_HEAD_NAME,
     POST_SELECTION_TARGET_HEAD_NAME,
@@ -44,9 +49,20 @@ from .post_selection_identity import (
     canonical_post_selection_head_names,
 )
 
-POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v1"
+POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v2"
 POST_SELECTION_MATERIALIZATION_SCHEMA = "mdstats.post-selection-materialization.v1"
-POST_SELECTION_MACE_CONFIG_SCHEMA = "mdstats.post-selection-mace-config.v1"
+POST_SELECTION_MACE_CONFIG_SCHEMA = "mdstats.post-selection-mace-config.v2"
+#: The executable MACE loss family for post-selection CV and fresh production;
+#: the shared owner in ``objectives`` explains why this family and not ``universal``.
+POST_SELECTION_MACE_LOSS_FAMILY = _MACE_EXECUTABLE_LOSS_FAMILY
+POST_SELECTION_REPLAY_FORCE_MH_FT_LR = MACE_REPLAY_FORCE_MH_FT_LR
+POST_SELECTION_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD = (
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD
+)
+# Pinned MACE's ordinary one-head parser projection uses this source-owned
+# namespace when no explicit ``heads`` mapping is supplied. Replay paths use
+# the canonical target_head mapping below.
+POST_SELECTION_SINGLE_HEAD_NAME = "Default"
 POST_SELECTION_EVAL_ROLE_SCHEMA = "mdstats.post-selection-eval2-role.v1"
 POST_SELECTION_RUN_EVIDENCE_SCHEMA = "mdstats.post-selection-run-evidence.v1"
 
@@ -81,6 +97,7 @@ class PostSelectionFittedPreparation:
     owner_plan_digest: str
     dataset_role: str
     common_training_policy_digest: str
+    objective_policy: Any
     membership: tuple[str, ...]
     membership_digest: str
     fitted_atomic_reference_digest: str
@@ -135,6 +152,9 @@ class PostSelectionFittedPreparation:
             "owner_plan_digest": self.owner_plan_digest,
             "dataset_role": self.dataset_role,
             "common_training_policy_digest": self.common_training_policy_digest,
+            # The resolved global objective travels with the fitted preparation so
+            # CV and final production emit the same coefficients the screen did.
+            "objective_policy": self.objective_policy.to_dict(),
             "membership": list(self.membership),
             "membership_digest": self.membership_digest,
             "fitted_atomic_reference_digest": self.fitted_atomic_reference_digest,
@@ -154,7 +174,7 @@ class PostSelectionFittedPreparation:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionFittedPreparation":
-        from .objectives import FrameTrainingWeight
+        from .objectives import FrameTrainingWeight, TrainingObjectivePolicy
         from .target_size_execution import CommonAtomicReferenceFit
 
         if payload.get("schema") != POST_SELECTION_PREPARATION_SCHEMA:
@@ -166,6 +186,9 @@ class PostSelectionFittedPreparation:
             dataset_role=str(payload["dataset_role"]),
             common_training_policy_digest=str(
                 payload["common_training_policy_digest"]
+            ),
+            objective_policy=TrainingObjectivePolicy.from_dict(
+                payload["objective_policy"]
             ),
             membership=tuple(str(v) for v in payload["membership"]),
             membership_digest=str(payload["membership_digest"]),
@@ -254,7 +277,6 @@ def fit_post_selection_preparation(
     fitted_weights = fit_membership_frame_training_weights(
         authorities.frame_array_index,
         frames,
-        objective_policy=policy.objective_policy,
         configuration_weights={
             item.frame_uid: item for item in configuration_weights
         },
@@ -263,6 +285,7 @@ def fit_post_selection_preparation(
         owner_plan_digest=str(owner_plan_digest),
         dataset_role=dataset_role,
         common_training_policy_digest=policy.content_digest,
+        objective_policy=policy.objective_policy,
         membership=frames,
         membership_digest=digest({"frame_uids": list(frames)}),
         fitted_atomic_reference_digest=atomic_references.content_digest,
@@ -505,12 +528,26 @@ def _post_selection_mace_config(
         "forces_key": extxyz_policy.forces_key,
         "stress_key": extxyz_policy.stress_key,
         "lr": float(optimizer_policy.learning_rate),
+        # The declared mdstats objective is the objective actually optimized, in
+        # cross-validation and in final production exactly as in the screen.
+        # ``loss="stress"`` selects MACE's WeightedEnergyForcesStressLoss, whose
+        # native reductions consume ``config_weight`` and the local property
+        # masks linearly; without these keys MACE would default to
+        # ``forces_weight=100`` under its own ``weighted`` loss.
+        "loss": POST_SELECTION_MACE_LOSS_FAMILY,
+        "energy_weight": float(preparation.objective_policy.energy_weight),
+        "forces_weight": float(preparation.objective_policy.forces_weight),
+        "stress_weight": float(preparation.objective_policy.stress_weight),
         "batch_size": int(optimizer_policy.batch_size),
         "valid_batch_size": int(optimizer_policy.valid_batch_size),
         "num_workers": int(optimizer_policy.num_workers),
         "max_num_epochs": int(planned_epochs),
         "ema": bool(optimizer_policy.ema),
         "ema_decay": float(optimizer_policy.ema_decay),
+        # TRAIN2 authenticates each completed epoch against the raw MACE
+        # checkpoint for that epoch.  Retaining every checkpoint is the
+        # existing checkpoint-control policy, not a post-hoc evidence aid.
+        "save_all_checkpoints": True,
         "amsgrad": bool(optimizer_policy.amsgrad),
         "weight_decay": float(optimizer_policy.weight_decay),
         "clip_grad": float(optimizer_policy.clip_grad),
@@ -531,6 +568,12 @@ def _post_selection_mace_config(
         config["foundation_head"] = str(foundation_head)
     if multiheads_finetuning:
         config["multiheads_finetuning"] = True
+        # These are explicit mdstats method controls.  MACE 0.3.16 otherwise
+        # mutates LR/EMA and may duplicate target frames for low replay ratios.
+        config["force_mh_ft_lr"] = POST_SELECTION_REPLAY_FORCE_MH_FT_LR
+        config["real_pt_data_ratio_threshold"] = (
+            POST_SELECTION_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD
+        )
         if replay_train is not None:
             config["pt_train_file"] = (
                 replay_train.relative_path
@@ -1033,6 +1076,95 @@ class MacePostSelectionTrainer:
             yaml.safe_dump(executable_payload, sort_keys=False), encoding="utf-8"
         )
 
+        # The wrapper receives a process-local authority derived only from the
+        # authenticated materialization and runtime plan.  It is not a user
+        # configuration escape hatch: the wrapper validates every field again
+        # after MACE's own argument-mutation region and records the resolved
+        # facts in the existing TRAIN2 summary.
+        from .mace_compatibility import (
+            MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+            build_mace_execution_authority,
+            mace_frame_uid_set_digest,
+            mace_execution_authority_to_environment,
+        )
+
+        target_uid_digest = None
+        if hasattr(target_train_art, "frame_uids"):
+            target_uid_digest = mace_frame_uid_set_digest(target_train_art.frame_uids)
+        if internal_multihead:
+            replay_count = int(
+                getattr(
+                    request.replay_train_artifact,
+                    "configuration_count",
+                    max(
+                        0,
+                        int(getattr(request.plan, "structures_per_epoch", 0))
+                        - int(target_train_art.configuration_count),
+                    ),
+                )
+            )
+        else:
+            # A single-head P5/final request has no replay exposure.  Do not
+            # infer a synthetic replay count merely because an older minimal
+            # fixture used ``structures_per_epoch`` as a total-size hint.
+            replay_count = 0
+        replay_uid_digest = None
+        if request.replay_train_artifact is not None and hasattr(
+            request.replay_train_artifact, "frame_uids"
+        ):
+            replay_uid_digest = mace_frame_uid_set_digest(
+                request.replay_train_artifact.frame_uids
+            )
+        # Production projections always contain these canonical optimizer
+        # fields. A few pre-launch guard fixtures intentionally stop at a
+        # minimal config boundary; resolve their omitted values from the
+        # already-authenticated optimizer policy so authority construction does
+        # not mask the guard being tested.
+        def executable_optimizer_value(name: str, default: Any) -> Any:
+            if name in executable_payload:
+                return executable_payload[name]
+            return getattr(request.optimizer_policy, name, default)
+
+        configured_ema = bool(executable_optimizer_value("ema", True))
+        authority = build_mace_execution_authority(
+            role="post_selection",
+            config_digest=request.materialization.mace_config_digest,
+            method_identity_digest=internal_payload.get("method_identity_digest"),
+            loss_family=executable_optimizer_value("loss", POST_SELECTION_MACE_LOSS_FAMILY),
+            learning_rate=float(executable_optimizer_value("lr", 1.0e-4)),
+            ema=configured_ema,
+            ema_decay=(
+                None
+                if not configured_ema
+                else float(executable_optimizer_value("ema_decay", 0.99999))
+            ),
+            multiheads_finetuning=internal_multihead,
+            force_mh_ft_lr=(
+                executable_payload.get("force_mh_ft_lr")
+                if internal_multihead
+                else None
+            ),
+            real_pt_data_ratio_threshold=(
+                executable_payload.get("real_pt_data_ratio_threshold")
+                if internal_multihead
+                else None
+            ),
+            target_train_count=int(target_train_art.configuration_count),
+            replay_train_count=replay_count,
+            batch_size=int(executable_optimizer_value("batch_size", 2)),
+            target_updates_per_epoch=None,
+            target_drop_last=None,
+            distributed_allowed=True,
+            target_frame_uid_set_digest=target_uid_digest,
+            replay_frame_uid_set_digest=replay_uid_digest,
+            target_head_name=(
+                POST_SELECTION_TARGET_HEAD_NAME
+                if internal_multihead
+                else POST_SELECTION_SINGLE_HEAD_NAME
+            ),
+            replay_head_name=POST_SELECTION_REPLAY_HEAD_NAME,
+        )
+
         run_root = request.materialization_directory.parent
         command = [
             str(self.wrapper_path),
@@ -1049,6 +1181,9 @@ class MacePostSelectionTrainer:
         ]
 
         env = dict(os.environ)
+        env[MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE] = (
+            mace_execution_authority_to_environment(authority)
+        )
         env[TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE] = json.dumps(request.plan.to_dict())
         env["PYTHONHASHSEED"] = str(request.plan.optimizer_policy_digest[:8])
         if hasattr(request.optimizer_policy, "seed"):
@@ -1157,12 +1292,19 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "forces_key",
     "stress_key",
     "lr",
+    "loss",
+    "force_mh_ft_lr",
+    "real_pt_data_ratio_threshold",
+    "energy_weight",
+    "forces_weight",
+    "stress_weight",
     "batch_size",
     "valid_batch_size",
     "num_workers",
     "max_num_epochs",
     "ema",
     "ema_decay",
+    "save_all_checkpoints",
     "amsgrad",
     "weight_decay",
     "clip_grad",
@@ -1225,8 +1367,48 @@ def post_selection_mace_run_configuration(
             "Non-multihead post-selection MACE configuration cannot expose "
             "replay training files or heads."
         )
+    if not multihead and any(
+        key in config for key in ("force_mh_ft_lr", "real_pt_data_ratio_threshold")
+    ):
+        raise PostSelectionExecutionError(
+            "Non-multihead post-selection MACE configuration cannot carry "
+            "multihead replay controls."
+        )
+    # MACE 0.3.16's parser default is ``True``. Emit the ordinary single-head
+    # value explicitly as well, otherwise a no-replay P5/final request is
+    # silently promoted into multihead execution.
+    result["multiheads_finetuning"] = multihead
     if multihead:
-        result["multiheads_finetuning"] = True
+        configured_force = config.get(
+            "force_mh_ft_lr", POST_SELECTION_REPLAY_FORCE_MH_FT_LR
+        )
+        configured_threshold = config.get(
+            "real_pt_data_ratio_threshold",
+            POST_SELECTION_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+        )
+        if configured_force is not POST_SELECTION_REPLAY_FORCE_MH_FT_LR:
+            raise PostSelectionExecutionError(
+                "Post-selection replay must explicitly force the authenticated "
+                "MACE LR/EMA settings."
+            )
+        try:
+            threshold_matches = (
+                float(configured_threshold)
+                == POST_SELECTION_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD
+            )
+        except (TypeError, ValueError):
+            threshold_matches = False
+        if not threshold_matches:
+            raise PostSelectionExecutionError(
+                "Post-selection replay must explicitly disable MACE target duplication."
+            )
+        # Emit the controls even for legacy in-memory fixtures that predate the
+        # repaired internal schema; the parser-facing bytes must never depend on
+        # a MACE default.
+        result["force_mh_ft_lr"] = POST_SELECTION_REPLAY_FORCE_MH_FT_LR
+        result["real_pt_data_ratio_threshold"] = (
+            POST_SELECTION_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD
+        )
         if not config.get("pt_train_file") or not config.get("pt_valid_file"):
             raise PostSelectionExecutionError(
                 "Post-selection multihead configuration must expose both "
@@ -1541,6 +1723,7 @@ def authenticate_post_selection_provider(
     summary: Any,
     evaluation_model_state: str,
     allow_forward_override: bool,
+    checkpoint_epoch: int | None = None,
 ) -> tuple[Any, str]:
     """Authenticate one post-selection checkpoint through the shared provider owner.
 
@@ -1564,24 +1747,92 @@ def authenticate_post_selection_provider(
             "Post-selection MACE configuration content changed before evaluation."
         )
     checkpoint_root = Path(checkpoint_directory)
+    effective_summary = summary
+    effective_companion_path: Path | None = checkpoint_root / "train2_runtime.pt"
+    effective_checkpoint_epoch = checkpoint_epoch
+    if effective_checkpoint_epoch is None:
+        import re
+
+        match = re.search(r"_epoch-(\d+)\.pt$", Path(checkpoint_name).name)
+        if match is not None:
+            effective_checkpoint_epoch = int(match.group(1))
+    if effective_checkpoint_epoch is not None:
+        from .train2_runtime import (
+            load_train2_runtime_boundary_summary,
+        )
+
+        try:
+            candidate_summary = load_train2_runtime_boundary_summary(
+                checkpoint_root, effective_checkpoint_epoch
+            )
+        except TrainingDataInputError:
+            latest_epoch = getattr(summary, "raw_checkpoint_epoch", None)
+            if latest_epoch != effective_checkpoint_epoch:
+                raise PostSelectionExecutionError(
+                    "The selected TRAIN2 checkpoint has no authenticated per-epoch runtime boundary."
+                )
+        else:
+            if candidate_summary.raw_checkpoint_sha256 != checkpoint_sha256:
+                raise PostSelectionExecutionError(
+                    "The selected TRAIN2 checkpoint disagrees with its per-epoch runtime boundary."
+                )
+            for field in (
+                "plan_digest",
+                "training_protocol_digest",
+                "optimizer_policy_digest",
+                "budget_policy_digest",
+                "lr_policy_digest",
+                "model_architecture_digest",
+                "mace_execution_evidence",
+            ):
+                if getattr(candidate_summary, field, None) != getattr(summary, field, None):
+                    raise PostSelectionExecutionError(
+                        "The selected TRAIN2 boundary does not belong to the authenticated run authority."
+                    )
+            summary_epoch = getattr(summary, "raw_checkpoint_epoch", None)
+            if isinstance(summary, Mapping) and summary_epoch is None:
+                summary_epoch = summary.get("raw_checkpoint_epoch")
+            if summary_epoch is None:
+                raise PostSelectionExecutionError(
+                    "The authenticated TRAIN2 run summary has no latest checkpoint epoch."
+                )
+            if int(effective_checkpoint_epoch) != int(summary_epoch):
+                # The immutable boundary record and raw checkpoint are the
+                # complete historical evaluation authority.  Do not retain or
+                # consult a second full-model state archive for this path.
+                # A bounded forward override may still need the latest-only
+                # companion to construct its explicit synthetic provider shell
+                # when a toy checkpoint has no native model state.  Native MACE
+                # earlier-checkpoint authentication ignores this path and uses
+                # the raw checkpoint plus its immutable boundary only.
+                effective_companion_path = (
+                    checkpoint_root / "train2_runtime.pt"
+                    if allow_forward_override
+                    else None
+                )
     provider, evaluated_digest, _companion = authenticate_train2_checkpoint_provider(
         raw_checkpoint_path=checkpoint_root / checkpoint_name,
         raw_checkpoint_sha256=checkpoint_sha256,
-        companion_path=checkpoint_root / "train2_runtime.pt",
-        companion_sha256=_companion_sha256(checkpoint_root),
-        summary=summary,
+        companion_path=effective_companion_path,
+        companion_sha256=(
+            None
+            if effective_companion_path is None
+            else _companion_sha256(effective_companion_path)
+        ),
+        summary=effective_summary,
         evaluation_model_state=evaluation_model_state,
         config_payload=config_payload,
         allow_forward_override=allow_forward_override,
+        raw_checkpoint_epoch=effective_checkpoint_epoch,
     )
     return provider, evaluated_digest
 
 
-def _companion_sha256(checkpoint_directory: Path) -> str:
-    companion = checkpoint_directory / "train2_runtime.pt"
+def _companion_sha256(companion: Path) -> str:
+    companion = Path(companion)
     if not companion.is_file():
         raise PostSelectionExecutionError(
-            f"TRAIN2 continuation companion missing in {checkpoint_directory}."
+            f"TRAIN2 continuation companion missing: {companion}."
         )
     return hashlib.sha256(companion.read_bytes()).hexdigest()
 

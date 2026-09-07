@@ -88,3 +88,4 @@ Historical revision notes are non-normative. Current authority is `docs/arch_man
 | 104 | DOC-MVSEL2 / mdstats 0.20.242a0 | [MLFF architecture revision 104 - MVSEL2 forward/lazy chain](ARCHITECTURE_NOTES_MLFF_REV104.md) | - |
 | 105 | TARGET-SIZE-V5-CLOSE1 | [MLFF architecture revision 105 - Target Size v5 final conformance closure](ARCHITECTURE_NOTES_MLFF_REV105.md) | - |
 | 106 | CODE-MLFF-FLEXIBLE-FIDELITY-EPOCH-REWORK-V1 | [MLFF architecture revision 106 - Configurable target-size fidelity](ARCHITECTURE_NOTES_MLFF_REV106.md) | - |
+| 108 | MLFF-TARGET-SIZE-OPTIMIZER-NORMALIZATION-AND-OBJECTIVE-WEIGHT-REWORK | [MLFF architecture revision 108 - Target-size normalization, practical ceiling, objective repair](ARCHITECTURE_NOTES_MLFF_REV108.md) | - |

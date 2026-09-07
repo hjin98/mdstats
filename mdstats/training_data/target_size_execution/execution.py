@@ -117,6 +117,34 @@ def target_size_evaluation_membership_digest_for_boundary(
     )
 
 
+def target_size_realized_learning_rate_policy(
+    trajectory: TargetSizeCandidateTrajectory,
+    schedule: TargetSizeScreenSchedule,
+):
+    """The one realized LR policy this candidate executes at every rung.
+
+    Continuation authentication must compare against the policy that actually
+    ran, not the un-normalized reference: a checkpoint produced under a
+    different normalization (or under the retired fixed-LR screen) has a
+    different LR-policy digest and is therefore rejected rather than resumed.
+    The realized policy is also re-derived here and checked against the identity
+    the trajectory bound, so an edited realization fails closed.
+    """
+
+    realized = schedule.realized_learning_rate_policy(
+        trajectory.realization.effective_base_learning_rate
+    )
+    if realized.policy_digest != (
+        trajectory.realization.realized_learning_rate_policy_digest
+    ):
+        raise TrainingDataInputError(
+            "Candidate realization does not reproduce its own realized "
+            "learning-rate policy identity; the optimizer-progress normalization "
+            "of this trajectory has drifted."
+        )
+    return realized
+
+
 def target_size_rung_plan(
     trajectory: TargetSizeCandidateTrajectory,
     schedule: TargetSizeScreenSchedule,
@@ -131,11 +159,17 @@ def target_size_rung_plan(
     byte-identical across rungs.
     """
 
+    # Every rung of one candidate runs the same realized normalized amplitude:
+    # it was derived once from the full candidate geometry and is replayed here,
+    # never recomputed from the active rung or the survivor set.
     return schedule.runtime_plan(
         training_protocol_digest=trajectory.candidate_training_protocol_digest,
         optimizer_policy_digest=trajectory.seed_neutral_training_policy_digest,
         structures_per_epoch=trajectory.realization.structures_per_epoch,
         execution_epoch_limit=schedule.validate_boundary_epoch(boundary_epoch),
+        learning_rate_policy=target_size_realized_learning_rate_policy(
+            trajectory, schedule
+        ),
     )
 
 
@@ -258,7 +292,9 @@ def validate_target_size_continuation_request(
         training_protocol_digest=trajectory.candidate_training_protocol_digest,
         optimizer_policy_digest=trajectory.seed_neutral_training_policy_digest,
         budget_policy=schedule.budget_policy,
-        learning_rate_policy=schedule.learning_rate_policy,
+        learning_rate_policy=target_size_realized_learning_rate_policy(
+            trajectory, schedule
+        ),
         structures_per_epoch=trajectory.realization.structures_per_epoch,
     )
     if summary.completed_epochs != predecessor:
@@ -410,7 +446,9 @@ def bind_target_size_boundary_state(
         training_protocol_digest=trajectory.candidate_training_protocol_digest,
         optimizer_policy_digest=trajectory.seed_neutral_training_policy_digest,
         budget_policy=schedule.budget_policy,
-        learning_rate_policy=schedule.learning_rate_policy,
+        learning_rate_policy=target_size_realized_learning_rate_policy(
+            trajectory, schedule
+        ),
         structures_per_epoch=trajectory.realization.structures_per_epoch,
     )
     if authenticated.content_digest != summary.content_digest:
@@ -495,7 +533,10 @@ def translate_target_size_train2_failure(
         or record.optimizer_policy_digest
         != trajectory.seed_neutral_training_policy_digest
         or record.budget_policy_digest != schedule.budget_policy.policy_digest
-        or record.lr_policy_digest != schedule.learning_rate_policy.policy_digest
+        or record.lr_policy_digest
+        != target_size_realized_learning_rate_policy(
+            trajectory, schedule
+        ).policy_digest
         or record.execution_epoch_limit != boundary
         or record.planned_updates != trajectory.realization.planned_updates
     ):
@@ -875,7 +916,9 @@ def validate_target_size_boundary_snapshot(
                 trajectory.seed_neutral_training_policy_digest
             ),
             budget_policy=schedule.budget_policy,
-            learning_rate_policy=schedule.learning_rate_policy,
+            learning_rate_policy=target_size_realized_learning_rate_policy(
+                trajectory, schedule
+            ),
             structures_per_epoch=trajectory.realization.structures_per_epoch,
         )
         if authenticated.content_digest != loaded_summary.content_digest:
@@ -904,6 +947,7 @@ __all__ = [
     "target_size_evaluation_membership_digest_for_boundary",
     "target_size_evaluation_model_state",
     "target_size_evaluation_size_for_boundary",
+    "target_size_realized_learning_rate_policy",
     "target_size_rung_plan",
     "translate_target_size_train2_failure",
     "validate_target_size_boundary_snapshot",

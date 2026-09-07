@@ -174,16 +174,16 @@ def _component_types() -> dict[str, Any]:
 def preparation_configuration_identity(cfg: Mapping[str, Any]) -> dict[str, str]:
     """Digest the configuration domain that owns preparation science.
 
-    This is a pure projection of the campaign configuration through the two
-    accepted policy owners.  It reads no data and touches no filesystem, so a
-    downstream command can prove that the substrate it is about to consume was
-    prepared under the configuration currently in force without reconstructing
-    anything.  Configuration outside these owners -- cross-validation, final
+    This is a pure projection of the campaign configuration through the accepted
+    policy owners.  It reads no data and touches no filesystem, so a downstream
+    command can prove that the substrate it is about to consume was prepared
+    under the configuration currently in force without reconstructing anything.  Configuration outside these owners -- cross-validation, final
     production, qualification, and execution scheduling -- deliberately has no
     influence here, because it cannot change prepared P1/P2 science.
     """
 
     from .campaign_target_size_runtime import resolve_neutral_partition_policy
+    from .target_size_execution import resolve_target_size_common_training_policy
     from .target_size_experiment import resolve_target_size_policy_from_config
 
     return {
@@ -191,6 +191,14 @@ def preparation_configuration_identity(cfg: Mapping[str, Any]) -> dict[str, str]
             cfg
         ).policy_digest,
         "target_size_policy_digest": resolve_target_size_policy_from_config(
+            cfg
+        ).content_digest,
+        # The common preparation is fitted under this policy - objective,
+        # configuration weighting, atomic references, harness size - so an edit
+        # to any of them changes prepared science and must retire the
+        # generation.  Optimizer normalization is deliberately absent: it is P3
+        # execution identity and cannot change a prepared P1/P2 product.
+        "common_training_policy_digest": resolve_target_size_common_training_policy(
             cfg
         ).content_digest,
     }

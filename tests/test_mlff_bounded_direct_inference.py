@@ -275,12 +275,18 @@ def test_chunked_predictions_equal_the_unchunked_reference(tmp_path: Path):
     )
 
 
-def test_the_accepted_batch_bound_is_execution_policy_identity(tmp_path: Path):
-    """`valid_batch_size` is a bound execution identity, not transient pressure.
+def test_the_accepted_batch_bound_is_execution_only_not_screen_identity(
+    tmp_path: Path,
+):
+    """`valid_batch_size` bounds EVAL2 inference; it is not the screen method.
 
-    Changing it does not touch prepared P1/P2 science, but it does change the
-    accepted P3 execution context, so evidence produced under the old bound is
-    not silently reusable under the new one.
+    The batch bound is a real accepted execution policy - it is what
+    ``execution_batch_width`` reads, and a nonsensical value still fails closed
+    below - but the population it evaluates, the order it evaluates in, and the
+    reduction it feeds are all fixed by owners above it. It therefore changes
+    neither prepared P1/P2 science nor the accepted P3 execution context, so
+    retuning it under transient memory pressure cannot retire an otherwise
+    identical screen.
     """
 
     narrow = _env(tmp_path / "narrow", valid_batch_size=2)
@@ -290,7 +296,12 @@ def test_the_accepted_batch_bound_is_execution_policy_identity(tmp_path: Path):
         == wide["aggregate"].definition.content_digest
     )
     assert narrow["common"].content_digest == wide["common"].content_digest
-    assert narrow["context"].content_digest != wide["context"].content_digest
+    assert narrow["context"].content_digest == wide["context"].content_digest
+    # The bound is still bound: each environment reads back the value it was
+    # configured with, and the scientific batch size is untouched.
+    assert execution_batch_width(narrow["optimizer"]) == 2
+    assert execution_batch_width(wide["optimizer"]) == 16
+    assert narrow["optimizer"].batch_size == wide["optimizer"].batch_size
 
 
 def test_execution_batch_width_requires_a_positive_accepted_policy():

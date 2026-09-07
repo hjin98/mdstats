@@ -318,9 +318,19 @@ def test_p2_reducer_seed_matrix_failure_attrition_and_ceiling_semantics(
     state = mdstats.advance_target_size_reducer(
         definition, state, _boundary_outcomes(definition, state, {4: 1.0, 8: 0.1})
     )
-    assert state.status is mdstats.ReducerStatus.NONCONVERGED_AT_CONFIGURED_CEILING
-    assert state.selected_target_size is None
-    assert state.selected_membership_digest is None
+    # The configured ceiling is a practical budget limit, not a requirement that
+    # convergence occur below it.  A materially superior Nmax is the best
+    # permitted size and is selected, carrying the non-convergence diagnostic.
+    assert state.status is mdstats.ReducerStatus.SELECTED
+    assert state.selected_target_size == definition.policy.nmax == 8
+    assert (
+        state.selected_membership_digest
+        == definition.training_order.candidate_digest(8)
+    )
+    assert state.terminal_reason_codes == (
+        mdstats.CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE,
+    )
+    mdstats.validate_target_size_reducer_state(definition, state)
 
 
 def test_p2_aggregate_rejects_rehashed_split_stale_orders_and_forged_selection(

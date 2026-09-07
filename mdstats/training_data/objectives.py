@@ -3,22 +3,65 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from collections.abc import Iterator, Sequence
-from typing import Any, Mapping
+from collections.abc import Iterator, Mapping, Sequence
+from typing import Any
 
 import numpy as np
 
-from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+from ._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+    digest,
+    strict_bool,
+    strict_finite_real,
+    strict_positive_int,
+    strict_string,
+    validate_digest,
+)
 from .feature_metric import FeatureFitDomain, build_feature_fit_domains
+
+#: Re-exported for objective-side callers.  The canonical definition lives with
+#: the MACE compatibility contract that owns pinned-parser semantics; it is the
+#: executable realization of the global objective declared here.
+from .mace_compatibility import MACE_EXECUTABLE_LOSS_FAMILY
 
 TRAINING_OBJECTIVE_POLICY_SCHEMA = "mdstats.training-objective-policy.v2"
 CONFIGURATION_WEIGHT_POLICY_SCHEMA = "mdstats.configuration-weight-policy.v1"
-FRAME_TRAINING_WEIGHT_SCHEMA = "mdstats.frame-training-weight.v1"
-TRAINING_WEIGHT_CATALOG_SCHEMA = "mdstats.training-weight-catalog.v1"
+#: v2 changes the *meaning* of the per-frame property weights: they are local
+#: availability masks (1.0 present / 0.0 absent), not per-frame copies of the
+#: global E/F/S objective coefficients.  The schema is versioned so a persisted
+#: v1 payload carrying 1:10:1 per frame is never silently reread as a mask.
+FRAME_TRAINING_WEIGHT_SCHEMA = "mdstats.frame-training-weight.v2"
+TRAINING_WEIGHT_CATALOG_SCHEMA = "mdstats.training-weight-catalog.v2"
 CHECKPOINT_METRIC_POLICY_SCHEMA = "mdstats.checkpoint-metric-policy.v2"
 TRAINING_OBJECTIVE_POLICY_VERSION = "mdstats.mlff-data7.training-objective.2026-07.v2"
 CONFIGURATION_WEIGHT_POLICY_VERSION = "mdstats.mlff-data7.configuration-weight.2026-07.v1"
 CHECKPOINT_METRIC_POLICY_VERSION = "mdstats.mlff-data7.checkpoint-metric.2026-07.v2"
+
+
+def _strict_string_collection(value: Any, *, name: str) -> tuple[str, ...]:
+    """Validate collection shape and element types before normalization."""
+
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        raise TrainingDataInputError(f"{name} must be a sequence of strings.")
+    normalized: list[str] = []
+    for index, item in enumerate(value):
+        item = strict_string(item, name=f"{name}[{index}]").strip()
+        if item:
+            normalized.append(item)
+    return tuple(sorted(set(normalized)))
+
+
+def _strict_positive_int_collection(value: Any, *, name: str) -> tuple[int, ...]:
+    """Validate positive integer elements before deduplicating and sorting."""
+
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        raise TrainingDataInputError(f"{name} must be a sequence of positive integers.")
+    normalized = tuple(
+        strict_positive_int(item, name=f"{name}[{index}]")
+        for index, item in enumerate(value)
+    )
+    return tuple(sorted(set(normalized)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,18 +76,29 @@ class TrainingObjectivePolicy:
 
     def __post_init__(self) -> None:
         for name in ("energy_weight", "forces_weight", "stress_weight"):
-            value = float(getattr(self, name))
-            if not np.isfinite(value) or value < 0.0:
-                raise TrainingDataInputError(f"{name} must be finite and nonnegative.")
+            value = strict_finite_real(
+                getattr(self, name),
+                name=name,
+                minimum=0.0,
+                exclusive_minimum=False,
+            )
             object.__setattr__(self, name, value)
         if self.energy_weight + self.forces_weight + self.stress_weight <= 0.0:
             raise TrainingDataInputError("At least one training property weight must be positive.")
-        groups = tuple(sorted(set(str(v).strip() for v in self.focus_atom_group_ids if str(v).strip())))
-        numbers = tuple(sorted(set(int(v) for v in self.focus_atomic_numbers)))
-        if any(v <= 0 for v in numbers):
-            raise TrainingDataInputError("Focus atomic numbers must be positive.")
-        if self.group_aware_force_objective and not groups and not numbers:
+        groups = _strict_string_collection(
+            self.focus_atom_group_ids, name="focus_atom_group_ids"
+        )
+        numbers = _strict_positive_int_collection(
+            self.focus_atomic_numbers, name="focus_atomic_numbers"
+        )
+        group_aware = strict_bool(
+            self.group_aware_force_objective,
+            name="group_aware_force_objective",
+        )
+        if group_aware and not groups and not numbers:
             raise TrainingDataInputError("A group-aware force objective requires explicit focus groups or atomic numbers.")
+        object.__setattr__(self, "group_aware_force_objective", group_aware)
+        object.__setattr__(self, "policy_version", strict_string(self.policy_version, name="policy_version"))
         object.__setattr__(self, "focus_atom_group_ids", groups)
         object.__setattr__(self, "focus_atomic_numbers", numbers)
 
@@ -66,18 +120,81 @@ class TrainingObjectivePolicy:
         if payload.get("schema") != TRAINING_OBJECTIVE_POLICY_SCHEMA:
             raise TrainingDataSerializationError("Unsupported training-objective schema.")
         result = cls(
-            energy_weight=float(payload["energy_weight"]),
-            forces_weight=float(payload["forces_weight"]),
-            stress_weight=float(payload["stress_weight"]),
-            group_aware_force_objective=bool(payload.get("group_aware_force_objective", False)),
-            focus_atom_group_ids=tuple(str(v) for v in payload.get("focus_atom_group_ids", ())),
-            focus_atomic_numbers=tuple(int(v) for v in payload.get("focus_atomic_numbers", ())),
-            policy_version=str(payload["policy_version"]),
+            energy_weight=payload["energy_weight"],
+            forces_weight=payload["forces_weight"],
+            stress_weight=payload["stress_weight"],
+            group_aware_force_objective=payload.get("group_aware_force_objective", False),
+            focus_atom_group_ids=payload.get("focus_atom_group_ids", ()),
+            focus_atomic_numbers=payload.get("focus_atomic_numbers", ()),
+            policy_version=payload["policy_version"],
         )
         if payload.get("policy_digest") not in (None, result.policy_digest):
             raise TrainingDataSerializationError("Training-objective digest mismatch.")
         return result
 
+
+
+def _objective_table(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    for name in ("objective", "loss"):
+        if name not in config:
+            continue
+        table = config[name]
+        if table is None:
+            continue
+        if not isinstance(table, Mapping):
+            raise TrainingDataInputError(f"[{name}] must be a table.")
+        if table:
+            return table
+    return {}
+
+
+def resolve_training_objective_policy(
+    config: Mapping[str, Any],
+) -> "TrainingObjectivePolicy":
+    """Resolve ``[objective]`` into the one global loss-coefficient authority.
+
+    This is the single config-to-objective seam.  Target-size common
+    preparation, post-selection cross-validation, and fresh final production all
+    consume it, so a user override cannot be honoured by one path and silently
+    ignored by another.
+    """
+
+    objective = _objective_table(config)
+    return TrainingObjectivePolicy(
+        energy_weight=objective.get("energy_weight", 1.0),
+        forces_weight=objective.get("forces_weight", 10.0),
+        stress_weight=objective.get("stress_weight", 1.0),
+        group_aware_force_objective=objective.get("group_aware_force_objective", False),
+        focus_atom_group_ids=objective.get("focus_atom_group_ids", ()),
+        focus_atomic_numbers=objective.get("focus_atomic_numbers", ()),
+    )
+
+
+def resolve_configuration_weight_policy(
+    config: Mapping[str, Any],
+) -> "ConfigurationWeightPolicy":
+    """Resolve ``[weighting]`` into the per-configuration weight authority.
+
+    Configuration weights are a separate owner from the global objective and
+    from the local per-property availability masks; all three are consumed by
+    the training loss at different layers.
+    """
+
+    weighting = config.get("weighting")
+    if weighting is None:
+        return ConfigurationWeightPolicy()
+    if not isinstance(weighting, Mapping):
+        raise TrainingDataInputError("[weighting] must be a table.")
+    if not weighting:
+        return ConfigurationWeightPolicy()
+    return ConfigurationWeightPolicy(
+        equalize_condition_strata=weighting.get("equalize_condition_strata", True),
+        event_anchor_multiplier=weighting.get("event_anchor_multiplier", 2.0),
+        protected_event_multiplier=weighting.get("protected_event_multiplier", 1.25),
+        degraded_frame_multiplier=weighting.get("degraded_frame_multiplier", 0.5),
+        minimum_configuration_weight=weighting.get("minimum_configuration_weight", 0.05),
+        maximum_configuration_weight=weighting.get("maximum_configuration_weight", 10.0),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,13 +208,24 @@ class ConfigurationWeightPolicy:
     policy_version: str = CONFIGURATION_WEIGHT_POLICY_VERSION
 
     def __post_init__(self) -> None:
-        for name in ("event_anchor_multiplier", "protected_event_multiplier", "degraded_frame_multiplier", "minimum_configuration_weight", "maximum_configuration_weight"):
-            value = float(getattr(self, name))
-            if not np.isfinite(value) or value <= 0.0:
-                raise TrainingDataInputError(f"{name} must be positive and finite.")
+        equalize = strict_bool(
+            self.equalize_condition_strata, name="equalize_condition_strata"
+        )
+        for name in (
+            "event_anchor_multiplier",
+            "protected_event_multiplier",
+            "degraded_frame_multiplier",
+            "minimum_configuration_weight",
+            "maximum_configuration_weight",
+        ):
+            value = strict_finite_real(
+                getattr(self, name), name=name, minimum=0.0
+            )
             object.__setattr__(self, name, value)
         if self.minimum_configuration_weight > 1.0 or self.maximum_configuration_weight < 1.0:
             raise TrainingDataInputError("Configuration weight bounds must contain the normalized mean value one.")
+        object.__setattr__(self, "equalize_condition_strata", equalize)
+        object.__setattr__(self, "policy_version", strict_string(self.policy_version, name="policy_version"))
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -119,13 +247,13 @@ class ConfigurationWeightPolicy:
         if payload.get("schema") != CONFIGURATION_WEIGHT_POLICY_SCHEMA:
             raise TrainingDataSerializationError("Unsupported configuration-weight schema.")
         result = cls(
-            equalize_condition_strata=bool(payload["equalize_condition_strata"]),
-            event_anchor_multiplier=float(payload["event_anchor_multiplier"]),
-            protected_event_multiplier=float(payload["protected_event_multiplier"]),
-            degraded_frame_multiplier=float(payload["degraded_frame_multiplier"]),
-            minimum_configuration_weight=float(payload["minimum_configuration_weight"]),
-            maximum_configuration_weight=float(payload["maximum_configuration_weight"]),
-            policy_version=str(payload["policy_version"]),
+            equalize_condition_strata=payload["equalize_condition_strata"],
+            event_anchor_multiplier=payload["event_anchor_multiplier"],
+            protected_event_multiplier=payload["protected_event_multiplier"],
+            degraded_frame_multiplier=payload["degraded_frame_multiplier"],
+            minimum_configuration_weight=payload["minimum_configuration_weight"],
+            maximum_configuration_weight=payload["maximum_configuration_weight"],
+            policy_version=payload["policy_version"],
         )
         if payload.get("policy_digest") not in (None, result.policy_digest):
             raise TrainingDataSerializationError("Configuration-weight digest mismatch.")
@@ -530,9 +658,11 @@ def build_training_weight_catalog(
         frame = frame_records[uid]
         records.append(FrameTrainingWeight(
             frame_uid=uid, configuration_weight=float(normalized),
-            energy_weight=objective.energy_weight if frame.energy_present else 0.0,
-            forces_weight=objective.forces_weight if frame.forces_present else 0.0,
-            stress_weight=objective.stress_weight if frame.stress_present else 0.0,
+            # Local availability masks.  The global 1:10:1 objective ratio is
+            # applied once by the training loss, never duplicated per frame.
+            energy_weight=1.0 if frame.energy_present else 0.0,
+            forces_weight=1.0 if frame.forces_present else 0.0,
+            stress_weight=1.0 if frame.stress_present else 0.0,
             reason_codes=tuple(reasons),
         ))
     return TrainingWeightCatalog(

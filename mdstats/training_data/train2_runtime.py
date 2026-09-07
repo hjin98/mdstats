@@ -36,6 +36,7 @@ TRAIN2_RUNTIME_SUMMARY_FILENAME = "train2_runtime.json"
 TRAIN2_RUNTIME_COMPANION_FILENAME = "train2_runtime.pt"
 TRAIN2_RUNTIME_HISTORY_FILENAME = "train2_history.jsonl"
 TRAIN2_PERSISTENCE_TELEMETRY_FILENAME = "train2_persistence.jsonl"
+TRAIN2_RUNTIME_BOUNDARY_SUMMARY_TEMPLATE = "train2_runtime_epoch-{epoch}.json"
 TRAIN2_NUMERICAL_FAILURE_SCHEMA = "mdstats.train2-numerical-failure.v1"
 TRAIN2_NUMERICAL_FAILURE_FILENAME = "train2_numerical_failure.json"
 TRAIN2_NUMERICAL_FAILURE_CODES = frozenset({
@@ -44,6 +45,17 @@ TRAIN2_NUMERICAL_FAILURE_CODES = frozenset({
 })
 
 _ACTIVE_RUNTIME: "_Train2Runtime | None" = None
+
+
+def train2_runtime_boundary_summary_path(
+    checkpoint_directory: str | Path, epoch: int
+) -> Path:
+    """Return the authenticated per-epoch summary path for one checkpoint."""
+
+    return (
+        Path(checkpoint_directory).resolve()
+        / TRAIN2_RUNTIME_BOUNDARY_SUMMARY_TEMPLATE.format(epoch=int(epoch))
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -599,6 +611,7 @@ class Train2RuntimeSummary:
     group_base_learning_rates: tuple[float, ...]
     complete_budget: bool
     model_architecture_digest: str | None = None
+    mace_execution_evidence: Mapping[str, Any] | None = None
 
     @property
     def content_digest(self) -> str:
@@ -638,6 +651,8 @@ class Train2RuntimeSummary:
             payload["model_architecture_digest"] = validate_digest(
                 self.model_architecture_digest, name="model_architecture_digest"
             )
+        if self.mace_execution_evidence is not None:
+            payload["mace_execution_evidence"] = dict(self.mace_execution_evidence)
         return payload
 
     def to_dict(self) -> dict[str, Any]:
@@ -678,6 +693,11 @@ class Train2RuntimeSummary:
                 None
                 if payload.get("model_architecture_digest") is None
                 else str(payload["model_architecture_digest"])
+            ),
+            mace_execution_evidence=(
+                None
+                if payload.get("mace_execution_evidence") is None
+                else dict(payload["mace_execution_evidence"])
             ),
         )
         for name in ("plan_digest", "training_protocol_digest", "optimizer_policy_digest", "budget_policy_digest", "lr_policy_digest", "raw_checkpoint_sha256", "optimizer_state_digest", "live_parameter_digest", "rng_state_digest"):
@@ -741,6 +761,9 @@ class _Train2Runtime:
         self.numerical_failure_path = (
             self.checkpoint_directory / TRAIN2_NUMERICAL_FAILURE_FILENAME
         )
+        from .mace_compatibility import mace_execution_evidence_from_environment
+
+        self.mace_execution_evidence = mace_execution_evidence_from_environment()
         self.completed_updates = self.current_epoch * self.updates_per_epoch
         self.group_base_lrs: tuple[float, ...]
         self._metric_offset = 0
@@ -811,6 +834,10 @@ class _Train2Runtime:
             raise TrainingDataInputError("TRAIN2 restart companion belongs to a different training-budget policy.")
         if summary.lr_policy_digest != self.plan.learning_rate_policy.policy_digest:
             raise TrainingDataInputError("TRAIN2 restart companion belongs to a different LR-schedule policy.")
+        if summary.mace_execution_evidence != self.mace_execution_evidence:
+            raise TrainingDataInputError(
+                "TRAIN2 restart companion belongs to different resolved MACE execution evidence."
+            )
         if summary.planned_epochs != self.plan.budget_policy.planned_epochs:
             raise TrainingDataInputError("TRAIN2 restart companion changed the frozen epoch horizon.")
         if summary.structures_per_epoch != self.structures_per_epoch or summary.planned_structures_presented != self.planned_structures:
@@ -837,6 +864,10 @@ class _Train2Runtime:
             raise TrainingDataSerializationError("TRAIN2 continuation companion budget-policy identity mismatch.")
         if payload.get("lr_policy_digest") != self.plan.learning_rate_policy.policy_digest:
             raise TrainingDataSerializationError("TRAIN2 continuation companion LR-policy identity mismatch.")
+        if payload.get("mace_execution_evidence") != self.mace_execution_evidence:
+            raise TrainingDataSerializationError(
+                "TRAIN2 continuation companion MACE execution evidence changed across restart."
+            )
         if int(payload.get("planned_updates", -1)) != self.planned_updates or int(payload.get("updates_per_epoch", -1)) != self.updates_per_epoch:
             raise TrainingDataSerializationError("TRAIN2 continuation companion update geometry changed across restart.")
         if int(payload.get("structures_per_epoch", -1)) != self.structures_per_epoch or int(payload.get("planned_structures_presented", -1)) != self.planned_structures:
@@ -1057,6 +1088,7 @@ class _Train2Runtime:
             "ema_state": ema_state,
             "rng_state": rng_state,
             "group_base_learning_rates": list(self.group_base_lrs),
+            "mace_execution_evidence": self.mace_execution_evidence,
         }
         if model_architecture_digest is not None:
             companion["model_architecture_digest"] = model_architecture_digest
@@ -1091,9 +1123,19 @@ class _Train2Runtime:
             group_base_learning_rates=self.group_base_lrs,
             complete_budget=(completed_epochs == self.plan.budget_policy.planned_epochs),
             model_architecture_digest=model_architecture_digest,
+            mace_execution_evidence=self.mace_execution_evidence,
         )
         summary_write_started = time.perf_counter()
         _atomic_json(self.summary_path, summary.to_dict())
+        from .target_size_execution.persistence import (
+            publish_immutable_json_create_or_verify,
+        )
+
+        publish_immutable_json_create_or_verify(
+            train2_runtime_boundary_summary_path(self.checkpoint_directory, epoch),
+            summary.to_dict(),
+            deserializer=Train2RuntimeSummary.from_dict,
+        )
         summary_write_seconds = time.perf_counter() - summary_write_started
         loss, validation = self._read_new_metrics(epoch)
         history = {
@@ -1324,6 +1366,30 @@ def load_train2_runtime_summary(checkpoint_directory: str | Path) -> Train2Runti
     return Train2RuntimeSummary.from_dict(payload)
 
 
+def load_train2_runtime_boundary_summary(
+    checkpoint_directory: str | Path, epoch: int
+) -> Train2RuntimeSummary:
+    """Load one authenticated historical TRAIN2 checkpoint boundary."""
+
+    path = train2_runtime_boundary_summary_path(checkpoint_directory, epoch)
+    if not path.is_file():
+        raise TrainingDataInputError(
+            f"TRAIN2 boundary runtime summary is missing for epoch {int(epoch)}: {path}"
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise TrainingDataSerializationError(
+            f"TRAIN2 boundary runtime summary is corrupt and cannot be read: {path}"
+        ) from exc
+    result = Train2RuntimeSummary.from_dict(payload)
+    if result.raw_checkpoint_epoch != int(epoch):
+        raise TrainingDataSerializationError(
+            "TRAIN2 boundary runtime summary epoch does not match its path."
+        )
+    return result
+
+
 def build_train2_runtime_plan(
     job: Any, *, execution_epoch_limit: int | None = None,
     true_replay_monitor_sha256: str | None = None,
@@ -1364,5 +1430,7 @@ __all__ = [
     "train2_runtime_should_pause_after_epoch",
     "validate_train2_runtime_continuation_artifacts",
     "load_train2_runtime_summary",
+    "load_train2_runtime_boundary_summary",
+    "train2_runtime_boundary_summary_path",
     "verify_train2_checkpoint_model_parameters",
 ]

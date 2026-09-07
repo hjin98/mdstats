@@ -342,6 +342,7 @@ def load_validated_target_size_terminal_result(
         TargetSizeExecutionResolver,
         build_target_size_execution_context,
         build_target_size_screen_schedule,
+        resolve_target_size_optimizer_normalization_policy,
     )
 
     current = require_current_target_size_runtime(store)
@@ -389,7 +390,10 @@ def load_validated_target_size_terminal_result(
 
     aggregate = authorities.aggregate
     definition = aggregate.definition
-    schedule = build_target_size_screen_schedule(definition.policy.fidelity_epochs)
+    schedule = build_target_size_screen_schedule(
+        definition.policy.fidelity_epochs,
+        normalization_policy=resolve_target_size_optimizer_normalization_policy(cfg),
+    )
     seeds = tuple(definition.policy.optimizer_seeds)
     optimizer_policy = _optimizer_policy(
         cfg,

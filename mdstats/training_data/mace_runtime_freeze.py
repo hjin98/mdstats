@@ -615,7 +615,7 @@ def _probe_mace_source_semantics(source_root: Path | None) -> tuple[bool, tuple[
     notes: list[str] = []
     try:
         fixed_file = probe_mace_source_tree(source_root)
-        if not fixed_file.fixed_file_adapter_supported:
+        if not fixed_file.current_execution_compatible:
             notes.append("fixed-file DATA8 source semantics failed")
     except Exception as exc:
         return False, (f"fixed-file source semantic probe failed: {type(exc).__name__}: {exc}",)

@@ -19,6 +19,7 @@ def test_data9a2_specification_and_release_version() -> None:
         "config_weight",
         "weight_pt",
         "mace_run_train --dry_run",
+        "parsed loss is `stress`",
         "target-head extraction",
         "finite energy, force, and stress",
     ):

@@ -126,7 +126,34 @@ coarse_practical_equivalence_mev_per_a = 1.0
 practical_equivalence_mev_per_a = 1.0
 # The ordered screen seed list comes only from the sole enabled training method.
 
+[target_data.size_convergence.optimizer_normalization]
+# Candidate N performs ceil(N/batch_size) optimizer updates per epoch under the
+# screen's fixed number of dataset passes, so without normalization a larger N
+# would also receive more optimizer progress - a second variable the target-size
+# question never asked about. Learning-rate amplitude and EMA update time are
+# therefore normalized against one reference size:
+#     s_N     = ceil(N_ref/B) / ceil(N/B)
+#     lr(N)   = reference_learning_rate * s_N
+#     beta(N) = reference_ema_decay ** s_N
+# Doubling the update geometry halves the learning rate and takes the square
+# root of the EMA decay. Epoch counts, batch size, LR phase shape, Adam
+# settings, weight decay, gradient clipping, precision, and the seed set are all
+# held fixed across candidates. The reference size need not be a candidate.
+# This normalization controls the size-comparison screen only; post-selection
+# cross-validation and fresh final production start from their own optimizer
+# state under their own method policy.
+reference_target_size = 1024
+reference_learning_rate = 1.0e-4
+reference_ema_decay = 0.99999
+
 [objective]
+# Global loss-component coefficients, applied exactly once at the MACE loss
+# layer for target-size screening, post-selection cross-validation, and fresh
+# final production alike. They are a different owner from [weighting] (the
+# per-configuration weight) and from the per-frame property weights, which are
+# local availability masks (1.0 present / 0.0 absent) and never carry this
+# ratio. Every generated MACE config emits these explicitly, so MACE's own
+# forces_weight=100 default is never in effect.
 energy_weight = 1.0
 forces_weight = 10.0
 stress_weight = 1.0
@@ -142,10 +169,27 @@ policy_generation = "train2"
 # explicit per-method tables below for new campaigns.
 device = "cuda"
 dtype = "float32"
+# The shared scientific optimizer settings below are resolved exactly once and
+# feed both the recorded post-selection method identity and the optimizer that
+# actually executes, so an explicit value here changes both. Omitting a key
+# resolves the same default on both sides.
+#
+# `learning_rate` and `ema_decay` are the post-selection/general training
+# authority. They do NOT set the target-size screen learning rate or EMA decay:
+# the screen derives those from
+# [target_data.size_convergence.optimizer_normalization] and the candidate's
+# ceil(N/batch_size) update geometry.
 learning_rate = 1.0e-4
 batch_size = 2
 valid_batch_size = 2
-# 0 chooses a CPU/RAM-bounded DataLoader worker count.
+ema = true
+ema_decay = 0.99999
+amsgrad = true
+weight_decay = 1.0e-6
+clip_grad = 10.0
+# 0 chooses a CPU/RAM-bounded DataLoader worker count. Worker count is pure
+# resource realization: it is not method identity and is not target-size
+# scientific currentness, so it may be retuned mid-screen.
 num_workers = 0
 estimated_loader_memory_mib_per_worker = 256.0
 max_num_epochs = 30

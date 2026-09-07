@@ -30,11 +30,41 @@ foundation checkpoint / model family / selected foundation head
 protocol-global N_selected and exact T_selected binding
 replay source, split, and replay-monitor identity
 training objective and configuration/property weights
+executable loss family
 target/replay head weights and realized exposure policy
 checkpoint metric and admissibility policy
 optimizer, LR schedule, epoch cap, stopping policy, and seed policy
 model precision, acceleration backend, and MACE adapter/runtime lock
 ```
+
+## Objective and weighting layers
+
+Three weighting owners are applied at three different layers and are never
+merged:
+
+- **global loss coefficients** - `[objective]` (`TrainingObjectivePolicy`),
+  default `energy : forces : stress = 1 : 10 : 1`. They are emitted explicitly
+  into every generated MACE configuration, so MACE's own `forces_weight = 100`
+  default never applies to an mdstats run;
+- **per-configuration weight** - `[weighting]` (`ConfigurationWeightPolicy`),
+  exported as `config_weight`;
+- **local property weights** - availability masks, `1.0` when the canonical
+  label is present and `0.0` when it is absent. They are not per-frame copies of
+  the global ratio.
+
+The executable loss family is MACE's weighted energy+force+stress loss
+(`loss = "stress"`, `WeightedEnergyForcesStressLoss`), whose native reductions
+consume `ref.weight` and the local property weights linearly while applying the
+global coefficients once. MACE's `UniversalLoss` is not used: it scales
+residuals inside a Huber evaluation - so its per-config property weights are not
+linearly equivalent to global coefficients - and it does not consume
+`config_weight`. The loss family is part of method identity, so historical
+checkpoints trained under different loss semantics are not prefixes or
+equivalents of corrected trajectories.
+
+Target-size screening, post-selection cross-validation, and fresh final
+production resolve these owners through the same configuration resolvers, so
+"the same objective" means the same resolved policy on every path.
 
 The identity contains no unbound caller-held model or fold result. A change to
 replay semantics, objective, selected membership, checkpoint policy,
@@ -103,6 +133,21 @@ accepted by the MACE runtime, normally an atomic-number mapping. A record name
 or path is not an E0 payload. Target and replay label domains are checked for
 compatibility rather than silently merged.
 
+The current MACE execution lock extends this boundary through dependency
+argument mutation. Parser-facing configurations explicitly carry
+`multiheads_finetuning = false` for ordinary one-head runs and
+`multiheads_finetuning = true`, `loss = "stress"`,
+`force_mh_ft_lr = true`, and `real_pt_data_ratio_threshold = 0.0` for replay.
+The one source-qualified mdstats wrapper
+prevents pinned MACE 0.3.16 from replacing that loss with `UniversalLoss`, then
+records the native resolved `WeightedEnergyForcesStressLoss`, LR/EMA settings,
+replay exposure, source-probe identity, and method/config digests in the
+existing TRAIN2 runtime evidence. Target-size executions additionally retain
+the final target batch, realize `ceil(N / B)` batches with complete target UID
+coverage, and fail closed for an unqualified distributed sampler. This is an
+execution realization of the existing method identity, not a second trainer or
+loss owner.
+
 ## Controlled target-size screen versus ordinary training
 
 The target-size experiment is the special Part V protocol-comparison control.
@@ -135,10 +180,63 @@ current selected binding
   -> fold/final execution and evidence
 ```
 
-The shared method identity binds preparation/objective recipe, foundation and
-initialization family, optimizer family, LR schedule, checkpoint semantics,
-precision, and backend. It does not contain fold membership or a second target
+The shared method identity binds preparation/objective recipe, executable loss
+family, foundation and initialization family, optimizer family, LR schedule,
+checkpoint semantics, precision, and backend. It does not contain fold membership or a second target
 size.
+
+### One canonical optimizer-setting resolution
+
+The shared scientific optimizer semantics a campaign may configure - general
+learning rate, batch size, validation batch size, evaluation interval, EMA
+enable/disable, EMA decay, AMSGrad, weight decay, gradient clipping, and the
+permitted optimizer family - are resolved exactly once, by
+`mdstats.training_data.training_settings.resolve_shared_optimizer_settings`.
+The learned-model dtype is likewise resolved once, by the binary
+learned-model-precision contract in the same module. The method identity, the
+executable `MaceOptimizerPolicy`, the generated MACE configuration, and the
+TRAIN2 runtime all descend from those single resolutions:
+
+```text
+configuration
+  -> one canonical resolved value
+      -> P5 method identity
+      -> executable MaceOptimizerPolicy
+      -> generated MACE config
+      -> TRAIN2 runtime
+```
+
+There is no second, independently defaulted route. P5 method identity is
+therefore literally the method that executes: an explicitly configured shared
+optimizer field changes both the recorded identity and actual training, and an
+omitted field resolves to the same default on both sides. The optimizer seed,
+role-specific epoch budgets, and worker counts stay outside these shared
+settings, because they are per-run identity, role policy, and pure resource
+choice respectively.
+
+The resolver is also the place where the configuration domain is enforced, so
+that a malformed setting cannot become either a recorded identity or an executed
+method: learning rate, EMA decay, weight decay, and gradient clipping must be
+finite reals in their declared ranges; batch sizes and evaluation interval must
+be exact positive integers, never booleans or truncated floats; and the EMA and
+AMSGrad flags must be actual booleans rather than truth-normalized values.
+`MaceOptimizerPolicy` repeats those invariants in its constructor, because it is
+independently constructible and independently deserialized.
+
+The same fail-closed, validate-before-canonicalization rule applies to the
+target-size normalization reference policy, `TrainingObjectivePolicy`, and
+`ConfigurationWeightPolicy`, including their current-schema readers. Real
+values must be finite and in their declared ranges, integer values must be
+actual integers, boolean values must be actual booleans, and collection
+elements must satisfy their declared domains. A malformed current-schema value
+is rejected before it can affect identity, export, or execution; only an
+explicitly supported historical reader may preserve a historical representation.
+
+Because historical evidence could previously record an identity whose defaults
+were never the ones execution applied, the method recipe carries an explicit
+version. Evidence produced under the earlier resolution cannot authorize
+corrected cross-validation or final production; it remains readable as history
+and is never rewritten in place.
 
 The CV policy owns `K >= 2`, partition seed, fold algorithm, CV budget,
 monitor/purge allocation, target-only acceptance, and the all-required-fold /

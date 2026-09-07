@@ -51,6 +51,10 @@ depend. For MACE v0.3.16, the required behaviors are:
   validation head;
 - target data can be duplicated internally when the target/replay ratio falls
   below `real_pt_data_ratio_threshold`;
+- multi-head fine-tuning can replace the requested learning rate and EMA
+  settings unless `force_mh_ft_lr` is true;
+- target-head, distributed-sampler, and combined training loaders can discard
+  the final partial batch through `drop_last`;
 - `dry_run` and `save_all_checkpoints` are available;
 - external replay supports `pt_train_file` and `pt_valid_file`.
 
@@ -79,6 +83,8 @@ Records content digests and verified source semantics:
 - target-last validation ordering;
 - last-head checkpoint behavior;
 - implicit target duplication;
+- the multi-head loss, LR/EMA override, and target-loader truncation branches
+  that the qualified runtime must control;
 - dry-run support;
 - save-all-checkpoint support;
 - fixed-file adapter acceptance.
@@ -112,6 +118,40 @@ the v0.3.16 compatibility emulation repeats target data until the realized
 ratio satisfies the source behavior. DATA8 defaults to \(r=0\), so balancing is
 owned explicitly by mdstats rather than hidden inside MACE.
 
+### Qualified execution semantics
+
+The current execution identity is pinned to `mace-torch==0.3.16` and the
+source-qualified mdstats MACE wrapper. Every replay-enabled parser-facing
+configuration SHALL explicitly carry:
+
+```text
+loss = "stress"
+force_mh_ft_lr = true
+real_pt_data_ratio_threshold = 0.0
+```
+
+Every ordinary one-head parser-facing configuration SHALL explicitly carry
+`multiheads_finetuning = false`; replay configurations carry
+`multiheads_finetuning = true`. This prevents MACE 0.3.16's parser default from
+silently promoting an ordinary P5 or final-production request into replay mode.
+
+The wrapper changes only the pinned multi-head assignment that would otherwise
+force `UniversalLoss`; native MACE `get_loss_fn()` still constructs the loss.
+It validates the parser result, validates the resolved native
+`WeightedEnergyForcesStressLoss` after MACE's mutation region, and records the
+resolved LR, EMA, replay counts, duplication factor, source probe, and
+method/config digests. `UniversalLoss` is therefore neither accepted nor
+emulated by an mdstats-side loss path.
+
+For target-size execution, the same authenticated target-size authority
+activates complete target-head and combined-loader coverage: `drop_last` is
+false, the realized batch count is `ceil(N / B)`, every exported target
+`frame_uid` is present exactly once, and target-size distributed sampler paths
+are rejected unless separately qualified. No frame is duplicated to fill a
+partial batch. The resolved evidence is attached to the existing TRAIN2
+runtime summary; missing, stale, or mismatched evidence cannot authorize a
+restart or downstream current artifact.
+
 ### `MaceExtxyzArtifact`
 
 Stores one verified target data file and its sidecar manifest. Every exported
@@ -133,6 +173,64 @@ labels, weights, and stress representation. Per-atom floating columns are
 written with at least 17 significant decimal digits. The ASE 3.29 default
 `%16.8f` format is not used because it can round Cartesian positions and force
 labels by several nanounits and violate the lossless DATA8 contract.
+
+### Executable loss family and weighting layers
+
+Every generated MACE configuration on a current path - target-size candidate
+training, post-selection cross-validation, and fresh final production - SHALL
+emit the resolved global objective coefficients explicitly:
+
+```text
+loss = "stress"
+energy_weight
+forces_weight
+stress_weight
+```
+
+`loss = "stress"` selects pinned MACE's `WeightedEnergyForcesStressLoss`. Its
+native reductions consume `config_weight` (`ref.weight`) and the per-frame
+property weights **linearly**, and apply the global coefficients exactly once,
+outside those reductions. No current path may rely on MACE's
+`forces_weight = 100` default.
+
+MACE's `UniversalLoss` SHALL NOT be used on a current path. Its per-config
+property weights scale residuals *inside* a Huber evaluation, so they are not
+linearly equivalent to global objective coefficients, and it does not consume
+`config_weight` at all - it therefore cannot realize the declared mdstats
+weighting contract. This SHALL NOT be worked around with a patched loss, a
+square-root weighting trick, residual pre-scaling, sample duplication, or a
+second mdstats loss engine.
+
+The three weighting layers are distinct owners:
+
+| Layer | Owner | Exported as |
+| --- | --- | --- |
+| global loss coefficients | `[objective]` / `TrainingObjectivePolicy` | `energy_weight`, `forces_weight`, `stress_weight` config keys |
+| per-configuration weight | `[weighting]` / `ConfigurationWeightPolicy` | `config_weight` |
+| local property weights | canonical label presence | `config_energy_weight`, `config_forces_weight`, `config_stress_weight` |
+
+Local property weights are availability masks - `1.0` when the canonical label
+is present, `0.0` when it is absent - and SHALL NOT carry per-frame copies of
+the global coefficient ratio.
+
+The `[objective]` and `[weighting]` policy readers validate raw configuration
+and current-schema values before canonicalization. Global coefficients are
+finite nonnegative reals with at least one positive value; the configuration
+equalization flag is an actual boolean; configuration multipliers and bounds
+are finite positive reals satisfying the normalized-mean constraint; and
+focus collections contain only declared string or positive-integer elements.
+Malformed current-schema values SHALL fail rather than become valid policy
+identity through `int`, `float`, or `bool` coercion. Historical representations
+remain admissible only through an explicit supported compatibility reader.
+
+`TrainingObjectivePolicy` owns the global component coefficients only; it SHALL
+NOT carry a loss-family field. The loss family is part of model/training-method
+identity, owned by the canonical MACE method/architecture owner. Model reconstruction
+records it, and pinned MACE derives the same `compute_stress` / `compute_virials`
+output configuration for it as for the retired family, so reconstruction and
+EVAL2 semantics are preserved while the identity now names what actually
+executes. Checkpoints produced under the retired loss semantics are not prefixes
+or equivalents of corrected trajectories.
 
 ### Stress contract
 
@@ -379,9 +477,13 @@ These amendments are implemented in 0.20.37a0 as part of DATA9A hardening.
 The v0.3.16 runtime contract is stricter than a native YAML interpretation.
 `atomic_numbers`, `heads`, every nested head `atomic_numbers` value, and every
 nested head `E0s` mapping are emitted as scalar strings containing deterministic
-Python literals. The loss name is the
-lowercase parser choice `universal`. DATA8 does not emit unsupported
-`weight_pt` or `weight_ft` options.
+Python literals. DATA8 does not emit unsupported `weight_pt` or `weight_ft`
+options.
+
+The loss name recorded in this amendment was the lowercase parser choice
+`universal`. That is historical: the retired DATA8 preparation topology is no
+longer reachable from any current command, and the current executable loss
+family is `stress` (see "Executable loss family and weighting layers" below).
 
 For preselected fixed-file replay, target and replay training exposure is
 realized by multiplying each training structure's extended-XYZ

@@ -115,10 +115,6 @@ from .post_selection_store import (
     resolve_current_post_selection_record,
 )
 
-#: Live vs EMA evaluation convention for post-selection runs.  It is a method
-#: property, not a per-run choice, and matches the accepted TRAIN2 convention.
-POST_SELECTION_EVALUATION_MODEL_STATE = "live"
-
 
 @dataclass(frozen=True, slots=True)
 class PostSelectionContext:
@@ -353,6 +349,29 @@ def _optimizer_policy_for(
     return policy
 
 
+def resolve_post_selection_evaluation_model_state(
+    context: PostSelectionContext, *, seed: int, planned_epochs: int
+) -> str:
+    """Resolve the checkpoint representation from the executed optimizer policy.
+
+    Post-selection uses the same policy-derived convention as the target-size
+    evaluator: EMA checkpoints are evaluated as EMA and EMA-free checkpoints
+    are evaluated as live state.  This is deliberately derived at the
+    authentication call site rather than stored as another method or checkpoint
+    identity.
+    """
+
+    from .target_size_execution import target_size_evaluation_model_state
+
+    return target_size_evaluation_model_state(
+        _optimizer_policy_for(
+            context,
+            seed=int(seed),
+            planned_epochs=int(planned_epochs),
+        )
+    )
+
+
 def _resolve_post_selection_replay_resolution(
     context: PostSelectionContext, *, require_train: bool = True
 ) -> Any | None:
@@ -544,13 +563,15 @@ def evaluate_post_selection_run_candidates(
     selected = context.selected
     admissibility = context.method_policies.checkpoint_admissibility
     extxyz_policy = context.method_policies.extxyz
-    batch_width = execution_batch_width(
-        _optimizer_policy_for(
-            context,
-            seed=run_plan.optimizer_seed,
-            planned_epochs=run_plan.planned_epochs,
-        )
+    optimizer_policy = _optimizer_policy_for(
+        context,
+        seed=run_plan.optimizer_seed,
+        planned_epochs=run_plan.planned_epochs,
     )
+    batch_width = execution_batch_width(optimizer_policy)
+    from .target_size_execution import target_size_evaluation_model_state
+
+    evaluation_model_state = target_size_evaluation_model_state(optimizer_policy)
 
     candidates = post_selection_checkpoint_candidates(
         run_plan=run_plan,
@@ -570,8 +591,9 @@ def evaluate_post_selection_run_candidates(
             checkpoint_directory=checkpoint_directory,
             checkpoint_name=Path(checkpoint.relative_path).name,
             checkpoint_sha256=checkpoint.sha256,
+            checkpoint_epoch=getattr(checkpoint, "epoch", None),
             summary=summary,
-            evaluation_model_state=POST_SELECTION_EVALUATION_MODEL_STATE,
+            evaluation_model_state=evaluation_model_state,
             allow_forward_override=context.inference_evaluator is not None,
         )
         replay_candidate_rmse = None
@@ -663,7 +685,7 @@ def evaluate_post_selection_run_candidates(
                         context.method_policies.common_training.eval2_metric_policy_digest
                     ),
                     "default_dtype": (
-                        context.method_policies.common_training.default_dtype
+                        context.method_policies.default_dtype
                     ),
                     "device": context.method_policies.device,
                 }
@@ -682,7 +704,7 @@ def evaluate_post_selection_run_candidates(
                     foundation_identity=foundation_identity,
                     foundation_head=foundation_head,
                     device=context.method_policies.device,
-                    default_dtype=context.method_policies.common_training.default_dtype,
+                    default_dtype=context.method_policies.default_dtype,
                 )
                 try:
                     baseline_replay_metrics = evaluate_post_selection_dataset(
@@ -895,8 +917,13 @@ def _execute_post_selection_run_locked(
             checkpoint_directory=checkpoint_directory,
             checkpoint_name=Path(checkpoint.relative_path).name,
             checkpoint_sha256=checkpoint.sha256,
+            checkpoint_epoch=getattr(checkpoint, "epoch", None),
             summary=summary,
-            evaluation_model_state=POST_SELECTION_EVALUATION_MODEL_STATE,
+            evaluation_model_state=resolve_post_selection_evaluation_model_state(
+                context,
+                seed=run_plan.optimizer_seed,
+                planned_epochs=run_plan.planned_epochs,
+            ),
             allow_forward_override=context.inference_evaluator is not None,
         )
         try:
@@ -2198,7 +2225,6 @@ def execute_current_train_production(args: Any) -> int:
 __all__ = [
     "FOLD_ACCEPTANCE_FILENAME",
     "FinalProductionCompletion",
-    "POST_SELECTION_EVALUATION_MODEL_STATE",
     "POST_SELECTION_REPLAY_HEAD_NAME",
     "POST_SELECTION_TARGET_HEAD_NAME",
     "RUN_EVIDENCE_FILENAME",
@@ -2217,4 +2243,5 @@ __all__ = [
     "resolve_current_final_production_completion",
     "resolve_current_final_production_publication",
     "resolve_current_final_production_plan",
+    "resolve_post_selection_evaluation_model_state",
 ]

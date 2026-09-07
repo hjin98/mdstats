@@ -1,0 +1,32 @@
+{
+  "policy": {
+    "multihead_source_url": "https://raw.githubusercontent.com/ACEsuit/mace/v0.3.16/mace/tools/multihead_tools.py",
+    "package_name": "mace-torch",
+    "package_version": "0.3.16",
+    "policy_digest": "fef0accabc9edd04b6d8ecbe28b4680b5d2049a97bc0632a3655444c7f583f35",
+    "policy_version": "mdstats.mlff-data8.mace-compatibility.2026-07.v1",
+    "release_commit": "4d2da09",
+    "release_tag": "v0.3.16",
+    "run_train_source_url": "https://raw.githubusercontent.com/ACEsuit/mace/v0.3.16/mace/cli/run_train.py",
+    "schema": "mdstats.mace-compatibility-policy.v1",
+    "train_source_url": "https://raw.githubusercontent.com/ACEsuit/mace/v0.3.16/mace/tools/train.py"
+  },
+  "probe": {
+    "content_digest": "01fef4d5514a0af378668a6494a981a950a6317db1fc6a8e73c11f93cf5c9f2e",
+    "dry_run_supported": true,
+    "evidence_notes": [
+      "pre-repair v1 source probe fixture"
+    ],
+    "fixed_file_adapter_supported": true,
+    "implicit_target_duplication_present": true,
+    "multihead_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "native_checkpoint_uses_last_validation_head": true,
+    "policy_digest": "fef0accabc9edd04b6d8ecbe28b4680b5d2049a97bc0632a3655444c7f583f35",
+    "pt_head_sorted_first": true,
+    "run_train_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "save_all_checkpoints_supported": true,
+    "schema": "mdstats.mace-source-probe.v1",
+    "target_validation_head_is_last": true,
+    "train_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  }
+}

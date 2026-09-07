@@ -314,6 +314,13 @@ def _screen_step(state: Any, prepare_complete: bool) -> LifecycleStep:
             f"selected target size frozen at N={state.terminal.selected_target_size}; "
             f"T_selected={_short(state.terminal.selected_membership_digest)}"
         )
+        warnings = ", ".join(state.terminal.terminal_reason_codes)
+        if warnings:
+            # A selected result may still carry a scientific warning - most
+            # importantly that the configured practical ceiling was the best
+            # permitted size, so convergence was not demonstrated below it.
+            # It is diagnostic metadata on a valid selection, never a blocker.
+            message += f"; warning: {warnings}"
     elif state.lifecycle is TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE:
         observed = LifecycleObservationState.COMPLETE
         terminal_outcome = True

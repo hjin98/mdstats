@@ -8,6 +8,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+from mdstats.training_data.objectives import TrainingObjectivePolicy
+
 import pytest
 
 from mdstats.training_data._common import (
@@ -216,7 +218,10 @@ def _minimal_materialization_inputs() -> tuple[SimpleNamespace, SimpleNamespace,
     preparation = SimpleNamespace(
         fitted_atomic_references=SimpleNamespace(
             reference_energies_ev=((3, 0.0), (8, 0.0))
-        )
+        ),
+        # The fitted preparation carries the resolved global objective, which the
+        # generated MACE config must emit explicitly.
+        objective_policy=TrainingObjectivePolicy(),
     )
     target_train = SimpleNamespace(relative_path="target-train.extxyz", atomic_numbers=(3, 8))
     monitor = SimpleNamespace(relative_path="target-monitor.extxyz", atomic_numbers=(3, 8))
@@ -309,9 +314,9 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
     assert "multiheads_finetuning" not in scratch_internal
     assert "pt_train_file" not in scratch_internal
     assert "heads" not in scratch_internal
-    assert "multiheads_finetuning" not in post_selection_mace_run_configuration(
-        scratch_internal
-    )
+    assert post_selection_mace_run_configuration(scratch_internal)[
+        "multiheads_finetuning"
+    ] is False
 
     naive_internal = _post_selection_mace_config(
         run_identity="naive",

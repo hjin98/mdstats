@@ -147,12 +147,32 @@ view of `T_selected`, but it is not an independent membership authority.
 ## Objective, weighting, and exposure
 
 Target membership, target size, loss weighting, and runtime exposure are
-separate decisions. `TrainingObjectivePolicy` binds the loss family,
-energy/force/stress weights, head weights, normalization, robust-loss choices,
-and missing-label behavior. Configuration/property weighting binds applicable
-condition, regime, event, quality, and property weights. Exposure binds the
-head, actual gradient exposures, batching/duplication behavior, seed, and
+separate decisions, and the three weighting layers are themselves separate
+owners applied at different points in the loss:
+
+- `TrainingObjectivePolicy` binds the **global**
+  energy/force/stress coefficients (default `1 : 10 : 1`), head weights,
+  normalization, robust-loss choices, and missing-label behavior. The
+  coefficients are applied exactly once, at the global loss layer, and are
+  emitted explicitly into every generated MACE configuration;
+- `ConfigurationWeightPolicy` binds the **per-configuration** weight from
+  applicable condition, regime, event, and quality evidence;
+- per-frame **property weights are local availability masks** (`1.0` present,
+  `0.0` absent). They never duplicate the global coefficient ratio, because a
+  per-frame copy would both apply the objective twice and destroy the mask.
+
+The executable loss *family* is not an objective-policy field: it belongs to the
+canonical MACE method/architecture owner, which is where a loss-family change
+retires descendant evidence. The executable realization must honour the
+separation above linearly: the current loss family is MACE's weighted
+energy+force+stress loss, whose reductions consume the configuration weight and
+local property weights linearly under the global coefficients. Exposure binds
+the head, actual gradient exposures, batching/duplication behavior, seed, and
 runtime lineage.
+
+Optimizer-progress amplitude for the target-size screen is a further separate
+decision: it is normalized against one configurable reference size so a larger
+candidate does not also receive more optimizer progress. See Part V.
 
 A frame can be selected once, weighted non-uniformly, and exposed through a
 qualified loader without those decisions becoming one authority. A custom

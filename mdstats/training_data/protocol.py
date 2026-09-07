@@ -7,7 +7,14 @@ from enum import Enum
 from typing import Any, Mapping
 import math
 
-from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+from ._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+    digest,
+    strict_finite_real,
+    strict_string,
+    validate_digest,
+)
 from .acceleration import MaceAccelerationPolicy, MaceAccelerationKernelMode
 from .adaptive_stop import AdaptiveTrainingStopPolicy
 from .train2_policy import (
@@ -16,7 +23,13 @@ from .train2_policy import (
 )
 from .critical_precision import MaceCriticalPrecisionPolicy
 from .precision_schedule import PrecisionSchedulePolicy, ResolvedPrecisionSchedule
-from .mace_compatibility import MaceCheckpointControlPolicy, MaceExposureBackend, MaceLoaderDryRun, MaceSourceProbe
+from .mace_compatibility import (
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+    MaceCheckpointControlPolicy,
+    MaceExposureBackend,
+    MaceLoaderDryRun,
+    MaceSourceProbe,
+)
 from .replay import ReplayPreparationPlan, ReplayMode
 from .foundation import FOUNDATION_CHECKPOINT_IDENTITY_SCHEMA, FoundationCheckpointIdentity
 
@@ -73,6 +86,41 @@ class MaceOptimizerPolicy:
     precision_schedule_policy: PrecisionSchedulePolicy | None = None
 
     def __post_init__(self) -> None:
+        # This policy is independently constructible and independently
+        # deserialized, so it repeats the canonical configuration domain rather
+        # than trusting that every caller came through
+        # ``resolve_shared_optimizer_settings``.  ``nan`` passes every ordinary
+        # comparison and an infinite bound is not a training method, so both are
+        # rejected explicitly; booleans are rejected in integer fields even
+        # though ``bool`` is an ``int`` subclass.
+        for name in ("batch_size", "valid_batch_size", "num_workers", "max_num_epochs",
+                     "eval_interval", "seed"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TrainingDataInputError(f"MACE optimizer {name} must be an integer.")
+        real_domains = {
+            "learning_rate": {"minimum": 0.0},
+            "ema_decay": {"minimum": 0.0, "maximum": 1.0},
+            "weight_decay": {"minimum": 0.0, "exclusive_minimum": False},
+            "clip_grad": {"minimum": 0.0},
+        }
+        for name, domain in real_domains.items():
+            # Validate before assigning so independently constructed policies
+            # cannot retain an integer spelling of a real method value.  The
+            # shared helper also keeps bool/string/non-finite rejection and
+            # canonical float conversion identical to the other policy owners.
+            object.__setattr__(
+                self,
+                name,
+                strict_finite_real(
+                    getattr(self, name),
+                    name=f"MACE optimizer {name}",
+                    **domain,
+                ),
+            )
+        for name in ("ema", "amsgrad"):
+            if not isinstance(getattr(self, name), bool):
+                raise TrainingDataInputError(f"MACE optimizer {name} must be a boolean.")
         if self.learning_rate <= 0.0 or self.batch_size <= 0 or self.valid_batch_size <= 0:
             raise TrainingDataInputError("MACE optimizer sizes and learning rate must be positive.")
         if self.num_workers < 0:
@@ -81,8 +129,12 @@ class MaceOptimizerPolicy:
             raise TrainingDataInputError("MACE epoch and seed settings are invalid.")
         if not (0.0 < self.ema_decay < 1.0) or self.weight_decay < 0.0 or self.clip_grad <= 0.0:
             raise TrainingDataInputError("MACE optimizer regularization settings are invalid.")
-        if self.default_dtype not in {"float32", "float64"}:
+        default_dtype = strict_string(
+            self.default_dtype, name="MACE optimizer default_dtype"
+        )
+        if default_dtype not in {"float32", "float64"}:
             raise TrainingDataInputError("Unsupported MACE dtype.")
+        strict_string(self.device, name="MACE optimizer device")
         if (self.acceleration_realization_digest is None) != (self.resolved_acceleration_kernel_mode is None):
             raise TrainingDataInputError(
                 "MACE optimizer acceleration realization digest/mode must be both present or both absent."
@@ -90,9 +142,20 @@ class MaceOptimizerPolicy:
         if self.acceleration_realization_digest is not None:
             object.__setattr__(
                 self, "acceleration_realization_digest",
-                validate_digest(self.acceleration_realization_digest, name="acceleration_realization_digest")
+                validate_digest(
+                    strict_string(
+                        self.acceleration_realization_digest,
+                        name="acceleration_realization_digest",
+                    ),
+                    name="acceleration_realization_digest",
+                )
             )
-            mode = MaceAccelerationKernelMode(str(self.resolved_acceleration_kernel_mode))
+            mode = MaceAccelerationKernelMode(
+                strict_string(
+                    self.resolved_acceleration_kernel_mode,
+                    name="resolved_acceleration_kernel_mode",
+                )
+            )
             if mode is MaceAccelerationKernelMode.CUEQ_UNRESOLVED:
                 raise TrainingDataInputError("MACE optimizer cannot bind an unresolved CuEq realization.")
             if mode.backend is not self.acceleration_policy.backend:
@@ -173,20 +236,20 @@ class MaceOptimizerPolicy:
         }:
             raise TrainingDataSerializationError("Unsupported MACE optimizer schema.")
         result = cls(
-            learning_rate=float(payload["learning_rate"]),
-            batch_size=int(payload["batch_size"]),
-            valid_batch_size=int(payload["valid_batch_size"]),
-            num_workers=int(payload.get("num_workers", 0)),
-            max_num_epochs=int(payload["max_num_epochs"]),
-            eval_interval=int(payload["eval_interval"]),
-            ema=bool(payload["ema"]),
-            ema_decay=float(payload["ema_decay"]),
-            amsgrad=bool(payload["amsgrad"]),
-            weight_decay=float(payload["weight_decay"]),
-            clip_grad=float(payload["clip_grad"]),
-            default_dtype=str(payload["default_dtype"]),
-            device=str(payload["device"]),
-            seed=int(payload["seed"]),
+            learning_rate=payload["learning_rate"],
+            batch_size=payload["batch_size"],
+            valid_batch_size=payload["valid_batch_size"],
+            num_workers=payload.get("num_workers", 0),
+            max_num_epochs=payload["max_num_epochs"],
+            eval_interval=payload["eval_interval"],
+            ema=payload["ema"],
+            ema_decay=payload["ema_decay"],
+            amsgrad=payload["amsgrad"],
+            weight_decay=payload["weight_decay"],
+            clip_grad=payload["clip_grad"],
+            default_dtype=payload["default_dtype"],
+            device=payload["device"],
+            seed=payload["seed"],
             critical_precision_policy=(
                 MaceCriticalPrecisionPolicy()
                 if payload.get("critical_precision_policy") is None
@@ -201,11 +264,11 @@ class MaceOptimizerPolicy:
             ),
             acceleration_realization_digest=(
                 None if payload.get("acceleration_realization_digest") is None
-                else str(payload["acceleration_realization_digest"])
+                else payload["acceleration_realization_digest"]
             ),
             resolved_acceleration_kernel_mode=(
                 None if payload.get("resolved_acceleration_kernel_mode") is None
-                else str(payload["resolved_acceleration_kernel_mode"])
+                else payload["resolved_acceleration_kernel_mode"]
             ),
             precision_schedule_policy=(
                 None
@@ -263,7 +326,7 @@ class TrainingProtocolIdentity:
     optimizer_policy: MaceOptimizerPolicy
     selection_size: int
     exposure_backend: MaceExposureBackend = MaceExposureBackend.NATIVE_MACE_FIXED
-    real_pt_data_ratio_threshold: float = 0.1
+    real_pt_data_ratio_threshold: float = MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD
     resolved_precision_schedule: ResolvedPrecisionSchedule | None = None
     online_monitor_policy_digest: str | None = None
     target_online_monitor_record_digest: str | None = None
@@ -391,6 +454,15 @@ class TrainingProtocolIdentity:
             raise TrainingDataInputError("Multi-head replay protocols require a replay plan.")
         if self.training_mode is TrainingMode.NAIVE_FINE_TUNING and self.replay_plan_digest is not None:
             raise TrainingDataInputError("Naive protocols cannot carry replay plans.")
+        if self.training_mode is TrainingMode.MULTIHEAD_REPLAY and not math.isclose(
+            float(self.real_pt_data_ratio_threshold),
+            MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+            rel_tol=0.0,
+            abs_tol=0.0,
+        ):
+            raise TrainingDataInputError(
+                "Multi-head replay protocols require real_pt_data_ratio_threshold=0.0."
+            )
         if self.selection_size <= 0:
             raise TrainingDataInputError("Training-protocol selection size must be positive.")
         if self.exposure_backend is not MaceExposureBackend.NATIVE_MACE_FIXED:

@@ -37,6 +37,17 @@ from ._common import (
     validate_digest,
 )
 from .campaign_post_selection import PostSelectionError
+from .training_settings import (
+    resolve_binary_model_dtype,
+    resolve_shared_optimizer_settings as _resolve_shared_optimizer_settings,
+    shared_optimizer_settings_payload,
+)
+from .mace_compatibility import (
+    MACE_EXECUTABLE_LOSS_FAMILY,
+    MACE_EXECUTION_SEMANTICS_VERSION,
+    MACE_REPLAY_FORCE_MH_FT_LR,
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+)
 
 POST_SELECTION_METHOD_IDENTITY_SCHEMA = "mdstats.post-selection-method-identity.v1"
 CV_VALIDATION_POLICY_IDENTITY_SCHEMA = "mdstats.post-selection-cv-policy-identity.v1"
@@ -66,6 +77,11 @@ DEFAULT_CV_MAX_NUM_EPOCHS = 30
 #: the target and replay heads created by the post-selection run itself.
 POST_SELECTION_TARGET_HEAD_NAME = "target_head"
 POST_SELECTION_REPLAY_HEAD_NAME = "pt_head"
+
+# The current method recipe is the method-level cutover token.  It advances
+# once for the repaired MACE execution semantics and is shared by scratch,
+# naive fine-tuning, and replay rather than being maintained per mode.
+POST_SELECTION_METHOD_RECIPE_VERSION = "mdstats.post-selection-method.2026-09.v4"
 
 
 def _table(config: Mapping[str, Any], *path: str) -> Mapping[str, Any]:
@@ -664,32 +680,11 @@ class FinalProductionPolicyIdentity:
 # ---------------------------------------------------------------------------
 
 
-def resolve_shared_optimizer_settings(config: Mapping[str, Any]) -> dict[str, Any]:
-    """The optimizer settings CV and final production must share.
-
-    The optimizer *seed*, the epoch *budget*, and worker counts are excluded on
-    purpose: seeds are per-run identity, budgets are role-specific policy, and
-    worker counts are a resource choice with no scientific meaning.
-    """
-
-    training = _table(config, "training")
-    if "optimizer" in training:
-        opt_raw = str(training.get("optimizer")).strip().lower()
-        if opt_raw not in {"adam", "adamw", "sgd", "amsgrad", ""}:
-            raise TrainingDataInputError(f"Unsupported [training].optimizer: {opt_raw}")
-        if opt_raw and opt_raw != "adam":
-            raise TrainingDataInputError(f"Unsupported [training].optimizer: {opt_raw}")
-    return {
-        "learning_rate": float(training.get("learning_rate", 1.0e-4)),
-        "batch_size": int(training.get("batch_size", 4)),
-        "valid_batch_size": int(training.get("valid_batch_size", 4)),
-        "eval_interval": int(training.get("eval_interval", 1)),
-        "ema": bool(training.get("ema", True)),
-        "ema_decay": float(training.get("ema_decay", 0.99)),
-        "amsgrad": bool(training.get("amsgrad", True)),
-        "weight_decay": float(training.get("weight_decay", 5.0e-7)),
-        "clip_grad": float(training.get("clip_grad", 10.0)),
-    }
+#: P5 resolves the shared optimizer semantics through the one canonical owner.
+#: The re-export keeps the P5-facing name while removing the second, differently
+#: defaulted resolution that let method identity describe a method that never
+#: executed.
+resolve_shared_optimizer_settings = _resolve_shared_optimizer_settings
 
 
 def resolve_post_selection_foundation_identity(
@@ -757,6 +752,10 @@ def resolve_post_selection_replay_policy_digest(
             "true_dft_monitor_required": True,
             "target_head_name": target_head_name,
             "replay_head_name": replay_head_name,
+            "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
+            "loss_family": MACE_EXECUTABLE_LOSS_FAMILY,
+            "force_mh_ft_lr": MACE_REPLAY_FORCE_MH_FT_LR,
+            "real_pt_data_ratio_threshold": MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
         }
     elif has_legacy_replay:
         if training_label_mode is None:
@@ -776,6 +775,10 @@ def resolve_post_selection_replay_policy_digest(
             "true_dft_monitor_required": True,
             "target_head_name": target_head_name,
             "replay_head_name": replay_head_name,
+            "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
+            "loss_family": MACE_EXECUTABLE_LOSS_FAMILY,
+            "force_mh_ft_lr": MACE_REPLAY_FORCE_MH_FT_LR,
+            "real_pt_data_ratio_threshold": MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
         }
     else:
         payload = {
@@ -990,6 +993,7 @@ class PostSelectionMethodPolicies:
     device: str
     mace_architecture: dict[str, Any]
     mace_architecture_digest: str
+    default_dtype: str = "float32"
     foundation_potential_identity: Any = None
     foundation_model: str | None = None
     foundation_head: str | None = None
@@ -1013,11 +1017,11 @@ def resolve_post_selection_method_policies(
 
     from .mace_export import MaceExtxyzPolicy
     from .model_features import canonicalize_mace_candidate_architecture
-    from .objectives import ConfigurationWeightPolicy, TrainingObjectivePolicy
-    from .reference_fit import (
-        AtomicReferenceFitMode,
-        AtomicReferenceFitPolicy,
+    from .objectives import (
+        resolve_configuration_weight_policy,
+        resolve_training_objective_policy,
     )
+    from .reference_fit import resolve_atomic_reference_fit_policy
     from .replay import ReplayMode, single_source_replay_config_from_campaign
     from .target_size_execution import (
         REPLAY_EXPOSURE_NONE_DIGEST,
@@ -1171,70 +1175,18 @@ def resolve_post_selection_method_policies(
     )
 
     # 5. Objective, Configuration Weight, and Atomic Reference Policies
-    objective = _table(config, "objective") or _table(config, "loss")
-    objective_policy = TrainingObjectivePolicy(
-        energy_weight=float(objective.get("energy_weight", 1.0)),
-        forces_weight=float(objective.get("forces_weight", 10.0)),
-        stress_weight=float(objective.get("stress_weight", 1.0)),
-        group_aware_force_objective=bool(
-            objective.get("group_aware_force_objective", False)
-        ),
-        focus_atom_group_ids=tuple(
-            str(v) for v in objective.get("focus_atom_group_ids", ())
-        ),
-        focus_atomic_numbers=tuple(
-            int(v) for v in objective.get("focus_atomic_numbers", ())
-        ),
-    )
+    # These three owners are shared with target-size common preparation, so both
+    # sides resolve one objective meaning rather than two coincidental defaults.
+    objective_policy = resolve_training_objective_policy(config)
+    configuration_weight_policy = resolve_configuration_weight_policy(config)
+    atomic_reference_policy = resolve_atomic_reference_fit_policy(config)
 
-    weighting = _table(config, "weighting")
-    if weighting:
-        configuration_weight_policy = ConfigurationWeightPolicy(
-            equalize_condition_strata=bool(
-                weighting.get("equalize_condition_strata", True)
-            ),
-            event_anchor_multiplier=float(
-                weighting.get("event_anchor_multiplier", 2.0)
-            ),
-            protected_event_multiplier=float(
-                weighting.get("protected_event_multiplier", 1.25)
-            ),
-            degraded_frame_multiplier=float(
-                weighting.get("degraded_frame_multiplier", 0.5)
-            ),
-            minimum_configuration_weight=float(
-                weighting.get("minimum_configuration_weight", 0.05)
-            ),
-            maximum_configuration_weight=float(
-                weighting.get("maximum_configuration_weight", 10.0)
-            ),
-        )
-    else:
-        configuration_weight_policy = ConfigurationWeightPolicy()
-
-    atomic_ref = _table(config, "atomic_references")
-    if atomic_ref:
-        fit_mode_str = str(atomic_ref.get("fit_mode", "from_scratch_total_energy"))
-        atomic_reference_policy = AtomicReferenceFitPolicy(
-            fit_mode=AtomicReferenceFitMode(fit_mode_str),
-            ridge_lambda=float(atomic_ref.get("ridge_lambda", 0.0)),
-            allow_rank_deficient_fixed_domain=bool(
-                atomic_ref.get("allow_rank_deficient_fixed_domain", True)
-            ),
-        )
-    else:
-        atomic_reference_policy = AtomicReferenceFitPolicy()
-
-    default_dtype = str(
-        model.get(
-            "dtype",
-            training.get("dtype", training.get("default_dtype", "float64")),
-        )
-    ).strip()
-    if default_dtype not in {"float32", "float64"}:
-        raise TrainingDataInputError(
-            f"Unsupported [training].default_dtype: '{default_dtype}'. Accepted values are 'float32' or 'float64'."
-        )
+    # The learned-model dtype is resolved by the one binary precision authority
+    # that executable optimizer construction uses.  Independently defaulting P5
+    # identity to FP64 while the campaign executes FP32 is exactly the
+    # identity/execution split this owner must not reintroduce.
+    default_dtype = resolve_binary_model_dtype(config)
+    shared_optimizer = _resolve_shared_optimizer_settings(config)
 
     f_head_configured = training.get(
         "foundation_head",
@@ -1266,7 +1218,6 @@ def resolve_post_selection_method_policies(
         else None
     )
 
-    batch_size = int(training.get("batch_size", 4))
     common_training = TargetSizeCommonTrainingPolicy(
         objective_policy=objective_policy,
         configuration_weight_policy=configuration_weight_policy,
@@ -1274,8 +1225,6 @@ def resolve_post_selection_method_policies(
         replay_exposure_policy_digest=replay_exposure_policy_digest,
         foundation_checkpoint_digest=foundation_checkpoint_digest,
         selected_head_name=target_head_name,
-        batch_size=batch_size,
-        default_dtype=default_dtype,
         harness_validation_frame_count=int(
             training.get("harness_validation_frame_count", 4)
         ),
@@ -1317,7 +1266,9 @@ def resolve_post_selection_method_policies(
     return PostSelectionMethodPolicies(
         common_training=common_training,
         learning_rate_schedule=LearningRateSchedulePolicy(
-            base_learning_rate=float(training.get("learning_rate", 1.0e-4)),
+            # One canonical resolved value; never a second independent read of
+            # ``[training].learning_rate``.
+            base_learning_rate=shared_optimizer["learning_rate"],
             warmup_end_fraction=float(
                 training.get("train2_warmup_end_fraction", 0.05)
             ),
@@ -1354,6 +1305,7 @@ def resolve_post_selection_method_policies(
         device=str(training.get("device", "cuda")),
         mace_architecture=mace_architecture,
         mace_architecture_digest=mace_architecture_digest,
+        default_dtype=default_dtype,
         foundation_potential_identity=foundation_identity,
         foundation_model=str(Path(f_model_raw).resolve()) if f_model_raw else None,
         foundation_head=resolved_foundation_head if f_model_raw else None,
@@ -1379,7 +1331,12 @@ def resolve_post_selection_method_identity(
         resolve_post_selection_method_policies(config) if policies is None else policies
     )
     return PostSelectionMethodIdentity(
-        method_recipe_version="mdstats.post-selection-method.2026-08.v1",
+        # Identity cutover: the shared optimizer semantics and the learned-model
+        # dtype now come from the canonical resolvers that execution uses.  Old
+        # evidence may have executed different effective values than its
+        # identity claimed, so it must not authenticate under the corrected
+        # method.
+        method_recipe_version=POST_SELECTION_METHOD_RECIPE_VERSION,
         training_mode=resolved.training_mode,
         common_training_policy_digest=resolved.common_training.content_digest,
         learning_rate_schedule_policy_digest=(
@@ -1390,7 +1347,7 @@ def resolve_post_selection_method_identity(
         ),
         checkpoint_selection_policy_digest=resolved.checkpoint_selection.policy_digest,
         shared_optimizer_settings_digest=digest(
-            resolve_shared_optimizer_settings(config)
+            shared_optimizer_settings_payload(config)
         ),
         replay_exposure_policy_digest=(
             resolved.common_training.replay_exposure_policy_digest
@@ -1398,7 +1355,7 @@ def resolve_post_selection_method_identity(
         extxyz_policy_digest=resolved.extxyz.policy_digest,
         mace_architecture_digest=resolved.mace_architecture_digest,
         checkpoint_interval_epochs=resolved.checkpoint_interval_epochs,
-        default_dtype=str(resolved.common_training.default_dtype),
+        default_dtype=str(resolved.default_dtype),
         device=resolved.device,
         acceleration_backend=resolved.acceleration_backend,
     )

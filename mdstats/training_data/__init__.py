@@ -6,6 +6,12 @@ from ._common import (
     TrainingDataSerializationError,
 )
 from .mace_compatibility import (
+    MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+    MACE_EXECUTION_AUTHORITY_SCHEMA,
+    MACE_EXECUTION_EVIDENCE_SCHEMA,
+    MACE_EXECUTION_SEMANTICS_VERSION,
+    MACE_REPLAY_FORCE_MH_FT_LR,
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
     MACE_RUNTIME_COMPATIBILITY_SCHEMA,
     MACE_TORCHSCRIPT_DEPRECATION_CODE,
     MACE_SELECTED_HEAD_COMPATIBILITY_POLICY_SCHEMA,
@@ -16,6 +22,12 @@ from .mace_compatibility import (
     MaceRuntimeCompatibilityCapture,
     mace_runtime_warning_scope,
     mace_runtime_warning_handled,
+    build_mace_execution_authority,
+    mace_execution_authority_from_environment,
+    mace_execution_authority_to_environment,
+    mace_execution_evidence_from_environment,
+    mace_frame_uid_set_digest,
+    record_mace_execution_evidence,
 )
 from .manifest import (
     TRAINING_DATA_MANIFEST_SCHEMA,
@@ -1486,7 +1498,9 @@ from .target_size_experiment import (
     REQUIRED_QUALIFIED_CANDIDATE_COUNT,
     BoundaryOutcome,
     NumericalFailureKind,
+    CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE,
     ReducerStatus,
+    TARGET_SIZE_TERMINAL_DECISION_POLICY,
     ResolvedTargetSizePolicy,
     TARGET_SIZE_FUNNEL_POLICY_SCHEMA,
     TARGET_SIZE_FUNNEL_TRANSITION,

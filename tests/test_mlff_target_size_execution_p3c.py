@@ -97,7 +97,14 @@ def _run_rung(
     handler = SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir)))
     train_loader = [object()] * updates_per_epoch
     model = torch.nn.Linear(3, 2, dtype=torch.float64)
-    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4, momentum=0.9)
+    # The executable optimizer must start at the candidate's *realized*
+    # size-normalized base learning rate, exactly as MACE does from the
+    # generated config's ``lr`` key.
+    optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=float(plan.learning_rate_policy.base_learning_rate),
+        momentum=0.9,
+    )
     ema = ExponentialMovingAverage(model.parameters(), decay=0.95)
     runtime = runtime_mod._Train2Runtime(
         plan,
@@ -462,7 +469,7 @@ def _failure_record(trajectory, schedule, boundary, *, code, failed_epoch, rung_
         training_protocol_digest=trajectory.candidate_training_protocol_digest,
         optimizer_policy_digest=trajectory.seed_neutral_training_policy_digest,
         budget_policy_digest=schedule.budget_policy.policy_digest,
-        lr_policy_digest=schedule.learning_rate_policy.policy_digest,
+        lr_policy_digest=plan.learning_rate_policy.policy_digest,
         raw_checkpoint_name=f"model_run-7_epoch-{failed_epoch}.pt",
         raw_checkpoint_sha256="a" * 64,
     )

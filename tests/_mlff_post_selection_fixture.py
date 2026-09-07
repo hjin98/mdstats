@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -93,12 +94,21 @@ class _SelectedSizeScreenHarness(p4d._BoundedNumericalHarness):
 
 
 def build_selected_campaign(
-    tmp_path: Path, *, config_text: str | None = None
+    tmp_path: Path, *, config_text: str | None = None, data4_bundle=None
 ) -> tuple[Path, Path]:
-    """A real campaign driven to a current SELECTED target-size terminal result."""
+    """A real campaign driven to a current SELECTED target-size terminal result.
+
+    ``data4_bundle`` is an optional lower-level fixture builder for assembled
+    acceptance tests that need more than the default single-condition source.
+    The P1--P4 owners remain unchanged; only their already-built fixture input
+    is varied.
+    """
 
     template = fixture_config_text() if config_text is None else config_text
-    with patch.object(p4d, "_CONFIG", template):
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(p4d, "_CONFIG", template))
+        if data4_bundle is not None:
+            stack.enter_context(patch.object(p4d, "_data4_bundle", data4_bundle))
         config, workspace = p4d._fixture_campaign(tmp_path)
     assert p4d._run(config, "prepare") == 0
     screen = _SelectedSizeScreenHarness()

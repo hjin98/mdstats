@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 import urllib.parse
 import threading
@@ -27,6 +28,65 @@ class TrainingDataInputError(TrainingDataError):
 
 class TrainingDataSerializationError(TrainingDataError):
     """Raised when a serialized record is malformed or has been modified."""
+
+
+def strict_bool(value: Any, *, name: str) -> bool:
+    """Validate an exact boolean before any truth-normalization occurs."""
+
+    if not isinstance(value, bool):
+        raise TrainingDataInputError(f"{name} must be a boolean; got {value!r}.")
+    return value
+
+
+def strict_positive_int(value: Any, *, name: str) -> int:
+    """Validate a positive integer without accepting bools or coercions."""
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TrainingDataInputError(f"{name} must be an integer; got {value!r}.")
+    if value <= 0:
+        raise TrainingDataInputError(f"{name} must be positive; got {value!r}.")
+    return int(value)
+
+
+def strict_finite_real(
+    value: Any,
+    *,
+    name: str,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    exclusive_minimum: bool = True,
+    exclusive_maximum: bool = True,
+) -> float:
+    """Validate a finite real in a declared range before canonicalizing it."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TrainingDataInputError(f"{name} must be a real number; got {value!r}.")
+    result = float(value)
+    if not math.isfinite(result):
+        raise TrainingDataInputError(f"{name} must be finite; got {value!r}.")
+    if minimum is not None:
+        valid = result > minimum if exclusive_minimum else result >= minimum
+        if not valid:
+            relation = "greater than" if exclusive_minimum else "at least"
+            raise TrainingDataInputError(
+                f"{name} must be {relation} {minimum}; got {value!r}."
+            )
+    if maximum is not None:
+        valid = result < maximum if exclusive_maximum else result <= maximum
+        if not valid:
+            relation = "less than" if exclusive_maximum else "at most"
+            raise TrainingDataInputError(
+                f"{name} must be {relation} {maximum}; got {value!r}."
+            )
+    return result
+
+
+def strict_string(value: Any, *, name: str) -> str:
+    """Validate a declared string without silently stringifying arbitrary data."""
+
+    if not isinstance(value, str):
+        raise TrainingDataInputError(f"{name} must be a string; got {value!r}.")
+    return value
 
 
 def json_value(value: Any) -> Any:

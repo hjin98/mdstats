@@ -38,6 +38,10 @@ from .._common import (
     validate_digest,
 )
 from ..mace_export import MaceExtxyzPolicy
+from ..mace_compatibility import (
+    MACE_EXECUTABLE_LOSS_FAMILY,
+    MACE_EXECUTION_SEMANTICS_VERSION,
+)
 from ..protocol import MaceOptimizerPolicy
 from ..target_size_experiment import (
     TargetSizeExperimentDefinition,
@@ -60,10 +64,13 @@ from .export import (
 )
 from .schedule import TargetSizeScreenSchedule
 
-TARGET_SIZE_REALIZATION_SCHEMA = "mdstats.target-size.candidate-realization.v1"
+TARGET_SIZE_REALIZATION_SCHEMA = "mdstats.target-size.candidate-realization.v2"
 TARGET_SIZE_TRAJECTORY_SCHEMA = "mdstats.target-size.candidate-trajectory.v1"
 TARGET_SIZE_MATERIALIZATION_SCHEMA = "mdstats.target-size.candidate-materialization.v1"
-TARGET_SIZE_MACE_CONFIG_SCHEMA = "mdstats.target-size.mace-config.v2"
+TARGET_SIZE_MACE_CONFIG_SCHEMA = "mdstats.target-size.mace-config.v3"
+#: The executable MACE loss family for target-size screening; the shared owner
+#: in ``objectives`` explains why this family and not ``universal``.
+TARGET_SIZE_MACE_LOSS_FAMILY = MACE_EXECUTABLE_LOSS_FAMILY
 
 
 def _positive_int(value: Any, *, name: str) -> int:
@@ -101,6 +108,12 @@ class TargetSizeCandidateRealization:
     loader_geometry_digest: str
     optimizer_seed: int
     max_num_epochs: int
+    normalization_policy_digest: str
+    reference_updates_per_epoch: int
+    optimizer_progress_scale: float
+    effective_base_learning_rate: float
+    effective_ema_decay: float | None
+    realized_learning_rate_policy_digest: str
 
     def __post_init__(self) -> None:
         for name in (
@@ -162,6 +175,48 @@ class TargetSizeCandidateRealization:
             raise TrainingDataInputError(
                 "Candidate updates_per_epoch must equal ceil(structures/batch)."
             )
+        for name in (
+            "normalization_policy_digest",
+            "realized_learning_rate_policy_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        object.__setattr__(
+            self,
+            "reference_updates_per_epoch",
+            _positive_int(
+                self.reference_updates_per_epoch, name="reference_updates_per_epoch"
+            ),
+        )
+        # The normalization identity is re-derived here rather than trusted, so a
+        # trajectory whose scale/LR/EMA were edited cannot authenticate against
+        # its own update geometry.
+        scale = float(self.optimizer_progress_scale)
+        expected_scale = self.reference_updates_per_epoch / float(
+            self.updates_per_epoch
+        )
+        if not math.isfinite(scale) or scale <= 0.0 or not math.isclose(
+            scale, expected_scale, rel_tol=1.0e-12, abs_tol=0.0
+        ):
+            raise TrainingDataInputError(
+                "Candidate optimizer_progress_scale must equal "
+                "reference_updates_per_epoch / updates_per_epoch exactly."
+            )
+        object.__setattr__(self, "optimizer_progress_scale", scale)
+        effective_lr = float(self.effective_base_learning_rate)
+        if not math.isfinite(effective_lr) or effective_lr <= 0.0:
+            raise TrainingDataInputError(
+                "Candidate effective_base_learning_rate must be finite and positive."
+            )
+        object.__setattr__(self, "effective_base_learning_rate", effective_lr)
+        if self.effective_ema_decay is not None:
+            beta = float(self.effective_ema_decay)
+            if not math.isfinite(beta) or not 0.0 < beta < 1.0:
+                raise TrainingDataInputError(
+                    "Candidate effective_ema_decay must satisfy 0 < beta < 1."
+                )
+            object.__setattr__(self, "effective_ema_decay", beta)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -180,6 +235,14 @@ class TargetSizeCandidateRealization:
             "loader_geometry_digest": self.loader_geometry_digest,
             "optimizer_seed": self.optimizer_seed,
             "max_num_epochs": self.max_num_epochs,
+            "normalization_policy_digest": self.normalization_policy_digest,
+            "reference_updates_per_epoch": self.reference_updates_per_epoch,
+            "optimizer_progress_scale": self.optimizer_progress_scale,
+            "effective_base_learning_rate": self.effective_base_learning_rate,
+            "effective_ema_decay": self.effective_ema_decay,
+            "realized_learning_rate_policy_digest": (
+                self.realized_learning_rate_policy_digest
+            ),
         }
 
     @property
@@ -216,6 +279,20 @@ class TargetSizeCandidateRealization:
             loader_geometry_digest=str(payload["loader_geometry_digest"]),
             optimizer_seed=int(payload["optimizer_seed"]),
             max_num_epochs=int(payload["max_num_epochs"]),
+            normalization_policy_digest=str(payload["normalization_policy_digest"]),
+            reference_updates_per_epoch=int(payload["reference_updates_per_epoch"]),
+            optimizer_progress_scale=float(payload["optimizer_progress_scale"]),
+            effective_base_learning_rate=float(
+                payload["effective_base_learning_rate"]
+            ),
+            effective_ema_decay=(
+                None
+                if payload.get("effective_ema_decay") is None
+                else float(payload["effective_ema_decay"])
+            ),
+            realized_learning_rate_policy_digest=str(
+                payload["realized_learning_rate_policy_digest"]
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -259,9 +336,15 @@ def derive_target_size_candidate_realization(
             }
         )
     )
+    # ``valid_batch_size`` is deliberately absent.  The harness validation set is
+    # fixed and non-controlling, so its loader width changes no gradient
+    # trajectory, LR schedule, checkpoint admissibility, or ranking; including it
+    # here would make an execution-only resource edit invalidate a scientifically
+    # identical candidate mid-screen.
     loader_geometry_digest = digest(
         {
-            "schema": "mdstats.target-size.loader-geometry.v1",
+            "schema": "mdstats.target-size.loader-geometry.v3",
+            "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
             "candidate_membership_digest": projection.candidate_membership_digest,
             "harness_validation_membership_digest": (
                 common.harness_validation_membership_digest
@@ -269,8 +352,28 @@ def derive_target_size_candidate_realization(
             "target_train_count": target_train_count,
             "replay_train_count": replay,
             "batch_size": batch_size,
-            "valid_batch_size": optimizer_policy.valid_batch_size,
+            "drop_last": False,
+            "coverage": "complete_target_membership",
         }
+    )
+    # Optimizer-progress normalization is derived once here, from the *full*
+    # candidate geometry (all n3 epochs, the complete T_N), and is then carried
+    # unchanged through every rung.  It is never recomputed from the active rung
+    # or the survivor set, so eliminating a candidate cannot alter any surviving
+    # candidate's realized schedule.
+    normalization = schedule.normalization_policy
+    reference_updates = normalization.reference_updates_per_epoch(batch_size)
+    scale = normalization.optimizer_progress_scale(
+        batch_size=batch_size, updates_per_epoch=updates_per_epoch
+    )
+    effective_learning_rate = normalization.effective_base_learning_rate(scale)
+    effective_ema_decay = (
+        normalization.effective_ema_decay(scale)
+        if bool(optimizer_policy.ema)
+        else None
+    )
+    realized_learning_rate_policy = schedule.realized_learning_rate_policy(
+        effective_learning_rate
     )
     return TargetSizeCandidateRealization(
         target_train_count=target_train_count,
@@ -287,6 +390,14 @@ def derive_target_size_candidate_realization(
         loader_geometry_digest=loader_geometry_digest,
         optimizer_seed=int(optimizer_seed),
         max_num_epochs=schedule.n3,
+        normalization_policy_digest=normalization.content_digest,
+        reference_updates_per_epoch=reference_updates,
+        optimizer_progress_scale=scale,
+        effective_base_learning_rate=effective_learning_rate,
+        effective_ema_decay=effective_ema_decay,
+        realized_learning_rate_policy_digest=(
+            realized_learning_rate_policy.policy_digest
+        ),
     )
 
 
@@ -562,6 +673,17 @@ _REALIZATION_DRIFT_CLASSES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "historical acceleration provenance",
         ("acceleration_realization_digest",),
     ),
+    (
+        "optimizer-progress normalization",
+        (
+            "normalization_policy_digest",
+            "reference_updates_per_epoch",
+            "optimizer_progress_scale",
+            "effective_base_learning_rate",
+            "effective_ema_decay",
+            "realized_learning_rate_policy_digest",
+        ),
+    ),
 )
 
 
@@ -835,6 +957,50 @@ class TargetSizeCandidateMaterialization:
         return result
 
 
+#: Candidate MACE-configuration keys that are execution-only launch settings.
+#:
+#: They are written into the immutable materialization because the run that
+#: created it actually launched with those values, so they are genuine
+#: historical execution provenance.  They are *not* a requirement that a later
+#: invocation resolve the same value: a mid-screen worker-count or
+#: harness-validation batch-width change must not invalidate a scientifically
+#: identical published materialization.  Everything else in the configuration --
+#: membership, common preparation, scientific optimizer fields, realized LR/EMA,
+#: architecture, objective/loss, precision, artifacts, lineage -- is re-derived
+#: and compared exactly.
+TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS = ("num_workers", "valid_batch_size")
+
+
+def _scientific_candidate_config(config: Mapping[str, Any]) -> dict[str, Any]:
+    """The scientific projection of one candidate MACE configuration."""
+
+    return {
+        key: value
+        for key, value in config.items()
+        if key not in TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS
+    }
+
+
+def _validate_persisted_execution_only_config(config: Mapping[str, Any]) -> None:
+    """Authenticate persisted execution-only values as well-formed content."""
+
+    for key in TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS:
+        if key not in config:
+            raise TrainingDataInputError(
+                f"Candidate MACE configuration is missing execution setting {key!r}."
+            )
+    workers = config["num_workers"]
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 0:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration num_workers must be a non-negative integer."
+        )
+    valid_batch = config["valid_batch_size"]
+    if isinstance(valid_batch, bool) or not isinstance(valid_batch, int) or valid_batch <= 0:
+        raise TrainingDataInputError(
+            "Candidate MACE configuration valid_batch_size must be a positive integer."
+        )
+
+
 def _mace_config_for_candidate(
     *,
     trajectory: TargetSizeCandidateTrajectory,
@@ -855,6 +1021,7 @@ def _mace_config_for_candidate(
     realized_architecture = canonicalize_mace_candidate_architecture(
         common.realized_mace_architecture
     )
+    objective_policy = common.objective_policy
     if mace_architecture is not None and canonicalize_mace_candidate_architecture(
         mace_architecture
     ) != realized_architecture:
@@ -886,13 +1053,25 @@ def _mace_config_for_candidate(
         "energy_key": extxyz_policy.energy_key,
         "forces_key": extxyz_policy.forces_key,
         "stress_key": extxyz_policy.stress_key,
-        "lr": float(optimizer_policy.learning_rate),
+        # The screen's executable learning rate and EMA decay are the
+        # size-normalized realized values, not the production-side
+        # ``[training].learning_rate`` / ``ema_decay`` defaults.
+        "lr": float(trajectory.realization.effective_base_learning_rate),
         "batch_size": int(optimizer_policy.batch_size),
         "valid_batch_size": int(optimizer_policy.valid_batch_size),
         "num_workers": int(optimizer_policy.num_workers),
         "max_num_epochs": int(trajectory.realization.max_num_epochs),
         "ema": bool(optimizer_policy.ema),
-        "ema_decay": float(optimizer_policy.ema_decay),
+        # The declared mdstats objective is the objective actually optimized.
+        # ``loss="stress"`` selects MACE's WeightedEnergyForcesStressLoss, whose
+        # native reductions consume ``config_weight`` and the per-frame property
+        # weights linearly while applying these global coefficients once, at the
+        # global layer.  Without them MACE would silently default to
+        # ``forces_weight=100`` under its ``weighted`` loss.
+        "loss": TARGET_SIZE_MACE_LOSS_FAMILY,
+        "energy_weight": float(objective_policy.energy_weight),
+        "forces_weight": float(objective_policy.forces_weight),
+        "stress_weight": float(objective_policy.stress_weight),
         "amsgrad": bool(optimizer_policy.amsgrad),
         "weight_decay": float(optimizer_policy.weight_decay),
         "clip_grad": float(optimizer_policy.clip_grad),
@@ -920,6 +1099,20 @@ def _mace_config_for_candidate(
             }
         },
     }
+    # EMA decay is emitted only when EMA is actually enabled, and then only as
+    # the size-normalized realized beta.  With EMA disabled there is no EMA
+    # state to decay, so writing the generic ``[training].ema_decay`` here would
+    # put an inert value into scientific materialization replay and let a
+    # post-selection-only edit reject an accepted target-size trajectory - the
+    # exact contradiction the seed-neutral projection removes upstream.
+    if bool(optimizer_policy.ema):
+        effective = trajectory.realization.effective_ema_decay
+        if effective is None:
+            raise TrainingDataInputError(
+                "An EMA-enabled candidate realization must carry a realized "
+                "target-size EMA decay."
+            )
+        config["ema_decay"] = float(effective)
     return config
 
 
@@ -1043,7 +1236,19 @@ def validate_target_size_materialization(
     frame_data_by_run: Mapping[str, Any] | None = None,
     frame_array_index: Mapping[str, tuple[Any, Any, int]] | None = None,
 ) -> None:
-    """Restart authentication of a durable candidate materialization."""
+    """Restart authentication of a durable candidate materialization.
+
+    Scientific content is re-derived from current accepted authority and must
+    match exactly.  Persisted execution-only launch settings
+    (:data:`TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS`) are authenticated as
+    well-formed materialization content but are *not* required to equal the
+    current invocation's resource settings, so a mid-screen worker-count or
+    harness validation batch-width change cannot invalidate a scientifically
+    valid trajectory.  Membership, common preparation, scientific optimizer
+    fields, realized LR/EMA, architecture, objective/loss, precision,
+    target/harness artifacts, and checkpoint lineage remain strongly
+    authenticated.
+    """
 
     if record.trajectory_digest != trajectory.content_digest:
         raise TrainingDataInputError(
@@ -1177,13 +1382,17 @@ def validate_target_size_materialization(
                 extxyz_policy=active_extxyz_policy,
                 mace_architecture=payload["mace_architecture"],
             )
-            if record.mace_config_digest != digest(expected_config):
+            _validate_persisted_execution_only_config(payload)
+            if digest(_scientific_candidate_config(payload)) != digest(
+                _scientific_candidate_config(expected_config)
+            ):
                 raise TrainingDataInputError(
                     "Candidate MACE configuration does not match re-derived configuration."
                 )
 
 
 __all__ = [
+    "TARGET_SIZE_EXECUTION_ONLY_CONFIG_FIELDS",
     "TARGET_SIZE_MACE_CONFIG_SCHEMA",
     "TARGET_SIZE_MATERIALIZATION_SCHEMA",
     "TARGET_SIZE_REALIZATION_SCHEMA",

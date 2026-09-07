@@ -41,9 +41,14 @@ def _build_terminal_target_size_result_view(
             f"_build_terminal_target_size_result_view requires ValidatedTargetSizeTerminalResult, got {type(validated_result).__name__}"
         )
 
+    from .target_size_experiment import (
+        CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE,
+    )
+
     revision = validated_result.revision
     state = revision.state
     head = validated_result.head
+    reason_codes = tuple(head.post_state.terminal_reason_codes)
     return {
         "schema": TARGET_SIZE_RESULT_VIEW_SCHEMA,
         "authoritative": False,
@@ -65,6 +70,13 @@ def _build_terminal_target_size_result_view(
         "completed_boundary_epochs": list(head.post_state.completed_boundary_epochs),
         "selected_target_size": head.post_state.selected_target_size,
         "selected_membership_digest": head.post_state.selected_membership_digest,
+        "terminal_reason_codes": list(reason_codes),
+        # A selected-at-ceiling result is a valid frozen selection carrying a
+        # scientific warning: the configured practical budget, not a
+        # demonstrated plateau, bounded the screen.
+        "nonconverged_at_configured_ceiling": (
+            CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE in reason_codes
+        ),
     }
 
 

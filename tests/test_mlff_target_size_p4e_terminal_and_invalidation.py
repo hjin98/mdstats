@@ -76,10 +76,12 @@ class _PoisonEvaluator:
 class _CeilingSuperiorHarness(p4d._BoundedNumericalHarness):
     """A harness in which the configured ceiling is materially superior.
 
-    Terminal *scientific failure* is the reducer's verdict when the largest
-    configured ``N`` still beats every other finalist by more than practical
-    equivalence.  The fixture constructs that outcome from the candidate size
-    rather than depending on where a candidate digest happens to fall.
+    The configured ladder ceiling is a practical budget limit, so this is a
+    *selected* result carrying the ``nonconverged_at_configured_ceiling``
+    warning: the largest configured ``N`` is the best permitted size even
+    though no plateau was demonstrated below it.  The fixture constructs that
+    outcome from the candidate size rather than depending on where a candidate
+    digest happens to fall.
     """
 
     def _offset(self) -> float:
@@ -559,12 +561,12 @@ def test_p4e_req4_terminal_scientific_failure_is_not_an_interruption():
     )
 
     projection = TargetSizeTerminalProjection(
-        reducer_status=ReducerStatus.NONCONVERGED_AT_CONFIGURED_CEILING.value,
+        reducer_status=ReducerStatus.INSUFFICIENT_COMPARISON.value,
         experiment_definition_digest=digest({"fixture": "definition"}),
         reducer_state_digest=digest({"fixture": "reducer"}),
         execution_head_digest=digest({"fixture": "head"}),
         training_order_digest=digest({"fixture": "order"}),
-        terminal_reason_codes=("configured_ceiling",),
+        terminal_reason_codes=("too_few_complete_comparable_candidates",),
     )
     assert not projection.is_selection
     state = TargetSizeCampaignState(
@@ -591,6 +593,20 @@ def test_p4e_req4_terminal_scientific_failure_is_not_an_interruption():
 
     with pytest.raises(TrainingDataInputError):
         replace(state, lifecycle=TargetSizeLifecycle.TERMINAL_SELECTED)
+
+    # A historical blocking-ceiling projection stays a scientific failure; the
+    # corrected practical-ceiling rule never reclassifies old evidence in place.
+    from mdstats.training_data.campaign_target_size_terminal import (
+        _terminal_lifecycle,
+    )
+    from mdstats.training_data.target_size_experiment import (
+        HISTORICAL_BLOCKING_CEILING_STATUS,
+    )
+
+    assert (
+        _terminal_lifecycle(HISTORICAL_BLOCKING_CEILING_STATUS)
+        is TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE
+    )
 
 
 # --- REQ5 raw/live/EMA restart semantics stay with the P3 owner ------------
@@ -681,7 +697,7 @@ def test_p4e_req5_resume_goes_through_the_real_p3_owner(tmp_path: Path, monkeypa
 # --- Mandatory terminal CLI cases (P4-E1) -----------------------------------
 
 
-def _terminal_failure_campaign(tmp_path: Path):
+def _ceiling_selection_campaign(tmp_path: Path):
     training_root = tmp_path / "sources"
     training_root.mkdir(parents=True, exist_ok=True)
     manifest, sources, frames, data4 = p4d._data4_bundle(training_root)
@@ -951,24 +967,63 @@ checkpoint_strategy = "topk"
     assert "already selected and frozen" in output or "scientifically terminal" in output
 
 
-def test_p4e_mandatory7_terminal_scientific_failure_reload_and_corruption_negative(
+def test_p4e_mandatory7_selected_at_ceiling_reload_and_corruption_negative(
     tmp_path: Path, capsys
 ):
-    """Case 7: terminal scientific failure reloads without retraining, and missing head fails closed."""
+    """Case 7: a selected-at-ceiling result reloads without retraining, and missing head fails closed.
 
-    config, workspace = _terminal_failure_campaign(tmp_path)
+    The screen, reducer, adoption, terminal projection, campaign transition, and
+    result exposure all execute as real owners here; only the expensive numerical
+    trainer/evaluator sit below the accepted substitution boundary.
+    """
+
+    from mdstats.training_data.campaign_post_selection import (
+        load_current_selected_training_context,
+    )
+    from mdstats.training_data.campaign_lifecycle import project_campaign_lifecycle
+    from mdstats.training_data.target_size_experiment import (
+        CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE,
+    )
+
+    config, workspace = _ceiling_selection_campaign(tmp_path)
     capsys.readouterr()
 
+    cfg, paths = _load_config(config)
     store = CampaignStore(_state_db(workspace))
     try:
         revision = load_target_size_campaign_revision(store)
-        assert revision.state.lifecycle is TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE
-        assert not revision.state.terminal.is_selection
-        head_digest = revision.state.adopted_execution_head_digest
+        state = revision.state
+        # The warning is diagnostic metadata on a valid selection: the campaign
+        # is TERMINAL_SELECTED, not a scientific failure.
+        assert state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
+        assert state.terminal.is_selection
+        assert CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE in (
+            state.terminal.terminal_reason_codes
+        )
+        definition, _paths = _definition(config)
+        nmax = definition.policy.nmax
+        assert state.terminal.selected_target_size == nmax
+        assert state.terminal.selected_membership_digest == (
+            definition.training_order.candidate_digest(nmax)
+        )
+        head_digest = state.adopted_execution_head_digest
+
+        # P5 admits the exact selected ceiling through the real owner.
+        context = load_current_selected_training_context(cfg, paths, store)
+        assert context.binding.n_selected == nmax
+        assert len(context.selected_membership) == nmax
+
+        # Lifecycle keeps advancing: the next admissible command is cross-validate.
+        snapshot = project_campaign_lifecycle(paths, store)
+        screen = snapshot.step("target_size_selection")
+        assert screen.state == "complete" and not screen.terminal
+        assert CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE in screen.message
+        assert snapshot.next_command == "cross-validate"
     finally:
         store.close()
 
-    # Unchanged reload validates and reports terminal scientific failure with zero retraining:
+    # Unchanged reload validates and reports the frozen selection plus its
+    # warning with zero retraining:
     assert (
         p4d._run(
             config,
@@ -979,7 +1034,14 @@ def test_p4e_mandatory7_terminal_scientific_failure_reload_and_corruption_negati
         == 0
     )
     output = capsys.readouterr().out
-    assert "scientifically terminal" in output
+    assert "already selected and frozen" in output
+    assert "convergence was not demonstrated" in output
+
+    view = json.loads(
+        (paths.results / "target-size-state.json").read_text(encoding="utf-8")
+    )
+    assert view["nonconverged_at_configured_ceiling"] is True
+    assert view["selected_target_size"] == nmax
 
     # Missing adopted head fails as corruption rather than exposing persisted failure:
     head_path = workspace / ".mdstats" / "target-size" / "g1" / "heads" / f"{head_digest}.json"

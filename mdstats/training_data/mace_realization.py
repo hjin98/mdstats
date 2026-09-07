@@ -34,6 +34,10 @@ from .mace_runtime import (
     MaceCliCommandResult,
     MaceRuntimeEnvironmentRecord,
 )
+from .mace_compatibility import (
+    MACE_EXECUTION_SEMANTICS_VERSION,
+    MACE_EXECUTABLE_LOSS_FAMILY,
+)
 from .protocol import MaceJobArtifact, TrainingMode
 from .precision import MacePrecisionTransitionRecord, build_mace_precision_transition_record
 from .critical_precision import (
@@ -356,6 +360,7 @@ def _last_json_object(text: str) -> dict[str, Any] | None:
 @dataclass(frozen=True, slots=True)
 class MaceConfigRealizationPolicy:
     required_mace_version: str = "0.3.16"
+    execution_semantics_version: str = MACE_EXECUTION_SEMANTICS_VERSION
     run_loader_dry_run: bool = True
     num_threads: int = 2
     timeout_seconds: float = 300.0
@@ -367,6 +372,10 @@ class MaceConfigRealizationPolicy:
             raise TrainingDataInputError(
                 "The first MACE config-realization policy is locked to v0.3.16."
             )
+        if self.execution_semantics_version != MACE_EXECUTION_SEMANTICS_VERSION:
+            raise TrainingDataInputError(
+                "MACE config realization carries an unsupported execution-semantics revision."
+            )
         if self.timeout_seconds <= 0.0:
             raise TrainingDataInputError("MACE realization timeout must be positive.")
         if self.num_threads <= 0:
@@ -376,6 +385,7 @@ class MaceConfigRealizationPolicy:
         return {
             "schema": MACE_CONFIG_REALIZATION_POLICY_SCHEMA,
             "required_mace_version": self.required_mace_version,
+            "execution_semantics_version": self.execution_semantics_version,
             "run_loader_dry_run": self.run_loader_dry_run,
             "num_threads": self.num_threads,
             "timeout_seconds": self.timeout_seconds,
@@ -394,6 +404,9 @@ class MaceConfigRealizationPolicy:
             raise TrainingDataSerializationError("Unsupported MACE realization-policy schema.")
         result = cls(
             required_mace_version=str(payload["required_mace_version"]),
+            execution_semantics_version=str(
+                payload.get("execution_semantics_version", "")
+            ),
             run_loader_dry_run=bool(payload["run_loader_dry_run"]),
             num_threads=int(payload.get("num_threads", 2)),
             timeout_seconds=float(payload["timeout_seconds"]),
@@ -466,7 +479,7 @@ class MaceConfigRealizationRecord:
     def parser_passed(self) -> bool:
         return (
             self.parser_result.passed
-            and self.parsed_loss == "universal"
+            and self.parsed_loss == MACE_EXECUTABLE_LOSS_FAMILY
             and self.parsed_default_dtype in {"float32", "float64"}
             and bool(self.parsed_head_names)
             and bool(self.parsed_atomic_numbers)

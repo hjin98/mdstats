@@ -32,7 +32,19 @@ from .neutral_substrate import (
 )
 from .partition import OuterRole
 
-TARGET_SIZE_POLICY_SCHEMA = "mdstats.target-size-scientific-policy.v1"
+TARGET_SIZE_POLICY_SCHEMA = "mdstats.target-size-scientific-policy.v2"
+#: The one current P2 terminal-decision rule.  The configured ladder ceiling is
+#: a practical budget limit, not a requirement that convergence occur below it:
+#: practical equivalence still prefers the smaller finalist, a genuinely lower
+#: interior finalist still wins, and a materially superior ceiling is *selected*
+#: with a non-blocking non-convergence warning.  The token participates in P2
+#: policy identity so evidence reduced under the old blocking-ceiling rule can
+#: never be replayed under this meaning.
+TARGET_SIZE_TERMINAL_DECISION_POLICY = (
+    "practical_equivalence_then_practical_ceiling.v2"
+)
+#: Non-blocking diagnostic emitted with a ``SELECTED`` ceiling result.
+CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE = "nonconverged_at_configured_ceiling"
 TARGET_SIZE_POPULATION_SCHEMA = "mdstats.target-size-population.v1"
 TARGET_SIZE_POPULATION_FRAME_SCHEMA = "mdstats.target-size-population-frame.v1"
 TARGET_SIZE_SPLIT_SCHEMA = "mdstats.target-size-population-split.v1"
@@ -215,6 +227,7 @@ class ResolvedTargetSizePolicy:
     training_order_policy: str = "candidate_independent_priority.v1"
     split_policy: str = "training_priority_exact_reserve.v1"
     evaluation_order_policy: str = "candidate_independent_representative.v1"
+    terminal_decision_policy: str = TARGET_SIZE_TERMINAL_DECISION_POLICY
     hard_support_obligations: tuple[TargetSizeHardSupportObligation, ...] = ()
 
     def __post_init__(self) -> None:
@@ -293,6 +306,14 @@ class ResolvedTargetSizePolicy:
         ):
             if not str(getattr(self, name)).strip():
                 raise TrainingDataInputError(f"{name} must be nonempty.")
+        # The terminal-decision rule is specification-owned, not a user plugin
+        # string: only the current rule is executable, and its presence in the
+        # payload keeps old blocking-ceiling evidence out of the current meaning.
+        if self.terminal_decision_policy != TARGET_SIZE_TERMINAL_DECISION_POLICY:
+            raise TrainingDataInputError(
+                "Only the current target-size terminal-decision policy "
+                f"{TARGET_SIZE_TERMINAL_DECISION_POLICY!r} is supported."
+            )
         # Canonical normalization participates in policy identity: stable
         # ordering, validated selectors, no contradictory aliases.
         obligations = _normalize_hard_support_obligations(self.hard_support_obligations)
@@ -332,6 +353,7 @@ class ResolvedTargetSizePolicy:
             "training_order_policy": self.training_order_policy,
             "split_policy": self.split_policy,
             "evaluation_order_policy": self.evaluation_order_policy,
+            "terminal_decision_policy": self.terminal_decision_policy,
             "hard_support_obligations": [
                 item.to_dict() for item in self.hard_support_obligations
             ],
@@ -367,6 +389,7 @@ class ResolvedTargetSizePolicy:
             training_order_policy=str(payload["training_order_policy"]),
             split_policy=str(payload["split_policy"]),
             evaluation_order_policy=str(payload["evaluation_order_policy"]),
+            terminal_decision_policy=str(payload["terminal_decision_policy"]),
             hard_support_obligations=tuple(
                 TargetSizeHardSupportObligation.from_dict(item)
                 for item in payload["hard_support_obligations"]
@@ -388,6 +411,7 @@ def resolve_target_size_policy(
     training_order_policy: str = "candidate_independent_priority.v1",
     split_policy: str = "training_priority_exact_reserve.v1",
     evaluation_order_policy: str = "candidate_independent_representative.v1",
+    terminal_decision_policy: str = TARGET_SIZE_TERMINAL_DECISION_POLICY,
     hard_support_obligations: Sequence[
         TargetSizeHardSupportObligation | Mapping[str, Any]
     ] = (),
@@ -415,6 +439,7 @@ def resolve_target_size_policy(
         training_order_policy=training_order_policy,
         split_policy=split_policy,
         evaluation_order_policy=evaluation_order_policy,
+        terminal_decision_policy=terminal_decision_policy,
         hard_support_obligations=tuple(hard_support_obligations),
     )
 
@@ -1646,14 +1671,18 @@ class ReducerStatus(str, Enum):
     AWAITING_SECOND_BOUNDARY = "awaiting_second_boundary"
     AWAITING_TERMINAL_BOUNDARY = "awaiting_terminal_boundary"
     SELECTED = "selected"
-    NONCONVERGED_AT_CONFIGURED_CEILING = "nonconverged_at_configured_ceiling"
     INSUFFICIENT_COMPARISON = "insufficient_comparison"
+
+
+#: Historical blocking-ceiling reducer status.  The current reducer can never
+#: produce it; it is named only so a persisted state written under the retired
+#: rule fails authentication with an explanation instead of an opaque error.
+HISTORICAL_BLOCKING_CEILING_STATUS = "nonconverged_at_configured_ceiling"
 
 
 _TERMINAL_REDUCER_STATUSES = frozenset(
     {
         ReducerStatus.SELECTED,
-        ReducerStatus.NONCONVERGED_AT_CONFIGURED_CEILING,
         ReducerStatus.INSUFFICIENT_COMPARISON,
     }
 )
@@ -1983,7 +2012,7 @@ class TargetSizeReducerState:
                 if payload.get("execution_context_digest") is None
                 else str(payload["execution_context_digest"])
             ),
-            status=ReducerStatus(payload["status"]),
+            status=_reducer_status_from_payload(payload["status"]),
             active_candidate_sizes=tuple(
                 int(v) for v in payload["active_candidate_sizes"]
             ),
@@ -2009,6 +2038,30 @@ class TargetSizeReducerState:
             payload, result.content_digest, name="Target-size reducer state"
         )
         return result
+
+
+def _reducer_status_from_payload(value: Any) -> ReducerStatus:
+    """Decode a persisted reducer status, refusing retired blocking-ceiling state.
+
+    Evidence written under the retired blocking-ceiling rule is historical.  It
+    is never relabelled into a current selection; it simply cannot authenticate
+    as current reducer state.
+    """
+
+    raw = str(value)
+    if raw == HISTORICAL_BLOCKING_CEILING_STATUS:
+        raise TrainingDataSerializationError(
+            "This reducer state was produced by the retired blocking configured-ceiling "
+            "rule. It stays historical evidence and is never reinterpreted as a current "
+            f"selection; the current terminal-decision policy is "
+            f"{TARGET_SIZE_TERMINAL_DECISION_POLICY!r}."
+        )
+    try:
+        return ReducerStatus(raw)
+    except ValueError:
+        raise TrainingDataSerializationError(
+            f"Unsupported target-size reducer status {raw!r}."
+        ) from None
 
 
 def initial_target_size_reducer(
@@ -2184,22 +2237,20 @@ def advance_target_size_reducer(
             completed_boundary_epochs=completed,
             outcome_history=history,
         )
+    # The configured ladder ceiling is a practical budget limit.  When it is
+    # materially superior to every other successful finalist the experiment did
+    # not demonstrate a plateau, but the best permitted size is still well
+    # defined: it is selected, and the unresolved convergence is carried as a
+    # non-blocking diagnostic rather than as a terminal failure.  Practical
+    # equivalence (already applied by ``_equivalence_order``) still prefers the
+    # smaller finalist, so a ceiling improvement inside epsilon is a plateau.
     largest = policy.nmax
-    if largest in scores and all(
+    ceiling_materially_superior = largest in scores and all(
         scores[largest] + policy.practical_equivalence_mev_per_a + 1.0e-12 < score
         for size, score in scores.items()
         if size != largest
-    ):
-        return TargetSizeReducerState(
-            experiment_definition_digest=definition.content_digest,
-            execution_context_digest=state.execution_context_digest,
-            status=ReducerStatus.NONCONVERGED_AT_CONFIGURED_CEILING,
-            active_candidate_sizes=(),
-            completed_boundary_epochs=completed,
-            outcome_history=history,
-            terminal_reason_codes=("configured_ceiling_materially_superior",),
-        )
-    winner = ranking[0]
+    )
+    winner = largest if ceiling_materially_superior else ranking[0]
     return TargetSizeReducerState(
         experiment_definition_digest=definition.content_digest,
         execution_context_digest=state.execution_context_digest,
@@ -2209,6 +2260,11 @@ def advance_target_size_reducer(
         outcome_history=history,
         selected_target_size=winner,
         selected_membership_digest=definition.training_order.candidate_digest(winner),
+        terminal_reason_codes=(
+            (CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE,)
+            if ceiling_materially_superior
+            else ()
+        ),
     )
 
 

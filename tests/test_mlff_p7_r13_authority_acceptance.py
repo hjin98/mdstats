@@ -1253,16 +1253,22 @@ def test_r13_3_probe_raising_does_not_block_fingerprint_or_session_build(
 
     monkeypatch.setattr(runtime, "probe_lammps_runtime", boom)
 
-    # capture_environment_fingerprint succeeds without calling probe_lammps_runtime
-    fp = capture_environment_fingerprint(default_dtype="float64", device="cpu")
-    assert fp.operating_system
-    assert fp.content_digest
-
-    # Session build also succeeds without calling probe_lammps_runtime
+    # Session build succeeds without calling probe_lammps_runtime.
     harness = fx.QualificationHarness()
     config, _workspace = fx.build_qualified_campaign(tmp_path, harness=harness)
     _cfg, _paths, store, session = fx.load_session(config, harness)
     try:
+        # The learned-model dtype is taken from the accepted method policies,
+        # which resolve it through the one binary precision authority that
+        # executable optimizer construction uses; hard-coding it here would
+        # assert a dtype the campaign never executed.
+        policies = session.context.method_policies
+        # capture_environment_fingerprint also succeeds without the probe.
+        fp = capture_environment_fingerprint(
+            default_dtype=str(policies.default_dtype), device=str(policies.device)
+        )
+        assert fp.operating_system
+        assert fp.content_digest
         assert session.binding.environment.content_digest == fp.content_digest
     finally:
         store.close()

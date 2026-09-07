@@ -136,9 +136,10 @@ def _lifecycle_fixture(
         runtime,
         "_optimizer_policy_for",
         # The accepted execution policy also owns the evaluation device-batch
-        # bound; a stand-in that omits it is not standing in for the real thing.
+        # bound and EMA representation; a stand-in that omits either is not
+        # standing in for the real thing.
         lambda *_args, **_kwargs: SimpleNamespace(
-            policy_digest=_digest("9"), valid_batch_size=4
+            policy_digest=_digest("9"), valid_batch_size=4, ema=False
         ),
     )
     monkeypatch.setattr(
@@ -205,8 +206,11 @@ def _lifecycle_fixture(
             foundation_head="default",
             common_training=SimpleNamespace(
                 eval2_metric_policy_digest=_digest("c"),
-                default_dtype="float64",
             ),
+            # The learned-model dtype is resolved by the one binary precision
+            # authority and carried on the method policies, not by the
+            # common-preparation policy, which does not consume it.
+            default_dtype="float64",
             device="cpu",
         ),
         inference_evaluator=None,

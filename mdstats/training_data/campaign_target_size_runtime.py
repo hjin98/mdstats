@@ -287,7 +287,10 @@ def build_prepared_target_size_substrate(
         build_neutral_statistical_base,
         build_source_authority_from_data2_catalog,
     )
-    from .target_size_execution import build_target_size_common_preparation
+    from .target_size_execution import (
+        build_target_size_common_preparation,
+        resolve_target_size_common_training_policy,
+    )
     from .target_size_experiment import (
         build_target_size_statistical_aggregate,
         resolve_target_size_policy_from_config,
@@ -380,11 +383,15 @@ def build_prepared_target_size_substrate(
         )
     with _authority_stage("P3 common preparation"):
         frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
+        # The configured [objective] reaches the screen through the same
+        # resolver post-selection uses; target-size preparation never falls back
+        # to library defaults that merely happen to agree with it.
         common = build_target_size_common_preparation(
             aggregate,
             frame_catalog=frame_catalog,
             frame_data_by_run=frame_data_by_run,
             frame_array_index=frame_array_index,
+            policy=resolve_target_size_common_training_policy(cfg),
         )
     return CurrentTargetSizeAuthorities(
         manifest=manifest,
@@ -532,6 +539,10 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "forces_key",
     "stress_key",
     "lr",
+    "loss",
+    "energy_weight",
+    "forces_weight",
+    "stress_weight",
     "batch_size",
     "valid_batch_size",
     "num_workers",
@@ -544,6 +555,7 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "default_dtype",
     "device",
     "compute_avg_num_neighbors",
+    "multiheads_finetuning",
 )
 
 #: The one canonical P3 dataset-head namespace.  It is the name of the model
@@ -662,8 +674,62 @@ class MaceTargetSizeBoundaryTrainer:
             json.dumps(run_config, indent=2, sort_keys=True), encoding="utf-8"
         )
 
+        authority = None
+        # Production P3 materializations always carry these authenticated
+        # fields.  The parser-boundary probe intentionally supplies only the
+        # config-file seam, so it remains a parser test rather than an
+        # incomplete training-authority test.
+        if all(
+            hasattr(request.materialization, name)
+            for name in ("target_train_artifact", "mace_config_digest")
+        ) and hasattr(request.trajectory, "candidate_training_protocol_digest"):
+            from .mace_compatibility import (
+                MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+                build_mace_execution_authority,
+                mace_frame_uid_set_digest,
+                mace_execution_authority_to_environment,
+            )
+
+            target_artifact = request.materialization.target_train_artifact
+            target_uid_digest = None
+            if hasattr(target_artifact, "frame_uids"):
+                target_uid_digest = mace_frame_uid_set_digest(target_artifact.frame_uids)
+            configured_ema = bool(run_config["ema"])
+            authority = build_mace_execution_authority(
+                role="target_size",
+                config_digest=request.materialization.mace_config_digest,
+                method_identity_digest=request.trajectory.candidate_training_protocol_digest,
+                loss_family=run_config["loss"],
+                learning_rate=float(run_config["lr"]),
+                ema=configured_ema,
+                ema_decay=(
+                    None if not configured_ema else float(run_config["ema_decay"])
+                ),
+                multiheads_finetuning=False,
+                force_mh_ft_lr=None,
+                real_pt_data_ratio_threshold=None,
+                target_train_count=int(request.trajectory.realization.target_train_count),
+                replay_train_count=0,
+                batch_size=int(request.trajectory.realization.batch_size),
+                target_updates_per_epoch=int(
+                    request.trajectory.realization.updates_per_epoch
+                ),
+                target_drop_last=False,
+                distributed_allowed=False,
+                target_frame_uid_set_digest=target_uid_digest,
+                replay_frame_uid_set_digest=None,
+                target_head_name="target_head",
+                replay_head_name="pt_head",
+            )
+
         environment = dict(os.environ)
         environment.update(dict(self.environment or {}))
+        # This transport is derived after the authenticated materialization and
+        # intentionally overrides any ambient/injected value.
+        if authority is not None:
+            environment[MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE] = (
+                mace_execution_authority_to_environment(authority)
+            )
         environment[mdstats.TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE] = json.dumps(
             request.plan.to_dict(), sort_keys=True, separators=(",", ":")
         )
@@ -1000,6 +1066,7 @@ def build_screen_context(
         TargetSizeRestartAuthority,
         build_target_size_execution_context,
         build_target_size_screen_schedule,
+        resolve_target_size_optimizer_normalization_policy,
         initialize_target_size_screen,
         target_size_population_correlation_blocks,
     )
@@ -1007,7 +1074,10 @@ def build_screen_context(
     authorities = load_prepared_target_size_generation(cfg, paths, store, revision)
     aggregate = authorities.aggregate
     definition = aggregate.definition
-    schedule = build_target_size_screen_schedule(definition.policy.fidelity_epochs)
+    schedule = build_target_size_screen_schedule(
+        definition.policy.fidelity_epochs,
+        normalization_policy=resolve_target_size_optimizer_normalization_policy(cfg),
+    )
     seeds = tuple(definition.policy.optimizer_seeds)
     optimizer_policy = _optimizer_policy(
         cfg,
@@ -1077,7 +1147,116 @@ def build_screen_context(
     )
 
 
+def _discard_unaccepted_first_rung_materialization(
+    screen: _ScreenContext,
+    materialization_directory: Path,
+    *,
+    target_size: int,
+    optimizer_seed: int,
+    boundary: int,
+) -> None:
+    """Remove first-rung attempt scratch, and only ever attempt scratch.
+
+    The caller has already established that this cell needs work, but deleting
+    a durable parent graph would be unrecoverable, so the accepted-progress
+    check is repeated here rather than assumed.  If any authenticated progress
+    exists for this cell the directory is left untouched and the ordinary
+    recovery owner keeps authority over it.
+    """
+
+    if not materialization_directory.exists():
+        return
+    resolver = screen.authority.resolver
+    progress_path = resolver.progress_path(
+        screen.window.content_digest, int(boundary), int(target_size), int(optimizer_seed)
+    )
+    if progress_path.exists():
+        raise TargetSizeRuntimeError(
+            "A first-rung cell with accepted durable progress reached fresh "
+            "execution; its materialization is accepted evidence and is owned "
+            "by boundary recovery, not by a new attempt."
+        )
+    shutil.rmtree(materialization_directory)
+
+
 def _execute_candidate_cell(
+    screen: _ScreenContext, *, target_size: int, optimizer_seed: int, boundary: int, state: Any
+) -> Any:
+    """Run one candidate cell, fencing first-rung scratch by logical cell.
+
+    The first-rung materialization directory is the deterministic identity of a
+    logical ``(target_size, optimizer_seed)`` cell.  Its adjacent advisory lock
+    is an execution fence, not scientific state: it serializes cleanup,
+    materialization, checkpoint creation, and accepted-progress publication for
+    that one cell, and the kernel releases it if the writer dies.  A waiter
+    re-authenticates durable progress after acquiring the fence before it can
+    remove or recreate any scratch.
+    """
+
+    boundary_index = screen.schedule.fidelity_epochs.index(int(boundary))
+    if boundary_index != 0:
+        return _execute_candidate_cell_unlocked(
+            screen,
+            target_size=target_size,
+            optimizer_seed=optimizer_seed,
+            boundary=boundary,
+            state=state,
+        )
+
+    from dataclasses import replace as _replace
+
+    from .target_size_execution import (
+        build_target_size_candidate_trajectory,
+        derive_active_boundary_requirements,
+        recover_authenticated_boundary_progress,
+    )
+    from .target_size_execution.persistence import artifact_publication_lock
+
+    optimizer = _replace(screen.optimizer_policy, seed=int(optimizer_seed))
+    trajectory = build_target_size_candidate_trajectory(
+        screen.aggregate.definition,
+        screen.context,
+        screen.authorities.common,
+        screen.schedule,
+        target_size=int(target_size),
+        optimizer_policy=optimizer,
+        optimizer_seed=int(optimizer_seed),
+    )
+    materialization_directory = (
+        screen.authority.bulk_root("materialization") / trajectory.content_digest
+    )
+    cell = (int(target_size), int(optimizer_seed))
+    requirements = derive_active_boundary_requirements(
+        screen.aggregate.definition, state
+    )
+    if (
+        requirements is None
+        or int(requirements[0]) != int(boundary)
+        or cell not in tuple(requirements[2])
+    ):
+        raise TargetSizeRuntimeError(
+            "The first-rung cell is not part of the exact active P2 boundary matrix."
+        )
+    with artifact_publication_lock(materialization_directory):
+        recovered = recover_authenticated_boundary_progress(
+            screen.root,
+            screen.window,
+            screen.authority,
+            boundary_epoch=int(boundary),
+            active_keys=requirements[2],
+        )
+        if cell in recovered:
+            return recovered[cell]
+        return _execute_candidate_cell_unlocked(
+            screen,
+            target_size=int(target_size),
+            optimizer_seed=int(optimizer_seed),
+            boundary=int(boundary),
+            state=state,
+        )
+
+
+def _execute_candidate_cell_unlocked(
     screen: _ScreenContext, *, target_size: int, optimizer_seed: int, boundary: int, state: Any
 ) -> Any:
     """Run one surviving ``(N, seed)`` cell through the real P3 owners."""
@@ -1124,6 +1303,28 @@ def _execute_candidate_cell(
         )
         materialization_directory = (
             materialization_root / trajectory.content_digest
+        )
+        # A first rung reached here has no authenticated accepted progress: the
+        # recovery owner reuses accepted cells and only genuinely missing ones
+        # arrive at TRAIN2/EVAL2.  Anything a previously interrupted attempt
+        # left in this directory is therefore unaccepted attempt scratch, not
+        # durable scientific authority.
+        #
+        # It has to be discarded rather than verified.  The trajectory digest
+        # that names this path deliberately excludes execution-only launch
+        # settings, while the immutable MACE configuration records the values
+        # the attempt actually launched with.  So after a crash, a scientifically
+        # identical retry under a different worker count or harness-validation
+        # batch width would address the same path with different bytes and be
+        # rejected by immutable create-or-verify -- turning a resource edit into
+        # an unrecoverable screen.  Accepted materializations are never reached
+        # by this branch, and create-or-verify stays strict for them.
+        _discard_unaccepted_first_rung_materialization(
+            screen,
+            materialization_directory,
+            target_size=int(target_size),
+            optimizer_seed=int(optimizer_seed),
+            boundary=int(boundary),
         )
         materialization_directory.mkdir(parents=True, exist_ok=True)
         materialization = materialize_target_size_candidate(
@@ -1561,6 +1762,9 @@ def report_current_target_size_terminal_state(
 
 
 def _report_terminal_state(validated_result: Any) -> None:
+    from .target_size_experiment import (
+        CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE,
+    )
     from .campaign_target_size_terminal import (
         TargetSizeTerminalProjectionError,
         ValidatedTargetSizeTerminalResult,
@@ -1577,6 +1781,21 @@ def _report_terminal_state(validated_result: Any) -> None:
             f"Target size is already selected and frozen: N={terminal.selected_target_size}.",
             flush=True,
         )
+        if CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE in terminal.terminal_reason_codes:
+            print(
+                "Warning: the configured practical ceiling is the best evaluated "
+                "permitted size; target-size convergence was not demonstrated within "
+                "the configured ladder. The selection is budget-limited rather than "
+                "convergence-limited.",
+                flush=True,
+            )
+        other = tuple(
+            code
+            for code in terminal.terminal_reason_codes
+            if code != CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE
+        )
+        if other:
+            print(f"Selection diagnostics: {', '.join(other)}.", flush=True)
     else:
         print(
             "Target-size selection is scientifically terminal: "

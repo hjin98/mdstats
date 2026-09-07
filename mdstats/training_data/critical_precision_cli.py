@@ -135,6 +135,443 @@ def _clean_success_exit() -> None:
 
 
 
+def _mace_execution_authority() -> dict[str, Any] | None:
+    from .mace_compatibility import mace_execution_authority_from_environment
+
+    return mace_execution_authority_from_environment()
+
+
+def _qualify_mace_execution_source(authority: dict[str, Any]) -> dict[str, Any]:
+    """Qualify the installed MACE source before applying the narrow repair."""
+
+    import mace
+    from importlib import metadata
+
+    from .mace_compatibility import (
+        MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+        mace_execution_authority_to_environment,
+        probe_mace_source_tree,
+    )
+
+    source_root = Path(mace.__file__).resolve().parent.parent
+    try:
+        installed_version = metadata.version("mace-torch")
+    except metadata.PackageNotFoundError as exc:
+        raise RuntimeError(
+            "The qualified MACE execution repair requires the installed "
+            "mace-torch distribution."
+        ) from exc
+    if installed_version != "0.3.16":
+        raise RuntimeError(
+            "The qualified MACE execution repair is locked to mace-torch==0.3.16; "
+            f"observed {installed_version!r}."
+        )
+    try:
+        probe = probe_mace_source_tree(source_root)
+    except Exception as exc:
+        raise RuntimeError(
+            "The installed MACE source could not be qualified for the mdstats "
+            f"execution repair: {type(exc).__name__}: {exc}"
+        ) from exc
+    if not probe.current_execution_compatible:
+        raise RuntimeError(
+            "The installed MACE source does not match the qualified 0.3.16 "
+            "execution semantics; refusing to patch or run it."
+        )
+    qualified = dict(authority)
+    qualified["source_probe_digest"] = probe.content_digest
+    os.environ[MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE] = (
+        mace_execution_authority_to_environment(qualified)
+    )
+    return _mace_execution_authority() or qualified
+
+
+def _validate_mace_execution_arguments(
+    args: Any,
+    *,
+    stage: str = "resolved",
+) -> dict[str, Any]:
+    """Check parser and post-mutation MACE arguments against launch authority."""
+
+    authority = _mace_execution_authority()
+    if authority is None:
+        raise RuntimeError(
+            "The qualified execution argument check ran without launch authority."
+        )
+    if str(getattr(args, "loss", "")) != authority["loss_family"]:
+        raise RuntimeError(
+            f"MACE {stage} loss family differs from authenticated mdstats "
+            f"request: {getattr(args, 'loss', None)!r}."
+        )
+    if bool(getattr(args, "multiheads_finetuning", False)) != bool(
+        authority["multiheads_finetuning"]
+    ):
+        raise RuntimeError(f"MACE {stage} multihead mode differs from authority.")
+    if int(getattr(args, "batch_size", -1)) != int(authority["batch_size"]):
+        raise RuntimeError(f"MACE {stage} batch size differs from authority.")
+    if not np.isclose(
+        float(getattr(args, "lr", float("nan"))),
+        float(authority["learning_rate"]),
+        rtol=0.0,
+        atol=0.0,
+    ):
+        raise RuntimeError(f"MACE {stage} learning rate differs from authority.")
+    if bool(getattr(args, "ema", False)) != bool(authority["ema"]):
+        raise RuntimeError(f"MACE {stage} EMA flag differs from authority.")
+    if authority["ema"] and not np.isclose(
+        float(getattr(args, "ema_decay", float("nan"))),
+        float(authority["ema_decay"]),
+        rtol=0.0,
+        atol=0.0,
+    ):
+        raise RuntimeError(f"MACE {stage} EMA decay differs from authority.")
+    if authority["multiheads_finetuning"]:
+        if getattr(args, "force_mh_ft_lr", None) is not True:
+            raise RuntimeError(
+                f"MACE {stage} did not retain force_mh_ft_lr=True."
+            )
+        if float(getattr(args, "real_pt_data_ratio_threshold", float("nan"))) != 0.0:
+            raise RuntimeError(
+                f"MACE {stage} did not retain real_pt_data_ratio_threshold=0.0."
+            )
+    if authority["role"] == "target_size" and bool(
+        getattr(args, "distributed", False)
+    ):
+        raise RuntimeError(
+            "Target-size complete-batch execution cannot use a distributed sampler."
+        )
+    return authority
+
+
+def _mace_collection_uids(collection: Any, *, head_name: str) -> tuple[str, ...]:
+    values: list[str] = []
+    for item in collection:
+        uid = getattr(item, "frame_uid", None)
+        info = getattr(item, "info", None)
+        if info is None and isinstance(item, dict):
+            info = item.get("info", item)
+        if uid in (None, ""):
+            uid = info.get("frame_uid") if isinstance(info, dict) else None
+        if uid in (None, ""):
+            raise RuntimeError(
+                f"MACE {head_name} training collection lost exported frame_uid metadata."
+            )
+        values.append(str(uid))
+    if not values or len(set(values)) != len(values):
+        raise RuntimeError(
+            f"MACE {head_name} training collection is empty or duplicates frame UIDs."
+        )
+    return tuple(values)
+
+
+def _annotate_mace_collections_with_exported_uids(*, head_configs: Any) -> None:
+    """Carry exporter frame identity through MACE's Configuration dataclass.
+
+    MACE 0.3.16 intentionally reduces ASE ``Atoms.info`` to its fixed
+    ``Configuration`` fields and therefore does not preserve arbitrary
+    ``frame_uid`` metadata.  The wrapper re-associates the authenticated UID
+    sequence with the corresponding collection immediately after MACE's own
+    dataset loader returns.  A length/order mismatch fails closed; no UID is
+    inferred from a position or regenerated locally.
+    """
+
+    from ase.io import iread
+
+    for head_config in head_configs:
+        train_files = getattr(head_config, "train_file", None)
+        collections = getattr(head_config, "collections", None)
+        train_collection = None if collections is None else getattr(collections, "train", None)
+        if not train_files or train_collection is None:
+            raise RuntimeError(
+                "MACE execution cannot authenticate frame membership without a "
+                "materialized ASE training collection."
+            )
+        if isinstance(train_files, (str, os.PathLike)):
+            train_files = [train_files]
+        exported_uids: list[str] = []
+        for raw_path in train_files:
+            path = Path(str(raw_path)).expanduser()
+            if not path.is_file():
+                raise RuntimeError(
+                    f"MACE execution cannot authenticate missing training file: {path}"
+                )
+            try:
+                frames = iread(path, index=":", format="extxyz")
+                for atoms in frames:
+                    uid = atoms.info.get("frame_uid")
+                    if uid in (None, ""):
+                        raise RuntimeError(
+                            f"MACE training file {path} contains a frame without frame_uid."
+                        )
+                    exported_uids.append(str(uid))
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(
+                    f"MACE execution could not read exported UID metadata from {path}."
+                ) from exc
+        collection_values = list(train_collection)
+        if len(collection_values) != len(exported_uids):
+            raise RuntimeError(
+                "MACE dataset loading changed the authenticated training collection "
+                "length; refusing to guess frame membership."
+            )
+        if len(set(exported_uids)) != len(exported_uids):
+            raise RuntimeError(
+                "MACE exported training files contain duplicate frame UIDs."
+            )
+        for item, uid in zip(collection_values, exported_uids):
+            setattr(item, "frame_uid", uid)
+
+
+def _validate_mace_execution_loader(
+    *,
+    args: Any,
+    loss_fn: Any,
+    train_loader: Any,
+    train_set: Any,
+    head_configs: Any,
+    train_sampler: Any,
+) -> dict[str, Any]:
+    """Validate actual MACE collections/loaders and publish resolved evidence."""
+
+    from .mace_compatibility import (
+        MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+        mace_execution_authority_to_environment,
+        mace_frame_uid_set_digest,
+        record_mace_execution_evidence,
+    )
+
+    authority = _validate_mace_execution_arguments(args, stage="post-mutation")
+    loss_class = (
+        f"{type(loss_fn).__module__}.{type(loss_fn).__qualname__}"
+    )
+    if loss_class != "mace.modules.loss.WeightedEnergyForcesStressLoss":
+        raise RuntimeError(
+            "MACE resolved an unsupported loss implementation for the authenticated "
+            f"stress method: {loss_class}."
+        )
+    target_name = str(authority["target_head_name"])
+    replay_name = str(authority["replay_head_name"])
+    by_head = {str(config.head_name): config for config in head_configs}
+    target_config = by_head.get(target_name)
+    if target_config is None:
+        raise RuntimeError(f"MACE target head {target_name!r} is absent from loaded data.")
+    target_uids = _mace_collection_uids(
+        target_config.collections.train, head_name=target_name
+    )
+    target_count = len(target_uids)
+    replay_uids: tuple[str, ...] = ()
+    if authority["multiheads_finetuning"]:
+        replay_config = by_head.get(replay_name)
+        if replay_config is None:
+            raise RuntimeError(f"MACE replay head {replay_name!r} is absent from loaded data.")
+        replay_uids = _mace_collection_uids(
+            replay_config.collections.train, head_name=replay_name
+        )
+        replay_count = len(replay_uids)
+    else:
+        replay_count = 0
+    if target_count != int(authority["target_train_count"]):
+        raise RuntimeError(
+            "MACE resolved target exposure count differs from authenticated materialization."
+        )
+    if replay_count != int(authority["replay_train_count"]):
+        raise RuntimeError(
+            "MACE resolved replay exposure count differs from authenticated materialization."
+        )
+    if len(train_set) != target_count + replay_count:
+        raise RuntimeError(
+            "MACE combined training dataset count differs from head exposure counts."
+        )
+    target_uid_digest = mace_frame_uid_set_digest(target_uids)
+    expected_target_uid_digest = authority.get("target_frame_uid_set_digest")
+    if expected_target_uid_digest is not None and target_uid_digest != expected_target_uid_digest:
+        raise RuntimeError("MACE changed target frame membership before training.")
+    replay_uid_digest = None if not replay_uids else mace_frame_uid_set_digest(replay_uids)
+    expected_replay_uid_digest = authority.get("replay_frame_uid_set_digest")
+    if expected_replay_uid_digest is not None and replay_uid_digest != expected_replay_uid_digest:
+        raise RuntimeError("MACE changed replay frame membership before training.")
+
+    target_batches: int | None = None
+    target_drop_last: bool | None = None
+    if authority["role"] == "target_size":
+        if train_sampler is not None:
+            raise RuntimeError(
+                "Target-size complete-batch execution received a sampler."
+            )
+        target_drop_last = bool(getattr(train_loader, "drop_last", True))
+        if target_drop_last is not False:
+            raise RuntimeError(
+                "Target-size qualified execution retained drop_last=True."
+            )
+        target_batches = int(len(train_loader))
+        if target_batches != int(authority["target_updates_per_epoch"]):
+            raise RuntimeError(
+                "Target-size realized batch count differs from ceil(N/B) authority."
+            )
+        head_loader = getattr(target_config, "train_loader", None)
+        if head_loader is None or bool(getattr(head_loader, "drop_last", True)):
+            raise RuntimeError(
+                "Target-size per-head loader retained drop_last=True."
+            )
+        if int(len(head_loader)) != target_batches:
+            raise RuntimeError(
+                "Target-size per-head and combined loaders disagree on batch count."
+            )
+
+    evidence = {
+        "role": authority["role"],
+        "loss_family": str(args.loss),
+        "loss_class": loss_class,
+        "learning_rate": float(args.lr),
+        "ema": bool(args.ema),
+        "ema_decay": None if not bool(args.ema) else float(args.ema_decay),
+        "multiheads_finetuning": bool(args.multiheads_finetuning),
+        "force_mh_ft_lr": (
+            None if not bool(args.multiheads_finetuning) else bool(args.force_mh_ft_lr)
+        ),
+        "real_pt_data_ratio_threshold": (
+            None
+            if not bool(args.multiheads_finetuning)
+            else float(args.real_pt_data_ratio_threshold)
+        ),
+        "target_train_count": target_count,
+        "replay_train_count": replay_count,
+        "target_duplication_factor": 1,
+        "target_batch_size": int(args.batch_size),
+        "target_updates_per_epoch": target_batches,
+        "target_drop_last": target_drop_last,
+        "distributed": bool(args.distributed),
+        "target_frame_uid_set_digest": target_uid_digest,
+        "replay_frame_uid_set_digest": replay_uid_digest,
+        "combined_train_count": int(len(train_set)),
+    }
+    resolved = record_mace_execution_evidence(authority, evidence)
+    os.environ[MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE] = (
+        mace_execution_authority_to_environment(resolved)
+    )
+    return evidence
+
+
+def _install_mace_execution_semantics_patch(authority: dict[str, Any]) -> None:
+    """Install the one source-qualified MACE execution-semantics repair.
+
+    MACE 0.3.16 unconditionally selects ``UniversalLoss`` for multi-head
+    fine-tuning and constructs all training loaders with ``drop_last`` tied to
+    the historical LBFGS flag.  The authenticated mdstats launch authority is
+    the only thing that enables this patch.  The exact source markers are
+    checked before rewriting so a future MACE source cannot silently receive a
+    stale transformation.
+    """
+
+    import inspect
+    import re
+    import textwrap
+
+    import mace.cli.run_train as run_train_module
+
+    if getattr(run_train_module, "_mdstats_execution_semantics_patched", False):
+        if getattr(run_train_module, "_mdstats_execution_semantics_role", None) == authority[
+            "role"
+        ]:
+            return
+        original_patched = getattr(run_train_module, "_mdstats_original_run", None)
+        if original_patched is None:
+            raise RuntimeError(
+                "MACE execution-semantics patch state is inconsistent; refusing "
+                "to switch launch roles in-process."
+            )
+        run_train_module.run = original_patched
+        delattr(run_train_module, "_mdstats_execution_semantics_patched")
+        if hasattr(run_train_module, "_mdstats_execution_semantics_role"):
+            delattr(run_train_module, "_mdstats_execution_semantics_role")
+    original = getattr(run_train_module, "_mdstats_original_run", run_train_module.run)
+    source = textwrap.dedent(inspect.getsource(original))
+
+    parser_marker = "    args, input_log_messages = tools.check_args(args)\n"
+    forced_loss_marker = '        args.loss = "universal"\n'
+    collection_marker = "        head_configs.append(head_config)\n\n    if all(\n"
+    loss_marker = "    loss_fn = get_loss_fn(args, dipole_only, args.compute_dipole)\n"
+    drop_last_pattern = r"drop_last\s*=\s*\(\s*not\s+args\.lbfgs\s*\)"
+    combined_drop_last_pattern = (
+        r"drop_last\s*=\s*\(\s*train_sampler\s+is\s+None\s+and\s+not\s+args\.lbfgs\s*\)"
+    )
+    if (
+        source.count(parser_marker) != 1
+        or source.count(forced_loss_marker) != 1
+        or source.count(collection_marker) != 1
+        or source.count(loss_marker) != 1
+    ):
+        raise RuntimeError(
+            "The qualified MACE argument/loss source contract changed; mdstats "
+            "refuses to patch an unverified execution path."
+        )
+    if authority["role"] == "target_size":
+        if len(re.findall(drop_last_pattern, source)) != 2:
+            raise RuntimeError(
+                "The qualified MACE target-loader drop_last source contract changed; "
+                "mdstats refuses to patch an unverified execution path."
+            )
+        if len(re.findall(combined_drop_last_pattern, source)) != 1:
+            raise RuntimeError(
+                "The qualified MACE combined-loader source contract changed; mdstats "
+                "refuses to patch an unverified execution path."
+            )
+
+    source = source.replace(
+        parser_marker,
+        parser_marker
+        + "    from mdstats.training_data.critical_precision_cli import _validate_mace_execution_arguments\n"
+        + "    _validate_mace_execution_arguments(args, stage='parser')\n",
+        1,
+    )
+    # The native MACE call to get_loss_fn remains the owner of loss
+    # construction.  Only its forced UniversalLoss selector is removed.
+    source = source.replace(
+        forced_loss_marker,
+        "        # mdstats: retain the authenticated native executable loss.\n"
+        "        args.loss = 'stress'\n",
+        1,
+    )
+    source = source.replace(
+        collection_marker,
+        "        head_configs.append(head_config)\n\n"
+        "    from mdstats.training_data.critical_precision_cli import _annotate_mace_collections_with_exported_uids\n"
+        "    _annotate_mace_collections_with_exported_uids(head_configs=head_configs)\n\n"
+        "    if all(\n",
+        1,
+    )
+    if authority["role"] == "target_size":
+        source = re.sub(drop_last_pattern, "drop_last=False", source)
+        source = re.sub(combined_drop_last_pattern, "drop_last=False", source)
+    source = source.replace(
+        loss_marker,
+        loss_marker
+        + "    from mdstats.training_data.critical_precision_cli import _validate_mace_execution_loader\n"
+        + "    _mdstats_mace_execution_evidence = _validate_mace_execution_loader(\n"
+        + "        args=args, loss_fn=loss_fn, train_loader=train_loader,\n"
+        + "        train_set=train_set, head_configs=head_configs,\n"
+        + "        train_sampler=train_sampler,\n"
+        + "    )\n",
+        1,
+    )
+
+    namespace: dict[str, Any] = {}
+    globals_copy = dict(original.__globals__)
+    exec(compile(source, "<mdstats-mace-execution-semantics>", "exec"), globals_copy, namespace)
+    patched = namespace.get("run")
+    if patched is None:
+        raise RuntimeError("Failed to install the qualified MACE execution-semantics patch.")
+    patched.__name__ = original.__name__
+    patched.__qualname__ = original.__qualname__
+    patched.__doc__ = original.__doc__
+    run_train_module._mdstats_original_run = original
+    run_train_module._mdstats_execution_semantics_patched = True
+    run_train_module._mdstats_execution_semantics_role = authority["role"]
+    run_train_module.run = patched
+
+
 def _install_mace_restart_epoch_patch() -> None:
     """Install the qualified MACE epoch/restart and PREC2 stage hooks.
 
@@ -156,6 +593,11 @@ def _install_mace_restart_epoch_patch() -> None:
     from .adaptive_stop import adaptive_stop_policy_from_environment
     from .train2_runtime import runtime_plan_from_environment
     from .mlcv_monitors import MLCV_TRAINING_DIAGNOSTIC_PATH_ENVIRONMENT_VARIABLE
+
+    execution_authority = _mace_execution_authority()
+    if execution_authority is not None:
+        execution_authority = _qualify_mace_execution_source(execution_authority)
+        _install_mace_execution_semantics_patch(execution_authority)
 
     plan = configure_precision_runtime_from_argv(sys.argv)
     staged = bool(plan is not None and plan.staged)

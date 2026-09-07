@@ -37,7 +37,7 @@ strings containing deterministic Python literals, not native YAML containers:
 | `heads` | YAML scalar string | ordered head-definition mapping |
 | `heads.<name>.atomic_numbers` | nested scalar string | head-local atomic-number list when narrower than the global union |
 | `heads.<name>.E0s` | YAML scalar string | `"foundation"` or atomic-energy mapping |
-| `loss` | lowercase scalar | `universal` |
+| `loss` | lowercase scalar | `stress` |
 
 The adapter must reject source-compatible-looking configurations that fail the
 real parser or loader dry run.
@@ -93,7 +93,8 @@ The record passes only when:
 3. the real parser exits successfully;
 4. parsed atomic numbers are sorted and unique;
 5. parsed E0 elements are contained in the model element set;
-6. parsed loss is `universal`;
+6. parsed loss is `stress`, resolving to MACE's native
+   `WeightedEnergyForcesStressLoss`;
 7. the real loader dry run succeeds when requested.
 
 ## 5. Execution-smoke record

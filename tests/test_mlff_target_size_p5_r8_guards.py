@@ -12,6 +12,8 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
+
+from mdstats.training_data.objectives import TrainingObjectivePolicy
 from typing import Any
 import pytest
 
@@ -425,11 +427,16 @@ def test_claims_14_15_16_invalid_dtype_mode_and_optimizer_fail_closed():
     Claim 15: Invalid training mode rejects.
     Claim 16: Unsupported optimizer family remains rejected.
     """
-    # Claim 14: invalid dtype
+    # Claim 14: invalid dtype.  P5 identity resolves the learned-model dtype
+    # through the one binary precision authority that executable optimizer
+    # construction uses, so an unsupported dtype fails closed there rather than
+    # being coerced or defaulted independently.
+    from mdstats.training_data.training_settings import CampaignCliError
+
     cfg_invalid_dtype = {"training": {"dtype": "bfloat16"}}
-    with pytest.raises(TrainingDataInputError) as exc_info:
+    with pytest.raises(CampaignCliError) as exc_info:
         resolve_post_selection_method_policies(cfg_invalid_dtype)
-    assert "Unsupported [training].default_dtype: 'bfloat16'" in str(exc_info.value)
+    assert "Unsupported learned-model dtype 'bfloat16'" in str(exc_info.value)
 
     # Claim 15: invalid training mode
     cfg_invalid_mode = {"training": {"mode": "unsupported_reinforcement_learning"}}
@@ -474,7 +481,10 @@ def test_claims_17_18_19_20_eval_interval_and_acceleration_parity():
     preparation = SimpleNamespace(
         fitted_atomic_references=SimpleNamespace(
             reference_energies_ev=((3, 0.0), (8, 0.0))
-        )
+        ),
+        # The fitted preparation carries the resolved global objective, which the
+        # generated MACE config must emit explicitly.
+        objective_policy=TrainingObjectivePolicy(),
     )
     target_train = SimpleNamespace(relative_path="train.extxyz", atomic_numbers=(3, 8))
     monitor = SimpleNamespace(relative_path="valid.extxyz", atomic_numbers=(3, 8))

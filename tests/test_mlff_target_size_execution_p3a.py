@@ -298,6 +298,11 @@ def test_p3a_common_training_policy_carries_no_seed_or_evaluation_inputs() -> No
         "candidate_outcome",
     }
     assert forbidden.isdisjoint(payload)
+    # Training *execution* state is not common-preparation authority: the common
+    # fit consumes neither the gradient batch size nor the learned-model dtype,
+    # so storing them here would make an unrelated batch/precision edit retire
+    # prepared P1/P2/common science.
+    assert {"batch_size", "default_dtype"}.isdisjoint(payload)
     assert set(payload) == {
         "schema",
         "objective_policy",
@@ -307,8 +312,6 @@ def test_p3a_common_training_policy_carries_no_seed_or_evaluation_inputs() -> No
         "foundation_checkpoint_digest",
         "selected_head_name",
         "eval2_metric_policy_digest",
-        "batch_size",
-        "default_dtype",
         "harness_validation_frame_count",
     }
 
@@ -363,8 +366,39 @@ def test_p3a_seed_neutral_context_ignores_seed_and_candidate_state(
             replace(template, batch_size=999),
             authorized_seed=4242,
         )
+    # Execution-only launch settings are not target-size scientific identity:
+    # the screen's LR/EMA authority is the normalization policy, and workers /
+    # harness-validation batch width / eval interval move no trajectory.
+    for execution_only in (
+        replace(template, learning_rate=template.learning_rate * 3.0),
+        replace(template, ema_decay=0.5),
+        replace(template, num_workers=7),
+        replace(template, valid_batch_size=template.valid_batch_size + 5),
+        replace(template, eval_interval=template.eval_interval + 4),
+    ):
+        assert seed_neutral_optimizer_policy_digest(execution_only) == (
+            seed_neutral_optimizer_policy_digest(template)
+        )
+        validate_candidate_optimizer_policy(
+            context.seed_neutral_optimizer_policy_digest,
+            replace(execution_only, seed=4242),
+            authorized_seed=4242,
+        )
+    # Scientific optimizer drift still retires the screen identity.
+    for scientific in (
+        replace(template, batch_size=template.batch_size + 1),
+        replace(template, ema=not template.ema),
+        replace(template, amsgrad=not template.amsgrad),
+        replace(template, weight_decay=template.weight_decay * 2.0),
+        replace(template, clip_grad=template.clip_grad * 2.0),
+        replace(template, default_dtype="float32"),
+        replace(template, max_num_epochs=template.max_num_epochs + 1),
+    ):
+        assert seed_neutral_optimizer_policy_digest(scientific) != (
+            seed_neutral_optimizer_policy_digest(template)
+        )
     # Genuine common training-policy changes do change the context.
-    changed_policy = TargetSizeCommonTrainingPolicy(batch_size=8)
+    changed_policy = TargetSizeCommonTrainingPolicy(harness_validation_frame_count=6)
     _m2, _fa2, _nb2, aggregate2, common2, _i2 = _common(
         tmp_path / "changed", policy=changed_policy
     )

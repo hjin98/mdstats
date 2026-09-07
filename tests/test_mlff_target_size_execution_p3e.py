@@ -756,11 +756,22 @@ def test_p3e_stale_context_preparation_rejected(tmp_path: Path) -> None:
     _full_matrix(env, tmp_path, state)
     from dataclasses import replace as _replace
 
+    # A genuinely different screen method.  ``batch_size`` is target-size
+    # scientific identity because it fixes the ``ceil(N/B)`` update geometry;
+    # the generic ``[training].learning_rate`` is deliberately *not* (the screen
+    # derives its amplitude from the optimizer-normalization policy), so it
+    # would not produce a different context here.
     different_context = build_target_size_execution_context(
         definition,
         env["common"],
         env["schedule"],
-        seed_neutral_optimizer_policy=_replace(env["optimizer"], learning_rate=2e-4),
+        seed_neutral_optimizer_policy=_replace(
+            env["optimizer"], batch_size=env["optimizer"].batch_size + 1
+        ),
+    )
+    assert (
+        different_context.seed_neutral_optimizer_policy_digest
+        != env["context"].seed_neutral_optimizer_policy_digest
     )
     with pytest.raises(TypeError):
         reconcile_target_size_screen_root(
