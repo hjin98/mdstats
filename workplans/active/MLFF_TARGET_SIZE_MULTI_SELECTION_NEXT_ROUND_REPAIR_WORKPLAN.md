@@ -2,61 +2,97 @@
 kind: implementation-workplan
 workplan_id: MLFF-TARGET-SIZE-MULTI-SELECTION-NEXT-ROUND-REPAIR
 protocol_version: 5.16.0
-status: implementation-complete
+status: implementation-reopened
 created_date: 2026-09-08
+reviewed_date: 2026-09-08
 branch: plan/mlff-target-size-multi-selection-reviewed
 implementation_base_head: e2b3c20dee4832eb62416ccfb630b05136fa4313
-reviewed_code_candidate: f4a0e7722aebc860eec678f7592c338c5683094e
-reviewed_head: 28847ede101a6f87a482643d6a4cc5d415bc02ca
+implemented_head: 33ef00d3294c3121021a326603000356379822f7
+implementation_review_verdict: no-pass
 supersedes:
   - MLFF_TARGET_SIZE_MULTI_SELECTION_AND_PER_SIZE_HORIZON_WORKPLAN.md
   - MLFF_TARGET_SIZE_MULTI_SELECTION_AND_PER_SIZE_HORIZON_IMPLEMENTATION_REVIEW_REOPEN.md
   - MLFF_TARGET_SIZE_MULTI_SELECTION_POST_SELECTION_OPTIMIZER_DEFAULTS_REVIEW_ADDENDUM.md
-entrypoint: This file is the sole active implementation authority for the next repair round. The superseded parent/review artifacts are historical evidence only and need not be reconciled by the implementer.
+entrypoint: This file is the sole active implementation authority. The source repair is accepted in substance; the workplan is reopened only for the bounded real-owner acceptance and final regression/integration closure below. Archived relatives are historical evidence, not additional implementation entry points.
 ---
 
 # MLFF multi-size target selection — next-round repair workplan
 
-## 0. Objective and current verdict
+## 0. Independent implementation review verdict
 
-The multi-size target-selection implementation is substantially aligned with the accepted scientific and architectural design. Independent review found two bounded remaining repair families:
+**NO-PASS / implementation reopened for acceptance closure only.**
 
-1. **P5 CV currentness / collection-wide production admission** is incomplete: stale or semantically inconsistent CV evidence can still appear accepted before production, and the collection preflight does not yet prove the same complete per-size authorization that final production requires.
-2. **Post-selection optimizer defaults are not fully explicit at campaign initialization**: CV/final-production LR and EMA are already owned separately from the size-normalized target-size screen, but newly generated TOML exposes `learning_rate` while leaving `ema` and `ema_decay` to hidden resolver defaults.
+The submitted implementation at `33ef00d3294c3121021a326603000356379822f7` correctly repairs the two source-level defect families that motivated this round:
 
-No high-level redesign is authorized or required. Repair the existing owners directly, preserve the already-correct architecture, and close with affected regression/integration.
+1. P5 CV currentness and collection-wide production admission are now checked at the existing owners; and
+2. newly initialized campaign configuration explicitly exposes the separate post-selection LR/EMA defaults while preserving target-size-screen optimizer normalization as a distinct authority.
+
+No high-level redesign and no further source mechanism are presently justified.
+
+The remaining blockers are acceptance-integrity gaps:
+
+- mandatory T6 does not exercise the bounded CV/final-production MACE materialization boundary required by this workplan;
+- mandatory T7 stops at `_optimizer_policy_for(...)` rather than exercising the real post-selection orchestration/materialization owner; and
+- T8 final affected regression/integration has no reviewable execution evidence attached to the assembled candidate.
+
+These are genuine blockers under Protocol 5.16 because a green helper-level test can survive while the production caller/materializer is wrong, and an unexecuted or unevidenced required final regression cannot be accepted by inspection.
+
+Do **not** create another amendment, handoff, wrapper, registry, or test framework. Close these gaps in this file and through the existing production owners/test fixtures.
+
+---
 
 ## 1. Problem / product invariants
 
-The implementation must preserve these Tier-1 product/scientific invariants:
+The following Tier-1 scientific/product invariants remain binding:
 
-1. A selected target size means the exact prefix membership `T_N = pi_train[:N]`; no downstream stage may silently substitute another membership.
-2. The frozen multi-size design is an ordered unique-by-N collection. Duplicate N replaces that entry in place; new distinct N appends; reset clears the provisional collection.
-3. `cross-validate` atomically freezes the whole selected collection. Size is an outer experiment dimension for CV and production, not a hidden reducer or implicit winner.
-4. CV and production are distinct roles over the same post-selection training method. CV evidence must be current for the exact method, exact CV policy, exact TargetBinding, and exact CV plan before it may authorize production.
-5. Before **any new production work** for a multi-size invocation, every frozen size must have current accepted CV ancestry. If one size is missing/stale/corrupt/incomplete/rejected, start zero new production jobs for that invocation.
-6. Target-size screening asks a different controlled question from post-selection training. Its optimizer LR/EMA are size-normalized under the screen-specific normalization authority; CV and production use a separate post-selection optimizer authority.
-7. Newly initialized scientific configuration must explicitly expose material post-selection optimizer defaults so the generated TOML is self-describing and reproducible.
-8. k>1 remains a training experiment, not an implicit release-selection mechanism. No cross-size winner/reducer/qualification shortcut is introduced.
-9. Production-scale/GPU qualification remains separate and deferred; bounded functional/regression/integration testing is required here.
+1. A selected target size means the exact prefix membership `T_N = pi_train[:N]`.
+2. The frozen multi-size design is one ordered unique-by-N collection. Size is an outer experiment dimension, not an implicit reducer or winner.
+3. `cross-validate` freezes the complete collection atomically before numerical CV work.
+4. CV and production are distinct roles over one shared post-selection training method.
+5. CV evidence may authorize production only when it is current for the exact method, CV policy, TargetBinding, and CV plan.
+6. Before any new production job for a multi-size invocation, every frozen size must have current accepted CV ancestry. One missing/stale/corrupt/incomplete/rejected size means zero new production jobs for the invocation.
+7. Target-size screening and post-selection training have separate optimizer authorities:
+
+```text
+Target-size screen
+    [target_data.size_convergence.optimizer_normalization]
+        reference_target_size
+        reference_learning_rate
+        reference_ema_decay
+    -> size-dependent lr(N), beta(N)
+
+Post-selection CV + final production
+    [training]
+        learning_rate
+        ema
+        ema_decay
+        other shared optimizer fields
+    -> one shared PostSelectionMethodIdentity
+```
+
+8. Newly initialized scientific configuration explicitly states material post-selection optimizer defaults.
+9. `k > 1` is a completed training experiment, not a release-selection rule; no hidden first/last/best/auto winner exists.
+10. Production-scale/GPU qualification remains separate and deferred.
+
+---
 
 ## 2. Frozen high-level architecture
 
-The following architecture is already accepted and remains Frozen for this repair cycle:
+Preserve the accepted architecture exactly through this closure round.
 
-### 2.1 One campaign, one collection authority
+### 2.1 Campaign and target-selection authority
 
-- One `CampaignStore` remains the mutable campaign authority.
-- Selected target sizes are one ordered collection, not scalar-plus-list dual state and not per-size subcampaigns.
-- One prepared generation is shared by all selected sizes.
-- Changed prepared scientific identity creates a fresh generation with an empty selection; unchanged prepare preserves the current design.
+- one `CampaignStore` remains the mutable campaign authority;
+- selected sizes are one ordered collection, not scalar-plus-list dual state and not per-size subcampaigns;
+- one prepared generation is shared by all selected sizes;
+- changed prepared scientific identity rolls to a fresh generation with empty selection; unchanged prepare preserves the current design.
 
-### 2.2 Role-neutral target lineage and role-specific policy identity
+### 2.2 Role-neutral target lineage
 
 Per selected size:
 
 ```text
-FrozenEntry_i  # orchestration/audit
+FrozenEntry_i
     N_i
     exact T_i
     training order
@@ -64,7 +100,7 @@ FrozenEntry_i  # orchestration/audit
     H_prod_i
     selection provenance
 
-TargetBinding_i  # role-neutral scientific target lineage
+TargetBinding_i
     current generation
     accepted prepared/P1/P2 lineage
     N_i
@@ -84,192 +120,164 @@ Production_i
     + production policy(H_prod_i)
 ```
 
-Do not put method, CV policy, production policy, selection source, or auto-diagnostic provenance into `TargetBinding` merely to repair currentness.
+Method identity, CV policy, production policy, selection source, and automatic-diagnostic provenance must not be pushed into `TargetBinding` to solve a role-currentness problem.
 
-### 2.3 Existing binding-keyed P5 persistence
+### 2.3 P5 persistence and production admission
 
-- Reuse the existing binding-keyed P5 store and pointer namespaces.
-- Do not add another currentness registry, collection evidence object, wrapper binding, preflight state machine, or synchronized compatibility authority.
-- The collection-wide production gate is an admission check over the existing per-size authorities; it is not new persisted state.
+- reuse the existing binding-keyed P5 store and pointer namespaces;
+- the collection-wide production gate remains an admission check over existing per-size authorities, not persisted state;
+- the existing per-size production authorization remains a second-line race/currentness fence after collection preflight;
+- serial outer-size orchestration remains acceptable/preferred; no new scheduler is authorized.
 
-### 2.4 Separate optimizer owners
+### 2.4 Configuration ownership
 
-The intended configuration/identity split is:
+The screen normalization table and `[training]` remain independent configuration owners. Equal numerical defaults are allowed; semantic coupling is not. Do not create CV-specific or production-specific duplicate LR/EMA tables unless a future scientific design explicitly changes the shared-method architecture.
 
-```text
-Target-size screen
-    [target_data.size_convergence.optimizer_normalization]
-        reference_target_size
-        reference_learning_rate
-        reference_ema_decay
-    -> per-N update geometry
-    -> lr(N)
-    -> beta(N)
+### 2.5 Observation and qualification preservation
 
-Post-selection CV + final production
-    [training]
-        learning_rate
-        ema
-        ema_decay
-        other shared optimizer fields
-    -> one shared PostSelectionMethodIdentity
-    -> same method executed by CV and final production
-```
+The existing public lifecycle observer remains a read-only, durable-state/advisory projection; consequential commands re-establish current configuration admission for themselves. This review does **not** authorize new lifecycle currentness machinery merely because an advisory route can subsequently fail admission under an edited config.
 
-Numerical equality of defaults across the two owners is allowed. Semantic coupling is not.
+For `k > 1`, qualification remains informational/read-only and consequential P7 paths fail before attempts, locked evidence, or release selection are opened.
 
-### 2.5 Scheduling and qualification
+---
 
-- Serial outer-size orchestration remains acceptable/preferred; do not add a new scheduler.
-- Existing per-size production authorization remains a second-line race/currentness fence even after collection preflight is strengthened.
-- k>1 qualification remains read-only/informational; consequential qualification must fail before opening attempt/locked evidence.
+## 3. Source-level repair findings — accepted and frozen for this closure
 
-## 3. Repair family A — complete P5 CV currentness before production
+The following implementation results were independently inspected and are accepted in substance. Do not rework them unless the strengthened real-owner tests expose a defect.
 
-### A1. Make current CV-plan resolution role-current
+### 3.1 CV plan role-currentness
 
-Strengthen the existing `campaign_post_selection_runtime.resolve_current_cv_plan(context)` path so a stored pointer is considered current only when all existing binding/P1/replay/plan validation succeeds **and**:
+`campaign_post_selection_runtime.resolve_current_cv_plan(context)` now validates the persisted plan and rejects when either relation is false:
 
 ```text
 plan.method_identity_digest == context.method.content_digest
 plan.cv_policy_identity_digest == context.cv_policy.content_digest
 ```
 
-The current per-size CV policy already resolves the frozen `H_cv`; compare against that resolved policy. A mismatch means stale methodological evidence and requires rerunning CV.
+This is the correct role boundary; `TargetBinding` remains role-neutral.
 
-Do not move these identities into `TargetBinding`.
+### 3.2 Exact acceptance-policy ancestry
 
-### A2. Complete acceptance ancestry validation
-
-Strengthen the existing `post_selection_cv_acceptance.require_cv_acceptance_for_method(...)` authorization so it also requires:
+`post_selection_cv_acceptance.require_cv_acceptance_for_method(...)` now requires:
 
 ```text
+acceptance.cv_plan_digest == plan.content_digest
+acceptance.method_identity_digest == current method
 acceptance.cv_policy_identity_digest == plan.cv_policy_identity_digest
+acceptance.selected_binding_digest == current binding
+acceptance.accepted == true
 ```
 
-Retain the existing exact-plan, method, selected-binding, and `accepted == True` checks. Do not create another acceptance type.
+No second acceptance type or currentness registry was added.
 
-### A3. Make collection preflight reuse the real per-size authorization
+### 3.3 Collection-wide zero-new-production barrier
 
-Rework `_cv_admission_blockers(contexts)` (or an equivalent existing owner if locally simplified) so **every frozen size is fully authorized before any production work begins**:
+`_cv_admission_blockers(contexts)` now resolves/authenticates each size's current plan and acceptance, reuses the real acceptance authorization, gathers blockers across the complete collection, and runs before the production stage is marked RUNNING or any per-size production loop begins.
 
-1. resolve/authenticate its current CV plan;
-2. resolve/authenticate its current CV acceptance;
-3. reject missing/unreadable/stale/corrupt plan or acceptance;
-4. invoke the corrected existing semantic acceptance authorization against the context's current method and binding;
-5. gather all known blocking N/reasons;
-6. succeed only when every frozen size passes.
+`execute_final_production(context)` still repeats the exact per-size authorization immediately before final-plan construction. Preserve both boundaries.
 
-`execute_current_train_production()` must not mark production RUNNING, publish a new final plan/publication, or invoke a production trainer until this full preflight succeeds.
+### 3.4 Explicit post-selection optimizer defaults
 
-Do not duplicate a second weaker set of digest comparisons in the barrier; reuse the corrected real owner(s).
-
-### A4. Preserve the per-size second-line guard
-
-`execute_final_production(context)` must continue to re-check exact CV authorization immediately before final-plan construction/publication. The collection barrier prevents partial admission; the per-size guard remains the race/currentness fence after preflight.
-
-## 4. Repair family B — explicit post-selection LR/EMA defaults at initialization
-
-### B1. Preserve optimizer-authority independence
-
-Do not route CV/final production through target-size optimizer normalization, and do not make target-size screening consume `[training].learning_rate` or `[training].ema_decay` as its normalization reference.
-
-The target-size screen continues to realize its MACE configuration from the per-N normalized LR/EMA values. CV/final production continue to resolve their optimizer from the canonical shared `[training]` settings.
-
-### B2. Emit explicit post-selection defaults from `init`
-
-Alter the existing `_config_template(...)` training section directly so newly initialized configurations explicitly contain:
+The generated `[training]` section now explicitly emits:
 
 ```toml
-[training]
 learning_rate = 1.0e-4
 ema = true
 ema_decay = 0.99999
 ```
 
-These are the existing canonical resolved defaults and are the current accepted conservative fine-tuning defaults. The generated comments should state that they govern post-selection CV and fresh final production, while the screen derives per-N LR/EMA from `[target_data.size_convergence.optimizer_normalization]`.
+with comments identifying these as post-selection CV/final-production settings and pointing target-size screening to its separate optimizer-normalization table.
 
-Keep the built-in resolver defaults for compatibility with existing historical configs that omit these keys. Do not create an initialization-only default table or migration layer.
+The target-size screen continues to materialize its realized per-N learning rate and EMA decay from its own normalization policy. Post-selection materialization continues to emit `lr`, `ema`, and `ema_decay` from the shared post-selection optimizer policy.
 
-### B3. Do not force artificial numerical inequality
+---
 
-Do not change either default set merely so the two owners have different numbers. Independence is proved by ownership and counterfactual behavior, not by arbitrary value inequality.
+## 4. Blocking finding R1 — T6 is below its required real materialization boundary
 
-## 5. Mandatory acceptance
+### Problem
 
-Acceptance must exercise real semantic owners with bounded numerical doubles only below the expensive MACE boundary.
+The implemented `test_t6_post_selection_independence_counterfactual` compares:
 
-### T1. Single-size CV-policy currentness
+- `resolve_shared_optimizer_settings(...)`, and
+- `resolve_target_size_optimizer_normalization_policy(...)`.
 
-Through the public post-selection owner:
+That proves the two configuration resolvers are independent, but mandatory T6 requires more: for a frozen selected size, the **actual bounded CV/final-production MACE configuration** must remain unchanged when only screen normalization changes, and must change when the shared `[training]` method changes.
 
-1. create/freeze one selected size;
-2. run accepted CV under policy A;
-3. change a **non-horizon** CV-policy field such as `acceptance_maximum`, `fold_count`, or `partition_seed` without rerunning CV;
-4. call real `train-production`;
-5. prove failure occurs before any production trainer request and before a new final-production plan/publication becomes current;
-6. rerun `cross-validate` under policy B and prove production can then proceed.
+A defect in the public caller or materialization wiring could therefore survive the current T6 while both resolver helpers remain correct.
 
-Retain the positive regression that later edits to generic configured CV/production epoch defaults do not rewrite already frozen per-size `H_cv/H_prod`.
+### Required repair
 
-### T2. Collection-wide stale/corrupt late-member barrier
+Strengthen or replace the existing T6 test using the already-existing real-owner P5 fixture. Do not add a parallel harness.
 
-With two frozen sizes whose CV was initially accepted, invalidate only the later size below the owner boundary while leaving the earlier size apparently usable. Cover at least one materially strong case such as:
+The test must drive enough of the real post-selection path that the MACE configuration produced by production code is the observed artifact. The expensive MACE numerical execution may remain substituted below that boundary.
 
-- current CV-plan pointer naming a missing/unreadable object;
-- acceptance and plan carrying inconsistent policy ancestry;
-- self-consistent stale CV evidence under the same TargetBinding that no longer matches the resolved current role policy.
+Prove both directions:
 
-Call the real public `train-production` and prove:
+1. **Screen-only mutation**
+   - keep the frozen selected N/T and post-selection `[training]` method fixed;
+   - change only screen `reference_learning_rate` / `reference_ema_decay`;
+   - execute/materialize bounded post-selection CV and final production through the real owners;
+   - assert actual materialized P5 `lr`, `ema`, `ema_decay` and shared method identity are unchanged.
 
-- zero new production trainer invocations for all sizes;
-- no new final-production plan/publication becomes current for the earlier size;
-- all known blocking N/reasons are surfaced;
-- existing immutable historical evidence remains untouched.
+2. **Post-selection-method mutation**
+   - change only `[training].learning_rate` / `[training].ema_decay` (and rerun the required CV under the changed method before production);
+   - assert actual materialized P5 `lr` / `ema_decay` and method identity change as governed;
+   - separately prove the target-size-screen normalization owner remains unchanged.
 
-A unit-only call to `_cv_admission_blockers` is insufficient for this claim.
+Equivalent two-campaign counterfactuals are acceptable if they preserve the same frozen N/T scientific comparison more cleanly than mutating one campaign in place.
 
-### T3. Exact acceptance-policy ancestry
+---
 
-Construct/reuse a validly serialized `CvCampaignAcceptance` with current selected binding and `accepted=True`, but with `cv_policy_identity_digest` inconsistent with the referenced/current plan. The real authorization path must reject it before production admission.
+## 5. Blocking finding R2 — T7 bypasses the owner under acceptance
 
-### T4. Generated-config visibility
+### Problem
 
-Call the real `_config_template(...)` or public `init` path and parse the resulting TOML. Assert a new campaign explicitly contains:
+The implemented `test_t7_cv_production_shared_method_consistency` directly calls:
 
 ```text
-training.learning_rate == 1.0e-4
-training.ema == true
-training.ema_decay == 0.99999
+_optimizer_policy_for(context, planned_epochs=H_cv)
+_optimizer_policy_for(context, planned_epochs=H_prod)
 ```
 
-and separately contains the target-size optimizer-normalization reference LR/EMA fields.
+and compares the resulting policies.
 
-### T5. Screen independence counterfactual
+That is useful helper coverage, but it does not establish the workplan's T7 claim: **the real CV and final-production orchestration/materialization paths receive the same shared LR/EMA method**. The current real-owner integration harness records the actual run requests and real materialized MACE config paths, but T7 does not inspect them.
 
-From one initialized configuration:
+A production-caller defect that substitutes or mutates an optimizer after `_optimizer_policy_for(...)` could leave current T7 green.
 
-1. change only `[training].learning_rate` and `[training].ema_decay`;
-2. resolve/materialize a target-size candidate at fixed N/batch geometry;
-3. prove the screen normalization policy and realized `lr(N)` / `beta(N)` are unchanged;
-4. then change only `reference_learning_rate` / `reference_ema_decay` and prove the realized screen values change as expected.
+### Required repair
 
-### T6. Post-selection independence counterfactual
+Use the existing `PostSelectionHarness` and real public post-selection commands. Keep the numerical double strictly below the production owner.
 
-For a frozen selected size:
+At minimum:
 
-1. change only the screen normalization reference LR/EMA;
-2. resolve the post-selection shared optimizer settings and bounded CV/final-production MACE configuration;
-3. prove CV/final-production `lr`, `ema`, and `ema_decay` are unchanged;
-4. then change only `[training].learning_rate` / `[training].ema_decay` and prove the post-selection method/executable configuration changes while the screen normalization owner does not.
+1. freeze one selected size with deliberately distinct CV and production horizons;
+2. run real `cross-validate` with the existing bounded harness;
+3. from the actual CV request(s), load the MACE configuration written by `materialize_post_selection_run(...)` and record `lr`, `ema`, `ema_decay`, method identity, and planned epoch budget;
+4. run real `train-production` with the same bounded harness;
+5. load the actual production MACE configuration(s) from the production request(s);
+6. assert CV and production use the same shared `lr`, `ema`, `ema_decay` and method identity;
+7. assert the role-specific epoch budgets remain distinct and equal to the frozen H_cv/H_prod values.
 
-### T7. CV/production shared-method consistency
+Prefer replacing/consolidating the current helper-only T7 assertions rather than layering another redundant test beside them.
 
-Using real post-selection policy construction/materialization with MACE replaced only below the semantic owner, prove CV and final production receive the same shared post-selection `learning_rate`, `ema`, and `ema_decay`; only role-specific budgets/policies differ.
+---
 
-### T8. Final affected regression/integration
+## 6. Blocking finding R3 — final affected regression/integration evidence is absent
 
-After all executable edits, rerun at least:
+### Problem
+
+T8 is a mandatory functional-acceptance boundary. The implementation commit changes executable production admission/currentness and configuration initialization, but the remote candidate contains no recorded T8 command/results and GitHub exposes no commit-status checks for `33ef00d3294c3121021a326603000356379822f7`.
+
+This review environment could inspect source but could not execute the repository's Conda test environment. Therefore the required final functional closure cannot be inferred from source inspection or from the existence of new test functions.
+
+This does **not** assert that the implementer never ran tests; it means the required evidence is not available to close independent review.
+
+### Required repair
+
+After the T6/T7 acceptance tests are strengthened, run the final assembled affected-surface regression in the repository's required `mace` environment and record the exact commands plus pass/fail summary in **this workplan** under an implementation-evidence section. Do not create a second handoff file.
+
+At minimum execute the still-applicable T8 surface:
 
 - focused P5 CV-plan/currentness/production-authorization tests;
 - canonical shared optimizer-settings tests;
@@ -278,109 +286,125 @@ After all executable edits, rerun at least:
 - `tests/test_mlff_target_size_multi_size_integration.py`;
 - `tests/test_mlff_target_size_multi_selection.py`;
 - affected P5 production/restart/publication/store tests;
-- affected lifecycle/storage/qualification regression touched by the repair;
-- assembled `prepare -> select N1 -> select N2 -> cross-validate -> train-production -> reload/status` integration;
+- affected lifecycle/storage/qualification regression;
+- assembled `prepare -> select N1 -> select N2 -> cross-validate -> train-production -> reload/status` integration through real owners with bounded numerical doubles;
+- generation-rollover / stale-publication affected integration inherited from the parent multi-size contract;
+- project-configured fast static/lint/type checks that are actually supported for this affected Python surface;
 - `python -m compileall mdstats tests` or repository-equivalent syntax check.
 
-Re-derive the final affected surface from the assembled candidate. If impact is broader than these named suites, include the additional affected regression rather than treating this list as a ceiling.
+Re-derive the final affected surface after the test edits. If it cannot be bounded confidently, run the broader repository suite supported by the environment.
 
-Production-scale/GPU qualification is **deferred** and is not required for this repair.
+A required command that cannot execute remains incomplete evidence and must be reported as such; do not convert it to an inspection pass.
 
-## 6. Expected affected surface
+No production-scale/GPU qualification is required.
 
-Likely direct owners/consumers include:
+---
+
+## 7. Mandatory next-review acceptance
+
+The next independent Design review may close this workplan only when all of the following are established on the final assembled candidate:
+
+### C1 — source repair preservation
+
+The source-level currentness/admission/default repairs in Section 3 remain intact with no new parallel authority or wrapper machinery.
+
+### C2 — real materialization independence
+
+Through actual P5 materialization:
 
 ```text
-mdstats/training_data/campaign_post_selection_runtime.py
-mdstats/training_data/post_selection_cv_acceptance.py
-mdstats/training_data/_campaign_cli_core.py
-mdstats/training_data/training_settings.py          # inspect/preserve canonical defaults; change only if genuinely needed
-mdstats/training_data/post_selection_execution.py   # regression/identity consumer
-mdstats/training_data/post_selection_identity.py    # regression/identity consumer
-mdstats/training_data/target_size_execution/schedule.py   # regression/preserve screen owner
-mdstats/training_data/target_size_execution/candidate.py  # regression/preserve realized screen values
-campaign.toml.example                               # reconcile only if generated/default docs drift
-relevant architecture/user-guide docs              # update only if current behavior text is stale
+change screen reference LR/EMA
+    -> post-selection CV/production MACE lr/ema/ema_decay unchanged
+
+change [training] LR/EMA
+    -> post-selection method + actual CV/production MACE lr/ema/ema_decay change
+    -> target-size screen normalization authority unchanged
 ```
 
-Tests should be added/strengthened near the existing P5 currentness, optimizer-settings, target-size normalization, config-template, and multi-size integration suites rather than creating a parallel test harness.
+### C3 — real CV/production shared method
 
-## 7. Implementation authority
+Actual materialized CV and production configurations for the same frozen design carry the same shared method identity and LR/EMA values, while their frozen role horizons differ as configured.
 
-### Frozen
+### C4 — stale CV never authorizes production
 
-- exact target membership and ordered multi-size collection semantics;
-- whole-collection freeze;
-- role-neutral `TargetBinding` decomposition;
-- one shared post-selection method validated by CV and executed by production;
-- role-specific CV/production policy identities and frozen per-size horizons;
-- collection-wide zero-new-production admission barrier;
-- one CampaignStore and existing binding-keyed P5 persistence;
-- separate target-size normalization authority versus shared post-selection optimizer authority;
-- no implicit multi-size release winner/qualification;
-- no heavy/GPU qualification during this repair.
-
-### Delegated
-
-- helper/function naming;
-- exact internal error text;
-- whether existing currentness checks are consolidated into one existing helper or kept in the current owner, provided no duplicate authority is introduced;
-- exact placement of generated TOML comments;
-- local test fixture organization and bounded MACE doubles below the real owners.
-
-### Reopen only on evidence
-
-Reopen Software Design only if implementation evidence shows one of these Frozen decisions cannot be satisfied without architectural change, e.g.:
-
-- complete CV currentness cannot be represented cleanly through the existing method/policy/plan/acceptance lineage;
-- the collection-wide production barrier would require new persisted authority rather than reuse of current owners;
-- CV and production genuinely require different scientific optimizer methods rather than the currently accepted shared method;
-- target-size normalization and post-selection optimizer semantics cannot remain independently owned without changing the frozen scientific experiment.
-
-Ordinary owner rewiring, validation strengthening, config-template correction, and test repair remain Implementation work.
-
-## 8. Simplicity constraints and implementation sequence
-
-### Stage 1 — repair P5 currentness at existing owners
-
-Strengthen plan currentness, exact acceptance ancestry, and collection preflight together. Close with T1-T3 plus focused affected regression before dependent production-path changes proceed.
-
-### Stage 2 — expose post-selection LR/EMA defaults and prove independence
-
-Update the existing config template directly, add T4-T7, then run T8 final affected regression/integration on the assembled candidate.
-
-Before adding machinery, prefer deleting/replacing a contaminated edge or strengthening the current owner. Do **not** add:
-
-- another currentness registry;
-- wrapper bindings or synchronized state;
-- a collection-level CV evidence object;
-- a new preflight state machine;
-- CV-specific or production-specific duplicate LR/EMA tables;
-- aliases between `[training]` and target-size normalization;
-- initialization-only state/migration machinery;
-- a new scheduler or generic experiment framework.
-
-If a proposed repair creates one of those structures, stop and first determine whether direct rewiring/validation of the existing owner can satisfy the same invariant with less total system complexity.
-
-## 9. Closure condition
-
-The next-round implementation is ready for independent Design closure review only when all of the following are true:
+The existing T1-T3 real-owner tests remain green:
 
 ```text
 old/stale CV policy + accepted-looking evidence + same TargetBinding
     -> never authorizes current production
 
 any one frozen size with invalid CV ancestry
-    -> zero new production jobs for that invocation
-
-change screen reference LR/EMA
-    -> post-selection CV/production optimizer unchanged
-
-change [training] LR/EMA
-    -> target-size screen normalized optimizer unchanged
-
-new campaign init
-    -> explicitly writes post-selection learning_rate, ema, ema_decay
+    -> zero new production jobs for the invocation
 ```
 
-All other already-reviewed multi-size architecture remains preserved. If these claims close with final affected regression/integration and no new genuine blocker appears, close/archive this workplan.
+### C5 — explicit initialized defaults
+
+A newly generated campaign still explicitly contains post-selection `learning_rate`, `ema`, and `ema_decay`, separately from target-size optimizer-normalization reference values.
+
+### C6 — final functional closure
+
+The T8 affected regression/integration/static evidence executes on the final candidate and is recorded in this workplan.
+
+---
+
+## 8. Expected affected surface for this bounded reopen
+
+The expected source behavior should require little or no additional production-code change unless the stronger tests expose a real defect.
+
+Primary test/evidence surfaces:
+
+```text
+tests/test_mlff_target_size_optimizer_normalization.py
+tests/test_mlff_target_size_multi_size_integration.py
+tests/_mlff_post_selection_fixture.py            # reuse only; change only if needed to expose existing request/config evidence
+```
+
+Production owners that the tests must exercise, not bypass:
+
+```text
+mdstats/training_data/campaign_post_selection_runtime.py
+mdstats/training_data/post_selection_execution.py
+mdstats/training_data/post_selection_cv_acceptance.py
+mdstats/training_data/post_selection_identity.py
+mdstats/training_data/_campaign_cli_core.py
+mdstats/training_data/target_size_execution/schedule.py
+mdstats/training_data/target_size_execution/candidate.py
+```
+
+The final regression surface remains broader as listed in Section 6.
+
+---
+
+## 9. Simplicity and anti-shortcut constraints
+
+This is an acceptance-closure round, not another architecture round.
+
+Do not add:
+
+- another currentness registry;
+- wrapper bindings or synchronized state;
+- a collection-level CV evidence object;
+- a new preflight state machine;
+- a second post-selection optimizer resolver;
+- CV-specific or production-specific duplicate LR/EMA tables;
+- aliases between `[training]` and target-size normalization;
+- initialization-only migration state;
+- a new scheduler or generic experiment framework;
+- a new test harness duplicating `PostSelectionHarness`.
+
+Do not weaken or delete an acceptance assertion to obtain a pass. The repaired test must make the real production owner/materializer observable so a defect there would fail the test.
+
+If the stronger test exposes a production wiring bug, fix that existing owner directly and rerun the complete affected surface. Prefer alteration/removal over additive machinery.
+
+---
+
+## 10. Closure condition
+
+The workplan remains **implementation-reopened / NO-PASS** until R1-R3 and C1-C6 close on one final candidate.
+
+When they close and no new genuine product/Frozen-architecture blocker remains:
+
+1. independent Software Design review may mark PASS;
+2. archive this workplan as completed;
+3. update `workplans/active/README.md` so there is no stale active implementation entry;
+4. preserve production/GPU qualification as the separately deferred activity already governed by current product/release policy.
