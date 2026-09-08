@@ -6,10 +6,10 @@ status: active
 created_date: 2026-09-08
 reviewed_date: 2026-09-08
 review_status: no-pass
-review_round: implementation-review-3
-reviewed_candidate_head: c9dfe2bc7a0176f647439b6af9f80c6ead49cecb
-reviewed_executable_head: 23854d72555014c6d4e834d85a5ad292b228f93d
-reviewed_evidence_head: 0d8e7cdb9594c69c2df94c3f0aea478bda7c8517
+review_round: implementation-review-4
+reviewed_candidate_head: eef79ed3a0829d4d385c881456ce40c30c58e5bb
+reviewed_executable_head: bb4befc4158049873f186acb28de83ba26da08c8
+reviewed_evidence_head: d910becd2c054955078824f7d30dde20e39ad47b
 branch: plan/mlff-target-size-integration-closure-repair
 implementation_base_head: 32bd59d12de334a2e5c29d80d6c1cf5cceb4506c
 predecessor_workplan: workplans/archive/MLFF_TARGET_SIZE_MULTI_SELECTION_NEXT_ROUND_REPAIR_WORKPLAN.md
@@ -17,277 +17,236 @@ predecessor_workplan: workplans/archive/MLFF_TARGET_SIZE_MULTI_SELECTION_NEXT_RO
 
 # MLFF target-size integration closure repair workplan
 
-## Review-3 disposition — NO-PASS / narrowly open
+## Review-4 disposition — NO-PASS / compatibility architecture reopened
 
-Independent Software Design review of branch candidate `c9dfe2bc7a0176f647439b6af9f80c6ead49cecb` finds the Round-3 implementation materially improved. The substantive source/test/document changes are at `23854d72555014c6d4e834d85a5ad292b228f93d`; `0d8e7cdb9594c69c2df94c3f0aea478bda7c8517` records implementation evidence and `c9dfe2bc7a0176f647439b6af9f80c6ead49cecb` regenerates tracked PDFs only.
+Independent Software Design review of candidate `eef79ed3a0829d4d385c881456ce40c30c58e5bb` finds that the Round-4 Part-VI documentation repair is correct, and the recovered exact P5A6 workspace is valuable evidence. The substantive executable implementation is `bb4befc4158049873f186acb28de83ba26da08c8`; `d910becd2c054955078824f7d30dde20e39ad47b` records implementation evidence and `eef79ed3a0829d4d385c881456ce40c30c58e5bb` regenerates documentation artifacts.
 
-The accepted scientific and runtime architecture remains intact. No new blocking defect was found in exact target membership, ordered multi-size proposal/freeze, manual-versus-auto control flow, automatic-screen ranking, optimizer normalization, foundation handling, post-selection CV, final production, currentness, or the selection-view authority boundary.
+Round 4 is nevertheless **NO-PASS**. Recovering the real P5A6 workspace exposed a real compatibility failure, but the implementation repaired it by adding a large prerework reconstruction path inside the current post-selection owner. That path synthesizes upstream target-size/P2-like authority from persisted P5 descendants and broadens all prerework-v1 state into a new product-semantic branch. This contradicts the frozen dependency direction, the current module contract, and the original P6 compatibility authority, which explicitly required a Design reopen rather than an unplanned compatibility bridge when valid P5A6 current-generation state could not reopen after cleanup.
 
-Round 3 closes the previous affected-regression/candidate-identity blocker. Two genuine blockers remain:
-
-1. the current product still promises unchanged reopen of the accepted P5A6 workspace, but neither the exact historical P5A6 Git object nor the original preserved workspace is currently available to execute that compatibility boundary;
-2. Part VI of the current normative architecture was omitted from the semantic documentation reconciliation and still describes the automatic screen as producing a selected binding / one selected size.
-
-Do not add a compatibility wrapper, migration, synthetic fixture, cache, duplicate view authority, new state machine, or new documentation scanner to close either issue.
+The central current-v3/multi-size scientific implementation remains accepted. The reopened surface is only historical P5A6 compatibility and the acceptance needed to prove it.
 
 ---
 
 ## Tier-1 product invariants — unchanged
 
-1. `select-target-size N --horizon-cv HC --horizon H` is an operator decision over an already prepared qualified ladder. It installs or replaces exactly the per-size tuple `(N, HC, H)` and performs no target-size TRAIN2/EVAL2 work.
-2. Automatic target-size screening is advisory and runs only when `--auto` is explicitly requested. It emits a recommendation or typed no-recommendation diagnostic outcome; it never freezes a target size.
-3. Every target membership is exactly `T_N = pi_train[:N]` through the accepted P2 training-order authority.
-4. One prepared generation is shared by all selected sizes. Manual selection must not hydrate unrelated numerical/P3 payloads merely to record a decision.
-5. The provisional/frozen target design is one ordered unique-by-N collection. `cross-validate` is the sole atomic freeze authority.
-6. Post-selection CV and fresh final production execute independently for every frozen size using its exact `T_N` and per-size role horizon. There is no cross-size winner rule.
-7. Selection provenance is audit-only; role-extraneous horizons and provenance do not contaminate per-size scientific identities.
-8. Derived target-size result JSON is presentation only. It cannot become input authority for a later projection or scientific transition.
-9. Historical compatibility is append-only and schema-authentic. Supported predecessor state is interpreted under its native bytes/schema and is not rewritten merely to fit current representation.
-10. Current normative architecture/specification/user documentation must describe one coherent ordered multi-size architecture and current CLI.
+1. Manual `select-target-size N --horizon-cv HC --horizon H` is an operator decision over the prepared qualified ladder and performs no target-size TRAIN2/EVAL2 work.
+2. `--auto` is advisory only: the screen emits a recommendation or typed no-recommendation and freezes nothing.
+3. Every selected membership is exactly `T_N = pi_train[:N]` under the authenticated P2 training order.
+4. One prepared generation is shared by all selected sizes; manual selection does not hydrate unrelated P3/frame-array work.
+5. The provisional/frozen design is one ordered unique-by-N collection; `cross-validate` is the sole atomic freeze authority for current designs.
+6. Post-selection CV and fresh final production run independently for every frozen size with its exact membership and role horizon; there is no cross-size winner rule.
+7. Derived target-size result JSON is presentation only and never scientific/currentness input.
+8. Historical compatibility is append-only and schema-authentic. The exact accepted P5A6 current-generation workspace remains a supported unchanged-reopen boundary until Design explicitly changes that product support decision.
+9. A supported historical child may authenticate against its historical parent schema, but a descendant can never manufacture or redefine an upstream scientific authority merely to make itself current.
+10. Current normative documentation describes one coherent ordered multi-size architecture and current CLI.
 
-## Frozen high-level architecture — unchanged
+## Frozen high-level architecture — current runtime surfaces remain unchanged
 
 - one `CampaignStore` mutable campaign authority;
-- one prepared generation and one ordered unique-by-N selected-size collection;
-- manual and automatic selection are separate control branches that converge only at the ordinary proposal-merge owner;
-- manual selection depends only on the minimum authenticated prepared/P2 authority needed to validate `N` and exact `T_N`;
-- automatic diagnostic/P3 execution may depend on the full prepared numerical payload because it genuinely screens candidates;
-- selection-only result rendering is a pure projection of committed campaign state; explicit diagnostic exposure retains strict P3 currentness validation;
-- compatibility qualification exercises a real historical P5A6-created workspace through the real current persistence/currentness/selected-binding/P5 consumers without pre-load migration or rewrite;
-- current documentation names the ordered collection at campaign scope and uses singular `N_selected`/`T_N` only for an explicitly identified per-size binding/run;
-- full real-data/GPU/CuEq/LAMMPS production qualification remains deferred to the established final-release/user-machine stage.
+- one prepared generation and one ordered current selected-size collection;
+- separate manual and automatic selection control branches converging only at the proposal merge owner;
+- minimum authenticated P2 dependency for manual selection;
+- full P3 numerical dependency only for the automatic diagnostic that genuinely screens candidates;
+- pure committed-state selection-view projection and strict diagnostic exposure currentness;
+- current per-size P5 ancestry flows P1/P2/P4 -> selected binding -> method/CV -> final production, never backward;
+- production GPU/CuEq/LAMMPS qualification remains deferred to the final-release/user-machine stage.
 
-Lower-level helper names, test organization, documentation wording, and the mechanism used to recover historical evidence remain delegated unless explicitly constrained below.
+### Bounded compatibility-architecture reopen for exact P5A6
+
+The recovered fixture proves that the prior assumption “the existing current readers are already sufficient” was false. The compatibility realization is therefore reopened, but the product requirement is not.
+
+The repaired high-level compatibility design is now frozen as follows:
+
+1. Exact P5A6 persisted bytes remain authoritative under their **native historical schemas**. Current code may retain/restore the minimum native deserializers/currentness comparators needed to authenticate those bytes.
+2. The historical selected `N/T` ancestry must be established from its historical P4/P2 authority **before** P5 CV/final-production descendants are consulted.
+3. Every compatibility edge remains parent -> child: historical selection/binding -> method/CV plan -> CV acceptance -> final plan -> completion/publication.
+4. No P5 descendant may be used to construct a fake P2 experiment definition, evaluation order, target-size aggregate, selected membership authority, or other ancestor that is then used to validate that same descendant.
+5. The support boundary is the exact accepted P5A6 current-generation contract, not a blanket “all prerework-v1 workspaces are current” rule.
+6. No preload rewrite/migration is allowed. If native historical bytes cannot be authenticated through a minimal reader/currentness restoration, return this compatibility surface to Design rather than synthesizing an equivalent current state.
+7. A historical decoder is allowed only when it directly reads the historical wire contract. It must not become a second current scientific authority or a bridge that fabricates current-v3 objects.
+
+This is the only Frozen architecture changed by Review 4.
 
 ---
 
 ## Accepted implementation surfaces — preserve
 
-### A1 — Narrow manual prepared/P2 dependency — PASS
+### A1 — Current-v3 target-size/multi-size runtime — PASS
 
-The manual path through `load_prepared_target_size_definition` authenticates the bound prepared manifest/configuration and P2 aggregate/experiment-definition identity without loading normalized frame arrays, building the frame-array index, constructing a screen context, or entering TRAIN2/EVAL2. Preserve this dependency reduction; do not replace it with another persisted definition, cache, or wrapper loader.
+The previously accepted manual/P2 dependency reduction, ordered proposal/freeze, per-size CV/production behavior, selection-view purity, auto->manual owner-boundary tests, current `provisional_entries`/`frozen_entries`, and scalar-v2 normalization remain accepted. Do not churn them to solve the P5A6 problem.
 
-### A2 — Selection-view authority boundary — PASS
+### A2 — Part VI normative documentation — PASS
 
-Selection-only result rendering derives from committed `TargetSizeCampaignRevision.state` and never reads the old `target-size-state.json` as an input. A real completed auto diagnostic followed by manual selection succeeds with strict diagnostic/P3/full-frame owners poisoned, and a forged old view cannot contaminate the next projection. Preserve this subtraction of derived-state authority.
-
-### A3 — Current multi-size state and structural closure — PASS
-
-Current campaign state uses `provisional_entries` / `frozen_entries`; the bounded AST guard detects direct and simple aliased current-state scalar access while allowing legitimate per-size `.frozen` fields and precisely exempting the historical producer. No second scanner is required.
-
-### A4 — Current-side predecessor normalization — PASS
-
-The current state reader authenticates the scalar predecessor schema in its native wire representation, normalizes it in memory to at most one provisional/frozen entry, and writes only the current collection schema on later current transitions. The current-side compatibility reopener consumes `frozen_entries`; historical producer code remains scalar under its own schema.
-
-### A5 — Round-3 normative documentation repair outside Part VI — PASS
-
-The Round-3 changes correctly reconciled the named campaign-global scalar contradictions in `00_front_matter.md`, `10_foundations.md`, `30_statistical_design.md`, `80_ownership_and_decisions.md`, the cross-cutting stage-plan specification, and their assembled derivatives. Existing semantic doc guards now reject those known stale phrases. Preserve these corrections.
-
-### A6 — Round-3 affected-surface regression and source identity — PASS, reusable conditionally
-
-Round 3 established a resolvable source identity and executed the previously omitted result-view/currentness consumers. Recorded evidence on `23854d72555014c6d4e834d85a5ad292b228f93d` includes:
-
-- documentation/specification tests: **12 passed**;
-- P6 destructive/compatibility unit surface: **31 passed, 1 skipped** (the skip is the absent preserved P5A6 workspace and belongs to open blocker R10 below);
-- ten-module target-size/result-view/currentness affected suite: **200 passed**;
-- `python -m compileall mdstats tests qualification/p6-p5a6-compat`: **0 errors**;
-- tracked PDF workflow: **PASS** on the evidence child.
-
-No `mdstats/` product runtime source changed in Round 3. Therefore the 200-pass runtime evidence remains reusable if the next repair is restricted to documentation/tests and recovery of the original compatibility artifact. Any product-runtime, serializer, currentness, compatibility-reader, or state-schema change invalidates the corresponding evidence and requires fresh affected regression.
-
----
-
-## Blocking R10 — establish the still-supported P5A6 unchanged-workspace compatibility boundary
-
-### Finding
-
-The implementation correctly restored the exact historical provenance pins:
+`docs/arch_manuals/mlff_training_data/60_execution_performance.md` now correctly states:
 
 ```text
-P5A6 commit  1670275487d29bbcde4c59efafdef9d1f8b0ced7
-P5A6 tree    17e2c5609974712bda1efd3375f09f42da830f68
-```
-
-and truthfully ran the mandatory qualification driver. The driver failed closed before producing a workspace because the exact commit is no longer reachable in the local repository/remotes:
-
-```text
-fatal: invalid reference: 1670275487d29bbcde4c59efafdef9d1f8b0ced7
-```
-
-This is no longer an implementation substitution defect: Round 3 did not fall back to `fc69...`, fabricate state, migrate the fixture, or weaken the oracle.
-
-However current normative architecture still explicitly states that the accepted current-generation P5A6 workspace remains a required unchanged reopen boundary. The committed compatibility evidence also names the original P5A6 fixture identity/content/database snapshot, but `qualification/p6-p5a6-compat/workspace/` itself is absent. Therefore the real compatibility claim has not executed and cannot pass yet.
-
-### Design clarification: product boundary versus evidence-production mechanism
-
-The product/Frozen requirement is **unchanged reopen of the real P5A6-created workspace through current owners**. Re-creating that workspace from the exact historical commit is one valid evidence-production mechanism, but perpetual availability of that Git object is not itself the product outcome.
-
-Accordingly either of these routes may establish the same compatibility claim:
-
-**Route A — recover the exact historical source:** recover commit/tree `167027...` / `17e2...` from an authoritative project-controlled clone, bundle, archive, or retained object store; then run the existing authenticated driver to create and consume the fixture.
-
-**Route B — recover the original preserved workspace:** recover the original P5A6-produced `qualification/p6-p5a6-compat/workspace/` bytes from a project-controlled backup/artifact/archive. Before any current code opens it, authenticate it against the committed `P5A6_FIXTURE_IDENTITY.json`, `P5A6_FIXTURE_CONTENT_MANIFEST.json`, and `P5A6_FIXTURE_DATABASE_SNAPSHOT.json`. Then execute the existing real-owner compatibility test on that unchanged workspace, close/reopen it, and verify no authoritative persisted content changes.
-
-Route B is recovery of historical evidence, **not reconstruction**. Do not synthesize files/SQLite rows from the manifests, generate an equivalent workspace with another commit, hand-author state, or pre-open/migrate the fixture.
-
-If neither the exact source nor the original workspace can be recovered, keep this claim **blocking/unavailable** and return only the supported-history decision to Software Design. Do not silently drop P5A6 compatibility or add a bridge merely because the evidence artifact was lost.
-
-### Required compatibility acceptance
-
-Whichever recovery route is used, establish separately:
-
-1. real P5A6-created unchanged workspace -> current real CampaignStore/currentness/selected-binding/CV/final-production owners: PASS;
-2. close/reopen of that workspace remains current and deterministic: PASS;
-3. current -> current restart/reuse: PASS;
-4. retired V5/V6 reject-before-reuse: PASS;
-5. no pre-load migration/rewrite and no compatibility adapter introduced.
-
-The optional compatibility test may no longer skip at final closure. If Route A is used, the standalone authenticated driver must pass. If Route B is used because the historical Git object remains unavailable, the recovered-workspace real-owner test plus the existing independent current-restart and retired-state rejection tests are the acceptance evidence; do not add a new driver mode solely for process ceremony.
-
----
-
-## Blocking R11 — finish current normative documentation reconciliation in Part VI
-
-### Finding
-
-Round 3 repaired several authoritative chapters but did not edit `docs/arch_manuals/mlff_training_data/60_execution_performance.md`. That current normative source still contains stale scalar/automatic-selection semantics.
-
-At minimum it presently says:
-
-```text
-one common target-size preparation
--> paired-seed candidate screen
--> selected binding
--> selected-only CV and fresh final production
-```
-
-and later:
-
-```text
-qualified candidates
--> coarse n1/M1
--> at most four short n2/M2 continuations
--> two final n3/M3 continuations
--> one selected size or typed scientific failure
-```
-
-It also says a fold-local view cannot alter unqualified `T_selected` at campaign scope.
-
-These statements contradict the already Frozen architecture: the screen is advisory and produces a recommendation/no-recommendation; the operator owns an ordered provisional collection; only `cross-validate` freezes it; CV/production then operate per frozen `T_N`.
-
-The existing Round-3 negative documentation assertions do not include these phrases, so they can remain green while Part VI contradicts Parts I/V/VII.
-
-### Required repair
-
-Edit the authoritative source `docs/arch_manuals/mlff_training_data/60_execution_performance.md` directly:
-
-1. change the preparation/execution chain to:
-
-```text
-one common target-size preparation
--> optional paired-seed diagnostic (recommendation or typed no-recommendation)
+optional paired-seed diagnostic (recommendation or typed no-recommendation)
 -> operator-owned provisional ordered collection
 -> cross-validate atomic collection freeze
 -> per-frozen-size CV and fresh final production
 ```
 
-2. replace “one selected size or typed scientific failure” with the diagnostic truth: one recommended size or typed no-recommendation outcome;
-3. replace campaign-global `alter T_selected` wording with the frozen collection / explicitly per-binding `T_N` semantics;
-4. preserve legitimate singular “selected binding” wording only where the paragraph is explicitly discussing one per-size descendant, not the campaign-global control flow;
-5. strengthen the **existing** doc tests with exact negative assertions for the stale Part-VI phrases; do not create another linter/scanner;
-6. regenerate `docs/arch_manuals/mlff_training_data_architecture.md`, its tracked PDF/manifest, and any other derivative whose source graph includes Part VI.
+Its candidate funnel now ends in a recommendation/no-recommendation, and fold-local wording is explicitly per frozen `T_N`. The strengthened existing doc assertions and regenerated assembled/PDF derivatives are accepted.
 
-No runtime/scientific redesign is authorized or required.
+### A3 — Historical artifact recovery — useful evidence, not compatibility PASS by itself
+
+Round 4 reports that the original P5A6-created workspace was recovered locally and authenticated against the committed fixture identity/content/database snapshots. That is the correct evidence artifact and should be preserved unchanged. The exact historical commit remains unavailable through the public remote, but the compatibility product boundary is the authenticated workspace bytes, not Git reachability by itself.
+
+The recovered fixture does **not** make the new compatibility interpretation correct automatically. The real-owner path still has to preserve authority direction and native semantics.
 
 ---
 
-## Final closure acceptance after R10/R11
+## Blocking R12 — remove the synthetic prerework reconstruction bridge
 
-If the repair changes only documentation/tests and restores historical fixture/source artifacts, reuse the still-valid 200-pass Round-3 product-runtime affected suite. Execute fresh:
+### Finding
+
+Round 4 adds a general branch in `load_current_selected_training_contexts()`:
 
 ```text
-pytest -q tests/test_mlff_doc_arch1_specification.py tests/test_mlff_data9b3_campaign_cli_specification.py
-pytest -q tests/test_mlff_target_size_p6_destructive_closure.py tests/test_mlff_target_size_p6_p5a6_compatibility.py
+if revision.state.is_prerework_schema:
+    return _load_legacy_prerework_training_contexts(...)
+```
+
+and adds `_LegacyEvaluationOrder`, `_LegacyExperimentDefinition`, `_LegacyTargetSizeAggregate`, plus a large `_load_legacy_prerework_training_contexts()` reconstruction path.
+
+That path does not merely deserialize old bytes. It creates new ancestor-like state from descendants:
+
+- selected membership is reconstructed from the first persisted CV fold;
+- the historical P2/evaluation authority is represented by synthetic `_Legacy*` objects rather than the real historical owner;
+- `target_size_policy` is resolved from the **current config** and placed into the synthetic historical definition without first proving it is the historical policy named by the campaign-state digest;
+- M3 membership/digest is taken from the stored final-production plan and one final-production materialization, then inserted into the synthetic definition;
+- `_LegacyEvaluationOrder.membership_digest()` returns the same digest for every requested evaluation size and `_LegacyExperimentDefinition.evaluation_membership()` returns the same M3 membership for every size;
+- the branch activates for any `is_prerework_schema` state, broader than the exact P5A6 supported-history boundary.
+
+This is a second product-semantic path and reverses the accepted authority graph. It also contradicts the owning module's own contract that post-selection is not an authority and that selected membership is re-established from authenticated P2/P4 ancestry.
+
+The original P6 compatibility amendment is explicit: if valid P5A6 current-generation state cannot reopen because a required current-generation decoder/currentness contract was removed, trigger Design reopen; do **not** add an unplanned compatibility bridge or seed reconstructed current state.
+
+### Required repair
+
+Prefer deletion and restoration over another patch on this bridge:
+
+1. Remove `_LegacyEvaluationOrder`, `_LegacyExperimentDefinition`, `_LegacyTargetSizeAggregate`, and `_load_legacy_prerework_training_contexts()`.
+2. Remove the generic `is_prerework_schema -> synthetic selected context` routing from `load_current_selected_training_contexts()`.
+3. Revert other compatibility-only runtime machinery that exists solely to support that reconstruction, unless the exact historical wire bytes independently require a native decoder.
+4. Use the recovered exact P5A6 source/workspace and accepted P6 history to identify the **specific historical schema/decoder/current-pointer/currentness contracts** that destructive cleanup or later selection redesign stopped honoring. Restore the smallest native reader/currentness behavior at those owning boundaries.
+5. `PostSelectionBinding.v1` may be deserialized under its historical wire schema when needed to reproduce/authenticate existing bytes. Legacy head/reducer fields may survive only as historical-v1 wire data needed for that digest/currentness check; they must not be renamed into a new current scientific ancestry or flow into current-v3 bindings.
+6. Establish historical P4 selected `N`, exact membership identity, and its actual upstream P2/training-order authority **without opening P5 CV/final descendants first**. If the exact P5A6 persisted inputs/source cannot supply that parent authority through a minimal native reader/rebuild, stop and return to Design; do not derive it from a CV plan or final run.
+7. Validate historical P5 descendants directly against independently loaded parents. Child records may contribute their own payload and stored parent digest, never the expected parent value.
+8. Scope the compatibility acceptance to the exact P5A6 current-generation contract represented by the authenticated fixture/native schemas. Do not make arbitrary prerework-v1 state a blanket supported current-generation path.
+9. Do not change current-v3 multi-size semantics or add a migration, compatibility database, synthetic fixture, sidecar state, wrapper hierarchy, or current-state rewrite.
+
+The preferred outcome is less code than `bb4bef...`: native historical deserialization/currentness at existing owners, not a parallel reconstruction subsystem.
+
+---
+
+## Blocking R13 — restore independent compatibility/currentness oracles
+
+### Finding 1: P4 selection acceptance was weakened
+
+The compatibility driver previously required a frozen selection. Round 4 instead treats `revision.state.auto_diagnostic.recommended_target_size` / membership digest as the P4 terminal selection and lets the new P5 reconstruction path manufacture the selected context later.
+
+That does not establish the P6 Rev-4 claim “authenticate P4 terminal N_selected/T_selected” through the actual historical selection owner. It conflates the current product meaning of `auto_diagnostic` (recommendation only) with historical P5A6 `terminal_selected` semantics.
+
+### Finding 2: final-plan M3 validation is circular
+
+`_load_legacy_prerework_training_contexts()` reads the stored `FinalProductionPlan`, takes its `m3_membership_digest`, reads M3 frames from a final-production materialization, and installs both into the synthetic `_LegacyExperimentDefinition`. Later `resolve_current_final_production_plan()` calls `validate_final_production_plan()`, whose `frozen_m3_development_evidence()` obtains the expected M3 membership/digest from that synthetic definition.
+
+The descendant therefore supplies the “ancestor” used to validate itself. A mutually self-consistent wrong descendant can survive this oracle; the real P2 M3 authority is not what rejects it.
+
+### Finding 3: existing structural test became lexical rather than semantic
+
+The current structural test says P5 must not use the diagnostic execution-head/reducer as its ancestry and checks only for exact dataclass field names. Round 4 adds semantically equivalent `legacy_v1_execution_head_digest` / `legacy_v1_reducer_state_digest` fields, so the test remains green by spelling. Historical v1 wire data may legitimately contain those values, but the oracle must distinguish “retained solely to authenticate v1 bytes” from “used as current P5 ancestry”; name avoidance is not sufficient evidence.
+
+### Required acceptance repair
+
+After R12 removes the synthetic bridge:
+
+1. Exact preserved-fixture selected-context acceptance must establish historical `N/T` through the real/native historical parent boundary **with P5 descendant access poisoned**. In the test, make reads of CV/final-plan records fail if they occur before selected `N/T` currentness is established.
+2. Then open the real persisted v1 binding/method/CV/acceptance/final records through current production readers and prove each child binds the independently authenticated parent digest.
+3. Add a negative/counterfactual on a disposable copy of the recovered fixture (never mutate the preserved source fixture): corrupt or replace a final-plan M3 lineage while leaving the historical P2 ancestor unchanged and prove current final-plan resolution rejects it. The expected M3 must come from P2, not the final plan/materialization being checked.
+4. Add an analogous selected-membership counterexample if the repair touches the historical selected-context resolver: a CV descendant must never be able to define a different selected membership that becomes current.
+5. Refine the existing structural/currentness guard semantically: current v3 bindings must not depend on diagnostic head/reducer; v1 wire fields may be retained only inside v1 deserialization/authentication and must not feed current-v3 binding construction or synthetic upstream authority.
+6. Restore the mandatory three-phase qualification driver to a real-owner oracle:
+   - P5A6 unchanged workspace -> current native historical selection/binding/P5 reopen PASS;
+   - current -> current restart PASS;
+   - retired V5/V6 reject-before-reuse PASS.
+7. Evidence prose must state exactly what compatibility mechanism exists. Do not claim “zero compatibility adapters” while a dedicated reconstruction branch exists.
+
+---
+
+## Blocking R14 — complete affected regression for the actual Round-4 executable surface
+
+### Finding
+
+Round 4 changed central production owners by roughly 400 lines in:
+
+- `mdstats/training_data/campaign_post_selection.py`;
+- `mdstats/training_data/campaign_post_selection_runtime.py`.
+
+The recorded 200-test rerun is the earlier ten-module target-size/result-view set. It does not cover many direct P5/P7 consumers of the changed owners. Repository reference inspection identifies, among others:
+
+- `tests/test_mlff_target_size_p5_r6_guards.py`;
+- `tests/test_mlff_target_size_p5_r6_cutover_authorization.py`;
+- `tests/test_mlff_target_size_p5_r7_guards.py`;
+- `tests/test_mlff_target_size_p5_r8_guards.py`;
+- `tests/test_mlff_target_size_p5_r9_guards.py`;
+- `tests/test_mlff_target_size_p5e_production_and_restart.py`;
+- `tests/test_mlff_target_size_p5g_assembled_integration.py`;
+- `tests/test_mlff_target_size_p5h_publication_decision.py`;
+- `tests/test_mlff_mace_execution_semantics_assembled.py`;
+- P7/qualification consumers that call `build_post_selection_context()` or final-production currentness.
+
+Passing the exact fixture plus the prior target-size suite does not establish this broader affected surface.
+
+### Required repair/evidence
+
+After the compatibility implementation is simplified and final:
+
+1. Re-derive callers/consumers from the **final** tree using Serena/reference search when available, with text/config/dynamic cross-checks.
+2. Run the focused compatibility tests and mandatory standalone driver.
+3. Run the complete P5 affected regression. A practical bounded minimum is the relevant `test_mlff_target_size_p5*.py` suite plus directly affected assembled/runtime tests; broaden further if final reference analysis finds additional consumers.
+4. Include downstream P7/qualification tests whose currentness/provider paths call `build_post_selection_context()` / `resolve_current_final_production_*`.
+5. Retain the already required current target-size/multi-size/result-view suite because the compatibility reader shares persistence/state types.
+6. Run documentation tests, repository-required fast static checks, and:
+
+```text
 python -m compileall mdstats tests qualification/p6-p5a6-compat
+python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py
 ```
 
-plus the exact R10 real-owner compatibility route above and the repository documentation/PDF build. The preserved-workspace test must execute rather than skip.
+7. Record one resolvable final executable SHA and one final candidate SHA. Later evidence/PDF-only children may be named separately.
 
-If any product runtime, state schema, serializer, currentness owner, compatibility reader, or post-selection consumer changes, re-derive the affected surface and rerun the complete relevant regression/integration suite rather than reusing Round-3 runtime evidence.
-
-Record one resolvable final candidate SHA and identify any evidence-only/PDF-only descendants explicitly.
-
-Production-scale GPU/real-data qualification remains deferred.
-
-## Simplicity / anti-shortcut trigger
-
-Stop and re-derive before adding any cache, persisted summary, compatibility adapter, migration, synthetic compatibility fixture, duplicate result-view state, second AST/doc scanner, or special-case runtime flag. The remaining problems are missing historical evidence and stale normative prose; solve those at the evidence/document owners rather than adding product machinery.
+Full production-scale GPU/CuEq/LAMMPS qualification remains deferred and must not be added to this repair cycle.
 
 ---
 
-## Implementation evidence (Round 4)
+## Tooling note
 
-```text
-executable_head: bb4befc4158049873f186acb28de83ba26da08c8
-python: 3.11.15
-mace: 0.3.16
-torch: 2.13.0+cu126
-e3nn: 0.4.4
-pytest: 9.1.1
-cpu: 1 core
-```
+Serena and Semgrep are appropriate for the semantic-reference and structural-family questions in this review. They are not executable in the present web review environment, so repository API source/reference inspection and the repository's existing AST/behavioral tests were used as fallback. Their absence does not relax the final affected-surface or structural requirements.
 
-### 1. R10 — Supported P5A6 unchanged-workspace compatibility boundary established
-- Recovered original P5A6-produced workspace `qualification/p6-p5a6-compat/workspace/` and authenticated against committed manifests (`P5A6_FIXTURE_IDENTITY.json`, `P5A6_FIXTURE_CONTENT_MANIFEST.json`, `P5A6_FIXTURE_DATABASE_SNAPSHOT.json`).
-- Updated `mdstats/training_data/campaign_post_selection.py`:
-  - Wire schema support for native `mdstats.post-selection-binding.v1` deserialization (`POST_SELECTION_BINDING_V1_SCHEMA`) using `legacy_v1_campaign_state_revision`, `legacy_v1_execution_head_digest`, and `legacy_v1_reducer_state_digest` to avoid AST collision with forbidden current dataclass fields.
-  - Native prerework schema loading in `load_current_selected_training_contexts` -> `_load_legacy_prerework_training_contexts`: authenticates frame authority, neutral statistical base, and split exclusion matching P5A6 hashes 100%, and builds `_LegacyExperimentDefinition` with M3 membership extracted from the materialization of final production runs.
-- Updated `mdstats/training_data/campaign_post_selection_runtime.py`:
-  - Handled `selected.frozen is None` for historical bindings and resolved legacy method identity from post-selection evidence store.
-- Executed qualification driver:
-  ```bash
-  conda run -n mace python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py
-  ```
-  Outcome: All three phases PASS:
-  - `P5A6 -> P6 authenticated current-generation compatibility: PASS`
-  - `P6 -> P6 current-generation restart: PASS`
-  - `V5/V6 -> reject-before-reuse: PASS`
-- Preserved workspace remained 100% byte-for-byte intact with zero unexpected files created.
-- Zero pre-load migration or rewrite; zero compatibility adapters or synthetic fixtures introduced.
+When available in Implementation, Serena should be used to trace the recovered historical decoder/currentness owners and final callers. Semgrep may be used as a one-off structural cross-check for the synthetic `_Legacy*` family/descendant-to-ancestor reconstruction, but do not add a permanent second scanner when existing tests can encode the durable semantic rule more directly.
 
-### 2. R11 — Authoritative Part VI documentation reconciliation
-- Reconciled authoritative normative architecture `docs/arch_manuals/mlff_training_data/60_execution_performance.md`:
-  - Preparation/execution chain updated to:
-    ```text
-    one common target-size preparation
-    -> optional paired-seed diagnostic (recommendation or typed no-recommendation)
-    -> operator-owned provisional ordered collection
-    -> cross-validate atomic collection freeze
-    -> per-frozen-size CV and fresh final production
-    ```
-  - Replaced stale scalar screen outcome with: "one recommended size or typed no-recommendation outcome".
-  - Replaced global `alter T_selected` phrasing with explicitly per-binding `T_N` semantics: "alter the frozen collection or that size's exact membership `T_N`".
-- Reassembled composite manual `docs/arch_manuals/mlff_training_data_architecture.md`.
-- Regenerated tracked PDF and manifest:
-  ```bash
-  conda run -n mace python docs/build_pdfs.py build --changed-path docs/arch_manuals/mlff_training_data/60_execution_performance.md
-  ```
-- Strengthened doc specifications in `tests/test_mlff_doc_arch1_specification.py` with exact negative assertions against stale Part VI phrases (`paired-seed candidate screen\n  -> selected binding`, `one selected size or typed scientific failure`, `alter \`T_selected\``).
+---
 
-### 3. Closure acceptance verification
-- Bytecode compilation:
-  ```bash
-  conda run -n mace python -m compileall mdstats tests qualification/p6-p5a6-compat
-  ```
-  Outcome: Clean, 0 errors.
-- Specification & destructive closure & compatibility suite:
-  ```bash
-  conda run -n mace pytest -q tests/test_mlff_doc_arch1_specification.py tests/test_mlff_data9b3_campaign_cli_specification.py tests/test_mlff_target_size_p6_destructive_closure.py tests/test_mlff_target_size_p6_p5a6_compatibility.py
-  ```
-  Outcome: **44 passed, 0 skipped in 128.64s**.
-- 10-module affected target-size & result-view suite:
-  ```bash
-  conda run -n mace pytest -q tests/test_mlff_target_size_multi_selection.py tests/test_mlff_target_size_provisional_selection.py tests/test_mlff_target_size_p4d_runtime_cutover.py tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_campaign_prepare_boundary.py tests/test_mlff_target_size_p4e_terminal_and_invalidation.py tests/test_mlff_target_size_p5a_selected_context.py tests/test_mlff_target_size_p5f_structure.py tests/test_mlff_target_size_p4c_cross_store_adoption.py tests/test_mlff_target_size_p4f_storage_docs_structure.py
-  ```
-  Outcome: **200 passed in 955.85s**.
+## Implementation sequence
 
+### Stage 1 — Subtract the Round-4 bridge
+
+Remove the synthetic prerework reconstruction classes/path and generic prerework dispatch. Confirm current-v3 behavior remains unchanged.
+
+### Stage 2 — Restore the minimum native P5A6 read/currentness contract
+
+Using the recovered exact P5A6 source/workspace and P6 authority, restore only the native historical decoders/currentness comparisons needed to authenticate the existing parent -> child chain. Do not fabricate current P2/P4 objects from P5 descendants.
+
+### Stage 3 — Adversarial compatibility acceptance
+
+Run the exact preserved fixture plus the poisoned-descendant selected-context test and descendant-corruption tests. The compatibility evidence must fail when an upstream authority or child-parent edge is wrong.
+
+### Stage 4 — Final affected-surface closure
+
+Re-derive the final P5/P7/currentness affected surface, run complete bounded regression/integration and repository-required checks, record exact candidate identity, then request another independent Software Design review.
+
+## Simplicity stop condition
+
+If the next implementation still needs a fake experiment definition/evaluation order/aggregate, reconstructs parent authority from CV/final descendants, introduces another historical state database/sidecar, or adds another broad prerework runtime branch, stop. That is evidence the repair is again solving a Tier-2 compatibility mechanism instead of restoring the supported native historical contract.
