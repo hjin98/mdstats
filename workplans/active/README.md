@@ -2,14 +2,10 @@
 
 Active workplans are temporary engineering coordination and do not define current mdstats behavior by themselves.
 
-There is currently one active MLFF implementation workplan, reopened by independent implementation review:
+There is exactly one active implementation entry point for the current MLFF multi-size target-selection repair round:
 
-- `MLFF_TARGET_SIZE_MULTI_SELECTION_AND_PER_SIZE_HORIZON_WORKPLAN.md` — parent closure-reviewed authority for ordered multi-target selection and per-size CV/production horizons.
-- `MLFF_TARGET_SIZE_MULTI_SELECTION_AND_PER_SIZE_HORIZON_IMPLEMENTATION_REVIEW_REOPEN.md` — current bounded review amendment. The implementation is **NO-PASS / reopened** for P5 CV-currentness and the collection-wide zero-new-production admission barrier; the accepted high-level multi-size architecture remains frozen.
-- `MLFF_TARGET_SIZE_MULTI_SELECTION_POST_SELECTION_OPTIMIZER_DEFAULTS_REVIEW_ADDENDUM.md` — bounded configuration addendum. Target-size screening keeps its separate size-normalized LR/EMA authority, while CV and fresh final production keep the independent shared `[training]` optimizer authority. New `init` output must explicitly expose the post-selection `learning_rate`, `ema`, and `ema_decay` defaults and tests must prove bidirectional independence between the two owners.
+- `MLFF_TARGET_SIZE_MULTI_SELECTION_NEXT_ROUND_REPAIR_WORKPLAN.md` — sole current implementation authority. It consolidates the independent-review CV-currentness/collection-wide production-admission repair and the post-selection LR/EMA initialization/default-separation repair into one snapshot-complete workplan.
 
-`MLFF_MULTI_SIZE_IMPLEMENTATION_HANDOFF.md` is retained as implementation evidence, not authority. Its earlier completion claim is superseded by the independent review amendment/addendum where they conflict.
+The earlier parent workplan, implementation-review reopen amendment, optimizer-default review addendum, and implementation handoff have been retired to `workplans/archive/`. They are historical evidence only and are not additional implementation entry points.
 
-All predecessor target-size, V7 package, campaign-integration, storage-I/O-reset, optimizer-normalization, and bounded bug-fix workplans that no longer carry unresolved substantive implementation obligations remain in `workplans/archive/`.
-
-Full long-running real-data/GPU production qualification remains separate and deferred as specified by the active plan and current product documentation.
+Full long-running real-data/GPU production qualification remains separate and deferred as specified by the active workplan and current product documentation.
