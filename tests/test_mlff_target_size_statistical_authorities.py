@@ -108,6 +108,21 @@ def test_p2a_policy_resolution_identity_and_seed_namespace() -> None:
         )
     with pytest.raises(mdstats.TrainingDataInputError, match="unique"):
         replace(default, optimizer_seeds=(1, 1))
+    with pytest.raises(
+        mdstats.TrainingDataInputError, match="nonnegative integers"
+    ):
+        replace(default, optimizer_seeds=(-1, 2))
+    with pytest.raises(
+        mdstats.TrainingDataInputError, match="nonnegative integers"
+    ):
+        mdstats.ResolvedTargetSizePolicy(optimizer_seeds=(-1, 1))
+    with pytest.raises(
+        mdstats.TrainingDataInputError, match="nonnegative integers"
+    ):
+        mdstats.resolve_target_size_policy(optimizer_seeds=(-5, 1))
+    zero_seed = replace(default, optimizer_seeds=(0, 1))
+    assert zero_seed.optimizer_seeds == (0, 1)
+    assert zero_seed.content_digest != default.content_digest
 
 
 def test_p2a_config_resolver_uses_only_sole_method_seeds_and_excludes_cv() -> None:
@@ -153,6 +168,12 @@ def test_p2a_config_resolver_uses_only_sole_method_seeds_and_excludes_cv() -> No
     multiple["training"]["naive_fine_tuning"]["enabled"] = True
     with pytest.raises(mdstats.TrainingDataInputError, match="exactly one"):
         mdstats.resolve_target_size_policy_from_config(multiple)
+    negative_seed_config = deepcopy(config)
+    negative_seed_config["training"]["multihead_replay"]["seeds"] = [-1, 2]
+    with pytest.raises(
+        mdstats.TrainingDataInputError, match="nonnegative integers"
+    ):
+        mdstats.resolve_target_size_policy_from_config(negative_seed_config)
 
 
 def test_p2b_exact_allocator_finds_non_greedy_solution_and_rejects_impossible() -> None:

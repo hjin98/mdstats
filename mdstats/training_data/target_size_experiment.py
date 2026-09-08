@@ -278,7 +278,7 @@ class ResolvedTargetSizePolicy:
             )
         seeds = tuple(self.optimizer_seeds)
         if not seeds or any(
-            isinstance(v, bool) or not isinstance(v, int) for v in seeds
+            isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in seeds
         ):
             raise TrainingDataInputError(
                 "optimizer_seeds must be one nonempty ordered set of nonnegative integers."

@@ -967,8 +967,15 @@ def test_no_current_surface_retains_the_retired_selection_semantics():
     assert not offenders, offenders
 
     # P5 never reaches the automatic diagnostic's head/reducer for its ancestry.
-    from mdstats.training_data.campaign_post_selection import PostSelectionBinding
+    from mdstats.training_data.campaign_post_selection import (
+        POST_SELECTION_BINDING_SCHEMA,
+        POST_SELECTION_BINDING_V1_SCHEMA,
+        PostSelectionBinding,
+        target_size_binding,
+    )
     import mdstats.training_data.campaign_post_selection as post_sel_mod
+    import mdstats.training_data.target_size_experiment as exp_mod
+    from mdstats.training_data._common import digest
 
     fields = set(PostSelectionBinding.__dataclass_fields__)
     assert "adopted_execution_head_digest" not in fields
@@ -976,8 +983,123 @@ def test_no_current_surface_retains_the_retired_selection_semantics():
 
     legacy_classes = [
         name for name in dir(post_sel_mod) if name.startswith("_Legacy")
-    ]
+    ] + [name for name in dir(exp_mod) if name.startswith("_Legacy")]
     assert not legacy_classes, f"Synthetic legacy classes remain: {legacy_classes}"
+
+    # 1. Normal current-V3 target_size_binding() produces schema V3 with all
+    # legacy_v1_* fields unset, even if candidate state carries diagnostic digests.
+    class _DummyFrozen:
+        training_order_digest = "1" * 64
+        n_selected = 256
+        selected_membership_digest = "2" * 64
+        content_digest = "3" * 64
+
+    class _DummyState:
+        generation = 1
+        experiment_definition_digest = "4" * 64
+        frame_authority_digest = "5" * 64
+        neutral_statistical_base_digest = "6" * 64
+        split_exclusion_digest = "7" * 64
+        policy_digest = "8" * 64
+        aggregate_digest = "9" * 64
+        legacy_scalar_binding = False
+        adopted_execution_head_digest = "a" * 64
+        adopted_reducer_state_digest = "b" * 64
+
+    current_b = target_size_binding(_DummyState(), _DummyFrozen())
+    assert not current_b.is_v1_legacy_schema
+    assert not current_b.is_legacy_schema
+    assert current_b.legacy_v1_campaign_state_revision is None
+    assert current_b.legacy_v1_execution_head_digest is None
+    assert current_b.legacy_v1_reducer_state_digest is None
+    assert current_b.legacy_frozen_selection_digest is None
+
+    current_payload = current_b.to_dict()
+    assert current_payload["schema"] == POST_SELECTION_BINDING_SCHEMA
+    assert "adopted_execution_head_digest" not in current_payload
+    assert "adopted_reducer_state_digest" not in current_payload
+    assert "campaign_state_revision" not in current_payload
+    assert "frozen_selection_digest" not in current_payload
+
+    # 2. Historical V1 binding round-trips head/reducer fields only in V1 wire
+    # payload and reproduces its historical digest.
+    v1_raw = {
+        "schema": POST_SELECTION_BINDING_V1_SCHEMA,
+        "campaign_generation": 0,
+        "campaign_state_revision": "0" * 64,
+        "experiment_definition_digest": "4" * 64,
+        "training_order_digest": "1" * 64,
+        "frame_authority_digest": "5" * 64,
+        "neutral_statistical_base_digest": "6" * 64,
+        "split_exclusion_digest": "7" * 64,
+        "target_size_policy_digest": "8" * 64,
+        "aggregate_digest": "9" * 64,
+        "adopted_execution_head_digest": "a" * 64,
+        "adopted_reducer_state_digest": "b" * 64,
+        "n_selected": 256,
+        "selected_membership_digest": "2" * 64,
+    }
+    v1_b = PostSelectionBinding.from_dict(v1_raw)
+    assert v1_b.is_v1_legacy_schema
+    assert v1_b.is_legacy_schema
+    assert v1_b.legacy_v1_campaign_state_revision == "0" * 64
+    assert v1_b.legacy_v1_execution_head_digest == "a" * 64
+    assert v1_b.legacy_v1_reducer_state_digest == "b" * 64
+    assert v1_b.content_digest == digest(v1_raw)
+
+    v1_out = v1_b.to_dict()
+    assert v1_out["schema"] == POST_SELECTION_BINDING_V1_SCHEMA
+    assert v1_out["adopted_execution_head_digest"] == "a" * 64
+    assert v1_out["adopted_reducer_state_digest"] == "b" * 64
+    assert v1_out["campaign_state_revision"] == "0" * 64
+    assert PostSelectionBinding.from_dict(v1_out) == v1_b
+
+    # 3. Focused AST/source check: V1 head/reducer fields cannot flow into
+    # current target_size_binding() or current PostSelectionBinding construction.
+    post_sel_source = (_TRAINING_DATA / "campaign_post_selection.py").read_text(
+        encoding="utf-8"
+    )
+    post_sel_ast = ast.parse(post_sel_source)
+    ts_binding_fn = next(
+        node
+        for node in ast.walk(post_sel_ast)
+        if isinstance(node, ast.FunctionDef) and node.name == "target_size_binding"
+    )
+    binding_calls = [
+        node
+        for node in ast.walk(ts_binding_fn)
+        if isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id == "PostSelectionBinding")
+            or (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "PostSelectionBinding"
+            )
+        )
+    ]
+    assert binding_calls, "target_size_binding must construct PostSelectionBinding"
+    for call in binding_calls:
+        kw_names = {kw.arg for kw in call.keywords if kw.arg is not None}
+        for forbidden in (
+            "legacy_v1_campaign_state_revision",
+            "legacy_v1_execution_head_digest",
+            "legacy_v1_reducer_state_digest",
+            "adopted_execution_head_digest",
+            "adopted_reducer_state_digest",
+        ):
+            assert forbidden not in kw_names, (
+                f"target_size_binding cannot pass {forbidden} to PostSelectionBinding"
+            )
+
+    for node in ast.walk(ts_binding_fn):
+        if isinstance(node, ast.Attribute):
+            assert node.attr not in (
+                "adopted_execution_head_digest",
+                "adopted_reducer_state_digest",
+                "legacy_v1_execution_head_digest",
+                "legacy_v1_reducer_state_digest",
+                "auto_diagnostic",
+            ), f"target_size_binding accesses forbidden head/reducer attribute {node.attr}"
 
     # And `advance` cannot dispatch the target-size decision.
     source = (_TRAINING_DATA / "_campaign_cli_core.py").read_text(encoding="utf-8")
