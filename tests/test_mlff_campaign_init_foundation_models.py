@@ -6,10 +6,6 @@ from pathlib import Path
 import pytest
 
 from mdstats.training_data import campaign_cli
-from mdstats.training_data.foundation import (
-    MaceFoundationInspection,
-    MaceFoundationSpec,
-)
 
 
 def _init(tmp_path: Path, *extra: str):
@@ -81,64 +77,83 @@ def test_init_positional_and_legacy_family_must_not_conflict(
     assert not config.exists()
     assert "conflicts with --foundation-family" in capsys.readouterr().err
 
-
-def _inspection(
-    *,
-    heads: tuple[str, ...],
-    interaction: str,
-    agnostic: bool,
-    edge_irreps: str | None,
-) -> MaceFoundationInspection:
-    return MaceFoundationInspection(
-        reference="/bounded/test.model",
-        sha256="1" * 64,
-        model_class="ScaleShiftMACE",
-        model_module="mace.modules.models",
-        available_heads=heads,
-        atomic_numbers=(1, 8),
-        r_max_angstrom=5.0,
-        num_interactions=2,
-        model_dtype="float32",
-        atomic_energies_shape=(len(heads), 2),
-        interaction_signatures=({"class": interaction},),
-        product_signatures=({"class": "EquivariantProductBasisBlock"},),
-        readout_signatures=({"class": "LinearReadoutBlock"},),
-        edge_irreps=edge_irreps,
-        use_agnostic_product=agnostic,
-        use_last_readout_only=False,
-        state_shape_digest="2" * 64,
+def test_init_positional_and_matching_legacy_family_succeeds(tmp_path: Path) -> None:
+    config = tmp_path / "campaign.toml"
+    workspace = tmp_path / "workspace"
+    rc = campaign_cli.main(
+        [
+            "--config",
+            str(config),
+            "init",
+            "mh-1",
+            "--foundation-family",
+            "mace_mh_1",
+            "--workspace",
+            str(workspace),
+        ]
     )
+    assert rc == 0
+    with config.open("rb") as handle:
+        cfg = tomllib.load(handle)
+    assert cfg["foundation"]["family"] == "mace_mh_1"
+    assert cfg["foundation"]["head"] == "omat_pbe"
 
 
-def test_both_supported_foundation_families_resolve_their_current_head_semantics() -> None:
-    mpa = MaceFoundationSpec(
-        family="mace_mpa_0",
-        requested_head="default",
-        requested_atomic_numbers=(1, 8),
-    ).resolve(
-        _inspection(
-            heads=("default",),
-            interaction="DensityBasedResidualInteractionBlock",
-            agnostic=False,
-            edge_irreps=None,
+def test_init_config_named_init_resolves_correctly_without_ambiguity(tmp_path: Path) -> None:
+    config = tmp_path / "init"
+    workspace = tmp_path / "workspace"
+    rc = campaign_cli.main(
+        [
+            "--config",
+            str(config),
+            "init",
+            "mh-1",
+            "--workspace",
+            str(workspace),
+        ]
+    )
+    assert rc == 0
+    assert config.is_file()
+    with config.open("rb") as handle:
+        cfg = tomllib.load(handle)
+    assert cfg["foundation"]["family"] == "mace_mh_1"
+    assert cfg["foundation"]["head"] == "omat_pbe"
+
+
+def test_init_options_before_positional_model_succeeds(tmp_path: Path) -> None:
+    config = tmp_path / "campaign.toml"
+    workspace = tmp_path / "workspace"
+    rc = campaign_cli.main(
+        [
+            "--config",
+            str(config),
+            "init",
+            "--workspace",
+            str(workspace),
+            "mpa-0",
+        ]
+    )
+    assert rc == 0
+    with config.open("rb") as handle:
+        cfg = tomllib.load(handle)
+    assert cfg["foundation"]["family"] == "mace_mpa_0"
+    assert cfg["foundation"]["head"] == "default"
+
+
+def test_init_unsupported_model_fails_at_parser(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = tmp_path / "campaign.toml"
+    with pytest.raises(SystemExit) as excinfo:
+        campaign_cli.main(
+            [
+                "--config",
+                str(config),
+                "init",
+                "unsupported-model",
+            ]
         )
-    )
-    assert mpa.model_family == "mace_mpa_0"
-    assert mpa.foundation_head == "default"
-    assert mpa.available_heads == ("default",)
-
-    mh1 = MaceFoundationSpec(
-        family="mace_mh_1",
-        requested_head="omat_pbe",
-        requested_atomic_numbers=(1, 8),
-    ).resolve(
-        _inspection(
-            heads=("omat_pbe", "pbe", "scan"),
-            interaction="RealAgnosticNonLinearResidualInteractionBlock",
-            agnostic=True,
-            edge_irreps="1x0e + 1x1o",
-        )
-    )
-    assert mh1.model_family == "mace_mh_1"
-    assert mh1.foundation_head == "omat_pbe"
-    assert mh1.available_heads == ("omat_pbe", "pbe", "scan")
+    assert excinfo.value.code == 2
+    assert not config.exists()
+    err = capsys.readouterr().err
+    assert "invalid choice" in err or "unsupported-model" in err

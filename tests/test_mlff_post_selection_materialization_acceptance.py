@@ -60,6 +60,21 @@ def _shared_method_values(
     }
 
 
+def _load_context(config: Path):
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        build_post_selection_contexts,
+    )
+
+    cfg, paths = cli._load_config(config)
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        contexts = build_post_selection_contexts(cfg, paths, store)
+        assert len(contexts) == 1
+        return contexts[0]
+    finally:
+        store.close()
+
+
 def _run_post_selection(config: Path):
     cv = fx.PostSelectionHarness()
     assert fx.run_cross_validate(config, cv) == 0
@@ -97,6 +112,33 @@ reference_ema_decay = 0.95
         tmp_path / "method", config_text=method_text
     )
 
+    base_context = _load_context(base_config)
+    screen_context = _load_context(screen_config)
+    method_context = _load_context(method_config)
+
+    # Establish that all compared campaigns share identical frozen target lineage:
+    # 1. Identical selected target size N
+    assert base_context.selected.n_selected == 8
+    assert screen_context.selected.n_selected == base_context.selected.n_selected
+    assert method_context.selected.n_selected == base_context.selected.n_selected
+
+    # 2. Identical exact prefix membership T_N in order
+    assert len(base_context.selected.selected_membership) == 8
+    assert screen_context.selected.selected_membership == base_context.selected.selected_membership
+    assert method_context.selected.selected_membership == base_context.selected.selected_membership
+    assert screen_context.selected.selected_membership_digest == base_context.selected.selected_membership_digest
+    assert method_context.selected.selected_membership_digest == base_context.selected.selected_membership_digest
+
+    # 3. Identical training-order identity
+    assert screen_context.selected.binding.training_order_digest == base_context.selected.binding.training_order_digest
+    assert method_context.selected.binding.training_order_digest == base_context.selected.binding.training_order_digest
+
+    # 4. Identical role-neutral TargetBinding identity
+    assert screen_context.selected.binding.content_digest == base_context.selected.binding.content_digest
+    assert method_context.selected.binding.content_digest == base_context.selected.binding.content_digest
+    assert screen_context.selected.binding == base_context.selected.binding
+    assert method_context.selected.binding == base_context.selected.binding
+
     base_screen = _screen_optimizer_configs(base_workspace)
     changed_screen = _screen_optimizer_configs(screen_workspace)
     method_screen = _screen_optimizer_configs(method_workspace)
@@ -105,6 +147,10 @@ reference_ema_decay = 0.95
     # post-selection [training] method does not leak into the screen optimizer.
     assert changed_screen != base_screen
     assert method_screen == base_screen
+    # Realized P3 normalized optimizer values for N=8 and reference N=4
+    assert base_screen["mace_config_n8_seed1.yaml"] == (0.0128, True, 0.9987208124587365)
+    assert changed_screen["mace_config_n8_seed1.yaml"] == (0.0004, True, 0.9746794344808963)
+    assert changed_screen["mace_config_n4_seed1.yaml"] == (0.0008, True, 0.95)
 
     base_cv, base_prod = _run_post_selection(base_config)
     screen_cv, screen_prod = _run_post_selection(screen_config)

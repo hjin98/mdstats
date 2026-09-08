@@ -3192,6 +3192,30 @@ def _qualify_replay(
 
 
 def command_init(args: argparse.Namespace) -> int:
+    model_arg = getattr(args, "model", None)
+    family_arg = getattr(args, "foundation_family", None)
+
+    model_family_map = {
+        "mh-1": "mace_mh_1",
+        "mpa-0": "mace_mpa_0",
+    }
+    model_family = model_family_map.get(model_arg) if model_arg else None
+
+    if model_family is not None and family_arg is not None:
+        if model_family != family_arg:
+            raise CampaignCliError(
+                f"`init {model_arg}` selects foundation family {model_family!r}, which "
+                f"conflicts with --foundation-family {family_arg!r}. "
+                "Choose one model family."
+            )
+        foundation_family = model_family
+    elif model_family is not None:
+        foundation_family = model_family
+    elif family_arg is not None:
+        foundation_family = str(family_arg)
+    else:
+        foundation_family = "mace_mh_1"
+
     target = Path(args.config).expanduser().resolve()
     if target.exists() and not args.force:
         raise CampaignCliError(f"Refusing to overwrite {target}; use --force only when intentional.")
@@ -3202,7 +3226,6 @@ def command_init(args: argparse.Namespace) -> int:
         detected_device = "cuda" if bool(torch.cuda.is_available()) else "cpu"
     except ModuleNotFoundError:
         detected_device = "cpu"
-    foundation_family = str(args.foundation_family)
     foundation_head = None if args.foundation_head in (None, "") else str(args.foundation_head)
     default_foundation_path = (
         "/path/to/mace-mh-1.model"
@@ -6591,13 +6614,20 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("init", help="write an annotated campaign configuration", formatter_class=_Formatter)
+    p.add_argument(
+        "model",
+        nargs="?",
+        choices=("mh-1", "mpa-0"),
+        default=None,
+        help="foundation model preset (mh-1 or mpa-0; default: mh-1)",
+    )
     p.add_argument("--workspace")
     p.add_argument("--training-root")
     p.add_argument("--foundation-model")
     p.add_argument(
         "--foundation-family",
         choices=("mace_mh_1", "mace_mpa_0"),
-        default="mace_mh_1",
+        default=None,
         help="generated campaign foundation family (default: mace_mh_1)",
     )
     p.add_argument(

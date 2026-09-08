@@ -242,7 +242,12 @@ def train_like_mace(request, *, real_mace_checkpoint: bool = False):
     handler = SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir)))
     train_loader = [object()]
     model = torch.nn.Linear(3, 2, dtype=torch.float64)
-    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4, momentum=0.9)
+    base_lr = (
+        float(request.plan.learning_rate_policy.base_learning_rate)
+        if hasattr(request, "plan") and hasattr(request.plan, "learning_rate_policy")
+        else 1.0e-4
+    )
+    optimizer = torch.optim.SGD(model.parameters(), lr=base_lr, momentum=0.9)
     ema = ExponentialMovingAverage(model.parameters(), decay=0.95)
     runtime = runtime_mod._Train2Runtime(
         request.plan,
