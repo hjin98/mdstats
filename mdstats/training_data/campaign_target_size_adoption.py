@@ -185,6 +185,10 @@ def adopt_reconciled_execution_head(
         execution_root=state.execution_root,
         adopted_execution_head_digest=head_digest,
         adopted_reducer_state_digest=reducer_digest,
+        # Adopting screen evidence says nothing about the operator's design, so
+        # it carries the proposal and any frozen selection through untouched.
+        proposal=state.proposal,
+        frozen=state.frozen,
     )
     return commit_target_size_campaign_transition(
         store,

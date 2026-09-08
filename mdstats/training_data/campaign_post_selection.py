@@ -1,17 +1,23 @@
 """Current selected-training entry for all post-selection work.
 
-Everything downstream of target-size selection - cross-validation of the
+Everything downstream of the target-size decision - cross-validation of the
 training method and the fresh final-production run - starts here.  This module
-owns exactly one thing: projecting the authenticated current P4 terminal
-selection into the small set of facts downstream owners need, and freezing that
-projection as an immutable lineage record.
+owns exactly one thing: projecting the frozen target selection admitted at
+``cross-validate`` into the small set of facts downstream owners need, and
+recording that projection as an immutable lineage record.
 
 It is deliberately not an authority.  ``N_selected`` and the exact
 ``T_selected`` membership are re-established on every current exposure through
-the accepted P4 loader, which itself re-derives them from authenticated P2/P3
-state.  A persisted binding is a dependency snapshot that lets a descendant
-prove *which* selection it descends from; it can never make a retired
-generation current again.
+the accepted P4 freeze owner, which re-derives them from the authenticated P2
+training order.  The automatic screen's execution head and reducer are *not*
+part of this ancestry: a campaign that never ran the diagnostic reaches
+post-selection work by exactly the same path as one that did.
+
+A persisted binding is a dependency snapshot that lets a descendant prove
+*which* selection it descends from; it can never make a retired generation
+current again.  Descendants published before the operator-owned freeze existed
+carry the retired binding schema, so they stay historical rather than being
+re-parented onto a new frozen selection that merely happens to share ``N``.
 """
 
 from __future__ import annotations
@@ -26,9 +32,7 @@ from ._common import (
     digest,
     validate_digest,
 )
-from .campaign_target_size_state import TargetSizeLifecycle
-
-POST_SELECTION_BINDING_SCHEMA = "mdstats.post-selection-binding.v1"
+POST_SELECTION_BINDING_SCHEMA = "mdstats.post-selection-binding.v2"
 
 
 class PostSelectionError(TrainingDataError):
@@ -49,7 +53,7 @@ class PostSelectionBinding:
     """
 
     campaign_generation: int
-    campaign_state_revision: str
+    frozen_selection_digest: str
     experiment_definition_digest: str
     training_order_digest: str
     frame_authority_digest: str
@@ -57,14 +61,12 @@ class PostSelectionBinding:
     split_exclusion_digest: str
     target_size_policy_digest: str
     aggregate_digest: str
-    adopted_execution_head_digest: str
-    adopted_reducer_state_digest: str
     n_selected: int
     selected_membership_digest: str
 
     def __post_init__(self) -> None:
         for name in (
-            "campaign_state_revision",
+            "frozen_selection_digest",
             "experiment_definition_digest",
             "training_order_digest",
             "frame_authority_digest",
@@ -72,8 +74,6 @@ class PostSelectionBinding:
             "split_exclusion_digest",
             "target_size_policy_digest",
             "aggregate_digest",
-            "adopted_execution_head_digest",
-            "adopted_reducer_state_digest",
             "selected_membership_digest",
         ):
             object.__setattr__(
@@ -96,7 +96,11 @@ class PostSelectionBinding:
         return {
             "schema": POST_SELECTION_BINDING_SCHEMA,
             "campaign_generation": self.campaign_generation,
-            "campaign_state_revision": self.campaign_state_revision,
+            # The frozen selection is the stable ancestry token.  The campaign
+            # *state revision* deliberately is not: publishing later diagnostic
+            # evidence advances that revision without changing one fact about
+            # the frozen experiment, and must not orphan accepted descendants.
+            "frozen_selection_digest": self.frozen_selection_digest,
             "experiment_definition_digest": self.experiment_definition_digest,
             "training_order_digest": self.training_order_digest,
             "frame_authority_digest": self.frame_authority_digest,
@@ -104,8 +108,6 @@ class PostSelectionBinding:
             "split_exclusion_digest": self.split_exclusion_digest,
             "target_size_policy_digest": self.target_size_policy_digest,
             "aggregate_digest": self.aggregate_digest,
-            "adopted_execution_head_digest": self.adopted_execution_head_digest,
-            "adopted_reducer_state_digest": self.adopted_reducer_state_digest,
             "n_selected": self.n_selected,
             "selected_membership_digest": self.selected_membership_digest,
         }
@@ -125,7 +127,7 @@ class PostSelectionBinding:
             )
         result = cls(
             campaign_generation=int(payload["campaign_generation"]),
-            campaign_state_revision=str(payload["campaign_state_revision"]),
+            frozen_selection_digest=str(payload["frozen_selection_digest"]),
             experiment_definition_digest=str(payload["experiment_definition_digest"]),
             training_order_digest=str(payload["training_order_digest"]),
             frame_authority_digest=str(payload["frame_authority_digest"]),
@@ -135,10 +137,6 @@ class PostSelectionBinding:
             split_exclusion_digest=str(payload["split_exclusion_digest"]),
             target_size_policy_digest=str(payload["target_size_policy_digest"]),
             aggregate_digest=str(payload["aggregate_digest"]),
-            adopted_execution_head_digest=str(
-                payload["adopted_execution_head_digest"]
-            ),
-            adopted_reducer_state_digest=str(payload["adopted_reducer_state_digest"]),
             n_selected=int(payload["n_selected"]),
             selected_membership_digest=str(payload["selected_membership_digest"]),
         )
@@ -151,17 +149,20 @@ class PostSelectionBinding:
 
 @dataclass(frozen=True, slots=True)
 class CurrentSelectedTrainingContext:
-    """The authenticated current selection, projected for downstream owners.
+    """The authenticated frozen selection, projected for downstream owners.
 
-    Only ``binding`` and ``selected_membership`` carry identity.  The validated
-    terminal result and the reconstructed authority bundle travel along as
-    opaque references so downstream owners can reach real P1/P2 data without
-    this adapter duplicating any of their validation.
+    Only ``binding`` and ``selected_membership`` carry the *target* identity.
+    ``frozen`` additionally carries the two effective role horizons that were
+    admitted with it, which is how a CV or production policy resolver reads a
+    budget the operator fixed rather than whatever the config file says today.
+    The reconstructed authority bundle travels along as an opaque reference so
+    downstream owners can reach real P1/P2 data without this adapter duplicating
+    any of their validation.
     """
 
     binding: PostSelectionBinding
     selected_membership: tuple[str, ...]
-    validated_terminal_result: Any = field(compare=False, repr=False)
+    frozen: Any = field(compare=False, repr=False)
     authorities: Any = field(compare=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -222,28 +223,33 @@ class CurrentSelectedTrainingContext:
             )
 
 
-def build_post_selection_binding(validated_result: Any) -> PostSelectionBinding:
-    """Freeze the lineage of one authenticated current SELECTED terminal result."""
+def build_post_selection_binding(admitted: Any) -> PostSelectionBinding:
+    """Project one authenticated frozen target selection into descendant lineage.
 
-    state = validated_result.revision.state
-    if state.terminal is None or not validated_result.is_selection:
+    Selection *provenance* - manual choice or adopted automatic recommendation -
+    is deliberately absent.  The same ``N`` on the same substrate is the same
+    downstream scientific experiment however the operator arrived at it, and a
+    binding that disagreed with that would fork one architecture into two.
+    """
+
+    state = admitted.revision.state
+    frozen = admitted.frozen
+    if frozen is None or state.frozen is None:
         raise PostSelectionError(
-            "A post-selection binding requires a terminal target-size selection."
+            "A post-selection binding requires a frozen target selection."
         )
     return PostSelectionBinding(
         campaign_generation=state.generation,
-        campaign_state_revision=validated_result.revision.state_revision,
+        frozen_selection_digest=frozen.content_digest,
         experiment_definition_digest=state.experiment_definition_digest,
-        training_order_digest=state.terminal.training_order_digest,
+        training_order_digest=frozen.training_order_digest,
         frame_authority_digest=state.frame_authority_digest,
         neutral_statistical_base_digest=state.neutral_statistical_base_digest,
         split_exclusion_digest=state.split_exclusion_digest,
         target_size_policy_digest=state.policy_digest,
         aggregate_digest=state.aggregate_digest,
-        adopted_execution_head_digest=state.adopted_execution_head_digest,
-        adopted_reducer_state_digest=state.adopted_reducer_state_digest,
-        n_selected=int(validated_result.selected_target_size),
-        selected_membership_digest=str(validated_result.selected_membership_digest),
+        n_selected=int(frozen.n_selected),
+        selected_membership_digest=str(frozen.selected_membership_digest),
     )
 
 
@@ -252,38 +258,25 @@ def load_current_selected_training_context(
     paths: Any,
     store: Any,
     *,
-    expected_revision: Any = None,
+    admit: bool = False,
 ) -> CurrentSelectedTrainingContext:
-    """Resolve the current selected training data through the accepted P4 owner.
+    """Resolve the current frozen training design through the accepted P4 owner.
 
-    This is the one entry every current post-selection path takes.  It calls
-    the canonical P4 exposure boundary in the same invocation, so currentness is
-    established from the live CampaignStore rather than from anything a caller
-    or a persisted descendant carries.  ``FAILED_SCIENTIFIC`` is a legitimate
-    terminal target-size result but is not a valid downstream entry, so it fails
-    closed here, before any post-selection state exists.
+    This is the one entry every current post-selection path takes.  It calls the
+    canonical freeze owner in the same invocation, so currentness is established
+    from the live CampaignStore rather than from anything a caller or a persisted
+    descendant carries.
+
+    ``admit`` is the freeze authority and belongs to ``cross-validate`` alone.
+    Every other consumer requires a freeze that already happened, so merely
+    describing or continuing downstream work can never commit the experiment.
     """
 
-    from .campaign_target_size_view import expose_current_target_size_terminal_result
+    from .campaign_target_size_selection import resolve_frozen_target_selection
 
-    validated = expose_current_target_size_terminal_result(
-        cfg, paths, store, expected_revision=expected_revision
-    )
-    state = validated.revision.state
-    if state.lifecycle is not TargetSizeLifecycle.TERMINAL_SELECTED:
-        raise PostSelectionError(
-            "Post-selection work requires a current SELECTED target-size terminal "
-            f"result; canonical generation {state.generation} is "
-            f"{state.lifecycle.value}. A terminal scientific failure is a result, "
-            "not an entry point: no cross-validation or production state is created."
-        )
-    if not validated.is_selection or validated.selected_target_size is None:
-        raise PostSelectionError(
-            "The current terminal target-size result carries no selected size."
-        )
-
-    binding = build_post_selection_binding(validated)
-    definition = validated.authorities.aggregate.definition
+    admitted = resolve_frozen_target_selection(cfg, paths, store, admit=admit)
+    binding = build_post_selection_binding(admitted)
+    definition = admitted.definition
     membership = definition.training_order.candidate_membership(binding.n_selected)
     if (
         definition.training_order.candidate_digest(binding.n_selected)
@@ -296,8 +289,8 @@ def load_current_selected_training_context(
     return CurrentSelectedTrainingContext(
         binding=binding,
         selected_membership=membership,
-        validated_terminal_result=validated,
-        authorities=validated.authorities,
+        frozen=admitted.frozen,
+        authorities=admitted.authorities,
     )
 
 

@@ -1,11 +1,17 @@
-"""Terminal target-size projection and current-state invalidation classification.
+"""Automatic target-size diagnostic projection and invalidation classification.
 
-A terminal target size is never an editable field.  ``N_selected`` and the exact
-``T_selected`` membership identity are authenticated projections of terminal
-P2/P3 state: the reducer state carried by the adopted immutable execution head
-decides ``N``, and the P2 training order decides which frames that ``N`` names.
-This module derives that projection, commits it together with the head and
-reducer references it depends on, and re-derives it on every reload so a
+The automatic screen is a short-horizon force-RMSE experiment.  What it produces
+is evidence and, when its comparison is valid, a *recommendation*: it is not the
+authority that fixes how much data downstream training uses.  That authority is
+the operator's proposal, frozen at ``cross-validate`` admission
+(:mod:`mdstats.training_data.campaign_target_size_selection`).
+
+A recommended target size is never an editable field.  It and the exact
+membership identity it names are authenticated projections of terminal P2/P3
+state: the reducer state carried by the adopted immutable execution head decides
+the recommended ``N``, and the P2 training order decides which frames that ``N``
+names.  This module derives that projection, commits it together with the head
+and reducer references it depends on, and re-derives it on every reload so a
 divergent persisted copy fails closed instead of being trusted.
 
 Editing only one field can therefore never make divergent state valid: changing
@@ -28,12 +34,12 @@ from typing import Any, Mapping
 
 from ._common import TrainingDataError
 from .campaign_target_size_state import (
+    TargetSizeAutoDiagnostic,
     TargetSizeCampaignRevision,
     TargetSizeCampaignState,
     TargetSizeCampaignStateError,
     TargetSizeLifecycle,
     TargetSizeRegime,
-    TargetSizeTerminalProjection,
     TargetSizeTransitionKind,
     commit_target_size_campaign_transition,
 )
@@ -49,84 +55,82 @@ SCIENTIFIC_IDENTITY_FIELDS: tuple[str, ...] = (
 )
 
 
-class TargetSizeTerminalProjectionError(TargetSizeCampaignStateError):
-    """Persisted terminal state does not match authenticated P2/P3 state."""
+class TargetSizeDiagnosticProjectionError(TargetSizeCampaignStateError):
+    """Persisted diagnostic state does not match authenticated P2/P3 state."""
 
 
-def _terminal_lifecycle(status: str) -> TargetSizeLifecycle:
-    return (
-        TargetSizeLifecycle.TERMINAL_SELECTED
-        if str(status) == "selected"
-        else TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE
-    )
-
-
-def derive_terminal_projection(
-    head: Any, *, definition: Any
-) -> TargetSizeTerminalProjection:
+def derive_auto_diagnostic(head: Any, *, definition: Any) -> TargetSizeAutoDiagnostic:
     """Project the authenticated terminal reducer state onto campaign state.
 
-    ``N`` comes from the terminal reducer state, and the exact ``T_selected``
-    identity is re-derived from the P2 training order rather than copied, so a
-    reducer state carrying a membership digest that the training order does not
-    produce is rejected here instead of being persisted.
+    The recommended ``N`` comes from the terminal reducer state, and the exact
+    membership identity is re-derived from the P2 training order rather than
+    copied, so a reducer state carrying a membership digest that the training
+    order does not produce is rejected here instead of being persisted.
     """
 
     post = head.post_state
     if not post.is_terminal:
-        raise TargetSizeTerminalProjectionError(
-            "A terminal target-size projection requires a terminal reducer state."
+        raise TargetSizeDiagnosticProjectionError(
+            "A complete automatic target-size diagnostic requires a terminal reducer state."
         )
     if str(post.experiment_definition_digest) != str(definition.content_digest):
-        raise TargetSizeTerminalProjectionError(
+        raise TargetSizeDiagnosticProjectionError(
             "Terminal reducer state belongs to a different P2 experiment definition."
         )
     training_order = definition.training_order
-    selected_size = post.selected_target_size
+    # ``selected_target_size`` is the historical P2/P3 spelling of the screen's
+    # own ranking outcome. Crossing this boundary it is a recommendation.
+    recommended_size = post.selected_target_size
     membership_digest = None
-    if selected_size is not None:
-        membership_digest = training_order.candidate_digest(int(selected_size))
+    if recommended_size is not None:
+        membership_digest = training_order.candidate_digest(int(recommended_size))
         if membership_digest != str(post.selected_membership_digest):
-            raise TargetSizeTerminalProjectionError(
-                "Terminal reducer state carries a T_selected identity that the P2 "
-                "training order does not produce for the selected N."
+            raise TargetSizeDiagnosticProjectionError(
+                "Terminal reducer state carries a membership identity that the P2 "
+                "training order does not produce for the recommended N."
             )
-    return TargetSizeTerminalProjection(
+    return TargetSizeAutoDiagnostic(
         reducer_status=post.status.value,
         experiment_definition_digest=definition.content_digest,
         reducer_state_digest=post.content_digest,
         execution_head_digest=head.content_digest,
         training_order_digest=training_order.content_digest,
-        selected_target_size=None if selected_size is None else int(selected_size),
-        selected_membership_digest=membership_digest,
+        recommended_target_size=(
+            None if recommended_size is None else int(recommended_size)
+        ),
+        recommended_membership_digest=membership_digest,
         terminal_reason_codes=tuple(post.terminal_reason_codes),
     )
 
 
-def commit_terminal_projection(
+def commit_auto_diagnostic(
     store: Any,
     revision: TargetSizeCampaignRevision,
     head: Any,
     *,
     definition: Any,
 ) -> TargetSizeCampaignRevision:
-    """Atomically bind the adopted head, reducer digest, and terminal projection.
+    """Atomically bind the adopted head, reducer digest, and diagnostic projection.
 
     The three are written in one transition because they are one claim: a
-    campaign may never hold a selected size whose head or reducer reference was
+    campaign may never hold a recommendation whose head or reducer reference was
     committed separately.
+
+    This transition records *evidence only*.  It deliberately carries the
+    predecessor's proposal forward untouched: an operator choice that already
+    existed is not destroyed, replaced, or blocked by a diagnostic outcome.
     """
 
-    projection = derive_terminal_projection(head, definition=definition)
+    projection = derive_auto_diagnostic(head, definition=definition)
     state = revision.state
     if state.regime is not TargetSizeRegime.CURRENT:
-        raise TargetSizeTerminalProjectionError(
-            "Only the current target-size runtime can record a terminal result."
+        raise TargetSizeDiagnosticProjectionError(
+            "Only the current target-size runtime can record a diagnostic result."
         )
     successor = TargetSizeCampaignState(
         regime=TargetSizeRegime.CURRENT,
         generation=state.generation,
-        lifecycle=_terminal_lifecycle(projection.reducer_status),
+        lifecycle=TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
         attempt=state.attempt,
         frame_authority_digest=state.frame_authority_digest,
         neutral_statistical_base_digest=state.neutral_statistical_base_digest,
@@ -141,34 +145,37 @@ def commit_terminal_projection(
         execution_root=state.execution_root,
         adopted_execution_head_digest=head.content_digest,
         adopted_reducer_state_digest=head.post_state.content_digest,
-        terminal=projection,
+        auto_diagnostic=projection,
+        proposal=state.proposal,
+        frozen=state.frozen,
         disposition=(
-            "terminal_selection"
-            if projection.is_selection
-            else "terminal_scientific_outcome"
+            "auto_diagnostic_recommendation"
+            if projection.has_recommendation
+            else "auto_diagnostic_no_recommendation"
         ),
         disposition_detail=(
             None
-            if projection.is_selection
-            else "The reducer reached a terminal scientific outcome; this is a "
-            "result, not an operational interruption, and the same screen is not "
-            "resumable."
+            if projection.has_recommendation
+            else "The automatic screen reached a terminal scientific outcome without "
+            "a valid comparison; this is a diagnostic result, not an operational "
+            "interruption, the same screen is not resumable, and manual target "
+            "selection remains available."
         ),
     )
     kind = (
-        TargetSizeTransitionKind.RECORD_TERMINAL_SELECTION
-        if projection.is_selection
-        else TargetSizeTransitionKind.RECORD_TERMINAL_SCIENTIFIC_FAILURE
+        TargetSizeTransitionKind.RECORD_AUTO_DIAGNOSTIC_RECOMMENDATION
+        if projection.has_recommendation
+        else TargetSizeTransitionKind.RECORD_AUTO_DIAGNOSTIC_NO_RECOMMENDATION
     )
     return commit_target_size_campaign_transition(
         store, kind=kind, expected=revision.expectation(), successor=successor
     ).revision
 
 
-def validate_terminal_projection(
+def validate_auto_diagnostic(
     revision: TargetSizeCampaignRevision, *, resolver: Any, definition: Any
 ) -> Any:
-    """Re-derive the terminal projection before exposing it downstream.
+    """Re-derive the diagnostic projection before exposing it.
 
     Nothing persisted is trusted: the referenced head is re-resolved and
     authenticated through the real P3 resolver, the reducer digest the campaign
@@ -180,27 +187,23 @@ def validate_terminal_projection(
     from .campaign_target_size_adoption import load_adopted_execution_head
 
     state = revision.state
-    persisted = state.terminal
+    persisted = state.auto_diagnostic
     if persisted is None:
-        raise TargetSizeTerminalProjectionError(
-            "This campaign generation has no terminal target-size result."
+        raise TargetSizeDiagnosticProjectionError(
+            "This campaign generation has no complete automatic target-size diagnostic."
         )
     head = load_adopted_execution_head(resolver, revision)
     if str(head.post_state.content_digest) != str(state.adopted_reducer_state_digest):
-        raise TargetSizeTerminalProjectionError(
+        raise TargetSizeDiagnosticProjectionError(
             "The adopted execution head does not carry the reducer state the campaign "
-            "bound to the terminal result."
+            "bound to the diagnostic result."
         )
-    rederived = derive_terminal_projection(head, definition=definition)
+    rederived = derive_auto_diagnostic(head, definition=definition)
     if rederived != persisted:
-        raise TargetSizeTerminalProjectionError(
-            "The persisted terminal target-size projection does not match the value "
-            "re-derived from authenticated P2/P3 state; the selected size and exact "
-            "selected data are never accepted from campaign state alone."
-        )
-    if _terminal_lifecycle(persisted.reducer_status) is not state.lifecycle:
-        raise TargetSizeTerminalProjectionError(
-            "Terminal lifecycle disagrees with the authenticated reducer outcome."
+        raise TargetSizeDiagnosticProjectionError(
+            "The persisted automatic target-size diagnostic does not match the value "
+            "re-derived from authenticated P2/P3 state; the recommended size and the "
+            "exact data it names are never accepted from campaign state alone."
         )
     return head
 
@@ -270,37 +273,47 @@ def classify_target_size_invalidation(
 
 
 @dataclass(frozen=True, slots=True)
-class ValidatedTargetSizeTerminalResult:
-    """Authenticated bundle returned by the validated terminal loader.
+class ValidatedTargetSizeAutoDiagnostic:
+    """Authenticated bundle returned by the validated diagnostic loader.
 
     A consumer holding this object has established that:
-    1. Campaign regime is CURRENT and lifecycle is terminal;
+    1. Campaign regime is CURRENT and the automatic diagnostic is complete;
     2. The immutable prepared generation was loaded and authenticated;
     3. Target-size scientific identity matches the canonical generation;
     4. P3 execution context matches the canonical generation;
     5. The persisted execution root was resolved through the real P3 owner;
     6. The adopted execution head and reducer state were authenticated;
-    7. Terminal N and exact T_selected identity were re-derived from the authenticated
-       terminal reducer state and P2 training order;
-    8. The persisted terminal projection matches the re-derived projection.
+    7. The recommended N and the exact identity of the data it names were
+       re-derived from the authenticated terminal reducer state and P2 training
+       order;
+    8. The persisted diagnostic projection matches the re-derived projection.
+
+    Holding this object establishes what the automatic screen found.  It does
+    not establish, and never has established, what the campaign will train on.
     """
 
     revision: TargetSizeCampaignRevision
     authorities: Any
     head: Any
-    projection: TargetSizeTerminalProjection
+    projection: TargetSizeAutoDiagnostic
+    #: The P3 execution identity this load already reconstructed and checked.
+    #: The portable report is a projection of exactly these objects, so it never
+    #: rebuilds a second, possibly divergent, view of the same screen.
+    schedule: Any = None
+    context: Any = None
+    optimizer_policy: Any = None
 
     @property
-    def is_selection(self) -> bool:
-        return self.projection.is_selection
+    def has_recommendation(self) -> bool:
+        return self.projection.has_recommendation
 
     @property
-    def selected_target_size(self) -> int | None:
-        return self.projection.selected_target_size
+    def recommended_target_size(self) -> int | None:
+        return self.projection.recommended_target_size
 
     @property
-    def selected_membership_digest(self) -> str | None:
-        return self.projection.selected_membership_digest
+    def recommended_membership_digest(self) -> str | None:
+        return self.projection.recommended_membership_digest
 
     @property
     def reducer_status(self) -> str:
@@ -311,24 +324,25 @@ class ValidatedTargetSizeTerminalResult:
         return self.projection.terminal_reason_codes
 
 
-def load_validated_target_size_terminal_result(
+def load_validated_target_size_auto_diagnostic(
     cfg: Mapping[str, Any],
     paths: Any,
     store: Any,
     *,
     expected_revision: TargetSizeCampaignRevision | None = None,
-) -> ValidatedTargetSizeTerminalResult:
-    """Reconstruct, authenticate, and re-derive the current terminal target-size state.
+) -> ValidatedTargetSizeAutoDiagnostic:
+    """Reconstruct, authenticate, and re-derive the current automatic diagnostic.
 
-    This is the single authoritative terminal-load path for select-target-size
-    replay and downstream P5 consumption. The loader always establishes the
+    This is the single authoritative load path for the automatic screen's own
+    evidence.  It is *not* a post-selection entry point: P5 binds to the frozen
+    selection admitted at ``cross-validate``. The loader always establishes the
     current campaign revision directly from CampaignStore. If an expected_revision
     assertion token is passed, it must match the current revision exactly.
     Nothing persisted is trusted blindly: the immutable prepared generation is
     loaded and authenticated against the identities the campaign store binds,
     the P3 execution context is re-derived, the persisted execution root and
     adopted immutable head are re-authenticated through P3 owners, and the
-    terminal selection is re-derived before returning.
+    diagnostic recommendation is re-derived before returning.
     """
 
     from ._campaign_cli_core import _cfg, _optimizer_policy
@@ -353,26 +367,24 @@ def load_validated_target_size_terminal_result(
             or current.state.generation != expected_revision.state.generation
             or current.state.lifecycle != expected_revision.state.lifecycle
         ):
-            raise TargetSizeTerminalProjectionError(
+            raise TargetSizeDiagnosticProjectionError(
                 f"Supplied expected revision (generation {expected_revision.state.generation}, "
                 f"revision {expected_revision.state_revision}) does not match the current "
                 f"CampaignStore revision (generation {current.state.generation}, "
-                f"revision {current.state_revision}). Historical terminal state cannot "
+                f"revision {current.state_revision}). Historical diagnostic state cannot "
                 "be loaded as current."
             )
 
     state = current.state
-    if state.lifecycle not in (
-        TargetSizeLifecycle.TERMINAL_SELECTED,
-        TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
-    ):
-        raise TargetSizeTerminalProjectionError(
-            f"Campaign canonical generation {state.generation} is not in a terminal state "
-            f"(lifecycle={state.lifecycle.value})."
+    if state.lifecycle is not TargetSizeLifecycle.DIAGNOSTIC_COMPLETE:
+        raise TargetSizeDiagnosticProjectionError(
+            f"Campaign canonical generation {state.generation} has no complete automatic "
+            f"target-size diagnostic (lifecycle={state.lifecycle.value})."
         )
-    if state.terminal is None:
-        raise TargetSizeTerminalProjectionError(
-            f"Campaign canonical generation {state.generation} has no persisted terminal projection."
+    if state.auto_diagnostic is None:
+        raise TargetSizeDiagnosticProjectionError(
+            f"Campaign canonical generation {state.generation} has no persisted "
+            "automatic diagnostic projection."
         )
 
     # The prepared generation is loaded, not rebuilt: exposing a terminal result
@@ -384,9 +396,9 @@ def load_validated_target_size_terminal_result(
             cfg, paths, store, current
         )
     except PreparedGenerationError as exc:
-        # Exposing a terminal result under a substrate that no longer
+        # Exposing a diagnostic result under a substrate that no longer
         # authenticates is exactly the projection failure this error names.
-        raise TargetSizeTerminalProjectionError(str(exc)) from exc
+        raise TargetSizeDiagnosticProjectionError(str(exc)) from exc
 
     aggregate = authorities.aggregate
     definition = aggregate.definition
@@ -409,9 +421,9 @@ def load_validated_target_size_terminal_result(
         seed_neutral_optimizer_policy=optimizer_policy,
     )
     if state.execution_context_digest != context.content_digest:
-        raise TargetSizeTerminalProjectionError(
-            "The reconstructed P3 execution context does not match the persisted terminal "
-            "generation. Run `prepare` to bind a fresh canonical generation."
+        raise TargetSizeDiagnosticProjectionError(
+            "The reconstructed P3 execution context does not match the persisted "
+            "diagnostic generation. Run `prepare` to bind a fresh canonical generation."
         )
 
     root = target_size_execution_root(paths, state.generation)
@@ -423,26 +435,27 @@ def load_validated_target_size_terminal_result(
         )
     resolver = TargetSizeExecutionResolver(root)
 
-    head = validate_terminal_projection(
-        current, resolver=resolver, definition=definition
-    )
+    head = validate_auto_diagnostic(current, resolver=resolver, definition=definition)
 
-    return ValidatedTargetSizeTerminalResult(
+    return ValidatedTargetSizeAutoDiagnostic(
         revision=current,
         authorities=authorities,
         head=head,
-        projection=state.terminal,
+        projection=state.auto_diagnostic,
+        schedule=schedule,
+        context=context,
+        optimizer_policy=optimizer_policy,
     )
 
 
 __all__ = [
     "SCIENTIFIC_IDENTITY_FIELDS",
+    "TargetSizeDiagnosticProjectionError",
     "TargetSizeInvalidation",
-    "TargetSizeTerminalProjectionError",
-    "ValidatedTargetSizeTerminalResult",
+    "ValidatedTargetSizeAutoDiagnostic",
     "classify_target_size_invalidation",
-    "commit_terminal_projection",
-    "derive_terminal_projection",
-    "load_validated_target_size_terminal_result",
-    "validate_terminal_projection",
+    "commit_auto_diagnostic",
+    "derive_auto_diagnostic",
+    "load_validated_target_size_auto_diagnostic",
+    "validate_auto_diagnostic",
 ]

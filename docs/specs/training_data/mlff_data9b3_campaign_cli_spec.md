@@ -46,8 +46,10 @@ separate pre-screen gate or downstream physical-test command; downstream
 qualification is a later product boundary and is not dispatched by P6.
 
 No command may silently skip a failed, stale, waiting, or incompatible current
-authority. A terminal scientific target-size failure is reported as a result
-and exposes no production next action.
+authority. An automatic target-size diagnostic that completes without a
+recommendation is reported as a successful diagnostic result: it leaves the
+current provisional design unchanged and does not prohibit an explicit
+target-size choice.
 
 ## User-visible layout
 
@@ -145,10 +147,10 @@ source/frame/label authority
 
 It selects no target size, trains no candidate, ranks no checkpoint, and
 publishes no final model. It is restartable and idempotent when all current
-inputs and identities match, including when the current generation is already
-terminal: an unchanged terminal `prepare` is a successful no-op that leaves the
-canonical generation, its terminal evidence, and its derived result view exactly
-as they were.
+inputs and identities match, including when the current generation already
+carries a complete automatic diagnostic: an unchanged `prepare` is a successful
+no-op that leaves the canonical generation, its diagnostic evidence, and its
+derived result view exactly as they were.
 
 `prepare` is the sole command permitted to interpret live inputs, so it also
 owns detecting that they changed. Before reusing the stored lower-level
@@ -184,18 +186,66 @@ content caches are reusable only after current-owner revalidation.
 
 ### `select-target-size`
 
-This command is the sole target-size owner. It runs the configurable ladder and
-direct evaluation populations through the authenticated continuation
+```text
+select-target-size <N>
+select-target-size --auto
+[--select-horizon-cv <positive integer>] [--select-horizon <positive integer>]
+```
+
+This command owns the **provisional** downstream training design and freezes
+nothing. A bare invocation is invalid and must give actionable usage guidance;
+`<N>` and `--auto` are mutually exclusive.
+
+`select-target-size <N>` loads the current prepared generation, establishes
+currentness, resolves the P2 qualified candidate set, requires `N` to be one of
+those configured qualified candidates, derives `T_N = pi_train[:N]`, validates
+that membership through the existing P2 training-order owner, resolves a
+complete provisional horizon snapshot, and CAS-publishes the new proposal. It
+performs **no** target-size candidate training and no EVAL2 work.
+
+`--select-horizon-cv` sets the provisional CV max epochs and `--select-horizon`
+the provisional final-production max epochs. Each successful proposal-setting
+invocation resolves a complete proposal: an omitted flag resolves from
+`[post_selection.cv].max_num_epochs` (default 30) or `[training].max_num_epochs`
+(default 30) *at that moment*, and the resolved values are persisted, so later
+configuration edits do not mutate an existing proposal. An earlier override never
+becomes a sticky default. The CLI never rewrites `campaign.toml`.
+
+`select-target-size --auto` runs or reuses the optional automatic diagnostic. It
+runs the configurable ladder and direct evaluation populations through the
+authenticated continuation
 
 ```text
 n1 / M1 -> n2 / M2 -> n3 / M3
 ```
 
 with paired optimizer seeds from the sole enabled method. Each candidate is an
-exact prefix of the one `pi_train` order. The reducer publishes either one
-`N_selected` with exact `T_selected = pi_train[:N_selected]` or a typed
-scientific failure. Replay and later validation evidence cannot affect the
-decision.
+exact prefix of the one `pi_train` order. The reducer publishes either a
+**recommended** `N` with the exact identity of `pi_train[:N]`, or a typed
+no-recommendation outcome. Replay and later validation evidence cannot affect
+that computation. A valid recommendation becomes the current provisional `N`.
+
+A completed diagnostic that produces no recommendation must not partially modify
+any proposal field: the diagnostic evidence and its portable report are
+committed, any previously valid proposal is unchanged, and the command returns
+normal success while stating that no recommendation was established.
+
+If a current reusable complete diagnostic already exists for the campaign's
+automatic-screen scientific/execution identity, `--auto` authenticates and
+reloads it, performs zero new TRAIN2/EVAL2 work, and says so. Provisional `N`,
+either horizon flag, either configured horizon, report presentation, status
+wording, report path, and selection-source provenance never invalidate a current
+diagnostic.
+
+A diagnostic may run for hours. It captures the selection state it intends to
+update; if a newer explicit choice or a `cross-validate` freeze intervened, the
+evidence and report are still published but the stale recommendation is not
+installed, and the command says so.
+
+Every terminal diagnostic writes one portable, self-contained Markdown report
+under the campaign `results/` tree at a stable per-generation filename. It is a
+derived, rebuildable projection of authenticated evidence and is never read as
+authority.
 
 Candidate learning-rate amplitude and EMA decay are normalized against the
 configured reference size (`[target_data.size_convergence.optimizer_normalization]`)
@@ -205,17 +255,26 @@ across candidates.
 
 The configured ladder ceiling is a practical budget limit. When `Nmax` remains
 materially superior to every other successful terminal finalist, it is
-**selected** and the result carries the non-blocking warning code
-`nonconverged_at_configured_ceiling`; `status` and the derived result view
-report the warning alongside the frozen size, the campaign lifecycle is
-`TERMINAL_SELECTED`, and the next admissible command remains `cross-validate`.
-Inside the practical-equivalence band the smaller finalist is still preferred.
-Genuinely insufficient comparison remains a typed scientific failure, and no
+**recommended** and the result carries the non-blocking warning code
+`nonconverged_at_configured_ceiling`; `status`, the derived result view, and the
+portable report state the warning alongside the recommendation. Inside the
+practical-equivalence band the smaller finalist is still preferred. Genuinely
+insufficient comparison remains a typed no-recommendation outcome, and no
 unconfigured intermediate or rescue size is ever synthesized.
 
 ### `cross-validate`
 
-This command requires a current terminal selection and constructs the
+This command is the freeze boundary. It requires a current provisional proposal,
+loads and authenticates the current prepared generation, revalidates the
+proposed `N` against the current qualified candidate set, derives exact
+`T_selected = pi_train[:N]`, reproduces its membership digest, and publishes the
+frozen target selection together with both effective role horizons through the
+existing currentness/CAS boundaries before any numerical CV work begins. No
+automatic-diagnostic execution head or reducer is required for this transition.
+After the freeze, `select-target-size` in either form must not mutate the
+design.
+
+It then constructs the
 configured `K >= 2` post-selection folds inside exactly `T_selected`. It binds
 protected relations, fold/seed identities, target-only checkpoint choice, and
 the all-required-fold/all-required-seed acceptance predicate. It cannot alter
@@ -226,7 +285,7 @@ final production while leaving the selected authority unchanged.
 
 This command requires accepted current post-selection method evidence. It
 starts fresh from the accepted foundation and trains the complete exact
-`T_selected` under `[training].max_num_epochs` and the production policy. A
+`T_selected` under the frozen production horizon and the production policy. A
 screen or CV checkpoint is never a production parent. Publication rechecks
 currentness at commit time and cannot promote work from a superseded
 generation.

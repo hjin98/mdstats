@@ -268,21 +268,27 @@ def build_post_selection_context(
     *,
     trainer: Any = None,
     inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
-    expected_revision: Any = None,
     qualification_case_workers: int = 1,
+    admit: bool = False,
 ) -> PostSelectionContext:
     """Re-establish current P4 authority and resolve all three P5 identities.
 
     The three identities are resolved here, before any expensive work, which is
     exactly what makes them policy rather than evidence: nothing they depend on
     has been produced yet.
+
+    ``admit`` belongs to ``cross-validate`` alone: it is the freeze boundary that
+    converts the operator's provisional design into immutable ancestry.  Every
+    other caller requires a freeze that already happened.
+
+    Both role horizons come from that frozen design rather than from live
+    configuration, so an edit to ``campaign.toml`` after admission cannot rewrite
+    the experiment that is already running.
     """
 
     from ._campaign_cli_core import _ensure_local_wrappers
 
-    selected = load_current_selected_training_context(
-        cfg, paths, store, expected_revision=expected_revision
-    )
+    selected = load_current_selected_training_context(cfg, paths, store, admit=admit)
     resolved_trainer = trainer
     if resolved_trainer is None:
         resolved_trainer = MacePostSelectionTrainer(
@@ -296,8 +302,12 @@ def build_post_selection_context(
         selected=selected,
         method=resolve_post_selection_method_identity(cfg, policies=policies),
         method_policies=policies,
-        cv_policy=resolve_cv_validation_policy_identity(cfg),
-        production_policy=resolve_final_production_policy_identity(cfg),
+        cv_policy=resolve_cv_validation_policy_identity(
+            cfg, max_num_epochs=selected.frozen.cv_max_num_epochs
+        ),
+        production_policy=resolve_final_production_policy_identity(
+            cfg, max_num_epochs=selected.frozen.production_max_num_epochs
+        ),
         trainer=resolved_trainer,
         inference_evaluator=inference_evaluator,
         qualification_case_workers=max(1, int(qualification_case_workers)),
@@ -2100,12 +2110,23 @@ def execute_current_cross_validate(args: Any) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     _print_header("Post-selection cross-validation of the frozen training method")
+    # `cross-validate` is the freeze boundary: it admits the current provisional
+    # design, fixing N, the exact T_selected membership, and both effective role
+    # horizons as immutable ancestry before any numerical CV work begins.
     context = build_post_selection_context(
         cfg,
         paths,
         store,
         trainer=getattr(args, "_external_post_selection_trainer", None),
         inference_evaluator=getattr(args, "_external_inference_evaluator", None),
+        admit=True,
+    )
+    _ok(
+        f"froze the downstream design: N_selected={context.selected.n_selected}; "
+        f"T_selected={context.selected.selected_membership_digest[:12]}...; "
+        f"CV horizon {context.cv_policy.cv_max_num_epochs}; production horizon "
+        f"{context.production_policy.production_max_num_epochs}; selection source "
+        f"{context.selected.frozen.selection_source}"
     )
     _mark_stage(
         store,
@@ -2204,7 +2225,7 @@ def execute_current_train_production(args: Any) -> int:
     _ok(
         f"trained {len(evidence)} fresh production run(s) on the full "
         f"T_selected (N={final_plan.n_selected}) for "
-        f"{final_plan.planned_epochs} configured [training].max_num_epochs, "
+        f"{final_plan.planned_epochs} frozen production epoch(s), "
         "under the cross-validation-accepted method"
     )
     _ok(

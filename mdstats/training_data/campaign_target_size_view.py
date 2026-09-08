@@ -22,23 +22,23 @@ import tempfile
 
 from .campaign_target_size_state import TargetSizeCampaignRevision
 
-TARGET_SIZE_RESULT_VIEW_SCHEMA = "mdstats.target-size-result-view.v1"
+TARGET_SIZE_RESULT_VIEW_SCHEMA = "mdstats.target-size-result-view.v2"
 
 
-def _build_terminal_target_size_result_view(
+def _build_diagnostic_target_size_result_view(
     validated_result: Any,
 ) -> dict[str, Any]:
-    """Private helper: construct the terminal target-size result view payload.
+    """Private helper: construct the completed-diagnostic result view payload.
 
-    This helper is reachable only from expose_current_target_size_terminal_result
+    This helper is reachable only from expose_current_target_size_auto_diagnostic
     or write_current_target_size_result_view after exposure-time CampaignStore
     currentness validation.
     """
-    from .campaign_target_size_terminal import ValidatedTargetSizeTerminalResult
+    from .campaign_target_size_diagnostic import ValidatedTargetSizeAutoDiagnostic
 
-    if not isinstance(validated_result, ValidatedTargetSizeTerminalResult):
+    if not isinstance(validated_result, ValidatedTargetSizeAutoDiagnostic):
         raise TypeError(
-            f"_build_terminal_target_size_result_view requires ValidatedTargetSizeTerminalResult, got {type(validated_result).__name__}"
+            f"_build_diagnostic_target_size_result_view requires ValidatedTargetSizeAutoDiagnostic, got {type(validated_result).__name__}"
         )
 
     from .target_size_experiment import (
@@ -64,28 +64,32 @@ def _build_terminal_target_size_result_view(
         "execution_root": state.execution_root,
         "adopted_execution_head_digest": state.adopted_execution_head_digest,
         "adopted_reducer_state_digest": state.adopted_reducer_state_digest,
-        "terminal": None if state.terminal is None else state.terminal.to_dict(),
+        "auto_diagnostic": (
+            None if state.auto_diagnostic is None else state.auto_diagnostic.to_dict()
+        ),
+        "proposal": None if state.proposal is None else state.proposal.to_dict(),
+        "frozen": None if state.frozen is None else state.frozen.to_dict(),
         "reducer_status": head.post_state.status.value,
         "active_candidate_sizes": list(head.post_state.active_candidate_sizes),
         "completed_boundary_epochs": list(head.post_state.completed_boundary_epochs),
-        "selected_target_size": head.post_state.selected_target_size,
-        "selected_membership_digest": head.post_state.selected_membership_digest,
+        "recommended_target_size": head.post_state.selected_target_size,
+        "recommended_membership_digest": head.post_state.selected_membership_digest,
         "terminal_reason_codes": list(reason_codes),
-        # A selected-at-ceiling result is a valid frozen selection carrying a
-        # scientific warning: the configured practical budget, not a
-        # demonstrated plateau, bounded the screen.
+        # A recommendation at the ceiling carries a scientific warning: the
+        # configured practical budget, not a demonstrated plateau, bounded the
+        # screen. It is a diagnostic caveat on advice, never a frozen decision.
         "nonconverged_at_configured_ceiling": (
             CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE in reason_codes
         ),
     }
 
 
-def _write_terminal_target_size_result_view(
+def _write_diagnostic_target_size_result_view(
     path: str | os.PathLike[str],
     validated_result: Any,
 ) -> dict[str, Any]:
-    """Private helper: atomically write the terminal result view to disk."""
-    payload = _build_terminal_target_size_result_view(validated_result)
+    """Private helper: atomically write the diagnostic result view to disk."""
+    payload = _build_diagnostic_target_size_result_view(validated_result)
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary_name = tempfile.mkstemp(
@@ -110,21 +114,22 @@ def build_target_size_result_view(
     validated_result: Any | None = None,
     resolver: Any | None = None,
 ) -> dict[str, Any]:
-    """Render the nonterminal target-size campaign state as a derived view.
+    """Render an in-progress target-size campaign state as a derived view.
 
-    Nonterminal views render intermediate progress metadata without scientific
-    terminal selection. Any terminal revision is rejected unconditionally: terminal
-    views must be rendered via expose_current_target_size_terminal_result /
-    write_current_target_size_result_view to guarantee exposure-time CampaignStore
-    currentness.
+    These views render intermediate diagnostic progress and the current
+    proposal/freeze facts. A revision whose automatic diagnostic has completed is
+    rejected unconditionally: those views must be rendered via
+    expose_current_target_size_auto_diagnostic /
+    write_current_target_size_result_view to guarantee exposure-time
+    CampaignStore currentness.
     """
-    from .campaign_target_size_terminal import TargetSizeTerminalProjectionError
+    from .campaign_target_size_diagnostic import TargetSizeDiagnosticProjectionError
 
-    if revision.state.terminal is not None:
-        raise TargetSizeTerminalProjectionError(
-            "build_target_size_result_view cannot render terminal target-size state. "
-            "Public terminal results require exposure-time CampaignStore currentness validation via "
-            "expose_current_target_size_terminal_result or write_current_target_size_result_view."
+    if revision.state.auto_diagnostic is not None:
+        raise TargetSizeDiagnosticProjectionError(
+            "build_target_size_result_view cannot render a completed automatic diagnostic. "
+            "Public diagnostic results require exposure-time CampaignStore currentness validation via "
+            "expose_current_target_size_auto_diagnostic or write_current_target_size_result_view."
         )
 
     state = revision.state
@@ -143,7 +148,9 @@ def build_target_size_result_view(
         "execution_root": state.execution_root,
         "adopted_execution_head_digest": state.adopted_execution_head_digest,
         "adopted_reducer_state_digest": state.adopted_reducer_state_digest,
-        "terminal": None,
+        "auto_diagnostic": None,
+        "proposal": None if state.proposal is None else state.proposal.to_dict(),
+        "frozen": None if state.frozen is None else state.frozen.to_dict(),
     }
     if resolver is not None and state.adopted_execution_head_digest is not None:
         from .campaign_target_size_adoption import load_adopted_execution_head
@@ -154,8 +161,8 @@ def build_target_size_result_view(
         payload["completed_boundary_epochs"] = list(
             head.post_state.completed_boundary_epochs
         )
-        payload["selected_target_size"] = head.post_state.selected_target_size
-        payload["selected_membership_digest"] = (
+        payload["recommended_target_size"] = head.post_state.selected_target_size
+        payload["recommended_membership_digest"] = (
             head.post_state.selected_membership_digest
         )
     return payload
@@ -168,17 +175,18 @@ def write_target_size_result_view(
     validated_result: Any | None = None,
     resolver: Any | None = None,
 ) -> dict[str, Any]:
-    """Atomically (re)write a nonterminal derived view; safe to repeat after any crash.
+    """Atomically (re)write an in-progress derived view; safe to repeat after a crash.
 
-    Any terminal revision is rejected unconditionally: terminal views must be
-    written via write_current_target_size_result_view.
+    A revision whose automatic diagnostic has completed is rejected
+    unconditionally: those views are written via
+    write_current_target_size_result_view.
     """
-    from .campaign_target_size_terminal import TargetSizeTerminalProjectionError
+    from .campaign_target_size_diagnostic import TargetSizeDiagnosticProjectionError
 
-    if revision.state.terminal is not None:
-        raise TargetSizeTerminalProjectionError(
-            "write_target_size_result_view cannot write terminal target-size state. "
-            "Public terminal results require exposure-time CampaignStore currentness validation via "
+    if revision.state.auto_diagnostic is not None:
+        raise TargetSizeDiagnosticProjectionError(
+            "write_target_size_result_view cannot write a completed automatic diagnostic. "
+            "Public diagnostic results require exposure-time CampaignStore currentness validation via "
             "write_current_target_size_result_view."
         )
 
@@ -211,24 +219,26 @@ def write_nonterminal_target_size_result_view(
     return write_target_size_result_view(path, revision, resolver=resolver)
 
 
-def expose_current_target_size_terminal_result(
+def expose_current_target_size_auto_diagnostic(
     cfg: Any,
     paths: Any,
     store: Any,
     *,
     expected_revision: TargetSizeCampaignRevision | None = None,
 ) -> Any:
-    """Authoritative exposure-time entrypoint for the current terminal target-size result.
+    """Authoritative exposure-time entrypoint for the current automatic diagnostic.
 
     This function re-establishes CampaignStore currentness and executes the full
     canonical P1/P2/P3 validation chain in the same invocation. It is the single
-    exposure boundary for all current-terminal views, reporting, and P5 consumption.
+    exposure boundary for every current diagnostic view and report. It is *not* a
+    post-selection entry point: P5 binds to the frozen selection admitted at
+    `cross-validate`, which needs no diagnostic at all.
     """
-    from .campaign_target_size_terminal import (
-        load_validated_target_size_terminal_result,
+    from .campaign_target_size_diagnostic import (
+        load_validated_target_size_auto_diagnostic,
     )
 
-    return load_validated_target_size_terminal_result(
+    return load_validated_target_size_auto_diagnostic(
         cfg, paths, store, expected_revision=expected_revision
     )
 
@@ -241,8 +251,8 @@ def write_current_target_size_result_view(
     path: str | os.PathLike[str] | None = None,
     expected_revision: TargetSizeCampaignRevision | None = None,
 ) -> dict[str, Any]:
-    """Atomically write the current terminal result view after exposure-time currentness validation."""
-    validated = expose_current_target_size_terminal_result(
+    """Atomically write the current diagnostic result view after exposure-time currentness validation."""
+    validated = expose_current_target_size_auto_diagnostic(
         cfg, paths, store, expected_revision=expected_revision
     )
     destination = (
@@ -250,13 +260,13 @@ def write_current_target_size_result_view(
         if path is not None
         else (Path(paths.results) / "target-size-state.json")
     )
-    return _write_terminal_target_size_result_view(destination, validated)
+    return _write_diagnostic_target_size_result_view(destination, validated)
 
 
 __all__ = [
     "TARGET_SIZE_RESULT_VIEW_SCHEMA",
     "build_target_size_result_view",
-    "expose_current_target_size_terminal_result",
+    "expose_current_target_size_auto_diagnostic",
     "write_current_target_size_result_view",
     "write_nonterminal_target_size_result_view",
     "write_target_size_result_view",

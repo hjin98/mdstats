@@ -5024,12 +5024,40 @@ def _terminate_process(process: subprocess.Popen[Any], *, grace_seconds: float) 
 
 
 def command_select_target_size(args: argparse.Namespace) -> int:
-    """Run or resume the complete current configurable-fidelity target-size screen.
+    """Establish or revise the current provisional target training design.
 
-    This is the sole current screening entrypoint. It reaches the accepted
-    P1/P2/P3 owners directly; no retired selector, role-domain, coverage,
-    complement, or pre-target CV authority participates.
+    ``select-target-size <N>`` proposes a configured qualified candidate and
+    trains nothing. ``select-target-size --auto`` runs or reuses the optional
+    automatic diagnostic and adopts its recommendation. Neither freezes the
+    design: ``cross-validate`` is the freeze boundary.
     """
+
+    target_size = getattr(args, "target_size", None)
+    auto = bool(getattr(args, "auto", False))
+    if target_size is not None and auto:
+        raise CampaignCliError(
+            "`select-target-size <N>` and `select-target-size --auto` are mutually "
+            "exclusive: the first states an explicit choice, the second adopts the "
+            "automatic diagnostic's recommendation. Choose one."
+        )
+    if target_size is None and not auto:
+        raise CampaignCliError(
+            "`select-target-size` requires an explicit decision. Run "
+            "`select-target-size <N>` to choose a configured qualified candidate "
+            "size, or `select-target-size --auto` to run (or reuse) the optional "
+            "automatic target-size diagnostic and adopt its recommendation. "
+            "`prepare` reports this generation's qualified candidate ladder, and "
+            "selecting an unqualified size lists it again."
+        )
+    if target_size is not None and int(target_size) <= 0:
+        raise CampaignCliError("A selected target size must be a positive integer.")
+    for name, flag in (
+        ("select_horizon_cv", "--select-horizon-cv"),
+        ("select_horizon", "--select-horizon"),
+    ):
+        value = getattr(args, name, None)
+        if value is not None and int(value) <= 0:
+            raise CampaignCliError(f"{flag} must be a positive number of epochs.")
 
     cfg, _paths = _load_config(args.config)
     if _training_policy_generation(cfg) != "train2":
@@ -5592,7 +5620,20 @@ def command_status(args: argparse.Namespace) -> int:
     print(f"Results:   {paths.results}")
     next_command = snapshot.next_command
     terminal_step = snapshot.terminal_step
-    if next_command:
+    select_step = snapshot.step("target_size_selection")
+    if next_command == "select-target-size" and select_step is not None and (
+        select_step.state == "waiting"
+    ):
+        # There is no defensible default here, so status offers the two real
+        # choices instead of printing a command that would be rejected.
+        base = f"python tools/mdstats-mlff-campaign.py --config {paths.config}"
+        print(
+            "\nNext decision - choose the provisional target size yourself:"
+            f"\n  {base} select-target-size <N>"
+            "\nor run the optional automatic diagnostic and adopt its recommendation:"
+            f"\n  {base} select-target-size --auto"
+        )
+    elif next_command:
         print(
             "\nNext command: python tools/mdstats-mlff-campaign.py "
             f"--config {paths.config} {next_command}"
@@ -5639,20 +5680,22 @@ def command_advance(args: argparse.Namespace) -> int:
     if name == "prepare":
         return command_prepare(argparse.Namespace(config=args.config, approve_manifest=False, continue_after_approval=False, refresh_inferences=False, rebuild_catalog=False, max_new_frames=None))
     if name == "select-target-size":
-        select_args = argparse.Namespace(config=args.config)
-        # This private, in-process attribute is deliberately propagated only
-        # through public lifecycle routing.  It lets the bounded integration
-        # harness retain the real ``advance -> select-target-size`` ownership
-        # while replacing only the external numerical MACE child.  It is not a
-        # parser option, configuration field, or persisted campaign property.
-        for attribute in (
-            "_external_child_wrapper",
-            "_external_boundary_trainer",
-            "_external_inference_evaluator",
-        ):
-            if hasattr(args, attribute):
-                setattr(select_args, attribute, getattr(args, attribute))
-        return command_select_target_size(select_args)
+        # `advance` never invents a target-size choice and never silently routes
+        # to the automatic diagnostic. How much data to train on is an
+        # experimental-design decision, and a short-horizon screen is evidence
+        # for it, not a substitute for making it. So routing stops here.
+        print(
+            "Campaign is at the target-size decision boundary and `advance` does "
+            "not decide it for you.\n"
+            "  - `select-target-size <N>` chooses a configured qualified candidate "
+            "explicitly.\n"
+            "  - `select-target-size --auto` runs (or reuses) the optional "
+            "automatic diagnostic and adopts its recommendation.\n"
+            "Either choice stays provisional until `cross-validate` freezes it. "
+            "Run `status` to see the qualified candidate ladder.",
+            flush=True,
+        )
+        return 0
     if name in {"cross-validate", "train-production"}:
         forwarded = argparse.Namespace(config=args.config)
         for attribute in (
@@ -6307,8 +6350,8 @@ init -> doctor -> prepare -> select-target-size -> cross-validate -> train-produ
 1. init                Write an annotated campaign.toml.
 2. doctor              Check paths, source inputs, MACE, replay, and the requested backend.
 3. prepare             Build the neutral source/statistical substrate and common target-size preparation.
-4. select-target-size  Run the paired-seed target-size screen and freeze N_selected.
-5. cross-validate      Validate the frozen training method on exactly T_selected.
+4. select-target-size  Choose the provisional target size and role horizons.
+5. cross-validate      Freeze that design, then validate the method on exactly T_selected.
 6. train-production    Train fresh final model(s) on the complete T_selected.
 
 Post-production qualification is a separate, downstream family:
@@ -6320,8 +6363,9 @@ artifacts. Its report modes and every --dry-run are observational: they change
 nothing, not even a cache, and they never create a campaign. Only --apply on the
 invocation you are running authorizes a mutation; configuration cannot carry that
 authority. status and advance project the training lifecycle only; advance never
-runs qualification and never opens locked evidence. A target-size scientific
-failure is terminal evidence; it does not authorize a production command.
+runs qualification and never opens locked evidence. advance also never decides
+the target size for you: it stops at that decision boundary and never silently
+runs the automatic diagnostic.
 
 Preparation and target-size selection
 --------------------------------------
@@ -6333,28 +6377,53 @@ per-size production dataset. The cutover rejects obsolete derived target-size
 records and quarantines them rather than migrating them; they are never
 translated.
 
-select-target-size is the sole target-size owner. Candidate sizes are powers
-from target_size_power_min through target_size_power_max, bounded by the
-available population. evaluation_size_powers defines the direct nested M1,
-M2, M3 populations and fidelity_epochs defines the controlled screen horizon.
-Candidates are exact prefixes of pi_train, use the ordered seeds from the sole
-enabled training method, and continue only through the accepted n1/n2/n3
-funnel. The reducer freezes one N_selected and its exact T_selected membership,
-or records a typed scientific failure. Replay and held-out CV evidence cannot
-choose the size.
+select-target-size owns the provisional downstream training design: how much
+target data to train on, and how much optimization budget each downstream role
+gets. It does not freeze anything.
+
+  select-target-size <N>       choose a configured qualified candidate size
+  select-target-size --auto    run or reuse the automatic diagnostic and adopt
+                               its recommendation
+  --select-horizon-cv <E>      provisional cross-validation max epochs
+  --select-horizon <E>         provisional final-production max epochs
+
+Candidate sizes are powers from target_size_power_min through
+target_size_power_max, bounded by the available population. T_N is always the
+exact prefix pi_train[:N]; there is no other membership constructor. A bare
+select-target-size is invalid, and <N> and --auto are mutually exclusive.
+Omitted horizons resolve on each proposal-setting invocation from
+[post_selection.cv].max_num_epochs and [training].max_num_epochs; the resolved
+values are then persisted with the proposal, so a later configuration edit does
+not silently rewrite a decision that already exists. The CLI never rewrites
+campaign.toml.
+
+The automatic diagnostic is optional evidence, not authority. It ranks
+candidates by target-force RMSE at the configured fidelity_epochs boundaries
+using the ordered seeds from the sole enabled training method and the accepted
+n1/n2/n3 funnel over evaluation_size_powers populations. It recommends a size;
+it does not establish asymptotic convergence, long-horizon training quality, or
+MD behavior. A completed diagnostic that cannot make a valid comparison reports
+no recommendation, leaves any existing proposal untouched, and does not prevent
+choosing a qualified candidate explicitly. A repeated --auto on unchanged
+scientific identity reuses the cached diagnostic and reruns no training. Every
+completed diagnostic also writes a portable Markdown report under results/.
 
 Post-selection owners
 ----------------------
-cross-validate runs only after a selected target is current. It constructs the
-configured K-fold plan under post_selection.cv, with K at least two, uses
-target-only checkpoint and acceptance metrics, and requires every configured
-fold/seed to pass. Its universe is exactly T_selected; it cannot change N.
+cross-validate is the freeze boundary. It admits the current provisional
+proposal, re-deriving T_selected = pi_train[:N] from the P2 training order, and
+fixes N_selected, that exact membership, and both effective role horizons as
+immutable ancestry before any numerical work. After that, select-target-size can
+no longer change the design. It then constructs the configured K-fold plan under
+post_selection.cv, with K at least two, uses target-only checkpoint and
+acceptance metrics, and requires every configured fold/seed to pass. Its
+universe is exactly T_selected; it cannot change N.
 
 train-production starts fresh from the canonical initialization, uses the
 method accepted by cross-validation, and trains the complete T_selected under
-training.max_num_epochs. Screening and CV checkpoints are not production
-parents. Changing the production horizon invalidates only production
-descendants; the selected target and accepted CV evidence remain current.
+the frozen production horizon. Screening and CV checkpoints are not production
+parents. The two role horizons stay independent: changing one never invalidates
+the other role's accepted evidence.
 
 Post-production qualification
 -----------------------------
@@ -6394,7 +6463,7 @@ precision selected at init, while mdstats scientific reductions and persistent
 MD bookkeeping remain FP64.
 
 Every durable scientific record binds its source, protocol, parent authorities,
-and content digests. Reopening a workspace re-derives current selection and
+and content digests. Reopening a workspace re-derives the current design and
 currentness before reuse. Scientific input changes invalidate the affected
 descendants; provenance-only changes do not change arithmetic; CV-only edits do
 not invalidate selection; production-only edits do not invalidate selection or
@@ -6528,8 +6597,41 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(
         "select-target-size",
         help=(
-            "run/resume the complete configurable-fidelity paired-seed target-size "
-            "screen; this is the only command that trains candidates and decides N"
+            "choose the provisional target size and the CV/production training "
+            "horizons; optionally run or reuse the automatic target-size diagnostic. "
+            "Freezes nothing - `cross-validate` is the freeze boundary"
+        ),
+    )
+    p.add_argument(
+        "target_size",
+        nargs="?",
+        type=int,
+        help="a configured qualified candidate size to select explicitly",
+    )
+    p.add_argument(
+        "--auto",
+        action="store_true",
+        help=(
+            "run or reuse the optional automatic target-size diagnostic and adopt "
+            "its recommendation as the provisional choice"
+        ),
+    )
+    p.add_argument(
+        "--select-horizon-cv",
+        type=int,
+        default=None,
+        help=(
+            "provisional cross-validation max epochs for this proposal "
+            "(default: [post_selection.cv].max_num_epochs)"
+        ),
+    )
+    p.add_argument(
+        "--select-horizon",
+        type=int,
+        default=None,
+        help=(
+            "provisional final-production max epochs for this proposal "
+            "(default: [training].max_num_epochs)"
         ),
     )
     p.set_defaults(func=command_select_target_size)

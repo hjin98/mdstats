@@ -1363,12 +1363,20 @@ def resolve_post_selection_method_identity(
 
 def resolve_cv_validation_policy_identity(
     config: Mapping[str, Any],
+    *,
+    max_num_epochs: int | None = None,
 ) -> CvValidationPolicyIdentity:
     """Resolve ``[post_selection.cv]`` into the CV-only policy identity.
 
     The CV training budget is resolved here and nowhere else.  It deliberately
     does not read ``[training].max_num_epochs``: a production horizon edit must
     not invalidate accepted cross-validation evidence.
+
+    ``max_num_epochs`` is the *frozen effective* CV horizon admitted with the
+    target selection.  Once an experiment is frozen its budget is part of that
+    experiment, so a later configuration edit must not silently rewrite it.
+    Every other field still comes from its existing configuration owner: this is
+    one field substitution, not a second policy resolver.
     """
 
     cv = _table(config, "post_selection", "cv")
@@ -1388,7 +1396,11 @@ def resolve_cv_validation_policy_identity(
             cv.get("checkpoint_monitor_components_per_fold", 1)
         ),
         purge_components_between_roles=int(cv.get("purge_components_between_roles", 0)),
-        cv_max_num_epochs=int(cv.get("max_num_epochs", DEFAULT_CV_MAX_NUM_EPOCHS)),
+        cv_max_num_epochs=(
+            int(max_num_epochs)
+            if max_num_epochs is not None
+            else int(cv.get("max_num_epochs", DEFAULT_CV_MAX_NUM_EPOCHS))
+        ),
         acceptance_metric=str(
             cv.get("acceptance_metric", "target_force_rmse_ev_per_angstrom")
         ),
@@ -1401,11 +1413,18 @@ def resolve_cv_validation_policy_identity(
 
 def resolve_final_production_policy_identity(
     config: Mapping[str, Any],
+    *,
+    max_num_epochs: int | None = None,
 ) -> FinalProductionPolicyIdentity:
-    """Resolve the production-only policy, including the configured horizon.
+    """Resolve the production-only policy, including the effective horizon.
 
     ``[training].max_num_epochs`` is read exactly once, here.  Nothing derives
     it from target-size ``n3`` and nothing derives ``n3`` from it.
+
+    ``max_num_epochs`` is the frozen effective production horizon admitted with
+    the target selection, and it substitutes for the configured value alone.  It
+    does not reach the CV policy: the two role horizons stay independent, so
+    changing one never invalidates the other role's accepted evidence.
     """
 
     training = _table(config, "training")
@@ -1417,7 +1436,11 @@ def resolve_final_production_policy_identity(
             "horizon authority."
         )
     return FinalProductionPolicyIdentity(
-        production_max_num_epochs=int(training.get("max_num_epochs", 30)),
+        production_max_num_epochs=(
+            int(max_num_epochs)
+            if max_num_epochs is not None
+            else int(training.get("max_num_epochs", 30))
+        ),
         production_seeds=production.get("seeds", training.get("seeds", (1,))),
         committee_policy=str(
             production.get("committee_policy", "all_qualified_final_seeds")

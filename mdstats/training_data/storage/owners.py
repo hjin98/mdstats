@@ -890,7 +890,9 @@ def target_size_views(
                 revision.state.adopted_execution_head_digest,
                 revision.state.screen_window_digest,
                 revision.state.experiment_definition_digest,
-                revision.state.terminal,
+                revision.state.auto_diagnostic,
+                revision.state.proposal,
+                revision.state.frozen,
             )
         )
 
@@ -1237,10 +1239,7 @@ def selection_is_expected(store: Any) -> bool:
     separates them.
     """
 
-    from ..campaign_target_size_state import (
-        TargetSizeLifecycle,
-        load_target_size_campaign_revision,
-    )
+    from ..campaign_target_size_state import load_target_size_campaign_revision
 
     try:
         revision = load_target_size_campaign_revision(store)
@@ -1248,7 +1247,9 @@ def selection_is_expected(store: Any) -> bool:
         return False
     if revision is None:
         return False
-    return revision.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
+    # Post-selection storage exists only under an admitted frozen selection. A
+    # complete automatic diagnostic is not that, and never was.
+    return revision.state.frozen is not None
 
 
 def _run_infrastructure_members(run_root: Path) -> tuple[str, ...]:

@@ -131,7 +131,7 @@ CLI. Do not bypass target-size selection or held-out boundaries:
 ```bash
 python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> doctor
 python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> prepare
-python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> select-target-size
+python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> select-target-size --auto
 python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> cross-validate
 python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> train-production
 ```
@@ -139,13 +139,19 @@ python tools/mdstats-mlff-campaign.py --config <frozen-campaign.toml> train-prod
 The campaign itself owns the configured target-size ladder and fidelity path:
 
 ```text
-pi_train -> configured candidate ladder -> screen(n1/M1 -> n2/M2 -> n3/M3)
-        -> N_selected and T_selected = pi_train[:N_selected]
+pi_train -> configured candidate ladder
+        -> optional diagnostic screen(n1/M1 -> n2/M2 -> n3/M3) -> recommended N
+        -> operator's provisional design
+        -> cross-validate admission freezes N_selected,
+           T_selected = pi_train[:N_selected], and both role horizons
         -> post-selection cross-validation on exactly T_selected
         -> fresh final production on the complete T_selected
 ```
 
-FINAL-GPU1 must not create rescue sizes, migrate old target ladders, or alter a selected target size.
+`select-target-size --auto` adopts the diagnostic's recommendation; substitute
+`select-target-size <N>` to choose a qualified candidate explicitly. Either way,
+nothing is frozen until `cross-validate` admits it. FINAL-GPU1 must not create
+rescue sizes, migrate old target ladders, or alter a frozen target selection.
 
 # 9. Register evidence
 

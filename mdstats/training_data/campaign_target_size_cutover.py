@@ -391,7 +391,7 @@ def ensure_current_target_size_authorities(
     and must be re-run against current state.
     """
 
-    from .campaign_target_size_terminal import classify_target_size_invalidation
+    from .campaign_target_size_diagnostic import classify_target_size_invalidation
 
     revision = ensure_target_size_campaign_revision(store)
     rebased = (

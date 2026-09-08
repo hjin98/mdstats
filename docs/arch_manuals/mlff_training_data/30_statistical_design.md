@@ -202,8 +202,9 @@ raw source / label / feature / event evidence
     -> neutral statistical substrate and protected relations
     -> P_train/M3 split and canonical orders
     -> common fitted preparation
-    -> one target-size screen and reducer
-    -> frozen N_selected/T_selected
+    -> optional target-size diagnostic screen and reducer (recommends only)
+    -> operator-owned provisional design
+    -> frozen N_selected/T_selected and role horizons at cross-validate admission
     -> post-selection fold partitions and method acceptance
     -> fresh final production
     -> downstream qualification roles when separately implemented and activated

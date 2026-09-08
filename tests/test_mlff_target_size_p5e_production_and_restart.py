@@ -255,30 +255,47 @@ def test_p5e_a_shared_method_change_invalidates_the_cv_authorization(
 def test_p5e_a_method_field_that_is_also_upstream_identity_follows_p1_p4(
     tmp_path: Path,
 ):
-    """Changing a shared field that P3 also owns retires the generation upstream.
+    """A shared field that P3 also owns still fails closed before production.
 
-    P5 does not weaken upstream invalidation just because the field also appears
-    in its own method identity: the accepted P1-P4 chain still decides first.
+    Post-selection no longer descends from the automatic screen's execution
+    context, so a screen-only execution field is not P5 ancestry. What protects
+    production is the owner the field genuinely belongs to: the accepted
+    cross-validation validated one training method, and a changed method cannot
+    be authorized by it.
     """
 
     config, _workspace = build_selected_campaign(tmp_path)
     assert run_cross_validate(config) == 0
     rewrite_config(config, "batch_size = 4", "batch_size = 8")
-    with pytest.raises(Exception, match="does not match the persisted terminal"):
+    with pytest.raises(Exception, match="different training method"):
         run_train_production(config)
 
 
-def test_p5e_production_only_horizon_change_does_not_require_a_cv_rerun(
+def test_p5e_a_frozen_production_horizon_does_not_drift_with_a_later_config_edit(
     tmp_path: Path,
 ):
+    """The admitted experiment owns its budget; the config file no longer does.
+
+    Before the freeze, the two role horizons are the operator's to steer with
+    `--select-horizon-cv` / `--select-horizon`. `cross-validate` admission fixes
+    them, so a later `campaign.toml` edit cannot silently rewrite a production
+    run that has already been authorized -- while still leaving the CV evidence
+    untouched, which is what the roles being independent means.
+    """
+
     config, _workspace = build_selected_campaign(tmp_path)
     assert run_cross_validate(config) == 0
     cfg, paths, store = load_context(config)
     try:
         context = build_post_selection_context(cfg, paths, store, trainer=object())
         before_cv = resolve_current_cv_acceptance(context)
-        before_policy = resolve_final_production_policy_identity(cfg)
+        before_policy = context.production_policy
         revision_before = load_target_size_campaign_revision(store)
+        frozen = revision_before.state.frozen
+        assert frozen is not None
+        assert before_policy.production_max_num_epochs == (
+            frozen.production_max_num_epochs
+        )
     finally:
         store.close()
 
@@ -291,22 +308,30 @@ def test_p5e_production_only_horizon_change_does_not_require_a_cv_rerun(
     try:
         context = build_post_selection_context(cfg, paths, store, trainer=object())
         after_cv = resolve_current_cv_acceptance(context)
-        after_policy = resolve_final_production_policy_identity(cfg)
+        after_policy = context.production_policy
         revision_after = load_target_size_campaign_revision(store)
+        # The *configured* owner did move; the frozen experiment did not.
+        assert (
+            resolve_final_production_policy_identity(cfg).production_max_num_epochs == 4
+        )
     finally:
         store.close()
 
-    # P4 untouched, CV evidence still current and identical, production policy moved.
+    # P4 untouched, CV evidence still current and identical, and the frozen
+    # production policy is byte-identical too.
     assert revision_after.state_revision == revision_before.state_revision
     assert after_cv is not None
     assert after_cv.content_digest == before_cv.content_digest
     assert after_cv.accepted
-    assert after_policy.content_digest != before_policy.content_digest
+    assert after_policy.content_digest == before_policy.content_digest
 
-    # And production then runs without any cross-validation rerun.
+    # Production then runs without any cross-validation rerun, on the horizon
+    # that was admitted rather than the one edited in afterwards.
     production = PostSelectionHarness()
     assert run_train_production(config, production) == 0
-    assert production.requests[0].plan.budget_policy.planned_epochs == 4
+    assert production.requests[0].plan.budget_policy.planned_epochs == (
+        PRODUCTION_MAX_NUM_EPOCHS
+    )
 
 
 # --- publication currentness ------------------------------------------------
@@ -368,7 +393,7 @@ def test_p5e_a_stale_g1_publication_loses_the_race_to_g2(tmp_path: Path):
         assert revision.state.generation > g1.campaign_generation
 
         # The delayed g1 writer now tries to publish. It loses deterministically.
-        with pytest.raises(PostSelectionStaleBindingError, match="newer target-size"):
+        with pytest.raises(PostSelectionStaleBindingError, match="newer frozen target selection"):
             publish_current_post_selection_pointer(
                 store,
                 binding=g1,
@@ -741,7 +766,7 @@ def test_p5e_cv_only_policy_change_leaves_p4_byte_identical(tmp_path: Path):
     _cfg, _paths, store, before = _campaign_state(config)
     try:
         before_state = before.state
-        before_terminal = before_state.terminal
+        before_terminal = before_state.auto_diagnostic
     finally:
         store.close()
 
@@ -754,7 +779,7 @@ def test_p5e_cv_only_policy_change_leaves_p4_byte_identical(tmp_path: Path):
     try:
         assert after.state_revision == before.state_revision
         assert after.sequence == before.sequence
-        assert after.state.terminal == before_terminal
+        assert after.state.auto_diagnostic == before_terminal
         assert after.state.to_dict() == before_state.to_dict()
     finally:
         store.close()
@@ -767,7 +792,7 @@ def test_p5e_p4_selection_survives_the_whole_post_selection_lifecycle(
     _cfg, _paths, store, before = _campaign_state(config)
     try:
         before_state = before.state
-        before_terminal = before_state.terminal
+        before_terminal = before_state.auto_diagnostic
     finally:
         store.close()
 
@@ -779,7 +804,7 @@ def test_p5e_p4_selection_survives_the_whole_post_selection_lifecycle(
         assert after.state_revision == before.state_revision
         assert after.sequence == before.sequence
         assert after.state.generation == before_state.generation
-        assert after.state.terminal == before_terminal
+        assert after.state.auto_diagnostic == before_terminal
         assert (
             after.state.adopted_execution_head_digest
             == before_state.adopted_execution_head_digest

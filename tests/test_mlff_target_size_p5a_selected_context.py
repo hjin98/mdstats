@@ -39,23 +39,24 @@ def test_p5a_adapter_projects_the_exact_authenticated_selection(tmp_path: Path):
     cfg, paths, store = load_context(config)
     try:
         revision = load_target_size_campaign_revision(store)
-        assert revision.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
+        assert revision.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE
 
         context = load_current_selected_training_context(cfg, paths, store)
         assert isinstance(context, CurrentSelectedTrainingContext)
-        n_selected = revision.state.terminal.selected_target_size
+        frozen = revision.state.frozen
+        assert frozen is not None
+        n_selected = frozen.n_selected
         assert context.n_selected == n_selected
 
         # T_selected is the exact ordered pi_train prefix, not a resampling.
         definition = context.authorities.aggregate.definition
         expected = definition.training_order.candidate_membership(n_selected)
         assert context.selected_membership == expected
-        assert (
-            context.selected_membership_digest
-            == revision.state.terminal.selected_membership_digest
-        )
+        assert context.selected_membership_digest == frozen.selected_membership_digest
         assert context.binding.campaign_generation == revision.state.generation
-        assert context.binding.campaign_state_revision == revision.state_revision
+        assert context.binding.frozen_selection_digest == frozen.content_digest
+        # Provenance is not identity: the binding carries no selection source.
+        assert "selection_source" not in context.binding.to_dict()
     finally:
         store.close()
 
@@ -80,30 +81,62 @@ def test_p5a_group_metadata_cannot_enlarge_the_selected_membership(tmp_path: Pat
         store.close()
 
 
-def test_p5a_scientific_failure_terminal_cannot_enter_post_selection(tmp_path: Path):
+def test_p5a_post_selection_requires_an_admitted_freeze(tmp_path: Path):
+    """A provisional proposal is not an entry point; only an admitted freeze is.
+
+    This replaces the retired rule that a terminal automatic *scientific
+    failure* blocked post-selection work. Diagnostic outcomes no longer gate the
+    downstream campaign at all; what gates it is whether the operator's design
+    has been admitted and frozen.
+    """
+
+    from mdstats.training_data.campaign_target_size_selection import (
+        TargetSizeSelectionError,
+        build_target_size_proposal,
+        commit_target_size_proposal,
+        resolve_provisional_horizons,
+    )
+    from mdstats.training_data.campaign_target_size_state import (
+        SELECTION_SOURCE_MANUAL,
+    )
+    from mdstats.training_data.campaign_target_size_runtime import (
+        load_prepared_target_size_generation,
+    )
+
     config, _workspace = build_selected_campaign(tmp_path)
+
+    # A fresh generation: prepared substrate, no proposal, no freeze.
+    from tests._mlff_post_selection_fixture import rewrite_config
+
+    rewrite_config(config, "minimum_block_frames = 4", "minimum_block_frames = 2")
+    assert p4d._run(config, "prepare") == 0
+
     cfg, paths, store = load_context(config)
     try:
-        # Rewrite only the persisted lifecycle: the loader must refuse before any
-        # post-selection state exists, rather than trusting the stored label.
-        from mdstats.training_data import campaign_target_size_terminal as terminal
+        revision = load_target_size_campaign_revision(store)
+        assert revision.state.frozen is None and revision.state.proposal is None
+        with pytest.raises(TargetSizeSelectionError, match="No frozen target selection"):
+            load_current_selected_training_context(cfg, paths, store)
 
-        original = terminal.load_validated_target_size_terminal_result
+        # Even a complete, valid provisional proposal is not an entry point.
+        definition = load_prepared_target_size_generation(
+            cfg, paths, store, revision
+        ).aggregate.definition
+        proposal = build_target_size_proposal(
+            definition,
+            target_size=int(definition.qualified_candidate_sizes[0]),
+            selection_source=SELECTION_SOURCE_MANUAL,
+            horizons=resolve_provisional_horizons(cfg),
+        )
+        commit_target_size_proposal(store, revision, proposal)
+        with pytest.raises(TargetSizeSelectionError, match="No frozen target selection"):
+            load_current_selected_training_context(cfg, paths, store)
 
-        def _failed(cfg_, paths_, store_, *, expected_revision=None):
-            validated = original(cfg_, paths_, store_, expected_revision=expected_revision)
-            state = validated.revision.state
-            object.__setattr__(
-                state, "lifecycle", TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE
-            )
-            return validated
-
-        terminal.load_validated_target_size_terminal_result = _failed
-        try:
-            with pytest.raises(PostSelectionError, match="SELECTED"):
-                load_current_selected_training_context(cfg, paths, store)
-        finally:
-            terminal.load_validated_target_size_terminal_result = original
+        # Admission is the boundary, and it is the only thing that changes this.
+        context = load_current_selected_training_context(
+            cfg, paths, store, admit=True
+        )
+        assert context.n_selected == int(definition.qualified_candidate_sizes[0])
     finally:
         store.close()
 
@@ -188,7 +221,7 @@ def test_p5a_only_one_current_selected_training_adapter_exists():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and any(
-                alias.name == "expose_current_target_size_terminal_result"
+                alias.name == "resolve_frozen_target_selection"
                 for alias in node.names
             ):
                 callers.append(path.name)

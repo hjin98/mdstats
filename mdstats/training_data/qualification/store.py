@@ -253,12 +253,17 @@ def publish_current_qualification_pointer(
                 "be published as current."
             )
         state = revision.state
+        # See ``post_selection_store``: the frozen selection is the ancestry
+        # token, so unrelated diagnostic publication cannot orphan a descendant.
+        current_frozen = (
+            None if state.frozen is None else state.frozen.content_digest
+        )
         if (
             state.generation != binding.campaign_generation
-            or revision.state_revision != binding.campaign_state_revision
+            or current_frozen != binding.frozen_selection_digest
         ):
             raise PostSelectionStaleBindingError(
-                "A newer target-size campaign revision became current while this "
+                "A newer frozen target selection became current while this "
                 "qualification work was running. The stale qualification stays "
                 "available as historical evidence but is never published as current."
             )

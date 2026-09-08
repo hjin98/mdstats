@@ -186,7 +186,7 @@ def test_p4d_req1_prepare_binds_current_authorities_and_selects_nothing(
         assert revision.state.experiment_definition_digest is not None
         assert revision.state.common_preparation_digest is not None
         # ...and nothing was selected, adopted, or made terminal.
-        assert revision.state.terminal is None
+        assert revision.state.auto_diagnostic is None
         assert revision.state.adopted_execution_head_digest is None
         assert revision.state.attempt is None
         # No retired selector record exists as current authority.
@@ -270,7 +270,7 @@ def test_p4d_req1_prepare_accepts_a_source_without_a_regime_assertion(tmp_path: 
         revision = load_target_size_campaign_revision(store)
         assert revision.state.regime is TargetSizeRegime.CURRENT
         assert revision.state.neutral_statistical_base_digest is not None
-        assert revision.state.terminal is None
+        assert revision.state.auto_diagnostic is None
         assert not store.has_record("target_size_study")
     finally:
         store.close()
@@ -613,6 +613,7 @@ def test_p4d_req2_select_target_size_accepts_condition_balanced_candidates(
         _run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -640,6 +641,7 @@ def test_p4d_req2_select_target_size_reaches_p1_p2_p3_owners(tmp_path: Path):
         _run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -659,8 +661,8 @@ def test_p4d_req2_select_target_size_reaches_p1_p2_p3_owners(tmp_path: Path):
         # generation owns a live execution root and an adopted head.
         assert revision.state.lifecycle in (
             TargetSizeLifecycle.SCREEN_ACTIVE,
-            TargetSizeLifecycle.TERMINAL_SELECTED,
-            TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
+            TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
+            TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
         )
         assert revision.state.execution_root is not None
         assert revision.state.screen_window_digest is not None
@@ -691,6 +693,7 @@ def test_p4d_req2_select_target_size_resumes_without_rerunning_completed_cells(
     _run(
         config,
         "select-target-size",
+        "--auto",
         _external_boundary_trainer=harness.train,
         _external_inference_evaluator=harness.evaluate,
     )
@@ -700,6 +703,7 @@ def test_p4d_req2_select_target_size_resumes_without_rerunning_completed_cells(
     _run(
         config,
         "select-target-size",
+        "--auto",
         _external_boundary_trainer=resumed.train,
         _external_inference_evaluator=resumed.evaluate,
     )
@@ -711,7 +715,7 @@ def test_p4d_req2_select_target_size_resumes_without_rerunning_completed_cells(
 def test_p4d_req2_select_target_size_requires_the_current_regime(tmp_path: Path):
     config, workspace = _fixture_campaign(tmp_path)
     with pytest.raises(TargetSizeCutoverError) as excinfo:
-        _run(config, "select-target-size")
+        _run(config, "select-target-size", "--auto")
     assert "`prepare`" in str(excinfo.value)
 
 
@@ -837,6 +841,7 @@ def test_p4d_req5_assembled_boundary_one_config_passes_the_real_mace_parser(
         _run(
             config,
             "select-target-size",
+            "--auto",
             _external_inference_evaluator=harness.evaluate,
         )
         == 0

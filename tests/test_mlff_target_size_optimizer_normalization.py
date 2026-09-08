@@ -528,6 +528,7 @@ def test_assembled_screen_normalizes_every_current_candidate_route(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )

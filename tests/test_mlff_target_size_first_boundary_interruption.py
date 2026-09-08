@@ -111,6 +111,7 @@ def test_interruption_before_any_boundary_creates_no_checkpoint_authority(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=interrupting,
             _external_inference_evaluator=None,
         )
@@ -122,7 +123,7 @@ def test_interruption_before_any_boundary_creates_no_checkpoint_authority(
     # result, and it is certainly not a scientific failure.
     assert after.state.generation == before.state.generation
     assert after.state.adopted_execution_head_digest is None
-    assert after.state.terminal is None
+    assert after.state.auto_diagnostic is None
     assert after.state.lifecycle in (
         TargetSizeLifecycle.AUTHORITIES_BOUND,
         TargetSizeLifecycle.SCREEN_ACTIVE,
@@ -144,6 +145,7 @@ def test_the_retry_runs_the_first_rung_fresh_and_ignores_partial_bytes(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=interrupting,
             _external_inference_evaluator=None,
         )
@@ -155,6 +157,7 @@ def test_the_retry_runs_the_first_rung_fresh_and_ignores_partial_bytes(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )

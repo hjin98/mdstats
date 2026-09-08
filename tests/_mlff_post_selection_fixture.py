@@ -23,6 +23,9 @@ import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
 
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data._campaign_cli_core import CampaignStore
+from mdstats.training_data.campaign_target_size_selection import (
+    resolve_frozen_target_selection,
+)
 from mdstats.training_data.campaign_target_size_state import (
     load_target_size_campaign_revision,
 )
@@ -116,22 +119,30 @@ def build_selected_campaign(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=screen.train,
             _external_inference_evaluator=screen.evaluate,
         )
         == 0
     )
-    # The fixture's contract is a *selected* terminal result at a CV-feasible
-    # size; a screen that merely finished is not what post-selection needs.
-    store = CampaignStore(p4d.cli._load_config(config)[1].state_db)
+    # The fixture's contract is a *frozen* downstream design at a CV-feasible
+    # size. The diagnostic only recommends; the freeze is a separate decision,
+    # taken here through the real admission owner exactly as `cross-validate`
+    # takes it, so every P5 suite starts from a genuine frozen ancestry.
+    cfg, paths = p4d.cli._load_config(config)
+    store = CampaignStore(paths.state_db)
     try:
         revision = load_target_size_campaign_revision(store)
-        terminal = revision.state.terminal
-        assert terminal is not None and terminal.is_selection, (
-            "post-selection fixture requires a terminal selection, got "
+        diagnostic = revision.state.auto_diagnostic
+        assert diagnostic is not None and diagnostic.has_recommendation, (
+            "post-selection fixture requires a diagnostic recommendation, got "
             f"{revision.state.lifecycle}"
         )
-        assert terminal.selected_target_size == SELECTED_TARGET_SIZE
+        assert diagnostic.recommended_target_size == SELECTED_TARGET_SIZE
+        proposal = revision.state.proposal
+        assert proposal is not None and proposal.n_provisional == SELECTED_TARGET_SIZE
+        admitted = resolve_frozen_target_selection(cfg, paths, store, admit=True)
+        assert admitted.frozen.n_selected == SELECTED_TARGET_SIZE
     finally:
         store.close()
     return config, workspace

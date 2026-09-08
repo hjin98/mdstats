@@ -202,13 +202,13 @@ def test_p4b_req3_old_selected_n_cannot_be_read_as_current_authority(
     current = complete_target_size_cutover(store, bound)
 
     assert store.get_payload_optional("target_size_study") is None
-    assert current.state.terminal is None
+    assert current.state.auto_diagnostic is None
     # The retired selected size exists only under the quarantine namespace.
     quarantined = store.get_payload(f"{QUARANTINE_KEY_PREFIX}g1:target_size_study")
     assert quarantined["selected_target_size"] == 96
     # ...and the current authority never acquired it: no selected size, no
     # terminal projection, and no retired reference of any kind.
-    assert current.state.terminal is None
+    assert current.state.auto_diagnostic is None
     payload = current.state.to_dict()
     assert 96 not in [value for value in payload.values() if isinstance(value, int)]
     assert set(payload) & {"selected_target_size", "domain_prefix_digests"} == set()

@@ -979,17 +979,20 @@ def execute_current_prepare(args: Any) -> int:
     print(
         "`prepare` does not select a target size. The candidate ladder "
         f"{list(authorities.aggregate.definition.qualified_candidate_sizes)} is a "
-        "configured experiment definition, and the paired-seed screen that decides "
-        "N is owned by `select-target-size`.",
+        "configured experiment definition. `prepare` decides nothing about N: run "
+        "`select-target-size <N>` to choose the provisional downstream target size, "
+        "or `select-target-size --auto` to run the optional paired-seed diagnostic "
+        "first and adopt its recommendation.",
         flush=True,
     )
-    # An unchanged terminal generation is a legitimate no-op, not a failure.
-    # The derived view is a rendering of whatever the campaign state already
-    # says, so it is written by the owner that can render that state -- the
-    # terminal exposure path for a terminal revision, the nonterminal writer
-    # otherwise. Campaign scientific state is never altered to suit a file.
+    # An unchanged generation carrying a complete diagnostic is a legitimate
+    # no-op, not a failure. The derived view is a rendering of whatever the
+    # campaign state already says, so it is written by the owner that can render
+    # that state -- the diagnostic exposure path when a diagnostic is complete,
+    # the in-progress writer otherwise. Campaign scientific state is never
+    # altered to suit a file.
     view_path = paths.results / "target-size-state.json"
-    if revision.state.terminal is not None:
+    if revision.state.auto_diagnostic is not None:
         write_current_target_size_result_view(
             cfg, paths, store, path=view_path, expected_revision=revision
         )
@@ -1002,12 +1005,15 @@ def execute_current_prepare(args: Any) -> int:
         StageState.COMPLETE,
         f"current target-size substrate bound at generation {revision.state.generation}",
     )
-    print("Next: `select-target-size`.", flush=True)
+    print(
+        "Next: `select-target-size <N>` (or `select-target-size --auto`).",
+        flush=True,
+    )
     return 0
 
 
 # ---------------------------------------------------------------------------
-# `select-target-size`: the only current screening entrypoint
+# `select-target-size`: the provisional target-design entrypoint
 # ---------------------------------------------------------------------------
 
 
@@ -1263,13 +1269,14 @@ def _execute_candidate_cell_unlocked(
 
     from dataclasses import replace as _replace
 
+    from ._campaign_cli_core import _ok
+    from .eval2 import Eval2NumericalEvaluationError
     from .target_size_execution import (
         TargetSizeContinuationRequest,
         bind_target_size_boundary_state,
         build_target_size_candidate_trajectory,
         build_target_size_cell_completion_record,
         build_target_size_eval2_role,
-        evaluate_target_size_boundary,
         materialize_target_size_candidate,
         project_target_size_candidate_preparation,
         promote_target_size_boundary_snapshot,
@@ -1277,7 +1284,9 @@ def _execute_candidate_cell_unlocked(
         resolve_target_size_candidate_for_resume,
         run_target_size_direct_boundary_inference,
         run_target_size_eval2_reduction,
+        target_size_boundary_metric_from_eval2_record,
         target_size_rung_plan,
+        translate_target_size_eval2_failure,
         write_target_size_evaluation_artifact,
     )
 
@@ -1448,34 +1457,57 @@ def _execute_candidate_cell_unlocked(
         evaluation_directory=evaluation_directory,
         inference_evaluator=screen.inference_evaluator,
     )
-    metric_record = run_target_size_eval2_reduction(
-        role,
-        evaluation_artifact,
-        prediction_evidence,
-        root_directory=evaluation_directory,
-    )
-    outcome = evaluate_target_size_boundary(
-        role,
-        evaluation_artifact,
-        prediction_evidence,
-        root_directory=evaluation_directory,
-    )
-    completion_record = build_target_size_cell_completion_record(
+    # An authenticated EVAL2 numerical failure is *evidence*: it eliminates that
+    # candidate through the reducer's own rule.  Reducing once and dispatching on
+    # the result is what makes the P3 failure-completion path reachable at all;
+    # reducing eagerly and only then asking for an outcome turned a typed
+    # scientific result back into an execution crash that ended the screen.
+    common_arguments = dict(
         window=screen.window,
         trajectory=trajectory,
         materialization=materialization,
         boundary_snapshot=snapshot,
         eval2_role=role,
         evaluation_data=evaluation_artifact,
-        outcome=outcome,
         prediction_evidence=prediction_evidence,
-        eval2_metric_record=metric_record,
         planned_rung=planned_rung,
         predecessor_continuation=predecessor_continuation,
         schedule=schedule,
-        definition=definition,
-        checkpoint_directory=checkpoint_directory,
     )
+    try:
+        metric_record = run_target_size_eval2_reduction(
+            role,
+            evaluation_artifact,
+            prediction_evidence,
+            root_directory=evaluation_directory,
+        )
+    except Eval2NumericalEvaluationError as error:
+        outcome = translate_target_size_eval2_failure(role, error)
+        metric_record = None
+        failure_record = error
+        completion_record = build_target_size_cell_completion_record(
+            kind="eval2_failure",
+            outcome=outcome,
+            failure_record=error,
+            definition=definition,
+            checkpoint_directory=checkpoint_directory,
+            **common_arguments,
+        )
+        _ok(
+            f"boundary {boundary}: candidate N={int(target_size)} seed "
+            f"{int(optimizer_seed)} recorded an authenticated EVAL2 numerical "
+            f"failure ({outcome.kind.value}); it is eliminated, not retried"
+        )
+    else:
+        failure_record = None
+        outcome = target_size_boundary_metric_from_eval2_record(role, metric_record)
+        completion_record = build_target_size_cell_completion_record(
+            outcome=outcome,
+            eval2_metric_record=metric_record,
+            definition=definition,
+            checkpoint_directory=checkpoint_directory,
+            **common_arguments,
+        )
     record_candidate_boundary_outcome(
         screen.root,
         screen.window,
@@ -1487,6 +1519,7 @@ def _execute_candidate_cell_unlocked(
         evaluation_data=evaluation_artifact,
         prediction_evidence=prediction_evidence,
         eval2_metric_record=metric_record,
+        failure_record=failure_record,
         planned_rung=planned_rung,
         predecessor_continuation=predecessor_continuation,
         restart_authority=screen.authority,
@@ -1500,12 +1533,243 @@ def execute_current_select_target_size(
     trainer: TargetSizeBoundaryTrainer | None = None,
     inference_evaluator: Callable[..., Any] | None = None,
 ) -> int:
-    """Run or resume the complete current paired-seed target-size screen."""
+    """Establish or revise the current provisional target training design.
+
+    Two modes, one outcome.  ``select-target-size <N>`` proposes a qualified
+    candidate directly and performs no candidate training or EVAL2 work at all.
+    ``select-target-size --auto`` runs or reuses the optional automatic screen
+    and adopts its recommendation.  Neither freezes anything: the proposal stays
+    mutable until ``cross-validate`` admits it.
+    """
+
+    from ._campaign_cli_core import CampaignStore, _load_config
+    from .campaign_target_size_selection import resolve_provisional_horizons
+
+    cfg, paths = _load_config(args.config)
+    store = CampaignStore(paths.state_db)
+    horizons = resolve_provisional_horizons(
+        cfg,
+        cv_max_num_epochs=getattr(args, "select_horizon_cv", None),
+        production_max_num_epochs=getattr(args, "select_horizon", None),
+    )
+    if bool(getattr(args, "auto", False)):
+        return _execute_auto_target_size_diagnostic(
+            cfg,
+            paths,
+            store,
+            horizons,
+            trainer=trainer,
+            inference_evaluator=inference_evaluator,
+        )
+    return _execute_manual_target_size_proposal(
+        cfg, paths, store, int(getattr(args, "target_size")), horizons
+    )
+
+
+def _refresh_target_size_view(cfg: Any, paths: Any, store: Any, revision: Any) -> None:
+    """Rebuild the derived result view after a proposal/freeze change."""
+
+    from .campaign_target_size_state import TargetSizeLifecycle
+    from .campaign_target_size_view import (
+        write_current_target_size_result_view,
+        write_nonterminal_target_size_result_view,
+    )
+
+    if revision.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE:
+        write_current_target_size_result_view(
+            cfg, paths, store, expected_revision=revision
+        )
+    else:
+        write_nonterminal_target_size_result_view(
+            paths.results / "target-size-state.json", revision
+        )
+
+
+def _report_proposal(revision: Any, *, reused_diagnostic: bool | None = None) -> None:
+    from ._campaign_cli_core import _ok
+
+    proposal = revision.state.proposal
+    if proposal is None:  # pragma: no cover - callers commit before reporting
+        return
+    _ok(
+        f"provisional target size N = {proposal.n_provisional} "
+        f"(source: {proposal.selection_source}); "
+        f"T_provisional = pi_train[:{proposal.n_provisional}] "
+        f"identity {proposal.membership_digest[:12]}..."
+    )
+    _ok(
+        f"provisional cross-validation horizon {proposal.cv_max_num_epochs} epoch(s); "
+        f"provisional final-production horizon "
+        f"{proposal.production_max_num_epochs} epoch(s)"
+    )
+    if reused_diagnostic is not None:
+        _ok(
+            "reused the existing automatic diagnostic; no screening jobs were rerun"
+            if reused_diagnostic
+            else "recorded new automatic diagnostic evidence"
+        )
+    print(
+        "Frozen: no. Run `select-target-size` again to change any of these, or "
+        "`cross-validate` to freeze this design.",
+        flush=True,
+    )
+
+
+def _execute_manual_target_size_proposal(
+    cfg: Any, paths: Any, store: Any, target_size: int, horizons: Any
+) -> int:
+    """`select-target-size <N>`: the primary explicit-selection interface.
+
+    It reaches the real prepared-generation and P2 training-order owners to
+    authenticate the exact membership of ``N``, and it runs no candidate
+    training and no EVAL2 evaluation whatsoever.  The automatic screen is not
+    consulted, required, or synthesized: a campaign that never ran it selects
+    exactly the same way as one that did.
+    """
+
+    from ._campaign_cli_core import _print_header
+    from .campaign_target_size_cutover import require_current_target_size_runtime
+    from .campaign_target_size_selection import (
+        build_target_size_proposal,
+        commit_target_size_proposal,
+    )
+    from .campaign_target_size_state import SELECTION_SOURCE_MANUAL
+
+    _print_header("Target-size selection - provisional downstream design")
+    revision = require_current_target_size_runtime(store)
+    authorities = load_prepared_target_size_generation(cfg, paths, store, revision)
+    proposal = build_target_size_proposal(
+        authorities.aggregate.definition,
+        target_size=int(target_size),
+        selection_source=SELECTION_SOURCE_MANUAL,
+        horizons=horizons,
+    )
+    revision = commit_target_size_proposal(store, revision, proposal)
+    _refresh_target_size_view(cfg, paths, store, revision)
+    _report_proposal(revision)
+    return 0
+
+
+def _install_recommendation(
+    cfg: Any,
+    paths: Any,
+    store: Any,
+    *,
+    baseline: tuple[str | None, str | None],
+    horizons: Any,
+    reused: bool,
+) -> int:
+    """Adopt the current authenticated recommendation as the provisional choice.
+
+    The installation is conditional on the selection state the invocation
+    started from.  An automatic diagnostic can run for hours; if a human made an
+    explicit choice, or ``cross-validate`` froze the design, while it was
+    running, the newer decision wins.  The diagnostic evidence and its report are
+    still committed and reusable - only the stale proposal update is dropped.
+    """
+
+    from ._campaign_cli_core import _ok
+    from .campaign_target_size_cutover import require_current_target_size_runtime
+    from .campaign_target_size_report import write_auto_diagnostic_report
+    from .campaign_target_size_selection import (
+        build_target_size_proposal,
+        commit_target_size_proposal,
+    )
+    from .campaign_target_size_state import SELECTION_SOURCE_AUTO_RECOMMENDATION
+    from .campaign_target_size_view import (
+        expose_current_target_size_auto_diagnostic,
+    )
+
+    validated = expose_current_target_size_auto_diagnostic(cfg, paths, store)
+    report_path = write_auto_diagnostic_report(paths, validated)
+    _report_auto_diagnostic(validated)
+    _ok(f"portable diagnostic report: {report_path}")
+
+    revision = validated.revision
+    state = revision.state
+    if not validated.has_recommendation:
+        # A completed diagnostic with no recommendation is a successful
+        # execution of the diagnostic operation. It commits evidence only: no
+        # proposal field is touched, so any previously valid proposal survives.
+        print(
+            "No recommendation was established, so the provisional design was left "
+            "unchanged. A qualified candidate can still be chosen explicitly with "
+            "`select-target-size <N>`.",
+            flush=True,
+        )
+        return 0
+    current = (
+        None if state.proposal is None else state.proposal.content_digest,
+        None if state.frozen is None else state.frozen.content_digest,
+    )
+    if current != baseline:
+        print(
+            f"Recommendation N = {validated.recommended_target_size} was computed but "
+            "not installed: the current target-size selection state changed while the "
+            "diagnostic was running. The diagnostic evidence and its report are "
+            "committed and reusable.",
+            flush=True,
+        )
+        return 0
+    proposal = build_target_size_proposal(
+        validated.authorities.aggregate.definition,
+        target_size=int(validated.recommended_target_size),
+        selection_source=SELECTION_SOURCE_AUTO_RECOMMENDATION,
+        horizons=horizons,
+        auto_diagnostic_digest=validated.projection.content_digest,
+    )
+    revision = commit_target_size_proposal(store, revision, proposal)
+    _refresh_target_size_view(cfg, paths, store, revision)
+    _report_proposal(revision, reused_diagnostic=reused)
+    return 0
+
+
+def _refresh_screen_revision(store: Any, revision: Any) -> Any:
+    """Re-read the campaign head before a long-gap screen transition.
+
+    An automatic diagnostic holds no lock across hours of training, and the
+    operator is free to revise their provisional choice while it runs. Screen
+    evidence and the operator's design are orthogonal, so a proposal change must
+    not make the screen's own compare-and-set stale and destroy the work in
+    flight. Anything that is *not* orthogonal - a replaced generation or a
+    different execution attempt - still fails closed here.
+    """
+
+    from .campaign_target_size_state import (
+        TargetSizeCampaignConflictError,
+        load_target_size_campaign_revision,
+    )
+
+    current = load_target_size_campaign_revision(store)
+    if current is None:  # pragma: no cover - an open screen implies a head
+        return revision
+    if (
+        current.state.generation != revision.state.generation
+        or current.state.attempt != revision.state.attempt
+        or current.state.regime is not revision.state.regime
+    ):
+        raise TargetSizeCampaignConflictError(
+            "The target-size campaign generation or execution attempt changed while "
+            "the automatic diagnostic was running; this screen no longer owns the "
+            "campaign.",
+            conflict_kind="stale_generation",
+        )
+    return current
+
+
+def _execute_auto_target_size_diagnostic(
+    cfg: Any,
+    paths: Any,
+    store: Any,
+    horizons: Any,
+    *,
+    trainer: TargetSizeBoundaryTrainer | None = None,
+    inference_evaluator: Callable[..., Any] | None = None,
+) -> int:
+    """`select-target-size --auto`: run or reuse the optional automatic screen."""
 
     from ._campaign_cli_core import (
-        CampaignStore,
         StageState,
-        _load_config,
         _mark_stage,
         _ok,
         _print_header,
@@ -1515,51 +1779,48 @@ def execute_current_select_target_size(
         reconcile_and_adopt_target_size_head,
     )
     from .campaign_target_size_cutover import require_current_target_size_runtime
+    from .campaign_target_size_selection import require_unfrozen
     from .campaign_target_size_state import (
         TargetSizeCampaignState,
         TargetSizeLifecycle,
         TargetSizeRegime,
         TargetSizeTransitionKind,
         commit_target_size_campaign_transition,
-        load_target_size_campaign_revision,
     )
-    from .campaign_target_size_terminal import (
-        commit_terminal_projection,
-        load_validated_target_size_terminal_result,
-        validate_terminal_projection,
-    )
+    from .campaign_target_size_diagnostic import commit_auto_diagnostic
     from .campaign_target_size_view import write_target_size_result_view
     from .target_size_execution import (
-        TargetSizeExecutionResolver,
         build_complete_boundary_batch,
         commit_target_size_boundary_batch,
         derive_active_boundary_requirements,
         recover_authenticated_boundary_progress,
     )
 
-    cfg, paths = _load_config(args.config)
-    store = CampaignStore(paths.state_db)
     revision = require_current_target_size_runtime(store)
-    if revision.state.lifecycle in (
-        TargetSizeLifecycle.TERMINAL_SELECTED,
-        TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
-    ):
-        from .campaign_target_size_view import (
-            write_current_target_size_result_view,
+    # One rule, one message: after admission neither form of the command may
+    # change the design.
+    require_unfrozen(revision.state)
+    # The exact selection state this invocation intends to update. Expensive
+    # diagnostic execution proceeds independently of it; installation does not.
+    baseline = (
+        None if revision.state.proposal is None else revision.state.proposal.content_digest,
+        None,
+    )
+
+    if revision.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE:
+        # Warm path. A complete diagnostic for this scientific/execution
+        # identity is authenticated and reused; no trainer or evaluator is
+        # constructed, so zero TRAIN2/EVAL2 work is reachable from here.
+        _print_header("Automatic target-size diagnostic - reusing existing evidence")
+        return _install_recommendation(
+            cfg, paths, store, baseline=baseline, horizons=horizons, reused=True
         )
 
-        write_current_target_size_result_view(
-            cfg, paths, store, expected_revision=revision
-        )
-        report_current_target_size_terminal_state(
-            cfg, paths, store, expected_revision=revision
-        )
-        return 0
-
-    _print_header("Target-size selection - controlled configurable fidelity")
+    _print_header("Automatic target-size diagnostic - controlled configurable fidelity")
     print(
         "Epoch is a controlled variable during this operation: only the exact "
-        "configured screen boundary checkpoints contribute to ranking.",
+        "configured screen boundary checkpoints contribute to ranking. This is a "
+        "short-horizon diagnostic and it freezes nothing.",
         flush=True,
     )
     screen = build_screen_context(
@@ -1578,6 +1839,7 @@ def execute_current_select_target_size(
         f"screening canonical generation {revision.state.generation}",
     )
     state = screen.aggregate.reducer_state
+    head = None
     try:
         revision = commit_target_size_campaign_transition(
             store,
@@ -1611,6 +1873,9 @@ def execute_current_select_target_size(
                 adopted_reducer_state_digest=(
                     revision.state.adopted_reducer_state_digest
                 ),
+                # An interrupted diagnostic never destroys a provisional choice
+                # the operator already made.
+                proposal=revision.state.proposal,
             ),
         ).revision
 
@@ -1678,7 +1943,9 @@ def execute_current_select_target_size(
             head = commit_target_size_boundary_batch(
                 screen.root, screen.aggregate.definition, state, batch
             )
-            revision = adopt_reconciled_execution_head(store, revision, head)
+            revision = adopt_reconciled_execution_head(
+                store, _refresh_screen_revision(store, revision), head
+            )
             state = head.post_state
             _ok(
                 f"boundary {boundary} committed: head={head.content_digest[:12]}...; "
@@ -1686,10 +1953,13 @@ def execute_current_select_target_size(
             )
 
         if state.is_terminal and head is not None:
-            # The terminal head, its reducer digest, and the derived selection
+            # The terminal head, its reducer digest, and the derived diagnostic
             # are one claim, committed together.
-            revision = commit_terminal_projection(
-                store, revision, head, definition=screen.aggregate.definition
+            revision = commit_auto_diagnostic(
+                store,
+                _refresh_screen_revision(store, revision),
+                head,
+                definition=screen.aggregate.definition,
             )
     except Exception as exc:
         _mark_stage(
@@ -1697,27 +1967,8 @@ def execute_current_select_target_size(
         )
         raise
 
-    from .campaign_target_size_view import (
-        write_current_target_size_result_view,
-        write_nonterminal_target_size_result_view,
-    )
-
-    if state.is_terminal:
-        write_current_target_size_result_view(
-            cfg, paths, store, expected_revision=revision
-        )
-        _mark_stage(
-            store,
-            paths,
-            "target_size_selection",
-            StageState.COMPLETE,
-            f"reducer status {state.status.value}",
-        )
-        report_current_target_size_terminal_state(
-            cfg, paths, store, expected_revision=revision
-        )
-    else:
-        write_nonterminal_target_size_result_view(
+    if not state.is_terminal:
+        write_target_size_result_view(
             paths.results / "target-size-state.json",
             revision,
             resolver=screen.authority.resolver,
@@ -1730,77 +1981,95 @@ def execute_current_select_target_size(
             f"reducer status {state.status.value}",
         )
         print(
-            f"Target-size screen is operationally resumable: reducer status "
-            f"{state.status.value}. Re-run `select-target-size` to continue.",
+            f"The automatic diagnostic is operationally resumable: reducer status "
+            f"{state.status.value}. Re-run `select-target-size --auto` to continue. "
+            "Any provisional choice you already made is unchanged.",
             flush=True,
         )
-    return 0
+        return 0
+
+    _mark_stage(
+        store,
+        paths,
+        "target_size_selection",
+        StageState.COMPLETE,
+        f"reducer status {state.status.value}",
+    )
+    return _install_recommendation(
+        cfg, paths, store, baseline=baseline, horizons=horizons, reused=False
+    )
 
 
-def report_current_target_size_terminal_state(
+def report_current_target_size_auto_diagnostic(
     cfg: Any,
     paths: Any,
     store: Any,
     *,
     expected_revision: Any | None = None,
 ) -> Any:
-    """Authoritative exposure-time entrypoint for CLI terminal reporting.
+    """Authoritative exposure-time entrypoint for CLI diagnostic reporting.
 
     This function re-establishes CampaignStore currentness and executes the full
     canonical P1/P2/P3 validation chain immediately before emitting stdout.
     """
 
     from .campaign_target_size_view import (
-        expose_current_target_size_terminal_result,
+        expose_current_target_size_auto_diagnostic,
     )
 
-    validated = expose_current_target_size_terminal_result(
+    validated = expose_current_target_size_auto_diagnostic(
         cfg, paths, store, expected_revision=expected_revision
     )
-    _report_terminal_state(validated)
+    _report_auto_diagnostic(validated)
     return validated
 
 
-def _report_terminal_state(validated_result: Any) -> None:
+def _report_auto_diagnostic(validated_result: Any) -> None:
     from .target_size_experiment import (
         CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE,
     )
-    from .campaign_target_size_terminal import (
-        TargetSizeTerminalProjectionError,
-        ValidatedTargetSizeTerminalResult,
+    from .campaign_target_size_diagnostic import (
+        TargetSizeDiagnosticProjectionError,
+        ValidatedTargetSizeAutoDiagnostic,
     )
 
-    if not isinstance(validated_result, ValidatedTargetSizeTerminalResult):
-        raise TargetSizeTerminalProjectionError(
-            "Terminal state reporting requires a ValidatedTargetSizeTerminalResult established "
+    if not isinstance(validated_result, ValidatedTargetSizeAutoDiagnostic):
+        raise TargetSizeDiagnosticProjectionError(
+            "Diagnostic reporting requires a ValidatedTargetSizeAutoDiagnostic established "
             f"from the current CampaignStore revision, not {type(validated_result).__name__}."
         )
-    terminal = validated_result.projection
-    if terminal.is_selection:
+    diagnostic = validated_result.projection
+    if diagnostic.has_recommendation:
         print(
-            f"Target size is already selected and frozen: N={terminal.selected_target_size}.",
+            "Automatic diagnostic recommendation: N = "
+            f"{diagnostic.recommended_target_size}. This is short-horizon evidence, "
+            "not a frozen selection.",
             flush=True,
         )
-        if CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE in terminal.terminal_reason_codes:
+        if (
+            CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE
+            in diagnostic.terminal_reason_codes
+        ):
             print(
                 "Warning: the configured practical ceiling is the best evaluated "
                 "permitted size; target-size convergence was not demonstrated within "
-                "the configured ladder. The selection is budget-limited rather than "
-                "convergence-limited.",
+                "the configured ladder. The recommendation is budget-limited rather "
+                "than convergence-limited.",
                 flush=True,
             )
         other = tuple(
             code
-            for code in terminal.terminal_reason_codes
+            for code in diagnostic.terminal_reason_codes
             if code != CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE
         )
         if other:
-            print(f"Selection diagnostics: {', '.join(other)}.", flush=True)
+            print(f"Diagnostic notes: {', '.join(other)}.", flush=True)
     else:
         print(
-            "Target-size selection is scientifically terminal: "
-            f"{terminal.reducer_status}; "
-            f"{', '.join(terminal.terminal_reason_codes) or 'no further candidates'}.",
+            "The automatic diagnostic completed without a recommendation: "
+            f"{diagnostic.reducer_status}; "
+            f"{', '.join(diagnostic.terminal_reason_codes) or 'no further candidates'}. "
+            "This is a diagnostic conclusion, not a campaign-terminal failure.",
             flush=True,
         )
 
@@ -1818,7 +2087,7 @@ __all__ = [
     "execute_current_prepare",
     "execute_current_select_target_size",
     "mace_run_configuration",
-    "report_current_target_size_terminal_state",
+    "report_current_target_size_auto_diagnostic",
     "resolve_neutral_partition_policy",
     "current_target_size_execution_root",
     "current_target_size_execution_root_locator",

@@ -1,15 +1,15 @@
 ---
 geometry: "margin=0.75in"
-architecture_revision: 108
+architecture_revision: 109
 status: "current normative architecture"
-last_updated: "2026-09-05"
+last_updated: "2026-09-07"
 ---
 
 # MLFF Training-Data and Fine-Tuning Architecture
 
 ## Purpose and authority
 
-This manual defines the accepted current scientific, statistical, execution, and evidence architecture for the mdstats MLFF workflow: source-certified atomistic data preparation, leakage-safe evidence roles, neutral statistical preparation, one target-size screen, MACE fine-tuning, selected-only method validation, fresh final production, and bounded campaign execution. Downstream deployment, physical, calibration, and locked-test capabilities remain separately owned product obligations.
+This manual defines the accepted current scientific, statistical, execution, and evidence architecture for the mdstats MLFF workflow: source-certified atomistic data preparation, leakage-safe evidence roles, neutral statistical preparation, one optional automatic target-size diagnostic feeding an operator-owned target-size decision, MACE fine-tuning, selected-only method validation, fresh final production, and bounded campaign execution. Downstream deployment, physical, calibration, and locked-test capabilities remain separately owned product obligations.
 
 It is intentionally present-tense and single-generation. A reader does not need release chronology, migration history, or obsolete stage semantics to determine current behavior.
 
@@ -37,9 +37,11 @@ source evidence and labels
   -> one P_train / M3 target-size development split
   -> one canonical training order pi_train and evaluation ladder M1 subset M2 subset M3
   -> one common deterministic target-size preparation
-  -> paired optimizer-seed screen over candidate sizes
-  -> one target-size reducer
-  -> N_selected and T_selected = pi_train[:N_selected]
+  -> optional paired optimizer-seed automatic diagnostic over candidate sizes
+     (one target-size reducer -> a *recommended* size)
+  -> operator-owned provisional design (N, CV horizon, production horizon)
+  -> cross-validate admission
+  -> frozen N_selected, T_selected = pi_train[:N_selected], and both horizons
   -> post-selection cross-validation on exactly T_selected
   -> fresh final production on the complete T_selected
   -> currentness-fenced final-production publication
@@ -61,7 +63,7 @@ reusable when their recipes do not depend on retired target-size semantics.
 | Source identity, labels, strain/stress, eligibility, raw features/events | Part II - Data and evidence contracts |
 | Evidence roles, leakage-safe CV, fitted preparation, objective/weighting/exposure boundaries | Part III - Statistical design and fitted preparation |
 | Replay, MACE protocol, checkpointing, validation, deployment, calibration, active learning | Part IV - Training, evaluation, and deployment |
-| Target-size split/orders, paired-seed screen, reducer, post-selection CV, fresh final production | Part V - Target-size selection and post-selection validation |
+| Target-size split/orders, the optional paired-seed diagnostic and its reducer, the provisional design and its freeze, post-selection CV, fresh final production | Part V - Target-size selection and post-selection validation |
 | Exact execution, bounded resource/materialization, cache/restart/storage/progress | Part VI - Performance and execution architecture |
 | Sole-owner matrix and accepted extension boundaries | Part VII - Ownership and extension boundaries |
 | External scientific/algorithmic sources | References |
@@ -86,11 +88,13 @@ For targeted human or AI loading, use the smallest current source containing the
 
 - **training domain** — an authorized gradient-training evidence partition. The current target-size choice is global; post-selection CV may derive fold-local partitions only inside `T_selected`.
 - **target membership** — frame membership in a target-training subset; an exact prefix of the one canonical training order `pi_train`.
-- **target size** — the protocol-level scientific target-training cardinality chosen by the one target-size reducer.
+- **target size** — the protocol-level scientific target-training cardinality the operator chooses, restricted to the configured qualified candidate set.
+- **recommended size** — the size the optional automatic diagnostic's reducer ranks best under its short-horizon protocol. It is evidence, never authority.
 - **monitor size** — the cardinality of a monitoring/evaluation evidence set; never target-size authority.
 - **training order** — the one canonical deterministic ordering `pi_train` of the target-training pool whose prefixes define candidate target subsets.
 - **qualified size** — a candidate size admitted by the configured target-size policy for the current experiment definition.
-- **selected size** — the one target size `N_selected` frozen by the reducer together with the exact membership `T_selected`.
+- **provisional design** — the one mutable proposal `(N_provisional, its exact membership, selection source, CV horizon, production horizon)` the operator owns until admission.
+- **selected size** — the one target size `N_selected` frozen at `cross-validate` admission together with the exact membership `T_selected` and both effective role horizons.
 - **authoritative evidence** — persisted information that defines or independently proves a scientific decision.
 - **reconstructible execution cache** — discardable state derivable exactly from authoritative inputs.
 - **unsupported generation** — an old campaign/artifact generation that current architecture does not interpret or migrate; it requires re-preparation.

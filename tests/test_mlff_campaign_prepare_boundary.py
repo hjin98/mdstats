@@ -241,8 +241,19 @@ def test_an_unchanged_terminal_prepare_succeeds_and_preserves_terminal_state(
     config, _workspace = p5.build_selected_campaign(tmp_path)
     cfg, paths = cli._load_config(config)
     before = _revision(paths)
-    assert before.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
+    assert before.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE
+    # The fixture already froze the design, so the derived view must be the one
+    # the freeze produced rather than the one the diagnostic left behind.
     view_path = paths.results / "target-size-state.json"
+    from mdstats.training_data.campaign_target_size_view import (
+        write_current_target_size_result_view,
+    )
+
+    store = CampaignStore(paths.state_db)
+    try:
+        write_current_target_size_result_view(cfg, paths, store, path=view_path)
+    finally:
+        store.close()
     before_view = json.loads(view_path.read_text(encoding="utf-8"))
 
     assert p4d._run(config, "prepare") == 0
@@ -250,10 +261,11 @@ def test_an_unchanged_terminal_prepare_succeeds_and_preserves_terminal_state(
     after = _revision(paths)
     assert after.state_revision == before.state_revision
     assert after.state.generation == before.state.generation
-    assert after.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
-    assert after.state.terminal.to_dict() == before.state.terminal.to_dict()
+    assert after.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE
+    assert after.state.auto_diagnostic.to_dict() == before.state.auto_diagnostic.to_dict()
     after_view = json.loads(view_path.read_text(encoding="utf-8"))
-    assert after_view["terminal"] == before_view["terminal"]
+    assert after_view["auto_diagnostic"] == before_view["auto_diagnostic"]
+    assert after_view["frozen"] == before_view["frozen"]
     assert after_view["canonical_generation"] == before_view["canonical_generation"]
 
 

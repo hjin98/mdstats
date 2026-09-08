@@ -1099,6 +1099,7 @@ def test_p4c_real_runtime_first_publication_retention_race(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -1111,8 +1112,8 @@ def test_p4c_real_runtime_first_publication_retention_race(
     try:
         final_revision = load_target_size_campaign_revision(store_final)
         assert final_revision.state.lifecycle in (
-            TargetSizeLifecycle.TERMINAL_SELECTED,
-            TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
+            TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
+            TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
         )
     finally:
         store_final.close()

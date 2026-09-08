@@ -197,37 +197,35 @@ def _authenticated(store: Any, content_digest: str, deserializer: Any) -> Any | 
 
 
 def _binding_for(revision: Any) -> Any | None:
-    """Derive the current selected binding from campaign state alone.
+    """Derive the current descendant binding from campaign state alone.
 
-    The binding is a pure function of the terminal projection the campaign
-    store already committed, so the pointer namespace of every P5/P7 descendant
-    is reachable without loading the prepared generation or re-deriving the
-    selection.
+    The binding is a pure function of the frozen selection the campaign store
+    already committed at ``cross-validate`` admission, so the pointer namespace
+    of every P5/P7 descendant is reachable without loading the prepared
+    generation or re-deriving anything.  Before that freeze there is no
+    descendant namespace at all, which is exactly right: a provisional proposal
+    has no descendants.
     """
 
     from .campaign_post_selection import PostSelectionBinding
 
     state = revision.state
-    terminal = state.terminal
-    if state.lifecycle is not TargetSizeLifecycle.TERMINAL_SELECTED or terminal is None:
-        return None
-    if terminal.selected_target_size is None or not terminal.selected_membership_digest:
+    frozen = state.frozen
+    if frozen is None:
         return None
     try:
         return PostSelectionBinding(
             campaign_generation=state.generation,
-            campaign_state_revision=revision.state_revision,
+            frozen_selection_digest=frozen.content_digest,
             experiment_definition_digest=state.experiment_definition_digest,
-            training_order_digest=terminal.training_order_digest,
+            training_order_digest=frozen.training_order_digest,
             frame_authority_digest=state.frame_authority_digest,
             neutral_statistical_base_digest=state.neutral_statistical_base_digest,
             split_exclusion_digest=state.split_exclusion_digest,
             target_size_policy_digest=state.policy_digest,
             aggregate_digest=state.aggregate_digest,
-            adopted_execution_head_digest=state.adopted_execution_head_digest,
-            adopted_reducer_state_digest=state.adopted_reducer_state_digest,
-            n_selected=int(terminal.selected_target_size),
-            selected_membership_digest=str(terminal.selected_membership_digest),
+            n_selected=int(frozen.n_selected),
+            selected_membership_digest=str(frozen.selected_membership_digest),
         )
     except Exception:  # noqa: BLE001 - reported as a blocked observation
         return None
@@ -252,6 +250,13 @@ def _doctor_step(store: Any, paths: Any) -> LifecycleStep:
         mapping[state],
         message,
     )
+
+
+#: One sentence, used wherever the target-size decision step is described.
+_SELECT_DESCRIPTION = (
+    "choose the provisional target size and role horizons; the optional "
+    "automatic screen only recommends"
+)
 
 
 def _short(value: Any) -> str:
@@ -301,55 +306,97 @@ def _prepare_step(state: Any) -> LifecycleStep:
 
 
 def _screen_step(state: Any, prepare_complete: bool) -> LifecycleStep:
-    terminal_outcome = False
+    """The target-size *decision* step: propose, optionally diagnose, then freeze.
+
+    The automatic screen is one optional input to this step, never the step
+    itself.  A generation whose diagnostic could not make a valid comparison is
+    therefore not terminal for the campaign: an explicit qualified choice is
+    still admissible, and the step reports that rather than stopping.
+    """
+
     if not prepare_complete:
-        observed = LifecycleObservationState.NOT_STARTED
-        message = "the current substrate must be bound first"
-    elif (
-        state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
-        and state.terminal is not None
-    ):
-        observed = LifecycleObservationState.COMPLETE
-        message = (
-            f"selected target size frozen at N={state.terminal.selected_target_size}; "
-            f"T_selected={_short(state.terminal.selected_membership_digest)}"
+        return LifecycleStep(
+            "target_size_selection",
+            "select-target-size",
+            "select-target-size",
+            _SELECT_DESCRIPTION,
+            LifecycleObservationState.NOT_STARTED,
+            "the current substrate must be bound first",
         )
-        warnings = ", ".join(state.terminal.terminal_reason_codes)
-        if warnings:
-            # A selected result may still carry a scientific warning - most
-            # importantly that the configured practical ceiling was the best
-            # permitted size, so convergence was not demonstrated below it.
-            # It is diagnostic metadata on a valid selection, never a blocker.
-            message += f"; warning: {warnings}"
-    elif state.lifecycle is TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE:
-        observed = LifecycleObservationState.COMPLETE
-        terminal_outcome = True
-        reasons = (
-            ", ".join(state.terminal.terminal_reason_codes)
-            if state.terminal is not None
-            else ""
-        )
-        message = (
-            "the paired-seed screen reached a typed scientific terminal outcome"
-            + (f": {reasons}" if reasons else "")
-        )
-    elif state.lifecycle is TargetSizeLifecycle.SCREEN_ACTIVE:
-        observed = LifecycleObservationState.RUNNING
-        message = (
-            f"screen attempt {state.attempt} is open at canonical generation "
-            f"{state.generation}"
+
+    diagnostic = state.auto_diagnostic
+    if diagnostic is None:
+        if state.lifecycle is TargetSizeLifecycle.SCREEN_ACTIVE:
+            diagnostic_note = (
+                f"automatic diagnostic attempt {state.attempt} is open at canonical "
+                f"generation {state.generation}"
+            )
+        else:
+            diagnostic_note = "no automatic diagnostic has been run for this generation"
+    elif diagnostic.has_recommendation:
+        warnings = ", ".join(diagnostic.terminal_reason_codes)
+        diagnostic_note = (
+            "automatic diagnostic recommends "
+            f"N={diagnostic.recommended_target_size}"
+            + (f" (warning: {warnings})" if warnings else "")
         )
     else:
-        observed = LifecycleObservationState.NOT_STARTED
-        message = "no candidate has been screened for this generation"
+        reasons = ", ".join(diagnostic.terminal_reason_codes)
+        diagnostic_note = (
+            "the automatic diagnostic completed without a recommendation"
+            + (f": {reasons}" if reasons else "")
+            + "; an explicit qualified choice remains available"
+        )
+
+    frozen = state.frozen
+    if frozen is not None:
+        return LifecycleStep(
+            "target_size_selection",
+            "select-target-size",
+            "select-target-size",
+            _SELECT_DESCRIPTION,
+            LifecycleObservationState.COMPLETE,
+            (
+                f"selected target size frozen at N={frozen.n_selected}; "
+                f"T_selected={_short(frozen.selected_membership_digest)}; "
+                f"CV horizon {frozen.cv_max_num_epochs}; production horizon "
+                f"{frozen.production_max_num_epochs}; source "
+                f"{frozen.selection_source}; Frozen: yes. {diagnostic_note}"
+            ),
+        )
+
+    proposal = state.proposal
+    if proposal is not None:
+        # A provisional proposal is a complete decision for routing purposes:
+        # the next consequential command is `cross-validate`, which freezes it.
+        return LifecycleStep(
+            "target_size_selection",
+            "select-target-size",
+            "select-target-size",
+            _SELECT_DESCRIPTION,
+            LifecycleObservationState.COMPLETE,
+            (
+                f"provisional target size N={proposal.n_provisional} "
+                f"(source {proposal.selection_source}); "
+                f"T_provisional={_short(proposal.membership_digest)}; "
+                f"CV horizon {proposal.cv_max_num_epochs}; production horizon "
+                f"{proposal.production_max_num_epochs}; Frozen: no. "
+                f"{diagnostic_note}"
+            ),
+        )
+
     return LifecycleStep(
         "target_size_selection",
         "select-target-size",
         "select-target-size",
-        "paired optimizer-seed target-size screen; the only command that decides N",
-        observed,
-        message,
-        terminal=terminal_outcome,
+        _SELECT_DESCRIPTION,
+        LifecycleObservationState.WAITING,
+        (
+            "no provisional target size has been chosen; run "
+            "`select-target-size <N>` to choose one explicitly, or "
+            "`select-target-size --auto` to run the optional automatic "
+            f"diagnostic and adopt its recommendation. {diagnostic_note}"
+        ),
     )
 
 

@@ -31,7 +31,7 @@ from mdstats.training_data.campaign_target_size_state import (
     TargetSizeCasExpectation,
     TargetSizeLifecycle,
     TargetSizeRegime,
-    TargetSizeTerminalProjection,
+    TargetSizeAutoDiagnostic,
     TargetSizeTransitionKind,
     commit_target_size_campaign_transition,
     ensure_target_size_campaign_revision,
@@ -89,20 +89,20 @@ def _advance(store: CampaignStore, revision, successor, *, kind=TargetSizeTransi
 
 
 def test_p4a_req1_state_serialization_roundtrip_is_exact():
-    terminal = TargetSizeTerminalProjection(
+    terminal = TargetSizeAutoDiagnostic(
         reducer_status="selected",
         experiment_definition_digest=_d("definition"),
         reducer_state_digest=_d("reducer"),
         execution_head_digest=_d("head"),
         training_order_digest=_d("training-order"),
-        selected_target_size=48,
-        selected_membership_digest=_d("membership"),
+        recommended_target_size=48,
+        recommended_membership_digest=_d("membership"),
         terminal_reason_codes=("practical_equivalence",),
     )
     state = _bound_state(
         generation=3,
         regime=TargetSizeRegime.CURRENT,
-        lifecycle=TargetSizeLifecycle.TERMINAL_SELECTED,
+        lifecycle=TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
         attempt="attempt-1",
         execution_context_digest=_d("context"),
         common_preparation_digest=_d("common"),
@@ -110,13 +110,13 @@ def test_p4a_req1_state_serialization_roundtrip_is_exact():
         execution_root="target-size/screen-3",
         adopted_execution_head_digest=_d("head"),
         adopted_reducer_state_digest=_d("reducer"),
-        terminal=terminal,
+        auto_diagnostic=terminal,
     )
     encoded = json.dumps(state.to_dict(), sort_keys=True)
     restored = TargetSizeCampaignState.from_dict(json.loads(encoded))
     assert restored == state
     assert restored.content_digest == state.content_digest
-    assert restored.terminal == terminal
+    assert restored.auto_diagnostic == terminal
 
 
 def test_p4a_req1_tampered_payload_fails_authentication():
@@ -764,40 +764,40 @@ def test_p4a_req11_no_version_prefixed_production_names_in_new_state_authority()
 # --- Invariant guards -------------------------------------------------------
 
 
-def test_p4a_terminal_projection_must_bind_n_and_exact_membership_together():
+def test_p4a_auto_diagnostic_must_bind_n_and_exact_membership_together():
     with pytest.raises(TrainingDataInputError):
-        TargetSizeTerminalProjection(
+        TargetSizeAutoDiagnostic(
             reducer_status="selected",
             experiment_definition_digest=_d("definition"),
             reducer_state_digest=_d("reducer"),
             execution_head_digest=_d("head"),
             training_order_digest=_d("training-order"),
-            selected_target_size=48,
+            recommended_target_size=48,
         )
 
 
-def test_p4a_terminal_projection_must_match_adopted_references():
-    terminal = TargetSizeTerminalProjection(
+def test_p4a_auto_diagnostic_must_match_adopted_references():
+    terminal = TargetSizeAutoDiagnostic(
         reducer_status="selected",
         experiment_definition_digest=_d("definition"),
         reducer_state_digest=_d("reducer"),
         execution_head_digest=_d("head"),
         training_order_digest=_d("training-order"),
-        selected_target_size=48,
-        selected_membership_digest=_d("membership"),
+        recommended_target_size=48,
+        recommended_membership_digest=_d("membership"),
     )
     with pytest.raises(TrainingDataInputError):
         _bound_state(
             generation=1,
             regime=TargetSizeRegime.CURRENT,
-            lifecycle=TargetSizeLifecycle.TERMINAL_SELECTED,
+            lifecycle=TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
             execution_context_digest=_d("context"),
             common_preparation_digest=_d("common"),
             screen_window_digest=_d("window"),
             execution_root="target-size/screen-1",
             adopted_execution_head_digest=_d("different-head"),
             adopted_reducer_state_digest=_d("reducer"),
-            terminal=terminal,
+            auto_diagnostic=terminal,
         )
 
 

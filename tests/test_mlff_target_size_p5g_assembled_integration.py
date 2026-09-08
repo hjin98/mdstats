@@ -59,9 +59,9 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
     _cfg, _paths, store = load_context(config)
     try:
         before = load_target_size_campaign_revision(store)
-        before_terminal = before.state.terminal
-        n_selected = before_terminal.selected_target_size
-        selected_digest = before_terminal.selected_membership_digest
+        before_terminal = before.state.auto_diagnostic
+        n_selected = before_terminal.recommended_target_size
+        selected_digest = before_terminal.recommended_membership_digest
     finally:
         store.close()
 
@@ -177,7 +177,7 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
         after = load_target_size_campaign_revision(store)
         assert after.state_revision == before.state_revision
         assert after.sequence == before.sequence
-        assert after.state.terminal == before_terminal
+        assert after.state.auto_diagnostic == before_terminal
         history = load_target_size_campaign_history(store)
         assert len(history) == before.sequence + 1
     finally:

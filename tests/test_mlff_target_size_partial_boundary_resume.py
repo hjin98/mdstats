@@ -510,6 +510,7 @@ def _select(config: Path, harness: _RestartHarness) -> int:
     return p4d._run(
         config,
         "select-target-size",
+        "--auto",
         _external_boundary_trainer=harness.train,
         _external_inference_evaluator=harness.evaluate,
     )
@@ -532,7 +533,7 @@ def test_partial_first_boundary_restart_reuses_published_cells(tmp_path: Path):
     root = _screen_root(paths, revision)
     assert revision.state.adopted_execution_head_digest is None
     assert revision.state.adopted_reducer_state_digest is None
-    assert revision.state.terminal is None
+    assert revision.state.auto_diagnostic is None
     assert not sorted((root / "heads").glob("*.json"))
     assert not (root / "batches").is_dir() or not sorted(
         (root / "batches").glob("*.json")
@@ -642,7 +643,7 @@ def test_restarted_screen_matches_an_uninterrupted_screen(tmp_path: Path):
 
     restarted_state = _revision(interrupted_paths).state
     clean_state = _revision(clean_paths).state
-    assert restarted_state.terminal is not None
+    assert restarted_state.auto_diagnostic is not None
     assert (
         restarted_state.adopted_reducer_state_digest
         == clean_state.adopted_reducer_state_digest
@@ -689,7 +690,7 @@ def test_partial_later_boundary_restart_uses_existing_continuation(tmp_path: Pat
         resumed.start_epochs[(size, seed, 3)] == 1 for size, seed in executed_second
     )
 
-    assert _revision(paths).state.terminal is not None
+    assert _revision(paths).state.auto_diagnostic is not None
 
 
 @pytest.mark.parametrize("corruption", ["tampered_parent", "foreign_window"])

@@ -229,16 +229,25 @@ def publish_current_post_selection_pointer(
                 "be published as current."
             )
         state = revision.state
+        # Currentness is the *frozen selection*, not the campaign state
+        # revision. Publishing later diagnostic evidence advances the revision
+        # without changing one fact about the frozen experiment, and must not
+        # orphan descendants of it; replacing the frozen design, or the
+        # generation under it, must.
+        current_frozen = (
+            None if state.frozen is None else state.frozen.content_digest
+        )
         if (
             state.generation != binding.campaign_generation
-            or revision.state_revision != binding.campaign_state_revision
+            or current_frozen != binding.frozen_selection_digest
         ):
             raise PostSelectionStaleBindingError(
-                "A newer target-size campaign revision became current while this "
+                "A newer frozen target selection became current while this "
                 f"post-selection work was running (binding generation "
-                f"{binding.campaign_generation} revision "
-                f"{binding.campaign_state_revision[:12]}...; current generation "
-                f"{state.generation} revision {revision.state_revision[:12]}...). "
+                f"{binding.campaign_generation} selection "
+                f"{binding.frozen_selection_digest[:12]}...; current generation "
+                f"{state.generation} selection "
+                f"{'none' if current_frozen is None else current_frozen[:12] + '...'}). "
                 "The stale result stays available as historical evidence but is "
                 "never published as current."
             )

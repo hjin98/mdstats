@@ -115,6 +115,7 @@ def test_downstream_commands_pay_no_upstream_reconstruction(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -133,6 +134,7 @@ def test_downstream_commands_pay_no_upstream_reconstruction(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )

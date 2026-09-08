@@ -29,8 +29,8 @@ from mdstats.training_data.campaign_target_size_state import (
 from mdstats.training_data.campaign_target_size_runtime import (
     build_prepared_target_size_substrate,
 )
-from mdstats.training_data.campaign_target_size_terminal import (
-    validate_terminal_projection,
+from mdstats.training_data.campaign_target_size_diagnostic import (
+    validate_auto_diagnostic,
 )
 from mdstats.training_data.target_size_execution import TargetSizeExecutionResolver
 
@@ -74,7 +74,7 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
     try:
         prepared = load_target_size_campaign_revision(store)
         assert prepared.state.regime is TargetSizeRegime.CURRENT
-        assert prepared.state.terminal is None
+        assert prepared.state.auto_diagnostic is None
     finally:
         store.close()
 
@@ -84,6 +84,7 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -98,8 +99,8 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
     try:
         revision = load_target_size_campaign_revision(store)
         assert revision.state.lifecycle in (
-            TargetSizeLifecycle.TERMINAL_SELECTED,
-            TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
+            TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
+            TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
         )
         definition = build_prepared_target_size_substrate(
             cfg, paths, store
@@ -107,7 +108,7 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
         resolver = TargetSizeExecutionResolver(
             workspace / revision.state.execution_root
         )
-        head = validate_terminal_projection(
+        head = validate_auto_diagnostic(
             revision, resolver=resolver, definition=definition
         )
         assert head.content_digest == revision.state.adopted_execution_head_digest
@@ -122,10 +123,10 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
         assert TargetSizeTransitionKind.BEGIN_CUTOVER in kinds
         assert TargetSizeTransitionKind.COMPLETE_CUTOVER in kinds
         assert TargetSizeTransitionKind.ADOPT_EXECUTION_HEAD in kinds
-        assert kinds[-1] in (
-            TargetSizeTransitionKind.RECORD_TERMINAL_SELECTION,
-            TargetSizeTransitionKind.RECORD_TERMINAL_SCIENTIFIC_FAILURE,
-        )
+        # The diagnostic completion is committed, and the operator's adoption of
+        # its recommendation is the separate transition that follows it.
+        assert TargetSizeTransitionKind.RECORD_AUTO_DIAGNOSTIC_RECOMMENDATION in kinds
+        assert kinds[-1] is TargetSizeTransitionKind.SET_PROPOSAL
     finally:
         store.close()
 
@@ -174,6 +175,7 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=replay.train,
             _external_inference_evaluator=replay.evaluate,
         )
@@ -184,7 +186,7 @@ def test_p4g_assembled_current_target_size_lifecycle(tmp_path: Path, capsys):
     store = CampaignStore(state_db)
     try:
         final = load_target_size_campaign_revision(store)
-        assert final.state.terminal == revision.state.terminal
+        assert final.state.auto_diagnostic == revision.state.auto_diagnostic
         assert final.state.generation == revision.state.generation
     finally:
         store.close()
