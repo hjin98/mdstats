@@ -968,10 +968,16 @@ def test_no_current_surface_retains_the_retired_selection_semantics():
 
     # P5 never reaches the automatic diagnostic's head/reducer for its ancestry.
     from mdstats.training_data.campaign_post_selection import PostSelectionBinding
+    import mdstats.training_data.campaign_post_selection as post_sel_mod
 
     fields = set(PostSelectionBinding.__dataclass_fields__)
     assert "adopted_execution_head_digest" not in fields
     assert "adopted_reducer_state_digest" not in fields
+
+    legacy_classes = [
+        name for name in dir(post_sel_mod) if name.startswith("_Legacy")
+    ]
+    assert not legacy_classes, f"Synthetic legacy classes remain: {legacy_classes}"
 
     # And `advance` cannot dispatch the target-size decision.
     source = (_TRAINING_DATA / "_campaign_cli_core.py").read_text(encoding="utf-8")

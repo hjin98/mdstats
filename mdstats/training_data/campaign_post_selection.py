@@ -461,7 +461,7 @@ def load_current_selected_training_contexts(
 
     revision = require_current_target_size_runtime(store)
     if revision.state.is_prerework_schema:
-        return _load_legacy_prerework_training_contexts(cfg, paths, store, revision)
+        return _load_p5a6_selected_training_context(cfg, paths, store, revision)
 
     admitted_design = resolve_frozen_target_design(cfg, paths, store, admit=admit)
     return tuple(
@@ -470,43 +470,12 @@ def load_current_selected_training_contexts(
     )
 
 
-@dataclass(frozen=True, slots=True)
-class _LegacyEvaluationOrder:
-    digest_value: str
-
-    def membership_digest(self, evaluation_size: int) -> str:
-        return self.digest_value
-
-
-@dataclass(frozen=True, slots=True)
-class _LegacyExperimentDefinition:
-    content_digest: str
-    training_order: Any = None
-    policy: Any = None
-    m3_membership: tuple[str, ...] = ()
-    m3_digest: str = ""
-
-    def evaluation_membership(self, evaluation_size: int) -> tuple[str, ...]:
-        return self.m3_membership
-
-    @property
-    def evaluation_order(self) -> Any:
-        return _LegacyEvaluationOrder(digest_value=self.m3_digest)
-
-
-@dataclass(frozen=True, slots=True)
-class _LegacyTargetSizeAggregate:
-    content_digest: str
-    definition: _LegacyExperimentDefinition
-
-
-def _load_legacy_prerework_training_contexts(
+def _load_p5a6_selected_training_context(
     cfg: Mapping[str, Any],
     paths: Any,
     store: Any,
     revision: Any,
 ) -> tuple[CurrentSelectedTrainingContext, ...]:
-    import json
     import mdstats
     from ._campaign_cli_core import (
         _ensure_manifest,
@@ -527,22 +496,10 @@ def _load_legacy_prerework_training_contexts(
         build_neutral_statistical_base,
         build_source_authority_from_data2_catalog,
     )
-    from .post_selection_cv_plan import PostSelectionCvPlan
-    from .post_selection_production import FinalProductionPlan
-    from .post_selection_run_identity import (
-        PostSelectionRunRole,
-        post_selection_run_identity,
-    )
-    from .post_selection_store import (
-        POINTER_CV_PLAN,
-        POINTER_FINAL_PLAN,
-        open_post_selection_store,
-        post_selection_root,
-        read_current_post_selection_pointer,
-    )
     from .target_size_experiment import (
+        TARGET_SIZE_POLICY_V1_SCHEMA,
+        build_target_size_statistical_aggregate,
         resolve_target_size_policy_from_config,
-        target_training_prefix_digest,
     )
 
     state = revision.state
@@ -567,37 +524,6 @@ def _load_legacy_prerework_training_contexts(
         legacy_v1_execution_head_digest=state.adopted_execution_head_digest,
         legacy_v1_reducer_state_digest=state.adopted_reducer_state_digest,
     )
-
-    evidence_store = open_post_selection_store(paths, binding, create=False)
-    cv_plan_digest = read_current_post_selection_pointer(
-        store, binding=binding, kind=POINTER_CV_PLAN
-    )
-    if cv_plan_digest is None or not evidence_store.has(cv_plan_digest):
-        raise PostSelectionError(
-            "Pre-rework campaign state is missing its published CV plan."
-        )
-    cv_plan = evidence_store.get(cv_plan_digest, PostSelectionCvPlan.from_dict)
-    first_fold = cv_plan.folds[0]
-    membership = tuple(
-        sorted(
-            first_fold.training_frame_uids
-            + first_fold.checkpoint_monitor_frame_uids
-            + first_fold.outer_evaluation_frame_uids
-            + first_fold.purged_frame_uids
-        )
-    )
-    if (
-        len(membership) != binding.n_selected
-        or target_training_prefix_digest(
-            binding.training_order_digest,
-            binding.n_selected,
-            membership,
-        )
-        != binding.selected_membership_digest
-    ):
-        raise PostSelectionError(
-            "Legacy CV plan frame membership does not reproduce the selected membership digest."
-        )
 
     training_root = _path_cfg(cfg, paths, "training_root")
     manifest = _ensure_manifest(cfg, paths, approve=False)
@@ -647,36 +573,44 @@ def _load_legacy_prerework_training_contexts(
             "Split exclusion digest mismatch in legacy workspace."
         )
 
-    target_size_policy = resolve_target_size_policy_from_config(cfg)
-    m3_frames: tuple[str, ...] = ()
-    m3_digest = ""
-    final_plan_digest = read_current_post_selection_pointer(
-        store, binding=binding, kind=POINTER_FINAL_PLAN
+    target_size_policy = resolve_target_size_policy_from_config(
+        cfg, schema_version=TARGET_SIZE_POLICY_V1_SCHEMA
     )
-    if final_plan_digest is not None and evidence_store.has(final_plan_digest):
-        final_plan = evidence_store.get(
-            final_plan_digest, FinalProductionPlan.from_dict
+    if target_size_policy.content_digest != state.policy_digest:
+        raise PostSelectionError(
+            "Target-size policy digest mismatch in legacy workspace."
         )
-        m3_digest = final_plan.m3_membership_digest
-        if final_plan.required_final_seeds:
-            seed = final_plan.required_final_seeds[0]
-            run_id = post_selection_run_identity(
-                role=PostSelectionRunRole.FINAL_PRODUCTION,
-                plan_digest=final_plan.content_digest,
-                optimizer_seed=seed,
-            )
-            mat_path = (
-                post_selection_root(paths, binding.campaign_generation)
-                / "runs"
-                / run_id
-                / "materialization"
-                / "materialization.json"
-            )
-            if mat_path.is_file():
-                mat_data = json.loads(mat_path.read_text(encoding="utf-8"))
-                mon = mat_data.get("checkpoint_monitor_artifact")
-                if mon and "frame_uids" in mon:
-                    m3_frames = tuple(str(x) for x in mon["frame_uids"])
+
+    aggregate = build_target_size_statistical_aggregate(
+        frame_authority,
+        neutral_base,
+        policy=target_size_policy,
+    )
+    if aggregate.content_digest != state.aggregate_digest:
+        raise PostSelectionError(
+            "Target-size statistical aggregate digest mismatch in legacy workspace."
+        )
+    definition = aggregate.definition
+    if definition.content_digest != state.experiment_definition_digest:
+        raise PostSelectionError(
+            "Target-size experiment definition digest mismatch in legacy workspace."
+        )
+    if definition.training_order.content_digest != terminal.training_order_digest:
+        raise PostSelectionError(
+            "Target training order digest mismatch in legacy workspace."
+        )
+
+    selected_membership = definition.training_order.candidate_membership(
+        binding.n_selected
+    )
+    if (
+        definition.training_order.candidate_digest(binding.n_selected)
+        != binding.selected_membership_digest
+    ):
+        raise PostSelectionError(
+            "The exact pi_train prefix does not reproduce the authenticated "
+            "T_selected membership digest."
+        )
 
     authorities = CurrentTargetSizeAuthorities(
         manifest=manifest,
@@ -686,15 +620,7 @@ def _load_legacy_prerework_training_contexts(
         feature_evidence=feature_evidence,
         neutral_base=neutral_base,
         split_exclusion=split_exclusion,
-        aggregate=_LegacyTargetSizeAggregate(
-            content_digest=state.aggregate_digest,
-            definition=_LegacyExperimentDefinition(
-                content_digest=state.experiment_definition_digest,
-                policy=target_size_policy,
-                m3_membership=m3_frames,
-                m3_digest=m3_digest,
-            ),
-        ),
+        aggregate=aggregate,
         common=None,
         frame_catalog=frame_catalog,
         frame_data_by_run=frame_data_by_run,
@@ -704,7 +630,7 @@ def _load_legacy_prerework_training_contexts(
     return (
         CurrentSelectedTrainingContext(
             binding=binding,
-            selected_membership=membership,
+            selected_membership=selected_membership,
             frozen=None,
             authorities=authorities,
         ),

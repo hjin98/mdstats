@@ -32,6 +32,7 @@ from .neutral_substrate import (
 )
 from .partition import OuterRole
 
+TARGET_SIZE_POLICY_V1_SCHEMA = "mdstats.target-size-scientific-policy.v1"
 TARGET_SIZE_POLICY_SCHEMA = "mdstats.target-size-scientific-policy.v2"
 #: The one current P2 terminal-decision rule.  The configured ladder ceiling is
 #: a practical budget limit, not a requirement that convergence occur below it:
@@ -229,6 +230,7 @@ class ResolvedTargetSizePolicy:
     evaluation_order_policy: str = "candidate_independent_representative.v1"
     terminal_decision_policy: str = TARGET_SIZE_TERMINAL_DECISION_POLICY
     hard_support_obligations: tuple[TargetSizeHardSupportObligation, ...] = ()
+    schema_version: str = TARGET_SIZE_POLICY_SCHEMA
 
     def __post_init__(self) -> None:
         sizes = tuple(self.candidate_sizes)
@@ -276,7 +278,7 @@ class ResolvedTargetSizePolicy:
             )
         seeds = tuple(self.optimizer_seeds)
         if not seeds or any(
-            isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in seeds
+            isinstance(v, bool) or not isinstance(v, int) for v in seeds
         ):
             raise TrainingDataInputError(
                 "optimizer_seeds must be one nonempty ordered set of nonnegative integers."
@@ -306,10 +308,20 @@ class ResolvedTargetSizePolicy:
         ):
             if not str(getattr(self, name)).strip():
                 raise TrainingDataInputError(f"{name} must be nonempty.")
+        if self.schema_version not in (
+            TARGET_SIZE_POLICY_SCHEMA,
+            TARGET_SIZE_POLICY_V1_SCHEMA,
+        ):
+            raise TrainingDataInputError(
+                f"Unsupported target-size policy schema {self.schema_version!r}."
+            )
         # The terminal-decision rule is specification-owned, not a user plugin
         # string: only the current rule is executable, and its presence in the
         # payload keeps old blocking-ceiling evidence out of the current meaning.
-        if self.terminal_decision_policy != TARGET_SIZE_TERMINAL_DECISION_POLICY:
+        if (
+            self.schema_version != TARGET_SIZE_POLICY_V1_SCHEMA
+            and self.terminal_decision_policy != TARGET_SIZE_TERMINAL_DECISION_POLICY
+        ):
             raise TrainingDataInputError(
                 "Only the current target-size terminal-decision policy "
                 f"{TARGET_SIZE_TERMINAL_DECISION_POLICY!r} is supported."
@@ -341,8 +353,8 @@ class ResolvedTargetSizePolicy:
         return self.evaluation_sizes[2]
 
     def _payload(self) -> dict[str, Any]:
-        return {
-            "schema": TARGET_SIZE_POLICY_SCHEMA,
+        payload: dict[str, Any] = {
+            "schema": self.schema_version,
             "candidate_sizes": list(self.candidate_sizes),
             "evaluation_sizes": list(self.evaluation_sizes),
             "fidelity_epochs": list(self.fidelity_epochs),
@@ -353,11 +365,13 @@ class ResolvedTargetSizePolicy:
             "training_order_policy": self.training_order_policy,
             "split_policy": self.split_policy,
             "evaluation_order_policy": self.evaluation_order_policy,
-            "terminal_decision_policy": self.terminal_decision_policy,
             "hard_support_obligations": [
                 item.to_dict() for item in self.hard_support_obligations
             ],
         }
+        if self.schema_version != TARGET_SIZE_POLICY_V1_SCHEMA:
+            payload["terminal_decision_policy"] = self.terminal_decision_policy
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -371,11 +385,27 @@ class ResolvedTargetSizePolicy:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> ResolvedTargetSizePolicy:
-        if payload.get("schema") != TARGET_SIZE_POLICY_SCHEMA:
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        allow_v1: bool = False,
+    ) -> ResolvedTargetSizePolicy:
+        schema = payload.get("schema")
+        if schema == TARGET_SIZE_POLICY_V1_SCHEMA:
+            if not allow_v1:
+                raise TrainingDataSerializationError(
+                    "Target-size policy schema v1 is retired under current semantics."
+                )
+        elif schema != TARGET_SIZE_POLICY_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported target-size policy schema."
             )
+        terminal_policy = (
+            str(payload["terminal_decision_policy"])
+            if schema != TARGET_SIZE_POLICY_V1_SCHEMA
+            else TARGET_SIZE_TERMINAL_DECISION_POLICY
+        )
         result = cls(
             candidate_sizes=tuple(int(v) for v in payload["candidate_sizes"]),
             evaluation_sizes=tuple(int(v) for v in payload["evaluation_sizes"]),
@@ -389,11 +419,12 @@ class ResolvedTargetSizePolicy:
             training_order_policy=str(payload["training_order_policy"]),
             split_policy=str(payload["split_policy"]),
             evaluation_order_policy=str(payload["evaluation_order_policy"]),
-            terminal_decision_policy=str(payload["terminal_decision_policy"]),
+            terminal_decision_policy=terminal_policy,
             hard_support_obligations=tuple(
                 TargetSizeHardSupportObligation.from_dict(item)
                 for item in payload["hard_support_obligations"]
             ),
+            schema_version=str(schema),
         )
         _checked_dict_digest(payload, result.content_digest, name="Target-size policy")
         return result
@@ -415,6 +446,7 @@ def resolve_target_size_policy(
     hard_support_obligations: Sequence[
         TargetSizeHardSupportObligation | Mapping[str, Any]
     ] = (),
+    schema_version: str = TARGET_SIZE_POLICY_SCHEMA,
 ) -> ResolvedTargetSizePolicy:
     pmin = _positive_int(target_size_power_min, name="target_size_power_min")
     pmax = _positive_int(target_size_power_max, name="target_size_power_max")
@@ -441,11 +473,14 @@ def resolve_target_size_policy(
         evaluation_order_policy=evaluation_order_policy,
         terminal_decision_policy=terminal_decision_policy,
         hard_support_obligations=tuple(hard_support_obligations),
+        schema_version=schema_version,
     )
 
 
 def resolve_target_size_policy_from_config(
     config: Mapping[str, Any],
+    *,
+    schema_version: str = TARGET_SIZE_POLICY_SCHEMA,
 ) -> ResolvedTargetSizePolicy:
     """Resolve only the owning config namespaces into canonical P2 identity.
 
@@ -532,6 +567,7 @@ def resolve_target_size_policy_from_config(
             )
         ),
         hard_support_obligations=tuple(raw_obligations),
+        schema_version=schema_version,
     )
 
 
@@ -2609,6 +2645,8 @@ __all__ = (
     "ResolvedTargetSizePolicy",
     "TARGET_SIZE_FUNNEL_POLICY_SCHEMA",
     "TARGET_SIZE_FUNNEL_TRANSITION",
+    "TARGET_SIZE_POLICY_SCHEMA",
+    "TARGET_SIZE_POLICY_V1_SCHEMA",
     "TargetEvaluationOrder",
     "TargetSizeBoundaryMetric",
     "TargetSizeCandidateQualification",
