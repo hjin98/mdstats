@@ -5,10 +5,13 @@ protocol_version: 5.16.0
 status: implementation-ready
 created_date: 2026-09-07
 reviewed_date: 2026-09-07
+closure_reviewed_date: 2026-09-07
+closure_review_status: pass
 predecessor_workplan: workplans/active/MLFF_TARGET_SIZE_PROVISIONAL_SELECTION_AUTO_DIAGNOSTIC_AND_HORIZON_STEERING_WORKPLAN.md
 reviewed_implementation_branch: plan/mlff-target-size-provisional-selection-auto-diagnostic
 reviewed_implementation_head: 7a38490c14999b460a634066ad8fe0d69cf673eb
 reviewed_behavior_commit: fdbbea44815a79de08d77e6c58d8f45b428f114f
+closure_review_base: cd79bfc377aa109c69090f39d15015f608e8271d
 architecture_change: ordered-multi-target-provisional-design-and-per-size-post-selection-training
 ---
 
@@ -16,152 +19,192 @@ architecture_change: ordered-multi-target-provisional-design-and-per-size-post-s
 
 ## Status and authority
 
-**PASS / implementation-ready for the successor revision.**
+**DESIGN CLOSURE PASS / implementation-ready.**
 
-This workplan is the reconciled successor authority after review of the submitted implementation of `MLFF_TARGET_SIZE_PROVISIONAL_SELECTION_AUTO_DIAGNOSTIC_AND_HORIZON_STEERING_WORKPLAN.md` at implementation head `7a38490c14999b460a634066ad8fe0d69cf673eb`.
+This file is the sole current implementation authority for the multi-target-size successor revision. It supersedes earlier contents of this same workplan path and incorporates the final closure review against the submitted predecessor implementation at `7a38490c14999b460a634066ad8fe0d69cf673eb`.
 
-The predecessor implementation is not treated as throwaway scaffolding. It has already established most of the hard authority separation needed by this successor. This plan therefore preserves completed predecessor work wherever its semantic claim survives, and changes only the scalar cardinality and downstream orchestration that conflict with the new multi-size product requirement.
+The predecessor implementation established most of the difficult authority separation correctly and is reused wherever its semantics survive. The closure review found one material predecessor conformance defect plus several successor consequences that were not explicit enough for lossless implementation. Those issues are resolved here as binding requirements rather than left for Implementation to guess.
 
-The core successor change is:
+The central product change remains:
 
-> The operator-owned provisional downstream target design becomes an ordered collection of distinct per-size designs. Selecting a new `N` appends a design; selecting an already-present `N` replaces that size's complete design in place. `cross-validate` freezes the whole ordered collection atomically. CV and final production then execute the existing per-size methodology for every frozen size while reusing the one prepared generation.
+> The operator-owned provisional downstream target design is an ordered collection of distinct qualified target sizes. A new N appends; reselecting an existing N replaces that size's complete per-size design in place. `cross-validate` freezes the entire ordered collection atomically. Existing CV and fresh-production methodology then executes independently for every frozen size while reusing one prepared generation.
 
-All predecessor requirements not explicitly superseded remain binding, including exact `T_N = pi_train[:N]`, advisory/cached automatic screening, P2/P3 scientific identity, prepared-generation reuse, CampaignStore/CAS ownership, fresh final production, role-specific horizon identity, and existing per-size CV/production scientific methodology.
+The implementation baseline itself is **not** accepted as the final target because the role/provenance identity coupling described in Closure Finding R1 must be corrected. That correction is part of this successor implementation, not a reason to invent a parallel repair layer.
 
-No independent executable test run was available in the review harness and no commit-status checks were exposed for the reviewed head. The predecessor implementation therefore receives strong source/test-conformance evidence but is not independently requalified here by execution. Successor Implementation must run the preserved predecessor affected tests plus the new multi-size acceptance described below.
-
----
-
-# 1. Reconciliation with the submitted predecessor implementation
-
-## 1.1 Completed and preserved
-
-The reviewed implementation already provides the following successor foundations and they MUST be reused rather than reimplemented behind parallel machinery.
-
-### C1 — Automatic screening is advisory, cached evidence
-
-Implemented:
-
-- P2/P3 screen/reducer science remains the automatic diagnostic owner;
-- public/current state projects historical internal `selected_*` evidence as a recommendation;
-- automatic diagnostic evidence is independent from operator selection/freeze;
-- warm `--auto` reuses authenticated evidence and can perform zero new TRAIN2/EVAL2 work;
-- a terminal no-recommendation diagnostic leaves the operator proposal unchanged;
-- the portable diagnostic report is derived from authenticated evidence rather than a second authority.
-
-**Successor disposition:** preserve unchanged. Multi-selection changes only how a valid `N_auto` is installed into operator selection state.
-
-### C2 — Exact manual membership and per-invocation horizon resolution
-
-Implemented:
-
-- manual `N` is restricted to the qualified target-size ladder;
-- membership is authenticated through the existing P2 training-order owner;
-- manual selection reaches no target-size trainer/evaluator;
-- CV and production horizons are resolved from existing canonical policy/config owners plus CLI overrides;
-- resolved horizons are persisted as explicit values and do not drift after later config edits;
-- a later selection command re-resolves omitted horizon values rather than inheriting hidden sticky CLI state.
-
-**Successor disposition:** preserve the existing per-size value semantics. Generalize only the campaign authority from one value to an ordered collection of these values.
-
-### C3 — One CampaignStore/CAS current authority and race protection
-
-Implemented:
-
-- one durable CampaignStore state chain;
-- serialized/CAS transitions;
-- proposal-vs-freeze serialization;
-- stale long-running auto completion cannot overwrite a newer manual decision/freeze;
-- no proposal-history database or mirrored target-selection authority.
-
-**Successor disposition:** preserve the same owner and CAS model. A collection update/reset/freeze is one campaign transition; do not add per-size mutable databases or synchronized rows as competing current authority.
-
-### C4 — Cross-validation admission is the freeze boundary
-
-Implemented for the scalar design:
-
-- `cross-validate` is the first freeze boundary;
-- membership is re-derived/authenticated at admission;
-- target identity and both effective horizons freeze before numerical CV work;
-- post-freeze target-selection commands refuse mutation.
-
-**Successor disposition:** widen the exact same admission operation from one entry to the complete ordered collection and keep the transition atomic.
-
-### C5 — Post-selection lineage no longer depends on auto-screen ancestry
-
-Implemented:
-
-- P5 consumes an authenticated frozen target binding rather than P3 reducer/head selection authority;
-- manual and auto origins share one downstream path;
-- `PostSelectionBinding` is content-addressed per selected target and excludes manual/auto provenance from numerical identity;
-- CV and production horizons are projected separately into their respective policy identities.
-
-**Successor disposition:** retain these records and semantics per selected size. Do not replace them merely because there are now several size entries.
-
-### C6 — Binding-keyed P5 persistence already supplies the right per-size namespace
-
-Implemented:
-
-- P5 immutable evidence is content-addressed;
-- mutable current pointers are keyed by `PostSelectionBinding.content_digest`;
-- one generation root may contain evidence from distinct bindings without a second store;
-- final-production publication decisions are themselves bound to one `PostSelectionBinding`.
-
-**Successor disposition:** reuse this as the per-size evidence namespace. The main required change is currentness: a per-size binding is current when its frozen entry is a member of the one current frozen collection, not only when it equals a scalar `state.frozen` digest.
-
-### C7 — Predecessor legacy cutover and documentation rewrite
-
-Implemented:
-
-- pre-rework reducer-terminal state cannot masquerade as the new operator freeze;
-- valid old automatic-screen evidence can remain diagnostic evidence;
-- current documentation/specification/help was substantially rewritten for advisory auto/manual scalar selection.
-
-**Successor disposition:** preserve the old-v1 cutover semantics, then reconcile the newly introduced predecessor-v2 scalar current representation into the collection representation described in this workplan.
-
-## 1.2 Superseded by the new design; not predecessor bugs
-
-The following implementation is correct for the predecessor but no longer satisfies the new product requirement:
-
-1. `TargetSizeCampaignState.proposal` as one scalar current proposal.
-2. `TargetSizeCampaignState.frozen` as one scalar frozen design.
-3. `commit_target_size_proposal()` replacement semantics for every distinct N.
-4. `resolve_frozen_target_selection()` admitting exactly one N.
-5. `CurrentSelectedTrainingContext` / `PostSelectionContext` exposing exactly one current size per command invocation.
-6. `execute_current_cross_validate()` and `execute_current_train_production()` executing one selected size.
-7. publication currentness that requires the current scalar frozen digest to equal one binding's frozen-selection digest.
-8. status/lifecycle wording and stage aggregation that assume one selected target.
-9. predecessor CLI names `--select-horizon-cv` and `--select-horizon`.
-10. the public qualification path assuming one current final-production publication.
-
-Do not preserve these scalar assumptions with wrappers that create a second collection authority. Reuse the good scalar **value objects** as collection entries when that is simpler; remove only their scalar authority role.
-
-## 1.3 Remaining successor work
-
-The following capabilities are genuinely missing and constitute the implementation scope of this plan:
-
-- ordered unique-by-N provisional collection;
-- duplicate-N in-place replacement;
-- pre-freeze `--reset`;
-- canonical `--horizon-cv` / `--horizon` CLI names;
-- atomic freeze of all selected entries;
-- per-size currentness against one frozen collection;
-- CV orchestration across size x existing CV seeds/folds;
-- production orchestration across size x existing production seeds;
-- collection-aware stage completion, restart, status, results, and retention/currentness;
-- predecessor-v2 scalar current-state projection/migration;
-- explicit multi-size qualification boundary described in Section 7;
-- affected regression/integration over all of the above.
+No production-scale or GPU qualification is required during implementation. Functional regression/integration is required through real semantic owners with bounded numerical doubles below the expensive MACE boundary.
 
 ---
 
-# 2. Objective / problem invariants / non-goals
+# 0. Final closure review findings and resolutions
 
-## 2.1 Product problem
+## R1 — Blocking identity coupling in the submitted scalar implementation
 
-The prepared target-size generation is expensive and intentionally reusable. The operator may want to run the established downstream training methodology at several qualified sizes from the same ladder to compare longer-horizon behavior without re-running `prepare` or allowing the latest `select-target-size` command to erase an earlier requested experiment.
+### Evidence
 
-The requested frozen downstream design is therefore:
+The predecessor design requires the following semantic dependency graph:
+
+```text
+TargetBinding
+    N_selected
+    exact T_selected
+    prepared/training-order scientific lineage
+
+CV identity
+    TargetBinding
+    + H_cv
+    + existing CV/method fields
+    - H_prod
+    - selection provenance
+
+Production identity
+    TargetBinding
+    + accepted CV/method ancestry
+    + H_prod
+    - selection provenance
+```
+
+The submitted implementation currently computes `FrozenTargetSelection.content_digest` from the complete frozen record, including:
+
+```text
+N
+membership
+training order
+H_cv
+H_prod
+selection_source
+auto_diagnostic_digest
+```
+
+and `PostSelectionBinding` includes that full frozen-selection digest. CV plans then include the full `PostSelectionBinding`. Therefore `H_prod`, manual-versus-auto provenance, and automatic-diagnostic provenance can change a CV descendant's digest transitively even though they are forbidden CV identity inputs.
+
+The existing predecessor test checks that provenance field names are absent from the direct binding payload, but that oracle does not detect transitive contamination through `frozen_selection_digest`.
+
+### Frozen repair
+
+Separate **full frozen-entry authority/currentness** from **per-size scientific target binding identity**.
+
+The full frozen entry may remain an authenticated record containing N, exact membership identity, both horizons, and provenance. Its content digest may cover all of those fields for persistence/audit/currentness.
+
+However the numerical/scientific `PostSelectionBinding` or its semantic successor MUST NOT depend on the full frozen-entry digest when that digest contains role-extraneous horizons or provenance.
+
+The minimum dependency structure is:
+
+```text
+FrozenEntry_i                 # orchestration/audit authority
+    N_i
+    exact T_i identity
+    training-order identity
+    H_cv_i
+    H_prod_i
+    selection provenance
+
+TargetBinding_i               # per-size target scientific lineage
+    current generation
+    accepted prepared/P1/P2 lineage
+    N_i
+    exact T_i identity
+    training-order identity
+
+CV_i
+    TargetBinding_i
+    + method identity
+    + CV policy identity containing H_cv_i
+    + CV plan/evidence ancestry
+
+Production_i
+    TargetBinding_i
+    + method identity
+    + accepted CV ancestry
+    + production policy identity containing H_prod_i
+```
+
+Selection source and auto-diagnostic provenance are audit fields only. They MUST NOT change TargetBinding, CV, production, run, publication, or qualification numerical identity when the actual governed scientific design is otherwise identical.
+
+`H_prod` MUST NOT change TargetBinding or CV identity. `H_cv` MUST NOT change TargetBinding or the production policy itself; production descendants may change through the explicitly accepted CV ancestry, which is correct.
+
+A full frozen-entry digest may be carried separately for audit/currentness if useful, but it MUST NOT be embedded transitively in role identities that are defined to exclude its extra fields.
+
+Do not fix this with a second binding wrapper synchronized with the old one. Rewire the existing binding/identity boundary so each role hashes only its governed inputs.
+
+## R2 — Generation rollover must retire the complete multi-size design
+
+The current prepare owner already advances the canonical target-size generation when prepared scientific identity changes and constructs fresh campaign state. Preserve that invariant for collections.
+
+- unchanged prepared identity -> preserve the current generation and its provisional/frozen collection exactly;
+- changed prepared identity -> one fresh generation with **empty provisional selection and no freeze**;
+- every old per-size binding, CV pointer, production pointer/publication, and qualification descendant remains historical under the old generation;
+- no old selected N, collection order, horizon, or provenance is carried into the fresh generation merely because the new prepared ladder happens to contain the same N values.
+
+A stale P5 writer from the retired generation cannot publish current evidence after rollover.
+
+## R3 — Observation must remain one coherent multi-binding snapshot
+
+The current lifecycle observer deliberately reads the target-size revision and all descendant pointer rows in one SQLite read transaction because pointer publication can change without advancing the target-size state revision.
+
+The multi-size implementation MUST preserve that property. `status`, lifecycle projection, and other public observation must derive:
+
+```text
+one target-size revision
++ the complete ordered frozen binding set
++ every relevant P5 pointer namespace for those bindings
++ P7 pointers only where qualification is actually authorized
+```
+
+from one coherent read transaction. Do not loop over bindings with independently timed authoritative reads that can produce a hybrid state that never existed.
+
+Observation remains non-mutating: it creates no wrappers, evidence roots, plans, sessions, or qualification attempts.
+
+## R4 — Production admission is a collection-wide barrier
+
+`train-production` MUST preflight the entire frozen design before starting any new production job.
+
+Every frozen size must have current accepted CV ancestry under its own binding and H_cv. If any selected size is missing, stale, corrupt, incomplete, or rejected at the CV boundary, the invocation starts **no new production jobs** and reports the blocking N(s).
+
+Already-existing immutable production evidence from an earlier attempt remains historical/current according to its own identity; the preflight rule only prevents new production admission from bypassing a failed/incomplete member of the frozen requested experiment.
+
+This preserves the stage contract and prevents the product from silently turning an all-sizes experiment into a successful subset.
+
+## R5 — Multi-size post-production state must terminate truthfully
+
+For `k > 1`, this revision intentionally produces several final-production publications but does not authorize a rule for choosing one release product or consuming one-shot locked evidence across products.
+
+Therefore, after every selected size has a current final publication:
+
+- the multi-size **training experiment is complete**;
+- it is **not release-qualified**;
+- `advance` has no further consequential command and must not repeatedly route into a command guaranteed to fail;
+- `qualification status` remains observational and reports that qualification is unavailable for the multi-size frozen design;
+- consequential qualification commands such as `qualification run` and `qualification activate-locked` fail closed before creating/opening an attempt or revealing locked evidence.
+
+For `k == 1`, existing qualification methodology and lifecycle remain unchanged.
+
+## R6 — Outer size scheduling must not multiply resource ownership
+
+A simple serial outer iteration over selected sizes is an acceptable default and requires no new scheduler.
+
+If Implementation elects to overlap sizes using existing bounded scheduling, all size jobs must participate in the existing effective resource allocation. Outer size concurrency, inner fold/seed workers, MACE subprocesses, BLAS/OpenMP threads, GPU leases, RAM/VRAM reservations, and I/O budgets MUST NOT each independently assume ownership of the whole machine.
+
+No new generic parallel runtime is authorized by this workplan.
+
+## R7 — Compatibility migration must remain append-only and schema-authentic
+
+The campaign state chain is append-only. Existing v1/v2 rows must be authenticated under their native schema and never rewritten in place merely to make the new collection representation uniform.
+
+- predecessor-v2 provisional state may normalize to a one-entry provisional collection and, on the next consequential successor mutation/freeze, publish the new canonical collection schema;
+- predecessor-v2 frozen state remains a frozen one-entry legacy-compatible experiment and is not appendable/thawed;
+- existing predecessor-v2 P5 descendants may continue under their historical binding schema when exact legacy ancestry remains current;
+- the flawed v2 transitive identity coupling is **not** copied forward into new successor collection/binding schemas merely for symmetry;
+- older-v1 reducer-terminal state remains diagnostic-only under the predecessor cutover and can never become an operator freeze.
+
+---
+
+# 1. Original product problem and invariants
+
+## 1.1 Product problem
+
+The prepared target-size ladder is expensive and deliberately reusable. The operator may need several longer-horizon experiments from the same prepared generation to compare behavior across qualified target sizes without re-running preparation or allowing the newest selection command to erase an earlier requested experiment.
+
+The frozen downstream design is therefore:
 
 ```text
 D = [
@@ -174,168 +217,146 @@ D = [
 k >= 1 at cross-validation admission
 ```
 
-where all `N_i` are distinct configured qualified target sizes and every tuple snapshots its own effective role horizons.
+Each N is a distinct configured qualified target size. Each tuple snapshots its own effective CV and production horizons.
 
-The target-size dimension is another post-selection experiment dimension over the same prepared generation. It is not another campaign, another target-size diagnostic, or another prepared dataset.
+The size dimension is one more post-selection experiment dimension over the same prepared generation. It is not another campaign, another target-size screen, or another prepared dataset.
 
-## 2.2 Product invariants
+## 1.2 Frozen product invariants
 
-### P1 — Ordered unique-by-size selection
+### P1 — Ordered unique-by-N provisional design
 
-The provisional design contains at most one entry for each `N` and preserves first-insertion order for distinct sizes.
+The provisional collection contains at most one entry for each N and preserves first-insertion order for distinct sizes.
 
-For a newly resolved size `N_new`:
+- new N -> append complete entry;
+- existing N -> replace its complete entry in place, preserving its list position;
+- duplicate-N authoritative state -> corruption, never silently deduplicated.
 
-- if `N_new` is absent, append its complete entry;
-- if `N_new` is already present, replace that complete entry in place and preserve its position.
+### P2 — Exact membership only
 
-Example:
-
-```text
-select-target-size 512
-select-target-size 1024 --horizon-cv 40 --horizon 100
-
-=> [(512, HC_default_at_first_call, H_default_at_first_call),
-    (1024, 40, 100)]
-
-select-target-size 512 --horizon-cv 60 --horizon 200
-
-=> [(512, 60, 200),
-    (1024, 40, 100)]
-```
-
-Duplicate N entries are invalid authoritative state.
-
-### P2 — Horizons are per selected size
-
-Each successful manual or auto installation resolves one complete `(N, H_cv, H_prod)` entry from the current canonical config/default values plus the explicit options on that invocation.
-
-Existing untouched entries never drift when config/defaults later change. Reselecting the same N deliberately creates a new complete entry and therefore re-resolves every omitted horizon for that new invocation.
-
-### P3 — Unselected initialization is absence, not a fake record
-
-Immediately after `prepare` or `--reset`, the user-visible state is logically equivalent to:
-
-```text
-N = undefined
-H_cv = current/default H_cv
-H_prod = current/default H_prod
-```
-
-but there is no requirement to persist a fake `N=undefined` tuple. An empty provisional collection is the simpler authoritative representation.
-
-`cross-validate` MUST refuse with zero concrete selected sizes.
-
-### P4 — Reset clears only provisional operator selection
-
-```bash
-select-target-size --reset
-```
-
-before freeze:
-
-- atomically clears all provisional entries;
-- leaves the prepared generation intact;
-- leaves independently valid cached automatic-diagnostic evidence/report intact;
-- performs no target-size/CV/production numerical work.
-
-Reset never thaws a frozen experiment.
-
-### P5 — Auto recommendation uses the same merge owner
-
-`select-target-size --auto` retains the predecessor diagnostic behavior. Once a valid `N_auto` is resolved, it is installed by the same unique-by-N merge semantics as manual selection.
-
-Thus:
-
-```text
-[N1] + auto -> N2 != N1  => [N1, N2]
-[N1] + auto -> N1        => [N1(updated in place)]
-```
-
-A no-recommendation diagnostic changes no provisional collection field. Warm auto remains zero-new-screen-work.
-
-### P6 — Exact membership remains unchanged
-
-For every selected size:
+For every selected N:
 
 ```text
 T_N = pi_train[:N]
 ```
 
-using the one authenticated P2 training order. No arbitrary target membership, resampling, non-ladder size, or independently mutable `T_N` list is introduced.
+through the one accepted P2 training-order owner. No arbitrary list, resampling, random target membership, or non-ladder N is introduced.
 
-### P7 — Freeze is atomic over the complete ordered design
+### P3 — Per-size resolved horizon snapshot
 
-At `cross-validate` admission, every provisional entry is revalidated against the same current prepared generation and the complete ordered collection is frozen in one CampaignStore/CAS transition before numerical CV work starts.
+Every successful manual or auto installation resolves a complete `(N, H_cv, H_prod)` from canonical config/default owners plus explicit options on that invocation.
 
-After freeze, order, selected N values, exact membership identities, per-size horizons, and selection provenance are immutable for that campaign generation.
+Existing untouched entries do not drift when config changes. Reselecting an existing N deliberately re-resolves every omitted horizon for the new invocation.
 
-### P8 — CV and production gain a size dimension
+### P4 — Empty is the canonical unselected state
 
-For every frozen selected size, execute the existing post-selection methodology with that size's exact target data and role horizon.
+Immediately after a fresh prepared generation or `select-target-size --reset`, the provisional collection is empty. No fake `N=undefined` record is required.
 
-Conceptually:
+`cross-validate` refuses zero concrete selected sizes.
 
-```text
-for entry in frozen_selection_order:
-    CV(entry.N, entry.H_cv, existing seeds/folds)
+### P5 — Auto remains advisory and ordinary after recommendation resolution
 
-for entry in frozen_selection_order:
-    final_production(entry.N, entry.H_prod, existing production seeds)
-```
+The predecessor's P2/P3 automatic screen remains an optional cached diagnostic. A valid recommendation is installed through the same unique-by-N merge owner as a manual N.
 
-Existing CV fold construction, acceptance predicates, production seed/committee policy, optimizer semantics, and fresh-start production remain unchanged per size.
+- warm auto performs zero new target-size TRAIN2/EVAL2 work;
+- no-recommendation changes no provisional collection field;
+- diagnostic evidence/report may survive reset;
+- auto never clears sibling selections or receives special collection authority.
 
-### P9 — No requested size may disappear silently
+### P6 — Reset clears only provisional selection
 
-Campaign-level CV completion means required current CV is complete/accepted for every frozen selected size under the existing per-size predicate.
+`select-target-size --reset` is pre-freeze only. It atomically clears all provisional entries while preserving the prepared generation and valid automatic-diagnostic evidence. It performs no screen/CV/production numerical work.
 
-Campaign-level production completion means required current production/publication is complete for every frozen selected size.
+### P7 — Cross-validation admission freezes the complete collection atomically
 
-Failure, missing evidence, or stale evidence for one size must be attributed to that N and must not mutate the frozen design or silently shrink it. Valid completed siblings remain reusable on retry when their identity/currentness remains valid.
+`cross-validate` is the only freeze authority. Before numerical CV begins it re-authenticates every entry against the same current prepared generation and publishes one immutable ordered frozen design in one CampaignStore/CAS transition.
 
-### P10 — Per-size scientific identity is independent of siblings/order
+After freeze, selected N values, order, exact memberships, per-size horizons, and provenance are immutable for that generation.
 
-The frozen collection/order is orchestration authority. It MUST NOT contaminate the numerical scientific identity of an otherwise identical per-size target/CV/production experiment.
+### P8 — CV and production gain a size dimension, not a second subsystem
 
-For size `N_i`:
+Every frozen size receives the existing post-selection CV methodology using its exact T_N and H_cv, then the existing fresh final-production methodology using H_prod and accepted CV ancestry.
 
-```text
-TargetBinding_i
-  depends on prepared/training-order identity + N_i + exact T_i
+No new cross-size reducer or best-size rule is introduced.
 
-CV policy_i
-  depends on TargetBinding_i + H_cv_i + existing CV policy fields
-  does not depend on H_prod_i or sibling sizes/order
+### P9 — Every requested size remains accounted for
 
-Production policy_i
-  depends on TargetBinding_i + accepted method/CV ancestry + H_prod_i
-  does not depend on sibling sizes/order
-```
+Campaign CV succeeds only if every selected size reaches the existing accepted CV predicate. Campaign production succeeds only if every selected size has the required current final publication.
 
-Manual/auto provenance remains provenance rather than numerical identity.
+Failure/staleness for one N never silently removes it. Valid completed siblings remain reusable on retry where their existing identity/currentness contract permits.
 
-### P11 — Prepared data are shared
+### P10 — Per-size role identities are decomposed, not collection-hashed
 
-Adding selected sizes MUST NOT invoke `prepare` again, clone prepared-generation data, or create per-size campaign copies. All selected sizes share the same authenticated prepared generation/training order and derive only their existing exact prefixes/materializations.
+Sibling sizes, list position, collection digest, selection provenance, and role-extraneous horizons do not contaminate a per-size numerical identity.
 
-## 2.3 Explicit non-goals
+The exact dependency graph is the one frozen in R1.
 
-This revision does NOT:
+### P11 — One prepared generation is shared
 
-- redesign automatic successive halving or target-size ranking;
-- change P1/P2/P3 scientific identities or metrics;
-- add arbitrary non-ladder target sizes;
-- introduce automatic horizon optimization;
-- add new per-size hyperparameters beyond the two horizons;
-- change CV methodology/acceptance;
-- change production seed/committee policy;
-- allow screen or CV checkpoints to parent final production;
-- create per-size subcampaigns or a generic experiment framework;
-- create a second target-selection authority/database;
+Adding sizes does not invoke `prepare`, duplicate prepared arrays, or create per-size campaign copies. Per-run materialization remains only what the existing P5 training methodology genuinely requires.
+
+### P12 — Qualification cannot become hidden target-size selection
+
+For k>1, locked/qualification evidence is not used to compare or choose target sizes. For k==1 existing qualification remains the downstream release path.
+
+## 1.3 Explicit non-goals
+
+This revision does not:
+
+- redesign the automatic successive-halving algorithm, ranking metric, or P2/P3 scientific identity;
+- change P1/P2 partition/order science;
+- allow arbitrary noncandidate N;
+- add automatic horizon optimization or other per-size hyperparameters;
+- change CV fold construction or acceptance predicates;
+- change production seed or committee policy;
+- allow screen/CV checkpoints to parent final production;
+- create per-size subcampaigns or a generic experiment-management framework;
+- add a second selection database/state machine;
 - select a cross-size winner after production;
-- use qualification/locked evidence to choose among target sizes;
-- run production-scale/GPU qualification during implementation.
+- use qualification or locked evidence as a cross-size reducer;
+- require production-scale/GPU qualification during implementation.
+
+---
+
+# 2. Reconciliation with the submitted predecessor implementation
+
+## 2.1 Completed foundations to preserve
+
+The reviewed predecessor implementation already provides and must retain:
+
+1. **Advisory automatic diagnostic** — P2/P3 screen/reducer remains evidence/recommendation, not freeze authority.
+2. **Warm diagnostic reuse** — authenticated complete diagnostic can be reused with zero new TRAIN2/EVAL2 work.
+3. **No-recommendation non-mutation** — terminal insufficient diagnostic evidence does not destroy an operator choice.
+4. **Derived portable diagnostic report** — report is reconstructible and not a second authority.
+5. **Qualified manual N authentication** — manual choice uses the accepted P2 training-order/membership owner.
+6. **Zero numerical work on manual selection.**
+7. **Per-invocation horizon resolution** from existing CV/production config-policy owners with explicit CLI override.
+8. **Persisted horizon snapshots** that do not drift after config edits.
+9. **One CampaignStore/CAS state authority** with serialized races and stale-auto protection.
+10. **Cross-validate as the freeze boundary.**
+11. **P5 independence from automatic-screen ancestry.**
+12. **Binding-keyed P5 immutable evidence/pointers** under one generation root.
+13. **Old-v1 cutover** where reducer-terminal state remains diagnostic-only.
+14. **Fresh-start production** and existing post-selection/qualification scientific methodology.
+
+## 2.2 Correct predecessor behavior superseded only by new cardinality
+
+These scalar assumptions are not predecessor bugs, but they are no longer the target design:
+
+- one `state.proposal`;
+- one `state.frozen`;
+- every distinct manual N replaces the previous N;
+- one selected-training context per whole campaign command;
+- one CV/production binding per campaign generation;
+- lifecycle/status rendering one selected N;
+- old provisional CLI spellings `--select-horizon-cv` / `--select-horizon`.
+
+Generalize/remove the scalar **authority role** rather than wrapping it with a second synchronized collection. Existing scalar value records may be reused as per-size elements where that remains the simplest representation.
+
+## 2.3 Predecessor defect that must be repaired, not preserved
+
+R1 is a genuine implementation drift from the predecessor's own identity hierarchy. Existing direct-payload tests did not expose the transitive dependency.
+
+Successor implementation must repair the owning identity boundary and strengthen the oracle. Do not cite existing v2 behavior as a compatibility reason to keep role/provenance contamination in new current schemas.
 
 ---
 
@@ -344,94 +365,108 @@ This revision does NOT:
 ## 3.1 Authority graph
 
 ```text
-one authenticated prepared target-size generation
-                  |
-          +-------+----------------+
-          |                        |
-          v                        v
-optional cached auto         ordered provisional design
-P2/P3 diagnostic             CampaignStore current authority
-          |                        |
-          | N_auto                 | [entry_1, ..., entry_k]
-          +----------------------> | unique by N
-                                   |
-                                   | cross-validate admission
-                                   v
-                          ordered frozen design
-                          [frozen_1, ..., frozen_k]
-                                   |
-                    +--------------+--------------+
-                    |                             |
-                    v                             v
-          existing P5 CV per entry      existing final production
-          x existing folds/seeds        per entry x prod seeds
-                    |                             |
-                    +--------------+--------------+
-                                   v
-                      per-size production publications
+one authenticated prepared generation
+              |
+      +-------+------------------+
+      |                          |
+      v                          v
+optional cached P2/P3      ordered provisional collection
+screen/recommendation      CampaignStore current authority
+      |                          |
+      | N_auto                   | [entry_1 ... entry_k]
+      +------------------------> | unique by N
+                                 |
+                                 | cross-validate admission
+                                 v
+                       ordered frozen collection
+                       [frozen_1 ... frozen_k]
+                                 |
+                 +---------------+---------------+
+                 |                               |
+                 v                               v
+        existing P5 CV per size         existing final production
+        x existing folds/seeds          per size x prod seeds
+                 |                               |
+                 +---------------+---------------+
+                                 v
+                     per-size final publications
 
 qualification:
-  k == 1 -> existing qualification architecture unchanged
-  k > 1  -> fail closed; no implicit multi-product qualification/release selection
+    k == 1 -> existing P7 path
+    k > 1  -> training experiment terminal; no release selection/locked opening
 ```
 
-## 3.2 One collection authority; reuse scalar records as elements where simpler
+## 3.2 One canonical collection authority
 
-The existing predecessor `TargetSizeProposal` and `FrozenTargetSelection` semantics are already appropriate for one size. Implementation SHOULD prefer reusing or minimally adapting those records as per-size collection elements if doing so preserves clean ownership and schema compatibility.
+`CampaignStore` remains the sole mutable current authority.
 
-What must disappear is their role as the one scalar campaign authority, not necessarily the record types themselves.
-
-Acceptable shape conceptually:
+Conceptually:
 
 ```text
-Campaign target-size state
-  provisional_entries: ordered tuple[TargetSizeProposal]
-  frozen_entries: optional ordered tuple[FrozenTargetSelection]
+provisional_entries: ordered tuple[PerSizeProposal]
+frozen_entries: optional ordered tuple[PerSizeFrozenEntry]
 ```
 
 Exact names/layout are delegated.
 
 Forbidden:
 
-- authoritative scalar proposal plus separately authoritative collection kept in sync;
-- authoritative scalar frozen selection plus separately authoritative frozen list;
+- authoritative scalar plus separately authoritative list kept in sync;
 - one mutable row/file/database per size requiring reconciliation;
-- result/report files used as selection authority.
+- separate manual and auto collections;
+- result/report files used as authority;
+- enum states for every size x seed x fold Cartesian product.
 
-## 3.3 Reuse per-size PostSelectionBinding and evidence namespaces
+A small linear search over the bounded size collection is sufficient. Do not add registries/index services merely for lookup.
 
-The reviewed `PostSelectionBinding` is already one-size scientific lineage and its pointer namespace is keyed by binding digest. Preserve that model where possible.
+## 3.3 Full frozen entry versus TargetBinding
 
-The important currentness change is conceptual:
+The full frozen entry is the operator's immutable design/audit record. TargetBinding is its role-neutral scientific projection.
 
-```text
-old scalar currentness:
-  current_state.frozen.digest == binding.frozen_selection_digest
+Implementation may keep a full-entry digest for exact state authentication. It must not use that digest as the scientific parent when it contains H_cv, H_prod, or provenance.
 
-new collection currentness:
-  binding's frozen-entry digest is an authenticated member
-  of the one current frozen collection for the same generation
-```
+The `PostSelectionBinding` surface should be altered/re-derived directly to encode the TargetBinding semantics in R1. Do not stack another synchronized wrapper over an unchanged contaminated binding.
 
-Do NOT add the whole frozen-collection digest into the per-size scientific `PostSelectionBinding` merely to perform currentness checks; doing so would invalidate otherwise identical N-specific evidence when an unrelated sibling size/order changes.
+## 3.4 Binding-keyed P5 persistence remains the per-size namespace
 
-The collection digest may exist as campaign orchestration/currentness state, but per-size records should remain bound to the per-size entry and established scientific authorities.
+The existing P5 object store and pointer namespace keyed by per-size binding are the correct persistence granularity. Reuse them.
 
-## 3.4 P5 store and publication reuse
+One generation root may contain immutable evidence for several current per-size bindings. There is no collection-level copy of numerical evidence and no cross-size publication object that chooses a winner.
 
-The current P5 evidence store can hold immutable objects for several bindings under one generation, and current pointers are already binding-keyed. Prefer adapting existing currentness membership checks and orchestration rather than creating another per-size persistence subsystem.
+## 3.5 Per-size descendant currentness is role-aware
 
-`FinalProductionPublicationDecision` remains one per-size binding. Multi-size `train-production` produces one such publication for every frozen selected size; it does not manufacture a new cross-size committee/publication that chooses among sizes.
+A current descendant must prove:
 
-## 3.5 Deterministic ordering versus execution scheduling
+1. the campaign generation is still current;
+2. its TargetBinding matches exactly one authenticated member of the current frozen collection;
+3. its role policy/ancestry matches that entry's frozen role-specific inputs.
 
-Frozen selection order is deterministic user-visible orchestration order and result ordering.
+Examples:
 
-Implementation may use existing bounded scheduling where it clearly preserves resource ownership, restart, and deterministic identity. It need not introduce new parallelism. A simple outer iteration over the bounded size list is acceptable and preferred over a new scheduler unless existing orchestration already supplies an equally simple safe mechanism.
+- CV currentness authenticates TargetBinding and the CV policy containing H_cv;
+- production currentness authenticates TargetBinding, accepted CV ancestry, and production policy containing H_prod.
 
-## 3.6 No enum/state explosion
+Equality of N alone is insufficient. Whole-collection digest/order is also insufficient and must not be injected into numerical identity.
 
-Target size is a bounded data dimension, not a reason to create lifecycle states for every size x fold x seed combination. Existing immutable per-size evidence and binding-keyed pointers remain the progress/restart truth; campaign-level stage state is a derived/aggregate operational view.
+## 3.6 Atomic freeze
+
+The complete collection is revalidated and frozen before any CV job is admitted. No per-size incremental freeze exists.
+
+## 3.7 Generation rollover
+
+Prepared-identity change replaces the entire design with a fresh generation and empty selection as specified in R2. Unchanged prepare does not perturb a valid collection.
+
+## 3.8 Deterministic ordering and bounded scheduling
+
+Frozen list order controls user-visible ordering and deterministic orchestration/result rendering. Completion timing may differ.
+
+Serial outer-size execution is acceptable. Concurrent outer-size scheduling is optional only through already-supported bounded resource ownership as specified in R6.
+
+## 3.9 Qualification boundary
+
+Single-size qualification remains scientifically unchanged.
+
+Multi-size qualification is intentionally unavailable. This is a safety boundary, not a placeholder algorithm. A future release-selection or multi-product qualification feature requires separate explicit Design authority.
 
 ---
 
@@ -447,10 +482,10 @@ Required path:
 
 1. establish current prepared generation;
 2. authenticate N through the existing qualified-candidate/training-order owner;
-3. resolve complete per-invocation horizons through the existing horizon resolver;
-4. build one complete per-size entry;
-5. merge it atomically into the current ordered collection;
-6. render the complete resulting plan;
+3. resolve complete H_cv/H_prod using canonical config/default owners plus this invocation's flags;
+4. construct one complete per-size proposal;
+5. atomically append or replace-in-place by N under CampaignStore/CAS;
+6. render the complete resulting collection;
 7. perform zero target-size TRAIN2/EVAL2 work.
 
 ## 4.2 Automatic selection
@@ -459,9 +494,9 @@ Required path:
 select-target-size --auto [--horizon-cv HC] [--horizon H]
 ```
 
-Retain cold/warm diagnostic execution exactly as currently implemented. After obtaining a valid recommendation, build one ordinary per-size entry and route it through the same merge owner as manual selection.
+Retain existing cold/warm diagnostic behavior. Once a valid recommendation exists, build the same kind of per-size proposal as the manual path and merge it through the same collection owner.
 
-Long-running auto concurrency remains predecessor-style optimistic/CAS installation: diagnostic evidence/report may complete even when installation loses to a newer collection revision or freeze.
+A stale long-running auto may finish/persist its diagnostic evidence/report but must not install over a newer append/update/reset/freeze. The operator can rerun warm `--auto` against the current revision to install without retraining.
 
 ## 4.3 Reset
 
@@ -470,62 +505,50 @@ select-target-size --reset
 ```
 
 - pre-freeze only;
-- clears the full provisional collection in one transition;
-- preserves prepared generation and valid auto diagnostic evidence;
+- atomically clears all provisional entries;
+- preserves prepared generation and independently valid diagnostic evidence/report;
 - zero numerical work;
-- mutually exclusive with N, `--auto`, `--horizon-cv`, and `--horizon`.
+- mutually exclusive with N, `--auto`, `--horizon-cv`, and `--horizon`;
+- an already-empty reset may be idempotent without a meaningless new revision.
 
-An already-empty reset may be idempotent and avoid a meaningless revision.
-
-## 4.4 Bare command and mutual exclusion
+## 4.4 Bare command and operation selection
 
 Bare `select-target-size` remains invalid and actionable.
 
-Exactly one of positional N, `--auto`, or `--reset` is the operation selector.
+Exactly one operation selector is present: positional N, `--auto`, or `--reset`.
 
-## 4.5 Horizon flag rename
+## 4.5 Canonical horizon flag names
 
-Canonical flags are now:
+Current public spellings become:
 
 ```text
 --horizon-cv
 --horizon
 ```
 
-The predecessor implementation currently exposes:
+The predecessor implementation's provisional `--select-horizon-cv` / `--select-horizon` names are removed rather than retained behind aliases because no governed released compatibility contract was found. If Implementation discovers concrete contrary evidence, reopen only this compatibility decision before adding alias machinery.
 
-```text
---select-horizon-cv
---select-horizon
-```
-
-This feature has just been submitted on the predecessor development branch and no governed released compatibility requirement was found during review. Therefore the successor should **rename/remove** the predecessor provisional spellings rather than accumulate aliases/wrappers.
-
-If implementation discovers an actual released/external governed compatibility requirement, reopen only this CLI compatibility decision.
-
-## 4.6 Per-size omission/default semantics
+## 4.6 Omitted-horizon semantics
 
 For every manual or successful auto-install invocation:
 
 ```text
-H_cv   = explicit --horizon-cv
-         else current [post_selection.cv].max_num_epochs/default
+H_cv = explicit --horizon-cv
+       else current [post_selection.cv].max_num_epochs/default
 
 H_prod = explicit --horizon
          else current [training].max_num_epochs/default
 ```
 
-The resulting effective values are persisted in the affected entry. Existing untouched entries retain their snapshot.
-
-The CLI does not rewrite `campaign.toml`.
+Both effective values are persisted into the affected proposal. Existing untouched entries retain their previous values. CLI never rewrites `campaign.toml`.
 
 ---
 
-# 5. Provisional/frozen state, schema, and compatibility
+# 5. State, schema, compatibility, and append-only migration
 
-## 5.1 Empty/provisional/frozen states
+## 5.1 Valid current states
 
-Current state must cleanly represent:
+The campaign must represent cleanly:
 
 ```text
 prepared generation + empty provisional collection
@@ -533,353 +556,440 @@ prepared generation + ordered nonempty provisional collection
 prepared generation + ordered nonempty frozen collection
 ```
 
-No separate authoritative list/count/map is required when one canonical ordered representation can derive those views.
+No simultaneous provisional + frozen current authority.
 
 ## 5.2 Collection validation
 
-On construction/deserialization and before consequential freeze, enforce:
+On construction/deserialization and before freeze, enforce:
 
-- deterministic order;
-- no duplicate N;
-- every N positive and qualified when checked against live prepared authority;
-- every entry's membership/training-order digest authenticates;
-- every horizon positive;
-- no mixed prepared/training-order lineage inside one current collection.
+- deterministic sequence order;
+- unique N;
+- positive N and horizons;
+- each N qualified when checked against the current prepared authority;
+- exact membership and training-order identity authenticates;
+- one common prepared/training-order lineage across the collection;
+- no malformed or mixed-schema payload silently normalized into a guessed valid design.
 
-Do not silently deduplicate corrupt authoritative state. Duplicate-N persisted state is corruption, not an invitation to guess which entry wins.
+## 5.3 Predecessor-v2 provisional state
 
-## 5.3 Predecessor-v2 scalar state
-
-The submitted implementation introduced a valid scalar proposal/freeze schema. Its semantic projection is lossless:
+Semantic projection:
 
 ```text
-proposal is None                 -> provisional_entries = []
-proposal = P                     -> provisional_entries = [P]
-frozen = F                       -> frozen_entries = [F]
+proposal is None -> provisional_entries = []
+proposal = P     -> provisional_entries = [P]
 ```
 
-Prefer a READ/NORMALIZE/MIGRATE realization that makes this a bounded compatibility boundary and then exposes only the canonical collection to current decision logic.
+Do not rewrite the old row. The read boundary may normalize it in memory. The first successor mutation/freeze may append a new canonical collection revision through the existing CAS chain.
 
-A predecessor scalar proposal may become one provisional entry and then accept additional selections under this successor.
+## 5.4 Predecessor-v2 frozen state
 
-A predecessor scalar frozen selection is already frozen. It may be treated as a one-entry frozen collection for continuation/currentness, but MUST NOT become appendable or be thawed.
+A scalar frozen v2 campaign is already immutable and may be exposed as a one-entry frozen compatibility view. It cannot accept another selection or be reset/thawed.
 
-Because the existing per-size `PostSelectionBinding` refers to the scalar frozen-entry digest, preserving that entry digest during one-entry projection can preserve valid existing P5 descendants without rebinding them to a fabricated new scientific identity. Do not rewrite descendant ancestry merely to make the collection wrapper look uniform.
+Existing v2 descendants may remain current only through their exact historical v2 ancestry. Do not rewrite their identities into the successor schema merely to standardize bytes.
 
-## 5.4 Old pre-predecessor state remains subject to the predecessor cutover
+New successor frozen collections use the corrected R1 identity decomposition.
 
-The predecessor's older-v1 rule remains binding: an old reducer-terminal automatic selection is diagnostic evidence, not operator-approved freeze authority. This successor must not accidentally promote it while normalizing the newer scalar schema.
+## 5.5 Older-v1 state
+
+The old terminal reducer selection remains diagnostic evidence only. It never becomes a frozen operator choice through collection normalization.
+
+## 5.6 No destructive state-chain migration
+
+All migration/normalization respects append-only authenticated revisions. Never mutate/re-hash old state rows in place.
 
 ---
 
-# 6. Atomic collection freeze and per-size P5 execution
+# 6. Atomic freeze and multi-size CV
 
-## 6.1 Cross-validation admission
+## 6.1 Admission sequence
 
-`cross-validate` is still the only freeze authority.
+`cross-validate` is the only freeze authority. Before numerical work it must:
 
-Admission MUST, before numerical CV work:
-
-1. load current CampaignStore state under existing writer/currentness discipline;
+1. load current CampaignStore revision under normal writer/currentness discipline;
 2. require at least one provisional entry;
 3. load/authenticate the current prepared generation once;
-4. revalidate every selected N against the current qualified set;
-5. re-derive every exact `pi_train[:N]` membership digest;
-6. authenticate every entry against the one current training order;
-7. construct the complete ordered frozen collection from the persisted resolved entries;
-8. CAS-publish that frozen collection atomically and remove/retire provisional authority in the same logical transition.
+4. validate unique-by-N/order invariants;
+5. revalidate every selected N against the current qualified set;
+6. re-derive every exact `pi_train[:N]` membership;
+7. authenticate every proposal's training-order/prepared lineage;
+8. construct the complete ordered frozen entry collection preserving resolved horizons/provenance;
+9. CAS-publish that collection atomically and retire provisional authority in the same logical transition;
+10. derive corrected per-size TargetBindings/contexts only from the committed frozen state;
+11. only then admit CV jobs.
 
-There must be no state where CV for one N is current while the campaign freeze omits another N that was part of the admitted design.
+One corrupt member rejects the entire admission. No partial freeze or partial CV start.
 
-## 6.2 Per-size current context
+## 6.2 Collection-level current context
 
-After freeze, expose a collection-level read that yields ordered authenticated per-size contexts. Each element should reuse the existing per-size selected-training/binding semantics.
+Provide one production-owned collection read yielding ordered authenticated per-size contexts. Each context reuses the existing one-size membership/P5 planning semantics after the R1 binding correction.
 
-Do not require callers to rebuild a size loop from raw state independently. The production orchestration owner must own enumeration so a missing size cannot be hidden by a test harness or consumer.
+Callers/test harnesses must not independently assemble loops from raw state as a substitute for the production owner.
 
-## 6.3 Cross-validation execution
+## 6.3 CV execution
 
-For every frozen entry in deterministic selection order:
+For each frozen entry in deterministic selection order:
 
-- use its exact `T_N`;
-- use its frozen `H_cv`;
-- construct/resolve the existing real P5 CV plan under that size's `PostSelectionBinding`;
-- execute the existing seeds/folds and acceptance rules;
-- publish/reuse binding-keyed evidence through the existing P5 store/currentness owners.
+- exact T_N;
+- its frozen H_cv via CV policy identity;
+- existing method identity;
+- existing fold construction, seeds, evaluation, and acceptance predicates;
+- binding-keyed P5 immutable evidence/pointers.
 
-Campaign CV is complete only when every selected binding has current accepted CV evidence.
+Campaign CV is accepted only when every frozen size has current accepted CV evidence. A rejected size remains visibly rejected; no selected size is dropped.
 
-## 6.4 Final production execution
+Whether the command continues gathering sibling CV evidence after one rejection or stops admitting further expensive work is delegated, provided it reports truthfully and cannot falsely mark the campaign accepted.
 
-`train-production` enumerates the same frozen entries and requires the existing accepted CV ancestry for each entry.
+## 6.4 CV restart/currentness
 
-For every entry:
+Already-valid completed sibling CV evidence is reused. Live config edits do not alter frozen horizons.
 
-- use its frozen `H_prod`;
-- preserve fresh-start production;
-- preserve existing production seed/committee policy;
-- produce the existing binding-scoped final plan/completion/publication decision;
-- never use another size's membership, horizon, CV acceptance, or publication.
-
-Campaign production is complete only when every selected binding has its required current final publication.
-
-## 6.5 Restart and failure isolation
-
-If one size fails or is interrupted after another size completed:
-
-- the frozen collection remains unchanged;
-- already-valid sibling plans/evidence/publications remain available and reusable;
-- retry resumes/recomputes only work that existing per-size identity/restart rules deem incomplete/stale;
-- no live config edit can change frozen horizons;
-- campaign-level stage state remains incomplete/failed as appropriate until all required sizes close.
-
-## 6.6 Publication currentness fence
-
-Adapt the existing commit-time publication fence so a per-size binding may publish as current only when:
-
-- campaign generation is still current; and
-- the binding's frozen target entry is still an authenticated member of the current frozen collection.
-
-Do not compare a per-size binding against the whole collection digest as its scientific ancestry. Do not allow mere equality of N to substitute for the exact frozen-entry/binding identity.
+If the canonical generation changes while CV is running, stale evidence may remain historical but cannot publish current. Once staleness is detected, the orchestrator stops admitting new outer-size work for the retired design.
 
 ---
 
-# 7. Qualification boundary — preserve one-product locked semantics
+# 7. Multi-size final production
 
-Review of the submitted implementation shows that P7 qualification is defined for **one exact final-production publication**, and locked activation is intentionally one-shot for that exact product. Multi-size production creates several predeclared production publications, but this workplan does not contain a scientifically justified rule for selecting one of them or for treating one locked cohort as a multi-product comparison experiment.
+## 7.1 Collection-wide preflight barrier
 
-Therefore the Frozen rule for this revision is:
+Before starting any new production run, authenticate the complete frozen collection and require current accepted CV for every selected binding.
 
-### 7.1 Single selected size
+If any N fails preflight, identify all known blockers and start no new production work in that invocation.
 
-For `k == 1`, existing qualification behavior and identity remain unchanged. The successor must preserve the current qualification regression surface.
+## 7.2 Per-size production
 
-### 7.2 Multiple selected sizes
+After successful preflight, enumerate the frozen entries using existing final-production owners:
 
-For `k > 1`, qualification commands MUST fail closed before opening/running qualification evidence and clearly report that the frozen campaign contains multiple production publications and this revision does not authorize cross-size release selection or multi-product locked qualification.
+- use H_prod only through final-production policy identity;
+- use exact full T_N;
+- require the matching N's accepted CV ancestry;
+- preserve existing M3 lineage;
+- preserve fresh initialization, fresh optimizer/RNG semantics, production seeds, representative selection, and committee policy;
+- publish one binding-scoped final-production decision per N.
 
-Specifically, do NOT:
+Screen/CV checkpoints never parent production.
 
-- silently choose the first/last/auto-recommended size for qualification;
-- choose the size with the best CV/production metric after the collection is frozen;
-- run the one-shot locked test across several sizes and use the outcomes to select a winner;
-- merge different sizes' production seeds into one committee;
-- mutate the frozen collection down to one size.
+## 7.3 No cross-size contamination
 
-A future feature may design explicit multi-product qualification or an independent pre-locked release-selection rule, but that is outside this narrow revision.
+N1 cannot consume N2 membership, horizons, CV plan/acceptance, run evidence, pointer, final plan, or publication.
 
-`train-production` still completes all requested sizes and exposes all per-size publications/results. Multi-size production is therefore useful as the requested training experiment even though P7 release qualification remains intentionally unavailable for `k > 1` in this cycle.
+No cross-size final-publication committee is created.
+
+## 7.4 Restart/failure isolation
+
+If N1 is complete and N2 fails/interupts:
+
+- frozen collection unchanged;
+- N1 valid evidence remains reusable;
+- retry recomputes only evidence existing identity/restart owners deem incomplete/stale;
+- campaign production remains non-complete until every N closes.
+
+If generation rollover occurs, all old-generation publications become historical currentness-wise even if their immutable bytes remain stored.
 
 ---
 
-# 8. Lifecycle, status, results, and observability
+# 8. Publication currentness, observation, and lifecycle
 
-## 8.1 Selection/status rendering
+## 8.1 P5 publication currentness
 
-Every successful manual selection, auto installation, reset, and `status` must render the complete current design, not only the entry touched by the command.
+At commit-time pointer publication, verify the campaign generation and role-appropriate per-size ancestry from the current frozen collection in the same serialized CampaignStore boundary used today.
 
-Before freeze, show at minimum:
+Do not authorize publication using N equality alone. Do not make role identity depend on collection digest.
+
+## 8.2 Coherent owner snapshot
+
+Generalize the current lifecycle snapshot from one binding to an ordered binding collection. In one SQLite read transaction capture:
+
+- target-size state revision;
+- all current frozen per-size TargetBindings derivable from that revision;
+- all P5 pointer rows needed to project CV/production state for every binding;
+- for k==1, the P7 pointer rows needed for qualification observation.
+
+Interpret compact pointed records after capturing a coherent pointer set, preserving existing authentication behavior.
+
+## 8.3 Status rendering
+
+Every successful selection/auto/reset and `status` shows the complete design.
+
+Before freeze:
 
 ```text
 Target-size training plan: provisional
 Frozen: no
 Selected sizes: K
 [1] N=... H_cv=... H_prod=... source=...
-[2] N=... H_cv=... H_prod=... source=...
-...
+[2] ...
 ```
 
-When empty, explicitly show:
+Empty state shows no concrete size plus current default H_cv/H_prod values and the requirement to select at least one N before CV.
 
-- no concrete selected sizes;
-- current effective H_cv/H_prod defaults that a future omitted-horizon command would resolve;
-- that at least one size is required before `cross-validate`.
+After freeze, show the complete ordered list with per-size CV and production state. Auto recommendation remains separate diagnostic information.
 
-After freeze, show the complete ordered frozen list and per-size CV/production state.
+Expose a derived side-by-side per-size result summary sufficient to locate/compare the existing governed CV/production observables/publications. It is presentation only: no ranking, sorting by performance, winner flag, or new reducer.
 
-Auto diagnostic availability/recommendation remains separately visible and must not obscure operator-selected sibling entries.
+## 8.4 `advance`
 
-## 8.2 `advance`
+- no provisional selections -> stop at target-size decision; never invent N or opt into auto;
+- provisional nonempty -> `cross-validate`;
+- frozen + any CV not accepted -> CV remains the relevant stage; never advance into production;
+- all CV accepted + any production incomplete -> `train-production`;
+- all production complete + k==1 -> existing qualification stage;
+- all production complete + k>1 -> no next consequential command; report multi-size training experiment complete and qualification unavailable in this revision.
 
-`advance` never invents N and never silently opts into auto.
+## 8.5 Multi-size terminal state is not release qualification
 
-- zero provisional selections -> stop at target-size decision boundary;
-- one or more provisional selections -> next consequential stage is `cross-validate`;
-- frozen collection with incomplete CV -> CV remains current next work;
-- all CV accepted but incomplete production -> `train-production`;
-- all production complete and k==1 -> existing qualification next step;
-- all production complete and k>1 -> report production complete and qualification unavailable under this revision, rather than choosing a size.
+For k>1, completion of production is a terminal training-experiment state only. Do not set a release-qualified verdict or synthesize qualification completion.
 
-## 8.3 Campaign stage summaries
-
-Existing campaign stage rows are operational summaries, not the authority for per-size completion. Derive aggregate status from real binding-scoped P5 evidence. Do not add a second mutable per-size stage database when binding-keyed immutable evidence/pointers already supply currentness.
+`qualification status` succeeds observationally and reports the unsupported multi-size release boundary without writes. Consequential P7 commands fail closed.
 
 ---
 
-# 9. Storage, retention, and documentation
+# 9. Qualification boundary
 
-## 9.1 Storage/retention
+## 9.1 k == 1
 
-Prepared-generation data remain one shared authority.
+Preserve existing P7 methodology, one exact final publication, locked activation semantics, identity, and regression behavior, except for any schema-version adaptation mechanically required by the corrected TargetBinding representation.
 
-P5 evidence remains binding-keyed under the existing generation root. Update retention/currentness traversal only where scalar assumptions would otherwise omit evidence for sibling selected bindings.
+No scientific qualification rule changes.
 
-No cleanup path may treat one selected size's current P5 evidence as unreachable merely because another selected binding is being inspected.
+## 9.2 k > 1
 
-Do not duplicate prepared arrays/materialization authorities per size beyond the existing per-run artifacts required by the actual P5 training methodology.
+Before opening a qualification session or reading/revealing locked evidence:
 
-## 9.2 Current documentation/specification
+- `qualification run` -> actionable fail-closed;
+- `qualification activate-locked` -> actionable fail-closed;
+- any other consequential qualification entrypoint -> same;
+- `qualification status` -> observational success explaining that several publications exist and no release-selection rule is authorized.
 
-Reconcile current normative/user-facing sources, including at minimum the predecessor-touched target-size architecture/manual/spec/CLI help and relevant post-selection/qualification documentation.
+Never:
 
-Current docs must consistently describe:
+- choose first/last/auto-recommended N;
+- choose best CV/production metric;
+- run locked evidence across sizes and choose a winner;
+- combine seeds from different N values into one committee;
+- mutate the frozen collection down to one N.
+
+---
+
+# 10. Resource, restart, storage, and retention
+
+## 10.1 Resource ownership
+
+Prefer serial outer-size iteration unless already-supported bounded scheduling clearly improves throughput without adding complexity.
+
+If concurrent:
+
+- derive effective resources once under existing resource owners;
+- outer size jobs share the same allocation;
+- inner fold/seed/MACE/library concurrency is bounded accordingly;
+- GPU/device leases remain explicit where applicable;
+- RAM/VRAM/I/O admission remains bounded;
+- completion order never changes frozen result ordering/identity.
+
+## 10.2 Stop admitting stale outer work
+
+Do not hold a campaign lock over expensive training. But before admitting a new outer-size unit, detect a retired generation/freeze when economically available and stop scheduling further stale work. Commit-time fences remain authoritative for publication.
+
+## 10.3 P3 retention
+
+Automatic diagnostic/P3 evidence remains governed by its existing retention owner; provisional/reset/multi-size state does not make valid diagnostic evidence disposable.
+
+## 10.4 P5 retention
+
+Retention/currentness traversal must account for every current per-size P5 binding. A cleanup path cannot treat N2 evidence as unreachable merely because it inspected N1's pointer namespace.
+
+Preserve binding-keyed immutable ownership rather than adding collection copies.
+
+## 10.5 Qualification retention
+
+For k==1 retain existing P7 retention. For k>1 no new qualification attempts are opened, so there is no new multi-product qualification retention graph.
+
+---
+
+# 11. Documentation and current product truth
+
+Reconcile all affected current architecture/specification/user-guide/CLI-help surfaces so they describe one coherent behavior, including:
 
 - ordered multi-size selection;
-- duplicate-N replacement in place;
-- reset;
+- append versus duplicate-N replacement-in-place;
+- per-size H_cv/H_prod snapshots;
+- `--reset`;
 - canonical `--horizon-cv` / `--horizon` names;
-- per-size horizon snapshots;
-- whole-collection freeze at `cross-validate`;
-- CV and production size dimension;
+- advisory cached auto diagnostic;
+- complete-collection freeze;
+- TargetBinding versus full frozen-entry identity decomposition;
+- CV and production size dimensions;
 - per-size production publications;
-- single-size-only qualification in this revision;
+- collection-wide production CV preflight;
+- generation rollover clearing the full design;
+- multi-size training terminal state;
+- single-size-only qualification under this revision;
 - no automatic cross-size winner.
 
-Remove current-semantic wording that says a second distinct selection simply replaces the first or that only one selected target can exist. Historical/archive material may remain historical.
+Remove current-semantic wording that says campaign selection is always scalar or that a second distinct N replaces the first.
 
-Regenerate tracked derived manuals/PDFs from their authoritative sources according to repository policy.
-
----
-
-# 10. Implementation obligations
-
-## O1 — Generalize campaign selection authority from scalar to ordered collection
-
-Use zero-or-more provisional per-size entries, stable first-insertion order, unique by N, and duplicate-N replacement in place. Reuse the existing per-size proposal record semantics where practical. No synchronized scalar + list authority.
-
-## O2 — Preserve canonical per-size horizon resolution
-
-Reuse the predecessor resolver/config owners; snapshot complete values into the affected entry. Untouched entries do not drift.
-
-## O3 — Rename horizon CLI flags and add reset
-
-Canonicalize to `--horizon-cv`/`--horizon`, remove predecessor provisional spellings absent a real compatibility obligation, and implement mutually exclusive pre-freeze `--reset`.
-
-## O4 — Route auto through the same collection merge owner
-
-Preserve cold/warm/no-recommendation/report behavior. Recommendation installation differs from manual selection only in source/provenance.
-
-## O5 — Freeze the entire collection atomically
-
-Revalidate every entry against the one current prepared generation and commit one frozen ordered design before any CV work.
-
-## O6 — Reuse per-size P5 binding/evidence machinery
-
-Keep `PostSelectionBinding`, binding-keyed pointers, content-addressed store, and per-size publication semantics wherever their existing contracts remain sufficient. Alter scalar currentness checks to collection-membership currentness rather than creating another storage system.
-
-## O7 — Make real CV orchestration enumerate every frozen binding
-
-The assembled production `cross-validate` owner—not a test harness—must create/resolve and execute every per-size CV plan with the correct membership/H_cv and existing subordinate fold/seed dimensions.
-
-## O8 — Make real production orchestration enumerate every frozen binding
-
-The assembled `train-production` owner must require current accepted CV for and execute every size with correct H_prod/fresh-start/seed policy, publishing one current binding-scoped production decision per size.
-
-## O9 — Preserve restart and completed siblings
-
-Failure/interruption of one selected size must not erase/recompute unrelated valid siblings or mutate the frozen design.
-
-## O10 — Reconcile P5 publication currentness and retention
-
-Currentness/retention must recognize every frozen per-size binding in the current collection. Exact entry identity, not N equality, controls adoption.
-
-## O11 — Make lifecycle/status/results collection-aware
-
-Render all selected sizes and derive campaign-level completion from all required binding-scoped evidence.
-
-## O12 — Preserve predecessor-v2 scalar state without dual authority
-
-Normalize compatible scalar proposal/freeze to a one-entry collection boundary; keep old-v1 reducer-terminal state subject to predecessor diagnostic-only cutover.
-
-## O13 — Preserve qualification for k==1 and fail closed for k>1
-
-Do not invent cross-size release selection or multi-product locked-test semantics.
-
-## O14 — Close current documentation and obsolete scalar assumptions
-
-Current source/help/docs/specs expose one coherent final multi-size behavior; generated docs are rebuilt from source.
+Historical/archive material may remain historical. Regenerate tracked PDFs/derived manuals from authoritative Markdown according to repository policy; do not hand-edit generated PDFs.
 
 ---
 
-# 11. Implementation authority
+# 12. Implementation obligations
 
-## 11.1 Frozen
+## O1 — Correct the predecessor identity hierarchy first
 
-1. Provisional selection is an ordered collection of distinct qualified N values.
-2. New N appends; existing N replaces its complete entry in place.
-3. Each entry owns independently resolved persisted H_cv/H_prod values.
-4. Empty collection is the canonical unselected state; at least one concrete size is required for CV admission.
-5. `--reset` clears provisional entries only and is forbidden after freeze.
-6. `--auto` preserves existing diagnostic science/cache and merges its recommendation through the same collection owner.
-7. Auto no-recommendation changes no collection state.
-8. Manual selection performs zero target-size TRAIN2/EVAL2 work.
-9. Exact membership remains `pi_train[:N]` from the one P2 training order.
-10. Cross-validation admission freezes the complete ordered collection atomically.
-11. Selection is immutable after freeze.
-12. CV executes the existing methodology for every frozen size using that entry's H_cv.
-13. Production executes the existing fresh-start methodology for every frozen size using that entry's H_prod.
-14. All selected sizes must be accounted for; no failure silently removes a size.
-15. Valid completed sibling work remains reusable under existing identity/currentness rules.
-16. Per-size target/CV/production numerical identity does not depend on sibling sizes/list position/provenance.
-17. One prepared generation is shared by all selected sizes.
-18. One CampaignStore remains the mutable current authority.
-19. Existing per-size P5 binding/evidence ownership should be preserved where semantically sufficient; no new per-size subcampaign/state database.
-20. Canonical flags are `--horizon-cv` and `--horizon`; predecessor provisional spellings are not retained absent governed compatibility evidence.
-21. Existing automatic-screen science/identity/report remains unchanged.
-22. Existing CV/production scientific methodology remains unchanged per size.
-23. `k==1` qualification remains unchanged.
-24. `k>1` qualification fails closed and cannot choose/compare/reduce target sizes using qualification/locked evidence.
-25. Full production/GPU qualification remains deferred during implementation.
+Rewire full frozen-entry authority versus TargetBinding/P5 role identity exactly as R1. Strengthen tests so transitive digest dependencies are checked, not only direct field names.
 
-## 11.2 Delegated
+## O2 — Generalize scalar provisional authority to one ordered unique-by-N collection
+
+Reuse the existing per-size proposal value semantics where simple. New N appends; duplicate N replaces complete entry in place without reordering.
+
+## O3 — Preserve canonical per-size horizon resolution
+
+Reuse existing policy/config resolution; snapshot complete effective values into only the affected entry.
+
+## O4 — Add reset and rename horizon flags
+
+Implement pre-freeze collection clear and canonical `--horizon-cv` / `--horizon`, without compatibility aliases absent concrete governed evidence.
+
+## O5 — Route auto recommendation through the same merge owner
+
+Preserve cold/warm/no-recommendation/report semantics and CAS stale-install protection.
+
+## O6 — Freeze the complete collection atomically
+
+Revalidate all entries against one prepared generation and commit one immutable ordered design before any CV execution.
+
+## O7 — Provide one production-owned ordered per-size context collection
+
+Do not leave enumeration to ad-hoc consumers/tests.
+
+## O8 — Generalize existing P5 binding/currentness directly
+
+Use corrected TargetBinding semantics and binding-keyed evidence. Do not introduce a parallel per-size store or binding wrapper.
+
+## O9 — Execute real CV orchestration across all frozen sizes
+
+Use existing fold/seed/method/acceptance owners below the size dimension.
+
+## O10 — Enforce collection-wide CV acceptance before new production work
+
+Preflight all N values first; no partial new production admission.
+
+## O11 — Execute real fresh production across all frozen sizes
+
+Use each N's own H_prod and accepted CV, preserving existing production science and one per-size publication.
+
+## O12 — Preserve restart, generation currentness, and sibling reuse
+
+Stop stale admission after generation movement; preserve immutable historical evidence; never silently carry selections into a fresh generation.
+
+## O13 — Generalize coherent lifecycle observation
+
+One revision plus all relevant per-binding pointers in one read transaction; status remains read-only.
+
+## O14 — Make lifecycle/results collection-aware
+
+Aggregate completion across every frozen N; expose deterministic per-size results without ranking.
+
+## O15 — Make P5 storage/retention collection-aware
+
+Protect every current sibling binding without duplicating prepared data or numerical evidence.
+
+## O16 — Preserve append-only v1/v2 compatibility without importing v2 identity defects
+
+Normalize at boundaries or append canonical successor revisions; never rewrite old rows.
+
+## O17 — Preserve k==1 qualification and fail closed for consequential k>1 qualification
+
+`qualification status` remains observational for k>1 and explains the boundary.
+
+## O18 — Reconcile documentation and obsolete scalar semantics
+
+Update current source docs/help/specs and rebuild tracked generated artifacts.
+
+---
+
+# 13. Frozen versus delegated implementation authority
+
+## 13.1 Frozen
+
+1. Ordered collection of distinct qualified N values.
+2. New N appends; existing N replaces complete per-size entry in place.
+3. Empty collection is canonical unselected state.
+4. Each entry persists independently resolved positive H_cv/H_prod.
+5. Exact membership is always `pi_train[:N]` from one P2 training order.
+6. Manual selection performs zero target-size TRAIN2/EVAL2 work.
+7. Auto diagnostic science/cache/report remains unchanged and advisory.
+8. Auto recommendation uses the same merge owner; no recommendation changes no collection state.
+9. Reset clears only provisional collection and is forbidden after freeze.
+10. `cross-validate` atomically freezes all entries before numerical CV.
+11. Full frozen entry authority is distinct from TargetBinding identity.
+12. TargetBinding excludes H_cv, H_prod, selection source, and auto provenance.
+13. CV identity adds H_cv through CV policy and excludes H_prod/provenance.
+14. Production identity adds H_prod through production policy plus accepted CV ancestry and excludes provenance.
+15. Whole collection digest/order/siblings do not contaminate per-size numerical identity.
+16. One CampaignStore remains mutable current authority.
+17. Existing binding-keyed P5 storage is reused rather than replaced by per-size subcampaigns.
+18. CV existing methodology runs for every frozen size.
+19. Campaign CV acceptance requires all frozen sizes accepted.
+20. Production admission requires all frozen sizes currently CV-accepted before any new production job starts.
+21. Existing fresh final-production methodology runs for every frozen size.
+22. Every frozen size must have its own current final publication for campaign production completion.
+23. No selected size disappears silently on failure.
+24. Valid completed sibling evidence is reusable under existing currentness/restart rules.
+25. Prepared identity change creates a fresh generation with empty selection/freeze and retires all old bindings as current.
+26. Unchanged prepare preserves the current generation/design.
+27. Public observation captures revision + all relevant per-binding pointer namespaces coherently in one read transaction.
+28. Status/advance are observational/routing only and never authorize by themselves.
+29. Deterministic user-visible ordering follows frozen selection order.
+30. Concurrent size execution, if used, shares bounded effective resources and cannot multiply machine ownership.
+31. Canonical CLI flags are `--horizon-cv` and `--horizon`; provisional predecessor spellings are removed absent governed compatibility evidence.
+32. k==1 qualification science remains unchanged.
+33. k>1 all-production-complete is a terminal training-experiment state, not release qualification.
+34. k>1 consequential qualification commands fail before attempt/locked-evidence creation; qualification status remains read-only and explanatory.
+35. No cross-size winner/reducer/release selection is introduced.
+36. Old rows remain append-only/authenticated under native schema; old-v1 terminal reducer state remains diagnostic-only.
+37. Production-scale/GPU qualification is deferred during implementation.
+
+## 13.2 Delegated
 
 Implementation may choose/simplify:
 
-- exact collection/dataclass/schema field names;
-- whether existing scalar value objects are reused directly or minimally renamed as per-size entries;
-- collection serialization shape;
-- transition-kind names/wire evolution consistent with compatibility rules;
-- exact collection-level digest representation;
-- exact iterator/helper/module boundaries;
-- whether size execution is serial or uses already-supported bounded scheduling;
-- exact per-size result formatting/paths under existing binding ownership;
-- test organization.
+- exact dataclass/schema/field names;
+- whether scalar proposal/frozen value records are reused or minimally renamed as per-size elements;
+- exact collection serialization layout and collection orchestration digest;
+- exact transition-kind names/wire versioning consistent with append-only compatibility;
+- exact TargetBinding field name/schema, provided dependency rules above hold;
+- exact collection iterator/helper/module boundaries;
+- serial versus already-supported bounded outer-size scheduling;
+- exact per-size result formatting/paths under current ownership;
+- test file organization.
 
-Prefer direct alteration of current scalar authority/currentness/orchestration over additive wrappers. A linear search through the bounded selected-size collection is sufficient; do not add registries/index services for this scale.
+Prefer direct alteration/removal of obsolete scalar authority/currentness over compatibility wrappers, registries, or generic experiment engines.
 
-## 11.3 Reopen only on evidence
+## 13.3 Design reopen triggers
 
-Reopen only the affected design surface if evidence demonstrates:
+Reopen only the affected surface if evidence demonstrates one of these Frozen premises cannot be satisfied without architecture change:
 
-- exact per-size P5 identity cannot remain independent while safely proving membership in one current frozen collection;
-- existing P5 binding-keyed store cannot represent multiple current size descendants without materially different persistence ownership;
-- atomic collection freeze cannot be achieved under existing CampaignStore/CAS ownership;
-- a governed released compatibility contract requires predecessor horizon-option aliases;
-- multi-size qualification is independently required now and cannot preserve the current one-product/locked-evidence scientific contract without a separate explicit design.
+- corrected TargetBinding cannot prove current membership without reintroducing role/provenance contamination;
+- binding-keyed P5 store cannot represent multiple current target descendants safely;
+- atomic collection freeze cannot be achieved under CampaignStore/CAS;
+- a released external compatibility contract genuinely requires old horizon flag aliases;
+- the stakeholder requires multi-size release selection/qualification in this same cycle;
+- safe outer-size scheduling requires a materially new resource architecture.
 
-Ordinary code-shape difficulty is not a redesign trigger.
+Ordinary implementation inconvenience is not a redesign trigger.
 
 ---
 
-# 12. Expected affected surface
+# 14. Expected affected surface
 
-Start with the implementation-proven owners rather than rediscovering the subsystem from scratch:
+Start with these proven owners, then re-derive final impact from the assembled candidate:
 
 ```text
 mdstats/training_data/campaign_target_size_state.py
 mdstats/training_data/campaign_target_size_selection.py
 mdstats/training_data/campaign_target_size_runtime.py
 mdstats/training_data/campaign_target_size_view.py
+mdstats/training_data/campaign_target_size_cutover.py
 mdstats/training_data/campaign_lifecycle.py
 mdstats/training_data/_campaign_cli_core.py
 
@@ -891,6 +1001,7 @@ mdstats/training_data/post_selection_cv_plan.py
 mdstats/training_data/post_selection_cv_acceptance.py
 mdstats/training_data/post_selection_production.py
 mdstats/training_data/post_selection_publication.py
+mdstats/training_data/post_selection_run_identity.py
 
 mdstats/training_data/campaign_target_size_retention.py
 mdstats/training_data/storage/owners.py
@@ -898,230 +1009,300 @@ mdstats/training_data/storage/owners.py
 mdstats/training_data/qualification/commands.py
 mdstats/training_data/qualification/runtime.py
 mdstats/training_data/qualification/binding.py
+mdstats/training_data/qualification/observation.py
+mdstats/training_data/qualification/store.py
 ```
 
-Also inspect every current consumer that assumes `state.proposal`, `state.frozen`, `load_current_selected_training_context()`, one `PostSelectionContext`, one current CV/final pointer, or one current final publication.
+Also inspect every current consumer that assumes:
 
-Documentation includes the predecessor-touched README, target-size architecture/manual/specification, CLI user guide, campaign CLI spec, embedded help/guide text, and generated tracked manuals.
+- `state.proposal` or `state.frozen` is scalar;
+- `load_current_selected_training_context()` returns the campaign's only size;
+- one `PostSelectionContext` represents the complete command;
+- one current CV/final pointer namespace exists;
+- one current final publication exists;
+- lifecycle `_binding_for(...)` can derive exactly one binding;
+- whole `FrozenTargetSelection.content_digest` is a valid numerical parent;
+- old `--select-horizon*` names are current.
 
-Final affected surface must be re-derived from the assembled candidate.
+Documentation includes the predecessor-touched architecture manual, target-size specification, campaign CLI spec/help, README/user guide/runbook references, and tracked generated PDFs/manifests.
 
 ---
 
-# 13. Task-specific acceptance matrix
+# 15. Task-specific acceptance matrix
 
-Generic focused checks, stage-local affected regression, final affected-surface regression, real-owner integration, and repository-required checks are inherited from Protocol 5.16.0.
+Protocol 5.16 focused checks, stage-local affected regression, final affected-surface regression, real-owner integration, and repository-required static checks remain binding.
 
-## 13.1 Preserve predecessor foundations
+## A1 — Predecessor foundation preservation
 
-Before/through the refactor, retain executable evidence for:
+Retain executable evidence for:
 
-- exact manual membership via P2 and zero manual screen numerical work;
-- cold/warm auto diagnostic and no-new-work warm path;
-- no-recommendation atomic non-mutation;
-- diagnostic-report fidelity/rebuildability;
-- per-invocation horizon resolution/no config drift;
+- exact manual membership via real P2 owner;
+- zero manual screening numerical work;
+- cold/warm auto and zero-work warm path;
+- auto no-recommendation atomic non-mutation;
+- diagnostic report fidelity/rebuildability;
+- per-invocation horizons and no config drift;
 - stale-auto/CAS protection;
-- old-v1 reducer-terminal state remaining diagnostic-only;
-- manual/auto provenance excluded from numerical P5 identity.
+- old-v1 diagnostic-only cutover;
+- fresh-production semantics.
 
-Existing predecessor tests may be adapted for collection cardinality but must not be weakened merely because scalar assertions changed.
+Adapt scalar assertions to collection cardinality without weakening their semantic oracle.
 
-## 13.2 CLI grammar
+## A2 — Identity decomposition counterfactuals — mandatory repair oracle
 
-Prove valid manual/auto forms with zero/one/both canonical horizon flags; reset exclusivity; bare invalid command; nonpositive horizons; invalid/noncandidate N; post-freeze mutation rejection; and absence/rejection of old `--select-horizon*` names unless Design is reopened for real compatibility evidence.
+Use direct digest comparisons through the real production identity owners. Do **not** accept merely checking that forbidden field names are absent from a payload.
 
-## 13.3 Ordered merge and reload
+For fixed generation/prepared lineage/N/T/method:
 
-Through the real CampaignStore selection owner prove representative sequences:
+1. same H_cv, change only H_prod -> TargetBinding unchanged; CV policy/plan/acceptance identity unchanged; production policy/plan changes as governed;
+2. same H_prod, change only H_cv -> TargetBinding unchanged; CV policy/plan changes; production policy itself unchanged; final production ancestry changes only through the accepted CV dependency;
+3. same N/T/horizons, manual versus auto provenance -> TargetBinding, CV numerical identity, production numerical identity unchanged;
+4. change only auto diagnostic provenance -> same numerical identities;
+5. change N or exact membership/training-order lineage -> TargetBinding changes;
+6. add/reorder an unrelated sibling in an equivalent fresh design -> this N's TargetBinding/role identities unchanged except genuinely governed generation lineage;
+7. full frozen-entry authority still detects tampered horizons/provenance if that full digest is retained.
+
+These tests must fail against the submitted contaminated binding implementation and pass only after the owning boundary is corrected.
+
+## A3 — CLI grammar
+
+Prove manual/auto with zero/one/both canonical horizon flags; reset exclusivity; bare invalid command; nonpositive horizons; noncandidate N; post-freeze mutation rejection; old provisional horizon flag names rejected unless Design is explicitly reopened.
+
+## A4 — Ordered merge, reload, and corruption
+
+Through real CampaignStore owner:
 
 ```text
-512                    -> [512]
-1024                   -> [512, 1024]
-512(new horizons)      -> [512(updated), 1024]
-2048                   -> [512(updated), 1024, 2048]
-1024(new horizons)     -> [512(updated), 1024(updated), 2048]
+512                 -> [512]
+1024                -> [512, 1024]
+512(new horizons)   -> [512(updated), 1024]
+2048                -> [512(updated), 1024, 2048]
+1024(new horizons)  -> [512(updated), 1024(updated), 2048]
 ```
 
-Verify exact order, one entry per N, complete horizons/provenance/membership identity, durable reload equivalence, and duplicate/corrupt serialized state rejection.
+Assert exact order, unique N, complete per-size snapshots/provenance/membership, serialization/reload equivalence, and fail-closed duplicate/malformed authoritative state.
 
-A broad stateful/property test is appropriate if Hypothesis is available, using real test-owned CampaignStore state and an independent simple ordered-map oracle.
+A bounded Hypothesis state-machine test using a simple independent ordered-map oracle is appropriate if available; real test-owned CampaignStore remains the state owner.
 
-## 13.4 Reset
+## A5 — Reset and cached diagnostic
 
-From a multi-entry collection with cached auto evidence:
+From multi-entry provisional state with cached auto evidence:
 
 - reset -> empty collection;
 - prepared generation unchanged;
-- diagnostic evidence unchanged;
+- diagnostic unchanged;
 - zero numerical calls;
-- status shows unselected/default state;
-- CV refuses zero entries;
-- later warm auto reuses cached evidence and installs exactly one entry without retraining.
+- CV refuses;
+- warm auto after reset installs exactly one recommendation without retraining.
 
-## 13.5 Per-size horizon snapshots
+## A6 — Per-size default snapshots
 
-Change config defaults between selection/reselection commands. Prove only the affected entry receives newly resolved omitted values, untouched entries retain their snapshots, and all values remain unchanged across reload/freeze and later config edits.
+Change config defaults between select/reselect calls. Only the touched entry receives current omitted defaults. Untouched entries survive reload/freeze/config edits unchanged.
 
-## 13.6 Auto merge
+## A7 — Auto merge and races
 
 Cover:
 
-- manual N1 -> auto N2 => `[N1, N2]`;
+- manual N1 -> auto N2 => [N1,N2];
 - manual N1 -> auto N1 => N1 replaced in place;
-- auto N1 -> manual N2 => `[N1, N2]`;
-- no-recommendation => collection unchanged;
-- stale auto completion loses to newer append/update/reset/freeze while retaining valid diagnostic evidence.
+- auto N1 -> manual N2 => [N1,N2];
+- no recommendation => collection semantically unchanged;
+- stale auto loses to append/update/reset/freeze while diagnostic evidence remains valid.
 
-## 13.7 Atomic multi-size freeze
+## A8 — Atomic freeze
 
-Assembled public path:
+Assembled public path with at least two sizes must prove one atomic frozen collection, exact membership reauthentication, frozen per-size horizons, no automatic diagnostic requirement, and no post-freeze selection/reset mutation.
 
-```text
-prepare
-select-target-size N1 ...
-select-target-size N2 ...
-cross-validate
-```
+Inject corruption into one member below persistence boundaries: entire freeze fails and no CV job is admitted.
 
-must prove one atomic ordered frozen collection, exact re-authentication of both memberships, frozen per-size horizons, no P3-auto ancestry requirement, and post-freeze rejection of N/auto/reset mutation.
+## A9 — Per-size binding/currentness
 
-Inject a corrupt member below persistence boundaries and prove the entire admission fails without partial freeze/CV execution.
+For each frozen size, prove the selected-training adapter yields the corrected TargetBinding and exact membership.
 
-## 13.8 Per-size binding identity/currentness
+Reject:
 
-For each frozen entry prove the real selected-training adapter yields the correct existing-style `PostSelectionBinding`/membership. Prove:
+- another generation;
+- forged membership/training order;
+- N-only lookalike;
+- wrong role policy horizon;
+- stale binding not present in current collection.
 
-- N1 binding is different from N2 binding;
-- adding/reordering a sibling in an otherwise equivalent fresh design does not alter N1's numerical per-size binding/policy identity beyond truly governed campaign-generation identity;
-- publication currentness accepts a binding whose exact frozen entry belongs to the current collection;
-- an entry from another generation, altered horizons where relevant, forged membership, or N-only lookalike is rejected;
-- whole-collection digest/order is not injected into per-size numerical identity.
+Accept current siblings simultaneously. Whole collection digest/order cannot be required by per-size numerical identities.
 
-## 13.9 Real CV owner across size x existing dimensions
+## A10 — Real CV owner across size x existing dimensions
 
-Use bounded numerical doubles below the real P5 owner and call the assembled public `cross-validate`. Verify every frozen size is enumerated by production orchestration and receives:
+Call assembled public `cross-validate` with bounded numerical doubles only below the real P5 numerical seam. The production orchestrator, not the harness, enumerates every frozen size and passes correct T_N/H_cv into real CV plan/fold/acceptance owners.
 
-- correct exact T_N;
-- correct H_cv;
-- real CV plan/binding;
-- existing required seeds/folds and acceptance semantics.
+## A11 — CV failure/restart
 
-A harness-side loop that directly calls one-size helpers cannot close this claim.
+Deterministically fail or reject one size after another has completed valid work. Prove no selected N disappears, valid sibling evidence is reusable, campaign is not falsely accepted, and frozen settings do not drift.
 
-## 13.10 Real production owner across size x existing seeds
+## A12 — Production collection-wide preflight
 
-Through assembled `train-production`, verify every selected size with accepted current CV gets its own real final plan/run evidence/publication under correct binding/H_prod/fresh-start semantics.
+With N1 accepted CV and N2 missing/rejected/stale CV, call real `train-production` and prove **zero new production job admissions** for all sizes. Existing immutable evidence is not deleted.
 
-Assert N1 cannot consume N2's CV acceptance, membership, horizons, pointers, run evidence, or publication.
+With all CV accepted, every N is admitted to its own real final-production plan.
 
-## 13.11 Failure/restart sibling preservation
+## A13 — Real production separation
 
-Deterministically fail/interrupt one size after another completes. On retry/reload prove:
+Through assembled `train-production`, verify every N gets correct H_prod, membership, accepted CV, M3, seeds, fresh-start semantics, and binding-scoped publication. N1 cannot consume N2 evidence or pointers.
 
-- frozen collection unchanged;
-- completed sibling evidence is reused when still current;
-- failed/incomplete size resumes according to existing owner semantics;
-- campaign stage remains non-complete until every required size closes;
-- no selected entry is dropped.
+## A14 — Production restart sibling preservation
 
-## 13.12 Concurrency/CAS
+Interrupt N2 after N1 completes. Retry/reload: N1 current work reused, N2 resumes/reruns under existing rules, no collection mutation, campaign incomplete until all publications exist.
 
-Use the real CampaignStore writer/CAS owner for deterministic races including:
+## A15 — Generation rollover
+
+Cover both paths:
+
+- unchanged `prepare` -> same generation, same provisional/frozen collection and current descendants;
+- changed prepared identity -> generation + 1, empty selection/no freeze, all old per-size bindings/pointers/publications unreachable as current.
+
+Race a stale old-generation P5 publication against rollover and prove the commit-time fence rejects current publication. Once staleness is detected, no further outer-size work is newly admitted for the old design.
+
+## A16 — Coherent multi-binding observation
+
+With at least two bindings and concurrent pointer publication, repeatedly call lifecycle/status observation. Each result must correspond to one coherent SQLite snapshot; it cannot combine a target revision from one moment with per-size pointer sets from incompatible moments.
+
+Assert observational commands create no files/rows/wrappers/evidence roots/sessions.
+
+## A17 — CAS collection races
+
+Use real CampaignStore for deterministic races:
 
 - append N2 vs update N1;
 - append/update vs reset;
-- reset vs CV freeze;
-- selection vs CV freeze;
-- long-running auto installation vs append/update/reset/freeze.
+- reset vs freeze;
+- selection vs freeze;
+- long-running auto install vs append/update/reset/freeze;
+- changed prepare versus freeze/publication.
 
-Exactly one transition order becomes authoritative. No lost entry, duplicate N, partial collection, or split freeze/CV ancestry is allowed.
+Exactly one valid transition ordering wins; no lost entry, duplicate N, partial freeze, or split ancestry.
 
-## 13.13 P5 store, retention, and cleanup
+## A18 — Resource ownership
 
-Create current P5 evidence for at least two selected bindings. Prove binding-keyed pointers coexist, currentness resolves both, storage/retention traversal protects both where required, and cleanup of stale/historical data cannot delete one current sibling because another binding was used for reachability analysis.
+If outer size execution is serial, prove no new size scheduler/resource multiplication exists.
 
-## 13.14 Lifecycle/status/results
+If concurrent, test the effective plan so total outer + inner workers/device leases stay within existing allocation and deterministic result order remains frozen order. Do not accept each size independently claiming full CPU/GPU/RAM allocation.
 
-Assert the complete ordered provisional/frozen list is visible, per-size CV/production progress/failure is attributable by N, campaign completion requires all selected sizes, `advance` never invents N, and singular legacy wording cannot hide additional entries.
+## A19 — P5 store/retention
 
-## 13.15 Predecessor-v2 scalar compatibility
+Create current P5 evidence for at least two bindings. Prove pointers coexist, both current descendants are retained, cleanup cannot delete one sibling merely because another was used for reachability, and no duplicate prepared generation is materialized per size.
 
-Representative predecessor scalar states:
+## A20 — Lifecycle/results/advance
 
-- no proposal/freeze -> empty collection;
-- valid proposal -> one provisional entry with identical N/membership/horizons/provenance;
-- valid frozen scalar -> one frozen entry, immutable/non-appendable, with existing bound P5 descendant still current when its exact identity remains valid.
+Assert complete ordered provisional/frozen state and per-size CV/production status.
 
-Retain the older-v1 diagnostic-only cutover test separately so the two compatibility generations cannot be conflated.
+- zero selection -> advance stops;
+- incomplete/failed CV -> never production;
+- all CV accepted + incomplete production -> train-production;
+- k==1 all production -> existing qualification route;
+- k>1 all production -> no next consequential command, explicit terminal training-experiment message, no release-qualified claim.
 
-## 13.16 Qualification boundary
+Derived results may present existing metrics side-by-side but never rank/choose N.
+
+## A21 — Qualification boundary
+
+For k==1, run existing qualification regression unchanged scientifically.
+
+For k>1:
+
+- `qualification status` succeeds read-only and reports unsupported multi-product qualification;
+- `qualification run`, locked activation, and every consequential P7 path fail before attempt creation, inference, external reference request, or locked-evidence opening;
+- no first/last/best/auto implicit selection exists.
+
+## A22 — v1/v2 compatibility and append-only migration
 
 Prove:
 
-- one selected size reaches the existing qualification owner unchanged after production;
-- more than one selected size causes `qualification run`, locked activation, and any other consequential qualification entrypoint to fail **before** creating/opening a qualification attempt or locked evidence;
-- status/help explains the multi-size limitation without choosing a size;
-- no first/last/best/auto-recommended implicit product selection exists.
+- v2 no proposal/freeze -> empty provisional view;
+- v2 proposal -> one provisional entry; later successor mutation writes new canonical row without rewriting old;
+- v2 frozen -> one immutable frozen compatibility view; cannot append/reset/thaw;
+- existing valid legacy P5 descendant remains current under exact legacy ancestry where supported;
+- successor new binding schema does not inherit legacy transitive H_prod/provenance coupling;
+- old-v1 terminal reducer row remains diagnostic-only.
 
-## 13.17 No-obsolete-current-semantics closure
+## A23 — Structural/obsolete-semantic closure
 
-Inspect current executable/normative surfaces for obsolete assumptions including:
+Inspect current executable/normative surfaces for:
 
-- campaign current selection is always scalar;
-- second distinct N replaces first;
-- only one current frozen size may exist;
-- publication currentness requires equality with a scalar state.frozen digest;
-- status/results print only one selected size;
-- production chooses one size from the collection;
-- old `--select-horizon*` flags remain current;
-- multi-size qualification silently selects a publication.
+- scalar current-selection authority still driving current decisions;
+- synchronized scalar + collection representations;
+- second selection store/subcampaign machinery;
+- full frozen-entry digest used transitively as TargetBinding/CV identity;
+- second distinct N replacing the first;
+- status showing one N only;
+- publication currentness comparing against one scalar `state.frozen`;
+- old `--select-horizon*` current flags;
+- production choosing a subset/winner;
+- multi-size qualification choosing a publication.
 
-Use AST/structural tooling when available and appropriate; validate any acceptance-critical custom structural rule against known-positive/known-negative examples. Literal docs/help may use bounded text search. Historical/archive documents are excluded from current-semantic absence claims.
+Use structural tooling when appropriate; validate any acceptance-critical custom structural rule with known-positive and known-negative examples. Historical/archive material is excluded from current-semantic absence claims.
 
-## 13.18 Final regression and integration
+## A24 — Final affected regression/integration
 
 After all material executable edits:
 
-1. reconcile every obligation above against the assembled candidate;
-2. re-derive the actual affected surface;
-3. run the adapted predecessor target-size provisional-selection suite;
-4. run all affected target-size state/runtime/view/lifecycle tests;
-5. run all affected P5 CV/production/restart/currentness/publication/store/storage tests;
-6. run single-size qualification regression plus multi-size fail-closed qualification tests;
-7. run assembled `prepare -> multi-select -> cross-validate -> train-production -> reload/status` integration through real owners with bounded numerical doubles;
-8. run repository/project-required static/lint/type checks and the broader suite if impact cannot be confidently bounded.
+1. reconcile every obligation in this file against the assembled candidate;
+2. re-derive actual affected surface;
+3. run the adapted predecessor provisional-selection suite, including strengthened identity tests;
+4. run affected target-size state/runtime/view/prepare/currentness/lifecycle tests;
+5. run affected P5 CV/production/run/restart/publication/store/storage tests;
+6. run single-size qualification regression and multi-size fail-closed/status tests;
+7. run assembled `prepare -> select N1 -> select N2 -> cross-validate -> train-production -> reload/status` through real owners with bounded numerical doubles;
+8. run a generation-rollover integration from a frozen multi-size campaign;
+9. run project-configured static/lint/type checks for affected Python surfaces;
+10. if impact cannot be bounded confidently, run the broader repository suite supported by the environment.
 
-A required check that cannot execute remains incomplete evidence; do not convert it to a pass by inspection.
-
-Production-scale/GPU qualification is not required for implementation acceptance.
+A required check that cannot execute is incomplete evidence, not a pass by inspection.
 
 ---
 
-# 14. Implementation sequence and simplification/redesign triggers
+# 16. Implementation sequence
 
-## Stage A — Collection authority, CLI, and compatibility
+## Stage A — Identity repair + collection authority + CLI/compatibility
 
-Generalize scalar proposal authority to the ordered collection, preserve/reuse the existing per-size value object, implement duplicate replacement/reset/flag rename/rendering, and normalize predecessor-v2 scalar state. Close focused + affected state/CLI/CAS regression before dependent P5 changes.
+1. Correct R1 at the real binding/identity owner.
+2. Generalize provisional state to ordered collection.
+3. Implement append/replace/reset and new flag names.
+4. Normalize v2 provisional state without rewriting history.
+5. Close focused identity, state, serialization, CLI, CAS, and predecessor-foundation regression.
 
-## Stage B — Atomic freeze and per-size currentness
+Do not begin multi-size P5 orchestration while the binding still contains role/provenance contamination.
 
-Generalize freeze to the whole collection; expose ordered per-size selected contexts; adapt `PostSelectionBinding` currentness membership and binding-keyed pointer publication without contaminating scientific identity. Close freeze/currentness/store/legacy regression.
+## Stage B — Atomic freeze + per-size currentness + coherent observation
 
-## Stage C — Multi-size CV and production orchestration
+1. Freeze whole collection atomically.
+2. Expose production-owned ordered per-size contexts.
+3. Adapt P5 pointer publication/currentness to corrected TargetBinding membership.
+4. Generalize lifecycle coherent snapshot across all binding namespaces.
+5. Close freeze/currentness/observation/v1-v2 compatibility tests.
 
-Make the real public CV and production owners enumerate every frozen entry, aggregate completion correctly, preserve restart/completed siblings, and keep existing per-size numerical owners unchanged. Close stage-local P5 affected regression and assembled bounded integration.
+## Stage C — Multi-size CV + production + restart/resource closure
 
-## Stage D — Lifecycle/storage/qualification/documentation closure
+1. Real CV owner enumerates all sizes.
+2. Add collection-wide production CV preflight.
+3. Real production owner enumerates all sizes.
+4. Preserve sibling restart/reuse and stop stale outer admission.
+5. Validate resource ownership if any outer concurrency is used.
+6. Close stage-local P5 regression and assembled bounded integration.
 
-Make status/advance/results/retention collection-aware, preserve single-size qualification and fail closed for multi-size qualification, reconcile current docs/spec/help, regenerate derived manuals, then run final affected regression/integration/project checks.
+## Stage D — Lifecycle/storage/qualification/docs/final regression
 
-## Active simplicity trigger
+1. Aggregate status/results/advance across all N values.
+2. Implement k>1 terminal training-experiment and qualification boundary.
+3. Make retention/cleanup sibling-aware.
+4. Reconcile current docs/spec/help and regenerate derived manuals.
+5. Run final affected-surface regression/integration/static checks.
 
-If implementation begins adding adapters solely to keep a scalar authoritative proposal/freeze synchronized with a collection, stop and remove/generalize the scalar authority instead. If it begins creating per-size subcampaigns/stores/lifecycle enums despite existing binding-keyed P5 ownership, stop and reuse the existing per-binding architecture.
+---
 
-Reuse of the current `TargetSizeProposal`, `FrozenTargetSelection`, `PostSelectionBinding`, P5 object store, and publication record as **per-size values** is encouraged when it reduces migration and identity churn; preserving their old scalar campaign cardinality is not.
+# 17. Active simplicity and closure rule
 
-## Genuine Design reopen triggers
+If Implementation starts adding machinery whose only purpose is to keep an old scalar campaign authority synchronized with a collection, stop and generalize/remove the scalar authority instead.
 
-Reopen only when evidence invalidates a Frozen premise listed in Section 11.3, especially if per-size binding currentness cannot be proven without collection identity contaminating science, or if the stakeholder explicitly requires multi-size qualification/release selection in this same cycle.
+If Implementation starts creating per-size subcampaigns, per-size mutable state databases, a generic nested experiment engine, or a cross-size reducer, stop and reuse the existing collection + per-binding architecture.
+
+If the corrected R1 identity graph can be expressed by deleting/replacing one contaminated ancestry edge, prefer that over introducing a parallel identity stack.
+
+The workplan is closed for implementation when the above Frozen requirements are accepted. Any Design reopen must be evidence-triggered under Section 13.3; ordinary code-shape difficulty stays delegated to Implementation.
