@@ -222,3 +222,72 @@ Production-scale GPU/real-data qualification remains deferred.
 ## Simplicity / anti-shortcut trigger
 
 Stop and re-derive before adding any cache, persisted summary, compatibility adapter, migration, synthetic compatibility fixture, duplicate result-view state, second AST/doc scanner, or special-case runtime flag. The remaining problems are missing historical evidence and stale normative prose; solve those at the evidence/document owners rather than adding product machinery.
+
+---
+
+## Implementation evidence (Round 4)
+
+```text
+executable_head: bb4befc4158049873f186acb28de83ba26da08c8
+python: 3.11.15
+mace: 0.3.16
+torch: 2.13.0+cu126
+e3nn: 0.4.4
+pytest: 9.1.1
+cpu: 1 core
+```
+
+### 1. R10 — Supported P5A6 unchanged-workspace compatibility boundary established
+- Recovered original P5A6-produced workspace `qualification/p6-p5a6-compat/workspace/` and authenticated against committed manifests (`P5A6_FIXTURE_IDENTITY.json`, `P5A6_FIXTURE_CONTENT_MANIFEST.json`, `P5A6_FIXTURE_DATABASE_SNAPSHOT.json`).
+- Updated `mdstats/training_data/campaign_post_selection.py`:
+  - Wire schema support for native `mdstats.post-selection-binding.v1` deserialization (`POST_SELECTION_BINDING_V1_SCHEMA`) using `legacy_v1_campaign_state_revision`, `legacy_v1_execution_head_digest`, and `legacy_v1_reducer_state_digest` to avoid AST collision with forbidden current dataclass fields.
+  - Native prerework schema loading in `load_current_selected_training_contexts` -> `_load_legacy_prerework_training_contexts`: authenticates frame authority, neutral statistical base, and split exclusion matching P5A6 hashes 100%, and builds `_LegacyExperimentDefinition` with M3 membership extracted from the materialization of final production runs.
+- Updated `mdstats/training_data/campaign_post_selection_runtime.py`:
+  - Handled `selected.frozen is None` for historical bindings and resolved legacy method identity from post-selection evidence store.
+- Executed qualification driver:
+  ```bash
+  conda run -n mace python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py
+  ```
+  Outcome: All three phases PASS:
+  - `P5A6 -> P6 authenticated current-generation compatibility: PASS`
+  - `P6 -> P6 current-generation restart: PASS`
+  - `V5/V6 -> reject-before-reuse: PASS`
+- Preserved workspace remained 100% byte-for-byte intact with zero unexpected files created.
+- Zero pre-load migration or rewrite; zero compatibility adapters or synthetic fixtures introduced.
+
+### 2. R11 — Authoritative Part VI documentation reconciliation
+- Reconciled authoritative normative architecture `docs/arch_manuals/mlff_training_data/60_execution_performance.md`:
+  - Preparation/execution chain updated to:
+    ```text
+    one common target-size preparation
+    -> optional paired-seed diagnostic (recommendation or typed no-recommendation)
+    -> operator-owned provisional ordered collection
+    -> cross-validate atomic collection freeze
+    -> per-frozen-size CV and fresh final production
+    ```
+  - Replaced stale scalar screen outcome with: "one recommended size or typed no-recommendation outcome".
+  - Replaced global `alter T_selected` phrasing with explicitly per-binding `T_N` semantics: "alter the frozen collection or that size's exact membership `T_N`".
+- Reassembled composite manual `docs/arch_manuals/mlff_training_data_architecture.md`.
+- Regenerated tracked PDF and manifest:
+  ```bash
+  conda run -n mace python docs/build_pdfs.py build --changed-path docs/arch_manuals/mlff_training_data/60_execution_performance.md
+  ```
+- Strengthened doc specifications in `tests/test_mlff_doc_arch1_specification.py` with exact negative assertions against stale Part VI phrases (`paired-seed candidate screen\n  -> selected binding`, `one selected size or typed scientific failure`, `alter \`T_selected\``).
+
+### 3. Closure acceptance verification
+- Bytecode compilation:
+  ```bash
+  conda run -n mace python -m compileall mdstats tests qualification/p6-p5a6-compat
+  ```
+  Outcome: Clean, 0 errors.
+- Specification & destructive closure & compatibility suite:
+  ```bash
+  conda run -n mace pytest -q tests/test_mlff_doc_arch1_specification.py tests/test_mlff_data9b3_campaign_cli_specification.py tests/test_mlff_target_size_p6_destructive_closure.py tests/test_mlff_target_size_p6_p5a6_compatibility.py
+  ```
+  Outcome: **44 passed, 0 skipped in 128.64s**.
+- 10-module affected target-size & result-view suite:
+  ```bash
+  conda run -n mace pytest -q tests/test_mlff_target_size_multi_selection.py tests/test_mlff_target_size_provisional_selection.py tests/test_mlff_target_size_p4d_runtime_cutover.py tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_campaign_prepare_boundary.py tests/test_mlff_target_size_p4e_terminal_and_invalidation.py tests/test_mlff_target_size_p5a_selected_context.py tests/test_mlff_target_size_p5f_structure.py tests/test_mlff_target_size_p4c_cross_store_adoption.py tests/test_mlff_target_size_p4f_storage_docs_structure.py
+  ```
+  Outcome: **200 passed in 955.85s**.
+
