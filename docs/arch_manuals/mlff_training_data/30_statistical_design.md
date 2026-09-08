@@ -95,12 +95,12 @@ only after the fold representative is frozen.
 This gives the required distinction:
 
 ```text
-global target-size choice -> one N_selected and one T_selected
-post-selection CV        -> method validation on partitions of T_selected
+global target-size choice -> ordered frozen design of selected sizes N and exact memberships T_N
+post-selection CV        -> method validation on the frozen design
 ```
 
 Held-out CV error, calibration evidence, and locked-test evidence therefore
-cannot select `N_selected`, alter `T_selected`, or tune the target-size policy.
+cannot select or alter the frozen target design, or tune the target-size policy.
 
 ## Fitted preparation
 
@@ -204,7 +204,7 @@ raw source / label / feature / event evidence
     -> common fitted preparation
     -> optional target-size diagnostic screen and reducer (recommends only)
     -> operator-owned provisional design
-    -> frozen N_selected/T_selected and role horizons at cross-validate admission
+    -> frozen design (selected sizes, memberships, role horizons) at cross-validate admission
     -> post-selection fold partitions and method acceptance
     -> fresh final production
     -> downstream qualification roles when separately implemented and activated

@@ -37,7 +37,7 @@ def test_data9b3_version_and_user_surface() -> None:
         "target_size_power_max",
         "post_selection.cv",
         "N_selected",
-        "T_selected",
+        "T_N",
     ):
         assert token in spec or token in guide
     assert "--config <frozen-campaign.toml> verify" not in spec
@@ -52,7 +52,7 @@ def test_data9b3_architecture_and_stage_plan_integration() -> None:
     manual = MANUAL.read_text(encoding="utf-8")
     stage = STAGE.read_text(encoding="utf-8")
     assert "one target-size architecture" in manual
-    assert "post-selection cross-validation on exactly T_selected" in manual
+    assert "post-selection cross-validation on the frozen collection" in manual
     assert "init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production" in stage
     assert "downstream qualification" in stage
     assert "does not redefine RDF, MSD, VACF, VDOS" in manual

@@ -27,7 +27,7 @@ applicable:
 
 ```text
 foundation checkpoint / model family / selected foundation head
-protocol-global frozen N_selected and exact T_selected binding
+protocol-global frozen target design and exact membership bindings
 replay source, split, and replay-monitor identity
 training objective and configuration/property weights
 executable loss family

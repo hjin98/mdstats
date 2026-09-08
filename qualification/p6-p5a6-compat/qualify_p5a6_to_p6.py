@@ -309,7 +309,7 @@ def _phase_reopen(args: argparse.Namespace) -> int:
         revision = require_current_target_size_runtime(store)
         if revision.state.regime is not TargetSizeRegime.CURRENT:
             raise QualificationError("P5A6 workspace did not reopen as current")
-        if revision.state.frozen is None:
+        if not revision.state.frozen_entries:
             raise QualificationError("P5A6 workspace lost its frozen selection on reopen")
         if revision.state.generation != identity["generation"]:
             raise QualificationError("P5A6 generation changed on first P6 load")
@@ -323,7 +323,7 @@ def _phase_reopen(args: argparse.Namespace) -> int:
         ):
             if getattr(revision.state, field) != identity[field]:
                 raise QualificationError(f"P5A6 {field} failed currentness authentication")
-        frozen = revision.state.frozen
+        frozen = revision.state.frozen_entries[0]
         if frozen is None or frozen.n_selected != identity["n_selected"]:
             raise QualificationError("P5A6 selected target failed authentication")
         if frozen.selected_membership_digest != identity["selected_membership_digest"]:
@@ -434,11 +434,12 @@ def _phase_produce_p6(args: argparse.Namespace) -> int:
     store = CampaignStore(paths.state_db)
     try:
         revision = load_target_size_campaign_revision(store)
-        frozen = revision.state.frozen
-        if frozen is None:
+        frozen_entries = revision.state.frozen_entries
+        if not frozen_entries:
             raise QualificationError(
                 "fresh P6 producer did not publish a frozen target selection"
             )
+        frozen = frozen_entries[0]
         selected = load_current_selected_training_context(cfg, paths, store)
         context = build_post_selection_context(cfg, paths, store, trainer=object())
         plan = resolve_current_cv_plan(context)
@@ -540,7 +541,7 @@ def _phase_reopen_p6(args: argparse.Namespace) -> int:
         revision = require_current_target_size_runtime(store)
         if revision.state.regime is not TargetSizeRegime.CURRENT:
             raise QualificationError("P6 workspace did not reopen as current")
-        if revision.state.frozen is None:
+        if not revision.state.frozen_entries:
             raise QualificationError("P6 workspace lost its frozen selection on reopen")
         if revision.state.generation != identity["generation"]:
             raise QualificationError("P6 generation changed on reopen")
@@ -554,7 +555,7 @@ def _phase_reopen_p6(args: argparse.Namespace) -> int:
         ):
             if getattr(revision.state, field) != identity[field]:
                 raise QualificationError(f"P6 {field} failed currentness authentication")
-        frozen = revision.state.frozen
+        frozen = revision.state.frozen_entries[0]
         if frozen is None or frozen.n_selected != identity["n_selected"]:
             raise QualificationError("P6 selected target failed authentication")
         if frozen.selected_membership_digest != identity["selected_membership_digest"]:

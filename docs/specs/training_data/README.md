@@ -25,8 +25,9 @@ The current target-membership authority is the single `pi_train`/prefix chain
 described by Architecture Part V and the cross-cutting contract. The paired-seed
 reducer is an *optional automatic diagnostic* over that ladder: it recommends a
 size. The operator owns the provisional choice, and `cross-validate` admission
-is the one boundary that freezes the global `N_selected`/`T_selected` binding
-and both role training horizons. Retired multi-view, migration, generated-rescue, and pre-target
+is the one boundary that freezes the ordered collection of selected sizes $\{N_i\}$,
+their exact memberships $T_{N_i} = \pi_{\mathrm{train}}[:N_i]$, and their per-size
+training horizons. Retired multi-view, migration, generated-rescue, and pre-target
 per-domain authorities are historical/reject-only and do not create a current
 specification.
 

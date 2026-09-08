@@ -27,7 +27,7 @@ def test_doc_arch1_release_and_current_authority_are_synchronized():
         "optional paired optimizer-seed automatic diagnostic over candidate sizes"
         in text
     )
-    assert "post-selection cross-validation on exactly T_selected" in text
+    assert "post-selection cross-validation on the frozen collection" in text
     assert not (ROOT / "mlff_training_data_architecture.md").exists()
     assert not (ROOT / "mlff_training_data_dependency_graph.json").exists()
 

@@ -126,7 +126,7 @@ source bytes / controls / trajectory collections
   -> target-size study using authorized development/model-selection evidence,
      yielding a recommendation rather than a decision
   -> operator-owned provisional design, frozen at cross-validate admission
-  -> one frozen N_selected, exact global T_selected, and both role horizons
+  -> ordered collection of frozen entries (N_selected, exact T_selected, and role horizons)
   -> protocol-matched CV partitions inside T_selected, with held-out folds inaccessible to size/checkpoint choice
   -> accepted frozen protocol
   -> independent final seeds and checkpoint admission

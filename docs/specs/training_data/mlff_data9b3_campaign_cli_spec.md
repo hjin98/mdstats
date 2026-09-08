@@ -335,7 +335,7 @@ attempt keeps whatever currentness its own identity earns; the barrier only
 prevents new admission from turning an all-sizes experiment into a successful
 subset.
 
-After preflight it runs the existing fresh final-production methodology for
+After admission it runs the existing fresh final-production methodology for
 every frozen size: fresh start from the accepted foundation on that size's
 complete exact `T_N`, under **its own** frozen production horizon, its own
 accepted cross-validation ancestry, its existing M3 lineage, production seeds,

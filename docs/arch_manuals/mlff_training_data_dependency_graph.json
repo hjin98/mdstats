@@ -95,7 +95,7 @@
     {
       "id": "CURRENT_SELECTED_SET",
       "class": "scientific_product",
-      "summary": "The CampaignStore terminal projection binding N_selected to the exact T_selected membership digest."
+      "summary": "The CampaignStore projection binding each selected size N to its exact T_N membership digest in the frozen design."
     },
     {
       "id": "POST_SELECTION_CV_ACCEPTANCE",

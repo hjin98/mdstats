@@ -39,11 +39,11 @@ source evidence and labels
   -> one common deterministic target-size preparation
   -> optional paired optimizer-seed automatic diagnostic over candidate sizes
      (one target-size reducer -> a *recommended* size)
-  -> operator-owned provisional design (N, CV horizon, production horizon)
+  -> operator-owned provisional design (ordered collection of (N, CV horizon, production horizon))
   -> cross-validate admission
-  -> frozen N_selected, T_selected = pi_train[:N_selected], and both horizons
-  -> post-selection cross-validation on exactly T_selected
-  -> fresh final production on the complete T_selected
+  -> frozen design: every selected size N_selected, its exact T_selected = pi_train[:N_selected], and role horizons
+  -> post-selection cross-validation on the frozen collection
+  -> fresh final production on the selected dataset(s)
   -> currentness-fenced final-production publication
 ```
 
@@ -94,7 +94,7 @@ For targeted human or AI loading, use the smallest current source containing the
 - **training order** — the one canonical deterministic ordering `pi_train` of the target-training pool whose prefixes define candidate target subsets.
 - **qualified size** — a candidate size admitted by the configured target-size policy for the current experiment definition.
 - **provisional design** — the ordered, unique-by-`N` collection of per-size entries `(N_provisional, its exact membership, selection source, CV horizon, production horizon)` the operator owns until admission. Empty is its canonical unselected state.
-- **selected size** — the one target size `N_selected` frozen at `cross-validate` admission together with the exact membership `T_selected` and both effective role horizons.
+- **selected size** — a target size `N_selected` in the ordered frozen design admitted at `cross-validate`, bound to its exact membership `T_selected = pi_train[:N_selected]` and its effective role horizons.
 - **authoritative evidence** — persisted information that defines or independently proves a scientific decision.
 - **reconstructible execution cache** — discardable state derivable exactly from authoritative inputs.
 - **unsupported generation** — an old campaign/artifact generation that current architecture does not interpret or migrate; it requires re-preparation.
@@ -239,7 +239,7 @@ source bytes / controls / trajectory collections
   -> target-size study using authorized development/model-selection evidence,
      yielding a recommendation rather than a decision
   -> operator-owned provisional design, frozen at cross-validate admission
-  -> one frozen N_selected, exact global T_selected, and both role horizons
+  -> ordered collection of frozen entries (N_selected, exact T_selected, and role horizons)
   -> protocol-matched CV partitions inside T_selected, with held-out folds inaccessible to size/checkpoint choice
   -> accepted frozen protocol
   -> independent final seeds and checkpoint admission
@@ -593,12 +593,12 @@ only after the fold representative is frozen.
 This gives the required distinction:
 
 ```text
-global target-size choice -> one N_selected and one T_selected
-post-selection CV        -> method validation on partitions of T_selected
+global target-size choice -> ordered frozen design of selected sizes N and exact memberships T_N
+post-selection CV        -> method validation on the frozen design
 ```
 
 Held-out CV error, calibration evidence, and locked-test evidence therefore
-cannot select `N_selected`, alter `T_selected`, or tune the target-size policy.
+cannot select or alter the frozen target design, or tune the target-size policy.
 
 ## Fitted preparation
 
@@ -702,7 +702,7 @@ raw source / label / feature / event evidence
     -> common fitted preparation
     -> optional target-size diagnostic screen and reducer (recommends only)
     -> operator-owned provisional design
-    -> frozen N_selected/T_selected and role horizons at cross-validate admission
+    -> frozen design (selected sizes, memberships, role horizons) at cross-validate admission
     -> post-selection fold partitions and method acceptance
     -> fresh final production
     -> downstream qualification roles when separately implemented and activated
@@ -748,7 +748,7 @@ applicable:
 
 ```text
 foundation checkpoint / model family / selected foundation head
-protocol-global frozen N_selected and exact T_selected binding
+protocol-global frozen target design and exact membership bindings
 replay source, split, and replay-monitor identity
 training objective and configuration/property weights
 executable loss family
@@ -1055,12 +1055,11 @@ canonical frame authority (Part II)
     |   |
     |   +-> operator-owned provisional design
     |         N_provisional, H_cv, H_prod   (mutable, freezes nothing)
-    |
     -> cross-validate admission
-         -> frozen N_selected, T_selected = pi_train[:N_selected],
+         -> frozen design: every selected size N_selected, its exact T_selected = pi_train[:N_selected],
             and both effective role horizons
-    -> post-selection cross-validation on exactly T_selected
-    -> fresh final production on the complete T_selected
+    -> post-selection cross-validation on the frozen collection
+    -> fresh final production on the selected dataset(s)
     -> currentness-fenced publication
 ```
 
@@ -1818,11 +1817,11 @@ source evidence and labels
     -> one pi_train and nested pi_eval ladder M1 subset M2 subset M3
     -> one common target-size preparation
     -> optional paired optimizer-seed automatic diagnostic (recommends only)
-    -> operator-owned provisional design (N, H_cv, H_prod)
+    -> operator-owned provisional design (ordered collection of (N, CV horizon, production horizon))
     -> cross-validate admission
-    -> frozen N_selected, exact global T_selected, and both role horizons
-    -> post-selection cross-validation on exactly T_selected
-    -> fresh final production on the complete T_selected
+    -> frozen design: every selected size N_selected, exact T_selected, and role horizons
+    -> post-selection cross-validation on the frozen collection
+    -> fresh final production on the complete selected dataset(s)
     -> currentness-fenced publication
 ```
 
@@ -1845,9 +1844,9 @@ quarantined/reprepared rather than translated.
 | common target-size preparation | `TargetSizeCommonPreparation` | `P_train` and foundation/training protocol | one shared preparation identity | per-size or per-seed scientific variation |
 | automatic target-size diagnostic | one target-size reducer | paired target-side screen evidence | a *recommended* size, or a typed no-recommendation outcome | freezing a size, monitor cardinality, CV evidence |
 | provisional downstream design | operator, through `select-target-size` | qualified candidate set, `pi_train`, configured/overridden horizons | one mutable ordered collection of per-size entries `(N, T_N identity, H_cv, H_prod)`, unique by `N` | immutable ancestry; running screen work; choosing a release product among sizes |
-| frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | exact `N_selected`/`T_selected` binding plus both effective role horizons | re-deciding size afterwards |
-| post-selection method acceptance | post-selection CV owner | exactly `T_selected`, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict | changing `N_selected` |
-| fresh final production | final-production owner | accepted method, complete `T_selected`, required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
+| frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | frozen ordered collection of per-size bindings (`N_selected`, exact `T_selected`, role horizons) | re-deciding size afterwards |
+| post-selection method acceptance | post-selection CV owner | frozen target collection, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict across each admitted size | changing selected sizes |
+| fresh final production | final-production owner | accepted method, complete selected dataset(s), required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
 | target monitor | current monitor policy | authorized development role | deterministic monitor | target membership |
 | replay monitor | replay policy | authorized replay evidence | deterministic replay monitor | target ranking or method acceptance credit |
 | execution/provider lifetime | current stage owners | authenticated plans and resource budgets | bounded task/cache/provider state | scientific decisions |
@@ -1902,10 +1901,10 @@ $$
 T_N=\pi_{\mathrm{train}}[:N].
 $$
 
-Thus frame membership is global, candidate sets are nested, and
-`N_selected`/`T_selected` are frozen together. Increasing `N` only adds frames;
-a pass/fail/pass result under a monotone prefix policy is an invariant failure,
-not a reason to choose a different order.
+Thus frame membership is global, candidate sets are nested, and for every
+admitted size, `N_selected` and its exact prefix `T_selected` are frozen together.
+Increasing `N` only adds frames; a pass/fail/pass result under a monotone prefix policy
+is an invariant failure, not a reason to choose a different order.
 
 The reducer consumes only authorized target-side development/model-selection
 evidence. Replay metrics, post-selection CV, calibration, physical-observable,
@@ -1962,10 +1961,10 @@ current selected binding
     -> final-production publication decision
 ```
 
-Cross-validation uses exactly `T_selected`, preserves P1 protected relations,
+Cross-validation evaluates the frozen selected collection, preserves P1 protected relations,
 requires every configured fold and seed, and accepts or rejects the method.
-It cannot alter `N_selected`. Final production starts fresh from the accepted
-foundation and trains the complete selected set under
+It cannot alter the frozen target design. Final production starts fresh from the accepted
+foundation and trains the complete selected dataset(s) under
 `[training].max_num_epochs`; it cannot continue a screen or CV run.
 
 ### The final-production publication decision
@@ -2154,8 +2153,8 @@ coerced to fully periodic or fully open, and minimum-image reductions wrap only
 the axes that genuinely have images.
 
 Downstream evidence has pass, reject, and waiting authority for the exact
-frozen product and nothing else. A failure never changes `N_selected`,
-`T_selected`, CV acceptance, a production checkpoint or seed, publication
+frozen product and nothing else. A failure never changes the frozen target design,
+CV acceptance, a production checkpoint or seed, publication
 membership, or an upstream threshold. A missing external reference is
 `waiting_for_reference` with an actionable request on disk, never a fabricated
 pass. An absent supported deployment runtime is reported as unavailable and
@@ -2230,8 +2229,8 @@ The durable rules are:
 1. independent evidence remains independent;
 2. fitted preparation and target membership are separate authorities;
 3. one canonical order and one common preparation define every candidate;
-4. `N_selected`, exact global `T_selected`, and both effective role horizons are
-   frozen together, once, at `cross-validate` admission;
+4. the ordered collection of `(N_selected, T_selected, H_cv, H_prod)` bindings is
+   frozen once at `cross-validate` admission;
 5. the automatic screen recommends and the operator decides; post-selection
    cross-validation accepts the method and can never re-choose the size;
 6. final production is fresh full-selected-set training;

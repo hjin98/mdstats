@@ -412,6 +412,47 @@ def load_prepared_generation_components(
     return loaded
 
 
+def load_prepared_target_size_definition(
+    paths: Any, manifest: PreparedGenerationManifest
+) -> Any:
+    """Read and authenticate only the P2 experiment definition from immutable prepared storage.
+
+    Manual selection needs only this definition to authenticate qualified candidate
+    sizes and exact T_N membership identity. It performs zero frame-data loading,
+    zero index construction, and zero P3 preparation.
+    """
+
+    from .target_size_experiment import TargetSizeExperimentDefinition
+
+    root = prepared_generation_root(paths)
+    aggregate_digest = manifest.component_digests.get("aggregate")
+    if aggregate_digest is None:
+        raise PreparedGenerationError("Manifest missing 'aggregate' component digest.")
+    payload = _read_component(root, "aggregate", aggregate_digest)
+    definition_payload = payload.get("definition")
+    if not isinstance(definition_payload, Mapping):
+        raise PreparedGenerationError(
+            "Prepared component 'aggregate' missing 'definition' mapping."
+        )
+    try:
+        definition = TargetSizeExperimentDefinition.from_dict(definition_payload)
+    except TrainingDataError as exc:
+        raise PreparedGenerationError(
+            f"Prepared experiment definition failed its owner validation: {exc}"
+        ) from exc
+    expected_definition_digest = manifest.scientific_identity.get(
+        "experiment_definition_digest"
+    )
+    if (
+        expected_definition_digest is not None
+        and definition.content_digest != expected_definition_digest
+    ):
+        raise PreparedGenerationError(
+            "The prepared experiment definition does not match the manifest's scientific identity."
+        )
+    return definition
+
+
 def load_prepared_frame_data(
     paths: Any, manifest: PreparedGenerationManifest, source_catalog: Any
 ) -> dict[str, Any]:
@@ -478,6 +519,7 @@ __all__ = [
     "PreparedGenerationMissingError",
     "load_prepared_frame_data",
     "load_prepared_generation_components",
+    "load_prepared_target_size_definition",
     "prepared_generation_protected_paths",
     "prepared_generation_root",
     "preparation_configuration_identity",

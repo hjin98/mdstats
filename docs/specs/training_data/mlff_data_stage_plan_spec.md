@@ -54,8 +54,8 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 | canonical evaluation ladder `pi_eval` | nested direct populations `M1 subset M2 subset M3` | training membership or size choice |
 | common target-size preparation | one preparation identity shared by every candidate size and optimizer seed | any per-size or per-seed variation |
 | target-size policy / reducer decision | configured candidate ladder, fidelity funnel, a recommended target size or a typed no-recommendation outcome | freezing a size; monitor construction; post-selection cross-validation |
-| `CampaignStore` provisional proposal | one mutable `(N, T_N identity, selection source, H_cv, H_prod)` | immutable ancestry; running screen work |
-| `CampaignStore` frozen selection | `N_selected` bound to the exact `T_selected` membership digest, plus both effective role horizons | re-deciding the size or accepting the method |
+| `CampaignStore` provisional proposal | ordered collection of mutable `(N, T_N identity, selection source, H_cv, H_prod)` | immutable ancestry; running screen work |
+| `CampaignStore` frozen selection | ordered collection of selected sizes $\{N_i\}$ bound to exact $T_{N_i}$ membership digests, plus per-size role horizons | re-deciding the size or accepting the method |
 | `OnlineTargetMonitorPolicy` | common target-monitor evidence set | target-training size |
 | `ReplayMonitorPolicy` | replay-monitor evidence set | target-training size or replay-training membership |
 | `TrainingProtocolIdentity` | complete frozen model/data/replay/membership/size/objective/exposure/checkpoint/runtime protocol | mutable runtime observations or test results |
@@ -114,9 +114,9 @@ neutral statistical substrate
   -> one canonical evaluation ladder M1 subset M2 subset M3
   -> one common target-size preparation
   -> optional paired optimizer-seed automatic diagnostic (recommends only)
-  -> operator-owned provisional design (N, H_cv, H_prod)
+  -> operator-owned provisional design (ordered collection of (N, H_cv, H_prod))
   -> cross-validate admission
-  -> N_selected, T_selected = pi_train[:N_selected], and both role horizons
+  -> ordered collection of frozen entries (N_selected, T_selected = pi_train[:N_selected], and role horizons)
 ```
 
 No current alternate, migration, or rescue branch exists. Retired derived
@@ -126,10 +126,10 @@ The configured candidate ladder, the screen `(n1,n2,n3)`, and the independent
 production-horizon policy are owned by the architecture manual's Part V and the
 campaign configuration; they are not duplicated here.
 
-Candidate membership at size `N` is the exact prefix `pi_train[:N]`. The selected
-`N`, its exact membership `T_selected`, and the effective CV and production
-horizons are frozen together at `cross-validate` admission into the complete
-training protocol. Identity projection stays role-specific: CV depends on the
+Candidate membership at size `N` is the exact prefix `pi_train[:N]`. `cross-validate`
+admission freezes the ordered collection of selected sizes, each with its exact
+membership `T_selected = pi_train[:N]` and its effective CV and production
+horizons. Identity projection stays role-specific: CV depends on the
 frozen CV horizon and never on the production horizon, and vice versa.
 
 Because every candidate is a prefix of one order, increasing `N` only adds

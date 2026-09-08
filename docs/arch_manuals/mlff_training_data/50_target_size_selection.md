@@ -18,12 +18,11 @@ canonical frame authority (Part II)
     |   |
     |   +-> operator-owned provisional design
     |         N_provisional, H_cv, H_prod   (mutable, freezes nothing)
-    |
     -> cross-validate admission
-         -> frozen N_selected, T_selected = pi_train[:N_selected],
+         -> frozen design: every selected size N_selected, its exact T_selected = pi_train[:N_selected],
             and both effective role horizons
-    -> post-selection cross-validation on exactly T_selected
-    -> fresh final production on the complete T_selected
+    -> post-selection cross-validation on the frozen collection
+    -> fresh final production on the selected dataset(s)
     -> currentness-fenced publication
 ```
 
