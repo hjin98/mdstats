@@ -2,14 +2,20 @@
 
 Active workplans are temporary engineering coordination and do not define current mdstats behavior by themselves.
 
-There are no active implementation workplans for the MLFF multi-size target-selection closure round.
+The current MLFF implementation authority is:
 
-The final independent Software Design review **PASSED** on branch `plan/mlff-target-size-multi-selection-reviewed` at reviewed branch head `1229c53497a46d2ea7904aad559c80c641d242a2`, with final executable/test candidate `d564497a05f122ceec3debe24a4dafa80a52ecf5`.
+- `workplans/active/MLFF_TARGET_SIZE_INTEGRATION_CLOSURE_REPAIR_WORKPLAN.md`
 
-The completed workplan is archived as:
+This repair round was reopened by independent Software Design review after the prior multi-size closure pass. The accepted scientific architecture remains intact; the open blockers are integration closure defects:
 
-- `workplans/archive/MLFF_TARGET_SIZE_MULTI_SELECTION_NEXT_ROUND_REPAIR_WORKPLAN.md`
+1. manual `select-target-size N --horizon-cv HC --horizon H` currently depends on a full prepared-generation/P3-ready loader and can perform unnecessary corpus-scale prepared-data hydration/index construction despite being a zero-screen-work operator decision;
+2. when prior automatic-diagnostic evidence exists, a manual selection can re-enter strict P3 diagnostic validation solely to refresh a non-authoritative derived view;
+3. the P5A6 baseline-produce/current-reopen compatibility driver still uses retired scalar current-state access on the current reopen side;
+4. structural scalar-access guards do not cover all current consumers such as qualification tooling;
+5. current architecture/specification/user/runbook documentation still contains scalar target-selection claims and retired `--select-horizon*` CLI spellings.
 
-Earlier parent/review/addendum/handoff workplans also remain under `workplans/archive/` as historical evidence, not implementation authority.
+The repair policy is dependency reduction and current-owner rewiring, not additive wrappers, caches, duplicate state, or compatibility machinery.
+
+Previous completed workplans remain archived as historical evidence and are not current implementation authority.
 
 Full long-running real-data/GPU/CuEq/LAMMPS production qualification remains separate and deferred to the established final-release/user-machine qualification stage.
