@@ -218,3 +218,48 @@ Stop and return to Design if this repair starts adding a second P2 policy class,
 ## Review tooling note
 
 Serena/Semgrep are appropriate to the semantic-reference and structural-family questions, but they were not executable in the present web review environment and the local container could not resolve GitHub. This review therefore used GitHub source/commit/reference inspection and independently challenged the recorded evidence. No independent local pytest/Semgrep/Serena execution is claimed.
+
+---
+
+## Round-6 Implementation Closure Evidence
+
+### 1. Executable and Evidence Head
+- **Executable commit**: `add7fcfe647b2d7f91e0fe94e8fc9c64a710fa75`
+- **Branch**: `plan/mlff-target-size-integration-closure-repair`
+
+### 2. Resolution of Blocking R15 (Restore current P2 optimizer-seed invariant)
+- **Restored validation**: Re-added the `or v < 0` rejection to `seeds = tuple(self.optimizer_seeds)` validation within `ResolvedTargetSizePolicy.__post_init__()` in `mdstats/training_data/target_size_experiment.py`.
+- **Single canonical owner**: Kept one shared validator in `ResolvedTargetSizePolicy` with zero wrappers, second validators, or schema adapters. The same nonnegative domain applies uniformly across V1 and V2 policies.
+- **Direct regression coverage**: In `tests/test_mlff_target_size_statistical_authorities.py`:
+  * Added direct construction failure test: `ResolvedTargetSizePolicy(optimizer_seeds=(-1, 1))` raises `TrainingDataInputError("optimizer_seeds must be one nonempty ordered set of nonnegative integers.")`.
+  * Added replacement failure test: `replace(default, optimizer_seeds=(-1, 2))` raises `TrainingDataInputError`.
+  * Added policy resolution failure test: `resolve_target_size_policy(optimizer_seeds=(-5, 1))` raises `TrainingDataInputError`.
+  * Added config resolution failure test: `resolve_target_size_policy_from_config(negative_seed_config)` raises `TrainingDataInputError`.
+  * Verified valid zero seed `replace(default, optimizer_seeds=(0, 1))` succeeds and alters `content_digest` as expected for a unique nonnegative integer.
+
+### 3. Resolution of Blocking R17 (Complete semantic historical-binding architecture guard)
+- **Normal current-V3 binding isolation**: In `tests/test_mlff_target_size_provisional_selection.py` (`test_no_current_surface_retains_the_retired_selection_semantics`), verified that invoking current `target_size_binding()` produces schema `POST_SELECTION_BINDING_SCHEMA` (V3) with all `legacy_v1_*` fields (`legacy_v1_campaign_state_revision`, `legacy_v1_execution_head_digest`, `legacy_v1_reducer_state_digest`) and `legacy_frozen_selection_digest` unset (`None`), even if the candidate state object carries diagnostic digests.
+- **Historical V1 wire round-trip**: Proved that a historical V1 binding payload deserializes with `is_v1_legacy_schema` / `is_legacy_schema` true, preserves the historical head/reducer/revision digests, computes the authentic historical `content_digest`, and round-trips via `to_dict()` with the V1 schema.
+- **Focused AST/source architecture oracle**: Added AST analysis of `target_size_binding` in `mdstats/training_data/campaign_post_selection.py` proving that:
+  1. No call to `PostSelectionBinding` can receive `legacy_v1_campaign_state_revision`, `legacy_v1_execution_head_digest`, `legacy_v1_reducer_state_digest`, `adopted_execution_head_digest`, or `adopted_reducer_state_digest` keyword arguments.
+  2. No attribute accesses on `state` or `frozen_entry` inside `target_size_binding` can reference `adopted_execution_head_digest`, `adopted_reducer_state_digest`, `legacy_v1_*`, or `auto_diagnostic`.
+- **Negative structural absence**: Verified absence of synthetic `_Legacy*` classes in both `campaign_post_selection.py` and `target_size_experiment.py`.
+- **State module documentation reconciliation**: Reconciled the comment in `mdstats/training_data/campaign_target_size_state.py` (lines 58-64) to document that pre-rework terminal selected rows cannot create current-V3 freezes or new current bindings, while supported historical P5A6 workspaces can reopen historical descendants through native historical identity (P1/P2 authority and V1 bindings) without authorizing new current post-selection work.
+
+### 4. Resolution of Blocking R16 (Comprehensive final affected regression closure)
+- **Semantic reference derivation**: Derived all symbol references for `ResolvedTargetSizePolicy` and `PostSelectionBinding` using Serena (`find_referencing_symbols`) and verified complete coverage of all downstream consumers.
+- **Concurrent test execution**: All test suites were run using concurrent jobs (`pytest -n auto` utilizing 32 CPU cores on the AMD Ryzen 9 5950X host).
+- **Execution results**:
+  * `python -m compileall mdstats tests qualification/p6-p5a6-compat`: 0 errors.
+  * `python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py`: 3/3 phases PASS (P5A6 -> P6 authenticated compatibility, P6 -> P6 restart, V5/V6 reject-before-reuse).
+  * `pytest -n auto -q tests/test_mlff_target_size_statistical_authorities.py`: 23 passed.
+  * `pytest -n auto -q tests/test_mlff_target_size_p6_p5a6_compatibility.py`: 4 passed.
+  * `pytest -n auto -q tests/test_mlff_target_size_provisional_selection.py`: 20 passed.
+  * `pytest -n auto -q tests/test_mlff_target_size_p5*.py` (all 15 P5 suites including R6-R9 guards, cutover authorization, assembled integration, and publication decision): 179 passed.
+  * `pytest -n auto -q tests/test_mlff_mace_execution_semantics_assembled.py`: 3 passed.
+  * `pytest -n auto -q tests/test_mlff_p7_post_production_qualification.py tests/test_mlff_p7_r11_repair_acceptance.py`: 85 passed, 1 skipped (already-deferred host LAMMPS/GPU worker qualification).
+  * `pytest -n auto -q tests/test_mlff_target_size_multi_selection.py tests/test_mlff_target_size_multi_size_integration.py`: 46 passed.
+  * `pytest -n auto -q tests/test_mlff_target_size_execution_p3*.py tests/test_mlff_target_size_terminal_decision_policy.py tests/test_mlff_target_size_policy_domain_rework.py tests/test_mlff_target_size_corrected_identity_cutover.py`: 154 passed.
+  * `pytest -n auto -q tests/test_mlff_target_size_p4f_storage_docs_structure.py tests/test_mlff_doc_arch1_specification.py tests/test_docs_pdf_builder.py`: 40 passed.
+  * Total test assertions executed across affected surface: **554 passed, 1 skipped** (deferred production GPU qualification).
+
