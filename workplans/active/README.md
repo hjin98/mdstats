@@ -6,16 +6,16 @@ The current MLFF implementation authority is:
 
 - `workplans/active/MLFF_TARGET_SIZE_INTEGRATION_CLOSURE_REPAIR_WORKPLAN.md`
 
-Independent Software Design review round 4 of candidate `eef79ed3a0829d4d385c881456ce40c30c58e5bb` / executable `bb4befc4158049873f186acb28de83ba26da08c8` is **NO-PASS**.
+Independent Software Design review round 5 of candidate `69e5b54f0e71f73853b106d25f322829a7ee73dc` / executable `5ae3fbc8acb166881e5cb880a6bb3c88baad21b0` is **NO-PASS**, narrowly.
 
-Round 4 accepts the Part-VI documentation repair and preserves all previously accepted current-v3/multi-size runtime behavior. The recovered exact P5A6 workspace is also the correct historical evidence artifact.
+Round 5 accepts the major compatibility correction: the synthetic `_Legacy*` reconstruction machinery is removed, exact P5A6 selected membership is re-established from authenticated P1/P2 authority before P5 descendants are opened, descendant access is poisoned during selection resolution, and a corrupted final-plan M3 lineage is rejected against an independent P2 oracle. Previously accepted current multi-size/runtime and Part-VI documentation behavior remains accepted.
 
-The remaining blockers are now concentrated in the compatibility realization:
+Three blockers remain:
 
-1. Round 4 added a large generic prerework reconstruction path in `campaign_post_selection.py` that synthesizes selected/P2-like authority from P5 CV/final descendants (`_LegacyEvaluationOrder`, `_LegacyExperimentDefinition`, `_LegacyTargetSizeAggregate`, `_load_legacy_prerework_training_contexts`). This reverses the frozen parent->child dependency direction and is the unplanned compatibility bridge the P6 authority explicitly required Design to avoid.
-2. The new compatibility oracle is not independent: selected membership is reconstructed from a CV plan, and the expected M3 lineage used to validate the final plan is reconstructed from that final plan/materialization. Current target-size policy is also inserted into the synthetic historical definition without first authenticating it as the historical P2 policy. Remove the synthetic bridge and restore the minimum native P5A6 historical decoder/currentness path from the recovered source/workspace.
-3. Because Round 4 changed central P5 runtime owners by roughly 400 lines, the recorded 200-test target-size/result-view suite is not the complete affected regression. Final closure must include the direct P5 R6-R9, production/restart/publication/assembled consumers and downstream P7/qualification paths that call the changed post-selection owners.
+1. `ResolvedTargetSizePolicy` accidentally stopped rejecting negative optimizer seeds. This violates the frozen P2 requirement for one ordered unique **nonnegative** seed set and disagrees with downstream target-size execution validators. Restore the existing nonnegative check; do not add compatibility machinery.
+2. The recorded Round-5 regression is not the complete affected surface. It omits direct P5 R6-R9, assembled/publication consumers previously named by review and also omits the P2 statistical-authority/direct execution consumers of the newly modified `target_size_experiment.py`.
+3. The historical-binding architecture guard remains too lexical. Production source appears correct, but acceptance must prove V1 head/reducer fields stay V1-wire-only and cannot feed current-V3 `target_size_binding()` ancestry. Strengthen the existing test; do not add a new scanner/framework.
 
-Repair policy is subtraction plus native historical schema/currentness restoration: no fake experiment definitions/orders/aggregates, no descendant-to-ancestor reconstruction, no blanket prerework-v1 current path, no preload migration, no synthetic fixture, and no new compatibility database/sidecar.
+Repair policy is reduction-first: preserve the accepted P5A6 parent->child reconstruction, restore the one lost validation predicate, strengthen existing oracles, reconcile the stale V1 state comment, and run the complete affected regression. No new P2 class, compatibility registry/database/sidecar, migration, descendant-to-ancestor bridge, or general scanner.
 
 Full long-running real-data/GPU/CuEq/LAMMPS production qualification remains separate and deferred to the established final-release/user-machine qualification stage.
