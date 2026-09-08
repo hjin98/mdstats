@@ -6,15 +6,17 @@ The current MLFF implementation authority is:
 
 - `workplans/active/MLFF_TARGET_SIZE_INTEGRATION_CLOSURE_REPAIR_WORKPLAN.md`
 
-This repair round was reopened by independent Software Design review after the prior multi-size closure pass. The accepted scientific architecture remains intact; the open blockers are integration closure defects:
+Independent Software Design review of candidate `2199bbd4bffc3a950a6b63b010c48e32c829c5b3` is **NO-PASS** and the same plan remains open. The executable implementation is `07bdd51f6857eb052aa05e7e23a1ec89a53e0e6c`; the reviewed child only regenerates affected PDFs.
 
-1. manual `select-target-size N --horizon-cv HC --horizon H` currently depends on a full prepared-generation/P3-ready loader and can perform unnecessary corpus-scale prepared-data hydration/index construction despite being a zero-screen-work operator decision;
-2. when prior automatic-diagnostic evidence exists, a manual selection can re-enter strict P3 diagnostic validation solely to refresh a non-authoritative derived view;
-3. the P5A6 baseline-produce/current-reopen compatibility driver still uses retired scalar current-state access on the current reopen side;
-4. structural scalar-access guards do not cover all current consumers such as qualification tooling;
-5. current architecture/specification/user/runbook documentation still contains scalar target-selection claims and retired `--select-horizon*` CLI spellings.
+The accepted scientific architecture remains intact. Static review accepts the narrow manual prepared/P2 dependency and the current-side P5A6 `frozen_entries` rewire. Remaining blocking closure work is:
 
-The repair policy is dependency reduction and current-owner rewiring, not additive wrappers, caches, duplicate state, or compatibility machinery.
+1. remove the selection-view dependency on an older non-authoritative `target-size-state.json`; selection-only refresh must project committed state rather than copy stale diagnostic fields;
+2. close R2 through a real completed auto-diagnostic -> poisoned-P3/exposure -> manual-selection integration, not a fabricated diagnostic state proxy;
+3. strengthen the existing scalar-state AST guard so the escaped defect family is detected under a simple local state alias while legitimate per-size `.frozen` use remains allowed;
+4. reconcile remaining scalar contradictions in current normative docs, especially the cross-cutting stage-plan spec, dependency graph summaries, root README, and current GPU/workstation runbook;
+5. execute and record final affected regression/integration plus `python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py` on the final candidate. The only branch CI evidence available at review time was documentation-PDF generation.
+
+Repair policy remains dependency reduction and current-owner rewiring, not additive wrappers, caches, duplicate state, compatibility machinery, or a new view authority.
 
 Previous completed workplans remain archived as historical evidence and are not current implementation authority.
 
