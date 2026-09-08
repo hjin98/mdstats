@@ -1,0 +1,1 @@
+This temporary staging file will be removed in the consolidation commit.
