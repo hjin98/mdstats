@@ -10,8 +10,8 @@ and later validation roles.
 
 It does **not** own target membership or target size. The Part V owners derive
 one `P_train`/`M3` split, one canonical `pi_train`, and one target-size result.
-After selection, the Part V/P5 owners may partition the already frozen
-`T_selected` for cross-validation; that operation cannot choose a new size or
+After admission, the Part V/P5 owners may partition each frozen size's exact
+membership `T_N` for cross-validation; that operation cannot choose a new size or
 membership.
 
 ## Independence and evidence roles
@@ -70,23 +70,23 @@ membership map, or alternate ordering may change the universe.
 
 Protected relations remain intact wherever the current owner assigns roles.
 An inseparable duplicate/correlation component cannot be split merely to
-obtain a requested fold count. A frame outside `T_selected` cannot enter
-post-selection CV because it is convenient or because it belongs to a related
-source cohort.
+obtain a requested fold count. For any frozen size, a frame outside its exact
+membership `T_N` cannot enter post-selection CV because it is convenient or because
+it belongs to a related source cohort.
 
 ## Cross-validation validates a frozen protocol
 
 Target size is frozen before protocol-matched cross-validation is interpreted.
-For each required post-selection fold (k), the owner keeps distinct:
+For each required post-selection fold (k) of a frozen size N, the owner keeps distinct:
 
 ```text
-fold_training_partition_k within T_selected
+fold_training_partition_k within T_N
 fold_checkpoint_monitor_k
-held_out_evaluation_partition_k within T_selected
+held_out_evaluation_partition_k within T_N
 ```
 
-The selected cardinality and the exact global membership remain unchanged for
-every fold. Fold assignment may be local to `T_selected`, and fold-local
+For each frozen size, its cardinality `N` and exact membership `T_N` remain unchanged
+across folds. Fold assignment is local to `T_N`, and fold-local
 fitted preparation may use only that fold's training partition and authorized
 monitor. It may not inspect the held-out partition, outer protected evidence,
 or locked evidence before checkpoint choice. The final fold evaluation occurs
@@ -95,7 +95,7 @@ only after the fold representative is frozen.
 This gives the required distinction:
 
 ```text
-global target-size choice -> ordered frozen design of selected sizes N and exact memberships T_N
+target-size admission    -> ordered frozen design of selected sizes N and exact memberships T_N
 post-selection CV        -> method validation on the frozen design
 ```
 
@@ -122,8 +122,9 @@ downstream held-out result.
 For post-selection CV, a fold-local transform or metric is valid only when the
 CV owner explicitly records the fold training partition, protected relations,
 and protocol identity. A fold-local product can change the fold's evaluation
-realization; it cannot change the global target membership or target-size
-decision. Final production uses the accepted method and complete `T_selected`.
+realization; it cannot change the frozen target collection or any member's exact
+membership. For each frozen size, final production uses the accepted method and its
+complete `T_N`.
 
 ## Selection inputs are not a second selector
 
@@ -142,7 +143,7 @@ difficulty and correlation identities
 The target-size policy combines these inputs into the one deterministic
 `pi_train`. There is no competing quota/FPS plan whose prefixes can disagree
 with that order. A materialization or export record may describe a consumer
-view of `T_selected`, but it is not an independent membership authority.
+view of a frozen `T_N`, but it is not an independent membership authority.
 
 ## Objective, weighting, and exposure
 

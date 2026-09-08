@@ -76,7 +76,7 @@ Its current responsibilities include:
 - fixed outer roles and independent CV job families;
 - neutral and authorized fold-local fitted descriptors, transforms, metrics, E0, objective/weight, and difficulty evidence;
 - the target-size development split, the canonical training/evaluation orders, the common preparation, and the paired optimizer-seed screen;
-- one protocol-global target-size decision with one exact global selected membership;
+- the ordered frozen target-size collection, its exact per-size prefix memberships, and role horizons;
 - MACE target/replay artifacts and explicit exposure realization;
 - replay-retention and checkpoint admissibility;
 - post-selection protocol-matched CV and fresh final training; downstream committee, calibration, sealed evaluation, and deployment verification are separate consumer boundaries;
@@ -126,8 +126,8 @@ source bytes / controls / trajectory collections
   -> target-size study using authorized development/model-selection evidence,
      yielding a recommendation rather than a decision
   -> operator-owned provisional design, frozen at cross-validate admission
-  -> ordered collection of frozen entries (N_selected, exact T_selected, and role horizons)
-  -> protocol-matched CV partitions inside T_selected, with held-out folds inaccessible to size/checkpoint choice
+  -> ordered collection of frozen entries (N_selected, exact T_N = pi_train[:N_selected], and role horizons)
+  -> for each frozen size, protocol-matched CV partitions inside its exact T_N, with held-out folds inaccessible to size/checkpoint choice
   -> accepted frozen protocol
   -> independent final seeds and checkpoint admission
   -> current final-production publication

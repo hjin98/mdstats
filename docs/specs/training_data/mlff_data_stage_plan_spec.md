@@ -85,20 +85,19 @@ One target MACE bundle contains one compatible target label domain plus a separa
 
 Raw physical/structural/event facts may be constructed before partitioning when the owning provider is partition-independent. Any learned/fitted transform—including scaling, PCA/whitening, fitted metrics, E0 corrections, or label-derived residual difficulty—is bound to a specific authorized gradient-training domain.
 
-Before selection, the common preparation is global. After selection, a
-post-selection fold `k` may have a fold-local fitted view. The allowed
-directions are:
+Before selection, the common preparation is global. After admission of the
+ordered frozen collection, fold-local and final fitted domains branch over
+each frozen size's exact membership `T_N`:
 
 ```text
 P_train / common target-size preparation
-  -> one pi_train and exact T_selected membership after the target-size freeze
-  -> post-selection fold_training_partition_k
-  -> fold-local fitted products and checkpoint choice using its authorized monitor
-  -> held_out_evaluation_fold_k only after checkpoint freeze
-
-final T_selected
-  -> final-training fitted products
-  -> fresh final production
+  -> one pi_train and ordered collection of frozen sizes {N_selected}
+  -> for each frozen size N_selected, exact membership T_N = pi_train[:N_selected]:
+       |-> post-selection fold_training_partition_k(N)
+       |     -> fold-local fitted products and checkpoint choice using its authorized monitor
+       |     -> held_out_evaluation_fold_k(N) only after checkpoint freeze
+       |-> final-training fitted products for T_N
+             -> fresh final production for T_N
 ```
 
 A reverse dependency from held-out evaluation into fitted products, target size, or checkpoint selection is prohibited.

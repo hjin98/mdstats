@@ -64,6 +64,8 @@ def test_data9b3_architecture_and_stage_plan_integration() -> None:
         in stage
     )
     assert "selected target size and exact global membership identity" not in stage
+    assert "one protocol-global target-size decision" not in manual
+    assert "final T_selected -> final-training fitted products" not in stage
     assert "does not redefine RDF, MSD, VACF, VDOS" in manual
     assert "checkpoint" in manual
 

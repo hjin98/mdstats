@@ -24,7 +24,7 @@ source evidence and labels
     -> optional paired optimizer-seed automatic diagnostic (recommends only)
     -> operator-owned provisional design (ordered collection of (N, CV horizon, production horizon))
     -> cross-validate admission
-    -> frozen design: every selected size N_selected, exact T_selected, and role horizons
+    -> frozen design: every selected size N_selected, its exact T_N = pi_train[:N_selected], and role horizons
     -> post-selection cross-validation on the frozen collection
     -> fresh final production on the complete selected dataset(s)
     -> currentness-fenced publication
@@ -49,7 +49,7 @@ quarantined/reprepared rather than translated.
 | common target-size preparation | `TargetSizeCommonPreparation` | `P_train` and foundation/training protocol | one shared preparation identity | per-size or per-seed scientific variation |
 | automatic target-size diagnostic | one target-size reducer | paired target-side screen evidence | a *recommended* size, or a typed no-recommendation outcome | freezing a size, monitor cardinality, CV evidence |
 | provisional downstream design | operator, through `select-target-size` | qualified candidate set, `pi_train`, configured/overridden horizons | one mutable ordered collection of per-size entries `(N, T_N identity, H_cv, H_prod)`, unique by `N` | immutable ancestry; running screen work; choosing a release product among sizes |
-| frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | frozen ordered collection of per-size bindings (`N_selected`, exact `T_selected`, role horizons) | re-deciding size afterwards |
+| frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | frozen ordered collection of per-size bindings (`N_selected`, exact `T_N`, role horizons) | re-deciding size afterwards |
 | post-selection method acceptance | post-selection CV owner | frozen target collection, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict across each admitted size | changing selected sizes |
 | fresh final production | final-production owner | accepted method, complete selected dataset(s), required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
 | target monitor | current monitor policy | authorized development role | deterministic monitor | target membership |
@@ -74,7 +74,8 @@ The current fitted-preparation owner may publish:
 These are inputs to the one canonical order. They are not an independent
 quota, FPS, membership, target-size, or CV selector. A fold-local transform is
 allowed only after selection and only when the post-selection CV owner binds it
-to that fold's training partition; it cannot change global `T_selected`.
+to that fold's training partition; it cannot change the frozen target collection or
+that size's exact membership `T_N`.
 
 This boundary preserves useful fitted/statistical information without
 reintroducing a domain-specific target-size authority. Materialization and
@@ -106,8 +107,8 @@ $$
 T_N=\pi_{\mathrm{train}}[:N].
 $$
 
-Thus frame membership is global, candidate sets are nested, and for every
-admitted size, `N_selected` and its exact prefix `T_selected` are frozen together.
+Thus candidate sets are nested prefixes of the canonical training order, and for every
+admitted size `N_selected`, its exact prefix `T_N = pi_train[:N_selected]` is frozen together with its role horizons.
 Increasing `N` only adds frames; a pass/fail/pass result under a monotone prefix policy
 is an invariant failure, not a reason to choose a different order.
 
@@ -434,7 +435,7 @@ The durable rules are:
 1. independent evidence remains independent;
 2. fitted preparation and target membership are separate authorities;
 3. one canonical order and one common preparation define every candidate;
-4. the ordered collection of `(N_selected, T_selected, H_cv, H_prod)` bindings is
+4. the ordered collection of `(N_selected, T_N, H_cv, H_prod)` bindings is
    frozen once at `cross-validate` admission;
 5. the automatic screen recommends and the operator decides; post-selection
    cross-validation accepts the method and can never re-choose the size;

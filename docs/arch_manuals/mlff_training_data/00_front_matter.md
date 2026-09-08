@@ -86,7 +86,7 @@ For targeted human or AI loading, use the smallest current source containing the
 
 ## Stable terminology
 
-- **training domain** — an authorized gradient-training evidence partition. The current target-size choice is global; post-selection CV may derive fold-local partitions only inside `T_selected`.
+- **training domain** — an authorized gradient-training evidence partition. The target-size design is an ordered frozen collection; for each frozen size, post-selection CV may derive fold-local partitions only inside its exact membership `T_N = pi_train[:N]`.
 - **target membership** — frame membership in a target-training subset; an exact prefix of the one canonical training order `pi_train`.
 - **target size** — the protocol-level scientific target-training cardinality the operator chooses, restricted to the configured qualified candidate set.
 - **recommended size** — the size the optional automatic diagnostic's reducer ranks best under its short-horizon protocol. It is evidence, never authority.

@@ -150,3 +150,17 @@ def test_doc_arch1_graph_and_directory_ownership_are_current():
 def test_doc_arch1_manual_hash_is_stable_under_current_bytes():
     digest = hashlib.sha256(MANUAL.read_bytes()).hexdigest()
     assert len(digest) == 64
+
+
+def test_doc_arch1_no_campaign_global_scalar_selection_claims():
+    manual = MANUAL.read_text(encoding="utf-8")
+    stage = (ROOT / "docs/specs/training_data/mlff_data_stage_plan_spec.md").read_text(encoding="utf-8")
+    for stale in (
+        "the current target-size choice is global",
+        "one protocol-global target-size decision with one exact global selected membership",
+        "cannot change global T_selected",
+        "final T_selected -> final-training fitted products",
+        "one pi_train and exact T_selected membership after the target-size freeze",
+    ):
+        assert stale not in manual, f"stale scalar claim found in manual: {stale}"
+        assert stale not in stage, f"stale scalar claim found in stage plan: {stale}"

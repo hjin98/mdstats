@@ -265,7 +265,7 @@ def test_an_unchanged_terminal_prepare_succeeds_and_preserves_terminal_state(
     assert after.state.auto_diagnostic.to_dict() == before.state.auto_diagnostic.to_dict()
     after_view = json.loads(view_path.read_text(encoding="utf-8"))
     assert after_view["auto_diagnostic"] == before_view["auto_diagnostic"]
-    assert after_view["frozen"] == before_view["frozen"]
+    assert after_view["frozen_entries"] == before_view["frozen_entries"]
     assert after_view["canonical_generation"] == before_view["canonical_generation"]
 
 
