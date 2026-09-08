@@ -2,645 +2,321 @@
 kind: implementation-workplan
 workplan_id: MLFF-TARGET-SIZE-MULTI-SELECTION-NEXT-ROUND-REPAIR
 protocol_version: 5.16.0
-status: implementation-complete
+status: implementation-reopened
 created_date: 2026-09-08
 reviewed_date: 2026-09-08
-reviewed_candidate_head: 6f7eecac70f566cbf08969a2fbaa6f08ba22ca4d
+reviewed_candidate_head: 0f1d4dbb35f87e394e2b149d02deb6406519ed71
+reviewed_executable_head: c3db340e11eb49748f00becd34c422a819daf38a
 implementation_review_verdict: no-pass
 branch: plan/mlff-target-size-multi-selection-reviewed
 implementation_base_head: e2b3c20dee4832eb62416ccfb630b05136fa4313
-reviewed_repair_head: 33ef00d3294c3121021a326603000356379822f7
-entrypoint: This file is the sole active implementation authority. The accepted multi-size source repairs and generalized foundation architecture are preserved. The candidate is reopened only for the bounded parser-ownership repair, acceptance strengthening, current real-foundation execution evidence, final affected regression/integration, and small test simplification defined below. Archived relatives are historical evidence only.
+entrypoint: This file is the sole active implementation authority. All already-accepted multi-size, P5-currentness, optimizer-authority, and generalized-foundation behavior is frozen for this round. Rework is limited to the bounded regression-oracle reconciliation and existing P5 foundation-provider acceptance described below. Archived relatives are historical evidence only.
 ---
 
-# MLFF multi-size repair, foundation initialization, and final acceptance closure
+# MLFF multi-size / foundation initialization — final acceptance closure
 
-## 0. Independent review verdict
+## 0. Current independent review verdict
 
-**NO-PASS / implementation reopened for bounded repair and executable acceptance only.**
+**NO-PASS / implementation reopened, narrowly.**
 
-The reviewed candidate is:
+The reviewed candidate is `0f1d4dbb35f87e394e2b149d02deb6406519ed71`; its executable source is unchanged from `c3db340e11eb49748f00becd34c422a819daf38a` because the final commit only records workplan evidence.
 
-```text
-branch: plan/mlff-target-size-multi-selection-reviewed
-head:   6f7eecac70f566cbf08969a2fbaa6f08ba22ca4d
-```
+The substantive implementation is close to closure. The review found no new defect in the multi-size scientific architecture, P5 currentness/production barrier, optimizer-authority separation, generalized MH-1/MPA-0 foundation architecture, or real P3/P5 materialization wiring.
 
-The implementation is substantially correct. No new scientific architecture defect, multi-size architecture defect, or foundation-family ownership defect was found. In particular, the existing generalized foundation machinery already provides one canonical family/head identity path for MACE-MH-1 and MACE-MPA-0-medium, and the existing TOML template already derives the narrow model-dependent configuration surface.
+Two blocking acceptance issues remain:
 
-The candidate remains open for four material reasons:
+1. **A required affected regression was omitted and is source-deterministically stale.** `tests/test_mlff_mh1_config1_campaign_defaults.py` was explicitly required by this workplan but is absent from the recorded final regression. Its `test_config1_init_defaults_are_explicit_not_environment_autodetected` still asserts that raw parser output has `args.foundation_family == "mace_mh_1"`, while the accepted parser implementation deliberately uses `None` to represent an omitted legacy flag and resolves the product default inside `command_init`. The test therefore cannot pass as written.
+2. **F-REAL1 item 5 was not executed.** The recorded real-model command proves exact MH-1/MPA-0 checkpoint identity, CPU/e3nn loading/inference, and MH-1 selected-head extraction parity, but it omits the existing P5 foundation provider/method owner tests required by Section 7.
 
-1. the new `init [model]` convenience is implemented by a facade argv scanner rather than the real `init` parser/command owner, and the scanner is observably ambiguous for valid global option values;
-2. the new P3/P5 optimizer counterfactual test reaches the correct real materializers but does not explicitly prove that its separate campaigns compare the same exact frozen target membership/TargetBinding;
-3. the user's requirement to make sure both real foundation models are functional still lacks fresh execution evidence on this candidate; historical real-model evidence is useful but cannot substitute for current bounded execution; and
-4. final affected regression/integration/project checks have not executed or been recorded on the assembled candidate. GitHub exposes no attached commit-status checks for the reviewed head.
+The first issue is a **test/workplan-oracle deficiency, not a reason to add parser machinery**. The protected product contract is that bare `init` generates the canonical MH-1 configuration. A raw intermediate `argparse.Namespace` value is delegated Tier-2 representation. Restoring that old assertion with a custom argparse action, duplicate explicitness flag, argv scanner, or synchronized parser state would increase product complexity merely to satisfy an obsolete oracle. The correct repair is to update the stale test to observe the resolved product behavior.
 
-These are bounded implementation/acceptance issues. They do **not** justify another wrapper, registry, family-specific template, model abstraction, currentness system, scheduler, or architectural redesign.
+No new workplan, wrapper, registry, compatibility state, or architecture revision is authorized.
 
 ---
 
-## 1. Product / scientific invariants
+## 1. Core product/scientific invariants
 
-The following Tier-1 requirements remain binding:
+The following remain Tier-1 product truth:
 
-1. A selected target size means exact prefix membership `T_N = pi_train[:N]`.
-2. The frozen multi-size design is one ordered unique-by-N collection. Size is an experiment dimension, not an implicit winner or reducer.
-3. `cross-validate` freezes the complete selected collection atomically before numerical CV work.
+1. Selected target size is exact prefix membership `T_N = pi_train[:N]`.
+2. The frozen target design is one ordered unique-by-N collection. Size is an experiment dimension, never an implicit winner.
+3. `cross-validate` atomically freezes the complete selected collection.
 4. CV and final production are distinct roles over one shared post-selection method.
-5. CV evidence may authorize production only when current for the exact method, CV policy, TargetBinding, CV plan, and accepted CV record.
-6. Before any new multi-size production job, every frozen size must have current accepted CV ancestry. One missing/stale/corrupt/incomplete/rejected size means zero new production jobs for that invocation.
-7. Target-size screening and post-selection training retain separate optimizer authorities:
+5. CV may authorize production only for the exact current TargetBinding, method, CV policy, CV plan, and accepted CV ancestry.
+6. Before any new multi-size production job, every frozen size must have current accepted CV ancestry. One invalid member means zero new production jobs for the invocation.
+7. Target-size screening and post-selection training have independent optimizer authorities:
 
 ```text
-Target-size screen
-    [target_data.size_convergence.optimizer_normalization]
-        -> size-dependent realized lr(N), ema_decay(N)
+[target_data.size_convergence.optimizer_normalization]
+    -> screen reference LR/EMA
+    -> size-dependent realized lr(N), ema_decay(N)
 
-Post-selection CV + final production
-    [training]
-        -> one shared PostSelectionMethodIdentity
-        -> shared lr / ema / ema_decay
+[training]
+    -> post-selection learning_rate / ema / ema_decay
+    -> one shared PostSelectionMethodIdentity used by CV and production
 ```
 
-8. Newly initialized scientific configuration explicitly states material post-selection optimizer defaults.
-9. Foundation family and selected source head are scientific identity. A multi-head checkpoint must never silently fall back to another head.
-10. Supported default foundation identities are:
-
-```text
-MH-1
-    family = mace_mh_1
-    default selected source head = omat_pbe
-
-MPA-0-medium
-    family = mace_mpa_0
-    selected source head = default
-```
-
-11. Public initialization supports:
-
-```text
-init
-init mh-1
-init mpa-0
-```
-
-Bare `init` defaults to MH-1. The positional spelling is convenience only and must normalize into the existing canonical family/configuration authority.
-12. `k > 1` remains a completed training experiment, not a release-selection rule.
-13. Production-scale/GPU/LAMMPS qualification remains distinct and deferred. Bounded CPU/e3nn real-model smoke is functional acceptance, not production qualification.
+8. New initialized TOML explicitly contains post-selection `learning_rate = 1.0e-4`, `ema = true`, and `ema_decay = 0.99999`.
+9. Foundation family and selected source head are scientific identity; multi-head fallback is forbidden.
+10. Supported defaults are MH-1 = `mace_mh_1` / `omat_pbe`, MPA-0-medium = `mace_mpa_0` / `default`.
+11. Public initialization supports `init`, `init mh-1`, and `init mpa-0`; bare `init` resolves to MH-1.
+12. `k > 1` is a completed training experiment but not an implicit release-selection rule.
+13. Production-scale/GPU/LAMMPS qualification remains separate and deferred. Bounded CPU/e3nn evidence is functional acceptance only.
 
 ---
 
 ## 2. Frozen high-level architecture
 
-### 2.1 Multi-size/P5 architecture
+Preserve without redesign:
 
-Preserve the already accepted architecture:
-
-- one `CampaignStore` is the mutable campaign authority;
-- one ordered selected-size collection, not scalar-plus-list dual authority and not per-size subcampaigns;
-- one prepared generation shared by all selected sizes;
-- changed prepared scientific identity creates a fresh generation with empty selection;
-- TargetBinding remains role-neutral;
-- method, CV policy, and production policy remain role-specific identities outside TargetBinding;
+- one `CampaignStore` mutable campaign authority;
+- one ordered selected-size collection, one prepared generation, no per-size subcampaigns;
+- changed prepared scientific identity creates a fresh generation with empty selection; unchanged identity preserves the generation/design;
+- TargetBinding remains role-neutral; method/CV/production policy identities remain role-specific;
 - existing binding-keyed P5 persistence is reused;
-- collection-wide production preflight is transient admission, not persisted state;
-- per-size final-production authorization remains a second currentness/race fence;
-- serial outer-size orchestration remains acceptable/preferred;
-- lifecycle/status remains read-only advisory observation;
-- k>1 qualification remains informational/read-only and consequential release qualification fails closed.
+- collection-wide production preflight is transient admission, not new persisted state;
+- per-size final production retains its second-line currentness/authorization fence;
+- serial outer-size orchestration remains acceptable/preferred; no scheduler is added;
+- public observation remains coherent/read-only; k>1 qualification remains fail-closed for consequential release qualification;
+- compatibility stays append-only/schema-authentic and does not copy the old role/provenance identity coupling forward.
 
-### 2.2 Foundation/configuration architecture
-
-There is one canonical foundation route:
+Foundation/configuration remains one route:
 
 ```text
-public CLI syntax
-    -> real init parser / command owner
-    -> canonical foundation family/head values
+public init syntax
+    -> core argparse init owner
+    -> canonical family/head resolution in command_init
     -> existing _config_template(...)
-    -> [foundation] + existing model/path/display compatibility fields
+    -> [foundation] + existing model/path display fields
     -> MaceFoundationSpec / inspect_mace_foundation
-    -> FoundationPotentialIdentity
-    -> existing doctor/acceleration/extraction/P3/P5 owners
+    -> existing doctor / extraction / P3 / P5 owners
 ```
 
-The generated family-dependent TOML surface remains narrow and centrally owned. For the default heads it includes, as already implemented:
+Do not fork the TOML template or create per-family config classes. MH-1 remains multi-head and uses exact selected-head extraction where the training path requires a singleton foundation; MPA-0 remains single-head and is not forced through MH-1 extraction machinery.
+
+---
+
+## 3. Implementation already accepted — do not churn
+
+### 3.1 P5 currentness and production barrier
+
+Current source correctly:
+
+- rejects a stored CV plan when its method identity differs from current method authority;
+- rejects it when its CV-policy identity differs from the resolved current per-size CV policy;
+- requires CV acceptance to bind the exact plan, method, CV policy, selected binding, and accepted verdict;
+- preflights every frozen size through the same semantic authorization before any production trainer/final-plan admission;
+- retains the per-size authorization recheck immediately before final production.
+
+Do not move role-specific identity into TargetBinding or add another currentness owner.
+
+### 3.2 Optimizer authority split and real-owner materialization
+
+The accepted T6/T7 test now proves base, screen-mutated, and method-mutated campaigns have identical selected N, exact ordered `T_N`, training-order identity, and role-neutral TargetBinding before comparing optimizer changes. It then observes actual P3/P5 MACE configuration materialization.
+
+Accepted observed behavior includes:
+
+- screen-only normalization edits change actual P3 realized LR/EMA but not P5 CV/production optimizer or method identity;
+- `[training]` LR/EMA edits change actual P5 CV/production method/materialization but not the P3 screen optimizer;
+- CV and production share one post-selection method/optimizer while retaining distinct frozen H_cv/H_prod.
+
+The bounded TRAIN2 fixture now uses the runtime plan's learning-rate policy rather than a hard-coded LR; this is a fidelity improvement below the semantic owner, not new product machinery.
+
+### 3.3 `init [model]` ownership
+
+The facade argv scanner has been deleted. The real core `init` subparser owns the optional positional model, and `command_init` reduces positional and legacy `--foundation-family` forms to one canonical family before template generation. Conflicts fail before config/state creation.
+
+Keep this simplified realization. Do **not** restore a facade scanner or add parser-side synchronized explicitness machinery solely to preserve an obsolete raw-Namespace assertion.
+
+### 3.4 Current real foundation evidence already accepted
+
+On executable head `c3db340e11eb49748f00becd34c422a819daf38a`, the locked real checkpoints passed the following bounded CPU/e3nn tests:
 
 ```text
-mh-1
-    campaign.id = lta-mh1-omat-pbe-finetune
-    [foundation].family = mace_mh_1
-    [foundation].head = omat_pbe
-    [foundation].label = MACE-MH-1
-    [model].foundation_name = MACE-MH-1
-    [paths].foundation_model = /path/to/mace-mh-1.model
+MH-1 SHA256
+  ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde
+  selected head: omat_pbe
 
-mpa-0
-    campaign.id = lta-mpa0-finetune
-    [foundation].family = mace_mpa_0
-    [foundation].head = default
-    [foundation].label = MPA-0-medium
-    [model].foundation_name = MPA-0-medium
-    [paths].foundation_model = /path/to/mace-mpa-0-medium.model
+MPA-0-medium SHA256
+  75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638
+  selected head: default
 ```
 
-Do not fork the TOML template or create per-family configuration classes. Shared fields remain shared unless real model semantics demonstrate a family-dependent requirement.
+Recorded command executed four real-asset cells and produced **4 passed, 201 warnings in 14.14s**, covering exact inspection/family/head resolution, CPU/e3nn load, official/native batch inference parity for both models, and MH-1 `omat_pbe` extraction/parity. The extraction qualification explicitly reaches the repository's training-qualified selected-head contract.
 
-MH-1 remains a multi-head foundation and must use exact source-head semantics/extraction where a single training foundation is required. MPA-0 remains single-head and must not be forced through MH-1-specific extraction machinery.
+This evidence remains reusable unless implementation changes foundation inspection, extraction, model loading/inference, or family/head semantics.
 
 ---
 
-## 3. Reviewed implementation accepted in substance
+## 4. Blocking repair R-CLI2 — reconcile the stale direct-parser regression by simplifying the oracle
 
-The following source behavior is accepted and should not be reworked unless executable acceptance exposes a concrete defect.
+### 4.1 Finding
 
-### 3.1 P5 currentness and production admission
+`build_parser()` now sets the legacy `--foundation-family` argument default to `None`. That is how `command_init` can distinguish an omitted legacy flag from an explicitly supplied flag while also accepting the new positional `model`.
 
-The previously repaired P5 currentness model remains correct:
-
-- current CV plan validates current method identity and current CV-policy identity;
-- CV acceptance authenticates exact plan/method/CV-policy/binding ancestry plus `accepted == true`;
-- collection preflight checks every frozen size before production is marked RUNNING or any new production trainer/final plan is admitted;
-- per-size final production repeats authorization immediately before final-plan construction.
-
-Do not move role-specific method/policy identity into TargetBinding.
-
-### 3.2 Optimizer authority split
-
-The generated `[training]` explicitly retains:
-
-```toml
-learning_rate = 1.0e-4
-ema = true
-ema_decay = 0.99999
-```
-
-Target-size-screen optimizer normalization remains independently owned by `[target_data.size_convergence.optimizer_normalization]`.
-
-The new acceptance test correctly moved beyond helper-only equality and observes actual MACE configuration files emitted by the P3 and P5 materializers. Preserve that real-owner boundary.
-
-### 3.3 Generalized foundation owner
-
-Current source inspection finds no family-specific architectural fork that must be repaired. The canonical foundation owner already distinguishes:
-
-- MPA-0: single `default` head and its structural checkpoint contract;
-- MH-1: multi-head checkpoint including `omat_pbe` plus the MH-1 structural contract.
-
-Existing current tests also already contain real-checkpoint acceptance hooks using `MDSTATS_TEST_MH1_MODEL` and `MDSTATS_TEST_MPA0_MODEL`. Reuse them rather than inventing another real-model harness.
-
----
-
-## 4. Blocking repair F-CLI1 — move `init [model]` into the real parser owner
-
-### Finding
-
-The candidate implements `init mh-1` / `init mpa-0` in `mdstats/training_data/campaign_cli.py` by scanning argv and using:
+The existing regression still contains:
 
 ```python
-init_index = values.index("init")
+args = parser.parse_args(["--config", str(target), "init"])
+assert args.foundation_family == "mace_mh_1"
 ```
 
-This is the wrong ownership boundary for a parser feature and creates a real ambiguity. For example, a valid global option value can itself be the literal `init`:
+The recorded final regression omitted this test file. The assertion conflicts directly with current parser source and therefore represents an unclosed required affected regression.
+
+The product requirement is not the raw namespace value. It is:
 
 ```text
---config init init mh-1
+bare init
+    -> generated configuration has family mace_mh_1
+    -> selected head omat_pbe
+    -> MH-1 default model path
 ```
 
-The facade can mistake the configuration filename for the command token and fail to normalize the actual model argument. Similar option-order sensitivity follows from manually interpreting token position outside argparse.
+### 4.2 Required repair
 
-The facade therefore became more complex while the real core parser still does not describe the public positional syntax.
+1. **Keep** the current parser-owned positional implementation and scanner deletion.
+2. **Keep** the clean omitted-legacy-flag sentinel (`foundation_family is None`) if it remains the simplest way to distinguish omission from explicit legacy input.
+3. Update `test_config1_init_defaults_are_explicit_not_environment_autodetected` so it tests the resolved contract rather than freezing the intermediate namespace representation:
+   - parse bare `init` through the real parser;
+   - retain the relevant ordinary parser-default check such as backend `e3nn`;
+   - execute the real `command_init` through `args.func(args)` or public `campaign_cli.main`;
+   - assert generated TOML resolves `foundation.family == "mace_mh_1"`, `foundation.head == "omat_pbe"`, MH-1 default path, and existing backend expectations.
+4. Do not add a custom argparse action, second explicitness flag, compatibility wrapper, argv scanner, or duplicate family state just to make the old namespace assertion true.
+5. Run the **entire** `tests/test_mlff_mh1_config1_campaign_defaults.py` together with the current init/campaign CLI focused tests.
 
-### Required repair
-
-Reduce the implementation rather than patching the scanner:
-
-1. add one optional positional model argument to the real `init` subparser in `_campaign_cli_core.build_parser()`;
-2. accept only the public values needed for this product surface (`mh-1`, `mpa-0`) at that parser/normalization boundary;
-3. normalize the positional spelling to the existing canonical `mace_mh_1` / `mace_mpa_0` family before `_config_template(...)` is called;
-4. retain existing `--foundation-family` compatibility;
-5. if both forms are supplied with equivalent meaning, reduce to one semantic family choice;
-6. if both conflict, fail before config/state creation;
-7. delete `_INIT_MODEL_FAMILIES`, `_normalize_init_model_argv`, and the facade-specific error handling once the core parser/command owns the feature;
-8. restore `campaign_cli.py` to a thin facade over the core public entry point.
-
-A tiny core normalization helper is acceptable only if it reduces duplicated comparison logic in `command_init`; do not create a registry or second configuration object.
-
-### Acceptance
-
-Through the public CLI and real parser:
-
-```text
-init
-    -> MH-1 default
-
-init mh-1
-    -> mace_mh_1 / omat_pbe
-
-init mpa-0
-    -> mace_mpa_0 / default
-```
-
-Also cover parser robustness that the facade scanner cannot guarantee:
-
-```text
---config init init mh-1
-    -> succeeds and writes the requested config named "init"
-
-init --workspace <path> mh-1
-    -> parser-owned positional semantics remain correct if argparse accepts this ordering
-
-init mh-1 --foundation-family mace_mh_1
-    -> one equivalent semantic choice
-
-init mh-1 --foundation-family mace_mpa_0
-    -> fails before config/state creation
-
-init unsupported-model
-    -> clear parser/user error
-```
-
-Keep the existing legacy direct-parser init tests green.
+This section explicitly supersedes the earlier phrase “keep the existing legacy direct-parser init tests green” insofar as that phrase froze the raw `Namespace.foundation_family` value. Preserve the protected behavior, not the obsolete internal representation.
 
 ---
 
-## 5. Acceptance repair T6/T7 — prove the counterfactual compares the same frozen target lineage
+## 5. Blocking acceptance R-FOUND2 — execute the existing P5 foundation provider/method owner checks
 
-### Finding
+### 5.1 Finding
 
-`tests/test_mlff_post_selection_materialization_acceptance.py` now exercises the real P3/P5 materializers, which is the correct semantic boundary. However, it compares three independently constructed campaigns and currently proves only that each fixture reaches the expected selected size internally. The test does not explicitly assert that the base, screen-mutated, and post-selection-method-mutated cases use the same exact `T_N`, training order, and role-neutral TargetBinding.
+F-REAL1 required not only real checkpoint inspection/inference/extraction, but also existing P5 foundation provider/method regression relevant to family/head propagation. The recorded real-model command stopped after the four real-asset tests, and the 329-test final regression did not include the current revision-10 P5 provider/method guard module.
 
-For the intended counterfactual, the optimizer policy must be the only changed scientific axis. A test that accidentally compares different target membership/lineage could still produce apparently sensible optimizer differences while weakening the claim.
+No new test harness is required. Current repository tests already exercise the relevant owner boundary.
 
-### Required repair
+### 5.2 Required evidence
 
-Keep the current real-owner test and strengthen its oracle; do not add another harness.
-
-Before comparing P3/P5 materializations, resolve the frozen selected design/context for all campaigns and establish at minimum:
-
-- identical selected N;
-- identical exact selected membership `T_N` in order;
-- identical training-order identity;
-- identical role-neutral TargetBinding identity wherever the independent fixture construction is expected to be content-identical.
-
-If a path-only fixture detail makes full TargetBinding digest equality intentionally differ, prove the exact product-semantic target lineage components directly and document why the path detail is non-semantic. Prefer making the fixtures content-identical rather than weakening the oracle.
-
-Then retain the existing real-materialization assertions:
+At minimum execute and record the current equivalents of:
 
 ```text
-change screen normalization LR/EMA
-    -> actual P3 realized optimizer changes
-    -> P5 CV/production lr/ema/ema_decay + method identity unchanged
-
-change [training] LR/EMA
-    -> actual P5 CV/production lr/ema/ema_decay + method identity change
-    -> actual P3 normalized optimizer unchanged
-
-CV vs production
-    -> same shared P5 optimizer/method
-    -> different frozen H_cv/H_prod budgets
+tests/test_mlff_target_size_p5_r10_guards.py::test_r10a_exact_mode_matrix_and_executable_head_parity
+tests/test_mlff_target_size_p5_r10_guards.py::test_r10b_real_foundation_provider_owner_counterfactuals
+tests/test_mlff_target_size_p5_r8_guards.py::test_claims_03_04_05_foundation_family_and_head_resolution_guards
 ```
 
-Where economical, assert the expected realized P3 LR/EMA values for at least one selected size, not merely collection inequality. Existing dedicated normalization tests remain the formula authority and may be reused rather than re-derived in this integration test.
+The purpose is to establish through existing owners that:
+
+- P5 mode construction propagates the exact foundation/head semantics into executable materialization;
+- the real foundation-provider owner authenticates bytes/head and fails closed on tampering/unavailable head/provider-construction failure;
+- family/head mismatch remains fail-closed, including MH-1 multi-head semantics versus MPA-0 singleton semantics.
+
+If current test names have legitimately changed, use their canonical replacements and record the mapping. Do not add another P5 foundation harness unless these existing tests expose a real uncovered product behavior.
+
+The four locked-model tests from Section 3.4 need not be rerun if this repair changes only tests/documentation or otherwise cannot affect foundation loading/extraction/inference. If foundation executable source changes, rerun the affected real-model cells.
 
 ---
 
-## 6. Test simplification F-TEST1 — remove redundant synthetic foundation coverage
+## 6. Final functional closure R-T8
 
-### Finding
+### 6.1 Evidence already reusable
 
-`tests/test_mlff_campaign_init_foundation_models.py` adds a synthetic `MaceFoundationInspection` fixture and a family-resolution test. The repository already has stronger canonical coverage in `tests/test_mlff_mh1_id1_foundation_identity.py`, including:
+The following execution evidence from source head `c3db340e11eb49748f00becd34c422a819daf38a` is accepted for unchanged dimensions:
 
-- both family resolutions;
-- exact head behavior;
-- species checks;
-- missing/invalid head failure;
-- cross-family structural mismatch failure;
-- real mounted-checkpoint identity tests.
+- init/campaign focused suite: **19 passed**;
+- T6/T7 real materialization: **1 passed**;
+- P5 CV-currentness/production-restart suite: **38 passed**;
+- multi-size assembled integration: **13 passed**;
+- real locked MH-1/MPA-0 cells: **4 passed**;
+- previously recorded broad affected suite: **329 passed** for the paths actually included;
+- `python -m compileall mdstats tests`: **0 errors**;
+- repository has no configured standalone ruff/flake8/mypy gate in `pyproject.toml`.
 
-The new synthetic resolver test therefore duplicates a weaker version of an existing owner test.
+The 329-test result is **not** complete final closure because it omitted the required config-default test file and the P5 foundation-provider/method cells above.
 
-### Required cleanup
+### 6.2 Required final execution
 
-Keep the new module focused on the new product surface: `init [model]` public/parser behavior and generated TOML.
+After R-CLI2 and R-FOUND2:
 
-Remove or consolidate the redundant synthetic foundation-inspection fixture/test and rely on the existing canonical foundation suite for family/head semantics. Do not create another family fixture hierarchy.
+1. run the full `tests/test_mlff_mh1_config1_campaign_defaults.py`;
+2. rerun `tests/test_mlff_campaign_init_foundation_models.py` and `tests/test_mlff_campaign_cli.py` so the parser/config surface closes together;
+3. execute the P5 foundation/provider cells in Section 5;
+4. run `python -m compileall mdstats tests` after the final test/source edits;
+5. if any executable product source beyond semantically inert cleanup changes, re-derive the affected surface and rerun every previously accepted suite whose result could plausibly change. Do not rerun unrelated heavy evidence merely because a review cycle occurred.
 
-This cleanup is not an independent architecture blocker, but it is part of this round's minimum-complexity closure and should occur while touching the test file for F-CLI1.
+Record exact commands, final executable/source SHA, result counts, and any reused evidence directly in this workplan. A required test that fails or does not execute remains blocking.
 
----
-
-## 7. Required current real-foundation acceptance F-REAL1
-
-### Finding
-
-Historical qualification establishes that both real checkpoints worked in earlier source states, but the user explicitly requested that both MH-1 and MPA-0 be made sure functional now. The reviewed candidate has no fresh attached execution evidence for the real checkpoints.
-
-This is therefore a **required final functional acceptance item**, not an optional "if convenient" smoke. If the model files are unavailable in one implementation environment, carry this exact acceptance to the nearest model-equipped environment; do not convert absence into a pass.
-
-### Locked real inputs
-
-Use the known locked identities unless the user explicitly supplies a different accepted model revision:
-
-```text
-MACE-MH-1
-    head: omat_pbe
-    sha256: ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde
-
-MACE-MPA-0-medium
-    head: default
-    sha256: 75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638
-```
-
-### Required bounded CPU/e3nn evidence
-
-Reuse the existing current tests/harnesses rather than inventing new machinery. At minimum execute the applicable real-asset cells covering:
-
-1. exact checkpoint SHA, direct inspection, family/head resolution:
-   - `tests/test_mlff_mh1_id1_foundation_identity.py::test_id1_real_uploaded_checkpoints_inspect_and_resolve_exactly`
-2. current MACE/e3nn checkpoint loading for both models:
-   - `tests/test_mlff_mh1_dep0_runtime_freeze.py::test_real_mh1_and_mpa0_checkpoints_load_through_e3nn_reference_path`
-3. real CPU inference/descriptor path for both models and correct selected heads:
-   - `tests/test_mlff_mh1_data6_1.py::test_data6_1_real_uploaded_models_match_official_and_native_batch`
-4. MH-1 selected `omat_pbe` extraction/parity where the current training path requires a single extracted head:
-   - `tests/test_mlff_mh1_extract1_selected_head.py::test_extract1_real_mh1_omat_pbe_extraction_and_parity`
-5. existing P5 foundation provider/method regression relevant to source-family/head propagation, including the current bounded provider owner tests.
-
-Environment variables should point to the two supplied files:
-
-```text
-MDSTATS_TEST_MH1_MODEL=<path-to-mace-mh-1.model>
-MDSTATS_TEST_MPA0_MODEL=<path-to-mace-mpa-0-medium.model>
-```
-
-Record exact commands and pass/fail/skip counts in this workplan. A skip because files are absent is not final closure evidence for F-REAL1.
-
-### Explicit boundary
-
-This acceptance is bounded CPU/e3nn functionality. It does **not** authorize a positive CuEq/GPU/LAMMPS production qualification claim. GPU/deployment qualification remains deferred to the established final-release/user-machine stage.
+Lifecycle/storage/qualification evidence from prior accepted rounds may be reused if the final repair remains confined to parser test reconciliation/test-only acceptance and does not plausibly affect those owners. If implementation changes those product dimensions, rerun their affected regression instead of assuming reuse.
 
 ---
 
-## 8. Final affected regression/integration T8
-
-After F-CLI1, T6/T7 strengthening, and F-TEST1 cleanup, re-derive the affected surface and execute final acceptance on one unchanged candidate.
-
-At minimum cover:
-
-### Initialization/configuration/foundation
-
-- `tests/test_mlff_campaign_init_foundation_models.py` after consolidation;
-- `tests/test_mlff_campaign_cli.py`;
-- `tests/test_mlff_mh1_config1_campaign_defaults.py`;
-- affected foundation identity/head-resolution/head-extraction/inference tests;
-- F-REAL1 real-model cells above on a model-equipped environment.
-
-### Optimizer/materialization/currentness
-
-- `tests/test_mlff_post_selection_materialization_acceptance.py`;
-- canonical shared optimizer-settings tests;
-- target-size optimizer-normalization tests;
-- focused P5 CV-plan/currentness/production-authorization tests;
-- affected P5 production/restart/publication/store tests.
-
-### Multi-size assembled behavior
-
-- `tests/test_mlff_target_size_multi_size_integration.py`;
-- `tests/test_mlff_target_size_multi_selection.py`;
-- assembled `prepare -> select N1 -> select N2 -> cross-validate -> train-production -> reload/status` through real owners with bounded numerical doubles;
-- generation rollover and stale-publication/currentness integration inherited from the multi-size contract;
-- affected lifecycle/storage/qualification regression.
-
-### Repository/project checks
-
-- project-configured fast lint/type/static checks actually supported for the touched Python surface;
-- `python -m compileall mdstats tests` or repository-equivalent syntax validation.
-
-If the affected surface cannot be bounded confidently after the parser/test edits, run the broader supported repository suite.
-
-A required command that does not execute is incomplete evidence, not a pass. Newly introduced failures or failures plausibly intersecting this affected surface block closure. Demonstrably pre-existing unrelated failures may be attributed precisely.
-
-Record exact commands, candidate SHA, environment essentials, and concise result summaries under Section 10. Do not create another handoff/evidence file merely to hold these results.
-
----
-
-## 9. Simplicity and anti-shortcut constraints
+## 7. Simplicity / anti-shortcut constraints
 
 Do not add:
 
-- another foundation/model registry;
-- per-family TOML templates or config classes;
+- a new foundation/model registry;
+- per-family TOML templates/classes;
 - filename-based family/head inference;
 - silent multi-head fallback;
-- another argv preprocessor/scanner to repair the current scanner;
+- argv preprocessors/scanners;
+- custom parser state solely to preserve a stale test's raw namespace value;
 - another currentness registry or collection evidence object;
-- wrapper bindings or synchronized state;
-- another post-selection optimizer resolver;
-- CV-specific/production-specific duplicate LR/EMA tables;
+- wrapper bindings/synchronized state;
+- another optimizer resolver or CV/production duplicate LR/EMA tables;
 - a new scheduler/generic experiment framework;
-- another P5 numerical harness;
-- another synthetic foundation fixture hierarchy duplicating the canonical foundation tests.
+- another P5 numerical or foundation-provider harness;
+- another synthetic foundation fixture hierarchy.
 
-The preferred F-CLI1 repair is **reduction**: move the public positional into the parser that already owns init syntax and remove the facade scanner.
-
-If the stronger acceptance tests expose a genuine production-owner defect, alter that existing owner directly.
+If a newly executed existing test exposes a real source defect, repair the existing semantic owner directly. Otherwise prefer test-oracle correction and evidence completion over product code growth.
 
 ---
 
-## 10. Implementation evidence — to be filled by Implementation
+## 8. Closure conditions
 
-Do not mark this plan complete until evidence is recorded here for the final candidate.
+Independent Software Design may PASS and close/archive this workplan when all are true on one final candidate:
 
-Record:
+### C1 — init semantics and parser ownership
 
 ```text
-final_candidate_head: c3db340e11eb49748f00becd34c422a819daf38a
-python: 3.11.15
-mace: 0.3.16
-torch: 2.13.0+cu126
-e3nn: 0.4.4
-real_mh1_sha256: ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde
-real_mpa0_sha256: 75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638
+init          -> generated mace_mh_1 / omat_pbe configuration
+init mh-1     -> generated mace_mh_1 / omat_pbe configuration
+init mpa-0    -> generated mace_mpa_0 / default configuration
+matching legacy flag -> same semantic choice
+conflicting legacy flag -> failure before config/state creation
+config path named "init" / valid option ordering -> no command-token ambiguity
 ```
 
-### 10.1 F-CLI1 / init / config focused tests
-- Command:
-  ```bash
-  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
-    tests/test_mlff_campaign_init_foundation_models.py \
-    tests/test_mlff_campaign_cli.py \
-    -v
-  ```
-- Outcome: **19 passed in 4.68s**. Covered default `init` (resolves `mace_mh_1` / `omat_pbe`), positional `init mh-1`, positional `init mpa-0` (resolves `mace_mpa_0` / `default`), disambiguation of config file named `init` (`--config init init mh-1`), option ordering (`init --workspace <path> mpa-0`), matching `--foundation-family`, conflicting `--foundation-family` (fails closed before config/state creation), and parser-level rejection of unsupported models with code 2. Facade argv scanner was completely deleted; core `argparse` owns syntax.
+The facade scanner remains absent and the direct-parser regression protects resolved product behavior rather than an obsolete namespace representation.
 
-### 10.2 T6/T7 real-materialization acceptance
-- Command:
-  ```bash
-  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
-    tests/test_mlff_post_selection_materialization_acceptance.py \
-    -v
-  ```
-- Outcome: **1 passed, 7 warnings in 52.04s**. Verified:
-  - Exact target lineage equality across base, screen, and method campaigns: $N=8$, identical $T_N$ membership, identical `training_order_digest`, and identical role-neutral `binding.content_digest`.
-  - P3 screen realized values: base screen `mace_config_n8_seed1.yaml` has `lr=0.0128, ema=True, ema_decay=0.9987208124587365`; changed screen `mace_config_n8_seed1.yaml` has `lr=0.0004, ema=True, ema_decay=0.9746794344808963`; reference $N=4$ has `lr=0.0008, ema=True, ema_decay=0.95`.
-  - Screen optimizer changes do not affect P5 CV/production optimizer or method.
-  - Changes to `[training]` method/optimizer propagate to P5 CV and production while screen normalized optimizer remains unaffected.
-  - P5 CV and production share identical method and optimizer definitions while respecting distinct frozen execution horizons.
+### C2 — multi-size/P5 currentness
 
-### 10.3 P5 currentness and zero-new-production regression
-- Command:
-  ```bash
-  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
-    tests/test_mlff_target_size_p5d_cv_acceptance.py \
-    tests/test_mlff_target_size_p5e_production_and_restart.py \
-    -v
-  ```
-- Outcome: **38 passed, 38 warnings in 496.14s (0:08:16)**. Validated CV currentness, single-failing fold barrier, exact acceptance policy ancestry, production boundary guards, restart isolation, and mandatory R9 restart cases.
+Stale/changed CV policy or any invalid frozen member never authorizes new production; collection admission starts zero new production jobs until every member is current/accepted.
 
-### 10.4 Multi-size assembled integration
-- Command:
-  ```bash
-  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
-    tests/test_mlff_target_size_multi_size_integration.py \
-    tests/test_mlff_target_size_p5g_assembled_integration.py \
-    -n 12
-  ```
-- Outcome: **13 passed, 73 warnings in 44.33s**. Validated multi-size collection freeze, preflight checks, corrupt-member collection-wide barrier, publication decisions, and end-to-end multi-size orchestration.
+### C3 — optimizer authority separation
 
-### 10.5 F-REAL1 real MH-1/MPA-0 bounded CPU/e3nn acceptance
-- Command:
-  ```bash
-  MDSTATS_TEST_MH1_MODEL=/home/samjin/QE/lammps-proj/zeolite/01_models/mace-mh-1.model \
-  MDSTATS_TEST_MPA0_MODEL=/home/samjin/QE/lammps-proj/zeolite/01_models/mace-mpa-0-medium.model \
-  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
-    tests/test_mlff_mh1_id1_foundation_identity.py::test_id1_real_uploaded_checkpoints_inspect_and_resolve_exactly \
-    tests/test_mlff_mh1_dep0_runtime_freeze.py::test_real_mh1_and_mpa0_checkpoints_load_through_e3nn_reference_path \
-    tests/test_mlff_mh1_data6_1.py::test_data6_1_real_uploaded_models_match_official_and_native_batch \
-    tests/test_mlff_mh1_extract1_selected_head.py::test_extract1_real_mh1_omat_pbe_extraction_and_parity \
-    -v
-  ```
-- Outcome: **4 passed, 201 warnings in 14.14s**. Tested against exact locked checkpoint files:
-  - Real MH-1 SHA256: `ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde`
-  - Real MPA-0-medium SHA256: `75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638`
-  - Verified exact family inspection and head resolution (`omat_pbe` on MH-1, `default` on MPA-0), e3nn reference path loading, official/native batch parity, and `omat_pbe` head extraction parity.
+The already-accepted real P3/P5 materialization counterfactual remains green with identical frozen target lineage, screen/post-selection independence, and shared CV/production post-selection method.
 
-### 10.6 Final affected regression
-- Command:
-  ```bash
-  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
-    tests/test_mlff_campaign_init_foundation_models.py \
-    tests/test_mlff_campaign_cli.py \
-    tests/test_mlff_post_selection_materialization_acceptance.py \
-    tests/test_mlff_target_size_canonical_optimizer_settings.py \
-    tests/test_mlff_target_size_optimizer_normalization.py \
-    tests/test_mlff_target_size_p5a_selected_context.py \
-    tests/test_mlff_target_size_p5b_identity_hierarchy.py \
-    tests/test_mlff_target_size_p5c_cv_plan.py \
-    tests/test_mlff_target_size_p5d_cv_acceptance.py \
-    tests/test_mlff_target_size_p5e_production_and_restart.py \
-    tests/test_mlff_target_size_p5f_structure.py \
-    tests/test_mlff_target_size_p5g_assembled_integration.py \
-    tests/test_mlff_target_size_p5h_publication_decision.py \
-    tests/test_mlff_target_size_multi_selection.py \
-    tests/test_mlff_target_size_multi_size_integration.py \
-    -n 12
-  ```
-- Outcome: **329 passed, 165 warnings in 178.11s (0:02:58)** across 12 concurrent workers. Zero failures or regressions.
+### C4 — both foundation families
 
-### 10.7 Project static/lint/type checks actually configured
-- Inspected `pyproject.toml` and repository root: no standalone ruff/flake8/mypy configuration is present; pytest suite enforces strict assertions and typing constraints.
+Locked MH-1/`omat_pbe` and MPA-0/`default` evidence remains current, and existing P5 provider/method owners pass their family/head/authentication regressions.
 
-### 10.8 Compileall / syntax check
-- Command:
-  ```bash
-  /home/samjin/miniconda3/envs/mace/bin/python -m compileall mdstats tests
-  ```
-- Outcome: **0 errors**; all source and test modules parsed and byte-compiled cleanly.
+### C5 — functional closure
+
+The previously omitted config-default regression and P5 provider/method checks execute successfully; compileall passes; any additional changed affected surface is rerun proportionately.
+
+### C6 — minimum complexity
+
+No new wrapper/registry/duplicate state is introduced merely to reconcile the stale parser test or complete acceptance.
 
 ---
 
-## 11. Next independent review closure conditions
+## 9. Review routing
 
-The next Software Design review may PASS and close/archive this plan only when all of the following are true on the final assembled candidate:
+This file remains the **only active implementation entry point**. The next implementation round is intentionally small:
 
-### C1 — parser ownership and init semantics
+1. reconcile the stale config-default test at the resolved-product boundary;
+2. execute the existing P5 foundation/provider acceptance cells;
+3. execute the bounded final regression required by Section 6 and record it here.
 
-```text
-init
-    -> canonical MH-1 default
-
-init mh-1
-    -> canonical mace_mh_1 / omat_pbe config
-
-init mpa-0
-    -> canonical mace_mpa_0 / default config
-
-valid global option values / option ordering
-    -> cannot confuse model normalization
-
-conflicting positional + --foundation-family
-    -> fails before config/state creation
-```
-
-The facade argv scanner is gone; no replacement scanner/registry was added.
-
-### C2 — exact counterfactual target lineage
-
-The optimizer-independence acceptance explicitly proves the compared campaigns use the same exact selected N/T/training-order/role-neutral target lineage before attributing changes to optimizer policy.
-
-### C3 — real materialization authority split
-
-```text
-change screen normalization LR/EMA
-    -> actual P3 optimizer changes
-    -> actual P5 CV/production optimizer + method do not
-
-change [training] LR/EMA
-    -> actual P5 CV/production optimizer + method change
-    -> actual P3 normalized optimizer does not
-
-CV vs production
-    -> same P5 shared method/optimizer
-    -> distinct frozen role horizons
-```
-
-### C4 — stale CV never authorizes production
-
-```text
-stale/changed CV policy + accepted-looking old evidence
-    -> never authorizes current production
-
-any one frozen size with invalid CV ancestry
-    -> zero new production jobs for the invocation
-```
-
-### C5 — both real foundation families current
-
-On the final candidate and exact locked model files:
-
-```text
-MH-1 / omat_pbe
-    -> inspect + resolve + CPU/e3nn load/inference + required selected-head extraction pass
-
-MPA-0 / default
-    -> inspect + resolve + CPU/e3nn load/inference pass
-```
-
-No cross-family fallback or head ambiguity is tolerated.
-
-### C6 — final functional closure
-
-All required affected regression/integration/project checks execute on the final candidate and are recorded in Section 10. No required check is silently converted to inspection evidence.
-
-### C7 — simplicity
-
-The final change does not leave redundant argv-normalization machinery or redundant synthetic family-test ownership. No new architectural mechanism was introduced to close a parser/test/evidence gap.
-
----
-
-## 12. Review routing
-
-All currently known remaining work is now contained in this workplan. No additional review amendment or sibling workplan is needed for the known issues above.
-
-Route the next step to **Software Implementation** on the same branch. Implementation should repair F-CLI1, strengthen T6/T7, simplify the duplicate synthetic foundation test, execute F-REAL1 and T8, and record evidence in this file.
-
-If those steps expose a genuine contradiction in the Frozen architecture, reopen only that affected design surface. Otherwise, do not reopen architecture merely because an executable check fails; repair the existing owner under this plan.
+Do not reopen the multi-size or foundation architecture unless those existing tests reveal evidence that a Frozen decision itself is wrong.

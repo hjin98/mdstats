@@ -4,7 +4,7 @@ Active workplans are temporary engineering coordination and do not define curren
 
 There is exactly one active implementation entry point for the current MLFF multi-size target-selection closure round:
 
-- `MLFF_TARGET_SIZE_MULTI_SELECTION_NEXT_ROUND_REPAIR_WORKPLAN.md` — sole current implementation authority. It preserves the accepted CV-currentness/collection-wide production-admission and optimizer-default repairs, requires real P3/P5 materialization and final affected regression closure, and includes the bounded MH-1/MPA-0 foundation-family initialization/verification extension (`init [mh-1|mpa-0]`, default MH-1).
+- `MLFF_TARGET_SIZE_MULTI_SELECTION_NEXT_ROUND_REPAIR_WORKPLAN.md` — sole current implementation authority. Independent review of candidate `0f1d4dbb35f87e394e2b149d02deb6406519ed71` is **NO-PASS / implementation-reopened**, narrowly for final parser-default regression reconciliation and execution of the existing P5 foundation-provider/method acceptance cells. The multi-size/P5 currentness architecture, optimizer-authority separation, parser-owned `init [mh-1|mpa-0]` implementation, and current real MH-1/MPA-0 CPU/e3nn evidence are otherwise preserved.
 
 Earlier parent/review/addendum/handoff workplans remain retired under `workplans/archive/` as historical evidence, not additional implementation entry points.
 
