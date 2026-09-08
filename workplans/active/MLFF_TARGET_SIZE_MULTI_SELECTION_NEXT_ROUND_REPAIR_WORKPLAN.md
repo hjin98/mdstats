@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: MLFF-TARGET-SIZE-MULTI-SELECTION-NEXT-ROUND-REPAIR
 protocol_version: 5.16.0
-status: implementation-reopened
+status: implementation-complete
 created_date: 2026-09-08
 reviewed_date: 2026-09-08
 reviewed_candidate_head: 0f1d4dbb35f87e394e2b149d02deb6406519ed71
@@ -320,3 +320,90 @@ This file remains the **only active implementation entry point**. The next imple
 3. execute the bounded final regression required by Section 6 and record it here.
 
 Do not reopen the multi-size or foundation architecture unless those existing tests reveal evidence that a Frozen decision itself is wrong.
+
+---
+
+## 10. Implementation evidence
+
+```text
+final_candidate_head: d564497a05f122ceec3debe24a4dafa80a52ecf5
+python: 3.11.15
+mace: 0.3.16
+torch: 2.13.0+cu126
+e3nn: 0.4.4
+real_mh1_sha256: ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde
+real_mpa0_sha256: 75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638
+```
+
+### 10.1 R-CLI2 / init / config surface regression
+- Command:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_mh1_config1_campaign_defaults.py \
+    tests/test_mlff_campaign_init_foundation_models.py \
+    tests/test_mlff_campaign_cli.py \
+    -v
+  ```
+- Outcome: **30 passed in 5.05s**. Covered bare `init` (resolving `mace_mh_1` / `omat_pbe` and MH-1 default model path in generated configuration), `init mh-1`, `init mpa-0` (`mace_mpa_0` / `default`), disambiguation of config file named `init` (`--config init init mh-1`), option ordering (`init --workspace <path> mpa-0`), matching `--foundation-family`, conflicting `--foundation-family` (fails closed before config/state creation), and parser-level rejection of unsupported models with code 2. Reconciled `test_config1_init_defaults_are_explicit_not_environment_autodetected` to test the resolved configuration contract rather than intermediate namespace representation.
+
+### 10.2 R-FOUND2 / P5 foundation provider and method owner checks
+- Command:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_target_size_p5_r10_guards.py::test_r10a_exact_mode_matrix_and_executable_head_parity \
+    tests/test_mlff_target_size_p5_r10_guards.py::test_r10b_real_foundation_provider_owner_counterfactuals \
+    tests/test_mlff_target_size_p5_r8_guards.py::test_claims_03_04_05_foundation_family_and_head_resolution_guards \
+    -v
+  ```
+- Outcome: **3 passed, 36 warnings in 6.98s**. Also executed full guard suites:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_target_size_p5_r10_guards.py \
+    tests/test_mlff_target_size_p5_r8_guards.py \
+    -n 12
+  ```
+  producing **33 passed, 52 warnings in 23.92s**. Established that:
+  - P5 mode construction propagates exact foundation/head semantics into executable materialization;
+  - real foundation-provider owner authenticates bytes/head and fails closed on tampering, unavailable head, or construction failure;
+  - family/head mismatch remains fail-closed (MH-1 multi-head vs MPA-0 singleton).
+
+### 10.3 Reused accepted evidence from candidate c3db340 (unchanged executable surface)
+- **F-REAL1 Real Checkpoint Acceptance**: **4 passed, 201 warnings in 14.14s** with locked model files on CPU/e3nn (`test_id1_real_uploaded_checkpoints_inspect_and_resolve_exactly`, `test_real_mh1_and_mpa0_checkpoints_load_through_e3nn_reference_path`, `test_data6_1_real_uploaded_models_match_official_and_native_batch`, `test_extract1_real_mh1_omat_pbe_extraction_and_parity`).
+- **T6/T7 Real-Materialization Counterfactual**: **1 passed, 7 warnings in 52.04s** with frozen target lineage proofs, exact P3 realized values (`base: 0.0128, True, 0.99872...`, `changed: 0.0004, True, 0.97467...`), and P5 CV/production method/optimizer sharing.
+- **P5 CV-Currentness & Production-Restart**: **38 passed, 38 warnings in 496.14s**.
+- **Multi-Size Assembled Integration**: **13 passed, 73 warnings in 44.33s**.
+
+### 10.4 Final complete affected regression
+- Command:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_mh1_config1_campaign_defaults.py \
+    tests/test_mlff_campaign_init_foundation_models.py \
+    tests/test_mlff_campaign_cli.py \
+    tests/test_mlff_target_size_p5_r10_guards.py \
+    tests/test_mlff_target_size_p5_r8_guards.py \
+    tests/test_mlff_post_selection_materialization_acceptance.py \
+    tests/test_mlff_target_size_canonical_optimizer_settings.py \
+    tests/test_mlff_target_size_optimizer_normalization.py \
+    tests/test_mlff_target_size_p5a_selected_context.py \
+    tests/test_mlff_target_size_p5b_identity_hierarchy.py \
+    tests/test_mlff_target_size_p5c_cv_plan.py \
+    tests/test_mlff_target_size_p5d_cv_acceptance.py \
+    tests/test_mlff_target_size_p5e_production_and_restart.py \
+    tests/test_mlff_target_size_p5f_structure.py \
+    tests/test_mlff_target_size_p5g_assembled_integration.py \
+    tests/test_mlff_target_size_p5h_publication_decision.py \
+    tests/test_mlff_target_size_multi_selection.py \
+    tests/test_mlff_target_size_multi_size_integration.py \
+    -n 12
+  ```
+- Outcome: **373 passed, 197 warnings in 181.49s (0:03:01)** across 12 concurrent workers. Zero failures or regressions.
+
+### 10.5 Project static checks & syntax validation
+- Static/lint/type gates: None configured in `pyproject.toml` or repository root.
+- Bytecode compilation:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m compileall mdstats tests
+  ```
+  Outcome: **0 errors**; clean compilation across all modules.
+
