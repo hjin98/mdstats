@@ -250,3 +250,60 @@ Re-derive the final P5/P7/currentness affected surface, run complete bounded reg
 ## Simplicity stop condition
 
 If the next implementation still needs a fake experiment definition/evaluation order/aggregate, reconstructs parent authority from CV/final descendants, introduces another historical state database/sidecar, or adds another broad prerework runtime branch, stop. That is evidence the repair is again solving a Tier-2 compatibility mechanism instead of restoring the supported native historical contract.
+
+---
+
+## Round-5 Implementation Closure Evidence
+
+### 1. Executable and Evidence Head
+- **Executable commit**: `5ae3fbc8acb166881e5cb880a6bb3c88baad21b0`
+- **Branch**: `plan/mlff-target-size-integration-closure-repair`
+
+### 2. Resolution of Blocking R12 (Removal of Synthetic Reconstruction Bridge)
+- **Deleted synthetic classes**: `_LegacyEvaluationOrder`, `_LegacyExperimentDefinition`, and `_LegacyTargetSizeAggregate` were completely eliminated from `mdstats/training_data/campaign_post_selection.py`.
+- **Deleted descendant-reading reconstruction**: `_load_legacy_prerework_training_contexts` was replaced by `_load_p5a6_selected_training_context`.
+- **Authentic P1/P2 authority reconstruction**:
+  * Loads native P1 inputs (`source_catalog`, `manifest`, `data4`, `frame_catalog`) and rebuilds `frame_authority`, `neutral_base`, and `split_exclusion`.
+  * Resolves `target_size_policy` under `TARGET_SIZE_POLICY_V1_SCHEMA` directly from config.
+  * Derives the authentic `TargetSizeStatisticalAggregate` via the real P2 owner `build_target_size_statistical_aggregate(frame_authority, neutral_base, policy=target_size_policy)`.
+  * Verifies digest identity against `state.frame_authority_digest`, `state.neutral_statistical_base_digest`, `state.split_exclusion_digest`, `state.policy_digest`, `state.aggregate_digest`, `state.experiment_definition_digest`, and `terminal.training_order_digest`.
+  * Obtains `selected_membership` strictly from `definition.training_order.candidate_membership(binding.n_selected)`, with zero reads of `PostSelectionCvPlan`, `FinalProductionPlan`, `materialization.json`, or post-selection stores.
+- **Native wire schema support**: Added `TARGET_SIZE_POLICY_V1_SCHEMA = "mdstats.target-size-scientific-policy.v1"` to `ResolvedTargetSizePolicy`, allowing historical P5A6 policies to serialize/digest without `terminal_decision_policy` while preserving current v2 semantics and failing closed on raw v1 deserialization without explicit flag.
+- **Net code reduction**: -100 lines in `campaign_post_selection.py`.
+
+### 3. Resolution of Blocking R13 (Adversarial Compatibility & Real-Owner Oracles)
+- **Poisoned descendant access check**: In `tests/test_mlff_target_size_p6_p5a6_compatibility.py`, monkeypatched `open_post_selection_store` and `read_current_post_selection_pointer` during both initial selection context resolution and restart reopen to raise `AssertionError("P5 descendant accessed during selection resolution")`. Proved zero descendant access occurs during selection resolution.
+- **Negative counterfactual 1 (corrupted final-production plan M3 lineage)**: `test_corrupted_final_production_plan_m3_is_rejected_by_p2_oracle` copies the workspace to a self-contained disposable directory, corrupts `m3_membership_digest` in `final_production_plan`, updates the SQLite pointer, and proves that `resolve_current_final_production_plan()` rejects the corrupted plan with `PostSelectionError` because the expected M3 comes strictly from the P2 oracle.
+- **Negative counterfactual 2 (missing/corrupted CV descendants)**: `test_corrupted_or_missing_cv_plan_does_not_affect_selection_resolution` wipes the entire `.mdstats/post-selection/` directory from a disposable workspace and proves `load_current_selected_training_context()` reproduces the exact true P2 membership and binding digest without touching or requiring any CV descendant.
+- **Structural purity check**: Refined `test_no_current_surface_retains_the_retired_selection_semantics` in `tests/test_mlff_target_size_provisional_selection.py` to verify that no `_Legacy*` classes exist in `campaign_post_selection.py`.
+- **Standalone 3-phase qualification driver**: `python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py` passed all three phases:
+  * P5A6 -> P6 authenticated current-generation compatibility: PASS
+  * P6 -> P6 current-generation restart: PASS
+  * V5/V6 -> reject-before-reuse: PASS
+
+### 4. Resolution of Blocking R14 (Affected Surface Regression Suite)
+All affected suites executed with 100% pass rate:
+- `python -m compileall mdstats tests qualification/p6-p5a6-compat`: 0 errors.
+- `qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py`: 3/3 phases PASS.
+- `tests/test_mlff_target_size_p6_p5a6_compatibility.py`: 4 passed.
+- `tests/test_mlff_target_size_provisional_selection.py`: 20 passed.
+- `tests/test_mlff_target_size_corrected_identity_cutover.py`: 12 passed.
+- Targeted P5 regression suite:
+  * `tests/test_mlff_target_size_p5a_selected_context.py`
+  * `tests/test_mlff_target_size_p5b_identity_hierarchy.py`
+  * `tests/test_mlff_target_size_p5c_cv_plan.py`
+  * `tests/test_mlff_target_size_p5d_cv_acceptance.py`
+  * `tests/test_mlff_target_size_p5e_production_and_restart.py`
+  * `tests/test_mlff_target_size_p5f_structure.py`
+  * `tests/test_mlff_target_size_p6_destructive_closure.py`
+  * `tests/test_mlff_target_size_multi_selection.py`
+  Total: 148 passed.
+- Downstream P7 qualification suite:
+  * `tests/test_mlff_p7_post_production_qualification.py`
+  * `tests/test_mlff_p7_r11_repair_acceptance.py`
+  Total: 85 passed, 1 skipped (production GPU/CuEq/LAMMPS host worker deferred to user machine).
+- Documentation suite:
+  * `tests/test_docs_pdf_builder.py`
+  * `tests/test_mlff_doc_arch1_specification.py`
+  * `tests/test_mlff_target_size_p4f_storage_docs_structure.py`
+  Total: 40 passed.
